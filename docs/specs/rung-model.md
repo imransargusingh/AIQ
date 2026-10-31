@@ -190,6 +190,7 @@ Aggregates and the invariant each protects:
 - **Given** the person paused capture during part of a task **When** it is judged **Then** content from the paused period is never sent, because it was never captured.
 
 **US-6 — As anyone relying on AIQ's views and tips, I want low-confidence judgments kept out of coaching, so that a guess never drives a tip.**
+- **Given** a judgment whose potential-rung confidence is below 0.8 (pack default) **When** coaching asks for opportunities **Then** that task's gap is not offered, though the judgment is still shown.
 - **Given** a judgment below the pack's confidence threshold **When** stored **Then** it is marked Uncertain, shown as "uncertain" wherever it appears, and never used by the coaching loop.
 - **Given** the judge is unavailable (model missing, crash, timeout) **When** a task closes **Then** the task is queued and judged later, and the coaching loop treats it as "no rung estimate available" (coaching-loop scope note).
 
@@ -213,14 +214,14 @@ asked of the judge from task content.
 | # | Fact question | Source |
 |---|---|---|
 | F1 | Did an agent make the edits or produce the draft? | Log |
-| F2 | What share of the final change or document did the person write themselves? | Log (diff) |
+| F2 | What share of the final change or document did the person write themselves? | Log: agent edit tool calls compared with the final git diff or editor edits. With neither signal (CLI-only, no git) the fact is unknown and the judgment is Uncertain between Directed and Delegated |
 | F3 | Who ran the checks (tests, build, linters, evals): agent, person, or nobody? | Log |
 | F4 | Did the request state a goal, context and constraints? | Model |
 | F5 | Did each re-prompt add new information? | Model |
 | F6 | Was the output reviewed or checked before use (diff opened, tests run, sources checked)? | Log + Model |
 | F7 | Was a written spec, brief or instructions file given to the agent? | Log + Model |
-| F8 | Were several agents or chained steps coordinated, with automated checks between them? | Log |
-| F9 | Was a saved, versioned workflow run (prompt file, agent config, pipeline), and is it run by others? (existence and counts only) | Log |
+| F8 | Were several agents coordinated: two or more agents or sub-agents with distinct roles, passing work between them, with at least one automated check (tests, gate, eval) between steps? | Log |
+| F9 | Was a saved workflow run (prompt file, slash command, agent config, pipeline), and is it reused? Repo reuse facts, counts only: the workflow file is versioned in the repo, its number of distinct authors, and its runs by CI or by others | Log + repo metadata |
 | F10 | Which agents and permissions were available to the person? | Log (environment) |
 | F11 | How many similar tasks of this job did the person do in the last 30 days? | Log + Job classification |
 
@@ -294,6 +295,11 @@ a fact the logs cannot answer and the content was deleted (fact unknown, rule no
 |---|---|---|
 | LLM-as-judge with an explicit rubric agrees with human raters reasonably well on structured tasks, with known biases (position, verbosity) | Zheng et al. 2023, "Judging LLM-as-a-Judge" (MT-Bench) | Inferred (from memory, not re-checked) |
 | Maturity models are usually assessed per organisation or team, not per task | CMMI; DORA capabilities | Flagged (from memory) |
+| On synthetic tasks, the judge was 88–100% exact on rungs 1–3 when it read prompt excerpts, but only 53–60% with signals alone, biased half a rung low | Phase 0 spike, PR #2 `docs/investigations/phase0-feasibility.md` | Inferred (synthetic data; Claude as labeller and judge) |
+| Rung 5 was never judged right (0/8) without repo reuse facts; rung 4 was right 4/8, the misses judged 3 despite sub-agents, a spec and gates | Phase 0 spike, PR #2 | Inferred (same caveat). Addressed by F9 and F8 |
+| Job classification was 93–98% with excerpts; a 0.7 threshold gave 100% precision, routing the rest to Unclassified | Phase 0 spike, PR #2 | Inferred (same caveat) |
+| Potential was within one rung 100% of the time, but opportunity precision was 0.73–0.85 | Phase 0 spike, PR #2 | Inferred (same caveat). Addressed by the 0.8 gate (US-6) |
+| The rule "mixed evidence → lower rung, say why" held | Phase 0 spike, PR #2 | Inferred (same caveat) |
 | Decomposing a judgment into narrow, checkable questions makes LLM grading more reliable than one holistic score | Rubric-based and checklist LLM evaluation practice (e.g. G-Eval, Liu et al. 2023) | Inferred (from memory, not re-checked) |
 | People accept automated assessments more when they can see the evidence and give feedback on it | HAX guidelines G11, G15 (Amershi et al. 2019) | Inferred |
 | People want a per-task rung judgment | None yet | Flagged: validate in Phase 1 alpha |
@@ -422,6 +428,7 @@ feedback), G15 (granular feedback), G16 (convey consequences: what feedback chan
 - Technical access exists on paper (architecture thread, docs read 2026-10-31, not run): the VS Code Language Model API after a consent prompt, `copilot -p` and `claude -p` with the person's login. **Unverified:** whether Anthropic's and GitHub's terms allow a third-party local app to drive subscription models this way, and how Copilot CLI counts premium requests. Legal/terms check before alpha; fallback is the person's own API key.
 - Retention and admin visibility differ by account type (personal vs work). Probe: list them per provider before setup copy is written.
 - Judging cost per person per day is unknown. Probe: measure on the first check set and a week of the team's own tasks.
+- The spike's numbers come from synthetic data with Claude as both labeller and judge, so they likely flatter the judge. Probe: re-run on constructed and dogfood check tasks with a human checking facts.
 - Whether model-read facts reach the US-7 bar is unknown. Probe: run them on the first constructed tasks and dogfood traces.
 - Tasks built at a known rung on purpose may not look like real work. Probe: compare fact distributions between constructed and dogfood tasks.
 - The rubric's rules may place real tasks wrongly even when every fact is right. Probe: the expert sanity check.
