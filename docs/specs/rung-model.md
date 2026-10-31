@@ -42,6 +42,7 @@ Sibling spec: `docs/specs/coaching-loop.md` (consumes this model's output for Op
 | Q5 | Context management (model and reasoning choice, lean context, durable facts in instructions files, handling compaction) is recorded as task facts and may be coached, but **never caps or lowers a rung** until those facts meet the US-7 fact bar | Imran, 2026-10-31 (decision card) |
 | Q7 | AIQ may call the judge models under the person's own credentials | Imran, 2026-10-31 (thread reply: "I can confirm it's ok for AIQ to call the models under the users credentials"). **Open conflict:** Anthropic's published Claude Code terms say third-party apps may not route requests through a person's Free, Pro or Max credentials (https://code.claude.com/docs/en/legal-and-compliance). Asked Imran what his confirmation rests on; until then the Claude route is the person's own API key |
 | Q8 | **The model places the rung; rules are guardrails.** The judge reads the task facts and content and places the rung; deterministic per-job guardrails then lower it to the highest rung the facts can support (e.g. no Delegated unless an agent made the edits and the whole outcome was handed over). Chosen after the spike scored rules-only placement at 55–63% exact versus 80–85% for a holistic judge, with stable facts | Imran, 2026-10-31 (decision card) |
+| Q9 | **Verifiable facts also set a floor for Orchestrated and Factory.** When log- and repo-verifiable facts show Orchestrated (F7, F8, F3 agent or automated) or Factory (F9 runs by others, F3 agent or automated), the rung is raised to at least that rung, as well as capped by guardrails. Confirmed in the fact check before it drives coaching | Imran, 2026-10-31 (decision card, after the spike: lower-only guardrails 78% exact vs model alone 82%; with floors 88% exact, 98% within one; Orchestrated 8/8, Factory 6/8. Variant designed after seeing the data; F9 counts simulated) |
 
 ## Part A — Functional specification
 
@@ -118,8 +119,8 @@ Ubiquitous language:
   AIQ holds no account of its own in the path.
 - **Rung judgment**: the verdict on one task: its task facts, current rung, potential rung, ceiling, a
   confidence for each, evidence, gap and blockers, stamped with the fact set, rubric and judge versions.
-- **Current rung**: the rung the judge places the task on, lowered if needed to the highest rung whose
-  guardrails hold. A guardrail resting on a low-confidence fact counts as not met, so mixed evidence
+- **Current rung**: the rung the judge places the task on, raised to a floor when verifiable facts show
+  Orchestrated or Factory (Q9), and lowered if needed to the highest rung whose guardrails hold. A guardrail resting on a low-confidence fact counts as not met, so mixed evidence
   places the task on the lower rung.
 - **Potential rung**: the next reachable rung, weighed on fit, readiness, availability and
   repetition. Equals the current rung when the task is already at its right rung or is capped.
@@ -162,6 +163,7 @@ Aggregates and the invariant each protects:
 - **Given** a closed task with no AI interaction **When** it closes **Then** no judgment is produced (there is no rung 0).
 - **Given** a task whose facts meet every Delegated rule except "the whole outcome was handed over with done criteria" (F13) **When** judged **Then** it is placed on Directed, and the evidence names the unmet fact.
 - **Given** the judge places a task on Delegated but F1 (an agent made the edits) is no **When** guardrails run **Then** the task is lowered to the highest rung whose guardrails hold, and the evidence names the guardrail.
+- **Given** the judge places a task on Delegated and the logs show a spec given to the agent (F7), a sub-agent with an automated check between steps (F8), and the agent ran the checks (F3) **When** placement completes **Then** the task is Orchestrated, and the evidence names the facts that set the floor.
 - **Given** the same task facts **When** the guardrails run twice **Then** the result is identical (guardrails are deterministic).
 - **Given** a fact readable from the logs (e.g. who ran the tests) **When** judged **Then** it is taken from the logs, not asked of the model.
 - **Given** a task classified *Code a change* **When** judged **Then** the Code a change rubric is used; **Given** an *Unclassified* task **Then** only the core facts (F1–F6, F10, F12, F13) and the shared rules are used, and the judgment is Uncertain.
@@ -242,9 +244,12 @@ asked of the judge from task content.
 | 4 Orchestrated | Delegated, plus F7 yes, F8 yes and F3 = agent or automated | F8 no (manual handoffs); F3 = nobody |
 | 5 Factory | F9 yes with runs by others, and F3 = agent or automated (does not require Orchestrated: a team's versioned single-agent workflow qualifies) | Only this person runs it |
 
-Placement (Q8): the judge places the rung from the rung descriptions, the job's examples, the task
-facts and the content. Guardrails then lower it, never raise it, to the highest rung whose guardrails
-hold; a guardrail resting on a low-confidence fact counts as not met, and the evidence names it. When
+Placement (Q8, Q9): the judge places the rung from the rung descriptions, the job's examples, the task
+facts and the content. Then, in order: (1) **floor** — if the Factory guardrail holds on log- and
+repo-verifiable facts (F9 runs by others, F3 agent or automated), the rung is at least Factory; else
+if the Orchestrated guardrail holds on F7, F8 and F3, at least Orchestrated; (2) **guardrails** lower
+the rung to the highest rung whose guardrails hold. Floors use only facts read from logs or the repo,
+never model-read facts; a guardrail resting on a low-confidence fact counts as not met, and the evidence names it. When
 the judge's mixed evidence leaves it between two rungs, it picks the lower and says why. Judge
 outcomes and verification, not activity (anti-gaming).
 
@@ -309,6 +314,7 @@ a fact the logs cannot answer and the content was deleted (fact unknown, rule no
 | LLM-as-judge with an explicit rubric agrees with human raters reasonably well on structured tasks, with known biases (position, verbosity) | Zheng et al. 2023, "Judging LLM-as-a-Judge" (MT-Bench) | Inferred (from memory, not re-checked) |
 | Maturity models are usually assessed per organisation or team, not per task | CMMI; DORA capabilities | Flagged (from memory) |
 | On synthetic tasks, the judge was 88–100% exact on rungs 1–3 when it read prompt excerpts, but only 53–60% with signals alone, biased half a rung low | Phase 0 spike, PR #2 `docs/investigations/phase0-feasibility.md` | Inferred (synthetic data; Claude as labeller and judge) |
+| Guarded hybrid (100 synthetic tasks, Sonnet): model alone 82% exact / 94% within one; with lower-only guardrails 78% / 92% (4 correct calls demoted, none fixed); with floors for Orchestrated and Factory 88% / 98% (R4 8/8, R5 6/8) | Phase 0 spike, PR #2, "Guarded hybrid" | Inferred (synthetic; designed after seeing the data; F9 simulated) |
 | Facts-first run (50 synthetic tasks, Sonnet and Haiku, 2 runs each): model facts were stable (F4–F7, F12 85–100% run-to-run agreement; F2 75–93%), but rule-based placement was only 55–63% exact versus 80–85% for a holistic judge; the gap came from the rules, not the facts. Fixes applied: F2 from post-turn git diff, F13 added, Factory no longer requires Orchestrated, F8 counts one sub-agent with gates, fact thresholds set from the fact check | Phase 0 spike, PR #2, "Facts-first judge" | Inferred (synthetic data; Claude as labeller and judge). Re-run pending |
 | Rung 5 was never judged right (0/8) without repo reuse facts; rung 4 was right 4/8, the misses judged 3 despite sub-agents, a spec and gates | Phase 0 spike, PR #2 | Inferred (same caveat). Addressed by F9 and F8 |
 | Job classification was 93–98% with excerpts; a 0.7 threshold gave 100% precision, routing the rest to Unclassified | Phase 0 spike, PR #2 | Inferred (same caveat) |
@@ -330,7 +336,7 @@ a fact the logs cannot answer and the content was deleted (fact unknown, rule no
 ### AI-integrated allocation
 - **Archetype:** advisory assessor. AIQ judges and explains; the person can always flag its guidance.
 - **Tier allocation:** stage 1 deterministic extraction of log facts on device; stage 2 model-read facts
-  through the person's own AI account (run twice); stage 3 the judge places the rung, then deterministic guardrails lower it if the facts can't support it;
+  through the person's own AI account (run twice); stage 3 the judge places the rung, then deterministic floors (Orchestrated, Factory, from verifiable facts) and guardrails adjust it;
   stage 4 personal guidance ranking from the person's own feedback (never moves a rung).
 
 ## Part B — UX specification
@@ -487,7 +493,7 @@ Independent security review still recommended: this pass was done by the spec's 
 - The spike's numbers come from synthetic data with Claude as both labeller and judge, so they likely flatter the judge. Probe: re-run on constructed and dogfood check tasks with a human checking facts.
 - Whether model-read facts reach the US-7 bar is unknown. Probe: run them on the first constructed tasks and dogfood traces.
 - Tasks built at a known rung on purpose may not look like real work. Probe: compare fact distributions between constructed and dogfood tasks.
-- Holistic placement scored 80–85% only on synthetic data labeled and judged by Claude; guardrails may also wrongly lower good placements. Probe: the spike thread's re-run of the guarded variant, then the expert sanity check.
+- Holistic placement with floors and guardrails scored 88% exact on synthetic data labeled and judged by Claude, in a variant designed after seeing that data, with simulated F9 counts. Floors could over-rate a task if F8 or F9 are misread from logs; guardrails could wrongly lower good placements. Probe: the spike thread's re-run of the guarded variant, then the expert sanity check.
 - Running model facts twice doubles judging cost on the person's quota. Probe: measure cost per task; drop to one run for log-heavy jobs if needed.
 - Task close detection (idle timeout vs artifact boundary) is not defined here; inherited from task grouping.
 - Comparables are from memory (Flagged / Inferred). Probe: `/collectknowledge` on LLM-as-judge reliability.
