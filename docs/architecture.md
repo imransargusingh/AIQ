@@ -71,7 +71,7 @@ fixes it; if they are fail-open, fire-and-forget pipes, everything else can evol
 | Work | Tier | Why |
 |---|---|---|
 | Event normalisation, Task grouping, fast detectors (Opportunities 1–3, 5), budget, cooldowns, D5 adoption rule | **T0** deterministic | Must decide in ≤ 2 s and be explainable (P1, P2) |
-| Job classification (D7) | **T0 first**, T1 classifier if rules fall short | Cheapest sufficient tier; Phase 0 measures agreement |
+| Job classification (D7) | **T0 rules first; T3 judge as fallback** below confidence 0.7 | Phase 0 spike (PR #2, synthetic): model 93–98% with a 300-char excerpt vs 77–80% signals-only. Inferred until the real-data week |
 | Rung and potential-rung judgement, slow-path Opportunities 4 and 6 | **T3 places the rung, T0 floors and guardrails**: frontier model through the **person's own account** (ADR-0007) places it; log/repo-verifiable facts set a floor for Orchestrated and Factory; guardrails lower it, low priority, ≤ 60 s p95 after a Task closes | Owned by the rung-model spec; never on the fast path; queues (never reroutes) when offline or signed out |
 
 ## Component map & boundaries
@@ -110,7 +110,7 @@ flowchart LR
   PK --> DET
 ```
 
-Trust boundaries (detail in the [threat model](security/threat-model.md)): B1 surface → core API;
+Trust boundaries (detail in the [threat model](security/threat-model.md); data in the [privacy review](security/privacy-review.md)): B1 surface → core API;
 B2 pack content → core; B3 core → backend; B4 store at rest; B5 core → the person's AI provider (judge calls).
 
 ## Contracts at the seams
@@ -150,7 +150,7 @@ B2 pack content → core; B3 core → backend; B4 store at rest; B5 core → the
 | [0001](adr/0001-local-first-core.md) | Local-first: one core per OS user, thin collectors, stateless backend with no user data | Proposed |
 | [0002](adr/0002-durable-representation.md) | Append-only event facts + dimensions in SQLCipher SQLite; raw content kept until the person deletes it | Proposed (retention: Imran) |
 | [0003](adr/0003-key-management.md) | Store key only in the OS keychain; no recovery in the alpha | Accepted (Imran) |
-| [0004](adr/0004-core-language.md) | Core language | Proposed (pending Imran) |
+| [0004](adr/0004-core-language.md) | Rust core, hook client and Tauri shell; TypeScript extension and UI | Accepted (Imran) |
 | [0005](adr/0005-collector-contract.md) | Collectors are fail-open, fire-and-forget, schema-versioned pipes | Proposed |
 | [0006](adr/0006-packs-as-signed-data.md) | Packs are signed data; code only in a WASM sandbox; caps and thresholds live in packs | Proposed |
 | [0007](adr/0007-rung-judge-via-own-account.md) | Rung judge runs through the person's own account (own Anthropic API key for Claude; Copilot via VS Code's model API); no on-device judge in alpha | Accepted (Imran) |
@@ -193,4 +193,11 @@ B2 pack content → core; B3 core → backend; B4 store at rest; B5 core → the
 | **Best next action** | `/design-slice` for the Phase 1 walking skeleton (Claude Code collector → core → card) |
 
 ## Gate record
-_Pending: run after Imran's answers on ADR-0002, 0003, 0004._
+`GATE define-architecture · 2026-10-31 · Enterprise, Distributed Systems, Security & Identity, Data & Persistence, SRE, Patterns, Simplifier (all seats played by Claude in one session; not independent) · verdict: pass with conditions`
+- **Distributed Systems (hard):** at-least-once events need idempotent ingest (event_id upsert) and ordering by session seq; spool replay must not double-count budget. Resolved in cross-cutting concerns. Condition: property test for spool replay in Phase 1.
+- **Security & Identity (hard):** local API must reject other OS users and other processes without the per-boot token; pack keys pinned; Anthropic API key only in keychain. Resolved (threat model T-B1-*, T-B2-*, TR-7). Condition: Windows named-pipe ACL and Linux keyring fallback must be spiked before Phase 1 ships. Not cleared by the author for production; recorded.
+- **Data & Persistence:** grain declared per fact table in ADR-0002 (one row = one event / one signal / one card decision / one judgment version). Unlimited retention accepted by the owner; size budget needed. Condition: size-per-year estimate in /design-slice.
+- **SRE:** the 3 a.m. story is local: health page + capture log + per-component counters; no remote telemetry by design, so field debugging relies on the person sharing a help packet. Accepted.
+- **Enterprise / Patterns:** F + G + A composition is coherent; no model on the hot path (C9). Resolved.
+- **Simplifier (soft):** six-phase plan and WASM host are the heaviest items; WASM can wait until third-party packs (Phase 4 can ship data-only rules). Recorded as a design-slice option, not a change.
+- **Caveat:** independent review recommended before Accepted status (human, or a separate session).

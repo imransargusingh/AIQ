@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Architecture</title><style>
+:root { color-scheme: light dark; --bg:#f7f5ef; --panel:#fff; --text:#20201d;
+  --muted:#66645f; --line:#d9d5ca; --accent:#3157a4; --code:#f0eee7; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#171816; --panel:#20221f; --text:#f2f1eb; --muted:#b8b6ae;
+    --line:#3d403a; --accent:#8fb0ff; --code:#292c27; }
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text);
+  font:16px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif; }
+main { width:min(920px,calc(100% - 32px)); margin:32px auto; padding:40px;
+  background:var(--panel); border:1px solid var(--line); border-radius:12px; }
+h1,h2,h3,h4,h5,h6 { line-height:1.2; margin:1.5em 0 .55em; }
+h1 { margin-top:0; font-size:2.2rem; } h2 { border-bottom:1px solid var(--line); padding-bottom:.3em; }
+a { color:var(--accent); } code { background:var(--code); padding:.12em .35em; border-radius:4px; }
+pre { overflow:auto; padding:16px; background:var(--code); border-radius:8px; }
+pre code { padding:0; } blockquote { margin:1em 0; padding:.2em 1em; color:var(--muted);
+  border-left:4px solid var(--line); }
+table { width:100%; border-collapse:collapse; margin:1em 0; display:block; overflow:auto; }
+th,td { padding:.55em .75em; border:1px solid var(--line); text-align:left; vertical-align:top; }
+th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); }
+.source { color:var(--muted); font-size:.9rem; margin-bottom:2rem; }
+@media (max-width:640px) { main { width:100%; margin:0; padding:24px 18px; border:0; border-radius:0; } }
+</style></head><body><main><div class="source">Rendered from architecture.md</div><h1>Architecture: AIQ</h1>
+<p>Produced with AI-Forward <code>/define-architecture</code> (v2026.10.19.4), run with Imran. Answers to: <a href="specs/coaching-loop.md">coaching-loop spec</a> (D1–D7, US-1–US-7, NFRs) and the AIQ brief and Design &gt; Implementation tab (https://claude.ai/artifact/6PhqpuQvWMcU6xBD7rBbRw).</p>
+<h2>Context &amp; constraints</h2>
+<p>Requirements this architecture must meet (quoted from the spec and brief):</p>
+<ul><li><strong>Privacy (D4, US-6):</strong> only the person can see their data; nothing leaves the device in normal</li></ul>
+<p>operation except pack and update checks; AIQ never writes to shared systems.</p>
+<ul><li><strong>Never in the way (NFR Reliability, Performance):</strong> collectors add ≤ 50 ms p95 to any hook and fail</li></ul>
+<p>open if the core is down; core idle CPU &lt; 1%, RSS &lt; 150 MB.</p>
+<ul><li><strong>In the moment (US-1):</strong> show/hold/drop decision ≤ 2 s p95 from the triggering event.</li><li><strong>One budget per person (Surface parity, US-2):</strong> interruption budget and cooldowns are shared</li></ul>
+<p>across all surfaces and survive a core restart.</p>
+<ul><li><strong>Job, not title (D7):</strong> each Task is classified by Job; packs are per Job; roles are presets.</li><li><strong>Tunable without a release (NFR Maintainability, D5):</strong> detectors, tips, thresholds and caps are</li></ul>
+<p>pack data.</p>
+<p>Out of the boundary: org/manager views (never), browser and closed-app collectors (Beta), sync relay, aggregates service and helper directory (Platform phase), AIQ home views beyond a status page.</p>
+<h2>System sketch (stocks, flows, loops, delays)</h2>
+<ul><li><strong>Stocks:</strong> the event log (append-only), Tasks, Signals, cards shown, feedback, Habit tracks,</li></ul>
+<p>per-person budget counters, installed packs.</p>
+<ul><li><strong>Flows:</strong> hook/extension events → core → Signals → card decision → renderer → feedback → ranking</li></ul>
+<p>and Habit tracks.</p>
+<ul><li><strong>Feedback loops:</strong> feedback tunes ranking and suppression (balancing: fewer unwanted tips);</li></ul>
+<p>adoption feeds milestones (reinforcing); the interruption budget caps the loop (balancing).</p>
+<ul><li><strong>Delays:</strong> fast path seconds; slow path (rung model) minutes; adoption 14 days (D5).</li></ul>
+<p>Candidate shapes considered:</p>
+<ol><li><strong>Local core + thin collectors (chosen).</strong> One process owns state; collectors are dumb pipes.</li><li><strong>Smart collectors, no core.</strong> Each extension/hook keeps its own state. Rejected: the budget and</li></ol>
+<p>Habit tracks must be shared across surfaces (parity rule); duplicated logic in TS, hook scripts and Kotlin.</p>
+<ol><li><strong>Cloud service with per-user encryption.</strong> Rejected: the server would see data in use; breaks</li></ol>
+<p>D4 and the &quot;nothing leaves the device&quot; criterion.</p>
+<p><strong>Leverage point:</strong> the collector contract (ADR-0005). If collectors can block or leak, nothing else fixes it; if they are fail-open, fire-and-forget pipes, everything else can evolve behind them.</p>
+<h2>Archetype &amp; rationale</h2>
+<ul><li><strong>Primary: LOA F — Copilot Aside Hot Path.</strong> The person&#x27;s IDE and agents are the hot path; AIQ</li></ul>
+<p>must add no latency and never mutate it. AIQ is a parallel advisory channel.</p>
+<ul><li><strong>Composed with G — Continuous Sentinel</strong> (ongoing observation against habit rules, carrying state</li></ul>
+<p>across sessions) and <strong>A — Cascade Pipeline</strong> inside it (T0 rules first, T2 model only for the slow path).</p>
+<ul><li><strong>Rejected:</strong> H Long-Horizon Agent (AIQ takes no actions), C Tool-Mediated Constructor (no</li></ul>
+<p>artifacts built), D Grounded Synthesizer (no corpus synthesis in Phase 1), B Adversarial Ensemble (cost too high for advisory tips).</p>
+<h2>Capability-tier allocation</h2>
+<table><thead><tr><th>Work</th><th>Tier</th><th>Why</th></tr></thead><tbody><tr><td>Event normalisation, Task grouping, fast detectors (Opportunities 1–3, 5), budget, cooldowns, D5 adoption rule</td><td><strong>T0</strong> deterministic</td><td>Must decide in ≤ 2 s and be explainable (P1, P2)</td></tr><tr><td>Job classification (D7)</td><td><strong>T0 rules first; T3 judge as fallback</strong> below confidence 0.7</td><td>Phase 0 spike (PR #2, synthetic): model 93–98% with a 300-char excerpt vs 77–80% signals-only. Inferred until the real-data week</td></tr><tr><td>Rung and potential-rung judgement, slow-path Opportunities 4 and 6</td><td><strong>T3 places the rung, T0 floors and guardrails</strong>: frontier model through the <strong>person&#x27;s own account</strong> (ADR-0007) places it; log/repo-verifiable facts set a floor for Orchestrated and Factory; guardrails lower it, low priority, ≤ 60 s p95 after a Task closes</td><td>Owned by the rung-model spec; never on the fast path; queues (never reroutes) when offline or signed out</td></tr></tbody></table>
+<h2>Component map &amp; boundaries</h2>
+<pre><code class="language-mermaid">flowchart LR
+  subgraph Device[&quot;Person&#x27;s machine (private boundary)&quot;]
+    subgraph Surfaces
+      VSC[&quot;VS Code extension\n(collector + renderer)&quot;]
+      CC[&quot;Claude Code hooks\n(collector + renderer)&quot;]
+      CP[&quot;Copilot CLI hooks\n(collector + renderer)&quot;]
+    end
+    subgraph Core[&quot;AIQ core (one per OS user)&quot;]
+      API[&quot;Local API\n(OS-user-only socket / named pipe)&quot;]
+      ING[&quot;Ingest + Task grouper&quot;]
+      DET[&quot;Fast detectors + Job classifier\n(pack rules, WASM sandbox)&quot;]
+      TRG[&quot;Trigger engine\n(budget, cooldowns, pauses)&quot;]
+      HAB[&quot;Habit tracker (D5)&quot;]
+      RNG[&quot;Rung judge client\n(slow path, ADR-0007)&quot;]
+      STORE[(&quot;Encrypted store\nSQLite + SQLCipher&quot;)]
+      PK[&quot;Pack manager\n(signature check)&quot;]
+    end
+    KEY[&quot;OS keychain&quot;]
+    HOME[&quot;AIQ home (Tauri)\nstatus page in Phase 1&quot;]
+  end
+  BE[&quot;Backend: signed pack CDN + app updates\n(no user data)&quot;]
+  VSC &amp; CC &amp; CP -- &quot;events (fire-and-forget)&quot; --&gt; API
+  API --&gt; ING --&gt; DET --&gt; TRG
+  TRG -- &quot;card&quot; --&gt; API -- &quot;card / hint&quot; --&gt; VSC &amp; CC &amp; CP
+  ING &amp; DET &amp; TRG &amp; HAB &amp; RNG &lt;--&gt; STORE
+  HAB --&gt; TRG
+  RNG --&gt; DET
+  STORE -. key .- KEY
+  HOME &lt;--&gt; API
+  PK -- &quot;HTTPS pull, verify signature&quot; --&gt; BE
+  RNG -- &quot;judge call: own Anthropic API key / Copilot via vscode.lm&quot; --&gt; PROV[&quot;Person&#x27;s AI provider\n(already saw the Task)&quot;]
+  PK --&gt; DET</code></pre>
+<p>Trust boundaries (detail in the <a href="security/threat-model.md">threat model</a>; data in the <a href="security/privacy-review.md">privacy review</a>): B1 surface → core API; B2 pack content → core; B3 core → backend; B4 store at rest; B5 core → the person&#x27;s AI provider (judge calls).</p>
+<h2>Contracts at the seams</h2>
+<table><thead><tr><th>Seam</th><th>Contract</th><th>Source</th><th>Confidence</th></tr></thead><tbody><tr><td>Claude Code → collector</td><td>Command hooks on SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Stop; JSON on stdin; <code>systemMessage</code> is shown to the user; <code>additionalContext</code> goes to the model (AIQ must <strong>not</strong> use it: coaching is for the person, not the agent); <code>&quot;async&quot;: true</code> runs a hook in the background; default command timeout 600 s, so the collector enforces its own 50 ms budget</td><td>https://code.claude.com/docs/en/hooks; Phase 0 hook probe</td><td><strong>Verified by running</strong> (2.1.316, headless): async hooks never block; Stop <code>systemMessage</code> renders to the person; payloads sufficient for Task grouping. TUI rendering not yet checked</td></tr><tr><td>Copilot CLI → collector</td><td>Hooks in <code>.github/hooks/*.json</code> (repo) or <code>~/.copilot/hooks/</code> (user): sessionStart, userPromptSubmitted, preToolUse, postToolUse, agentStop, sessionEnd and others; command hooks can print <code>{&quot;type&quot;:&quot;progress&quot;,&quot;message&quot;:…}</code> lines to the CLI timeline, <code>&quot;temporary&quot;: true</code> for a transient line; default timeout 30 s</td><td>https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-hooks-reference</td><td>Verified by reading docs; <strong>not run</strong> (Phase 0 spike)</td></tr><tr><td>VS Code → extension</td><td>Extension API: notifications, status bar, webview views; agent/chat events where exposed</td><td>VS Code extension API docs</td><td>Flagged: which chat/agent events are observable must be spiked</td></tr><tr><td>Collector → core</td><td>Versioned JSON Schema event (<code>aiq.event.v1</code>), at-least-once, idempotent by <code>event_id</code> (UUIDv7)</td><td>ADR-0005</td><td>Decided</td></tr><tr><td>Core → renderer</td><td>Coaching card schema (<code>aiq.card.v1</code>): noticed, why, try_this, evidence_ref, card_id</td><td>ADR-0005</td><td>Decided</td></tr><tr><td>Pack → core</td><td>Signed pack (detectors as data, optional WASM), thresholds, caps, tips</td><td>ADR-0006</td><td>Decided</td></tr><tr><td>Local git (read-only)</td><td>Diffs to compare agent edits with what landed (F2); repo metadata as counts: workflow file versioned, distinct author count, CI/others&#x27; run counts (F9). Local <code>git</code> only, never hosting APIs; counts stored, not names</td><td>rung-model spec PR #3</td><td>Decided; command set to design in /design-slice</td></tr><tr><td>Session stores (read-only)</td><td><code>~/.claude/projects/*.jsonl</code>, <code>~/.copilot/session-store.db</code>, as AI-Forward <code>session-profile.py</code> reads them</td><td>AI-Forward repo</td><td>Inferred; undocumented formats, owned by the Phase 0 spike thread</td></tr></tbody></table>
+<h2>Cross-cutting concerns</h2>
+<ul><li><strong>Identity:</strong> one core per OS user; the local API accepts only that user (socket file mode 0600 /</li></ul>
+<p>named-pipe ACL), and every request carries a per-boot token read from a user-only file. No AIQ account (P11: no ambient credential; AIQ holds no credentials to any shared system).</p>
+<ul><li><strong>Idempotency (P8):</strong> every event has <code>event_id</code>; ingest is upsert-by-id, so hook retries and</li></ul>
+<p>replay from the spool never double-count. Cards have <code>card_id</code>; feedback is keyed by it.</p>
+<ul><li><strong>Ordering:</strong> events are ordered by (surface session, monotonic seq) not wall clock; Tasks tolerate</li></ul>
+<p>out-of-order arrival within 5 s.</p>
+<ul><li><strong>Failure modes:</strong> core down → collectors drop to a bounded local spool (≤ 1 MB, user-only file)</li></ul>
+<p>and the tools carry on; renderer failure → card held; corrupt pack → previous pack kept.</p>
+<ul><li><strong>Observability:</strong> local only. Health page, capture log the person can read, per-component</li></ul>
+<p>counters. <strong>No remote telemetry</strong> (US-6).</p>
+<ul><li><strong>Judgments are versioned facts:</strong> each rung judgment is stamped with rubric and judge versions and</li></ul>
+<p>appended; re-judging writes a new version. The person&#x27;s corrections and per-job calibration stay local and are never synced.</p>
+<ul><li><strong>Audit (P10):</strong> every card decision records which rule fired, inputs (by reference), pack version</li></ul>
+<p>and tier; every model call records model, version and tier. Local, viewable, deletable.</p>
+<ul><li><strong>Privacy controls:</strong> opt-in per surface, pause on every surface, quiet hours, export, delete-all.</li></ul>
+<h2>Load-bearing decisions → ADRs</h2>
+<table><thead><tr><th>ADR</th><th>Decision</th><th>Status</th></tr></thead><tbody><tr><td><a href="adr/0001-local-first-core.md">0001</a></td><td>Local-first: one core per OS user, thin collectors, stateless backend with no user data</td><td>Proposed</td></tr><tr><td><a href="adr/0002-durable-representation.md">0002</a></td><td>Append-only event facts + dimensions in SQLCipher SQLite; raw content kept until the person deletes it</td><td>Proposed (retention: Imran)</td></tr><tr><td><a href="adr/0003-key-management.md">0003</a></td><td>Store key only in the OS keychain; no recovery in the alpha</td><td>Accepted (Imran)</td></tr><tr><td><a href="adr/0004-core-language.md">0004</a></td><td>Rust core, hook client and Tauri shell; TypeScript extension and UI</td><td>Accepted (Imran)</td></tr><tr><td><a href="adr/0005-collector-contract.md">0005</a></td><td>Collectors are fail-open, fire-and-forget, schema-versioned pipes</td><td>Proposed</td></tr><tr><td><a href="adr/0006-packs-as-signed-data.md">0006</a></td><td>Packs are signed data; code only in a WASM sandbox; caps and thresholds live in packs</td><td>Proposed</td></tr><tr><td><a href="adr/0007-rung-judge-via-own-account.md">0007</a></td><td>Rung judge runs through the person&#x27;s own account (own Anthropic API key for Claude; Copilot via VS Code&#x27;s model API); no on-device judge in alpha</td><td>Accepted (Imran)</td></tr></tbody></table>
+<h2>Delivery phasing (vertical slices)</h2>
+<table><thead><tr><th>Phase</th><th>End-to-end capability</th><th>Real</th><th>Mocked (seam = contract)</th><th>Human validation</th><th>Test validation</th><th>Unblocks</th></tr></thead><tbody><tr><td>1 Walking skeleton</td><td>Re-prompt detector (Opp. 1) fires in Claude Code and a card shows as a <code>systemMessage</code> at Stop</td><td>Claude Code hook collector, core ingest, store, one T0 detector, trigger engine with budget, CLI renderer</td><td>Pack = bundled unsigned file; Job classifier returns <em>Unclassified</em>; no rung model</td><td>Rephrase a prompt 3 times in Claude Code; see one card; second qualifying event in the session is held</td><td>E2E: scripted hook payloads → expected card / hold; core killed → hook still exits 0 in ≤ 50 ms</td><td>Every later slice</td></tr><tr><td>2</td><td>Same loop on Copilot CLI and VS Code; budget shared across surfaces</td><td>Copilot CLI collector (progress line), VS Code extension (notification + status bar)</td><td>Same as 1</td><td>Trigger on Claude Code, then on Copilot CLI in the same session: second is held</td><td>E2E per surface + cross-surface budget test</td><td>Parity rule</td></tr><tr><td>3</td><td>Feedback and Habit tracks (US-4, US-5)</td><td>Feedback controls on all surfaces, ranking, D5 tracker, milestone card</td><td>Clock is injectable for 14-day windows</td><td>Mark &quot;don&#x27;t show again&quot;; it never returns</td><td>Property tests on D5 rule incl. boundary set</td><td>Coaching history</td></tr><tr><td>4</td><td>Jobs and the two alpha job packs (D7, Opp. 2, 3, 5)</td><td>T0 Job classifier, signed pack pipeline, WASM sandbox</td><td>Rung model still stubbed</td><td>PM-preset user coding gets coding tips</td><td>Golden set of labelled Tasks; classifier agreement target</td><td>Rung model integration</td></tr><tr><td>5</td><td>Slow path (Opp. 4, 6) via the rung model</td><td>Judge calls through the person&#x27;s own account (ADR-0007)</td><td>—</td><td>Delegation-fit tip at next pause</td><td>Rung-model evals (from its spec)</td><td>Alpha</td></tr><tr><td>6</td><td>Status page, pause, export, delete (privacy controls)</td><td>Tauri status page</td><td>—</td><td>Delete all; capture log empty</td><td>E2E delete leaves no rows and no spool</td><td>Private alpha</td></tr></tbody></table>
+<h2>LOA conformance check</h2>
+<ul><li>C1 tier annotation, C2 budget propagation, C3 receipts: apply to the rung judge client (T3);</li></ul>
+<p>enforced in <code>/design-slice</code> of those components.</p>
+<ul><li>C5 side-effect protection, C6 idempotency keys: AIQ&#x27;s only side effects are local writes and card</li></ul>
+<p>rendering; event and card ids cover C6. AIQ performs no external side effects.</p>
+<ul><li>C7 fallback: every collector has the fail-open fallback; renderer has hold.</li><li>C9 anti-patterns: no model on the hot path (would violate F).</li><li>C10/C11: not a regulated system; SHOULD met by the local audit record; no delegated identity to</li></ul>
+<p>shared systems exists.</p>
+<h2>Flagged risks &amp; residual unknowns</h2>
+<ul><li>Claude Code hooks verified headless; Copilot CLI hooks and the interactive TUI rendering still unexercised. Probe: Phase 0 spike.</li><li>VS Code: which Copilot Chat / agent events an extension can observe is unknown. Probe: spike.</li><li>Copilot CLI hooks configured at repo level (<code>.github/hooks/</code>) are visible to teammates; AIQ must</li></ul>
+<p>install at user level only (<code>~/.copilot/hooks/</code>), and Claude Code hooks in user settings, never in a repo.</p>
+<ul><li>GitHub Copilot terms for the judge path: no blocker found; confirm against current product terms before alpha (ADR-0007).</li><li>Session-store formats are undocumented and can change. Owned by the Phase 0 spike thread.</li><li>Task grouping and Job classification accuracy unproven (spec risks).</li></ul>
+<h2>Status &amp; next action</h2>
+<table><thead><tr><th></th><th></th></tr></thead><tbody><tr><td><strong>Completed</strong></td><td>Draft architecture, ADRs 0001–0006, threat model and privacy review</td></tr><tr><td><strong>Remaining</strong></td><td>Phases 1–6 above, in order</td></tr><tr><td><strong>Best next action</strong></td><td><code>/design-slice</code> for the Phase 1 walking skeleton (Claude Code collector → core → card)</td></tr></tbody></table>
+<h2>Gate record</h2>
+<p><code>GATE define-architecture · 2026-10-31 · Enterprise, Distributed Systems, Security &amp; Identity, Data &amp; Persistence, SRE, Patterns, Simplifier (all seats played by Claude in one session; not independent) · verdict: pass with conditions</code></p>
+<ul><li><strong>Distributed Systems (hard):</strong> at-least-once events need idempotent ingest (event_id upsert) and ordering by session seq; spool replay must not double-count budget. Resolved in cross-cutting concerns. Condition: property test for spool replay in Phase 1.</li><li><strong>Security &amp; Identity (hard):</strong> local API must reject other OS users and other processes without the per-boot token; pack keys pinned; Anthropic API key only in keychain. Resolved (threat model T-B1-<em>, T-B2-</em>, TR-7). Condition: Windows named-pipe ACL and Linux keyring fallback must be spiked before Phase 1 ships. Not cleared by the author for production; recorded.</li><li><strong>Data &amp; Persistence:</strong> grain declared per fact table in ADR-0002 (one row = one event / one signal / one card decision / one judgment version). Unlimited retention accepted by the owner; size budget needed. Condition: size-per-year estimate in /design-slice.</li><li><strong>SRE:</strong> the 3 a.m. story is local: health page + capture log + per-component counters; no remote telemetry by design, so field debugging relies on the person sharing a help packet. Accepted.</li><li><strong>Enterprise / Patterns:</strong> F + G + A composition is coherent; no model on the hot path (C9). Resolved.</li><li><strong>Simplifier (soft):</strong> six-phase plan and WASM host are the heaviest items; WASM can wait until third-party packs (Phase 4 can ship data-only rules). Recorded as a design-slice option, not a change.</li><li><strong>Caveat:</strong> independent review recommended before Accepted status (human, or a separate session).</li></ul></main></body></html>
