@@ -156,10 +156,10 @@ Aggregates and the invariant each protects:
 **US-1 — As anyone working with AI, I want each task I finish judged against a clear rubric, so that I see how I actually worked rather than how much I used AI.**
 - **Given** a closed task with at least one AI interaction **When** it closes **Then** a Rung judgment is produced within 60 s (p95) of the judge call starting, with current rung, potential rung, ceiling and a confidence for each.
 - **Given** a closed task with no AI interaction **When** it closes **Then** no judgment is produced (there is no rung 0).
-- **Given** a task whose facts meet every Delegated rule except "the person wrote under 30% of the final change" **When** judged **Then** it is placed on Directed, and the evidence names the unmet fact.
+- **Given** a task whose facts meet every Delegated rule except "the whole outcome was handed over with done criteria" (F13) **When** judged **Then** it is placed on Directed, and the evidence names the unmet fact.
 - **Given** the same task facts **When** the rubric places the rung twice **Then** the rung is identical (rules are deterministic).
 - **Given** a fact readable from the logs (e.g. who ran the tests) **When** judged **Then** it is taken from the logs, not asked of the model.
-- **Given** a task classified *Code a change* **When** judged **Then** the Code a change rubric is used; **Given** an *Unclassified* task **Then** only the core facts (F1–F6, F10, F12) and the shared rules are used, and the judgment is Uncertain.
+- **Given** a task classified *Code a change* **When** judged **Then** the Code a change rubric is used; **Given** an *Unclassified* task **Then** only the core facts (F1–F6, F10, F12, F13) and the shared rules are used, and the judgment is Uncertain.
 - **Given** the same task under the Developer and the PM preset **When** judged **Then** both judgments are identical (R5: the role never enters).
 
 **US-2 — As anyone working with AI, I want the potential rung to be one realistic next step, so that I'm not pushed toward something I can't do yet.**
@@ -192,7 +192,7 @@ Aggregates and the invariant each protects:
 
 **US-6 — As anyone relying on AIQ's views and tips, I want low-confidence judgments kept out of coaching, so that a guess never drives a tip.**
 - **Given** a judgment whose potential-rung confidence is below 0.8 (pack default) **When** coaching asks for opportunities **Then** that task's gap is not offered, though the judgment is still shown.
-- **Given** a judgment resting on a fact below the pack's fact-confidence threshold (default 0.7, tunable) **When** stored **Then** it is marked Uncertain, shown as "uncertain" wherever it appears, and never used by the coaching loop.
+- **Given** a judgment resting on a fact below the pack's fact-confidence threshold (set per fact from the fact check, not up front: the spike's model reported 0.5–0.6 even on correct facts) **When** stored **Then** it is marked Uncertain, shown as "uncertain" wherever it appears, and never used by the coaching loop.
 - **Given** the judge is unavailable (model missing, crash, timeout) **When** a task closes **Then** the task is queued and judged later, and the coaching loop treats it as "no rung estimate available" (coaching-loop scope note).
 
 **US-7 — As the AIQ team, we want the judge held to a measured accuracy bar before it drives coaching, so that people get fair judgments from day one.** (Q4, Q6)
@@ -215,25 +215,26 @@ asked of the judge from task content.
 | # | Fact question | Source |
 |---|---|---|
 | F1 | Did an agent make the edits or produce the draft? | Log |
-| F2 | What share of the final change or document did the person write themselves? | Log: agent edit tool calls compared with the final git diff or editor edits. With neither signal (CLI-only, no git) the fact is unknown and the judgment is Uncertain between Directed and Delegated |
+| F2 | What share of the final change or document did the person write themselves? | Log: agent edit tool calls compared with a git diff taken after each agent turn (CLI) or editor edits (VS Code). Unknown only when the work is outside a git repo and no editor signal exists |
 | F3 | Who ran the checks (tests, build, linters, evals): agent, person, or nobody? | Log |
 | F4 | Did the request state a goal, context and constraints? | Model |
 | F5 | Did each re-prompt add new information? | Model |
 | F6 | Was the output reviewed or checked before use (diff opened, tests run, sources checked)? | Log + Model |
 | F7 | Was a written spec, brief or instructions file given to the agent? | Log + Model |
-| F8 | Were several agents coordinated: two or more agents or sub-agents with distinct roles, passing work between them, with at least one automated check (tests, gate, eval) between steps? | Log |
+| F8 | Was work coordinated across agents: at least one sub-agent or second agent with a distinct role, with at least one automated check (tests, gate, eval) between steps? | Log |
 | F9 | Was a saved workflow run (prompt file, slash command, agent config, pipeline), and is it reused? Repo reuse facts, counts only: the workflow file is versioned in the repo, its number of distinct authors, and its runs by CI or by others | Log + repo metadata |
 | F10 | Which agents and permissions were available to the person? | Log (environment) |
 | F11 | How many similar tasks of this job did the person do in the last 30 days? | Log + Job classification |
 | F12 | Did the person drive the agent step by step (one small instruction per turn, steering each result)? | Model |
+| F13 | Was the whole outcome handed over with done criteria, rather than one piece or step? | Model |
 
 | Rung | Placed here when (illustrative rule) | Ruled out by |
 |---|---|---|
 | 1 Assisted | Any AI interaction | — |
 | 2 Directed | F4 yes and F6 yes | F5 no on 2+ re-prompts |
-| 3 Delegated | F1 yes, F2 < 30%, F6 yes | F12 yes |
+| 3 Delegated | F1 yes, F13 yes, F6 yes | F12 yes; F2 ≥ 50% |
 | 4 Orchestrated | Delegated, plus F7 yes, F8 yes and F3 = agent or automated | F8 no (manual handoffs); F3 = nobody |
-| 5 Factory | Orchestrated, plus F9 yes with runs by others | Only this person runs it |
+| 5 Factory | F9 yes with runs by others, and F3 = agent or automated (does not require Orchestrated: a team's versioned single-agent workflow qualifies) | Only this person runs it |
 
 Placement: the highest rung whose rules are met; a rule resting on a low-confidence fact counts as
 not met, and the evidence says which fact. Judge outcomes and verification, not activity
@@ -300,6 +301,7 @@ a fact the logs cannot answer and the content was deleted (fact unknown, rule no
 | LLM-as-judge with an explicit rubric agrees with human raters reasonably well on structured tasks, with known biases (position, verbosity) | Zheng et al. 2023, "Judging LLM-as-a-Judge" (MT-Bench) | Inferred (from memory, not re-checked) |
 | Maturity models are usually assessed per organisation or team, not per task | CMMI; DORA capabilities | Flagged (from memory) |
 | On synthetic tasks, the judge was 88–100% exact on rungs 1–3 when it read prompt excerpts, but only 53–60% with signals alone, biased half a rung low | Phase 0 spike, PR #2 `docs/investigations/phase0-feasibility.md` | Inferred (synthetic data; Claude as labeller and judge) |
+| Facts-first run (50 synthetic tasks, Sonnet and Haiku, 2 runs each): model facts were stable (F4–F7, F12 85–100% run-to-run agreement; F2 75–93%), but rule-based placement was only 55–63% exact versus 80–85% for a holistic judge; the gap came from the rules, not the facts. Fixes applied: F2 from post-turn git diff, F13 added, Factory no longer requires Orchestrated, F8 counts one sub-agent with gates, fact thresholds set from the fact check | Phase 0 spike, PR #2, "Facts-first judge" | Inferred (synthetic data; Claude as labeller and judge). Re-run pending |
 | Rung 5 was never judged right (0/8) without repo reuse facts; rung 4 was right 4/8, the misses judged 3 despite sub-agents, a spec and gates | Phase 0 spike, PR #2 | Inferred (same caveat). Addressed by F9 and F8 |
 | Job classification was 93–98% with excerpts; a 0.7 threshold gave 100% precision, routing the rest to Unclassified | Phase 0 spike, PR #2 | Inferred (same caveat) |
 | Potential was within one rung 100% of the time, but opportunity precision was 0.73–0.85 | Phase 0 spike, PR #2 | Inferred (same caveat). Addressed by the 0.8 gate (US-6) |
@@ -485,7 +487,7 @@ Independent security review still recommended: this pass was done by the spec's 
 ## Gate record
 `GATE specify · 2026-10-31 · Simplifier, Test Architect, Data & Persistence Architect, UX Researcher/IA, UX & Accessibility, Security & Privacy (run by Claude in one session; not independent) · verdict: pass with conditions · vetoes→resolution:`
 - Simplifier (soft): ceiling kept as a stored field only, not coached and not in this spec's UI; two-run consistency doubles judge cost, accepted with a fallback to one run for log-heavy jobs. Resolved.
-- Test Architect (hard): potential rule contradicted the "at most one rung above" invariant; rewritten. "Drove the agent step by step" had no fact behind it; added F12. Fact-confidence threshold had no value; default 0.7 set (from the spike's job-classification result). Unclassified handling made concrete. Potential-confidence gate (0.8) added to the flow. Resolved.
+- Test Architect (hard): potential rule contradicted the "at most one rung above" invariant; rewritten. "Drove the agent step by step" had no fact behind it; added F12. Fact-confidence threshold now set per fact from the fact check (spike showed a fixed 0.7 sank most tasks to rung 1). Unclassified handling made concrete. Potential-confidence gate (0.8) added to the flow. Resolved.
 - Data & Persistence Architect: every concept has a home; judgments are versioned by fact set, rubric and judge version and never edited; Check set consent invariant added. Grain and durable representation go to `/define-architecture` and `/design-slice`. Resolved.
 - UX Researcher/IA: missing states for "other provider not allowed" and "queued" added to flow and panel states. Judge-account setup (with the work-account disclosure) has acceptance criteria in US-5 but no drawn flow; drawn in the AIQ home / Settings spec. Recorded.
 - UX & Accessibility: every non-default state has a text label; rung never by colour alone. Resolved.
