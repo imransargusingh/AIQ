@@ -45,7 +45,7 @@ dumped its stdin to a file.
 - **A `Stop` hook that prints nothing** gives `hook_response` with `output: ""`, `exit_code: 0` and
   `outcome: success`. Nothing is added to the stream. The interactive terminal was not checked for
   the empty case; the laptop test checked only the case with text.
-- **Nested `claude -p` shares the parent session.** The nested run inherited the parent session's
+- **Nested `claude -p` shared the parent session here, but not on Windows.** Superseded by S4b on Imran's laptop, where inner and outer `session_id` differed (`results/windows-s1-s3.md`), so the session id from the payload is the identity and no child tag is needed. Original cloud note: The nested run inherited the parent session's
   `session_id` through the environment (`CLAUDE_CODE_SESSION_ID` and `CLAUDE_CODE_CHILD_SESSION` are
   set). This was observed in this cloud environment. Whether a local nested `claude -p` does the same
   is *Inferred* and still open. Either way, an agent that runs `claude -p` can add prompts to the

@@ -57,8 +57,11 @@ Quoted from the accepted artifacts. If this design and these disagree, these win
   Stop, so they did not hold the turn.
 - A Python process per hook costs 98 ms p50 / 137 ms p95 on Windows (collector work 1.6 ms p95; the
   rest is interpreter start-up). This confirms ADR-0005's compiled client; Python is ruled out.
-- Hooks run through Git Bash on Windows: the hook command must be a quoted forward-slash path and
-  must not use `VAR=x cmd` prefixes.
+- Shell-form hooks run through Git Bash on Windows, which costs 452 ms p95 (663 ms with the core
+  down, max 2.2 s) for the compiled client (spike S3a). Claude Code's **exec form** (`command` = the
+  executable, `args` = the argument list, no shell; [hooks docs](https://code.claude.com/docs/en/hooks))
+  avoids it. AIQ installs exec-form hooks only. Exec form verified with Claude Code 2.1.316 on Linux;
+  the Windows direct-launch cost is 26–34 ms p95 (S3a).
 - A fresh, untrusted folder shows Claude Code's trust prompt first; hooks in user settings still apply
   once the folder is trusted.
 
@@ -235,7 +238,7 @@ redone, and that is likely 10–50× larger. **Gap that forced the model:** no r
 | Claude Code `Stop` hook input | stdin JSON with `session_id`, `hook_event_name`, `stop_hook_active`, `prompt_id` (same value as that turn's `UserPromptSubmit`); also carries `last_assistant_message`, which AIQ does not keep | spike S4 | Verified (Linux 2.1.316) |
 | Claude Code hook output | exit 0 + stdout `{"systemMessage": "<text>"}` shows to the person, not to the model | same; probe | Verified (headless stream and Windows TUI) |
 | `"async": true` on a command hook | does not hold the turn | probe | Verified |
-| Hook command on Windows | runs through Git Bash; needs a quoted forward-slash path, no `VAR=x` prefix | Windows laptop test | Verified |
+| Hook exec form (`command` + `args`) | `command` resolved as an executable and spawned directly with `args`, no shell; on Windows `command` must be a real `.exe` | [Claude Code hooks](https://code.claude.com/docs/en/hooks); exec-form run on Linux 2.1.316 (card in stream) | Verified on Linux; on Windows the docs only (Inferred) until the first dogfood install |
 | SQLCipher via `rusqlite` feature `bundled-sqlcipher-vendored-openssl` | encrypted SQLite, key set by `PRAGMA key` | crates.io: rusqlite 0.41.1 lists the feature (checked 2026-10-31) | Feature exists: Verified. Behaviour on Windows build: **spike S3** |
 | OS keychain via `keyring` 4.x (`v1` API: `Entry::new`, `set_secret`, `get_secret`, `delete_credential`, `store_status`) | store/read a 32-byte secret per OS user | keyring 4.2.0 source; spike S2 | Verified on Linux: no secret service fails fast (1–33 ms) as `NoDefaultStore`; locked keyring fails as `NoStorageAccess`; unlocked works. Windows Credential Manager: S3 |
 | Local sockets via `interprocess` 2.x | Unix domain socket on Linux/macOS, named pipe on Windows | crates.io: interprocess 2.4.7 (checked 2026-10-31) | Version: Verified. Setting a user-only DACL on the Windows pipe: **spike S1** (gate condition) |
@@ -248,19 +251,22 @@ redone, and that is likely 10–50× larger. **Gap that forced the model:** no r
 ```json
 {
   "hooks": {
-    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "\"<abs path>/aiq\" hook claude-code UserPromptSubmit", "async": true, "timeout": 5 }] }],
-    "Stop":             [{ "hooks": [{ "type": "command", "command": "\"<abs path>/aiq\" hook claude-code Stop", "timeout": 5 }] }]
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "<abs path>/aiq(.exe)", "args": ["hook", "claude-code", "UserPromptSubmit"], "async": true, "timeout": 5 }] }],
+    "Stop":             [{ "hooks": [{ "type": "command", "command": "<abs path>/aiq(.exe)", "args": ["hook", "claude-code", "Stop"], "timeout": 5 }] }]
   }
 }
 ```
 
-`<abs path>` uses forward slashes on every OS. The `timeout: 5` is a safety net only; the client's own
-budget is 50 ms. Every AIQ entry carries the literal `aiq hook claude-code` so `install` and
-`uninstall` find exactly their own entries and never touch the person's other hooks.
+Exec form, never shell form: no Git Bash or PowerShell start-up, no quoting, no env-var prefixes.
+The `timeout: 5` is a safety net only; the client's own budget is 50 ms. Every AIQ entry has
+`args[0..2]` = `hook`, `claude-code`, so `install` and `uninstall` find exactly their own entries and
+never touch the person's other hooks.
 
 `aiq hook` guarantees: always exits 0; never writes to stdout except one `{"systemMessage": …}` on
 Stop when a card is ready; never writes `additionalContext`, `decision` or `continue`; returns in
-≤ 50 ms p95 (Stop) and ≤ 20 ms p95 for the hand-off on observation events.
+≤ 50 ms p95 for the whole process on Stop with the core up (measured 26–34 ms on Windows, 2–3 ms on
+Linux). Observation hooks are async, so their whole-process time (22–27 ms p50 on Windows) never holds
+the turn; the 20 ms in ADR-0005 is the connect timeout, not a whole-process budget.
 
 **2. `aiq.event.v1`** (JSON Schema in `contracts/aiq.event.v1.json`).
 
@@ -316,8 +322,9 @@ asks y/N, writes a backup first), `aiq uninstall claude-code`, `aiq status`, `ai
    - `Stop`: send `take_card` with `wait_ms` = 30; wait up to 35 ms for the reply; if a card arrives,
      print `{"systemMessage": "<rendered card>"}`; exit 0.
 5. If the connect fails: append the frame (without the token) to the spool file (≤ 1 MB; oldest lines
-   dropped), try to start the core detached (at most once per 10 s, guarded by a lock file), exit 0.
-   No card is shown on a Stop that hit the spool.
+   dropped) and exit 0. **Only the async `UserPromptSubmit` hook starts the core** (detached, at most
+   once per 10 s, guarded by a lock file). The sync Stop hook never spawns: the spool-plus-spawn path
+   measured 43–89 ms p95 on Windows, over the Stop budget. No card is shown on a Stop that hit the spool.
 
 The pause flag is a file because the hook must honour pause even when the core is down; `aiq pause`
 writes both the flag file and a `setting_change` row.
@@ -480,7 +487,6 @@ crate (paths from `HOME` / `LOCALAPPDATA` / `XDG_*`, a few owned lines).
 | Core slow to answer `take_card` | Sync Stop hook | mitigate | Client waits ≤ 35 ms, then exits 0 with no output; card stays ready for the next Stop | `AIQ-HOOK-STOP-TIMEOUT` counter | `Hook_StopReplyLate_ExitsZeroNoOutput` |
 | Spool full | Bounded spool | accept | Oldest lines dropped; rare (1 MB ≈ 1,500 prompts while down). Residual: a few lost prompts may hide one re-prompt run | `AIQ-SPOOL-DROPPED` counter | `Spool_OverLimit_DropsOldestKeepsNewest` |
 | Spool replayed twice / partial line | At-least-once | prevent | Idempotent ingest; partial last line skipped | `AIQ-SPOOL-BAD-LINE` counter | Property test: any replay order/duplication yields the same rows and decisions (gate condition) |
-| A nested `claude -p` (run by an agent) reuses the person's `session_id` (seen in the cloud env, spike S4) | Task = one session | mitigate | The hook client tags an event `child: true` when `CLAUDE_CODE_CHILD_SESSION` is set in its environment; the detector ignores child prompts | `payload_meta.child` count in `aiq status` | `Detector_ChildSessionPrompts_Ignored`; confirm locally on the laptop (S3) |
 | Another host runs our hook (Copilot CLI reads a repo's `.claude/settings.json`, measured on Imran's laptop 2026-10-31) | Hook installed in Claude Code's settings format | prevent | The client accepts a payload as Claude Code only if it has snake_case `session_id` and `hook_event_name` matching the argv event; Copilot payloads (camelCase `sessionId`, no event name) are dropped. AIQ installs only in user `~/.claude/settings.json`; whether Copilot also reads that file is unknown (S4) | `AIQ-HOOK-FOREIGN-HOST` counter | `Hook_CopilotShapedPayload_DroppedExitsZero` |
 | Malformed or hostile stdin | Hook reads stdin | prevent | Lenient parse, size caps, exit 0 on error | `AIQ-HOOK-PARSE` counter | Fuzz/property: random bytes never panic, never print, exit 0 |
 | Huge prompt (MBs) | Content capture | mitigate | Cut at 64 KB, `truncated: true` | `payload_meta.truncated` | `Hook_OversizedPrompt_TruncatesTo64KB` |
@@ -494,8 +500,8 @@ crate (paths from `HOME` / `LOCALAPPDATA` / `XDG_*`, a few owned lines).
 | Store corrupt or migration fails | SQLite | detect | Core stays down, data untouched, status explains; `forget --all` is the reset | `AIQ-STORE-OPEN`, `AIQ-STORE-MIGRATION` | Migration rollback test |
 | Disk full | Store and spool | degrade | Writes fail → frame dropped and counted; hook still exits 0 | `AIQ-STORE-WRITE` | Integration test with a full temp volume (Linux CI) |
 | Ingest flood | Bounded channel | mitigate | Drop `ingest` frames beyond 1,024 queued; `take_card` answered null | `AIQ-INGEST-BACKPRESSURE` | `Core_ChannelFull_DropsIngestAnswersTakeCardNull` |
-| Hook path breaks on Windows (Git Bash) | Install writes the command | prevent | Quoted forward-slash absolute path, no env prefix; `install` runs the command once as a self-test | `aiq install` reports failure | Windows CI/dogfood check: installed command runs from Git Bash |
-| Auto-started core is killed when the hook's process tree ends (Claude Code or Git Bash cleans up children) | Hook starts the core | prevent | Start the core fully detached: `setsid` on Linux/macOS; `DETACHED_PROCESS` + `CREATE_NEW_PROCESS_GROUP` + `CREATE_BREAKAWAY_FROM_JOB` on Windows (spike S3 confirms it survives) | next hook finds no core → `AIQ-HOOK-SPOOLED` keeps rising in `aiq status` | `Hook_CoreDown_StartedCoreSurvivesHookExit` (Linux CI, Windows dogfood) |
+| Hook runs through a shell (Git Bash 452 ms p95 on Windows) | Install writes the command | prevent | Exec form only (`command` + `args`); `install` refuses to write shell form and runs the installed entry once as a self-test, timing it | `aiq install` reports the measured time; hook duration histogram | Golden test: installed entries always have `args`; Windows dogfood: Stop p95 ≤ 50 ms |
+| Auto-started core is killed when the hook's process tree ends (Claude Code or Git Bash cleans up children) | Hook starts the core | prevent | Start the core fully detached: `setsid` on Linux/macOS; `DETACHED_PROCESS` + `CREATE_NEW_PROCESS_GROUP` + `CREATE_BREAKAWAY_FROM_JOB` on Windows (measured: survives `claude -p` exit; breakaway was refused when the caller was already in a job, and the no-breakaway fallback still survived) | next hook finds no core → `AIQ-HOOK-SPOOLED` keeps rising in `aiq status` | `Hook_CoreDown_StartedCoreSurvivesHookExit` (Linux CI, Windows dogfood) |
 | Core auto-start storm | Hook starts the core | prevent | Lock file + 10 s back-off | `AIQ-CORE-START-BACKOFF` | `Hook_RepeatedCoreDown_StartsCoreOnce` |
 | Detector false positives | Lexical similarity | detect + accept | Values are pack data; dogfood week checks them; `aiq pause` on every card | held/shown counts in `aiq status` | Golden set of synthetic re-prompt / follow-up Tasks (labelled synthetic) |
 | Card shows mid-task | Timing | prevent | Only Stop renders | — | E2E: no stdout on `UserPromptSubmit` ever |
@@ -582,9 +588,9 @@ Not triggered: D5 (no HTTP/gRPC), A1–A6 (no model call in this slice).
 
 | Spike | Question | Blocks |
 |---|---|---|
-| S1 Windows named pipe ACL | Can `interprocess` (or the raw Win32 API) create a pipe that only the current user can open, and does a second user get access denied? | Phase 1 ship (gate condition) |
+| S1 Windows named pipe ACL | **Done 2026-10-31** (`prototypes/design-spikes/results/windows-s1-s3.md`): the default pipe DACL grants Everyone and Anonymous read; `interprocess` with SDDL `D:P(A;;FA;;;<user sid>)` gives one ACE (the user); same-user connect works; a second pipe with the same name is refused (no squatting). Not observed: a connect attempt from a second account (none available) | — (closed with residual) |
 | S2 Linux keyring fallback | **Done 2026-10-31** (`prototypes/design-spikes/`): fails fast with distinct errors, never hangs. Decision: the core refuses to start (`AIQ-STORE-KEY`), no file-key fallback; kernel keyutils rejected (lost on reboot) | — (closed) |
-| S3 Windows build and budget | `rusqlite` `bundled-sqlcipher-vendored-openssl` builds with MSVC; whole-hook time for the compiled client on Windows through Git Bash, measured from Claude Code's hook timings; a core started from a hook survives the hook's exit; `uuid` v7. If the Stop hook cannot meet 50 ms p95 on Windows, Imran sets a Windows budget in the spec (NFR change) from the measured number | Hook budget on Windows |
+| S3 Windows build and budget | **Mostly done 2026-10-31.** Hook client builds with MSVC (12 s); Stop with core up 26–34 ms p95 direct (meets 50 ms); via Git Bash 452 ms (so exec form only); core started from a hook survives. **Open: S3c** — `bundled-sqlcipher-vendored-openssl` fails to build on the laptop without a native Perl (Git for Windows' perl lacks `Locale::Maketext::Simple`) | `/implement` of the store on Windows |
 | S4 Claude Code Stop payload | **Done 2026-10-31** for Claude Code: `stop_hook_active` and a shared `prompt_id` verified; empty Stop output adds nothing to the stream. Still open, moved to the Copilot CLI revisit: does Copilot CLI also run hooks from user `~/.claude/settings.json`? | Contract confidence |
 
 ## Conformance notes
@@ -599,10 +605,11 @@ Not triggered: D5 (no HTTP/gRPC), A1–A6 (no model call in this slice).
 
 ## Flagged risks and residual unknowns
 - Re-prompt values (0.6, 4 words, 3, score 0.75) are uncalibrated. Real-data week decides. *Flagged.*
-- Windows pipe ACL is unspiked (S1). *Flagged; gate condition.* Linux keyring closed by S2.
+- Windows pipe ACL proven for the same user (S1); denial for a second account is inferred from the DACL, not observed. *Residual.* Linux keyring closed by S2.
+- SQLCipher's vendored OpenSSL needs a native Perl to build on Windows (S3c). Affects developer and CI builds, not people who install AIQ. *Flagged; open.*
 - Claude Code hooks are a moving contract; golden payload tests catch drift only when re-recorded
   against new versions. *Inferred risk.*
-- **The 50 ms budget may not be reachable on Windows with any client.** Measured on Imran's laptop under Copilot CLI (2026-10-31): a `.cmd` hook took 60 ms p50 / 77 ms p95 for the whole process, C# 80 / 106, Python ~100 / 135. Process start on Windows is the floor, not the language. On Claude Code only the Stop hook is synchronous (observation hooks are async), so the exposure is one hook per turn. S3 measures the compiled client; if it is over, the spec needs a per-OS budget. *Flagged.*
+- **Windows Stop budget: met, with little margin.** The compiled client measured 26–34 ms p95 with the core up (S3a), against 50 ms. Under Copilot CLI a `.cmd` took 77 ms p95, so process start is most of the cost on Windows. A slow or busy laptop could push it over; the hook duration histogram in `aiq status` watches it. *Residual.*
 - At-most-once delivery can lose a card if the client dies after receipt. *Accepted.*
 - Plain-text spool while the core is down. *Accepted by Imran, 2026-10-31; bounded.*
 - Forged frames from software already running as the person. *Accepted by Imran, 2026-10-31.*
@@ -612,8 +619,8 @@ Not triggered: D5 (no HTTP/gRPC), A1–A6 (no model call in this slice).
 | | |
 |---|---|
 | **Completed** | Detailed design for the Phase 1 walking skeleton on Claude Code (collector, core, store schema v1, re-prompt detector, trigger engine, card) |
-| **Remaining** | Spikes S1 and S3 (Windows laptop); Phases 2–6 designs; revisit Copilot CLI and VS Code (Phase 2) |
-| **Best next action** | Run spikes S1 and S3 on Imran's Windows laptop, then `/implement` this design |
+| **Remaining** | S3c (SQLCipher build on Windows); Phases 2–6 designs; revisit Copilot CLI and VS Code (Phase 2) |
+| **Best next action** | Settle how to build SQLCipher on Windows (S3c), then `/implement` this design |
 
 ## Gate record
 `GATE design · 2026-10-31 · Patterns Expert ⇄ Simplifier, Test Architect, Security & Identity, Distributed Systems, Data & Persistence, SRE, Privacy, UX & Accessibility (all seats played by Claude in one session; not independent) · verdict: pass with conditions`
@@ -625,8 +632,9 @@ Not triggered: D5 (no HTTP/gRPC), A1–A6 (no model call in this slice).
   equality tested. Cleared.
 - **Distributed Systems (hard):** at-least-once with idempotent ingest; spool replay property test
   in the plan; late async prompt handled by deliver-at-next-Stop + expiry. Cleared.
-- **Security & Identity (hard):** every boundary walked; Linux keyring proven by S2; the Windows pipe
-  DACL is not proven. Condition: S1 before Phase 1 ships. Not cleared by the author.
+- **Security & Identity (hard):** every boundary walked; Linux keyring proven by S2; Windows pipe
+  user-only DACL and anti-squatting proven by S1 (cross-account denial inferred from the DACL, not
+  observed). Condition met for the alpha; not cleared by the author for production.
 - **Test Architect (hard):** every triggered directive (D0–D4, D6, D7) mapped; D5 and A1–A6 not
   triggered, with reason. Cleared.
 - **SRE:** every handled failure mode has a code or counter and a test; operator questions mapped.
