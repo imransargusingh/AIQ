@@ -33,7 +33,7 @@ Sibling spec: `docs/specs/coaching-loop.md` (consumes this model's output for Op
 | R5 | The rubric is tuned **per job, not per role**. The ladder is shared; each job pack supplies its own rung examples and signal weights. This replaces the tab's "adjusted for each role" and "role-specific rubric emphasis" | Follows from coaching-loop D7 (Imran, 2026-10-31: "aligning to the jobs-to-be-done framework") |
 | R6 | Only the person sees their judgments; model calls are on device or zero-retention | Imran, 2026-10-31 (privacy rule) |
 | R7 | Evaluation uses a golden set of synthetic and volunteer-donated tasks labeled by experts, never users' private data | Design > Rung model tab |
-| Q1 | Scope of this spec | **Pending** (recommended: judge, explanation and correction; views get their own spec) |
+| Q1 | Scope: the judge, its explanation and the person's correction. The rung distribution and opportunity views get their own spec | Imran, 2026-10-31 (decision card) |
 | Q2 | What the judge may see and send | **Pending** (recommended: signals only by default; excerpts and zero-retention cloud opt-in) |
 | Q3 | What a correction does | **Pending** (recommended: replaces the shown rung for that task, tunes the person's own calibration) |
 | Q4 | Accuracy bar before the judge drives coaching | **Pending** (recommended: current rung ≥ 70% exact, ≥ 95% within one; potential ≥ 60% exact, ≥ 90% within one) |
@@ -73,7 +73,7 @@ variables. She corrects it. AIQ shows "Delegated (corrected by you)", records he
 next similar task is judged with her own calibration. Nobody else can see either judgment.
 
 ### In scope / Out of scope (explicit non-goals)
-In scope (pending Q1):
+In scope (Q1):
 - Judging each closed task: current rung, next reachable rung, ceiling, confidence, evidence, gap,
   blockers.
 - The per-job rubric as pack data, and the placement rule.
@@ -168,6 +168,7 @@ Aggregates and the invariant each protects:
 **US-5 — As anyone working with AI, I want the judge to read as little of my work as it needs.** (pending Q2)
 - **Given** default settings **When** a task is judged **Then** the judge reads only the Signal profile, and a network capture over a week shows no task content leaving the device.
 - **Given** the person turns on content excerpts **When** a task is judged **Then** the excerpt is at most 2,000 characters, has secrets and credentials redacted by the collector rules, and the person can open exactly what was read from the judgment panel.
+- **Given** the task's raw content is past the device's raw-retention window **When** it is re-judged **Then** the judge uses signals only.
 - **Given** the person turns on the zero-retention cloud judge **When** a cloud call fails or the provider's zero-retention status cannot be confirmed **Then** the task is judged on device or left unjudged, never sent elsewhere.
 
 **US-6 — As anyone relying on AIQ's views and tips, I want low-confidence judgments kept out of coaching, so that a guess never drives a tip.**
