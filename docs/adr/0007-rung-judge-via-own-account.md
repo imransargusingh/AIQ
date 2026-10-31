@@ -65,9 +65,11 @@ person's own AI account.
       API key authentication… Anthropic does not permit third-party developers to… route requests
       through Free, Pro, or Max plan credentials on behalf of their users"
       (https://code.claude.com/docs/en/legal-and-compliance). AIQ calling `claude -p` on the person's
-      subscription reads as that. **Claude path therefore needs the person's own Anthropic API key**
-      (explicitly allowed when billed to the key owner), a cloud-provider credential, or a written
-      agreement with Anthropic. Decision pending Imran.
+      subscription could read as that.
+    - **Owner ruling (Imran, 2026-10-31):** it is OK for AIQ to call the models under the person's own
+      credentials. Recorded as an accepted risk (threat model, accepted-risk register). Keep the
+      person's own API key as a supported fallback so the Claude path can switch without redesign if
+      Anthropic objects.
     - **GitHub: no blocker found.** `vscode.lm` is GitHub's sanctioned route for extensions to use the
       person's Copilot models with consent, under the Copilot extensibility acceptable use policy;
       Copilot CLI programmatic mode is documented. Confirm against the current Copilot product terms

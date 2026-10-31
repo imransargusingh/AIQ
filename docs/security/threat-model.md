@@ -67,6 +67,7 @@ or manager (social, not technical: AIQ must give them nothing to ask for).
 |---|---|---|---|---|
 | T-B1-4 | Pending Imran | Malware running as the same user can already read every file AIQ reads | Full local compromise exposes AIQ data too | If AIQ ever stores data the user's own tools do not already hold |
 | T-B5-2 | Imran (ADR-0007) | Judging through the person's own account is the chosen design | Admin of a work account can see judge calls | If an on-device judge becomes good enough |
+| Provider terms (ADR-0007) | Imran, 2026-10-31 | Owner confirmed AIQ may call models under the person's own credentials | Anthropic's published Claude Code terms restrict third-party use of Free/Pro/Max sign-in; an account action or a forced switch to API keys is possible | If Anthropic or GitHub changes or enforces terms; before public release |
 | T-B4-3 | Pending Imran | Data is private to the person; tampering only fools themselves | None to others | If aggregates or sharing use these values (then sign shares) |
 
 ## 4. Cross-cutting controls
@@ -74,6 +75,7 @@ OS user isolation and keychain; SQLCipher; Ed25519 pack signing with pinned keys
 signed app updates; user-level-only hook install.
 
 ## 5. Gaps and flagged unknowns
+- The judge path (B5) gets its full threat review in the rung-model thread (docs/specs/rung-model.md); the T-B5 rows here are the system-level cross-check.
 - No component designs yet; every boundary needs its own STRIDE-lite in `/design-slice`.
 - Key recovery pending (ADR-0003).
 - Windows named-pipe ACL and macOS keychain prompts need a spike.
