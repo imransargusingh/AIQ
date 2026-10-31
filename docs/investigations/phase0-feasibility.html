@@ -88,9 +88,32 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <p>That is inside the 50 ms p95 budget with almost no margin. Use a compiled collector, or a tiny client that hands off to the running core, for the sync Stop hook.</p>
 <ul><li><strong>Not tested:</strong> Copilot CLI hooks (Copilot CLI is not installed or signed in in this environment)</li></ul>
 <p>and rendering in the interactive TUI (only the headless stream).</p>
+<h3>Facts-first judge (rung-model spec, PR #3)</h3>
+<p>After the first run, the rung-model spec moved to <strong>facts first</strong>: the model answers narrow fact questions, and deterministic per-job rules place the rung (decision Q6). The prototype in <code>aiq_spike/facts.py</code> and <code>run_facts.py</code> reproduces this:</p>
+<ul><li><strong>Model facts:</strong> F2, F4, F5, F6, F7 and F12, each with a confidence.</li><li><strong>Log facts:</strong> F1, F3, F7 and F8.</li><li><strong>F9 (reuse):</strong> repo reuse counts, simulated per corpus because a session cannot supply them.</li><li><strong>Rules:</strong> the spec&#x27;s illustrative rubric table.</li></ul>
+<p>Sonnet and Haiku each made two runs on both corpora (200 calls). The rule variants below are applied to the same saved facts, so any difference between variants comes from the rules alone.</p>
+<table><thead><tr><th>Variant (Sonnet facts)</th><th>Exact (dev / held-out)</th><th>Within 1</th><th>Uncertain</th></tr></thead><tbody><tr><td>A: spec as written (F2 from logs only)</td><td>0.27 / 0.30</td><td>0.70 / 0.60</td><td>100%</td></tr><tr><td>B: F2 estimated by the model</td><td>0.38 / 0.30</td><td>0.77 / 0.63</td><td>48% / 45%</td></tr><tr><td>E: B, plus Factory without Orchestrated, plus one sub-agent counts, at fact threshold 0.5</td><td>0.63 / 0.55</td><td>0.92 / 0.80</td><td>0%</td></tr><tr><td><em>Holistic judge, for comparison (Sonnet, excerpt)</em></td><td><em>0.80 / 0.85</em></td><td><em>0.97 / 0.90</em></td><td>n/a</td></tr></tbody></table>
+<p>What this shows:</p>
+<ol><li><strong>The facts are stable.</strong> Sonnet&#x27;s two runs agreed on F4, F5, F6, F7 and F12 in 85 to 100% of</li></ol>
+<p>tasks, and on F2 in 75 to 93%. So facts-first is a sound base.</p>
+<ol><li><strong>The model&#x27;s confidences are low, not its answers.</strong> It mostly answers 0.5 to 0.6, even when the</li></ol>
+<p>value looks right. At the spec&#x27;s 0.7 fact threshold, most rules count as not met and tasks sink to rung 1. The planned fact check should set this threshold; picking it a priori is a guess.</p>
+<ol><li><strong>F2 as specified makes every CLI task Uncertain (variant A).</strong> With no git diff, nothing in a</li></ol>
+<p>CLI log gives the person&#x27;s share of the change, and the CLI rows in the corpus have no git. AIQ needs the post-turn git diff for this fact.</p>
+<ol><li><strong>F2 does not separate Directed from Delegated in CLI agents.</strong> The agent writes almost all of the</li></ol>
+<p>change in both. In variant E, 16 of 34 Directed runs were placed on Delegated. The rubric needs a fact for what the rubric actually means: <em>was a whole outcome handed over, with done criteria, or one piece or step?</em></p>
+<ol><li><strong>Factory should not require Orchestrated.</strong> All 4 Factory tasks, across both corpora, are a</li></ol>
+<p>team&#x27;s versioned single-agent workflow. They also start with a typed command rather than a brief, so F4 fails. Factory should rest on F9 (reuse by others) plus automated checks.</p>
+<ol><li><strong>Rung 4 became reliable.</strong> Once one sub-agent with automated gates counts, the facts plus rules</li></ol>
+<p>placed all 8 Orchestrated runs correctly (holistic judge: 4 of 8).</p>
+<p>Recommendation for the rung-model spec:</p>
+<ul><li>Keep facts-first. Its errors are in the rules, which can be fixed and explained.</li><li>Add the &quot;whole outcome handed over&quot; fact.</li><li>Base Factory on F9 plus checks.</li><li>Take F2 from git where it exists.</li><li>Set the fact threshold from the fact check.</li></ul>
+<p><strong>Collecting the week of real sessions is now a fact check, not a rung labelling exercise</strong>: the person answers yes or no on the model-read facts of 20 to 30 of their own tasks.</p>
 <h2>What would change this verdict</h2>
-<ul><li><strong>Real, hand-labelled sessions (the main gate).</strong> Label one week of the team&#x27;s own Claude Code and</li></ul>
-<p>Copilot CLI sessions, with task boundaries, job, rung and potential, by two people who did not write the rubric. Run <code>run_spike.py</code> against those stores on the labeller&#x27;s own machine. <strong>No-go if</strong> Sonnet excerpt rung accuracy on rungs 1 to 3 is below 70% exact, job precision at 0.7 is below 90%, or grouping F1 is below 0.85. The synthetic tasks are cleaner than real work. Real sessions mix topics, wander, and include long auto-compacted runs.</p>
+<ul><li><strong>Real sessions, checked by facts (the main gate).</strong> Follow the rung-model spec&#x27;s Q6, not a large</li></ul>
+<p>golden set. Collect one week of the team&#x27;s own Claude Code and Copilot CLI sessions on each person&#x27;s own machine. Each person confirms, for 20 to 30 of their own tasks:</p>
+<ul><li>the task boundaries and the job;</li><li>the model-read facts (yes or no).</li></ul>
+<p>Log facts are checked automatically. A 30 to 50 task expert sanity check per job covers rung placement. <strong>No-go if</strong> model facts are right on less than 90% of tasks (the spec&#x27;s bar), job precision at 0.7 is below 90%, or grouping F1 is below 0.85. The synthetic tasks are cleaner than real work. Real sessions mix topics, wander, and include long auto-compacted runs.</p>
 <ul><li><strong>Format check.</strong> The reader matches every field <code>session-profile.py</code> reads. Fields it does not</li></ul>
 <p>read were modelled from memory: Claude Code&#x27;s <code>&lt;command-name&gt;</code> wrapper for slash commands, and Copilot tool argument names. Confirm them on one real transcript per surface.</p>
 <ul><li><strong>Human edits are invisible.</strong> The rubric&#x27;s &quot;the person makes most of the edits&quot; (the line between</li></ul>
@@ -104,7 +127,7 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <p>classification (the person can turn it off, at a known accuracy cost).</p>
 <ol><li><strong>Architecture:</strong> use model grouping in the slow path, rules only for live detectors, and a</li></ol>
 <p>non-Python collector for sync hooks. Default judge model: Sonnet, with Haiku as a cheaper option once its stability is measured on real data.</p>
-<ol><li><strong>Next probe:</strong> run this harness on hand-labelled real sessions (above), plus one Copilot CLI hook</li></ol>
+<ol><li><strong>Next probe:</strong> run the fact check on a week of real sessions (above), plus one Copilot CLI hook</li></ol>
 <p>end to end.</p>
 <h2>Reproduce</h2>
 <pre><code class="language-bash">python3 prototypes/phase0-spike/run_spike.py --out /tmp/aiq-spike \

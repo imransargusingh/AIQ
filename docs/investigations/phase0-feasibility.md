@@ -12,8 +12,8 @@ review-by: 2026-11-30
 summary: >-
   On synthetic Claude Code and Copilot CLI sessions, a model judge groups turns into tasks almost
   perfectly, classifies the job reliably when it may read a short excerpt of the prompts, and places
-  rungs 1-3 well. It cannot see rung 5 (and only half of rung 4) from session data alone. Real,
-  hand-labelled sessions are the remaining gate before any number here is trusted.
+  rungs 1-3 well. Rung 5 needs repo reuse signals. A facts-first judge (rung-model spec) gives stable facts
+  but needs rubric fixes and calibrated thresholds. A fact check on real sessions is the remaining gate.
 ---
 
 # Spike: Phase 0 feasibility (task grouping, job, rung)
@@ -177,14 +177,70 @@ and `PostToolUse` hooks and a sync `Stop` hook. It ran 3 live headless sessions 
 - **Not tested:** Copilot CLI hooks (Copilot CLI is not installed or signed in in this environment)
   and rendering in the interactive TUI (only the headless stream).
 
+### Facts-first judge (rung-model spec, PR #3)
+
+After the first run, the rung-model spec moved to **facts first**: the model answers narrow fact
+questions, and deterministic per-job rules place the rung (decision Q6). The prototype in
+`aiq_spike/facts.py` and `run_facts.py` reproduces this:
+
+- **Model facts:** F2, F4, F5, F6, F7 and F12, each with a confidence.
+- **Log facts:** F1, F3, F7 and F8.
+- **F9 (reuse):** repo reuse counts, simulated per corpus because a session cannot supply them.
+- **Rules:** the spec's illustrative rubric table.
+
+Sonnet and Haiku each made two runs on both corpora (200 calls). The rule variants below are applied
+to the same saved facts, so any difference between variants comes from the rules alone.
+
+| Variant (Sonnet facts) | Exact (dev / held-out) | Within 1 | Uncertain |
+|---|---|---|---|
+| A: spec as written (F2 from logs only) | 0.27 / 0.30 | 0.70 / 0.60 | 100% |
+| B: F2 estimated by the model | 0.38 / 0.30 | 0.77 / 0.63 | 48% / 45% |
+| E: B, plus Factory without Orchestrated, plus one sub-agent counts, at fact threshold 0.5 | 0.63 / 0.55 | 0.92 / 0.80 | 0% |
+| *Holistic judge, for comparison (Sonnet, excerpt)* | *0.80 / 0.85* | *0.97 / 0.90* | n/a |
+
+What this shows:
+
+1. **The facts are stable.** Sonnet's two runs agreed on F4, F5, F6, F7 and F12 in 85 to 100% of
+   tasks, and on F2 in 75 to 93%. So facts-first is a sound base.
+2. **The model's confidences are low, not its answers.** It mostly answers 0.5 to 0.6, even when the
+   value looks right. At the spec's 0.7 fact threshold, most rules count as not met and tasks sink
+   to rung 1. The planned fact check should set this threshold; picking it a priori is a guess.
+3. **F2 as specified makes every CLI task Uncertain (variant A).** With no git diff, nothing in a
+   CLI log gives the person's share of the change, and the CLI rows in the corpus have no git. AIQ
+   needs the post-turn git diff for this fact.
+4. **F2 does not separate Directed from Delegated in CLI agents.** The agent writes almost all of the
+   change in both. In variant E, 16 of 34 Directed runs were placed on Delegated. The rubric needs a
+   fact for what the rubric actually means: *was a whole outcome handed over, with done criteria,
+   or one piece or step?*
+5. **Factory should not require Orchestrated.** All 4 Factory tasks, across both corpora, are a
+   team's versioned single-agent workflow. They also start with a typed command rather than a brief,
+   so F4 fails. Factory should rest on F9 (reuse by others) plus automated checks.
+6. **Rung 4 became reliable.** Once one sub-agent with automated gates counts, the facts plus rules
+   placed all 8 Orchestrated runs correctly (holistic judge: 4 of 8).
+
+Recommendation for the rung-model spec:
+
+- Keep facts-first. Its errors are in the rules, which can be fixed and explained.
+- Add the "whole outcome handed over" fact.
+- Base Factory on F9 plus checks.
+- Take F2 from git where it exists.
+- Set the fact threshold from the fact check.
+
+**Collecting the week of real sessions is now a fact check, not a rung labelling exercise**: the
+person answers yes or no on the model-read facts of 20 to 30 of their own tasks.
+
 ## What would change this verdict
 
-- **Real, hand-labelled sessions (the main gate).** Label one week of the team's own Claude Code and
-  Copilot CLI sessions, with task boundaries, job, rung and potential, by two people who did not
-  write the rubric. Run `run_spike.py` against those stores on the labeller's own machine. **No-go
-  if** Sonnet excerpt rung accuracy on rungs 1 to 3 is below 70% exact, job precision at 0.7 is
-  below 90%, or grouping F1 is below 0.85. The synthetic tasks are cleaner than real work. Real
-  sessions mix topics, wander, and include long auto-compacted runs.
+- **Real sessions, checked by facts (the main gate).** Follow the rung-model spec's Q6, not a large
+  golden set. Collect one week of the team's own Claude Code and Copilot CLI sessions on each
+  person's own machine. Each person confirms, for 20 to 30 of their own tasks:
+  - the task boundaries and the job;
+  - the model-read facts (yes or no).
+
+  Log facts are checked automatically. A 30 to 50 task expert sanity check per job covers rung
+  placement. **No-go if** model facts are right on less than 90% of tasks (the spec's bar), job
+  precision at 0.7 is below 90%, or grouping F1 is below 0.85. The synthetic tasks are cleaner than
+  real work. Real sessions mix topics, wander, and include long auto-compacted runs.
 - **Format check.** The reader matches every field `session-profile.py` reads. Fields it does not
   read were modelled from memory: Claude Code's `<command-name>` wrapper for slash commands, and
   Copilot tool argument names. Confirm them on one real transcript per surface.
@@ -204,7 +260,7 @@ and `PostToolUse` hooks and a sync `Stop` hook. It ran 3 live headless sessions 
 3. **Architecture:** use model grouping in the slow path, rules only for live detectors, and a
    non-Python collector for sync hooks. Default judge model: Sonnet, with Haiku as a cheaper option
    once its stability is measured on real data.
-4. **Next probe:** run this harness on hand-labelled real sessions (above), plus one Copilot CLI hook
+4. **Next probe:** run the fact check on a week of real sessions (above), plus one Copilot CLI hook
    end to end.
 
 ## Reproduce

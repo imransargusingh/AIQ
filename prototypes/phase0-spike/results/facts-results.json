@@ -1,0 +1,362 @@
+{
+ "dev": {
+  "claude-sonnet-5-5": {
+   "calls": 60,
+   "failed": 0,
+   "job_accuracy": 0.867,
+   "fact_repeat_agreement": {
+    "F2_person_share_pct": 0.933,
+    "F4_goal_context_constraints": 0.967,
+    "F5_reprompts_added_information": 1.0,
+    "F6_output_checked": 0.967,
+    "F7_written_brief": 1.0,
+    "F12_step_by_step": 0.967
+   },
+   "A spec as written (F2 from logs only)": {
+    "n": 60,
+    "exact": 0.267,
+    "within_1": 0.7,
+    "mean_signed_error": -1.2,
+    "uncertain_share": 1.0,
+    "exact_by_gold_rung": {
+     "1": "14/14",
+     "2": "2/22",
+     "3": "0/16",
+     "4": "0/4",
+     "5": "0/4"
+    },
+    "rung_repeat_agreement": 1.0
+   },
+   "B F2 estimated by the model": {
+    "n": 60,
+    "exact": 0.383,
+    "within_1": 0.767,
+    "mean_signed_error": -0.983,
+    "uncertain_share": 0.483,
+    "exact_by_gold_rung": {
+     "1": "14/14",
+     "2": "1/22",
+     "3": "8/16",
+     "4": "0/4",
+     "5": "0/4"
+    },
+    "rung_repeat_agreement": 0.967
+   },
+   "C B + Factory needs Delegated, not Orchestrated": {
+    "n": 60,
+    "exact": 0.383,
+    "within_1": 0.767,
+    "mean_signed_error": -0.983,
+    "uncertain_share": 0.483,
+    "exact_by_gold_rung": {
+     "1": "14/14",
+     "2": "1/22",
+     "3": "8/16",
+     "4": "0/4",
+     "5": "0/4"
+    },
+    "rung_repeat_agreement": 0.967
+   },
+   "D C + one sub-agent with checks counts as coordinated": {
+    "n": 60,
+    "exact": 0.383,
+    "within_1": 0.767,
+    "mean_signed_error": -0.983,
+    "uncertain_share": 0.483,
+    "exact_by_gold_rung": {
+     "1": "14/14",
+     "2": "1/22",
+     "3": "8/16",
+     "4": "0/4",
+     "5": "0/4"
+    },
+    "rung_repeat_agreement": 0.967
+   },
+   "E D with fact threshold 0.5": {
+    "n": 60,
+    "exact": 0.633,
+    "within_1": 0.917,
+    "mean_signed_error": -0.283,
+    "uncertain_share": 0.0,
+    "exact_by_gold_rung": {
+     "1": "14/14",
+     "2": "7/22",
+     "3": "13/16",
+     "4": "4/4",
+     "5": "0/4"
+    },
+    "rung_repeat_agreement": 0.9
+   },
+   "latency_ms_p50": 8306
+  },
+  "claude-haiku-5-5": {
+   "calls": 60,
+   "failed": 0,
+   "job_accuracy": 0.967,
+   "fact_repeat_agreement": {
+    "F2_person_share_pct": 0.533,
+    "F4_goal_context_constraints": 1.0,
+    "F5_reprompts_added_information": 0.933,
+    "F6_output_checked": 0.967,
+    "F7_written_brief": 1.0,
+    "F12_step_by_step": 0.967
+   },
+   "A spec as written (F2 from logs only)": {
+    "n": 60,
+    "exact": 0.317,
+    "within_1": 0.75,
+    "mean_signed_error": -1.067,
+    "uncertain_share": 1.0,
+    "exact_by_gold_rung": {
+     "1": "14/14",
+     "2": "5/22",
+     "3": "0/16",
+     "4": "0/4",
+     "5": "0/4"
+    },
+    "rung_repeat_agreement": 0.933
+   },
+   "B F2 estimated by the model": {
+    "n": 60,
+    "exact": 0.367,
+    "within_1": 0.767,
+    "mean_signed_error": -0.933,
+    "uncertain_share": 0.633,
+    "exact_by_gold_rung": {
+     "1": "14/14",
+     "2": "3/22",
+     "3": "4/16",
+     "4": "1/4",
+     "5": "0/4"
+    },
+    "rung_repeat_agreement": 0.8
+   },
+   "C B + Factory needs Delegated, not Orchestrated": {
+    "n": 60,
+    "exact": 0.367,
+    "within_1": 0.767,
+    "mean_signed_error": -0.933,
+    "uncertain_share": 0.633,
+    "exact_by_gold_rung": {
+     "1": "14/14",
+     "2": "3/22",
+     "3": "4/16",
+     "4": "1/4",
+     "5": "0/4"
+    },
+    "rung_repeat_agreement": 0.8
+   },
+   "D C + one sub-agent with checks counts as coordinated": {
+    "n": 60,
+    "exact": 0.367,
+    "within_1": 0.767,
+    "mean_signed_error": -0.933,
+    "uncertain_share": 0.633,
+    "exact_by_gold_rung": {
+     "1": "14/14",
+     "2": "3/22",
+     "3": "4/16",
+     "4": "1/4",
+     "5": "0/4"
+    },
+    "rung_repeat_agreement": 0.8
+   },
+   "E D with fact threshold 0.5": {
+    "n": 60,
+    "exact": 0.583,
+    "within_1": 0.917,
+    "mean_signed_error": -0.4,
+    "uncertain_share": 0.117,
+    "exact_by_gold_rung": {
+     "1": "13/14",
+     "2": "4/22",
+     "3": "12/16",
+     "4": "4/4",
+     "5": "2/4"
+    },
+    "rung_repeat_agreement": 0.9
+   },
+   "latency_ms_p50": 7022
+  }
+ },
+ "heldout": {
+  "claude-sonnet-5-5": {
+   "calls": 40,
+   "failed": 0,
+   "job_accuracy": 0.95,
+   "fact_repeat_agreement": {
+    "F2_person_share_pct": 0.75,
+    "F4_goal_context_constraints": 0.95,
+    "F5_reprompts_added_information": 1.0,
+    "F6_output_checked": 0.85,
+    "F7_written_brief": 1.0,
+    "F12_step_by_step": 1.0
+   },
+   "A spec as written (F2 from logs only)": {
+    "n": 40,
+    "exact": 0.3,
+    "within_1": 0.6,
+    "mean_signed_error": -1.325,
+    "uncertain_share": 1.0,
+    "exact_by_gold_rung": {
+     "1": "12/12",
+     "2": "0/12",
+     "3": "0/8",
+     "4": "0/4",
+     "5": "0/4"
+    },
+    "rung_repeat_agreement": 0.95
+   },
+   "B F2 estimated by the model": {
+    "n": 40,
+    "exact": 0.3,
+    "within_1": 0.625,
+    "mean_signed_error": -1.3,
+    "uncertain_share": 0.45,
+    "exact_by_gold_rung": {
+     "1": "12/12",
+     "2": "0/12",
+     "3": "0/8",
+     "4": "0/4",
+     "5": "0/4"
+    },
+    "rung_repeat_agreement": 0.9
+   },
+   "C B + Factory needs Delegated, not Orchestrated": {
+    "n": 40,
+    "exact": 0.3,
+    "within_1": 0.625,
+    "mean_signed_error": -1.3,
+    "uncertain_share": 0.45,
+    "exact_by_gold_rung": {
+     "1": "12/12",
+     "2": "0/12",
+     "3": "0/8",
+     "4": "0/4",
+     "5": "0/4"
+    },
+    "rung_repeat_agreement": 0.9
+   },
+   "D C + one sub-agent with checks counts as coordinated": {
+    "n": 40,
+    "exact": 0.325,
+    "within_1": 0.625,
+    "mean_signed_error": -1.275,
+    "uncertain_share": 0.45,
+    "exact_by_gold_rung": {
+     "1": "12/12",
+     "2": "0/12",
+     "3": "0/8",
+     "4": "1/4",
+     "5": "0/4"
+    },
+    "rung_repeat_agreement": 0.9
+   },
+   "E D with fact threshold 0.5": {
+    "n": 40,
+    "exact": 0.55,
+    "within_1": 0.8,
+    "mean_signed_error": -0.05,
+    "uncertain_share": 0.0,
+    "exact_by_gold_rung": {
+     "1": "9/12",
+     "2": "2/12",
+     "3": "4/8",
+     "4": "4/4",
+     "5": "3/4"
+    },
+    "rung_repeat_agreement": 0.85
+   },
+   "latency_ms_p50": 7887
+  },
+  "claude-haiku-5-5": {
+   "calls": 40,
+   "failed": 0,
+   "job_accuracy": 0.975,
+   "fact_repeat_agreement": {
+    "F2_person_share_pct": 0.4,
+    "F4_goal_context_constraints": 1.0,
+    "F5_reprompts_added_information": 0.85,
+    "F6_output_checked": 0.85,
+    "F7_written_brief": 1.0,
+    "F12_step_by_step": 0.95
+   },
+   "A spec as written (F2 from logs only)": {
+    "n": 40,
+    "exact": 0.375,
+    "within_1": 0.625,
+    "mean_signed_error": -1.3,
+    "uncertain_share": 1.0,
+    "exact_by_gold_rung": {
+     "1": "12/12",
+     "2": "3/12",
+     "3": "0/8",
+     "4": "0/4",
+     "5": "0/4"
+    },
+    "rung_repeat_agreement": 0.9
+   },
+   "B F2 estimated by the model": {
+    "n": 40,
+    "exact": 0.35,
+    "within_1": 0.625,
+    "mean_signed_error": -1.225,
+    "uncertain_share": 0.275,
+    "exact_by_gold_rung": {
+     "1": "12/12",
+     "2": "1/12",
+     "3": "1/8",
+     "4": "0/4",
+     "5": "0/4"
+    },
+    "rung_repeat_agreement": 0.9
+   },
+   "C B + Factory needs Delegated, not Orchestrated": {
+    "n": 40,
+    "exact": 0.35,
+    "within_1": 0.625,
+    "mean_signed_error": -1.225,
+    "uncertain_share": 0.275,
+    "exact_by_gold_rung": {
+     "1": "12/12",
+     "2": "1/12",
+     "3": "1/8",
+     "4": "0/4",
+     "5": "0/4"
+    },
+    "rung_repeat_agreement": 0.9
+   },
+   "D C + one sub-agent with checks counts as coordinated": {
+    "n": 40,
+    "exact": 0.35,
+    "within_1": 0.625,
+    "mean_signed_error": -1.225,
+    "uncertain_share": 0.275,
+    "exact_by_gold_rung": {
+     "1": "12/12",
+     "2": "1/12",
+     "3": "1/8",
+     "4": "0/4",
+     "5": "0/4"
+    },
+    "rung_repeat_agreement": 0.9
+   },
+   "E D with fact threshold 0.5": {
+    "n": 40,
+    "exact": 0.7,
+    "within_1": 0.925,
+    "mean_signed_error": -0.225,
+    "uncertain_share": 0.1,
+    "exact_by_gold_rung": {
+     "1": "12/12",
+     "2": "3/12",
+     "3": "6/8",
+     "4": "3/4",
+     "5": "4/4"
+    },
+    "rung_repeat_agreement": 0.85
+   },
+   "latency_ms_p50": 7105
+  }
+ }
+}
