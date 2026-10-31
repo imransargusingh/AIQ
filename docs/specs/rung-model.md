@@ -106,7 +106,7 @@ Ubiquitous language:
 - **Signal profile**: the structured facts extracted from one task on device (interaction shape,
   delegation, verification, reuse, task context, environment). Contains no raw prompt text.
 - **Task content**: the task's prompts and AI outputs as kept on the device. The judge reads it while
-  it is retained, and it is sent only to the person's own AI account (Q2).
+  it still exists on the device (kept until the person deletes it, per the architecture), and it is sent only to the person's own AI account (Q2).
 - **Judge account**: the person's own AI provider account that the judge calls. Chosen by the person;
   AIQ holds no account of its own in the path.
 - **Rung judgment**: the judge's verdict on one task: current rung, potential rung, ceiling, a
@@ -179,7 +179,7 @@ Aggregates and the invariant each protects:
 - **Given** the device is offline, the account is signed out, or the quota is exhausted **When** a task closes **Then** it is queued and judged later, never sent to another account or model.
 - **Given** a judgment **When** the person opens "What was read?" **Then** the panel lists exactly the prompts, outputs and signals sent, and which account received them.
 - **Given** a judge call runs through a tool AIQ also observes (e.g. Claude Code or Copilot CLI) **When** AIQ's collectors see it **Then** it is never grouped into a task, judged or coached; and setup tells the person that judge calls appear in that tool's own session history.
-- **Given** the task's content is past the device's raw-retention window **When** it is re-judged **Then** the judge uses signals only and the judgment says so.
+- **Given** the person deleted the task's content **When** it is re-judged **Then** the judge uses signals only and the judgment says so.
 - **Given** the person paused capture during part of a task **When** it is judged **Then** content from the paused period is never sent, because it was never captured.
 
 **US-6 — As anyone relying on AIQ's views and tips, I want low-confidence judgments kept out of coaching, so that a guess never drives a tip.**
@@ -236,7 +236,7 @@ A task with one prompt; a task with 10,000+ events; a task spanning two surfaces
 a task the person deletes after it was judged; a judge or rubric version upgrade mid-week (old
 judgments keep their versions); a task with an agent run that produced nothing; a person with no
 agent access at all; an Unclassified task; feedback on an Uncertain judgment; a task re-judged
-after its content passed the retention window; a task spanning two providers; quota running out mid-week;
+after the person deleted its content; a task spanning two providers; quota running out mid-week;
 the person switching judge accounts; a golden task whose two experts disagree by two or more rungs (adjudicate or drop).
 
 ### Evaluation regime
