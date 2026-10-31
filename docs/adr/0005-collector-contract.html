@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>0005 Collector Contract</title><style>
+:root { color-scheme: light dark; --bg:#f7f5ef; --panel:#fff; --text:#20201d;
+  --muted:#66645f; --line:#d9d5ca; --accent:#3157a4; --code:#f0eee7; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#171816; --panel:#20221f; --text:#f2f1eb; --muted:#b8b6ae;
+    --line:#3d403a; --accent:#8fb0ff; --code:#292c27; }
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text);
+  font:16px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif; }
+main { width:min(920px,calc(100% - 32px)); margin:32px auto; padding:40px;
+  background:var(--panel); border:1px solid var(--line); border-radius:12px; }
+h1,h2,h3,h4,h5,h6 { line-height:1.2; margin:1.5em 0 .55em; }
+h1 { margin-top:0; font-size:2.2rem; } h2 { border-bottom:1px solid var(--line); padding-bottom:.3em; }
+a { color:var(--accent); } code { background:var(--code); padding:.12em .35em; border-radius:4px; }
+pre { overflow:auto; padding:16px; background:var(--code); border-radius:8px; }
+pre code { padding:0; } blockquote { margin:1em 0; padding:.2em 1em; color:var(--muted);
+  border-left:4px solid var(--line); }
+table { width:100%; border-collapse:collapse; margin:1em 0; display:block; overflow:auto; }
+th,td { padding:.55em .75em; border:1px solid var(--line); text-align:left; vertical-align:top; }
+th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); }
+.source { color:var(--muted); font-size:.9rem; margin-bottom:2rem; }
+@media (max-width:640px) { main { width:100%; margin:0; padding:24px 18px; border:0; border-radius:0; } }
+</style></head><body><main><div class="source">Rendered from 0005-collector-contract.md</div><h1>ADR-0005: Collectors are fail-open, fire-and-forget, schema-versioned pipes</h1>
+<ul><li><strong>Status:</strong> Proposed</li><li><strong>Date:</strong> 2026-10-31</li><li><strong>Deciders:</strong> Imran (owner); drafted with Claude via /define-architecture</li></ul>
+<h2>Context</h2>
+<p>The person&#x27;s IDE and agents are the hot path (LOA F). NFRs: ≤ 50 ms p95 added to any hook; if the core is down the tools work unchanged. Claude Code&#x27;s default command-hook timeout is 600 s and Copilot CLI&#x27;s is 30 s (<a href="https://code.claude.com/docs/en/hooks">Claude Code hooks</a>, <a href="https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-hooks-reference">Copilot CLI hooks</a>), so the host will not protect us; the collector must enforce its own budget.</p>
+<h2>Decision</h2>
+<ol><li><strong>Never block, never decide.</strong> Collectors never return a block/deny decision, never modify</li></ol>
+<p>prompts or tool results, and never write <code>additionalContext</code> (coaching is for the person, not the agent). They always exit success.</p>
+<ol><li><strong>Budget:</strong> each hook invocation does one non-blocking write to the core&#x27;s local socket/pipe with a</li></ol>
+<p>20 ms connect+write timeout; total hook time ≤ 50 ms p95. On Claude Code, observation hooks run with <code>&quot;async&quot;: true</code>; only the Stop hook that may render a card runs synchronously, and it waits ≤ 50 ms for a ready card. 2a. <strong>Runtime:</strong> the hook command is a tiny compiled client (<code>aiq hook &lt;event&gt;</code>, shipped with the core) that hands the payload to the running core over the socket and exits. No interpreter per hook: the Phase 0 probe measured a Python process at 35 ms p50 / 47 ms p95 / 58 ms max cold start, too close to the 50 ms budget for the synchronous Stop hook.</p>
+<ol><li><strong>Fail open with a bounded spool:</strong> if the core is unreachable, append the event to a user-only</li></ol>
+<p>spool file (≤ 1 MB, oldest dropped) and exit. The core drains it on start.</p>
+<ol><li><strong>Contract:</strong> <code>aiq.event.v1</code> JSON Schema: <code>event_id</code> (UUIDv7), <code>surface</code>, <code>surface_session_id</code>,</li></ol>
+<p><code>seq</code>, <code>kind</code>, <code>ts</code>, payload by kind. At-least-once delivery; the core upserts by <code>event_id</code>. Content fields are optional and subject to the retention policy (ADR-0002).</p>
+<ol><li><strong>Rendering:</strong> cards come back as <code>aiq.card.v1</code>. Claude Code: <code>systemMessage</code> from the Stop hook.</li></ol>
+<p>Copilot CLI: a <code>progress</code> line at <code>agentStop</code>. VS Code: notification + status bar.</p>
+<ol><li><strong>Install at user level only:</strong> <code>~/.claude/settings.json</code> and <code>~/.copilot/hooks/</code>, never a repo&#x27;s</li></ol>
+<p><code>.claude/</code> or <code>.github/hooks/</code>, so teammates never see or run AIQ hooks.</p>
+<h2>Alternatives considered</h2>
+<ul><li><strong>Synchronous request/response per hook:</strong> rejected; puts the core on the hot path.</li><li><strong>Read session stores only (no hooks):</strong> kept as a fallback and for backfill, but alone cannot</li></ul>
+<p>coach in the moment.</p>
+<ul><li><strong>Repo-level hook config:</strong> rejected; visible to and executed for teammates.</li></ul>
+<h2>Consequences</h2>
+<ul><li><strong>Positive:</strong> AIQ can crash, upgrade or be paused with zero impact on the tools.</li><li><strong>Negative:</strong> events can arrive late or (rarely) be lost when the spool is full; Tasks tolerate it.</li><li><strong>Follow-ups:</strong> the hook semantics above are verified from docs only; Phase 0 spike must run them.</li></ul>
+<h2>Evidence</h2>
+<p>Hook docs linked above (read 2026-10-31). Phase 0 hook probe (Claude Code 2.1.316, headless, 3 live runs + 50-run bench; spikes/phase0/hook_probe/): async UserPromptSubmit and PostToolUse fire every turn and never block; a sync Stop hook&#x27;s <code>systemMessage</code> renders to the person and does not enter model context; payloads carry prompt, tool name/input/response, duration, transcript path and session id, so hooks alone can feed Task grouping. Not yet exercised: Copilot CLI, interactive TUI rendering.</p></main></body></html>

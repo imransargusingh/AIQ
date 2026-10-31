@@ -8,6 +8,7 @@ phase: "0-1"
 tags: [architecture, data, privacy]
 links:
   - { to: aiq-architecture, rel: refines }
+review-suggested: { by: design-claude-code-skeleton, on: 2026-10-31, reason: "Phase 1 design derives budget counters from card_delivery facts instead of persisting counters; reword 'Budget counters are persisted'." }
 review-by: 2027-04-29
 summary: >-
   AIQ stores everything in one SQLCipher-encrypted SQLite file per OS user: entities as dimensions,

@@ -8,6 +8,7 @@ phase: "0-1"
 tags: [architecture]
 links:
   - { to: aiq-architecture, rel: refines }
+review-suggested: { by: design-claude-code-skeleton, on: 2026-10-31, reason: "Phase 1 design sends seq=null for Claude Code (no sequence in hook payloads; one process per hook); Windows hooks run via Git Bash and need quoted forward-slash paths." }
 review-by: 2027-04-29
 summary: >-
   Collectors never block or slow the person's tools: they send versioned, idempotent events to the core with a strict time budget, spool briefly if the core is down, and install at user level only.
