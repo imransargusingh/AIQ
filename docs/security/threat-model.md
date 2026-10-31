@@ -100,8 +100,8 @@ or manager (social, not technical: AIQ must give them nothing to ask for).
 | T-B1-4 | Pending Imran | Malware running as the same user can already read every file AIQ reads | Full local compromise exposes AIQ data too | If AIQ ever stores data the user's own tools do not already hold |
 | T-B5-2 | Imran (ADR-0007) | Judging through the person's own account is the chosen design | Admin of a work account can see judge calls | If an on-device judge becomes good enough |
 | T-B4-3 | Pending Imran | Data is private to the person; tampering only fools themselves | None to others | If aggregates or sharing use these values (then sign shares) |
-| Phase 1 B1-T: forged frames from the same OS user (design-claude-code-skeleton) | Pending Imran | Needs the same user and the per-boot token; that process can already read everything | None beyond existing user compromise | If frames ever carry other people's data |
-| Phase 1 B3-I: plain-text spool while the core is down (design-claude-code-skeleton) | Pending Imran | Encrypting it needs the store key on the hook's hot path (ADR-0005) | Up to 1 MB of recent prompts in a user-only file until the core drains it | If a spike shows keychain reads fit the hook budget |
+| Phase 1 B1-T: forged frames from the same OS user (design-claude-code-skeleton) | Imran, 2026-10-31 | Needs the same user and the per-boot token; that process can already read everything | None beyond existing user compromise | If frames ever carry other people's data |
+| Phase 1 B3-I: plain-text spool while the core is down (design-claude-code-skeleton) | Imran, 2026-10-31 | Encrypting it needs the store key on the hook's hot path (ADR-0005) | Up to 1 MB of recent prompts in a user-only file until the core drains it | If a spike shows keychain reads fit the hook budget |
 
 ## 4. Cross-cutting controls
 OS user isolation and keychain; SQLCipher; Ed25519 pack signing with pinned keys; WASM sandbox;

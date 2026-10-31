@@ -604,7 +604,8 @@ Not triggered: D5 (no HTTP/gRPC), A1–A6 (no model call in this slice).
   against new versions. *Inferred risk.*
 - **The 50 ms budget may not be reachable on Windows with any client.** Measured on Imran's laptop under Copilot CLI (2026-10-31): a `.cmd` hook took 60 ms p50 / 77 ms p95 for the whole process, C# 80 / 106, Python ~100 / 135. Process start on Windows is the floor, not the language. On Claude Code only the Stop hook is synchronous (observation hooks are async), so the exposure is one hook per turn. S3 measures the compiled client; if it is over, the spec needs a per-OS budget. *Flagged.*
 - At-most-once delivery can lose a card if the client dies after receipt. *Accepted.*
-- Plain-text spool while the core is down. *Accepted, bounded.*
+- Plain-text spool while the core is down. *Accepted by Imran, 2026-10-31; bounded.*
+- Forged frames from software already running as the person. *Accepted by Imran, 2026-10-31.*
 - All gate seats were played by one author session, so the gate is not independent. *Recorded.*
 
 ## Status and next action

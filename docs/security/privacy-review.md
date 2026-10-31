@@ -75,7 +75,7 @@ calls only. AIQ operates no processor that sees user data. The pack CDN receives
 |---|---|---|
 | Lost machine loses history (ADR-0003) | Imran, 2026-10-31 | Simplicity for alpha |
 | Judge calls visible to work-account admins (ADR-0007) | Imran, 2026-10-31 | Provider already saw the content; disclosed |
-| Plain-text spool of recent prompts while the core is down (design-claude-code-skeleton) | Pending Imran | Bounded (1 MB), user-only, emptied on drain; encrypting needs the key on the hot path |
+| Plain-text spool of recent prompts while the core is down (design-claude-code-skeleton) | Imran, 2026-10-31 | Bounded (1 MB), user-only, emptied on drain; encrypting needs the key on the hot path |
 
 ## 7. Gaps and flagged unknowns
 - Works-council / legal review not started.
