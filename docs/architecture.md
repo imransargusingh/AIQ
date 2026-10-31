@@ -149,7 +149,7 @@ B2 pack content → core; B3 core → backend; B4 store at rest; B5 core → the
 |---|---|---|
 | [0001](adr/0001-local-first-core.md) | Local-first: one core per OS user, thin collectors, stateless backend with no user data | Proposed |
 | [0002](adr/0002-durable-representation.md) | Append-only event facts + dimensions in SQLCipher SQLite; raw content kept until the person deletes it | Proposed (retention: Imran) |
-| [0003](adr/0003-key-management.md) | Store key in the OS keychain; key recovery | Proposed (pending Imran) |
+| [0003](adr/0003-key-management.md) | Store key only in the OS keychain; no recovery in the alpha | Accepted (Imran) |
 | [0004](adr/0004-core-language.md) | Core language | Proposed (pending Imran) |
 | [0005](adr/0005-collector-contract.md) | Collectors are fail-open, fire-and-forget, schema-versioned pipes | Proposed |
 | [0006](adr/0006-packs-as-signed-data.md) | Packs are signed data; code only in a WASM sandbox; caps and thresholds live in packs | Proposed |

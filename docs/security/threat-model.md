@@ -85,5 +85,4 @@ signed app updates; user-level-only hook install.
 ## 5. Gaps and flagged unknowns
 - The judge path (B5) gets its full threat review in the rung-model thread (docs/specs/rung-model.md); rows TR-1 to TR-9 come from that review; the T-B5 rows are the system-level cross-check.
 - No component designs yet; every boundary needs its own STRIDE-lite in `/design-slice`.
-- Key recovery pending (ADR-0003).
 - Windows named-pipe ACL and macOS keychain prompts need a spike.
