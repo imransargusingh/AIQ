@@ -11,9 +11,10 @@ links:
   - { to: adr-0005, rel: refines }
 review-by: 2027-01-29
 summary: >-
-  What AIQ can observe and show on Copilot CLI and VS Code, and the path forward. Key finding: VS
-  Code's Copilot agent sessions share Copilot CLI's hook harness and user-level hook files, so one
-  Copilot collector covers both; ask mode, inline chat and completions are not observable.
+  What AIQ can observe and show on Copilot CLI and VS Code, and the path forward. Copilot CLI hooks
+  fire on every event but block the agent and cannot show the person anything, so cards need another
+  surface. VS Code's Copilot agent sessions share the same hook harness; ask mode, inline chat and
+  completions are not observable.
 ---
 
 # Spike: Copilot CLI and VS Code as AIQ surfaces
@@ -60,16 +61,74 @@ harness and events as above; command hooks may print `{"type":"progress","messag
 timeline (`"temporary": true` for a transient line); default timeout 30 s. Latest version on npm:
 `@github/copilot` 1.0.105 (2026-10-31).
 
-Run-level results (laptop probe): _pending_.
+Run-level results: measured on Imran's Windows laptop, 2026-10-31, Copilot CLI 1.0.104 (`-p`) and
+1.0.105 (interactive), model forced by admin policy. Full data in
+`prototypes/phase0-spike/results/hook-probe-windows.{md,json}` (PR #6).
 
-## 3. Path forward (draft, to confirm with run results)
-1. **One Copilot collector, two surfaces.** A single user-level hook file in `~/.copilot/hooks/` feeds the
-   core from both Copilot CLI and VS Code Copilot agent sessions. Same `aiq hook` client as Claude Code
-   (ADR-0005).
-2. **The VS Code extension is mostly a renderer.** Hooks give the observation; the extension shows cards
-   (notification + status bar), adds editor and terminal signals, hosts `vscode.lm` for the judge, and
-   provides Pause. It cannot see Copilot ask mode, inline chat or completions.
-3. **Blind spots become summary-only or out of scope:** ask-mode chat, inline chat, completions.
-   Undocumented on-disk chat session files are a possible later source (Flagged; not a contract).
-4. **Risks:** VS Code hooks are Preview; org policy can disable hooks; the Copilot harness may render
-   nothing to the person, so VS Code cards must come from the extension, not hook output.
+| Question | Result | Label |
+|---|---|---|
+| Do hooks fire? | All six events (sessionStart, userPromptSubmitted, preToolUse, postToolUse, agentStop, sessionEnd) on every run, in `-p` and interactive, at repo level and at **user level** (`$COPILOT_HOME/hooks`, no repo hooks, no extra auth) | Verified (run) |
+| Payload | Every event has `sessionId`, `timestamp`, `cwd`; **no event-name field** (pass it as an argument). Extra: sessionStart `source`, `initialPrompt`; userPromptSubmitted `prompt`; pre/postToolUse `toolName`, `toolArgs` (+ `toolResult`); agentStop `transcriptPath`, `stopReason`, `stop_hook_active`; sessionEnd `reason` | Verified (run) |
+| Schema | `{"version":1,"hooks":{"<event>":[{"type":"command","exec":"<exe>","args":[…],"timeoutSec":10}]}}` | Verified (run) |
+| Can a hook show the person anything? | **No.** `systemMessage` at agentStop goes to the debug log only. `progress` lines, with or without `temporary`, at pre/postToolUse and agentStop, are invisible in the TUI and in `-p` (marker files prove they ran). Only stderr on exit 2 is shown, and exit 2 changes the agent's behaviour | Verified (run) |
+| Async? | **No.** `"async": true` is ignored; each hook blocks the agent until it returns | Verified (run) |
+| Cost per hook | Copilot's own event-to-process-start: 110–210 ms with `exec` (quiet run); 440–630 ms with the `powershell` field, once a 10 s timeout. Client process on Windows: `.cmd` 77 ms p95, C# 106, Python 134; AIQ's compiled client 26–34 ms p95 with the core up (design spike S3a) | Verified (run) |
+| Does `copilot -p` fire the person's hooks? | Yes, so any AIQ use of `copilot -p` would be observed by AIQ itself | Verified (run) |
+| Other config Copilot reads | Repo `.claude/settings.json` (so repo Claude hooks also run in Copilot). User-level config listed only under `~/.copilot` | Verified (run + docs); user `~/.claude/settings.json` not tested |
+| Status line | Copilot CLI has a command-type `statusLine` in `~/.copilot/settings.json` (enabled via `/statusline`; examples set `"experimental": true`, and on Windows a `STATUS_LINE` feature flag). Contract, refresh rate and stability not documented in what was read | Flagged (third-party READMEs, e.g. [copilot-cli-custom-statusline](https://github.com/pascalvanderheiden/copilot-cli-custom-statusline), [copilot-cli#1311](https://github.com/github/copilot-cli/issues/1311)) |
+
+## 3. Path forward
+
+**Result first:** AIQ can observe Copilot CLI and VS Code agent sessions with one user-level
+collector, but Copilot will not show a card. In-the-moment coaching on Copilot needs a surface AIQ
+owns. Two choices are Imran's (below); the rest follows from the evidence.
+
+1. **One Copilot collector for both surfaces.** A single user-level file, `~/.copilot/hooks/aiq.json`,
+   using `exec` + `args` (never a shell field), calls the same compiled `aiq hook copilot <event>`
+   client as Claude Code. It feeds the core from Copilot CLI and VS Code Copilot agent sessions. Never
+   repo-level `.github/hooks/`. *Verified for Copilot CLI; VS Code from docs only.*
+2. **Subscribe to as few events as possible, because every hook blocks.** Phase 2 needs prompts and
+   turn ends only: `userPromptSubmitted` and `agentStop`. That adds roughly 140–240 ms per prompt
+   (Copilot's start-up plus AIQ's client). Tool hooks would add about twice that **per tool call**,
+   so they wait until a detector needs them (Opportunities 2 and 3). *Inferred from the measured parts;
+   the end-to-end figure is not measured.*
+3. **ADR-0005's Copilot render path is wrong and must change.** Rendering via a `progress` line does
+   not work. AIQ will **not** use `additionalContext` or exit code 2 to get text in front of the person:
+   both act on the agent, and coaching is for the person (ADR-0005 rule 1).
+4. **Where Copilot CLI cards show (Imran's choice):**
+   - **a) Copilot CLI's status line (recommended to try first):** a one-line nudge such as
+     `AIQ tip: reworded 3× without new details · aiq show`, read from the core. It is persistent, in
+     the person's view, and needs no window switch. It is experimental, needs a laptop check, and on
+     Windows a feature flag.
+   - **b) A desktop notification from the core at `agentStop`:** works for any terminal, but it pulls
+     attention out of the terminal and some work laptops suppress it.
+   - **c) No in-the-moment card on Copilot CLI:** only next-pause and summary coaching.
+5. **VS Code renders through the extension.** Hooks observe; the extension reads cards from the core
+   and shows a notification plus a status-bar item. It also adds editor and terminal signals, hosts
+   `vscode.lm` for the judge, and offers Pause. Ask mode, inline chat and completions stay blind
+   spots. Undocumented on-disk chat session files are a possible later source. *Flagged; not a
+   contract.*
+6. **One hands-on check is still owed: VS Code.** About 5 minutes on Imran's laptop, with a temporary
+   `~/.copilot/hooks/aiq-probe.json` that only appends to a temp log and is removed straight after. It
+   answers whether the user-level hook fires in a VS Code agent-mode session, and whether any hook
+   output reaches the person there. While the file exists, Copilot CLI sessions also run it (about
+   150 ms per event).
+7. **Budget wording (Imran's call).** The spec says a collector adds "≤ 50 ms p95 to any hook it runs
+   in". On Copilot, the host's own process start (110–210 ms) comes with any hook at all. Proposed
+   wording: AIQ's own client stays ≤ 50 ms p95 (measured 26–34 ms), and the whole hook, including the
+   host's start-up, is measured and shown in `aiq status`.
+
+### Changes this implies
+
+| Artifact | Change |
+|---|---|
+| ADR-0005 | Rule 5: Copilot CLI renders via the chosen surface, not a progress line; Copilot hooks are sync, so subscribe to the minimum events; exec form on both hosts |
+| Architecture Phase 2 | "Copilot CLI collector (progress line)" becomes "Copilot collector (hooks) + Copilot CLI renderer (choice 4)"; human check and E2E updated to match |
+| Spec NFR | Budget wording (point 7), if Imran agrees |
+| Threat model | Copilot reads repo `.claude/settings.json`; `copilot -p` fires user hooks (AIQ must not ingest its own calls) |
+
+### Risks
+- VS Code hooks are Preview, and the status line is experimental. Either can change or disappear.
+- Organisation policy can restrict hooks. This laptop already has an admin-forced model.
+- Hook latency on a busy machine had multi-second outliers in the probe. *Inferred* cause: concurrent
+  updates.
