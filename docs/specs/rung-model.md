@@ -12,8 +12,8 @@ review-by: 2026-11-30
 summary: >-
   What AIQ's rung model must do: for each task a person does with AI, judge the rung it was done at
   and the next rung it could reach, explain why in plain language, and let the person say when the guidance misses.
-  Judged against a per-job rubric, privately on the person's device, and held to a golden-set
-  accuracy bar before it drives coaching.
+  The model answers narrow facts about how the work was done, through the person's own AI account,
+  and per-job rubric rules place the rung; held to a measured accuracy bar before it drives coaching.
 ---
 
 # Spec: Rung model (per-task maturity judgment)
@@ -26,17 +26,18 @@ Sibling spec: `docs/specs/coaching-loop.md` (consumes this model's output for Op
 
 | # | Decision | Source |
 |---|---|---|
-| R1 | A model-based judge first; rules or peer comparison may be added later for calibration | Imran, 2026-10-31 (recorded owner ruling) |
+| R1 | A model-based judge first; rules or peer comparison may be added later for calibration. Refined by Q6: the model judges narrow facts and the rubric's rules place the rung | Imran, 2026-10-31 (recorded owner ruling) |
 | R2 | Ladder: 1 Assisted, 2 Directed, 3 Delegated, 4 Orchestrated, 5 Factory. One ladder for everyone | Imran, 2026-10-31 (recorded owner ruling) |
 | R3 | The unit of analysis is the **task**: one unit of intent, spanning prompts and surfaces | Design > Rung model tab |
 | R4 | Potential is reported as the **next reachable rung**; the theoretical ceiling is a secondary field | Design > Rung model tab |
 | R5 | The rubric is tuned **per job, not per role**. The ladder is shared; each job pack supplies its own rung examples and signal weights. This replaces the tab's "adjusted for each role" and "role-specific rubric emphasis" | Follows from coaching-loop D7 (Imran, 2026-10-31: "aligning to the jobs-to-be-done framework") |
 | R6 | Only the person sees their judgments; AIQ runs no server that sees task content | Imran, 2026-10-31 (privacy rule) |
-| R7 | Evaluation uses a golden set of synthetic and volunteer-donated tasks labeled by experts, never users' private data | Design > Rung model tab |
+| R7 | Evaluation never uses users' private data. ~~A few hundred expert-labeled golden tasks as the main benchmark~~ superseded by Q6 | Design > Rung model tab; Q6 |
 | Q1 | Scope: the judge, its explanation and the person's feedback on it (see Q3). The rung distribution and opportunity views get their own spec | Imran, 2026-10-31 (decision card) |
 | Q2 | The judge is a cloud model called **through the person's own AI account**, and only that way in alpha (no on-device judge). It reads the task's prompts and outputs. Conditions: a task goes only to the provider that already saw it unless the person chooses otherwise; setup states plainly that a work account's admin policies, logging and retention apply; offline or no account means the task is queued, never rerouted; judging uses the person's quota | Imran, 2026-10-31 (decision card, after asking why not judge in the cloud under the user's own account) |
-| Q3 | People **do not reclassify** a task's rung; the rung is always the judge's. "Easy to correct" means correcting the *guidance*: the person can say the evidence, next step or blockers miss, and AIQ withdraws that guidance and learns which guidance helps them. Rung placement is calibrated only against expert labels (golden set) | Imran, 2026-10-31 (thread reply: users may not have the experience to classify consistently) |
+| Q3 | People **do not reclassify** a task's rung; the rung is always the judge's. "Easy to correct" means correcting the *guidance*: the person can say the evidence, next step or blockers miss, and AIQ withdraws that guidance and learns which guidance helps them. Rung placement is calibrated only against the evaluation regime (Q6), never against the person's own view | Imran, 2026-10-31 (thread reply: users may not have the experience to classify consistently) |
 | Q4 | Accuracy bar before the judge drives coaching | **Pending** (recommended: current rung ≥ 70% exact, ≥ 95% within one; potential ≥ 60% exact, ≥ 90% within one) |
+| Q6 | **Facts first, plus cheap labels.** The model answers narrow questions about how the work was done (task facts); the rubric's rules turn facts into a rung. Accuracy comes from tasks done at a known rung on purpose (labels by construction), the team's own sessions, a small expert sanity check, two-run consistency, and private feedback signals in alpha. Replaces the large golden set | Imran, 2026-10-31 (decision card, after raising that a golden set is costly and tasks vary too much to generalize from few examples) |
 | Q5 | Does weak context management cap a task at Directed? | **Pending** (recommended: a rubric signal, not a hard cap, until it can be detected reliably) |
 
 ## Part A — Functional specification
@@ -81,7 +82,7 @@ In scope (Q1):
 - The per-job rubric as pack data, and the placement rule.
 - The person's feedback on a judgment's guidance, and how it changes what AIQ coaches them on.
 - The task judgment panel that shows one judgment and its feedback control.
-- The evaluation regime: golden set, accuracy bar, consistency and gaming checks.
+- The evaluation regime: check tasks, accuracy bar, consistency and gaming checks (Q6).
 
 Out of scope:
 - **Grouping events into tasks and classifying their job.** Defined in the coaching-loop domain model
@@ -101,18 +102,20 @@ Shares **Task**, **Job**, **Job pack** and **Environment blocker** with the Coac
 
 Ubiquitous language:
 - **Rung**: one of the five ladder levels (R2). A value, compared by order.
-- **Rubric**: per job pack, the observable signals that place a task on each rung, and the signals
-  that rule a rung out. Versioned pack data.
-- **Signal profile**: the structured facts extracted from one task on device (interaction shape,
-  delegation, verification, reuse, task context, environment). Contains no raw prompt text.
+- **Task fact**: one answer to one narrow question about how a task was done ("did an agent make the
+  edits?", "what share of the final change did the person write?"). Read from the logs where possible,
+  otherwise by the judge model from task content. Carries its source, a confidence and its evidence.
+- **Fact set**: the list of fact questions a job pack asks. Pack data.
+- **Rubric**: per job pack, the rules that place a task on a rung from its task facts, and the facts
+  that rule a rung out. Versioned pack data. Deterministic: the same facts always give the same rung.
 - **Task content**: the task's prompts and AI outputs as kept on the device. The judge reads it while
   it still exists on the device (kept until the person deletes it, per the architecture), and it is sent only to the person's own AI account (Q2).
 - **Judge account**: the person's own AI provider account that the judge calls. Chosen by the person;
   AIQ holds no account of its own in the path.
-- **Rung judgment**: the judge's verdict on one task: current rung, potential rung, ceiling, a
-  confidence for each, evidence, gap and blockers, stamped with the rubric and judge versions.
-- **Current rung**: the highest rung whose rubric signals are clearly met. Mixed signals place the
-  task on the lower rung.
+- **Rung judgment**: the verdict on one task: its task facts, current rung, potential rung, ceiling, a
+  confidence for each, evidence, gap and blockers, stamped with the fact set, rubric and judge versions.
+- **Current rung**: the highest rung whose rubric rules are met by the task facts. A rule that depends
+  on a low-confidence fact counts as not met, so mixed evidence places the task on the lower rung.
 - **Potential rung**: the next reachable rung, weighed on fit, readiness, availability and
   repetition. Equals the current rung when the task is already at its right rung or is capped.
 - **Ceiling**: the highest rung the task type could reach in principle. Secondary, for the
@@ -122,17 +125,19 @@ Ubiquitous language:
 - **Blocker**: an Environment blocker that caps potential (e.g. "no agent with repo access"). Reported
   as a cause, never as a low score.
 - **Right rung**: potential equals current with no blocker. Shown neutrally and never coached.
-- **Uncertain**: a judgment whose confidence is below the pack's threshold. Kept out of coaching.
+- **Uncertain**: a judgment where a fact its placement depends on is below the pack's confidence
+  threshold, or two independent judge runs disagree on such a fact. Kept out of coaching.
 - **Judgment feedback**: the person's statement that a judgment's guidance misses, with one reason
   (evidence is wrong or incomplete · next step isn't useful or doable · a blocker is missing · doesn't
   fit this kind of task) and an optional note. It never changes the rung.
 - **Guidance preference**: the person's private ranking of gap types for one job, learned from their
   own judgment feedback and coaching feedback.
-- **Golden task**: a synthetic or donated task trace with independent expert labels, used only for
-  evaluation.
+- **Check task**: a task trace used only for evaluation, whose expected facts and rung are known:
+  built at a known rung on purpose, taken from the team's own sessions with their consent, or labeled
+  by an expert in the sanity-check set.
 
-Entities: Rung judgment, Judgment feedback, Guidance preference, Golden task, Rubric (versioned).
-Value objects: Rung, Signal profile, Task content, Evidence item, Gap, Blocker, Confidence.
+Entities: Rung judgment, Judgment feedback, Guidance preference, Check task, Rubric and Fact set (versioned).
+Value objects: Rung, Task fact, Task content, Evidence item, Gap, Blocker, Confidence.
 
 Aggregates and the invariant each protects:
 - **Rung judgment** (root: the judgment of one Task): potential is never below current and never more
@@ -142,15 +147,17 @@ Aggregates and the invariant each protects:
   coached for the task, and no re-judgment brings it back; the rung itself is unaffected.
 - **Guidance preference** (root: person × Job): changes only from that person's own feedback, never
   moves a rung, and never leaves their device.
-- **Golden set** (root: golden set version): every golden task has at least two independent expert
-  labels, and a donated task is included only with its donor's explicit consent.
+- **Check set** (root: check set version per job): every check task has a known expected fact set and
+  rung, and contains another person's work only with that person's explicit consent.
 
 ### User stories & acceptance criteria
 
 **US-1 — As anyone working with AI, I want each task I finish judged against a clear rubric, so that I see how I actually worked rather than how much I used AI.**
 - **Given** a closed task with at least one AI interaction **When** it closes **Then** a Rung judgment is produced within 60 s (p95) of the judge call starting, with current rung, potential rung, ceiling and a confidence for each.
 - **Given** a closed task with no AI interaction **When** it closes **Then** no judgment is produced (there is no rung 0).
-- **Given** a task meets every Delegated signal except "the person reviews the result rather than doing the steps" **When** judged **Then** it is placed on Directed, and the evidence names the unmet signal.
+- **Given** a task whose facts meet every Delegated rule except "the person wrote under 30% of the final change" **When** judged **Then** it is placed on Directed, and the evidence names the unmet fact.
+- **Given** the same task facts **When** the rubric places the rung twice **Then** the rung is identical (rules are deterministic).
+- **Given** a fact readable from the logs (e.g. who ran the tests) **When** judged **Then** it is taken from the logs, not asked of the model.
 - **Given** a task classified *Code a change* **When** judged **Then** the Code a change rubric is used; **Given** an *Unclassified* task **Then** only the shared ladder definitions are used and the judgment's confidence is capped below the coaching threshold.
 - **Given** the same task under the Developer and the PM preset **When** judged **Then** both judgments are identical (R5: the role never enters).
 
@@ -179,36 +186,62 @@ Aggregates and the invariant each protects:
 - **Given** the device is offline, the account is signed out, or the quota is exhausted **When** a task closes **Then** it is queued and judged later, never sent to another account or model.
 - **Given** a judgment **When** the person opens "What was read?" **Then** the panel lists exactly the prompts, outputs and signals sent, and which account received them.
 - **Given** a judge call runs through a tool AIQ also observes (e.g. Claude Code or Copilot CLI) **When** AIQ's collectors see it **Then** it is never grouped into a task, judged or coached; and setup tells the person that judge calls appear in that tool's own session history.
-- **Given** the person deleted the task's content **When** it is re-judged **Then** the judge uses signals only and the judgment says so.
+- **Given** the person deleted the task's content **When** it is re-judged **Then** only log facts are used; model-read facts are kept from the earlier judgment or marked unknown, and the judgment says so.
 - **Given** the person paused capture during part of a task **When** it is judged **Then** content from the paused period is never sent, because it was never captured.
 
 **US-6 — As anyone relying on AIQ's views and tips, I want low-confidence judgments kept out of coaching, so that a guess never drives a tip.**
 - **Given** a judgment below the pack's confidence threshold **When** stored **Then** it is marked Uncertain, shown as "uncertain" wherever it appears, and never used by the coaching loop.
 - **Given** the judge is unavailable (model missing, crash, timeout) **When** a task closes **Then** the task is queued and judged later, and the coaching loop treats it as "no rung estimate available" (coaching-loop scope note).
 
-**US-7 — As the AIQ team, we want the judge held to a measured accuracy bar before it drives coaching, so that people get fair judgments from day one.** (pending Q4)
-- **Given** the golden set for a job **When** the judge is evaluated **Then** current rung matches the adjudicated expert label on ≥ 70% of tasks and is within one rung on ≥ 95%; potential rung ≥ 60% exact and ≥ 90% within one.
-- **Given** any golden task presented twice **When** judged **Then** the current rung is the same on ≥ 95% of tasks; **given** the task's prompts reworded with the same meaning **Then** ≥ 90%.
-- **Given** the golden set's gaming cases (padded prompts, agent runs with no verification and no accepted output) **When** judged **Then** ≥ 90% are placed at the rung they would get without the padding.
-- **Given** a job pack whose judge fails any bar above **When** a release is cut **Then** that job's judgments ship as Uncertain only and drive no coaching.
+**US-7 — As the AIQ team, we want the judge held to a measured accuracy bar before it drives coaching, so that people get fair judgments from day one.** (Q6; numbers pending Q4)
+- **Given** the check set for a job **When** the judge is evaluated **Then** each model-read fact matches its expected value on ≥ 90% of tasks (shares within 10 percentage points).
+- **Given** the rubric for a job **When** its rule tests run **Then** every rung boundary has a passing case on each side.
+- **Given** tasks built at a known rung on purpose **When** judged **Then** ≥ 90% land on that rung.
+- **Given** the expert sanity-check set (30–50 tasks per job) **When** judged **Then** current rung matches the expert on ≥ 70% and is within one rung on ≥ 95%; potential ≥ 60% and ≥ 90%.
+- **Given** any check task judged twice **When** compared **Then** the current rung is the same on ≥ 95%; **given** the prompts reworded with the same meaning **Then** ≥ 90%.
+- **Given** gaming cases (padded prompts, agent runs with no verification and no accepted output) **When** judged **Then** ≥ 90% are placed at the rung they would get without the padding.
+- **Given** alpha use **When** measured per job (each person locally; across people only through opt-in privacy-preserving aggregates) **Then** ≥ 70% of shown next steps are not flagged "isn't useful or doable", and "evidence is wrong" is flagged on ≤ 10% of judgments.
+- **Given** a job pack that fails any pre-release bar above **When** a release is cut **Then** that job's judgments ship as Uncertain only and drive no coaching.
 
 ### Rubric and placement rule
-The rubric is pack data per job (R5). The shared ladder below is the default; each job pack adds
-examples and weights for its own work.
+The rubric is pack data per job (R5), written as rules over task facts (Q6). The shared ladder is
+the default; each job pack adds its own fact questions, examples and thresholds.
 
-| Rung | Signals that a task was done here | Signals it was *not* |
+Alpha fact set (illustrative; final list is pack data). *Log* = read from collector events; *Model* =
+asked of the judge from task content.
+
+| # | Fact question | Source |
 |---|---|---|
-| 1 Assisted | Short, ad hoc prompts or autocomplete; the person does the work and AI fills in pieces | Any structured context or delegation |
-| 2 Directed | Structured prompt with goal, context and constraints; output checked before use | Re-prompting without adding context; output used unchecked |
-| 3 Delegated | A whole task handed to an agent; the person reviews the result rather than doing the steps | The person makes most of the edits, or drives the agent step by step |
-| 4 Orchestrated | Several agents or steps coordinated with a written spec, guardrails and automated checks or evals | Manual handoffs between steps; no automated verification |
-| 5 Factory | A reusable, versioned workflow that runs again with little change, and others can trigger it | One-off setups that only this person runs |
+| F1 | Did an agent make the edits or produce the draft? | Log |
+| F2 | What share of the final change or document did the person write themselves? | Log (diff) |
+| F3 | Who ran the checks (tests, build, linters, evals): agent, person, or nobody? | Log |
+| F4 | Did the request state a goal, context and constraints? | Model |
+| F5 | Did each re-prompt add new information? | Model |
+| F6 | Was the output reviewed or checked before use (diff opened, tests run, sources checked)? | Log + Model |
+| F7 | Was a written spec, brief or instructions file given to the agent? | Log + Model |
+| F8 | Were several agents or chained steps coordinated, with automated checks between them? | Log |
+| F9 | Was a saved, versioned workflow run (prompt file, agent config, pipeline), and is it run by others? (existence and counts only) | Log |
+| F10 | Which agents and permissions were available to the person? | Log (environment) |
+| F11 | How many similar tasks of this job did the person do in the last 30 days? | Log + Job classification |
 
-Placement: the highest rung whose signals are clearly met; mixed signals place the lower rung, and the
-evidence says why. Judge outcomes and verification, not activity (anti-gaming).
+| Rung | Placed here when (illustrative rule) | Ruled out by |
+|---|---|---|
+| 1 Assisted | Any AI interaction | — |
+| 2 Directed | F4 yes and F6 yes | F5 no on 2+ re-prompts; output used unchecked |
+| 3 Delegated | F1 yes, F2 < 30%, F6 yes | Person drove the agent step by step |
+| 4 Orchestrated | Delegated, plus F7 yes, F8 yes and F3 = agent or automated | Manual handoffs; F3 = nobody |
+| 5 Factory | Orchestrated, plus F9 yes with runs by others | Only this person runs it |
+
+Placement: the highest rung whose rules are met; a rule resting on a low-confidence fact counts as
+not met, and the evidence says which fact. Judge outcomes and verification, not activity
+(anti-gaming).
+
+Potential: fit (Model: is this task well specified, testable, repeatable?), readiness (F7, tests or
+acceptance criteria exist), availability (F10) and repetition (F11). The next reachable rung is the
+lowest rung above current whose missing facts are all things the person could change.
 
 Context management (model and reasoning choice, lean context, durable facts in instructions files,
-handling compaction) is a rubric signal at every rung above Assisted. Whether it is a hard cap at
+handling compaction) is a candidate fact set at every rung above Assisted. Whether it is a hard cap at
 Directed is pending Q5.
 
 Alpha job examples (pack data, illustrative):
@@ -220,7 +253,7 @@ Alpha job examples (pack data, illustrative):
 ### Non-functional requirements (ISO/IEC 25010)
 | Attribute | Requirement (measurable) |
 |---|---|
-| Functional suitability | US-7 accuracy, consistency and gaming bars per job, measured on each release |
+| Functional suitability | US-7 fact accuracy, rule, construction, sanity-check, consistency and gaming bars per job, measured on each release |
 | Performance efficiency | Judgment ≤ 60 s p95 from judge call start; judging adds no measurable load to the core's coaching-loop budgets; a person's daily judging cost is visible to them (to confirm in the Phase 0 spike) |
 | Reliability | A judge failure never blocks a collector or the coaching fast path; unjudged tasks are queued and retried |
 | Security | The judge calls only the person's chosen judge account endpoint; credentials stay in the OS keychain; pack rubrics are data and cannot run code |
@@ -237,41 +270,48 @@ a task the person deletes after it was judged; a judge or rubric version upgrade
 judgments keep their versions); a task with an agent run that produced nothing; a person with no
 agent access at all; an Unclassified task; feedback on an Uncertain judgment; a task re-judged
 after the person deleted its content; a task spanning two providers; quota running out mid-week;
-the person switching judge accounts; a golden task whose two experts disagree by two or more rungs (adjudicate or drop).
+the person switching judge accounts; a sanity-check task where the expert and judge disagree by two or more rungs (second expert);
+a fact the logs cannot answer and the content was deleted (fact unknown, rule not met).
 
-### Evaluation regime
-- **Golden set:** for alpha, at least 100 tasks per alpha job, mixing synthetic traces and tasks
-  donated by volunteers with explicit consent. Each is labeled independently by two experienced
-  practitioners against the rubric, with disagreements adjudicated. Inter-rater agreement is
-  reported alongside the judge's score; the judge is not expected to beat the experts' own agreement.
-- **Bars:** US-7 (pending Q4).
-- **Local signal:** each person's "evidence is wrong" count per job is visible only to them (US-4). It
-  never changes their rungs; rung placement is calibrated only against expert labels.
-- **Dependency:** the golden set's first traces and the task-grouping and job-classification inputs
-  come from the Phase 0 feasibility spike. This spec does not repeat that work.
+### Evaluation regime (Q6)
+- **Labels by construction:** for each alpha job, the same tasks done on purpose at each rung (hand
+  edited, directed, fully delegated, orchestrated), by agents scripted to play the person or by the
+  team. Expected facts and rung are known without labeling.
+- **Dogfooding:** the team's own sessions from the Phase 0 spike, with each member's consent. Log facts
+  are checked automatically; model facts are spot-checked by the person who did the task.
+- **Expert sanity check:** 30–50 tasks per job, each labeled by one experienced practitioner, a second
+  on disagreement with the judge. Guards against the rubric itself being wrong.
+- **Consistency:** each judgment runs the model facts twice; disagreement on a fact the placement
+  depends on makes the judgment Uncertain.
+- **Alpha signals:** "next step isn't useful" and "evidence is wrong" rates, private per person, and
+  across people only through opt-in privacy-preserving aggregates with no content.
+- **Bars:** US-7 (numbers pending Q4).
+- **Dependency:** task grouping, job classification and the first dogfood traces come from the Phase 0
+  feasibility spike. This spec does not repeat that work.
 
 ### Comparables & user evidence
 | Claim | Source | Confidence |
 |---|---|---|
 | LLM-as-judge with an explicit rubric agrees with human raters reasonably well on structured tasks, with known biases (position, verbosity) | Zheng et al. 2023, "Judging LLM-as-a-Judge" (MT-Bench) | Inferred (from memory, not re-checked) |
 | Maturity models are usually assessed per organisation or team, not per task | CMMI; DORA capabilities | Flagged (from memory) |
-| Labeled golden sets with inter-rater agreement are the standard for judging a classifier against experts | Common annotation practice (Cohen's kappa) | Inferred |
+| Decomposing a judgment into narrow, checkable questions makes LLM grading more reliable than one holistic score | Rubric-based and checklist LLM evaluation practice (e.g. G-Eval, Liu et al. 2023) | Inferred (from memory, not re-checked) |
 | People accept automated assessments more when they can see the evidence and give feedback on it | HAX guidelines G11, G15 (Amershi et al. 2019) | Inferred |
 | People want a per-task rung judgment | None yet | Flagged: validate in Phase 1 alpha |
 
 ### Applicable governance lenses
 - [x] Quality attributes / NFRs: above
 - [x] Threat model (STRIDE): applies (judge sends prompts and code to the person's own provider account). **Gap:** run in `/define-architecture`
-- [x] Privacy & data governance: R6, US-5, golden-set donation consent
+- [x] Privacy & data governance: R6, US-5, consent for any dogfood or check task
 - [x] Accessibility: NFR row; Part C
 - [x] Performance budget: NFR row; to confirm in the spike
 - [x] Release / rollback: rubric and judge versions on every judgment; a failing job pack ships Uncertain-only (US-7)
 - [x] Observability: local-only judge health, latency and feedback counts; no remote telemetry
 
 ### AI-integrated allocation
-- **Archetype:** advisory assessor. AIQ judges and explains; the person can always override.
-- **Tier allocation:** stage 1 deterministic feature extraction on device; stage 2 model judge with the
-  rubric, called through the person's own AI account; stage 3 personal guidance ranking from the person's own feedback (never moves a rung).
+- **Archetype:** advisory assessor. AIQ judges and explains; the person can always flag its guidance.
+- **Tier allocation:** stage 1 deterministic extraction of log facts on device; stage 2 model-read facts
+  through the person's own AI account (run twice); stage 3 deterministic rubric rules place the rung;
+  stage 4 stage 3 personal guidance ranking from the person's own feedback (never moves a rung).
 
 ## Part B — UX specification
 
@@ -381,9 +421,11 @@ feedback), G15 (granular feedback), G16 (convey consequences: what feedback chan
 - Grouping events into tasks and classifying jobs are unproven. Depends on the Phase 0 feasibility spike.
 - Technical access exists on paper (architecture thread, docs read 2026-10-31, not run): the VS Code Language Model API after a consent prompt, `copilot -p` and `claude -p` with the person's login. **Unverified:** whether Anthropic's and GitHub's terms allow a third-party local app to drive subscription models this way, and how Copilot CLI counts premium requests. Legal/terms check before alpha; fallback is the person's own API key.
 - Retention and admin visibility differ by account type (personal vs work). Probe: list them per provider before setup copy is written.
-- Judging cost per person per day is unknown. Probe: measure on the first golden set and a week of the team's own tasks.
-- Whether the judge meets the US-7 bar is unknown. Probe: run it on the first golden set.
-- Golden-set labels may disagree too much to be a benchmark. Probe: measure inter-rater agreement on the first 50 tasks.
+- Judging cost per person per day is unknown. Probe: measure on the first check set and a week of the team's own tasks.
+- Whether model-read facts reach the US-7 bar is unknown. Probe: run them on the first constructed tasks and dogfood traces.
+- Tasks built at a known rung on purpose may not look like real work. Probe: compare fact distributions between constructed and dogfood tasks.
+- The rubric's rules may place real tasks wrongly even when every fact is right. Probe: the expert sanity check.
+- Running model facts twice doubles judging cost on the person's quota. Probe: measure cost per task; drop to one run for log-heavy jobs if needed.
 - Task close detection (idle timeout vs artifact boundary) is not defined here; inherited from task grouping.
 - Comparables are from memory (Flagged / Inferred). Probe: `/collectknowledge` on LLM-as-judge reliability.
 
