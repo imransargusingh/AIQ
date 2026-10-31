@@ -8,7 +8,7 @@ phase: "0-1"
 tags: [architecture]
 links:
   - { to: aiq-architecture, rel: refines }
-review-suggested: { by: design-claude-code-skeleton, on: 2026-10-31, reason: "Phase 1 design sends seq=null for Claude Code (no sequence in hook payloads; one process per hook); Windows hooks run via Git Bash and need quoted forward-slash paths." }
+review-suggested: { by: design-claude-code-skeleton, on: 2026-10-31, reason: "Phase 1 design: seq=null for Claude Code; Claude Code hooks must use exec form (command + args), since Git Bash shell form costs 452 ms p95 on Windows; 20 ms is the connect timeout, not a whole-process budget (Windows whole process 22-34 ms); only the async prompt hook may start the core." }
 review-by: 2027-04-29
 summary: >-
   Collectors never block or slow the person's tools: they send versioned, idempotent events to the core with a strict time budget, spool briefly if the core is down, and install at user level only.
