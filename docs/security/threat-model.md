@@ -59,6 +59,15 @@ or manager (social, not technical: AIQ must give them nothing to ask for).
 | T-B5-5 | B5 | Tampering | Prompt injection in Task content steers the judge (e.g. text telling it to rate the Task Factory) | Task content passed as quoted data in a fixed envelope; judge answers narrow facts (F1–F12) to a JSON schema; deterministic rubric places the rung; each fact asked twice and disagreement discards it | Mitigate |
 | T-REPO-2 | — | Info disclosure | Reading repo metadata (git log authors, CI runs) for F9 pulls in colleagues' names | Read local git only; store counts, not names; never call hosting APIs | Mitigate |
 | T-B5-4 | B5 | Elevation | Judge CLI run with tool access acts on the repo | No tools granted; run in an empty temp working directory | Mitigate |
+| TR-1 | B5 | Info disclosure | A cross-surface Task sends content to a provider that never received it | Judge envelope includes only content the judge's provider already received | Mitigate |
+| TR-2 | B5 | Info disclosure | The person's own edits or local diff reach the judge | F2 computed on device; own edits and diffs never put in a judge call | Mitigate |
+| TR-3 | B2/B5 | Tampering | A pack shapes the judge envelope to exfiltrate data | Core alone builds the envelope; packs supply question text and schema only | Mitigate |
+| TR-4 | B5 | Tampering | Malformed judge output is trusted | Schema-failing responses discarded | Mitigate |
+| TR-5 | B5 | Tampering | Model-written evidence carries HTML, links or commands into a card | Rendered as plain text only | Mitigate |
+| TR-6 | B5 | Elevation | A malicious `claude`/`copilot` on PATH or repo config hijacks judge calls | Judge binary resolved by absolute path at setup; run outside any repo | Mitigate |
+| TR-7 | B5 | Info disclosure | AIQ handles provider credentials | AIQ never reads provider OAuth tokens; an API key, if used, lives in the OS keychain | Mitigate |
+| TR-8 | B5 | DoS (cost) | Judging burns the person's quota | Person-set daily judge budget; lazy/batched re-judging; queue when spent | Mitigate |
+| TR-9 | B5 | Repudiation | No record of what was sent where | Per-call send log with version stamps, viewable locally | Mitigate |
 | T-SOC-1 | — | Info disclosure (social) | A manager asks the person to "show their AIQ" | No views built for others; share types are fixed and previewed; nothing to export wholesale | Mitigate (design) |
 | T-REPO-1 | — | Info disclosure | AIQ hooks in a repo config are seen or run by teammates | Install at user level only (ADR-0005) | Mitigate |
 
@@ -75,7 +84,7 @@ OS user isolation and keychain; SQLCipher; Ed25519 pack signing with pinned keys
 signed app updates; user-level-only hook install.
 
 ## 5. Gaps and flagged unknowns
-- The judge path (B5) gets its full threat review in the rung-model thread (docs/specs/rung-model.md); the T-B5 rows here are the system-level cross-check.
+- The judge path (B5) gets its full threat review in the rung-model thread (docs/specs/rung-model.md); rows TR-1 to TR-9 come from that review; the T-B5 rows are the system-level cross-check.
 - No component designs yet; every boundary needs its own STRIDE-lite in `/design-slice`.
 - Key recovery pending (ADR-0003).
 - Windows named-pipe ACL and macOS keychain prompts need a spike.
