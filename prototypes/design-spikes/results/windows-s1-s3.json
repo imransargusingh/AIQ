@@ -1,0 +1,91 @@
+{
+  "run_date": "2026-10-31",
+  "os": "Windows 11 Enterprise 10.0.26300",
+  "redaction": {"user": "<user>", "sid": "<sid>"},
+  "toolchain": {
+    "cargo": "1.99.1 (5f94df478 2026-08-27)",
+    "rustc": "1.99.1 (58cf8f9c3 2026-10-13)",
+    "host": "x86_64-pc-windows-msvc",
+    "rustup_installed_this_run": true,
+    "link_exe_on_path": false,
+    "msvc_installs": ["VS Enterprise 2022 17.14.37827.9", "VS Build Tools 2019 16.11.37827.8", "VS Enterprise 2026 18.11.12328.437"],
+    "native_perl": false,
+    "s1_s3_release_build_seconds": 12.2
+  },
+  "s1": {
+    "default_create": "ok",
+    "default_sddl": "O:<sid>D:(A;;FA;;;SY)(A;;FA;;;BA)(A;;FA;;;<sid>)(A;;FR;;;WD)(A;;FR;;;AN)",
+    "user_only_create": "ok",
+    "current_user_sid": "<sid>",
+    "user_only_sddl": "O:<sid>D:P(A;;FA;;;<sid>)",
+    "same_user_connect": "Ok(())",
+    "server_received": "hello",
+    "second_create_same_name": "Err(os error 5, Access is denied)",
+    "default_grants_everyone": "FR",
+    "default_grants_anonymous": "FR",
+    "user_only_holds_only_current_user": true,
+    "cross_account_connect": "not tested (no second local account available)"
+  },
+  "s3a_bench": {
+    "n": 50,
+    "budgets_ms": {"stop_p95": 50, "handoff": 20},
+    "run_aiq_bash_unset": {
+      "bash_resolved_to": "C:\\WINDOWS\\system32\\bash.exe (WSL)",
+      "via_bash_rows_valid": false,
+      "rows": [
+        {"core_up": true, "via_bash": false, "p50_ms": 27.1, "p95_ms": 34.2, "max_ms": 69.0},
+        {"core_up": true, "via_bash": true, "p50_ms": 239.4, "p95_ms": 337.0, "max_ms": 344.8},
+        {"core_up": false, "via_bash": false, "p50_ms": 39.3, "p95_ms": 88.7, "max_ms": 98.8},
+        {"core_up": false, "via_bash": true, "p50_ms": 211.9, "p95_ms": 319.1, "max_ms": 389.2}
+      ],
+      "core_connections_received": 51
+    },
+    "run_git_bash": {
+      "aiq_bash": "C:\\Program Files\\Git\\bin\\bash.exe",
+      "rows": [
+        {"core_up": true, "via_bash": false, "p50_ms": 22.3, "p95_ms": 26.2, "max_ms": 28.4},
+        {"core_up": true, "via_bash": true, "p50_ms": 363.6, "p95_ms": 452.2, "max_ms": 926.7},
+        {"core_up": false, "via_bash": false, "p50_ms": 24.7, "p95_ms": 43.0, "max_ms": 63.4},
+        {"core_up": false, "via_bash": true, "p50_ms": 386.7, "p95_ms": 663.0, "max_ms": 2216.8}
+      ],
+      "core_connections_received": 102
+    }
+  },
+  "s3b_detached_core": {
+    "print_mode": {
+      "claude_version": "2.1.312",
+      "claude_exit": 0,
+      "wall_seconds": 10.1,
+      "spawn_txt": "Ok(\"spawned WITHOUT breakaway (job refused it)\")",
+      "heartbeat_after_exit": ["1793473672 39500", "1793473676 39500"],
+      "core_survived_claude_exit": true,
+      "card_in_stream": true,
+      "card_event": {"type": "system", "subtype": "informational", "content": "Stop says: AIQ spike: compiled hook client ran (event 01a1935c-3bba-74ae-a607-3e84a3d4c8e7).", "level": "notice"},
+      "launcher_shell_in_job": true,
+      "core_in_job": true
+    },
+    "interactive": {
+      "claude_version": "2.1.316 (via Agency wrapper)",
+      "spawn_txt": "Ok(\"spawned with breakaway\")",
+      "text_under_reply": "⎿  Stop says: AIQ spike: compiled hook client ran (event 01a1935f-555d-76b7-b0a9-92cf05dfd852).",
+      "core_ran_full_timer_seconds": 60
+    }
+  },
+  "s3c_sqlcipher": {
+    "built": false,
+    "attempts": [
+      {"perl": "none on PATH", "seconds": 65.3, "first_error": "configuring OpenSSL build: Command 'perl' not found. Is perl installed?"},
+      {"perl": "C:\\Program Files\\Git\\usr\\bin\\perl.exe (5.42.3 x86_64-cygwin-thread-multi)", "seconds": 5.7, "first_error": "Can't locate Locale/Maketext/Simple.pm in @INC (you may need to install the Locale::Maketext::Simple module)"}
+    ],
+    "program_output": null
+  },
+  "s4b_nested": {
+    "permission_flag": "--allowedTools \"Bash(claude:*)\"",
+    "outer_session_id": "01117f98-bc7b-4af6-aa09-38f574ed51a1",
+    "inner_session_id": "f77f9941-3dcb-4401-b3e8-b4995287053c",
+    "session_ids_match": false,
+    "inner_only_vars": ["CLAUDE_CODE_EXECPATH", "CLAUDE_EFFORT"],
+    "common_vars": ["CLAUDECODE", "CLAUDE_AGENT_SDK_MCP_NO_PREFIX", "CLAUDE_AGENT_SDK_VERSION", "CLAUDE_CODE_ACCOUNT_UUID", "CLAUDE_CODE_CHILD_SESSION", "CLAUDE_CODE_DESKTOP_APP_VERSION", "CLAUDE_CODE_DISABLE_CRON", "CLAUDE_CODE_DISABLE_TERMINAL_TITLE", "CLAUDE_CODE_EAGER_FLUSH", "CLAUDE_CODE_EMIT_STARTUP_TIMING", "CLAUDE_CODE_EMIT_TOOL_USE_SUMMARIES", "CLAUDE_CODE_ENABLE_ASK_USER_QUESTION_TOOL", "CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_HOST_SESSION_ID", "CLAUDE_CODE_MESSAGING_SOCKET", "CLAUDE_CODE_MESSAGING_TOKEN", "CLAUDE_CODE_OAUTH_SCOPES", "CLAUDE_CODE_ORGANIZATION_UUID", "CLAUDE_CODE_SDK_HAS_HOST_AUTH_REFRESH", "CLAUDE_CODE_SESSION_ATTENDED", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_SIMPLE", "CLAUDE_CODE_STARTUP_FAILURE_RESULTS", "CLAUDE_CODE_TERMINAL_MCP_TOOLS", "CLAUDE_CODE_USER_EMAIL", "CLAUDE_PID", "CLAUDE_PREVIEW_CLASSIFIER_FLOOR", "CLAUDE_PROJECT_DIR"],
+    "caveat": "outer claude was itself launched from a Claude desktop-app session, so outer is already nested"
+  }
+}

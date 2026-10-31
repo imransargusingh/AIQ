@@ -44,7 +44,10 @@ def bench(n, log):
 
 
 def settings(log):
-    cmd = "AIQ_PROBE_LOG={0} {1} {2}".format(log, sys.executable, COLLECTOR)
+    if os.name == "nt":  # no env-var prefix on Windows; collector defaults to this same log path
+        cmd = '"{0}" "{1}"'.format(sys.executable.replace("\\", "/"), COLLECTOR.replace("\\", "/"))
+    else:
+        cmd = "AIQ_PROBE_LOG={0} {1} {2}".format(log, sys.executable, COLLECTOR)
     obs = {"type": "command", "command": cmd, "async": True}
     return {"hooks": {
         "UserPromptSubmit": [{"hooks": [obs]}],
