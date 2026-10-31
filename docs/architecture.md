@@ -72,7 +72,7 @@ fixes it; if they are fail-open, fire-and-forget pipes, everything else can evol
 |---|---|---|
 | Event normalisation, Task grouping, fast detectors (Opportunities 1–3, 5), budget, cooldowns, D5 adoption rule | **T0** deterministic | Must decide in ≤ 2 s and be explainable (P1, P2) |
 | Job classification (D7) | **T0 first**, T1 classifier if rules fall short | Cheapest sufficient tier; Phase 0 measures agreement |
-| Rung and potential-rung judgement, slow-path Opportunities 4 and 6 | **T3 facts + T0 rubric**: frontier model answers narrow facts, deterministic rules place the rung through the **person's own AI account** (ADR-0007), low priority, ≤ 60 s p95 after a Task closes | Owned by the rung-model spec; never on the fast path; queues (never reroutes) when offline or signed out |
+| Rung and potential-rung judgement, slow-path Opportunities 4 and 6 | **T3 places the rung, T0 floors and guardrails**: frontier model through the **person's own account** (ADR-0007) places it; log/repo-verifiable facts set a floor for Orchestrated and Factory; guardrails lower it, low priority, ≤ 60 s p95 after a Task closes | Owned by the rung-model spec; never on the fast path; queues (never reroutes) when offline or signed out |
 
 ## Component map & boundaries
 ```mermaid
@@ -106,7 +106,7 @@ flowchart LR
   STORE -. key .- KEY
   HOME <--> API
   PK -- "HTTPS pull, verify signature" --> BE
-  RNG -- "judge call: own Anthropic API key / Copilot via vscode.lm or CLI" --> PROV["Person's AI provider\n(already saw the Task)"]
+  RNG -- "judge call: own Anthropic API key / Copilot via vscode.lm" --> PROV["Person's AI provider\n(already saw the Task)"]
   PK --> DET
 ```
 

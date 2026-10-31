@@ -29,17 +29,19 @@ in-the-moment cards). Options were a small on-device model (T2), an AIQ-operated
 person's own AI account.
 
 ## Decision
-- The judge is a **T3** call made by the core through the **person's own tool and sign-in**, sent to
+- The judge is a **T3** call made by the core through the **person's own account**, sent to
   the same provider that already saw the Task unless the person chooses otherwise:
   - Claude (tasks seen by Claude Code): the core calls the Anthropic Messages API directly with the
     **person's own Anthropic API key**, stored in the OS keychain and billed to them. Not their
     Pro/Max sign-in (Imran, 2026-10-31, revised). No `claude -p`, so AIQ's own hooks never see the
     call. Without a key, Claude-seen Tasks get signals-only judging.
-  - Copilot CLI: `copilot -p "<prompt>" -s` with no tools granted.
-  - VS Code: the Language Model API (`vscode.lm`), after the consent dialog, from the AIQ extension.
-- **Facts first:** the model answers narrow facts (F1–F12 in the rung-model spec) to a JSON schema,
-  each asked twice for consistency; deterministic per-job rubric rules (T0) place the rung. Task content
-  is passed as quoted data. Judgments are versioned by fact set + rubric + judge version, never edited.
+  - Copilot (tasks seen by VS Code or Copilot CLI): the VS Code Language Model API (`vscode.lm`) from
+    the AIQ extension, after the consent dialog, on the person's Copilot sign-in. Copilot-seen Tasks
+    queue while VS Code is not running.
+- **How the rung is placed (Imran, 2026-10-31, rung-model Q8/Q9):** the model places the rung. Facts
+  that can be verified from logs or the repo (T0) set a floor for Orchestrated and Factory, and
+  guardrails (e.g. pack "don't delegate" rules) can lower it. The model also answers narrow facts
+  (F1–F12) to a JSON schema, asked twice for consistency. Task content is passed as quoted data. Judgments are versioned by fact set + rubric + judge version, never edited.
 - **Judge calls are tagged** (marker in the prompt and session) and the core never ingests them as
   Tasks.
 - **No account or offline:** judgments queue; they are never rerouted to another provider.
