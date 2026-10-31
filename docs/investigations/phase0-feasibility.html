@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Phase0 Feasibility</title><style>
+:root { color-scheme: light dark; --bg:#f7f5ef; --panel:#fff; --text:#20201d;
+  --muted:#66645f; --line:#d9d5ca; --accent:#3157a4; --code:#f0eee7; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#171816; --panel:#20221f; --text:#f2f1eb; --muted:#b8b6ae;
+    --line:#3d403a; --accent:#8fb0ff; --code:#292c27; }
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text);
+  font:16px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif; }
+main { width:min(920px,calc(100% - 32px)); margin:32px auto; padding:40px;
+  background:var(--panel); border:1px solid var(--line); border-radius:12px; }
+h1,h2,h3,h4,h5,h6 { line-height:1.2; margin:1.5em 0 .55em; }
+h1 { margin-top:0; font-size:2.2rem; } h2 { border-bottom:1px solid var(--line); padding-bottom:.3em; }
+a { color:var(--accent); } code { background:var(--code); padding:.12em .35em; border-radius:4px; }
+pre { overflow:auto; padding:16px; background:var(--code); border-radius:8px; }
+pre code { padding:0; } blockquote { margin:1em 0; padding:.2em 1em; color:var(--muted);
+  border-left:4px solid var(--line); }
+table { width:100%; border-collapse:collapse; margin:1em 0; display:block; overflow:auto; }
+th,td { padding:.55em .75em; border:1px solid var(--line); text-align:left; vertical-align:top; }
+th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); }
+.source { color:var(--muted); font-size:.9rem; margin-bottom:2rem; }
+@media (max-width:640px) { main { width:100%; margin:0; padding:24px 18px; border:0; border-radius:0; } }
+</style></head><body><main><div class="source">Rendered from phase0-feasibility.md</div><h1>Spike: Phase 0 feasibility (task grouping, job, rung)</h1>
+<p><strong>Verdict: GO to real-data validation, with two design changes.</strong> On synthetic data, all three questions pass for rungs 1 to 3. Rung 5, and half of rung 4, need signals that are not in session transcripts. Job classification needs a short prompt excerpt; structured signals alone are not enough.</p>
+<table><thead><tr><th>Question</th><th>Verdict (synthetic)</th><th>Best configuration</th><th>Key number</th></tr></thead><tbody><tr><td>(a) Group session events into tasks</td><td><strong>Go</strong></td><td>Model grouping, one call per window</td><td>B-cubed F1 0.98 to 1.00 (rules: 0.93 to 0.95)</td></tr><tr><td>(b) Classify each task&#x27;s job</td><td><strong>Go, with an excerpt</strong></td><td>Sonnet or Haiku, signals + minimised excerpt</td><td>Job accuracy 93 to 98%; 0 other-job tasks leaked into an alpha pack at threshold 0.7</td></tr><tr><td>(b&#x27;) Classify the job from signals only (no prompt text)</td><td><strong>No-go</strong></td><td>n/a</td><td>Job accuracy 77 to 80%</td></tr><tr><td>(c) Judge current rung, rungs 1 to 3</td><td><strong>Go</strong></td><td>Sonnet, excerpt</td><td>88% (dev) and 100% (held-out) exact</td></tr><tr><td>(c) Judge current rung 4</td><td><strong>Conditional</strong></td><td>Sonnet, excerpt</td><td>4 of 8 exact, rest one rung low</td></tr><tr><td>(c) Judge current rung 5</td><td><strong>No-go from transcripts</strong></td><td>n/a</td><td>0 of 8; always judged 3 or 4</td></tr><tr><td>(c) Judge potential rung</td><td><strong>Conditional</strong></td><td>Sonnet, excerpt</td><td>77 to 80% exact, 100% within one rung</td></tr></tbody></table>
+<p><strong>Confidence: Inferred.</strong> Every number is measured, but on synthetic data whose labels were written by Claude (dev set: this session; held-out set: a separate model call). The judge is also Claude, so the numbers measure agreement between Claude and Claude using the same rubric, not agreement with expert humans. The Phase 0 probes in the spec (&quot;label a week of the team&#x27;s own sessions&quot;) still have to run on real data before alpha. See <a href="#what-would-change-this-verdict">What would change this verdict</a>.</p>
+<h2>What was tested</h2>
+<ul><li><strong>Reader.</strong> <code>prototypes/phase0-spike/aiq_spike/normalize.py</code> reads both surfaces into one list of human</li></ul>
+<p>turns. It reuses AI-Forward&#x27;s <code>session-profile.py</code> for discovery and parsing (<code>claude_sessions</code>, <code>copilot_sessions</code>, <code>_load_events</code>, <code>_text_of</code>, <code>_tool_result_texts</code>, <code>_args_of</code>) by loading it from the installed pack, not by copying it. All 107 labelled turns were recovered from both formats.</p>
+<ul><li><strong>Corpus.</strong> Two synthetic corpora in the on-disk formats AIQ will read</li></ul>
+<p>(<code>~/.claude/projects/&lt;slug&gt;/&lt;session&gt;.jsonl</code>, <code>~/.copilot/session-store.db</code> + <code>session-state/&lt;id&gt;/events.jsonl</code>). No real person&#x27;s data was read.</p>
+<ul><li><em>Dev:</em> 30 hand-written tasks in 14 sessions, 66 turns (14 Code a change, 10 Write a spec or doc,</li></ul>
+<p>6 other jobs; rungs 1 to 5). The session plan is designed to be hard: several tasks per session a few minutes apart, a task resumed hours later on the other surface, a 70-minute idle gap inside one task, and a design note followed by its implementation on the same feature.</p>
+<ul><li><em>Held-out:</em> 20 tasks in 10 sessions, 41 turns, written by a separate Sonnet call that never saw</li></ul>
+<p>the dev tasks, the grouper or the judge (<code>prototypes/phase0-spike/data/heldout_scenarios.json</code>). Different domain (rail timetabling), terser phrasing.</p>
+<ul><li><strong>Grouping.</strong> Three strategies: a 5-minute gap baseline, a deterministic heuristic (time gap,</li></ul>
+<p>shared files, prompt similarity, cue words), and one model call that assigns every turn in the window to a task.</p>
+<ul><li><strong>Judge.</strong> One call per task returns job, current rung, potential rung, confidences, evidence, gap</li></ul>
+<p>and blockers against the design doc&#x27;s rubric (<code>prototypes/phase0-spike/aiq_spike/judge.py</code>). Two input modes:</p>
+<ul><li><em>signals:</em> counts and flags only (prompts, re-prompts, structure markers, tools, tests and</li></ul>
+<p>checks run, sub-agents, file kinds). No prompt text and no paths.</p>
+<ul><li><em>excerpt:</em> signals plus each prompt cut to 300 characters (at most 8), file paths, and commands</li></ul>
+<p>the agent ran.</p>
+<ul><li><strong>Models.</strong> Claude Haiku 5.5 and Sonnet 5.5 through the local <code>claude -p</code> with tools, settings and</li></ul>
+<p>MCP off, and schema-checked JSON output. This matches ADR-0007 on the architecture branch (judge runs through the person&#x27;s own AI account). Every configuration ran twice to measure repeatability. Judging used the gold task grouping, so judge errors are measured apart from grouping errors.</p>
+<h2>Results</h2>
+<h3>(a) Task grouping</h3>
+<table><thead><tr><th>Strategy</th><th>Dev F1</th><th>Dev tasks exact</th><th>Held-out F1</th><th>Held-out tasks exact</th></tr></thead><tbody><tr><td>5-minute gap baseline</td><td>0.90</td><td>18 / 30</td><td>0.92</td><td>13 / 20</td></tr><tr><td>Heuristic (rules)</td><td>0.95</td><td>24 / 30</td><td>0.93</td><td>15 / 20</td></tr><tr><td>Model, Haiku (2 runs)</td><td>1.00, 0.98</td><td>30, 28</td><td>1.00, 1.00</td><td>20, 20</td></tr><tr><td>Model, Sonnet (2 runs)</td><td>0.98, 0.98</td><td>28, 28</td><td>1.00, 1.00</td><td>20, 20</td></tr></tbody></table>
+<p>F1 is B-cubed over turns.</p>
+<ul><li>The model&#x27;s only error: it joined the redis question (<code>o01</code>) to the rate-limiting task resumed just</li></ul>
+<p>before it (<code>c05</code>). A human could argue for that grouping too.</p>
+<ul><li>The model kept the design note and its implementation as two tasks, and joined the task resumed</li></ul>
+<p>across surfaces and hours. The heuristic failed both of these.</p>
+<ul><li>The heuristic was tuned on the dev set (one rule added after the first run). Its held-out F1</li></ul>
+<p>(0.93) is barely above the baseline (0.92), so the rules overfit.</p>
+<ul><li>Latency: 6 to 13 s per call for a window of 41 to 66 turns.</li></ul>
+<p><strong>Recommendation:</strong> group with the model in the slow path. Use rules only as a cheap live estimate of &quot;is this still the same task&quot; for in-the-moment detectors, which do not wait for the model.</p>
+<h3>(b) Job classification</h3>
+<table><thead><tr><th>Configuration</th><th>Dev accuracy</th><th>Held-out accuracy</th><th>Repeat agreement (job)</th></tr></thead><tbody><tr><td>Haiku, signals</td><td>0.77</td><td>0.80</td><td>1.00 / 1.00</td></tr><tr><td>Haiku, excerpt</td><td>0.98</td><td>0.98</td><td>0.97 / 0.95</td></tr><tr><td>Sonnet, signals</td><td>0.80</td><td>0.80</td><td>1.00 / 1.00</td></tr><tr><td>Sonnet, excerpt</td><td>0.93</td><td>0.95</td><td>1.00 / 1.00</td></tr></tbody></table>
+<p>The product rule is <em>Unclassified</em> when the job is &quot;other&quot; or confidence is below the pack threshold. With excerpts and a threshold of 0.7:</p>
+<ul><li>Precision on classified tasks was 100% in all four excerpt runs.</li><li>No other-job task reached an alpha pack.</li><li>80 to 97% of alpha-job tasks were classified. The rest fell back to core Opportunities, which is</li></ul>
+<p>the designed safe failure (US-7).</p>
+<p>The misclassified tasks were short and context-free: a one-line typo fix, and a pasted snippet with &quot;what&#x27;s wrong with this&quot;. The judge gave them low confidence (0.4 to 0.6), so a 0.7 threshold routes them to Unclassified rather than the wrong pack.</p>
+<p><strong>Recommendation:</strong> set the alpha pack threshold at <strong>0.7</strong>. The judge needs the minimised excerpt to classify the job. ADR-0007 already sends task content to the person&#x27;s own model account, so this costs no extra privacy. It should still be shown in the capture log and be possible to turn off. With the excerpt off, expect about 20% wrong jobs.</p>
+<h3>(c) Rung and potential rung</h3>
+<table><thead><tr><th>Configuration</th><th>Rung exact (dev / held-out)</th><th>Within 1</th><th>Mean signed error</th><th>Potential exact</th><th>Repeat agreement (rung)</th></tr></thead><tbody><tr><td>Haiku, signals</td><td>0.57 / 0.53</td><td>0.92 / 0.90</td><td>−0.52 / −0.53</td><td>0.57 / 0.48</td><td>0.77 / 0.95</td></tr><tr><td>Haiku, excerpt</td><td>0.77 / 0.55</td><td>0.95 / 0.90</td><td>−0.12 / −0.05</td><td>0.77 / 0.58</td><td>0.83 / 0.90</td></tr><tr><td>Sonnet, signals</td><td>0.53 / 0.60</td><td>0.93 / 0.83</td><td>−0.53 / −0.58</td><td>0.67 / 0.55</td><td>1.00 / 0.95</td></tr><tr><td><strong>Sonnet, excerpt</strong></td><td><strong>0.80 / 0.85</strong></td><td><strong>0.97 / 0.90</strong></td><td>−0.23 / −0.25</td><td><strong>0.77 / 0.80</strong></td><td><strong>1.00 / 1.00</strong></td></tr></tbody></table>
+<p>Sonnet with excerpt, by gold rung (both corpora, 2 runs each):</p>
+<table><thead><tr><th>Gold rung</th><th>Exact</th><th>Errors</th></tr></thead><tbody><tr><td>1 Assisted</td><td>26 / 26</td><td>none</td></tr><tr><td>2 Directed</td><td>32 / 34</td><td>2 judged 1</td></tr><tr><td>3 Delegated</td><td>20 / 24</td><td>4 judged 2</td></tr><tr><td>4 Orchestrated</td><td>4 / 8</td><td>4 judged 3</td></tr><tr><td>5 Factory</td><td>0 / 8</td><td>2 judged 4, 6 judged 3</td></tr></tbody></table>
+<ul><li><strong>Rung 5 cannot be seen in a transcript.</strong> The judge always saw the typed slash command and the</li></ul>
+<p>checked-in workflow file. It noted both, then stopped at 3 or 4, because the rubric requires that &quot;others can trigger it&quot;, and nothing in the session shows that. This is the rubric working as written, not a model failure. AIQ needs a <strong>reuse signal from the repo</strong>: is the workflow file versioned, how many authors has it had, and do CI or other people&#x27;s sessions run it (counts only, as the design doc&#x27;s Reuse signals already say).</p>
+<ul><li><strong>Rung 4 is judged one rung low half the time.</strong> Two Sonnet runs on two of the four rung-4 tasks</li></ul>
+<p>called them 3, despite sub-agents, a spec and automated gates. Fix the rubric wording before tuning the model: say what counts as &quot;several agents coordinated&quot; when the sub-agents are visible.</p>
+<ul><li><strong>Signals-only mode biases low by about half a rung.</strong> It also reaches only 53 to 60% exact.</li></ul>
+<p>Prompt structure is the main signal for rungs 1 to 3, and counts cannot carry it.</p>
+<ul><li><strong>Potential rung</strong> was within one rung in 100% of Sonnet excerpt runs. For coaching, the judge</li></ul>
+<p>flagged 95 to 100% of tasks that have a next rung (recall). But 15 to 27% of its &quot;next rung&quot; calls were tasks already at their right rung (precision 0.73 to 0.85). The coaching loop should not nudge on potential until precision is measured on real data. Coaching only on potential-confidence ≥ 0.8 is the first thing to try.</p>
+<ul><li><strong>Haiku is cheaper but less stable.</strong> It costs about $0.001 per task against about $0.01 for</li></ul>
+<p>Sonnet (list-rate estimates reported by the CLI; on a subscription this is quota, not dollars). Its rung agreement between two runs was 0.83 to 0.90, against 1.00 for Sonnet, and held-out exact accuracy dropped to 0.55. Sonnet answered in 5.4 s p50 and 7.5 s p95. Haiku was slower in this environment, at 8.3 s p50.</p>
+<h3>Hook probe (requested by the architecture thread)</h3>
+<p><code>prototypes/phase0-spike/hook_probe/</code> installs a throwaway Claude Code project with async <code>UserPromptSubmit</code> and <code>PostToolUse</code> hooks and a sync <code>Stop</code> hook. It ran 3 live headless sessions (Claude Code 2.1.316).</p>
+<ul><li>All three hooks fired on every run. The payloads carry the prompt, tool name, input and response,</li></ul>
+<p><code>duration_ms</code>, <code>session_id</code> and <code>transcript_path</code>, enough to feed grouping without reading the session store.</p>
+<ul><li>The Stop hook&#x27;s <code>{&quot;systemMessage&quot;: ...}</code> reached the person as a notice (&quot;Stop says: …&quot;) and did</li></ul>
+<p>not enter the model&#x27;s context.</p>
+<ul><li>A Python collector process costs <strong>35 ms p50, 47 ms p95, 58 ms max</strong> (50 cold runs, wall time).</li></ul>
+<p>That is inside the 50 ms p95 budget with almost no margin. Use a compiled collector, or a tiny client that hands off to the running core, for the sync Stop hook.</p>
+<ul><li><strong>Not tested:</strong> Copilot CLI hooks (Copilot CLI is not installed or signed in in this environment)</li></ul>
+<p>and rendering in the interactive TUI (only the headless stream).</p>
+<h2>What would change this verdict</h2>
+<ul><li><strong>Real, hand-labelled sessions (the main gate).</strong> Label one week of the team&#x27;s own Claude Code and</li></ul>
+<p>Copilot CLI sessions, with task boundaries, job, rung and potential, by two people who did not write the rubric. Run <code>run_spike.py</code> against those stores on the labeller&#x27;s own machine. <strong>No-go if</strong> Sonnet excerpt rung accuracy on rungs 1 to 3 is below 70% exact, job precision at 0.7 is below 90%, or grouping F1 is below 0.85. The synthetic tasks are cleaner than real work. Real sessions mix topics, wander, and include long auto-compacted runs.</p>
+<ul><li><strong>Format check.</strong> The reader matches every field <code>session-profile.py</code> reads. Fields it does not</li></ul>
+<p>read were modelled from memory: Claude Code&#x27;s <code>&lt;command-name&gt;</code> wrapper for slash commands, and Copilot tool argument names. Confirm them on one real transcript per surface.</p>
+<ul><li><strong>Human edits are invisible.</strong> The rubric&#x27;s &quot;the person makes most of the edits&quot; (the line between</li></ul>
+<p>rung 2 and 3) cannot be seen in CLI transcripts when the person edits in their editor. The VS Code collector or a git diff after the agent&#x27;s turn would supply it. The synthetic tasks state it in the prompts, which flatters the judge.</p>
+<ul><li><strong>Window size.</strong> Model grouping ran on the whole corpus in one call (41 to 66 turns). Real weeks</li></ul>
+<p>are larger, so the window and the rule for carrying tasks across windows still need designing.</p>
+<h2>Recommended changes</h2>
+<ol><li><strong>Rung model / rubric (rung-model spec):</strong> add a repo reuse signal for rung 5, clarify rung 4</li></ol>
+<p>when sub-agents and gates are visible, and keep &quot;mixed signals → lower rung&quot; (it worked).</p>
+<ol><li><strong>Job packs:</strong> set the classification threshold to 0.7, and require the minimised excerpt for job</li></ol>
+<p>classification (the person can turn it off, at a known accuracy cost).</p>
+<ol><li><strong>Architecture:</strong> use model grouping in the slow path, rules only for live detectors, and a</li></ol>
+<p>non-Python collector for sync hooks. Default judge model: Sonnet, with Haiku as a cheaper option once its stability is measured on real data.</p>
+<ol><li><strong>Next probe:</strong> run this harness on hand-labelled real sessions (above), plus one Copilot CLI hook</li></ol>
+<p>end to end.</p>
+<h2>Reproduce</h2>
+<pre><code class="language-bash">python3 prototypes/phase0-spike/run_spike.py --out /tmp/aiq-spike \
+  --endpoint claude-cli:claude-haiku-5-5 --endpoint claude-cli:claude-sonnet-5-5 --reps 2
+python3 prototypes/phase0-spike/hook_probe/run_probe.py --runs 3 --bench 50</code></pre>
+<p>The measured outputs from this run are committed in <code>prototypes/phase0-spike/results/</code>: <code>results.json</code>, per-call judgments with latency, tokens and evidence, and <code>hook-probe.json</code>. Model outputs vary between runs; Sonnet&#x27;s did not vary across two runs here.</p></main></body></html>
