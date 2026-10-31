@@ -61,10 +61,12 @@ FACT_SCHEMA = {
         "F6_output_checked": _fact("The output was reviewed or checked before use (diff read, tests run, sources checked, person says they checked)"),
         "F7_written_brief": _fact("A written spec, brief, template or instructions file was given to the agent"),
         "F12_step_by_step": _fact("The person drove the agent one small instruction per turn, steering each result"),
+        "F13_whole_outcome_handed_over": _fact("A whole outcome was handed to the agent with done criteria, rather than one piece or step"),
         "evidence": {"type": "array", "items": {"type": "string"}},
     },
     "required": ["job", "job_confidence", "F2_person_share_pct", "F4_goal_context_constraints",
-                 "F5_reprompts_added_information", "F6_output_checked", "F7_written_brief", "F12_step_by_step", "evidence"],
+                 "F5_reprompts_added_information", "F6_output_checked", "F7_written_brief", "F12_step_by_step",
+                 "F13_whole_outcome_handed_over", "evidence"],
 }
 
 FACT_SYSTEM = """You are AIQ's fact reader. You read ONE task a person did with AI agents and answer narrow questions
@@ -83,6 +85,8 @@ F5 every re-prompt added new information (true if there were no re-prompts).
 F6 the output was reviewed or checked before use.
 F7 a written spec, brief, template or instructions file was given to the agent.
 F12 the person drove the agent step by step, one small instruction per turn.
+F13 a whole outcome was handed to the agent with done criteria (what finished looks like, checks to
+    pass), rather than one piece or one step at a time.
 evidence: up to 3 short observations behind the facts."""
 
 
@@ -121,3 +125,47 @@ def place(log, mf, th=0.7, f2_source="model", factory_needs_orchestrated=True, m
     factory = reused and (orchestrated if factory_needs_orchestrated else delegated)
     rung = 5 if factory else 4 if orchestrated else 3 if delegated else 2 if directed else 1
     return rung, uncertain, reasons
+
+
+def rules_v2(log, mf, th=0.7):
+    """Rung-model spec rubric after the spike's first facts-first run (PR #3 revision):
+    Delegated = F1 + F13 + F6, ruled out by F12 or F2 >= 50% (F2 from git; unknown in CLI, so no
+    rule-out); Orchestrated = Delegated + F7 + F8 (one sub-agent with an automated gate counts);
+    Factory = F9 runs by others + checks run by the agent or automation, no Orchestrated prerequisite.
+    Returns (rung, flags) where flags holds the clamps' inputs for the hybrid."""
+    f5 = mf["F5_reprompts_added_information"]
+    directed = (_ok(mf["F4_goal_context_constraints"], th) and _ok(mf["F6_output_checked"], th)
+                and not (log["reprompts"] >= 2 and f5["value"] is False and f5["confidence"] >= th))
+    step = mf["F12_step_by_step"]
+    share = log["F2_person_share"]
+    f13 = _ok(mf["F13_whole_outcome_handed_over"], th)
+    delegated = (log["F1_agent_made_edits"] and f13 and _ok(mf["F6_output_checked"], th)
+                 and not (step["value"] is True and step["confidence"] >= th)
+                 and not (share is not None and share >= 50))
+    f8 = log["F8_subagents"] >= 1 and log["F3_checks_run_by"] == "agent"
+    orchestrated = delegated and (log["F7_spec_file_given"] or _ok(mf["F7_written_brief"], th)) and f8
+    w = log["F9_workflow"]
+    f9 = bool(w["versioned"] and (w["runs_by_others_30d"] or 0) > 0)
+    factory = f9 and log["F3_checks_run_by"] == "agent"
+    rung = 5 if factory else 4 if orchestrated else 3 if delegated else 2 if directed else 1
+    return rung, {3: delegated, 4: orchestrated, 5: factory}
+
+
+def guarded(holistic_rung, holds):
+    """Hybrid chosen on PR #3 (Q8): the model places the rung, and guardrails only lower it, to the
+    highest rung at or below the model's whose guardrail holds. Rungs 1-2 have no guardrail.
+    `holds` is the second value of rules_v2: {3: Delegated holds, 4: Orchestrated holds, 5: Factory holds}."""
+    r = holistic_rung
+    while r > 2 and not holds[r]:
+        r -= 1
+    return r
+
+
+def guarded_with_floor(holistic_rung, holds):
+    """Variant: guardrails lower as above, and log-verifiable Orchestrated/Factory facts (F8, F9 with
+    runs by others, checks by the agent) also act as a floor, raising an under-called task."""
+    r = guarded(holistic_rung, holds)
+    for top in (5, 4):
+        if holds[top] and r < top:
+            return top
+    return r

@@ -109,6 +109,21 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <p>Recommendation for the rung-model spec:</p>
 <ul><li>Keep facts-first. Its errors are in the rules, which can be fixed and explained.</li><li>Add the &quot;whole outcome handed over&quot; fact.</li><li>Base Factory on F9 plus checks.</li><li>Take F2 from git where it exists.</li><li>Set the fact threshold from the fact check.</li></ul>
 <p><strong>Collecting the week of real sessions is now a fact check, not a rung labelling exercise</strong>: the person answers yes or no on the model-read facts of 20 to 30 of their own tasks.</p>
+<h3>Guarded hybrid (rung-model spec Q8)</h3>
+<p>The spec then moved to a hybrid. The model places the rung, and deterministic guardrails can only lower it:</p>
+<ul><li><strong>Delegated</strong> needs F1, F13 and F6, and is ruled out by F12 or by F2 ≥ 50%.</li><li><strong>Orchestrated</strong> needs Delegated plus F7, F8 and checks run by the agent.</li><li><strong>Factory</strong> needs F9 with runs by others, plus checks run by the agent.</li></ul>
+<p><code>score_hybrid.py</code> scores this offline. It pairs each Sonnet holistic judgment with a fresh Sonnet fact reading of the same task and run (100 pairs, with the new fact F13), against the two variants below:</p>
+<table><thead><tr><th>Variant (fact threshold 0.5)</th><th>R1</th><th>R2</th><th>R3</th><th>R4</th><th>R5</th><th>Exact</th><th>Within 1</th></tr></thead><tbody><tr><td>Holistic only</td><td>26/26</td><td>32/34</td><td>20/24</td><td>4/8</td><td>0/8</td><td>0.82</td><td>0.94</td></tr><tr><td>Rules only (revised rubric)</td><td>26/26</td><td>8/34</td><td>18/24</td><td>8/8</td><td>6/8</td><td>0.66</td><td>0.94</td></tr><tr><td>Guarded hybrid (lower only)</td><td>26/26</td><td>32/34</td><td>16/24</td><td>4/8</td><td>0/8</td><td>0.78</td><td>0.92</td></tr><tr><td>Guarded hybrid + fact floor for 4-5</td><td>26/26</td><td>32/34</td><td>16/24</td><td><strong>8/8</strong></td><td><strong>6/8</strong></td><td><strong>0.88</strong></td><td><strong>0.98</strong></td></tr></tbody></table>
+<p>At fact threshold 0.7 every variant is worse. The guarded hybrid falls to 0.71 exact, and the version with a fact floor to 0.80.</p>
+<ul><li><strong>Guardrails that only lower cannot fix this judge&#x27;s errors.</strong> Its errors are under-calls (rung 4</li></ul>
+<p>judged 3, rung 5 judged 3 or 4). Across 100 pairs, the guardrails lowered 11 placements at threshold 0.5:</p>
+<ul><li>4 were correct placements that became wrong;</li><li>none fixed an over-call.</li></ul>
+<p>At threshold 0.7 they lowered 20 placements, and 11 of those had been correct.</p>
+<ul><li>**Rules are right where the facts come from logs and the repo, and wrong where the line is</li></ul>
+<p>judgment.** Rules alone place rungs 4 and 5 well, because F8 and F9 come from logs and repo metadata. They place rung 2 badly: 14 of 34 runs land on 3 and 12 on 1.</p>
+<ul><li><strong>The best combination uses facts in both directions.</strong> The model places the rung, and guardrails</li></ul>
+<p>lower it at rung 3. Log- and repo-verifiable facts for Orchestrated and Factory set a <em>floor</em> that can raise the rung. That scored 0.88 exact and 0.98 within one, versus 0.82 and 0.94 for the holistic judge alone.</p>
+<ul><li><strong>Caveats.</strong></li><li>This variant was designed after seeing these results, on the same data.</li><li>The F9 reuse counts are simulated, so the rung 5 gain depends on repo metadata existing.</li><li>Treat it as the hypothesis for the fact check to confirm, not as a result.</li></ul>
 <h2>What would change this verdict</h2>
 <ul><li><strong>Real sessions, checked by facts (the main gate).</strong> Follow the rung-model spec&#x27;s Q6, not a large</li></ul>
 <p>golden set. Collect one week of the team&#x27;s own Claude Code and Copilot CLI sessions on each person&#x27;s own machine. Each person confirms, for 20 to 30 of their own tasks:</p>

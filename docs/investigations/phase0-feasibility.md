@@ -229,6 +229,48 @@ Recommendation for the rung-model spec:
 **Collecting the week of real sessions is now a fact check, not a rung labelling exercise**: the
 person answers yes or no on the model-read facts of 20 to 30 of their own tasks.
 
+### Guarded hybrid (rung-model spec Q8)
+
+The spec then moved to a hybrid. The model places the rung, and deterministic guardrails can only
+lower it:
+
+- **Delegated** needs F1, F13 and F6, and is ruled out by F12 or by F2 ≥ 50%.
+- **Orchestrated** needs Delegated plus F7, F8 and checks run by the agent.
+- **Factory** needs F9 with runs by others, plus checks run by the agent.
+
+`score_hybrid.py` scores this offline. It pairs each Sonnet holistic judgment with a fresh Sonnet
+fact reading of the same task and run (100 pairs, with the new fact F13), against the two variants
+below:
+
+| Variant (fact threshold 0.5) | R1 | R2 | R3 | R4 | R5 | Exact | Within 1 |
+|---|---|---|---|---|---|---|---|
+| Holistic only | 26/26 | 32/34 | 20/24 | 4/8 | 0/8 | 0.82 | 0.94 |
+| Rules only (revised rubric) | 26/26 | 8/34 | 18/24 | 8/8 | 6/8 | 0.66 | 0.94 |
+| Guarded hybrid (lower only) | 26/26 | 32/34 | 16/24 | 4/8 | 0/8 | 0.78 | 0.92 |
+| Guarded hybrid + fact floor for 4-5 | 26/26 | 32/34 | 16/24 | **8/8** | **6/8** | **0.88** | **0.98** |
+
+At fact threshold 0.7 every variant is worse. The guarded hybrid falls to 0.71 exact, and the
+version with a fact floor to 0.80.
+
+- **Guardrails that only lower cannot fix this judge's errors.** Its errors are under-calls (rung 4
+  judged 3, rung 5 judged 3 or 4). Across 100 pairs, the guardrails lowered 11 placements at
+  threshold 0.5:
+  - 4 were correct placements that became wrong;
+  - none fixed an over-call.
+
+  At threshold 0.7 they lowered 20 placements, and 11 of those had been correct.
+- **Rules are right where the facts come from logs and the repo, and wrong where the line is
+  judgment.** Rules alone place rungs 4 and 5 well, because F8 and F9 come from logs and repo
+  metadata. They place rung 2 badly: 14 of 34 runs land on 3 and 12 on 1.
+- **The best combination uses facts in both directions.** The model places the rung, and guardrails
+  lower it at rung 3. Log- and repo-verifiable facts for Orchestrated and Factory set a *floor* that
+  can raise the rung. That scored 0.88 exact and 0.98 within one, versus 0.82 and 0.94 for the
+  holistic judge alone.
+- **Caveats.**
+  - This variant was designed after seeing these results, on the same data.
+  - The F9 reuse counts are simulated, so the rung 5 gain depends on repo metadata existing.
+  - Treat it as the hypothesis for the fact check to confirm, not as a result.
+
 ## What would change this verdict
 
 - **Real sessions, checked by facts (the main gate).** Follow the rung-model spec's Q6, not a large
