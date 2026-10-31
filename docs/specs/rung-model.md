@@ -34,7 +34,7 @@ Sibling spec: `docs/specs/coaching-loop.md` (consumes this model's output for Op
 | R6 | Only the person sees their judgments; model calls are on device or zero-retention | Imran, 2026-10-31 (privacy rule) |
 | R7 | Evaluation uses a golden set of synthetic and volunteer-donated tasks labeled by experts, never users' private data | Design > Rung model tab |
 | Q1 | Scope: the judge, its explanation and the person's correction. The rung distribution and opportunity views get their own spec | Imran, 2026-10-31 (decision card) |
-| Q2 | What the judge may see and send | **Pending** (recommended: signals only by default; excerpts and zero-retention cloud opt-in) |
+| Q2 | The judge runs **on device only** and reads the task's prompts and outputs there, while the device keeps them. Nothing leaves the device. A cloud judge is not in this spec; it is added later, as its own decision, only if the on-device judge misses the US-7 bar | Proposed to Imran 2026-10-31 after he asked whether the judge needs the prompts and why two judges; **awaiting his confirmation** |
 | Q3 | What a correction does | **Pending** (recommended: replaces the shown rung for that task, tunes the person's own calibration) |
 | Q4 | Accuracy bar before the judge drives coaching | **Pending** (recommended: current rung ≥ 70% exact, ≥ 95% within one; potential ≥ 60% exact, ≥ 90% within one) |
 | Q5 | Does weak context management cap a task at Directed? | **Pending** (recommended: a rubric signal, not a hard cap, until it can be detected reliably) |
@@ -102,8 +102,8 @@ Ubiquitous language:
   that rule a rung out. Versioned pack data.
 - **Signal profile**: the structured facts extracted from one task on device (interaction shape,
   delegation, verification, reuse, task context, environment). Contains no raw prompt text.
-- **Content excerpt**: a minimized, redacted slice of the task's prompts or output the judge may read
-  only under Q2's rule.
+- **Task content**: the task's prompts and AI outputs as kept on the device. The judge reads it on
+  device while it is retained; it never leaves the device (Q2).
 - **Rung judgment**: the judge's verdict on one task: current rung, potential rung, ceiling, a
   confidence for each, evidence, gap and blockers, stamped with the rubric and judge versions.
 - **Current rung**: the highest rung whose rubric signals are clearly met. Mixed signals place the
@@ -126,7 +126,7 @@ Ubiquitous language:
   evaluation.
 
 Entities: Rung judgment, Correction, Calibration profile, Golden task, Rubric (versioned).
-Value objects: Rung, Signal profile, Content excerpt, Evidence item, Gap, Blocker, Confidence.
+Value objects: Rung, Signal profile, Task content, Evidence item, Gap, Blocker, Confidence.
 
 Aggregates and the invariant each protects:
 - **Rung judgment** (root: the judgment of one Task): potential is never below current and never more
@@ -165,11 +165,11 @@ Aggregates and the invariant each protects:
 - **Given** 3 corrections in the same direction on one job's tasks within 30 days **When** the next task of that job is judged **Then** the calibration profile shifts that job's placement threshold one step in that direction, and the person can see and reset that adjustment.
 - **Given** a correction **When** saved **Then** nothing about it leaves the device.
 
-**US-5 — As anyone working with AI, I want the judge to read as little of my work as it needs.** (pending Q2)
-- **Given** default settings **When** a task is judged **Then** the judge reads only the Signal profile, and a network capture over a week shows no task content leaving the device.
-- **Given** the person turns on content excerpts **When** a task is judged **Then** the excerpt is at most 2,000 characters, has secrets and credentials redacted by the collector rules, and the person can open exactly what was read from the judgment panel.
-- **Given** the task's raw content is past the device's raw-retention window **When** it is re-judged **Then** the judge uses signals only.
-- **Given** the person turns on the zero-retention cloud judge **When** a cloud call fails or the provider's zero-retention status cannot be confirmed **Then** the task is judged on device or left unjudged, never sent elsewhere.
+**US-5 — As anyone working with AI, I want the judge to understand what I asked for without my work ever leaving my machine.** (Q2)
+- **Given** a closed task **When** it is judged **Then** the judge reads the Signal profile and the task content on device, and a network capture over a week shows no task content, signal or judgment leaving the device.
+- **Given** a judgment **When** the person opens "What was read?" **Then** the panel lists exactly the prompts, outputs and signals the judge used.
+- **Given** the task's content is past the device's raw-retention window **When** it is re-judged **Then** the judge uses signals only and the judgment says so.
+- **Given** the person paused capture during part of a task **When** it is judged **Then** content from the paused period is never read, because it was never captured.
 
 **US-6 — As anyone relying on AIQ's views and tips, I want low-confidence judgments kept out of coaching, so that a guess never drives a tip.**
 - **Given** a judgment below the pack's confidence threshold **When** stored **Then** it is marked Uncertain, shown as "uncertain" wherever it appears, and never used by the coaching loop.
@@ -212,8 +212,8 @@ Alpha job examples (pack data, illustrative):
 | Functional suitability | US-7 accuracy, consistency and gaming bars per job, measured on each release |
 | Performance efficiency | Judgment ≤ 60 s p95 after task close on the reference laptop; judging runs at low priority and keeps the core within the coaching-loop CPU and memory budgets when idle (to confirm in the Phase 0 spike) |
 | Reliability | A judge failure never blocks a collector or the coaching fast path; unjudged tasks are queued and retried |
-| Security | The judge has no network access unless the cloud judge is on; pack rubrics are data and cannot run code |
-| Privacy | R6; signals only by default (Q2); corrections and calibration stay on device; full export and delete cover judgments |
+| Security | The judge has no network access; pack rubrics are data and cannot run code |
+| Privacy | R6; the judge reads content on device only and nothing leaves it (Q2); corrections and calibration stay on device; full export and delete cover judgments |
 | Usability | In a 5-person hallway test, ≥ 4 can say why a task got its rung from the panel alone |
 | Accessibility | Panel keyboard-operable and screen-reader readable; rung never conveyed by colour alone |
 | Compatibility | Same as coaching-loop spec |
@@ -224,8 +224,8 @@ Alpha job examples (pack data, illustrative):
 A task with one prompt; a task with 10,000+ events; a task spanning two surfaces and a day boundary;
 a task the person deletes after it was judged; a judge or rubric version upgrade mid-week (old
 judgments keep their versions); a task with an agent run that produced nothing; a person with no
-agent access at all; an Unclassified task; a correction on an Uncertain judgment; a cloud call that
-times out; a golden task whose two experts disagree by two or more rungs (adjudicate or drop).
+agent access at all; an Unclassified task; a correction on an Uncertain judgment; a task re-judged
+after its content passed the retention window; a golden task whose two experts disagree by two or more rungs (adjudicate or drop).
 
 ### Evaluation regime
 - **Golden set:** for alpha, at least 100 tasks per alpha job, mixing synthetic traces and tasks
@@ -249,7 +249,7 @@ times out; a golden task whose two experts disagree by two or more rungs (adjudi
 
 ### Applicable governance lenses
 - [x] Quality attributes / NFRs: above
-- [x] Threat model (STRIDE): applies (judge reads task signals; optional cloud call). **Gap:** run in `/define-architecture`
+- [x] Threat model (STRIDE): applies (judge reads prompts and code on device). **Gap:** run in `/define-architecture`
 - [x] Privacy & data governance: R6, US-5, golden-set donation consent
 - [x] Accessibility: NFR row; Part C
 - [x] Performance budget: NFR row; to confirm in the spike
@@ -275,8 +275,7 @@ times out; a golden task whose two experts disagree by two or more rungs (adjudi
 - **Task judgment panel:** Task title · Current rung (with confidence) · Next step (potential + gap) ·
   Why (evidence items) · Blockers · Correct this · History (model judgments and corrections).
 - **Entry points:** a coaching card's Evidence link; a task row in AIQ home (views spec).
-- **Settings > Rung model:** content excerpts (off/on), cloud judge (off/on), my calibration (view,
-  reset).
+- **Settings > Rung model:** my calibration (view, reset per job).
 - Labels for the glossary: *Rung, Current rung, Next step, Ceiling, Evidence, Blocker, Right rung,
   Uncertain, Correct this, Corrected by you, Calibration.*
 
@@ -308,12 +307,11 @@ flowchart TD
   conf2 -->|yes| corr["Corrected by you; calibration updated"]
   corr --> undo{Undo?}
   undo -->|yes| panel
-  act -->|"What was read?"| read["Show signals and any excerpt used"]
+  act -->|"What was read?"| read["Show the prompts, outputs and signals used"]
 ```
 
 Recovery paths: a correction can be undone from History; calibration can be reset per job in
-Settings; turning excerpts or the cloud judge off takes effect for the next task and never deletes
-past judgments.
+Settings.
 
 ### Wireframe-level structure
 - **Panel (AIQ home, and a VS Code side panel when opened from a card):** header with task title and
@@ -369,7 +367,7 @@ correction), G15 (granular feedback), G16 (convey consequences: what a correctio
 ## Flagged risks & residual unknowns
 - Grouping events into tasks and classifying jobs are unproven. Depends on the Phase 0 feasibility spike.
 - Whether a small on-device model can meet the US-7 bar is unknown. Probe: run the judge on the first golden set in Phase 0 or early Phase 1.
-- Signals-only judging may be too weak to reach the bar (Q2). Probe: compare signals-only vs with excerpts on the golden set.
+- A small on-device model may miss the US-7 bar even with the prompts. Probe: run it on the first golden set; if it misses, decide then whether to add a cloud judge (Q2).
 - Golden-set labels may disagree too much to be a benchmark. Probe: measure inter-rater agreement on the first 50 tasks.
 - Task close detection (idle timeout vs artifact boundary) is not defined here; inherited from task grouping.
 - Comparables are from memory (Flagged / Inferred). Probe: `/collectknowledge` on LLM-as-judge reliability.
