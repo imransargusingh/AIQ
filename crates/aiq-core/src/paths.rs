@@ -86,17 +86,14 @@ impl Paths {
         self.runtime.join("core.sock")
     }
 
-    /// Pipe name on Windows: one per OS user. A second user's core can never take over this name
-    /// (first-instance flag + user-only DACL, spike S1).
+    /// Pipe name on Windows: one per OS user and runtime directory. Derived from `self` (never from the
+    /// environment), so every caller holding the same `Paths` reaches the same core. A second user's core
+    /// can never take over this name (first-instance flag + user-only DACL, spike S1).
     #[cfg(windows)]
     pub fn pipe_name(&self) -> String {
         let user = std::env::var("USERNAME").unwrap_or_else(|_| "user".into());
         let clean: String = user.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_').collect();
-        match std::env::var_os("AIQ_HOME") {
-            // Tests and portable runs get their own pipe, keyed by the directory.
-            Some(h) if !h.is_empty() => format!("aiq-core-{clean}-{:x}", fnv1a(h.to_string_lossy().as_bytes())),
-            _ => format!("aiq-core-{clean}"),
-        }
+        format!("aiq-core-{clean}-{:016x}", fnv1a(self.runtime.to_string_lossy().to_lowercase().as_bytes()))
     }
 
     /// Create the data and runtime directories, owner-only.

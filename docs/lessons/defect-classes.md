@@ -18,7 +18,7 @@ summary: >-
 
 *Governed by `continuous-improvement.md` (CI1–CI12). One entry per class, not per bug.*
 
-**Status counts:** controlled 3 · partially-controlled 0 · uncontrolled 0
+**Status counts:** controlled 5 · partially-controlled 0 · uncontrolled 0
 
 ---
 
@@ -51,3 +51,25 @@ summary: >-
 - **Control:** single definition `aiq_domain::clock::deliveries_counted_today` (local day ≥ today) and the
   property test `cap_never_exceeded_for_any_clock_moves`; the store returns raw (utc, offset) pairs so no
   second definition exists in SQL.
+
+### DC-004 — A detached child inherits the parent's stdio pipes on Windows, so the host never sees EOF
+- **Signature:** a short-lived process (the hook) starts a long-lived one (the core) with null stdio, but
+  Windows `CreateProcess` with handle inheritance passes every inheritable handle, including the hook's own
+  stdout/stderr pipes from its host. The host's read never ends while the core lives.
+- **Why it survives:** Linux closes nothing it doesn't need to (fds 0–2 are replaced by `/dev/null`), so the
+  Linux suite is green; the Windows spike's harness did not read the hook's stdout to EOF.
+- **Instances:** 2026-10-31, PR #9 Windows CI: `e2e_core_down_prompt_starts_core_once_core_survives_and_drains_spool`
+  hung until the 40-minute job timeout.
+- **Sweep:** `spawn::core_detached` is the only place AIQ starts a long-lived process (hook and CLI share it).
+- **Control:** `core_detached` clears `HANDLE_FLAG_INHERIT` on the std handles before spawning; the e2e test
+  reads the hook's stdout to EOF on the Windows CI job, so a regression hangs and fails the job (timeout
+  lowered to 25 minutes).
+
+### DC-005 — An address derived from process environment instead of the value passed in
+- **Signature:** `Paths::pipe_name` read `AIQ_HOME` from the environment, while every other path came from
+  the `Paths` value. A caller holding a `Paths` for another directory reached a different pipe.
+- **Why it survives:** on Linux the socket is a file inside the `Paths` directory, so the bug exists only on
+  Windows.
+- **Instances:** 2026-10-31, PR #9 Windows CI: `e2e_wrong_token_frame_closed_nothing_stored` (NotFound).
+- **Control:** the pipe name is a hash of `Paths::runtime`; the e2e test builds `Paths::at(dir)` with no
+  environment override, so a regression fails on the Windows job.

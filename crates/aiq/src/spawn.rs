@@ -11,6 +11,22 @@ pub fn core_detached() -> std::io::Result<()> {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
+        // Windows children inherit every inheritable handle, including this process's own stdin/stdout/
+        // stderr pipes from Claude Code, even when the child's stdio is null. A core holding them would
+        // keep the host's pipe open for its whole life, so the host never sees EOF. Stop inheriting them.
+        // SAFETY: GetStdHandle/SetHandleInformation on this process's own std handles; failures are ignored.
+        unsafe {
+            use windows_sys::Win32::Foundation::{HANDLE_FLAG_INHERIT, SetHandleInformation};
+            use windows_sys::Win32::System::Console::{
+                GetStdHandle, STD_ERROR_HANDLE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE,
+            };
+            for h in [STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE] {
+                let handle = GetStdHandle(h);
+                if !handle.is_null() {
+                    SetHandleInformation(handle, HANDLE_FLAG_INHERIT, 0);
+                }
+            }
+        }
         use windows_sys::Win32::System::Threading::{
             CREATE_BREAKAWAY_FROM_JOB, CREATE_NEW_PROCESS_GROUP, DETACHED_PROCESS,
         };
