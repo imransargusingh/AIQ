@@ -55,7 +55,7 @@ or manager (social, not technical: AIQ must give them nothing to ask for).
 | T-B4-3 | B4 | Tampering | Someone edits the store to fake progress | Only matters to the person themselves (no one else sees it) | Accept |
 | T-B5-1 | B5 | Info disclosure | Judge call sends a Task to a provider that had not seen it | Same-provider rule; other providers only by the person's explicit choice | Mitigate |
 | T-B5-2 | B5 | Info disclosure | Work-account admin logs and retention capture judge calls | Disclosed at setup; the person can turn judging off; judge prompt carries only the Task, not history | Accept (disclosed) |
-| T-B5-3 | B5 | Tampering | AIQ's own hooks observe the judge call and create a feedback loop | Judge calls tagged and skipped at ingest; hooks disabled for the call | Mitigate |
+| T-B5-3 | B5 | Tampering | AIQ's own hooks observe the judge call and create a feedback loop | Claude judging goes straight to the API (no hooks involved); Copilot CLI judge calls tagged and skipped at ingest | Mitigate |
 | T-B5-5 | B5 | Tampering | Prompt injection in Task content steers the judge (e.g. text telling it to rate the Task Factory) | Task content passed as quoted data in a fixed envelope; judge answers narrow facts (F1–F12) to a JSON schema; deterministic rubric places the rung; each fact asked twice and disagreement discards it | Mitigate |
 | T-REPO-2 | — | Info disclosure | Reading repo metadata (git log authors, CI runs) for F9 pulls in colleagues' names | Read local git only; store counts, not names; never call hosting APIs | Mitigate |
 | T-B5-4 | B5 | Elevation | Judge CLI run with tool access acts on the repo | No tools granted; run in an empty temp working directory | Mitigate |
@@ -65,7 +65,7 @@ or manager (social, not technical: AIQ must give them nothing to ask for).
 | TR-4 | B5 | Tampering | Malformed judge output is trusted | Schema-failing responses discarded | Mitigate |
 | TR-5 | B5 | Tampering | Model-written evidence carries HTML, links or commands into a card | Rendered as plain text only | Mitigate |
 | TR-6 | B5 | Elevation | A malicious `claude`/`copilot` on PATH or repo config hijacks judge calls | Judge binary resolved by absolute path at setup; run outside any repo | Mitigate |
-| TR-7 | B5 | Info disclosure | AIQ handles provider credentials | AIQ never reads provider OAuth tokens; an API key, if used, lives in the OS keychain | Mitigate |
+| TR-7 | B5 | Info disclosure | AIQ handles provider credentials | AIQ never reads provider OAuth tokens; the person's Anthropic API key lives only in the OS keychain, is sent only to the Anthropic API, and is never logged or exported | Mitigate |
 | TR-8 | B5 | DoS (cost) | Judging burns the person's quota | Person-set daily judge budget; lazy/batched re-judging; queue when spent | Mitigate |
 | TR-9 | B5 | Repudiation | No record of what was sent where | Per-call send log with version stamps, viewable locally | Mitigate |
 | T-SOC-1 | — | Info disclosure (social) | A manager asks the person to "show their AIQ" | No views built for others; share types are fixed and previewed; nothing to export wholesale | Mitigate (design) |
@@ -76,7 +76,6 @@ or manager (social, not technical: AIQ must give them nothing to ask for).
 |---|---|---|---|---|
 | T-B1-4 | Pending Imran | Malware running as the same user can already read every file AIQ reads | Full local compromise exposes AIQ data too | If AIQ ever stores data the user's own tools do not already hold |
 | T-B5-2 | Imran (ADR-0007) | Judging through the person's own account is the chosen design | Admin of a work account can see judge calls | If an on-device judge becomes good enough |
-| Provider terms (ADR-0007) | Imran, 2026-10-31 | Owner confirmed AIQ may call models under the person's own credentials | Anthropic's published Claude Code terms restrict third-party use of Free/Pro/Max sign-in; an account action or a forced switch to API keys is possible | If Anthropic or GitHub changes or enforces terms; before public release |
 | T-B4-3 | Pending Imran | Data is private to the person; tampering only fools themselves | None to others | If aggregates or sharing use these values (then sign shares) |
 
 ## 4. Cross-cutting controls

@@ -11,8 +11,8 @@ links:
   - { to: spec-rung-model, rel: implements }
 review-by: 2027-04-29
 summary: >-
-  In the alpha the rung judge is a frontier model reached through the person's own AI tool and
-  sign-in (Claude Code, Copilot CLI, VS Code's language model API). No on-device judge, no AIQ
+  In the alpha the rung judge is a frontier model reached through the person's own account: their own
+  Anthropic API key for Claude, and their Copilot sign-in via VS Code's language model API or Copilot CLI. No on-device judge, no AIQ
   servers in the path.
 ---
 
@@ -31,8 +31,10 @@ person's own AI account.
 ## Decision
 - The judge is a **T3** call made by the core through the **person's own tool and sign-in**, sent to
   the same provider that already saw the Task unless the person chooses otherwise:
-  - Claude Code: `claude -p --output-format json --json-schema <rubric schema>` with no tools granted
-    and AIQ's hooks disabled for that call (via `--settings`), using the person's login.
+  - Claude (tasks seen by Claude Code): the core calls the Anthropic Messages API directly with the
+    **person's own Anthropic API key**, stored in the OS keychain and billed to them. Not their
+    Pro/Max sign-in (Imran, 2026-10-31, revised). No `claude -p`, so AIQ's own hooks never see the
+    call. Without a key, Claude-seen Tasks get signals-only judging.
   - Copilot CLI: `copilot -p "<prompt>" -s` with no tools granted.
   - VS Code: the Language Model API (`vscode.lm`), after the consent dialog, from the AIQ extension.
 - **Facts first:** the model answers narrow facts (F1–F12 in the rung-model spec) to a JSON schema,
@@ -43,7 +45,6 @@ person's own AI account.
 - **No account or offline:** judgments queue; they are never rerouted to another provider.
 - Judging uses the person's quota; budgets per day are set in settings.
 - Every call is recorded locally (P10): provider, model, rubric version, tier, Task ref, outcome.
-- **Fallback:** if a tool's terms do not allow this use, the person's own API key for that provider.
 
 ## Alternatives considered
 - **On-device T2 model:** rejected for alpha by Imran; may return if the golden set shows it is enough
@@ -55,7 +56,7 @@ person's own AI account.
   only to a provider that already saw it.
 - **Negative / accepted trade-offs:** judge calls appear in the tool's own session history and in a
   work account's admin usage/audit logs, and that account's retention applies; this is disclosed at
-  setup. Uses the person's quota. Depends on CLI flags that can change.
+  setup. Uses the person's quota. Depends on CLI flags that can change (Copilot CLI). Claude judging needs people to create and pay for an API key.
 - **Follow-ups / new risks:**
   - **Terms check (done 2026-10-31, reading only; not legal advice):**
     - **Anthropic: blocking for consumer sign-in.** Claude Code's legal page says OAuth sign-in "is
@@ -66,16 +67,15 @@ person's own AI account.
       through Free, Pro, or Max plan credentials on behalf of their users"
       (https://code.claude.com/docs/en/legal-and-compliance). AIQ calling `claude -p` on the person's
       subscription could read as that.
-    - **Owner ruling (Imran, 2026-10-31):** it is OK for AIQ to call the models under the person's own
-      credentials. Recorded as an accepted risk (threat model, accepted-risk register). Keep the
-      person's own API key as a supported fallback so the Claude path can switch without redesign if
-      Anthropic objects.
+    - **Owner ruling (Imran, 2026-10-31, revised):** Claude judging uses each person's own Anthropic
+      API key, which the terms explicitly allow when usage is billed to the key owner. No subscription
+      sign-in is used, so no accepted risk remains on the Anthropic side.
     - **GitHub: no blocker found.** `vscode.lm` is GitHub's sanctioned route for extensions to use the
       person's Copilot models with consent, under the Copilot extensibility acceptable use policy;
       Copilot CLI programmatic mode is documented. Confirm against the current Copilot product terms
       before alpha.
-  - Spike: run each call path end to end; measure the 60 s p95 budget; confirm `--settings` disables
-    AIQ's hooks for judge calls.
+  - Spike: run each call path end to end; measure the 60 s p95 budget; confirm Copilot CLI judge calls are not
+    observed by AIQ's own hooks.
   - VS Code consent must be triggered by a user action (first-run setup).
 
 ## Evidence

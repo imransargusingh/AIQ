@@ -106,7 +106,7 @@ flowchart LR
   STORE -. key .- KEY
   HOME <--> API
   PK -- "HTTPS pull, verify signature" --> BE
-  RNG -- "judge call via person's own CLI / vscode.lm" --> PROV["Person's AI provider\n(already saw the Task)"]
+  RNG -- "judge call: own Anthropic API key / Copilot via vscode.lm or CLI" --> PROV["Person's AI provider\n(already saw the Task)"]
   PK --> DET
 ```
 
@@ -153,7 +153,7 @@ B2 pack content → core; B3 core → backend; B4 store at rest; B5 core → the
 | [0004](adr/0004-core-language.md) | Core language | Proposed (pending Imran) |
 | [0005](adr/0005-collector-contract.md) | Collectors are fail-open, fire-and-forget, schema-versioned pipes | Proposed |
 | [0006](adr/0006-packs-as-signed-data.md) | Packs are signed data; code only in a WASM sandbox; caps and thresholds live in packs | Proposed |
-| [0007](adr/0007-rung-judge-via-own-account.md) | Rung judge runs through the person's own AI account; no on-device judge in alpha | Accepted (Imran) |
+| [0007](adr/0007-rung-judge-via-own-account.md) | Rung judge runs through the person's own account (own Anthropic API key for Claude; Copilot via VS Code's model API); no on-device judge in alpha | Accepted (Imran) |
 
 ## Delivery phasing (vertical slices)
 | Phase | End-to-end capability | Real | Mocked (seam = contract) | Human validation | Test validation | Unblocks |
@@ -181,7 +181,7 @@ B2 pack content → core; B3 core → backend; B4 store at rest; B5 core → the
 - Copilot CLI hooks configured at repo level (`.github/hooks/`) are visible to teammates; AIQ must
   install at user level only (`~/.copilot/hooks/`), and Claude Code hooks in user settings, never in
   a repo.
-- Terms of Anthropic and GitHub for a local app driving subscription models (ADR-0007): must check before alpha.
+- GitHub Copilot terms for the judge path: no blocker found; confirm against current product terms before alpha (ADR-0007).
 - Session-store formats are undocumented and can change. Owned by the Phase 0 spike thread.
 - Task grouping and Job classification accuracy unproven (spec risks).
 
