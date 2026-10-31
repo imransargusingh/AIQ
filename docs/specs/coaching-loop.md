@@ -9,7 +9,7 @@ tags: [coaching, triggers, coaching-card, phase-1]
 links: []
 review-by: 2026-11-30
 summary: >-
-  What AIQ's coaching loop must do for a developer in VS Code and one CLI agent: notice one habit
+  What AIQ's coaching loop must do for a developer in VS Code, Claude Code and Copilot CLI: notice one habit
   holding them back during a task, offer one actionable step at the right moment, and check whether
   the habit stuck. Private to the person.
 ---
@@ -24,7 +24,7 @@ Source of truth: AIQ brief and Design > Coaching tab (https://claude.ai/artifact
 | # | Decision | Source |
 |---|---|---|
 | D1 | Specify the coaching loop (card + triggers) first | Imran, 2026-10-31 (decision card) |
-| D2 | Surfaces: VS Code plus one CLI agent | Brief, Phase 0/1 scope. Which agent: **pending** |
+| D2 | Surfaces: VS Code, Claude Code and GitHub Copilot CLI, all from the start | Imran, 2026-10-31 (decision card) |
 | D3 | Frequency: at most one in-the-moment tip per session, a small daily cap, per-trigger cooldowns | Design > Coaching > Guardrails (recorded owner ruling) |
 | D4 | Only the person sees their data; AIQ never posts anything others can see | Imran, 2026-10-31 (privacy rule) |
 
@@ -51,7 +51,8 @@ fixes the test, and over the next week AIQ sees her include test output up front
 tasks. It records the habit as adopted, privately.
 
 ### In scope / Out of scope (explicit non-goals)
-In scope: detect → choose → show → collect feedback → check adoption, for VS Code and one CLI agent;
+In scope: detect → choose → show → collect feedback → check adoption, for VS Code, Claude Code and
+GitHub Copilot CLI;
 the coaching card; trigger rules (condition, cooldown, surface, priority); the interruption budget;
 per-person tip ranking and suppression from feedback.
 
@@ -97,7 +98,15 @@ _Pending Part A._
 ## Part C — UI specification
 _Pending Part B._
 
+### Surface parity (two CLI agents)
+The loop, card content, budget and adoption rule are identical on every surface; only the collector
+and renderer differ. Interruption budget and cooldowns are per person across surfaces, not per
+surface, so using two agents never doubles the tips. Where a surface cannot show a card mid-task,
+the card waits for that surface's next pause; the spec does not lower the bar for that surface.
+
 ## Flagged risks & residual unknowns
+- Whether each CLI agent's hooks can show a message to the person mid-session (vs only at session
+  end or in a status line) is unverified for both Claude Code and Copilot CLI; Phase 0 spike item.
 - Hook coverage and latency per surface are unproven until the Phase 0 spike.
 - Grouping events into Tasks is a load-bearing assumption with no evidence yet.
 
