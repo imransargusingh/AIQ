@@ -39,6 +39,7 @@ Sibling spec: `docs/specs/coaching-loop.md` (consumes this model's output for Op
 | Q4 | Accuracy bars as in US-7: model-read facts right on ≥ 90% of check tasks; tasks built at a known rung land on it ≥ 90%; expert sanity check ≥ 70% exact and ≥ 95% within one (potential ≥ 60% / ≥ 90%); in alpha ≥ 70% of next steps not flagged "isn't useful" and "evidence is wrong" on ≤ 10%. Tunable after the first check runs | Imran, 2026-10-31 (decision card) |
 | Q6 | **Facts first, plus cheap labels.** The model answers narrow questions about how the work was done (task facts); the rubric's rules turn facts into a rung. Accuracy comes from tasks done at a known rung on purpose (labels by construction), the team's own sessions, a small expert sanity check, two-run consistency, and private feedback signals in alpha. Replaces the large golden set | Imran, 2026-10-31 (decision card, after raising that a golden set is costly and tasks vary too much to generalize from few examples) |
 | Q5 | Context management (model and reasoning choice, lean context, durable facts in instructions files, handling compaction) is recorded as task facts and may be coached, but **never caps or lowers a rung** until those facts meet the US-7 fact bar | Imran, 2026-10-31 (decision card) |
+| Q7 | AIQ may call the judge models under the person's own credentials | Imran, 2026-10-31 (thread reply: "I can confirm it's ok for AIQ to call the models under the users credentials"). **Open conflict:** Anthropic's published Claude Code terms say third-party apps may not route requests through a person's Free, Pro or Max credentials (https://code.claude.com/docs/en/legal-and-compliance). Asked Imran what his confirmation rests on; until then the Claude route is the person's own API key |
 
 ## Part A — Functional specification
 
@@ -258,9 +259,9 @@ Alpha job examples (pack data, illustrative):
 | Attribute | Requirement (measurable) |
 |---|---|
 | Functional suitability | US-7 fact accuracy, rule, construction, sanity-check, consistency and gaming bars per job, measured on each release |
-| Performance efficiency | Judgment ≤ 60 s p95 from judge call start; judging adds no measurable load to the core's coaching-loop budgets; a person's daily judging cost is visible to them (to confirm in the Phase 0 spike) |
+| Performance efficiency | Judgment ≤ 60 s p95 from judge call start; judging adds no measurable load to the core's coaching-loop budgets; judging stays within a daily budget the person sets, and its cost is visible to them (TR-8) |
 | Reliability | A judge failure never blocks a collector or the coaching fast path; unjudged tasks are queued and retried |
-| Security | The judge calls only the person's chosen judge account endpoint; credentials stay in the OS keychain; pack rubrics are data and cannot run code; task content is passed to the judge as quoted data, never as instructions (prompt-injection gaming case in US-7) |
+| Security | See the threat review (TR-1 to TR-9). The judge calls only the person's chosen judge account; AIQ never holds provider OAuth tokens and keeps any API key in the OS keychain; the judge binary is resolved by absolute path; pack rubrics are data and cannot run code; task content is passed to the judge as quoted data, never as instructions (prompt-injection gaming case in US-7) |
 | Privacy | R6; content goes only to the person's own judge account (Q2); judgment feedback and guidance preferences stay on device; full export and delete cover judgments |
 | Usability | In a 5-person hallway test, ≥ 4 can say why a task got its rung from the panel alone |
 | Accessibility | Panel keyboard-operable and screen-reader readable; rung never conveyed by colour alone |
@@ -336,7 +337,7 @@ a fact the logs cannot answer and the content was deleted (fact unknown, rule no
 - **Task judgment panel:** Task title · Current rung (with confidence) · Next step (potential + gap) ·
   Why (evidence items) · Blockers · This doesn't fit · History (judgments and feedback).
 - **Entry points:** a coaching card's Evidence link; a task row in AIQ home (views spec).
-- **Settings > Rung model:** judge account (choose, sign in, cross-provider on/off, cost so far),
+- **Settings > Rung model:** judge account (choose, sign in, cross-provider on/off, daily budget, cost so far),
   my guidance preferences (view, reset per job).
 - Labels for the glossary: *Rung, Current rung, Next step, Ceiling, Evidence, Blocker, Right rung,
   Uncertain, This doesn't fit, You flagged this.*
@@ -430,6 +431,44 @@ feedback), G15 (granular feedback), G16 (convey consequences: what feedback chan
 - Uncertain, Right rung, capped and flagged states each carry a text label.
 - All panel controls work by keyboard alone; CLI output is readable with `NO_COLOR=1`.
 
+## Threat review: the judge path (STRIDE)
+Run 2026-10-31 at Imran's request, over boundary **B5** (core → the person's own AI provider) and the
+rung-model surfaces. It builds on the system threat model on the `define-architecture` branch
+(`docs/security/threat-model.md`, T-B5-1 to T-B5-5, T-REPO-2), which already covers the items marked
+*existing*. New items are numbered TR-n and proposed for that register.
+
+**Assets on this path:** task content (prompts, agent output, code), the person's own edits, the
+judge account's credentials and quota, judgments and evidence (reveal how someone works).
+
+| ID | STRIDE | Threat | Control (requirement on this spec) | Status |
+|---|---|---|---|---|
+| T-B5-1 | Info disclosure | A task is sent to a provider that had not seen it | Same-provider rule (US-5) | Existing |
+| TR-1 | Info disclosure | A task spanning surfaces (Copilot Chat, then Claude Code) sends one provider's prompts to the other | Only content the judge's provider already received is sent; the rest is judged from log facts only. A stricter form of T-B5-1 | New |
+| TR-2 | Info disclosure | The person's own edits (editor changes, local git diff for F2) are content no provider saw | F2 and other log facts are computed on device; their raw inputs are never put in a judge call | New |
+| T-B5-2 | Info disclosure | Work-account admin logs and retention capture judge calls | Disclosed at setup; judging can be turned off (US-5) | Existing, accepted |
+| T-REPO-2 | Info disclosure | F9 repo reuse facts pull in colleagues' names | Local git only; counts, not names; no hosting API calls | Existing |
+| TR-3 | Info disclosure | A pack's fact questions are written to pull more content into the judge call | The core alone builds the judge envelope and decides which content is attached; a pack supplies question text and answer schema only | New |
+| T-B5-5 | Tampering | Prompt injection in task content steers the judge | Content as quoted data; narrow facts to a JSON schema; deterministic rules; two runs (US-7 gaming case) | Existing |
+| TR-4 | Tampering | Judge output that fails the schema, or carries extra text, is trusted | Any response that fails the schema is discarded and the fact is unknown; free-text fields are length-capped | New |
+| TR-5 | Tampering / elevation | Model-written evidence or gap text, steered by injected content, renders as markup or links in the VS Code panel or a card | All model-written text renders as plain text: no HTML, Markdown links or commands | New |
+| T-B5-3 | Tampering | AIQ observes its own judge calls | Tagged and skipped at ingest (US-5) | Existing |
+| T-B5-4 | Elevation | The judge CLI acts on the repo | No tools granted; empty temp working directory | Existing |
+| TR-6 | Spoofing | A `claude` or `copilot` executable earlier on PATH, or in the repo, impersonates the judge | The core resolves the judge binary by absolute path at setup and runs it outside any repo; same-user malware stays out of scope (T-B1-4) | New |
+| TR-7 | Spoofing / info disclosure | AIQ handles the person's provider credentials | AIQ never reads or stores the provider's OAuth tokens: it calls the provider's own CLI or the VS Code Language Model API, which hold them. An API key, if used, lives in the OS keychain | New |
+| TR-8 | Denial of service (cost) | Runaway judging drains the person's quota or premium requests: event floods creating tasks, two runs per fact, re-judging every task after a rubric update | A daily judge budget the person sets (calls and, where known, cost), visible in Settings; re-judging after an update is lazy (on open) or batched within the budget; when the budget is spent, tasks queue | New |
+| TR-9 | Repudiation | The person can't tell what was sent where, or which version judged a task | "What was read?" lists content, account and time per call (US-5); judgments record fact set, rubric and judge versions | New (control already in spec) |
+
+New acceptance criteria from this review (added to US-5 and US-6 scope):
+- **Given** a task with content from two providers **When** judged by one **Then** only that provider's own prompts and outputs are sent; facts needing the rest come from logs or stay unknown. (TR-1)
+- **Given** any judge call **When** captured **Then** it contains no editor edits or local diff text written by the person. (TR-2)
+- **Given** a judge response that fails the fact schema **When** received **Then** it is discarded and the affected facts are unknown. (TR-4)
+- **Given** evidence or gap text containing HTML, Markdown links or command syntax **When** rendered **Then** it shows as literal text. (TR-5)
+- **Given** the person's daily judge budget is spent **When** a task closes **Then** it is queued, and no further judge call is made that day. (TR-8)
+
+Residual risk: a work-account admin can see judge calls (accepted, T-B5-2); judge quality on
+adversarial content is only as good as the US-7 gaming bar; same-user malware is out of scope.
+Independent security review still recommended: this pass was done by the spec's author.
+
 ## Flagged risks & residual unknowns
 - Grouping events into tasks and classifying jobs are unproven. Depends on the Phase 0 feasibility spike.
 - **Provider terms (partly checked, architecture thread, 2026-10-31, docs read only):** Anthropic's Claude Code legal page does not permit third-party apps to route requests through a person's Free, Pro or Max credentials, so judging via `claude -p` on a subscription looks blocked; the person's own Anthropic API key is allowed (https://code.claude.com/docs/en/legal-and-compliance). For Copilot, the VS Code Language Model API is the sanctioned extension route; no blocker found. Which route alpha uses (own API key, Copilot, or an agreement with Anthropic) is being decided with Imran in the architecture work; this spec's Q2 holds for any of them, since each is the person's own account.
@@ -450,7 +489,7 @@ feedback), G15 (granular feedback), G16 (convey consequences: what feedback chan
 - Data & Persistence Architect: every concept has a home; judgments are versioned by fact set, rubric and judge version and never edited; Check set consent invariant added. Grain and durable representation go to `/define-architecture` and `/design-slice`. Resolved.
 - UX Researcher/IA: missing states for "other provider not allowed" and "queued" added to flow and panel states. Judge-account setup (with the work-account disclosure) has acceptance criteria in US-5 but no drawn flow; drawn in the AIQ home / Settings spec. Recorded.
 - UX & Accessibility: every non-default state has a text label; rung never by colour alone. Resolved.
-- Security & Privacy (hard): the judge now sends task content to the person's own provider account. Prompt injection via task content added as a gaming case and a security NFR. **Recorded, not cleared:** STRIDE for the judge path must be run in the architecture threat model (in progress on the define-architecture branch), and the provider terms check must pass before alpha.
+- Security & Privacy (hard): the judge sends task content to the person's own provider account. STRIDE for the judge path run 2026-10-31 at Imran's request (Threat review section): nine new or confirmed controls, five new acceptance criteria, residual risk stated. **Recorded, not self-cleared:** the reviewer is the spec's author, so an independent security review is still needed before Accepted. Provider terms: see Q7.
 - Caveat: every seat was played by the same author, so this is not the independent review the pack expects. Recommend a human or separate-session review before marking Accepted.
 
 ---
