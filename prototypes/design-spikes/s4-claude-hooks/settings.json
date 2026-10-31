@@ -1,0 +1,4 @@
+{"hooks":{
+ "UserPromptSubmit":[{"hooks":[{"type":"command","command":"\"/tmp/aiq-s4/dump.sh\" UserPromptSubmit","async":true,"timeout":5}]}],
+ "Stop":[{"hooks":[{"type":"command","command":"\"/tmp/aiq-s4/dump.sh\" Stop","timeout":5}]}]
+}}

@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Privacy Review</title><style>
+:root { color-scheme: light dark; --bg:#f7f5ef; --panel:#fff; --text:#20201d;
+  --muted:#66645f; --line:#d9d5ca; --accent:#3157a4; --code:#f0eee7; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#171816; --panel:#20221f; --text:#f2f1eb; --muted:#b8b6ae;
+    --line:#3d403a; --accent:#8fb0ff; --code:#292c27; }
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text);
+  font:16px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif; }
+main { width:min(920px,calc(100% - 32px)); margin:32px auto; padding:40px;
+  background:var(--panel); border:1px solid var(--line); border-radius:12px; }
+h1,h2,h3,h4,h5,h6 { line-height:1.2; margin:1.5em 0 .55em; }
+h1 { margin-top:0; font-size:2.2rem; } h2 { border-bottom:1px solid var(--line); padding-bottom:.3em; }
+a { color:var(--accent); } code { background:var(--code); padding:.12em .35em; border-radius:4px; }
+pre { overflow:auto; padding:16px; background:var(--code); border-radius:8px; }
+pre code { padding:0; } blockquote { margin:1em 0; padding:.2em 1em; color:var(--muted);
+  border-left:4px solid var(--line); }
+table { width:100%; border-collapse:collapse; margin:1em 0; display:block; overflow:auto; }
+th,td { padding:.55em .75em; border:1px solid var(--line); text-align:left; vertical-align:top; }
+th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); }
+.source { color:var(--muted); font-size:.9rem; margin-bottom:2rem; }
+@media (max-width:640px) { main { width:100%; margin:0; padding:24px 18px; border:0; border-radius:0; } }
+</style></head><body><main><div class="source">Rendered from privacy-review.md</div><h1>Privacy Review</h1>
+<p><em>System-level pass written during `/define-architecture`. Section 2 is regenerated from component designs with `python3 docs/ai-forward-pack/scripts/docs-graph.py rollup --heading &quot;Privacy analysis (LINDDUN-lite)&quot; --type design` once they exist.</em></p>
+<h2>1. Personal-data inventory</h2>
+<table><thead><tr><th>Category</th><th>Examples</th><th>Where stored</th><th>Where it flows</th><th>Purpose</th><th>Retention</th><th>Owning design</th></tr></thead><tbody><tr><td>Raw AI interaction content</td><td>Prompts, agent replies, tool inputs/outputs, code excerpts</td><td>Encrypted store, <code>content</code> table</td><td>Judge calls, only to the provider that already saw it (ADR-0007)</td><td>Evidence links; rung judgement</td><td>Until the person deletes it (ADR-0002)</td><td>store, judge client</td></tr><tr><td>Derived signals</td><td>Re-prompt counts, Task/Job, durations</td><td>Encrypted store, facts</td><td>Nowhere</td><td>Detection, habits</td><td>Until deleted</td><td>store</td></tr><tr><td>Coaching history</td><td>Cards shown, feedback, habit states, rung judgments</td><td>Encrypted store, facts</td><td>Nowhere</td><td>Coaching, progress</td><td>Until deleted</td><td>store</td></tr><tr><td>Repo metadata</td><td>Distinct author <strong>count</strong>, CI run counts, workflow file present</td><td>Encrypted store</td><td>Nowhere</td><td>Rung floor facts (F9)</td><td>Until deleted</td><td>git reader</td></tr><tr><td>Settings</td><td>Daily cap (default 5), role preset, quiet hours</td><td>Encrypted store</td><td>Nowhere</td><td>Behaviour</td><td>Until changed</td><td>core</td></tr><tr><td>Credentials</td><td>Store key, the person&#x27;s Anthropic API key</td><td>OS keychain</td><td>API key to Anthropic API only</td><td>Encryption; judging</td><td>Until removed</td><td>core</td></tr></tbody></table>
+<h2>2. Findings (system level, LINDDUN-lite)</h2>
+<table><thead><tr><th>Category</th><th>Finding</th><th>Control</th></tr></thead><tbody><tr><td>Linking</td><td>Activity across three surfaces is linked into one profile</td><td>That is the purpose; profile never leaves the device</td></tr><tr><td>Identifying</td><td>Repo metadata could name colleagues</td><td>Store counts only, never names</td></tr><tr><td>Non-repudiation</td><td>Judge calls appear in the provider&#x27;s own logs and a work account&#x27;s admin logs</td><td>Disclosed at setup; judging can be turned off</td></tr><tr><td>Detecting</td><td>A colleague could see AIQ hooks in a repo</td><td>Hooks install at user level only (ADR-0005)</td></tr><tr><td>Disclosure</td><td>Unlimited retention grows exposure over time</td><td>Encryption at rest; store size shown; delete-older-than</td></tr><tr><td>Unawareness</td><td>The person may not know what is captured</td><td>Capture log; opt-in per surface; pause everywhere</td></tr><tr><td>Non-compliance</td><td>Monitoring tools can need works-council review in some regions (brief, Risks)</td><td>Engage legal before any rollout beyond volunteers</td></tr></tbody></table>
+<h3>2a. Component privacy register (generated)</h3>
+<p><em>Generated with `docs-graph.py rollup` from component designs; do not edit by hand.</em></p>
+<table><thead><tr><th>source</th><th>Data flow / category</th><th>LINDDUN finding</th><th>Disposition</th><th>Control / rationale</th><th>Retention and rights path</th></tr></thead><tbody><tr><td><a href="../design/claude-code-skeleton.md">design-claude-code-skeleton</a></td><td>Prompt text (may hold code, customer data, secrets) → store</td><td>D: disclosure on a shared or lost machine</td><td>mitigate</td><td>Encrypted store; user-only files; no network</td><td>Kept until the person deletes it (ADR-0002); <code>aiq forget --all</code> deletes the store, spool and keychain entry. Delete-one and older-than arrive in Phase 6</td></tr><tr><td><a href="../design/claude-code-skeleton.md">design-claude-code-skeleton</a></td><td>Prompt text → card</td><td>D: card text visible on screen-share</td><td>mitigate</td><td>Card never quotes prompt text; only counts</td><td>n/a</td></tr><tr><td><a href="../design/claude-code-skeleton.md">design-claude-code-skeleton</a></td><td>Coaching history (how someone works)</td><td>L/I: could profile the person if shared</td><td>mitigate</td><td>Nothing leaves the device; no sync, no telemetry in Phase 1 (US-6)</td><td>Same as above</td></tr><tr><td><a href="../design/claude-code-skeleton.md">design-claude-code-skeleton</a></td><td>Capture while paused</td><td>U: person unaware capture continues</td><td>prevent</td><td>Pause flag checked in the hook before sending; <code>aiq status</code> shows paused</td><td><code>aiq pause</code> / <code>aiq resume</code></td></tr><tr><td><a href="../design/claude-code-skeleton.md">design-claude-code-skeleton</a></td><td>Installed hooks</td><td>U: person unaware AIQ is installed</td><td>mitigate</td><td>Explicit <code>install</code> with diff and consent; card shows how to pause</td><td><code>aiq uninstall</code></td></tr><tr><td><a href="../design/claude-code-skeleton.md">design-claude-code-skeleton</a></td><td>Tool calls and outputs</td><td>D: code and file contents</td><td>prevent (not captured)</td><td>Phase 1 subscribes only to UserPromptSubmit and Stop</td><td>n/a</td></tr><tr><td><a href="../design/claude-code-skeleton.md">design-claude-code-skeleton</a></td><td>Logs</td><td>D: prompt text in logs</td><td>prevent</td><td>O11 log scan test</td><td>Logs rotate at 5 MB × 3 files, local only</td></tr></tbody></table>
+<p>&lt;!-- rolled up from 1 artifact(s) by docs-graph.py rollup on 2026-10-31 --&gt;</p>
+<h2>3. Data-subject rights paths</h2>
+<p>Access: capture log and AIQ home. Export: Settings → Export. Delete: one item, older-than, all. Rectify: feedback on guidance (rung placement itself is not edited, per the rung-model spec). Object: pause per surface, turn judging off, uninstall removes the store and keychain entries.</p>
+<h2>4. Telemetry alignment</h2>
+<p>No remote telemetry. Local health counters only.</p>
+<h2>5. Transfers and processors</h2>
+<p>The person&#x27;s own AI provider (Anthropic via their API key; GitHub Copilot via VS Code) for judge calls only. AIQ operates no processor that sees user data. The pack CDN receives no identifiers.</p>
+<h2>6. Accepted privacy risks</h2>
+<table><thead><tr><th>Risk</th><th>Accepted by</th><th>Rationale</th></tr></thead><tbody><tr><td>Lost machine loses history (ADR-0003)</td><td>Imran, 2026-10-31</td><td>Simplicity for alpha</td></tr><tr><td>Judge calls visible to work-account admins (ADR-0007)</td><td>Imran, 2026-10-31</td><td>Provider already saw the content; disclosed</td></tr><tr><td>Plain-text spool of recent prompts while the core is down (design-claude-code-skeleton)</td><td>Imran, 2026-10-31</td><td>Bounded (1 MB), user-only, emptied on drain; encrypting needs the key on the hot path</td></tr></tbody></table>
+<h2>7. Gaps and flagged unknowns</h2>
+<ul><li>Works-council / legal review not started.</li><li>Third-party privacy review before launch (brief) not scheduled.</li></ul></main></body></html>

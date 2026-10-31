@@ -12,6 +12,7 @@ collector cost directly rather than inferring it.
 import json
 import os
 import sys
+import tempfile
 import time
 
 T0 = time.perf_counter()
@@ -19,17 +20,19 @@ START_NS = time.time_ns()
 
 
 def main():
-    log = os.environ.get("AIQ_PROBE_LOG", os.path.join(os.path.dirname(os.path.abspath(__file__)), "probe.jsonl"))
+    # Default matches run_probe.py, so hooks need no env-var prefix (which Windows shells lack).
+    log = os.environ.get("AIQ_PROBE_LOG", os.path.join(tempfile.gettempdir(), "aiq-hookprobe-log.jsonl"))
     try:
         payload = json.load(sys.stdin)
     except ValueError:
         payload = {}
     event = payload.get("hook_event_name") or (sys.argv[1] if len(sys.argv) > 1 else "?")
     out = None
-    if event == "Stop":
+    if event in ("Stop", "agentStop"):  # Claude Code / Copilot CLI stop events
         out = {"systemMessage": "AIQ (probe): this is where a coaching card would render."}
-    rec = {"event": event, "start_ns": START_NS, "tool": payload.get("tool_name"),
-           "session": payload.get("session_id"), "keys": sorted(payload),
+    rec = {"event": event, "start_ns": START_NS, "tool": payload.get("tool_name") or payload.get("toolName"),
+           "session": payload.get("session_id") or payload.get("sessionId"),
+           "event_ts": payload.get("timestamp"), "keys": sorted(payload),
            "collector_ms": round((time.perf_counter() - T0) * 1000, 2)}
     with open(log, "a", encoding="utf-8") as fh:
         fh.write(json.dumps(rec) + "\n")

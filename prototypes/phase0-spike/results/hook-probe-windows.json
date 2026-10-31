@@ -1,0 +1,543 @@
+{
+ "measured_at": "2026-10-31",
+ "machine": "Windows 11 Enterprise 10.0.26300, Python 3.14.7",
+ "claude_code": {
+  "versions": {
+   "probe_runs": "2.1.300 (claude.exe direct)",
+   "interactive_tui": "2.1.312 (via Agency wrapper)"
+  },
+  "model": "claude-haiku-5-5",
+  "bench_python_collector_process": {
+   "runs": 50,
+   "process_ms_p50": 98.2,
+   "process_ms_p95": 137.5,
+   "process_ms_max": 144.8
+  },
+  "collector_in_process_ms_p95": 1.57,
+  "live_p_runs": [
+   {
+    "run": 1,
+    "exit": 0,
+    "session_wall_ms": 9874,
+    "stop_card_in_stream": true
+   },
+   {
+    "run": 2,
+    "exit": 0,
+    "session_wall_ms": 9542,
+    "stop_card_in_stream": true
+   },
+   {
+    "run": 3,
+    "exit": 0,
+    "session_wall_ms": 10755,
+    "stop_card_in_stream": true
+   }
+  ],
+  "hooks_fired": {
+   "UserPromptSubmit": 3,
+   "PostToolUse": 3,
+   "Stop": 3
+  },
+  "async_observed": "UserPromptSubmit and PostToolUse (async: true) reported hook_response after Stop's response in all 3 runs: they did not block the turn",
+  "payload_keys": {
+   "UserPromptSubmit": [
+    "cwd",
+    "hook_event_name",
+    "permission_mode",
+    "prompt",
+    "prompt_id",
+    "scratchpad_dir",
+    "session_id",
+    "transcript_path"
+   ],
+   "PostToolUse": [
+    "cwd",
+    "duration_ms",
+    "effort",
+    "hook_event_name",
+    "permission_mode",
+    "prompt_id",
+    "scratchpad_dir",
+    "session_id",
+    "tool_input",
+    "tool_name",
+    "tool_response",
+    "tool_use_id",
+    "transcript_path"
+   ],
+   "Stop": [
+    "background_tasks",
+    "cwd",
+    "effort",
+    "hook_event_name",
+    "last_assistant_message",
+    "permission_mode",
+    "prompt_id",
+    "scratchpad_dir",
+    "session_crons",
+    "session_id",
+    "stop_hook_active",
+    "transcript_path"
+   ]
+  },
+  "stop_card_in_stream_json": true,
+  "interactive_tui_stop_systemMessage_visible": true,
+  "interactive_tui_exact_text": "⎿  Stop says: AIQ (probe): this is where a coaching card would render.",
+  "interactive_method": "claude --settings <temp hooks file> in the already-trusted AIQ checkout; a fresh temp folder blocks on the folder-trust prompt, which the probe cannot answer",
+  "windows_fix": "collector.py defaults its log to %TEMP%\\aiq-hookprobe-log.jsonl; run_probe.py drops the AIQ_PROBE_LOG= prefix on Windows and emits quoted forward-slash paths (Claude Code runs hooks through Git Bash)"
+ },
+ "copilot_cli": {
+  "versions": {
+   "probe_runs": "GitHub Copilot CLI 1.0.104",
+   "interactive_tui": "1.0.105 (via Agency wrapper)"
+  },
+  "model": "gpt-6.1-sol (administrator-managed setting replaced the default)",
+  "signed_in": true,
+  "hook_config": {
+   "repo_level": [
+    ".github/hooks/*.json",
+    ".github/copilot/settings.json (inline hooks)",
+    ".github/copilot/settings.local.json",
+    ".claude/settings.json and .claude/settings.local.json"
+   ],
+   "user_level": [
+    "%USERPROFILE%\\.copilot\\hooks\\*.json (or $COPILOT_HOME/hooks/)",
+    "inline hooks in ~/.copilot/settings.json"
+   ],
+   "file_schema": {
+    "version": 1,
+    "hooks": {
+     "<camelCaseEvent>": [
+      {
+       "type": "command",
+       "powershell": "...",
+       "bash": "...",
+       "command": "...",
+       "exec": "...",
+       "args": [],
+       "cwd": "...",
+       "env": {},
+       "timeoutSec": 30,
+       "matcher": "..."
+      }
+     ]
+    }
+   },
+   "events": [
+    "sessionStart",
+    "sessionEnd",
+    "userPromptSubmitted",
+    "userPromptTransformed",
+    "preToolUse",
+    "postToolUse",
+    "postToolUseFailure",
+    "permissionRequest",
+    "agentStop",
+    "subagentStart",
+    "subagentStop",
+    "errorOccurred",
+    "preCompact",
+    "notification"
+   ],
+   "source": "docs.github.com/en/copilot/reference/hooks-configuration + `copilot help config`",
+   "trust": "repo hooks load in -p mode only when the folder is trusted (--trust-folder used); user-level hooks need no folder trust"
+  },
+  "probe_config_shell_arm": {
+   "version": 1,
+   "hooks": {
+    "sessionStart": [
+     {
+      "type": "command",
+      "powershell": "& \"<python>\" \"<repo>/prototypes/phase0-spike/hook_probe/collector.py\" sessionStart",
+      "bash": "\"<python>\" \"<repo>/prototypes/phase0-spike/hook_probe/collector.py\" sessionStart",
+      "timeoutSec": 10,
+      "async": true
+     }
+    ],
+    "userPromptSubmitted": [
+     {
+      "type": "command",
+      "powershell": "& \"<python>\" \"<repo>/prototypes/phase0-spike/hook_probe/collector.py\" userPromptSubmitted",
+      "bash": "\"<python>\" \"<repo>/prototypes/phase0-spike/hook_probe/collector.py\" userPromptSubmitted",
+      "timeoutSec": 10,
+      "async": true
+     }
+    ],
+    "postToolUse": [
+     {
+      "type": "command",
+      "powershell": "& \"<python>\" \"<repo>/prototypes/phase0-spike/hook_probe/collector.py\" postToolUse",
+      "bash": "\"<python>\" \"<repo>/prototypes/phase0-spike/hook_probe/collector.py\" postToolUse",
+      "timeoutSec": 10,
+      "async": true
+     }
+    ],
+    "agentStop": [
+     {
+      "type": "command",
+      "powershell": "& \"<python>\" \"<repo>/prototypes/phase0-spike/hook_probe/collector.py\" agentStop",
+      "bash": "\"<python>\" \"<repo>/prototypes/phase0-spike/hook_probe/collector.py\" agentStop",
+      "timeoutSec": 10
+     }
+    ],
+    "sessionEnd": [
+     {
+      "type": "command",
+      "powershell": "& \"<python>\" \"<repo>/prototypes/phase0-spike/hook_probe/collector.py\" sessionEnd",
+      "bash": "\"<python>\" \"<repo>/prototypes/phase0-spike/hook_probe/collector.py\" sessionEnd",
+      "timeoutSec": 10,
+      "async": true
+     }
+    ]
+   }
+  },
+  "probe_config_exec_arm": {
+   "version": 1,
+   "hooks": {
+    "sessionStart": [
+     {
+      "type": "command",
+      "exec": "<python>",
+      "args": [
+       "<repo>\\prototypes\\phase0-spike\\hook_probe\\collector.py",
+       "sessionStart"
+      ],
+      "timeoutSec": 10,
+      "async": true
+     }
+    ],
+    "userPromptSubmitted": [
+     {
+      "type": "command",
+      "exec": "<python>",
+      "args": [
+       "<repo>\\prototypes\\phase0-spike\\hook_probe\\collector.py",
+       "userPromptSubmitted"
+      ],
+      "timeoutSec": 10,
+      "async": true
+     }
+    ],
+    "postToolUse": [
+     {
+      "type": "command",
+      "exec": "<python>",
+      "args": [
+       "<repo>\\prototypes\\phase0-spike\\hook_probe\\collector.py",
+       "postToolUse"
+      ],
+      "timeoutSec": 10,
+      "async": true
+     }
+    ],
+    "agentStop": [
+     {
+      "type": "command",
+      "exec": "<python>",
+      "args": [
+       "<repo>\\prototypes\\phase0-spike\\hook_probe\\collector.py",
+       "agentStop"
+      ],
+      "timeoutSec": 10
+     }
+    ],
+    "sessionEnd": [
+     {
+      "type": "command",
+      "exec": "<python>",
+      "args": [
+       "<repo>\\prototypes\\phase0-spike\\hook_probe\\collector.py",
+       "sessionEnd"
+      ],
+      "timeoutSec": 10,
+      "async": true
+     }
+    ]
+   }
+  },
+  "payload_keys_observed": {
+   "sessionStart": [
+    "cwd",
+    "initialPrompt",
+    "sessionId",
+    "source",
+    "timestamp"
+   ],
+   "userPromptSubmitted": [
+    "cwd",
+    "prompt",
+    "sessionId",
+    "timestamp"
+   ],
+   "preToolUse": [
+    "cwd",
+    "sessionId",
+    "timestamp",
+    "toolArgs",
+    "toolName"
+   ],
+   "postToolUse": [
+    "cwd",
+    "sessionId",
+    "timestamp",
+    "toolArgs",
+    "toolName",
+    "toolResult"
+   ],
+   "agentStop": [
+    "cwd",
+    "sessionId",
+    "stopReason",
+    "stop_hook_active",
+    "timestamp",
+    "transcriptPath"
+   ],
+   "sessionEnd": [
+    "cwd",
+    "reason",
+    "sessionId",
+    "timestamp"
+   ]
+  },
+  "p_mode_runs_fire_hooks": true,
+  "repo_level_shell_arm_3_runs": {
+   "hooks_fired": {
+    "sessionStart": 3,
+    "userPromptSubmitted": 3,
+    "postToolUse": 3,
+    "agentStop": 3,
+    "sessionEnd": 3
+   },
+   "event_ts_to_collector_start_ms": {
+    "sessionStart": {
+     "p50": 2261,
+     "max": 10564,
+     "all": [
+      10564,
+      2261,
+      1282
+     ]
+    },
+    "userPromptSubmitted": {
+     "p50": 1017,
+     "max": 4281,
+     "all": [
+      4281,
+      1017,
+      628
+     ]
+    },
+    "postToolUse": {
+     "p50": 1129,
+     "max": 3416,
+     "all": [
+      3416,
+      1129,
+      438
+     ]
+    },
+    "agentStop": {
+     "p50": 1664,
+     "max": 3152,
+     "all": [
+      1664,
+      3152,
+      480
+     ]
+    },
+    "sessionEnd": {
+     "p50": 1129,
+     "max": 1859,
+     "all": [
+      1129,
+      1859,
+      452
+     ]
+    }
+   },
+   "collector_in_process_ms_max": 9.42,
+   "session_wall_ms": [
+    111827,
+    84500,
+    39417
+   ],
+   "exit": [
+    0,
+    0,
+    0
+   ],
+   "card_in_stdout": [
+    false,
+    false,
+    false
+   ],
+   "card_in_stderr": [
+    false,
+    false,
+    false
+   ]
+  },
+  "repo_level_exec_arm_3_runs": {
+   "hooks_fired": {
+    "sessionStart": 3,
+    "userPromptSubmitted": 3,
+    "postToolUse": 3,
+    "agentStop": 3,
+    "sessionEnd": 3
+   },
+   "event_ts_to_collector_start_ms": {
+    "sessionStart": {
+     "p50": 214,
+     "max": 977,
+     "all": [
+      977,
+      141,
+      214
+     ]
+    },
+    "userPromptSubmitted": {
+     "p50": 210,
+     "max": 2671,
+     "all": [
+      2671,
+      149,
+      210
+     ]
+    },
+    "postToolUse": {
+     "p50": 4361,
+     "max": 5199,
+     "all": [
+      5199,
+      110,
+      4361
+     ]
+    },
+    "agentStop": {
+     "p50": 560,
+     "max": 7110,
+     "all": [
+      560,
+      191,
+      7110
+     ]
+    },
+    "sessionEnd": {
+     "p50": 436,
+     "max": 6279,
+     "all": [
+      436,
+      167,
+      6279
+     ]
+    }
+   },
+   "collector_in_process_ms_max": 23.52,
+   "session_wall_ms": [
+    206311,
+    68816,
+    67892
+   ],
+   "exit": [
+    0,
+    0,
+    0
+   ],
+   "card_in_stdout": [
+    false,
+    false,
+    false
+   ],
+   "card_in_stderr": [
+    false,
+    false,
+    false
+   ]
+  },
+  "latency_note": "event_ts_to_collector_start_ms = payload timestamp -> collector interpreter start (spawn + Python start-up). Copilot logged one 10 s hook timeout (sessionStart, shell arm, run 1).",
+  "user_level_hooks_temp_COPILOT_HOME": {
+   "worked": true,
+   "auth": "no copy needed; signed in with an empty temp COPILOT_HOME",
+   "events_fired": [
+    "sessionStart",
+    "userPromptSubmitted",
+    "preToolUse",
+    "postToolUse",
+    "agentStop",
+    "sessionEnd"
+   ],
+   "event_ts_to_collector_start_ms": {
+    "sessionStart": 132,
+    "userPromptSubmitted": 135,
+    "preToolUse": 140,
+    "postToolUse": 136,
+    "agentStop": 167,
+    "sessionEnd": 121
+   }
+  },
+  "async": "not honoured: the undocumented \"async\": true key is accepted but ignored. tool.execution_complete waits for postToolUse; assistant.idle waits for agentStop; exit waits for sessionEnd. Docs name only notification (fire-and-forget) and sessionEnd on /clear as background.",
+  "user_visible_output": {
+   "systemMessage_on_agentStop": "not shown in -p text or json stdout; only in the debug log as [hook stdout]",
+   "progress_lines_interactive": "NOT visible: {\"type\":\"progress\",\"message\":\"AIQ probe card [...]\"} with and without temporary:true at preToolUse, postToolUse and agentStop; all 6 emitters ran (marker file), screen polled during and after the turn; nothing appeared (1.0.105)",
+   "progress_lines_p_mode": "not visible in -p text output",
+   "documented_channels": "stderr on exit 2 is shown; additionalContext/decision/reason go to the agent, not the person"
+  }
+ },
+ "collector_latency_bench_50_runs": {
+  "python_collector": {
+   "runs": 50,
+   "p50_ms": 115.2,
+   "p95_ms": 133.9,
+   "max_ms": 1324.2,
+   "exit_codes": [
+    0
+   ]
+  },
+  "csharp_dotnet10": {
+   "runs": 50,
+   "p50_ms": 79.7,
+   "p95_ms": 105.8,
+   "max_ms": 776.8,
+   "exit_codes": [
+    0
+   ]
+  },
+  "cmd_batch": {
+   "runs": 50,
+   "p50_ms": 60.0,
+   "p95_ms": 76.7,
+   "max_ms": 108.2,
+   "exit_codes": [
+    0
+   ]
+  },
+  "pwsh7_noprofile": {
+   "runs": 50,
+   "p50_ms": 582.9,
+   "p95_ms": 682.5,
+   "max_ms": 778.9,
+   "exit_codes": [
+    0
+   ]
+  },
+  "pwsh7_with_profile": {
+   "runs": 50,
+   "p50_ms": 821.6,
+   "p95_ms": 1924.9,
+   "max_ms": 2466.0,
+   "exit_codes": [
+    0
+   ]
+  },
+  "winps51_noprofile": {
+   "runs": 50,
+   "p50_ms": 334.9,
+   "p95_ms": 508.0,
+   "max_ms": 704.5,
+   "exit_codes": [
+    0
+   ]
+  }
+ }
+}
