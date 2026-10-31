@@ -1,0 +1,210 @@
+{
+ "bench": {
+  "runs": 50,
+  "process_ms_p50": 35.1,
+  "process_ms_p95": 47.3,
+  "process_ms_max": 57.7
+ },
+ "live": [
+  {
+   "run": 1,
+   "exit": 0,
+   "session_wall_ms": 6309,
+   "stream_events": 39,
+   "stop_card_in_stream": true,
+   "hook_events": [
+    {
+     "type": "system",
+     "subtype": "hook_started",
+     "hook_event": "UserPromptSubmit",
+     "hook_name": "UserPromptSubmit"
+    },
+    {
+     "type": "system",
+     "subtype": "hook_response",
+     "hook_event": "UserPromptSubmit",
+     "hook_name": "UserPromptSubmit",
+     "exit_code": 0,
+     "outcome": "success"
+    },
+    {
+     "type": "system",
+     "subtype": "hook_started",
+     "hook_event": "PostToolUse",
+     "hook_name": "PostToolUse:Bash"
+    },
+    {
+     "type": "system",
+     "subtype": "hook_response",
+     "hook_event": "PostToolUse",
+     "hook_name": "PostToolUse:Bash",
+     "exit_code": 0,
+     "outcome": "success"
+    },
+    {
+     "type": "system",
+     "subtype": "hook_started",
+     "hook_event": "Stop",
+     "hook_name": "Stop"
+    },
+    {
+     "type": "system",
+     "subtype": "hook_response",
+     "hook_event": "Stop",
+     "hook_name": "Stop",
+     "exit_code": 0,
+     "outcome": "success"
+    }
+   ],
+   "stderr": ""
+  },
+  {
+   "run": 2,
+   "exit": 0,
+   "session_wall_ms": 5686,
+   "stream_events": 38,
+   "stop_card_in_stream": true,
+   "hook_events": [
+    {
+     "type": "system",
+     "subtype": "hook_started",
+     "hook_event": "UserPromptSubmit",
+     "hook_name": "UserPromptSubmit"
+    },
+    {
+     "type": "system",
+     "subtype": "hook_response",
+     "hook_event": "UserPromptSubmit",
+     "hook_name": "UserPromptSubmit",
+     "exit_code": 0,
+     "outcome": "success"
+    },
+    {
+     "type": "system",
+     "subtype": "hook_started",
+     "hook_event": "PostToolUse",
+     "hook_name": "PostToolUse:Bash"
+    },
+    {
+     "type": "system",
+     "subtype": "hook_response",
+     "hook_event": "PostToolUse",
+     "hook_name": "PostToolUse:Bash",
+     "exit_code": 0,
+     "outcome": "success"
+    },
+    {
+     "type": "system",
+     "subtype": "hook_started",
+     "hook_event": "Stop",
+     "hook_name": "Stop"
+    },
+    {
+     "type": "system",
+     "subtype": "hook_response",
+     "hook_event": "Stop",
+     "hook_name": "Stop",
+     "exit_code": 0,
+     "outcome": "success"
+    }
+   ],
+   "stderr": ""
+  },
+  {
+   "run": 3,
+   "exit": 0,
+   "session_wall_ms": 6191,
+   "stream_events": 39,
+   "stop_card_in_stream": true,
+   "hook_events": [
+    {
+     "type": "system",
+     "subtype": "hook_started",
+     "hook_event": "UserPromptSubmit",
+     "hook_name": "UserPromptSubmit"
+    },
+    {
+     "type": "system",
+     "subtype": "hook_response",
+     "hook_event": "UserPromptSubmit",
+     "hook_name": "UserPromptSubmit",
+     "exit_code": 0,
+     "outcome": "success"
+    },
+    {
+     "type": "system",
+     "subtype": "hook_started",
+     "hook_event": "PostToolUse",
+     "hook_name": "PostToolUse:Bash"
+    },
+    {
+     "type": "system",
+     "subtype": "hook_response",
+     "hook_event": "PostToolUse",
+     "hook_name": "PostToolUse:Bash",
+     "exit_code": 0,
+     "outcome": "success"
+    },
+    {
+     "type": "system",
+     "subtype": "hook_started",
+     "hook_event": "Stop",
+     "hook_name": "Stop"
+    },
+    {
+     "type": "system",
+     "subtype": "hook_response",
+     "hook_event": "Stop",
+     "hook_name": "Stop",
+     "exit_code": 0,
+     "outcome": "success"
+    }
+   ],
+   "stderr": ""
+  }
+ ],
+ "hooks_fired": {
+  "UserPromptSubmit": 3,
+  "PostToolUse": 3,
+  "Stop": 3
+ },
+ "collector_in_process_ms_p95": 63.44,
+ "payload_keys": {
+  "UserPromptSubmit": [
+   "cwd",
+   "hook_event_name",
+   "permission_mode",
+   "prompt",
+   "prompt_id",
+   "session_id",
+   "transcript_path"
+  ],
+  "PostToolUse": [
+   "cwd",
+   "duration_ms",
+   "effort",
+   "hook_event_name",
+   "permission_mode",
+   "prompt_id",
+   "session_id",
+   "tool_input",
+   "tool_name",
+   "tool_response",
+   "tool_use_id",
+   "transcript_path"
+  ],
+  "Stop": [
+   "background_tasks",
+   "cwd",
+   "effort",
+   "hook_event_name",
+   "last_assistant_message",
+   "permission_mode",
+   "prompt_id",
+   "session_crons",
+   "session_id",
+   "stop_hook_active",
+   "transcript_path"
+  ]
+ }
+}

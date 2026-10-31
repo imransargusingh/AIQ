@@ -1,0 +1,699 @@
+{
+ "dev": {
+  "corpus": {
+   "sessions": 14,
+   "tasks": 30,
+   "turns": 66,
+   "jobs": {
+    "code_change": 14,
+    "write_doc": 10,
+    "other": 6
+   },
+   "rungs": {
+    "1": 7,
+    "2": 11,
+    "3": 8,
+    "4": 2,
+    "5": 2
+   }
+  },
+  "grouping": {
+   "baseline_5min_gap": {
+    "bcubed_precision": 0.832,
+    "bcubed_recall": 0.98,
+    "bcubed_f1": 0.9,
+    "tasks_recovered_exactly": 18,
+    "tasks_total": 30,
+    "gold_tasks_split": [
+     "c05"
+    ],
+    "gold_tasks_merged": [
+     "c03",
+     "c08",
+     "c10",
+     "c11",
+     "d01",
+     "d02",
+     "d06",
+     "d07",
+     "d08",
+     "x01",
+     "x02"
+    ]
+   },
+   "heuristic": {
+    "bcubed_precision": 0.97,
+    "bcubed_recall": 0.932,
+    "bcubed_f1": 0.95,
+    "tasks_recovered_exactly": 24,
+    "tasks_total": 30,
+    "gold_tasks_split": [
+     "c02",
+     "c07",
+     "o01",
+     "o02"
+    ],
+    "gold_tasks_merged": [
+     "x01",
+     "x02"
+    ]
+   },
+   "model claude-haiku-5-5 rep1": {
+    "bcubed_precision": 1.0,
+    "bcubed_recall": 1.0,
+    "bcubed_f1": 1.0,
+    "tasks_recovered_exactly": 30,
+    "tasks_total": 30,
+    "gold_tasks_split": [],
+    "gold_tasks_merged": [],
+    "latency_ms": 12797,
+    "error": null
+   },
+   "model claude-haiku-5-5 rep2": {
+    "bcubed_precision": 0.964,
+    "bcubed_recall": 1.0,
+    "bcubed_f1": 0.981,
+    "tasks_recovered_exactly": 28,
+    "tasks_total": 30,
+    "gold_tasks_split": [],
+    "gold_tasks_merged": [
+     "c05",
+     "o01"
+    ],
+    "latency_ms": 12046,
+    "error": null
+   },
+   "model claude-sonnet-5-5 rep1": {
+    "bcubed_precision": 0.964,
+    "bcubed_recall": 1.0,
+    "bcubed_f1": 0.981,
+    "tasks_recovered_exactly": 28,
+    "tasks_total": 30,
+    "gold_tasks_split": [],
+    "gold_tasks_merged": [
+     "c05",
+     "o01"
+    ],
+    "latency_ms": 6177,
+    "error": null
+   },
+   "model claude-sonnet-5-5 rep2": {
+    "bcubed_precision": 0.964,
+    "bcubed_recall": 1.0,
+    "bcubed_f1": 0.981,
+    "tasks_recovered_exactly": 28,
+    "tasks_total": 30,
+    "gold_tasks_split": [],
+    "gold_tasks_merged": [
+     "c05",
+     "o01"
+    ],
+    "latency_ms": 10823,
+    "error": null
+   }
+  },
+  "judge": {
+   "claude-haiku-5-5 / signals": {
+    "calls": 60,
+    "failed_calls": 0,
+    "job_accuracy": 0.767,
+    "job_accuracy_unambiguous": 0.815,
+    "unclassified_rule": {
+     "0.0": {
+      "coverage_of_alpha_tasks": 0.708,
+      "precision_when_classified": 0.895,
+      "other_jobs_leaking_into_alpha_packs": 0
+     },
+     "0.6": {
+      "coverage_of_alpha_tasks": 0.708,
+      "precision_when_classified": 0.944,
+      "other_jobs_leaking_into_alpha_packs": 0
+     },
+     "0.7": {
+      "coverage_of_alpha_tasks": 0.688,
+      "precision_when_classified": 0.943,
+      "other_jobs_leaking_into_alpha_packs": 0
+     },
+     "0.8": {
+      "coverage_of_alpha_tasks": 0.562,
+      "precision_when_classified": 0.931,
+      "other_jobs_leaking_into_alpha_packs": 0
+     },
+     "0.9": {
+      "coverage_of_alpha_tasks": 0.0,
+      "precision_when_classified": 0.0,
+      "other_jobs_leaking_into_alpha_packs": 0
+     }
+    },
+    "rung_exact": 0.567,
+    "rung_within_1": 0.917,
+    "rung_mean_signed_error": -0.517,
+    "potential_exact": 0.567,
+    "potential_within_1": 0.983,
+    "opportunity_precision": 0.679,
+    "opportunity_recall": 0.95,
+    "rung_confusion_gold_to_pred": {
+     "1->1": 14,
+     "2->1": 9,
+     "2->2": 13,
+     "3->1": 1,
+     "3->2": 8,
+     "3->3": 7,
+     "4->3": 4,
+     "5->3": 4
+    },
+    "latency_ms_p50": 8124,
+    "latency_ms_p95": 10910,
+    "input_tokens_mean": 5679,
+    "cost_usd_per_task_mean": 0.00105,
+    "repeat_consistency": {
+     "tasks": 30,
+     "job_same": 1.0,
+     "rung_same": 0.767,
+     "potential_same": 0.767
+    }
+   },
+   "claude-haiku-5-5 / excerpt": {
+    "calls": 60,
+    "failed_calls": 0,
+    "job_accuracy": 0.983,
+    "job_accuracy_unambiguous": 0.981,
+    "unclassified_rule": {
+     "0.0": {
+      "coverage_of_alpha_tasks": 0.979,
+      "precision_when_classified": 1.0,
+      "other_jobs_leaking_into_alpha_packs": 0
+     },
+     "0.6": {
+      "coverage_of_alpha_tasks": 0.979,
+      "precision_when_classified": 1.0,
+      "other_jobs_leaking_into_alpha_packs": 0
+     },
+     "0.7": {
+      "coverage_of_alpha_tasks": 0.917,
+      "precision_when_classified": 1.0,
+      "other_jobs_leaking_into_alpha_packs": 0
+     },
+     "0.8": {
+      "coverage_of_alpha_tasks": 0.875,
+      "precision_when_classified": 1.0,
+      "other_jobs_leaking_into_alpha_packs": 0
+     },
+     "0.9": {
+      "coverage_of_alpha_tasks": 0.792,
+      "precision_when_classified": 1.0,
+      "other_jobs_leaking_into_alpha_packs": 0
+     }
+    },
+    "rung_exact": 0.767,
+    "rung_within_1": 0.95,
+    "rung_mean_signed_error": -0.117,
+    "potential_exact": 0.767,
+    "potential_within_1": 1.0,
+    "opportunity_precision": 0.691,
+    "opportunity_recall": 0.95,
+    "rung_confusion_gold_to_pred": {
+     "1->1": 14,
+     "2->2": 17,
+     "2->3": 5,
+     "3->2": 2,
+     "3->3": 14,
+     "4->3": 3,
+     "4->4": 1,
+     "5->3": 3,
+     "5->4": 1
+    },
+    "latency_ms_p50": 8274,
+    "latency_ms_p95": 10231,
+    "input_tokens_mean": 6251,
+    "cost_usd_per_task_mean": 0.00111,
+    "repeat_consistency": {
+     "tasks": 30,
+     "job_same": 0.967,
+     "rung_same": 0.833,
+     "potential_same": 0.8
+    }
+   },
+   "claude-sonnet-5-5 / signals": {
+    "calls": 60,
+    "failed_calls": 0,
+    "job_accuracy": 0.8,
+    "job_accuracy_unambiguous": 0.852,
+    "unclassified_rule": {
+     "0.0": {
+      "coverage_of_alpha_tasks": 0.75,
+      "precision_when_classified": 0.947,
+      "other_jobs_leaking_into_alpha_packs": 0
+     },
+     "0.6": {
+      "coverage_of_alpha_tasks": 0.75,
+      "precision_when_classified": 0.947,
+      "other_jobs_leaking_into_alpha_packs": 0
+     },
+     "0.7": {
+      "coverage_of_alpha_tasks": 0.667,
+      "precision_when_classified": 0.941,
+      "other_jobs_leaking_into_alpha_packs": 0
+     },
+     "0.8": {
+      "coverage_of_alpha_tasks": 0.458,
+      "precision_when_classified": 0.917,
+      "other_jobs_leaking_into_alpha_packs": 0
+     },
+     "0.9": {
+      "coverage_of_alpha_tasks": 0.083,
+      "precision_when_classified": 1.0,
+      "other_jobs_leaking_into_alpha_packs": 0
+     }
+    },
+    "rung_exact": 0.533,
+    "rung_within_1": 0.933,
+    "rung_mean_signed_error": -0.533,
+    "potential_exact": 0.667,
+    "potential_within_1": 1.0,
+    "opportunity_precision": 0.667,
+    "opportunity_recall": 1.0,
+    "rung_confusion_gold_to_pred": {
+     "1->1": 14,
+     "2->1": 6,
+     "2->2": 16,
+     "3->2": 14,
+     "3->3": 2,
+     "4->3": 4,
+     "5->3": 4
+    },
+    "latency_ms_p50": 5452,
+    "latency_ms_p95": 6611,
+    "input_tokens_mean": 5847,
+    "cost_usd_per_task_mean": 0.00929,
+    "repeat_consistency": {
+     "tasks": 30,
+     "job_same": 1.0,
+     "rung_same": 1.0,
+     "potential_same": 1.0
+    }
+   },
+   "claude-sonnet-5-5 / excerpt": {
+    "calls": 60,
+    "failed_calls": 0,
+    "job_accuracy": 0.933,
+    "job_accuracy_unambiguous": 0.926,
+    "unclassified_rule": {
+     "0.0": {
+      "coverage_of_alpha_tasks": 0.917,
+      "precision_when_classified": 1.0,
+      "other_jobs_leaking_into_alpha_packs": 0
+     },
+     "0.6": {
+      "coverage_of_alpha_tasks": 0.917,
+      "precision_when_classified": 1.0,
+      "other_jobs_leaking_into_alpha_packs": 0
+     },
+     "0.7": {
+      "coverage_of_alpha_tasks": 0.875,
+      "precision_when_classified": 1.0,
+      "other_jobs_leaking_into_alpha_packs": 0
+     },
+     "0.8": {
+      "coverage_of_alpha_tasks": 0.833,
+      "precision_when_classified": 1.0,
+      "other_jobs_leaking_into_alpha_packs": 0
+     },
+     "0.9": {
+      "coverage_of_alpha_tasks": 0.833,
+      "precision_when_classified": 1.0,
+      "other_jobs_leaking_into_alpha_packs": 0
+     }
+    },
+    "rung_exact": 0.8,
+    "rung_within_1": 0.967,
+    "rung_mean_signed_error": -0.233,
+    "potential_exact": 0.767,
+    "potential_within_1": 1.0,
+    "opportunity_precision": 0.731,
+    "opportunity_recall": 0.95,
+    "rung_confusion_gold_to_pred": {
+     "1->1": 14,
+     "2->1": 2,
+     "2->2": 20,
+     "3->2": 4,
+     "3->3": 12,
+     "4->3": 2,
+     "4->4": 2,
+     "5->3": 2,
+     "5->4": 2
+    },
+    "latency_ms_p50": 5385,
+    "latency_ms_p95": 6740,
+    "input_tokens_mean": 6119,
+    "cost_usd_per_task_mean": 0.0103,
+    "repeat_consistency": {
+     "tasks": 30,
+     "job_same": 1.0,
+     "rung_same": 1.0,
+     "potential_same": 1.0
+    }
+   }
+  }
+ },
+ "heldout": {
+  "corpus": {
+   "sessions": 10,
+   "tasks": 20,
+   "turns": 41,
+   "jobs": {
+    "code_change": 8,
+    "write_doc": 7,
+    "other": 5
+   },
+   "rungs": {
+    "1": 6,
+    "2": 6,
+    "3": 4,
+    "5": 2,
+    "4": 2
+   }
+  },
+  "grouping": {
+   "baseline_5min_gap": {
+    "bcubed_precision": 0.919,
+    "bcubed_recall": 0.927,
+    "bcubed_f1": 0.923,
+    "tasks_recovered_exactly": 13,
+    "tasks_total": 20,
+    "gold_tasks_split": [
+     "h04",
+     "h11",
+     "h15"
+    ],
+    "gold_tasks_merged": [
+     "h01",
+     "h10",
+     "h12",
+     "h17"
+    ]
+   },
+   "heuristic": {
+    "bcubed_precision": 0.976,
+    "bcubed_recall": 0.894,
+    "bcubed_f1": 0.933,
+    "tasks_recovered_exactly": 15,
+    "tasks_total": 20,
+    "gold_tasks_split": [
+     "h06",
+     "h12",
+     "h13",
+     "h20"
+    ],
+    "gold_tasks_merged": [
+     "h03",
+     "h13"
+    ]
+   },
+   "model claude-haiku-5-5 rep1": {
+    "bcubed_precision": 1.0,
+    "bcubed_recall": 1.0,
+    "bcubed_f1": 1.0,
+    "tasks_recovered_exactly": 20,
+    "tasks_total": 20,
+    "gold_tasks_split": [],
+    "gold_tasks_merged": [],
+    "latency_ms": 8016,
+    "error": null
+   },
+   "model claude-haiku-5-5 rep2": {
+    "bcubed_precision": 1.0,
+    "bcubed_recall": 1.0,
+    "bcubed_f1": 1.0,
+    "tasks_recovered_exactly": 20,
+    "tasks_total": 20,
+    "gold_tasks_split": [],
+    "gold_tasks_merged": [],
+    "latency_ms": 7816,
+    "error": null
+   },
+   "model claude-sonnet-5-5 rep1": {
+    "bcubed_precision": 1.0,
+    "bcubed_recall": 1.0,
+    "bcubed_f1": 1.0,
+    "tasks_recovered_exactly": 20,
+    "tasks_total": 20,
+    "gold_tasks_split": [],
+    "gold_tasks_merged": [],
+    "latency_ms": 9184,
+    "error": null
+   },
+   "model claude-sonnet-5-5 rep2": {
+    "bcubed_precision": 1.0,
+    "bcubed_recall": 1.0,
+    "bcubed_f1": 1.0,
+    "tasks_recovered_exactly": 20,
+    "tasks_total": 20,
+    "gold_tasks_split": [],
+    "gold_tasks_merged": [],
+    "latency_ms": 8068,
+    "error": null
+   }
+  },
+  "judge": {
+   "claude-haiku-5-5 / signals": {
+    "calls": 40,
+    "failed_calls": 0,
+    "job_accuracy": 0.8,
+    "job_accuracy_unambiguous": 0.812,
+    "unclassified_rule": {
+     "0.0": {
+      "coverage_of_alpha_tasks": 0.8,
+      "precision_when_classified": 0.8,
+      "other_jobs_leaking_into_alpha_packs": 2
+     },
+     "0.6": {
+      "coverage_of_alpha_tasks": 0.8,
+      "precision_when_classified": 0.8,
+      "other_jobs_leaking_into_alpha_packs": 2
+     },
+     "0.7": {
+      "coverage_of_alpha_tasks": 0.8,
+      "precision_when_classified": 0.828,
+      "other_jobs_leaking_into_alpha_packs": 1
+     },
+     "0.8": {
+      "coverage_of_alpha_tasks": 0.667,
+      "precision_when_classified": 0.87,
+      "other_jobs_leaking_into_alpha_packs": 0
+     },
+     "0.9": {
+      "coverage_of_alpha_tasks": 0.067,
+      "precision_when_classified": 1.0,
+      "other_jobs_leaking_into_alpha_packs": 0
+     }
+    },
+    "rung_exact": 0.525,
+    "rung_within_1": 0.9,
+    "rung_mean_signed_error": -0.525,
+    "potential_exact": 0.475,
+    "potential_within_1": 1.0,
+    "opportunity_precision": 0.85,
+    "opportunity_recall": 1.0,
+    "rung_confusion_gold_to_pred": {
+     "1->1": 11,
+     "1->2": 1,
+     "2->1": 4,
+     "2->2": 8,
+     "3->2": 6,
+     "3->3": 2,
+     "4->3": 4,
+     "5->3": 4
+    },
+    "latency_ms_p50": 8069,
+    "latency_ms_p95": 9850,
+    "input_tokens_mean": 5875,
+    "cost_usd_per_task_mean": 0.00105,
+    "repeat_consistency": {
+     "tasks": 20,
+     "job_same": 1.0,
+     "rung_same": 0.95,
+     "potential_same": 0.95
+    }
+   },
+   "claude-haiku-5-5 / excerpt": {
+    "calls": 40,
+    "failed_calls": 0,
+    "job_accuracy": 0.975,
+    "job_accuracy_unambiguous": 0.969,
+    "unclassified_rule": {
+     "0.0": {
+      "coverage_of_alpha_tasks": 1.0,
+      "precision_when_classified": 0.968,
+      "other_jobs_leaking_into_alpha_packs": 1
+     },
+     "0.6": {
+      "coverage_of_alpha_tasks": 1.0,
+      "precision_when_classified": 0.968,
+      "other_jobs_leaking_into_alpha_packs": 1
+     },
+     "0.7": {
+      "coverage_of_alpha_tasks": 0.967,
+      "precision_when_classified": 1.0,
+      "other_jobs_leaking_into_alpha_packs": 0
+     },
+     "0.8": {
+      "coverage_of_alpha_tasks": 0.8,
+      "precision_when_classified": 1.0,
+      "other_jobs_leaking_into_alpha_packs": 0
+     },
+     "0.9": {
+      "coverage_of_alpha_tasks": 0.733,
+      "precision_when_classified": 1.0,
+      "other_jobs_leaking_into_alpha_packs": 0
+     }
+    },
+    "rung_exact": 0.55,
+    "rung_within_1": 0.9,
+    "rung_mean_signed_error": -0.05,
+    "potential_exact": 0.575,
+    "potential_within_1": 1.0,
+    "opportunity_precision": 0.892,
+    "opportunity_recall": 0.971,
+    "rung_confusion_gold_to_pred": {
+     "1->1": 9,
+     "1->2": 3,
+     "2->2": 5,
+     "2->3": 7,
+     "3->3": 8,
+     "4->3": 4,
+     "5->3": 4
+    },
+    "latency_ms_p50": 8276,
+    "latency_ms_p95": 10459,
+    "input_tokens_mean": 6225,
+    "cost_usd_per_task_mean": 0.00112,
+    "repeat_consistency": {
+     "tasks": 20,
+     "job_same": 0.95,
+     "rung_same": 0.9,
+     "potential_same": 0.85
+    }
+   },
+   "claude-sonnet-5-5 / signals": {
+    "calls": 40,
+    "failed_calls": 0,
+    "job_accuracy": 0.8,
+    "job_accuracy_unambiguous": 0.812,
+    "unclassified_rule": {
+     "0.0": {
+      "coverage_of_alpha_tasks": 0.8,
+      "precision_when_classified": 0.8,
+      "other_jobs_leaking_into_alpha_packs": 2
+     },
+     "0.6": {
+      "coverage_of_alpha_tasks": 0.8,
+      "precision_when_classified": 0.8,
+      "other_jobs_leaking_into_alpha_packs": 2
+     },
+     "0.7": {
+      "coverage_of_alpha_tasks": 0.767,
+      "precision_when_classified": 0.821,
+      "other_jobs_leaking_into_alpha_packs": 1
+     },
+     "0.8": {
+      "coverage_of_alpha_tasks": 0.6,
+      "precision_when_classified": 0.9,
+      "other_jobs_leaking_into_alpha_packs": 0
+     },
+     "0.9": {
+      "coverage_of_alpha_tasks": 0.067,
+      "precision_when_classified": 1.0,
+      "other_jobs_leaking_into_alpha_packs": 0
+     }
+    },
+    "rung_exact": 0.6,
+    "rung_within_1": 0.825,
+    "rung_mean_signed_error": -0.575,
+    "potential_exact": 0.55,
+    "potential_within_1": 0.925,
+    "opportunity_precision": 0.85,
+    "opportunity_recall": 1.0,
+    "rung_confusion_gold_to_pred": {
+     "1->1": 12,
+     "2->1": 4,
+     "2->2": 8,
+     "3->1": 2,
+     "3->2": 2,
+     "3->3": 4,
+     "4->2": 1,
+     "4->3": 3,
+     "5->3": 4
+    },
+    "latency_ms_p50": 5069,
+    "latency_ms_p95": 6511,
+    "input_tokens_mean": 5855,
+    "cost_usd_per_task_mean": 0.00945,
+    "repeat_consistency": {
+     "tasks": 20,
+     "job_same": 1.0,
+     "rung_same": 0.95,
+     "potential_same": 0.95
+    }
+   },
+   "claude-sonnet-5-5 / excerpt": {
+    "calls": 40,
+    "failed_calls": 0,
+    "job_accuracy": 0.95,
+    "job_accuracy_unambiguous": 1.0,
+    "unclassified_rule": {
+     "0.0": {
+      "coverage_of_alpha_tasks": 0.933,
+      "precision_when_classified": 0.933,
+      "other_jobs_leaking_into_alpha_packs": 0
+     },
+     "0.6": {
+      "coverage_of_alpha_tasks": 0.933,
+      "precision_when_classified": 1.0,
+      "other_jobs_leaking_into_alpha_packs": 0
+     },
+     "0.7": {
+      "coverage_of_alpha_tasks": 0.8,
+      "precision_when_classified": 1.0,
+      "other_jobs_leaking_into_alpha_packs": 0
+     },
+     "0.8": {
+      "coverage_of_alpha_tasks": 0.8,
+      "precision_when_classified": 1.0,
+      "other_jobs_leaking_into_alpha_packs": 0
+     },
+     "0.9": {
+      "coverage_of_alpha_tasks": 0.8,
+      "precision_when_classified": 1.0,
+      "other_jobs_leaking_into_alpha_packs": 0
+     }
+    },
+    "rung_exact": 0.85,
+    "rung_within_1": 0.9,
+    "rung_mean_signed_error": -0.25,
+    "potential_exact": 0.8,
+    "potential_within_1": 1.0,
+    "opportunity_precision": 0.85,
+    "opportunity_recall": 1.0,
+    "rung_confusion_gold_to_pred": {
+     "1->1": 12,
+     "2->2": 12,
+     "3->3": 8,
+     "4->3": 2,
+     "4->4": 2,
+     "5->3": 4
+    },
+    "latency_ms_p50": 5728,
+    "latency_ms_p95": 7496,
+    "input_tokens_mean": 6017,
+    "cost_usd_per_task_mean": 0.01092,
+    "repeat_consistency": {
+     "tasks": 20,
+     "job_same": 1.0,
+     "rung_same": 1.0,
+     "potential_same": 1.0
+    }
+   }
+  }
+ }
+}
