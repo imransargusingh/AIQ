@@ -606,7 +606,7 @@ Not triggered: D5 (no HTTP/gRPC), A1–A6 (no model call in this slice).
 ## Flagged risks and residual unknowns
 - Re-prompt values (0.6, 4 words, 3, score 0.75) are uncalibrated. Real-data week decides. *Flagged.*
 - Windows pipe ACL proven for the same user (S1); denial for a second account is inferred from the DACL, not observed. *Residual.* Linux keyring closed by S2.
-- SQLCipher's vendored OpenSSL needs a native Perl to build on Windows (S3c). Affects developer and CI builds, not people who install AIQ. *Flagged; open.*
+- SQLCipher's vendored OpenSSL needs a native Perl to build on Windows (S3c). Affects developer and CI builds, not people who install AIQ. *Flagged; deferred to `/implement` by Imran, 2026-10-31.*
 - Claude Code hooks are a moving contract; golden payload tests catch drift only when re-recorded
   against new versions. *Inferred risk.*
 - **Windows Stop budget: met, with little margin.** The compiled client measured 26–34 ms p95 with the core up (S3a), against 50 ms. Under Copilot CLI a `.cmd` took 77 ms p95, so process start is most of the cost on Windows. A slow or busy laptop could push it over; the hook duration histogram in `aiq status` watches it. *Residual.*
@@ -620,7 +620,7 @@ Not triggered: D5 (no HTTP/gRPC), A1–A6 (no model call in this slice).
 |---|---|
 | **Completed** | Detailed design for the Phase 1 walking skeleton on Claude Code (collector, core, store schema v1, re-prompt detector, trigger engine, card) |
 | **Remaining** | S3c (SQLCipher build on Windows); Phases 2–6 designs; revisit Copilot CLI and VS Code (Phase 2) |
-| **Best next action** | Settle how to build SQLCipher on Windows (S3c), then `/implement` this design |
+| **Best next action** | `/implement` this design; prove the SQLCipher Windows build (S3c) during implementation (Imran, 2026-10-31) |
 
 ## Gate record
 `GATE design · 2026-10-31 · Patterns Expert ⇄ Simplifier, Test Architect, Security & Identity, Distributed Systems, Data & Persistence, SRE, Privacy, UX & Accessibility (all seats played by Claude in one session; not independent) · verdict: pass with conditions`
