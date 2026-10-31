@@ -231,13 +231,13 @@ redone, and that is likely 10–50× larger. **Gap that forced the model:** no r
 
 | Contract | Shape depended on | Source | Confidence |
 |---|---|---|---|
-| Claude Code `UserPromptSubmit` hook input | stdin JSON with `session_id`, `hook_event_name`, `prompt`, `cwd`, `transcript_path` | [Claude Code hooks](https://code.claude.com/docs/en/hooks); Phase 0 probe payloads | Verified (probe, Linux 2.1.316 and Windows 2.1.300) |
-| Claude Code `Stop` hook input | stdin JSON with `session_id`, `hook_event_name`, `stop_hook_active` | same | Verified for `session_id`; `stop_hook_active` from docs only (Inferred) |
+| Claude Code `UserPromptSubmit` hook input | stdin JSON with `session_id`, `hook_event_name`, `prompt`, `prompt_id`, `cwd`, `transcript_path`, `permission_mode` | [Claude Code hooks](https://code.claude.com/docs/en/hooks); Phase 0 probe; spike S4 | Verified (Linux 2.1.316, Windows 2.1.300) |
+| Claude Code `Stop` hook input | stdin JSON with `session_id`, `hook_event_name`, `stop_hook_active`, `prompt_id` (same value as that turn's `UserPromptSubmit`); also carries `last_assistant_message`, which AIQ does not keep | spike S4 | Verified (Linux 2.1.316) |
 | Claude Code hook output | exit 0 + stdout `{"systemMessage": "<text>"}` shows to the person, not to the model | same; probe | Verified (headless stream and Windows TUI) |
 | `"async": true` on a command hook | does not hold the turn | probe | Verified |
 | Hook command on Windows | runs through Git Bash; needs a quoted forward-slash path, no `VAR=x` prefix | Windows laptop test | Verified |
 | SQLCipher via `rusqlite` feature `bundled-sqlcipher-vendored-openssl` | encrypted SQLite, key set by `PRAGMA key` | crates.io: rusqlite 0.41.1 lists the feature (checked 2026-10-31) | Feature exists: Verified. Behaviour on Windows build: **spike S3** |
-| OS keychain via `keyring` 4.x | store/read a 32-byte secret per OS user | crates.io: keyring 4.2.0 (checked 2026-10-31) | Version: Verified. API and Linux behaviour without a secret service: **spike S2** (gate condition) |
+| OS keychain via `keyring` 4.x (`v1` API: `Entry::new`, `set_secret`, `get_secret`, `delete_credential`, `store_status`) | store/read a 32-byte secret per OS user | keyring 4.2.0 source; spike S2 | Verified on Linux: no secret service fails fast (1–33 ms) as `NoDefaultStore`; locked keyring fails as `NoStorageAccess`; unlocked works. Windows Credential Manager: S3 |
 | Local sockets via `interprocess` 2.x | Unix domain socket on Linux/macOS, named pipe on Windows | crates.io: interprocess 2.4.7 (checked 2026-10-31) | Version: Verified. Setting a user-only DACL on the Windows pipe: **spike S1** (gate condition) |
 | `uuid` 1.x with `v7` | time-ordered event ids | crates.io: uuid 1.29.0 | Inferred (v7 feature from memory; confirm in S3) |
 
@@ -274,7 +274,7 @@ Stop when a card is ready; never writes `additionalContext`, `decision` or `cont
 | `kind` | `"prompt"` or `"stop"` | |
 | `ts` | RFC 3339 UTC | Client clock |
 | `collector_version` | string | |
-| `payload` | object by kind | `prompt`: `{ text, chars }`; `stop`: `{ stop_hook_active }` |
+| `payload` | object by kind | `prompt`: `{ text, chars }`; `stop`: `{ stop_hook_active, prompt_id }`; `prompt` payload also carries `prompt_id` |
 
 Unknown fields are ignored (Postel). `payload.text` is capped at 64 KB; longer text is cut and marked
 `truncated: true`.
@@ -381,7 +381,7 @@ When `take_card` arrives for a session: if `stop_hook_active` is true, reply nul
 show-ready card exists for that session, re-check the budget, insert `card_delivery` in the same
 transaction, and reply with the card. Delivery is recorded when the card is handed over, so a card is
 shown at most once (a client that dies after receipt loses that card; accepted below). If the Signal
-landed after this Stop (an async prompt hook arriving late), the card waits for the next Stop.
+landed after this Stop (an async prompt hook arriving late, visible because the Stop's `prompt_id` has not been seen yet), the card waits for the next Stop.
 
 A show-ready card that is not delivered within 30 minutes (the idle gap that closes a Task; Phase 1 does not subscribe to SessionEnd) is expired
 (`card_decision` row `drop/expired`), so a stale card never appears in a later, unrelated turn.
@@ -480,6 +480,7 @@ crate (paths from `HOME` / `LOCALAPPDATA` / `XDG_*`, a few owned lines).
 | Core slow to answer `take_card` | Sync Stop hook | mitigate | Client waits ≤ 35 ms, then exits 0 with no output; card stays ready for the next Stop | `AIQ-HOOK-STOP-TIMEOUT` counter | `Hook_StopReplyLate_ExitsZeroNoOutput` |
 | Spool full | Bounded spool | accept | Oldest lines dropped; rare (1 MB ≈ 1,500 prompts while down). Residual: a few lost prompts may hide one re-prompt run | `AIQ-SPOOL-DROPPED` counter | `Spool_OverLimit_DropsOldestKeepsNewest` |
 | Spool replayed twice / partial line | At-least-once | prevent | Idempotent ingest; partial last line skipped | `AIQ-SPOOL-BAD-LINE` counter | Property test: any replay order/duplication yields the same rows and decisions (gate condition) |
+| A nested `claude -p` (run by an agent) reuses the person's `session_id` (seen in the cloud env, spike S4) | Task = one session | mitigate | The hook client tags an event `child: true` when `CLAUDE_CODE_CHILD_SESSION` is set in its environment; the detector ignores child prompts | `payload_meta.child` count in `aiq status` | `Detector_ChildSessionPrompts_Ignored`; confirm locally on the laptop (S3) |
 | Another host runs our hook (Copilot CLI reads a repo's `.claude/settings.json`, measured on Imran's laptop 2026-10-31) | Hook installed in Claude Code's settings format | prevent | The client accepts a payload as Claude Code only if it has snake_case `session_id` and `hook_event_name` matching the argv event; Copilot payloads (camelCase `sessionId`, no event name) are dropped. AIQ installs only in user `~/.claude/settings.json`; whether Copilot also reads that file is unknown (S4) | `AIQ-HOOK-FOREIGN-HOST` counter | `Hook_CopilotShapedPayload_DroppedExitsZero` |
 | Malformed or hostile stdin | Hook reads stdin | prevent | Lenient parse, size caps, exit 0 on error | `AIQ-HOOK-PARSE` counter | Fuzz/property: random bytes never panic, never print, exit 0 |
 | Huge prompt (MBs) | Content capture | mitigate | Cut at 64 KB, `truncated: true` | `payload_meta.truncated` | `Hook_OversizedPrompt_TruncatesTo64KB` |
@@ -582,9 +583,9 @@ Not triggered: D5 (no HTTP/gRPC), A1–A6 (no model call in this slice).
 | Spike | Question | Blocks |
 |---|---|---|
 | S1 Windows named pipe ACL | Can `interprocess` (or the raw Win32 API) create a pipe that only the current user can open, and does a second user get access denied? | Phase 1 ship (gate condition) |
-| S2 Linux keyring fallback | What does `keyring` 4.x do with no secret service (headless Linux, CI)? Decide: refuse to start (current design) or a documented file-key fallback with a warning | Phase 1 ship on Linux (gate condition) |
+| S2 Linux keyring fallback | **Done 2026-10-31** (`prototypes/design-spikes/`): fails fast with distinct errors, never hangs. Decision: the core refuses to start (`AIQ-STORE-KEY`), no file-key fallback; kernel keyutils rejected (lost on reboot) | — (closed) |
 | S3 Windows build and budget | `rusqlite` `bundled-sqlcipher-vendored-openssl` builds with MSVC; whole-hook time for the compiled client on Windows through Git Bash, measured from Claude Code's hook timings; a core started from a hook survives the hook's exit; `uuid` v7. If the Stop hook cannot meet 50 ms p95 on Windows, Imran sets a Windows budget in the spec (NFR change) from the measured number | Hook budget on Windows |
-| S4 Claude Code Stop payload | Confirm `stop_hook_active`; that a Stop hook with `timeout: 5` adds nothing visible when it prints nothing; and whether Copilot CLI also runs hooks from user `~/.claude/settings.json` | Contract confidence |
+| S4 Claude Code Stop payload | **Done 2026-10-31** for Claude Code: `stop_hook_active` and a shared `prompt_id` verified; empty Stop output adds nothing to the stream. Still open, moved to the Copilot CLI revisit: does Copilot CLI also run hooks from user `~/.claude/settings.json`? | Contract confidence |
 
 ## Conformance notes
 - **LOA F (hot path):** no model, no network, no blocking in the hook; fail-open on every path.
@@ -598,7 +599,7 @@ Not triggered: D5 (no HTTP/gRPC), A1–A6 (no model call in this slice).
 
 ## Flagged risks and residual unknowns
 - Re-prompt values (0.6, 4 words, 3, score 0.75) are uncalibrated. Real-data week decides. *Flagged.*
-- Windows pipe ACL and Linux keyring behaviour are unspiked (S1, S2). *Flagged; gate conditions.*
+- Windows pipe ACL is unspiked (S1). *Flagged; gate condition.* Linux keyring closed by S2.
 - Claude Code hooks are a moving contract; golden payload tests catch drift only when re-recorded
   against new versions. *Inferred risk.*
 - **The 50 ms budget may not be reachable on Windows with any client.** Measured on Imran's laptop under Copilot CLI (2026-10-31): a `.cmd` hook took 60 ms p50 / 77 ms p95 for the whole process, C# 80 / 106, Python ~100 / 135. Process start on Windows is the floor, not the language. On Claude Code only the Stop hook is synchronous (observation hooks are async), so the exposure is one hook per turn. S3 measures the compiled client; if it is over, the spec needs a per-OS budget. *Flagged.*
@@ -610,7 +611,7 @@ Not triggered: D5 (no HTTP/gRPC), A1–A6 (no model call in this slice).
 | | |
 |---|---|
 | **Completed** | Detailed design for the Phase 1 walking skeleton on Claude Code (collector, core, store schema v1, re-prompt detector, trigger engine, card) |
-| **Remaining** | Spikes S1–S4; Phases 2–6 designs; revisit Copilot CLI and VS Code (Phase 2) |
+| **Remaining** | Spikes S1 and S3 (Windows laptop); Phases 2–6 designs; revisit Copilot CLI and VS Code (Phase 2) |
 | **Best next action** | Run spikes S1 and S3 on Imran's Windows laptop, then `/implement` this design |
 
 ## Gate record
@@ -623,8 +624,8 @@ Not triggered: D5 (no HTTP/gRPC), A1–A6 (no model call in this slice).
   equality tested. Cleared.
 - **Distributed Systems (hard):** at-least-once with idempotent ingest; spool replay property test
   in the plan; late async prompt handled by deliver-at-next-Stop + expiry. Cleared.
-- **Security & Identity (hard):** every boundary walked; the Windows pipe DACL and Linux keyring are
-  not proven. Condition: S1 and S2 before Phase 1 ships. Not cleared by the author.
+- **Security & Identity (hard):** every boundary walked; Linux keyring proven by S2; the Windows pipe
+  DACL is not proven. Condition: S1 before Phase 1 ships. Not cleared by the author.
 - **Test Architect (hard):** every triggered directive (D0–D4, D6, D7) mapped; D5 and A1–A6 not
   triggered, with reason. Cleared.
 - **SRE:** every handled failure mode has a code or counter and a test; operator questions mapped.
