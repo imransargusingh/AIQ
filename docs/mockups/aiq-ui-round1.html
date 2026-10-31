@@ -1,0 +1,967 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AIQ UI mockups, round 1</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Layout idea: a review harness (screen list + state/theme/width) around a stage that renders one surface at a time. Calm graphite neutrals, one blue accent, the rung ramp from the concept views. */
+:root {
+  --bg: #f4f5f7; --panel: #ffffff; --panel-2: #eef0f3; --ink: #15181e; --ink-2: #4a515d; --ink-3: #78808d;
+  --line: #dfe2e7; --accent: #2860cf; --accent-ink: #ffffff; --accent-soft: #e6eefc;
+  --ok: #1d7448; --ok-soft: #e3f3ea; --warn: #9a5800; --warn-soft: #fbf0df; --bad: #b0271f; --bad-soft: #fbe7e5;
+  --r1: #a9c8f2; --r2: #6f9fe6; --r3: #2f73d3; --r4: #1d55a6; --r5: #0f3570;
+  --term-bg: #101216; --term-ink: #d7dae0; --term-dim: #8b919c; --term-acc: #7fb0ff; --term-ok: #7fcf9b;
+  --font-ui: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1114; --panel: #171a1f; --panel-2: #1e2228; --ink: #eceef2; --ink-2: #b0b6c0; --ink-3: #7f8794;
+    --line: #2a2f37; --accent: #79a6f7; --accent-ink: #0d1424; --accent-soft: #1c2a44;
+    --ok: #74cf9a; --ok-soft: #16301f; --warn: #f0b562; --warn-soft: #34270f; --bad: #f28b82; --bad-soft: #3a1a18;
+    --r1: #1f4a86; --r2: #2c64b3; --r3: #4a86e0; --r4: #86b1f0; --r5: #c9dcfa;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1114; --panel: #171a1f; --panel-2: #1e2228; --ink: #eceef2; --ink-2: #b0b6c0; --ink-3: #7f8794;
+  --line: #2a2f37; --accent: #79a6f7; --accent-ink: #0d1424; --accent-soft: #1c2a44;
+  --ok: #74cf9a; --ok-soft: #16301f; --warn: #f0b562; --warn-soft: #34270f; --bad: #f28b82; --bad-soft: #3a1a18;
+  --r1: #1f4a86; --r2: #2c64b3; --r3: #4a86e0; --r4: #86b1f0; --r5: #c9dcfa;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 var(--font-ui); }
+h1, h2, h3 { text-wrap: balance; margin: 0; }
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+kbd { font: 500 11px/1 var(--font-mono); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 2px 5px; color: var(--ink-2); background: var(--panel); }
+.mono { font-family: var(--font-mono); }
+.num { font-variant-numeric: tabular-nums; }
+
+/* ---------- harness ---------- */
+.shell { display: grid; grid-template-columns: 236px 1fr; min-height: 100vh; }
+.rail { border-right: 1px solid var(--line); padding: 18px 14px; display: flex; flex-direction: column; gap: 18px; background: var(--panel); }
+.rail h1 { font-size: 16px; font-weight: 600; }
+.rail .sub { color: var(--ink-3); font-size: 12px; }
+.rail nav { display: flex; flex-direction: column; gap: 14px; }
+.rail .grp { display: flex; flex-direction: column; gap: 2px; }
+.rail .grp b { font-size: 11px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: .06em; padding: 0 8px 4px; }
+.rail a { color: var(--ink-2); text-decoration: none; padding: 5px 8px; border-radius: 6px; display: flex; justify-content: space-between; gap: 8px; }
+.rail a:hover { background: var(--panel-2); color: var(--ink); }
+.rail a[aria-current="page"] { background: var(--accent-soft); color: var(--ink); font-weight: 500; }
+.rail .foot { margin-top: auto; font-size: 12px; color: var(--ink-3); }
+.main { display: flex; flex-direction: column; min-width: 0; }
+.bar { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; padding: 12px 22px; border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 5; }
+.bar .title { font-weight: 600; margin-right: auto; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+.seg button { border: 0; background: transparent; padding: 4px 10px; cursor: pointer; color: var(--ink-2); font-size: 13px; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--panel); }
+.ctl { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-3); }
+.content { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 22px; padding: 22px; align-items: start; }
+.stage-wrap { min-width: 0; }
+.stage { container-type: inline-size; margin: 0 auto; width: 100%; }
+.stage.narrow { max-width: 420px; }
+.notes { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; position: sticky; top: 74px; display: flex; flex-direction: column; gap: 10px; }
+.notes h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3); font-weight: 600; }
+.notes p, .notes li { color: var(--ink-2); font-size: 13px; margin: 0; }
+.notes ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
+.notes .q { border-left: 3px solid var(--accent); padding-left: 10px; }
+.screen { display: none; }
+.screen.on { display: block; }
+[data-v]:not(.vis) { display: none !important; }
+.cap { color: var(--ink-3); font-size: 12px; margin: 8px 2px 0; }
+
+/* ---------- terminal ---------- */
+.term { background: var(--term-bg); color: var(--term-ink); border-radius: 10px; font: 13px/1.6 var(--font-mono); overflow-x: auto; border: 1px solid #262a31; }
+.term .tb { display: flex; gap: 6px; padding: 9px 12px; border-bottom: 1px solid #23272e; color: var(--term-dim); font-size: 12px; align-items: center; }
+.term .tb i { width: 10px; height: 10px; border-radius: 50%; background: #3a3f48; display: inline-block; }
+.term .tb span { margin-left: 8px; }
+.term pre { margin: 0; padding: 14px 16px 18px; white-space: pre; font: inherit; }
+.term .d { color: var(--term-dim); }
+.term .a { color: var(--term-acc); }
+.term .g { color: var(--term-ok); }
+.term .u { color: #e8eaee; font-weight: 500; }
+.term .inp { display: block; border: 1px solid #333944; border-radius: 6px; padding: 6px 10px; margin-top: 10px; color: var(--term-dim); }
+
+/* ---------- VS Code ---------- */
+.vsc { --v-bg: #1f1f1f; --v-side: #181818; --v-ink: #cccccc; --v-dim: #8b8b8b; --v-line: #2b2b2b; --v-acc: #0078d4; --v-card: #252526;
+  background: var(--v-bg); color: var(--v-ink); border-radius: 10px; overflow: hidden; border: 1px solid #2b2b2b; font: 13px/1.5 "Segoe UI", var(--font-ui); position: relative; }
+.vsc .vrow { display: grid; grid-template-columns: 44px minmax(0, 1fr) minmax(0, 340px); min-height: 430px; }
+.vsc .act { background: var(--v-side); border-right: 1px solid var(--v-line); }
+.vsc .ed { padding: 0; border-right: 1px solid var(--v-line); min-width: 0; }
+.vsc .tabs { display: flex; background: var(--v-side); border-bottom: 1px solid var(--v-line); font-size: 12px; }
+.vsc .tabs span { padding: 7px 14px; color: var(--v-dim); }
+.vsc .tabs span.on { background: var(--v-bg); color: var(--v-ink); border-top: 1px solid var(--v-acc); }
+.vsc pre { margin: 0; padding: 12px 14px; font: 12.5px/1.65 var(--font-mono); color: #d4d4d4; overflow-x: auto; }
+.vsc .k { color: #569cd6; } .vsc .s { color: #ce9178; } .vsc .f { color: #dcdcaa; } .vsc .c { color: #6a9955; }
+.vsc .chat { display: flex; flex-direction: column; padding: 10px 12px; gap: 10px; background: var(--v-side); min-width: 0; }
+.vsc .chat h4 { margin: 0; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--v-dim); font-weight: 600; }
+.vsc .msg { padding: 8px 10px; border-radius: 6px; background: var(--v-card); }
+.vsc .msg.me { background: #2b3a4d; }
+.vsc .chatin { margin-top: auto; border: 1px solid #3c3c3c; border-radius: 6px; padding: 8px 10px; color: var(--v-dim); min-height: 56px; }
+.vsc .chatin.filled { color: var(--v-ink); border-color: var(--v-acc); }
+.vsc .status { display: flex; gap: 16px; background: #181818; border-top: 1px solid var(--v-line); padding: 3px 10px; font-size: 12px; color: var(--v-dim); }
+.vsc .status .aiq { margin-left: auto; color: var(--v-ink); padding: 0 6px; border-radius: 3px; }
+.vsc .status .aiq.wait { background: #0e639c; color: #fff; }
+.vsc .status .aiq.warn { color: #cca700; }
+.vsc .toast { position: absolute; right: 14px; bottom: 34px; width: min(380px, calc(100% - 28px)); background: #252526; border: 1px solid #3c3c3c; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.45); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+.vsc .toast .hd { display: flex; justify-content: space-between; color: var(--v-dim); font-size: 12px; }
+.vsc .toast p { margin: 0; }
+.vsc .toast .why { color: var(--v-dim); }
+.vsc .toast .acts { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.vsc .btn { background: #0e639c; color: #fff; border: 0; border-radius: 4px; padding: 4px 10px; font-size: 12px; cursor: pointer; }
+.vsc .btn.sec { background: #3a3d41; color: var(--v-ink); }
+.vsc .lnk { color: #3794ff; font-size: 12px; text-decoration: none; }
+.vsc .fb { display: flex; gap: 4px; margin-left: auto; }
+.vsc .fb button { background: transparent; border: 1px solid #3c3c3c; color: var(--v-ink); border-radius: 4px; font-size: 12px; padding: 2px 7px; cursor: pointer; }
+@container (max-width: 640px) {
+  .vsc .vrow { grid-template-columns: 0 0 1fr; }
+  .vsc .act, .vsc .ed { display: none; }
+}
+
+/* ---------- app window ---------- */
+.win { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; box-shadow: 0 1px 2px rgba(10,20,40,.05), 0 10px 30px rgba(10,20,40,.06); }
+.win .chrome { display: flex; align-items: center; gap: 10px; padding: 8px 14px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--ink-3); background: var(--panel-2); }
+.win .chrome .search { margin-left: auto; display: flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--panel); border-radius: 6px; padding: 3px 8px; cursor: pointer; color: var(--ink-3); }
+.win .body { display: grid; grid-template-columns: 188px minmax(0, 1fr); min-height: 560px; }
+.side { border-right: 1px solid var(--line); padding: 12px 8px; display: flex; flex-direction: column; gap: 2px; }
+.side a { display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; border-radius: 6px; color: var(--ink-2); text-decoration: none; }
+.side a:hover { background: var(--panel-2); }
+.side a.on { background: var(--accent-soft); color: var(--ink); font-weight: 500; }
+.side a kbd { font-size: 10px; }
+.side .state { margin-top: auto; padding: 10px; border-top: 1px solid var(--line); font-size: 12px; color: var(--ink-3); display: flex; flex-direction: column; gap: 6px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; background: var(--ok); margin-right: 6px; }
+.dot.off { background: var(--warn); }
+.page { padding: 22px 26px 30px; display: flex; flex-direction: column; gap: 22px; min-width: 0; }
+.page > header { display: flex; flex-direction: column; gap: 4px; }
+.page h2 { font-size: 22px; font-weight: 600; letter-spacing: -.01em; }
+.page h3 { font-size: 15px; font-weight: 600; }
+.lede { color: var(--ink-2); max-width: 64ch; margin: 0; }
+.muted { color: var(--ink-3); }
+.small { font-size: 12px; }
+.card { border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 10px; background: var(--panel); }
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.banner { border-radius: 8px; padding: 10px 14px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.banner.warn { background: var(--warn-soft); color: var(--ink); border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent); }
+.banner.info { background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); }
+.banner.bad { background: var(--bad-soft); border: 1px solid color-mix(in srgb, var(--bad) 35%, transparent); }
+.banner .grow { flex: 1 1 240px; }
+.b { border: 1px solid var(--line); background: var(--panel); border-radius: 7px; padding: 6px 12px; cursor: pointer; display: inline-flex; gap: 8px; align-items: center; }
+.b:hover { background: var(--panel-2); }
+.b.pri { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.b.pri:hover { filter: brightness(1.06); }
+.b.danger { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, var(--line)); }
+.b kbd { background: transparent; border-color: currentColor; color: inherit; opacity: .7; }
+.chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--ink-2); white-space: nowrap; }
+.chip i { width: 9px; height: 9px; border-radius: 3px; display: inline-block; }
+.chip.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, transparent); background: var(--ok-soft); }
+.chip.tried { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); background: var(--accent-soft); }
+.chip.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 40%, transparent); background: var(--warn-soft); }
+.big { font-size: 40px; font-weight: 600; line-height: 1.05; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.hero { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 18px; align-items: stretch; }
+.spark { width: 100%; height: 64px; display: block; }
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; font-size: 11px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: .05em; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+td { padding: 9px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+tr.sel td { background: var(--accent-soft); }
+td.r, th.r { text-align: right; }
+.tablewrap { overflow-x: auto; }
+.opp { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 14px; padding: 14px 0; border-top: 1px solid var(--line); }
+.opp:first-of-type { border-top: 0; padding-top: 2px; }
+.opp .t { font-weight: 600; }
+.opp .move { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-size: 12px; color: var(--ink-3); }
+.opp .next { grid-column: 1 / -1; color: var(--ink-2); }
+.opp .side-r { text-align: right; font-size: 12px; color: var(--ink-3); }
+.rungs { display: flex; flex-direction: column; gap: 8px; }
+.rrow { display: grid; grid-template-columns: 112px minmax(0, 1fr) 76px; gap: 10px; align-items: center; font-size: 13px; }
+.rrow .track { position: relative; height: 18px; background: var(--panel-2); border-radius: 4px; }
+.rrow .now { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; }
+.rrow .pot { position: absolute; left: 0; top: -3px; bottom: -3px; border: 1.5px dashed var(--ink-3); border-radius: 5px; }
+.rrow .v { text-align: right; color: var(--ink-2); font-variant-numeric: tabular-nums; font-size: 12px; }
+.legend { display: flex; gap: 16px; font-size: 12px; color: var(--ink-3); flex-wrap: wrap; }
+.legend i { display: inline-block; width: 14px; height: 10px; border-radius: 3px; vertical-align: -1px; margin-right: 6px; background: var(--r3); }
+.legend i.p { background: transparent; border: 1.5px dashed var(--ink-3); }
+.meter { height: 6px; background: var(--panel-2); border-radius: 3px; overflow: hidden; }
+.meter > i { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+.meter.ok > i { background: var(--ok); }
+.facts { display: flex; flex-direction: column; gap: 0; }
+.fact { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; padding: 9px 0; border-top: 1px solid var(--line); }
+.fact:first-child { border-top: 0; }
+.fact .src { font-size: 12px; color: var(--ink-3); }
+.steps { display: flex; flex-direction: column; gap: 2px; }
+.steps a { display: flex; gap: 10px; align-items: center; padding: 7px 10px; border-radius: 6px; color: var(--ink-2); text-decoration: none; cursor: pointer; }
+.steps a .n { width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--line); display: grid; place-items: center; font-size: 11px; }
+.steps a.done .n { background: var(--ok-soft); border-color: var(--ok); color: var(--ok); }
+.steps a.on { background: var(--accent-soft); color: var(--ink); font-weight: 500; }
+.steps a.on .n { border-color: var(--accent); color: var(--accent); }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field label { font-weight: 500; }
+.input { border: 1px solid var(--line); border-radius: 7px; padding: 7px 10px; background: var(--panel); width: 100%; }
+.input.err { border-color: var(--bad); }
+.opt { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; }
+.opt.on { border-color: var(--accent); background: var(--accent-soft); }
+.opt input { margin-top: 3px; }
+.radio-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.tog { display: flex; justify-content: space-between; gap: 16px; padding: 11px 0; border-top: 1px solid var(--line); align-items: center; }
+.tog:first-of-type { border-top: 0; }
+.switch { width: 34px; height: 20px; border-radius: 10px; background: var(--line); position: relative; flex: none; border: 0; cursor: pointer; }
+.switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: var(--panel); transition: left .15s; }
+.switch[aria-checked="true"] { background: var(--accent); }
+.switch[aria-checked="true"]::after { left: 17px; }
+.mix { display: flex; height: 12px; border-radius: 4px; overflow: hidden; }
+.payload { background: var(--panel-2); border-radius: 8px; padding: 12px; font: 12px/1.6 var(--font-mono); white-space: pre; overflow-x: auto; color: var(--ink-2); }
+.dialog { border: 1px solid var(--line); border-radius: 12px; padding: 18px; background: var(--panel); box-shadow: 0 12px 40px rgba(10,20,40,.18); display: flex; flex-direction: column; gap: 12px; max-width: 460px; }
+.overlay { background: color-mix(in srgb, var(--ink) 25%, transparent); padding: 40px 16px; display: grid; place-items: center; border-radius: 0 0 12px 12px; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.spread { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+.empty { border: 1px dashed var(--line); border-radius: 10px; padding: 28px; text-align: center; color: var(--ink-2); display: flex; flex-direction: column; gap: 8px; align-items: center; }
+.tray { background: #202124; color: #e8eaed; border-radius: 10px; padding: 14px; width: min(360px, 100%); box-shadow: 0 10px 30px rgba(0,0,0,.35); display: flex; flex-direction: column; gap: 6px; font: 13px/1.45 "Segoe UI", var(--font-ui); }
+.tray .hd { font-size: 12px; color: #9aa0a6; display: flex; justify-content: space-between; }
+.tray .acts { display: flex; gap: 8px; margin-top: 6px; }
+.tray button { background: #3c4043; color: #e8eaed; border: 0; border-radius: 4px; padding: 5px 10px; font-size: 12px; }
+.desk { background: linear-gradient(160deg, #26314a, #1a2133); border-radius: 10px; padding: 22px; min-height: 280px; display: flex; justify-content: flex-end; align-items: flex-end; }
+.mini { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; width: min(330px, 100%); box-shadow: 0 10px 30px rgba(0,0,0,.3); overflow: hidden; }
+.mini .hd { padding: 8px 12px; background: var(--panel-2); font-size: 12px; color: var(--ink-3); display: flex; justify-content: space-between; }
+.mini .bd { padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+
+/* palette */
+.pal-back { position: fixed; inset: 0; background: color-mix(in srgb, #000 35%, transparent); display: none; place-items: start center; padding-top: 12vh; z-index: 20; }
+.pal-back.open { display: grid; }
+.pal { width: min(560px, calc(100% - 32px)); background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,.3); overflow: hidden; }
+.pal input { width: 100%; border: 0; border-bottom: 1px solid var(--line); padding: 14px 16px; background: transparent; font-size: 15px; outline: none; }
+.pal ul { list-style: none; margin: 0; padding: 6px; max-height: 320px; overflow-y: auto; }
+.pal li { padding: 8px 10px; border-radius: 6px; display: flex; justify-content: space-between; gap: 10px; cursor: pointer; }
+.pal li .k { color: var(--ink-3); font-size: 12px; }
+.pal li.act { background: var(--accent-soft); }
+
+@container (max-width: 700px) {
+  .win .body { grid-template-columns: 1fr; }
+  .side { flex-direction: row; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+  .side a kbd, .side .state { display: none; }
+  .hero, .grid2, .grid3 { grid-template-columns: 1fr; }
+  .page { padding: 18px 16px; }
+  .rrow { grid-template-columns: 90px minmax(0, 1fr) 64px; }
+}
+@media (max-width: 1080px) { .content { grid-template-columns: 1fr; } .notes { position: static; } }
+@media (max-width: 760px) {
+  .shell { grid-template-columns: 1fr; }
+  .rail { border-right: 0; border-bottom: 1px solid var(--line); }
+  .rail nav { flex-direction: row; flex-wrap: wrap; }
+  .content { padding: 16px; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="rail">
+    <div>
+      <h1>AIQ UI mockups</h1>
+      <div class="sub">Round 1 · 31 Oct 2026 · sample data</div>
+    </div>
+    <nav id="screenNav" aria-label="Screens"></nav>
+    <div class="foot">Press <kbd>Ctrl</kbd> <kbd>K</kbd> for the AIQ command palette. <kbd>[</kbd> <kbd>]</kbd> step through states.</div>
+  </aside>
+
+  <div class="main">
+    <div class="bar">
+      <div class="title" id="screenTitle"></div>
+      <div class="ctl">State <div class="seg" id="stateSeg" role="group" aria-label="State"></div></div>
+      <div class="ctl">Theme <div class="seg" id="themeSeg" role="group" aria-label="Theme">
+        <button data-t="system" aria-pressed="true">System</button><button data-t="light" aria-pressed="false">Light</button><button data-t="dark" aria-pressed="false">Dark</button></div></div>
+      <div class="ctl">Width <div class="seg" id="widthSeg" role="group" aria-label="Width">
+        <button data-w="full" aria-pressed="true">Desktop</button><button data-w="narrow" aria-pressed="false">Narrow</button></div></div>
+    </div>
+
+    <div class="content">
+      <div class="stage-wrap"><div class="stage" id="stage">
+
+<!-- ===================== CLAUDE CODE ===================== -->
+<section class="screen" id="s-claude-code">
+  <div class="term" role="img" aria-label="Claude Code terminal with an AIQ tip under Claude's reply">
+    <div class="tb"><i></i><i></i><i></i><span>claude · ~/src/billing</span></div>
+<pre><span class="d">&gt;</span> <span class="u">the date parser test is still failing, fix it</span>
+
+<span class="a">●</span> I looked at <span class="u">parseInvoiceDate</span> again and changed the fallback format to
+  handle two-digit years. Running the test now.
+
+<span class="a">●</span> Bash(npm test -- dateParser)
+  <span class="d">⎿  1 failed, 11 passed</span>
+
+<span class="a">●</span> The test still fails on "31/10/26". It may need a locale setting.
+<span data-v="shown"><span class="d">  ⎿  Stop says:</span> AIQ tip: you've reworded this request 3 times without adding new details.
+     Why: rewording alone rarely changes the result; the agent needs something new to go on.
+     Try this: say what was wrong with the last answer, and add one example, file or constraint.
+     Details: aiq show 01JB7Q3K  ·  Turn off tips for now: aiq pause</span><span data-v="unsure"><span class="d">  ⎿  Stop says:</span> AIQ tip: this may be a request you've asked a few ways without new details.
+     Why: when the agent has nothing new to go on, it tends to repeat itself.
+     Try this: paste the failing output and say what you expected instead.
+     Details: aiq show 01JB7R9M  ·  Turn off tips for now: aiq pause</span><span data-v="feedback"><span class="d">  ⎿  Stop says:</span> AIQ tip: you've reworded this request 3 times without adding new details.
+     Why: rewording alone rarely changes the result; the agent needs something new to go on.
+     Try this: say what was wrong with the last answer, and add one example, file or constraint.
+     Details: aiq show 01JB7Q3K  ·  Feedback: aiq helpful | aiq not | aiq snooze | aiq off</span><span data-v="held"><span class="d">  (nothing printed: a tip was already shown in this session, so this one is held)</span></span>
+<span class="inp">&gt; <span data-v="shown feedback unsure">_</span><span data-v="held">_</span></span></pre>
+  </div>
+  <p class="cap" data-v="shown">The Phase 1 card exactly as Claude Code renders it: four lines under 80 columns, plain text, no colour carries meaning, never quotes the prompt.</p>
+  <p class="cap" data-v="held">Second qualifying moment in the same session. The hook prints nothing; <span class="mono">aiq status</span> counts it as held.</p>
+  <p class="cap" data-v="unsure">Below the in-the-moment confidence bar, so it waits for a natural pause and says "may be" instead of stating it as fact.</p>
+  <p class="cap" data-v="feedback">Phase 3 adds one-word feedback commands in place of the pause hint. Pause stays reachable from <span class="mono">aiq</span> and AIQ home.</p>
+</section>
+
+<!-- ===================== VS CODE ===================== -->
+<section class="screen" id="s-vscode">
+  <div class="vsc">
+    <div class="vrow">
+      <div class="act"></div>
+      <div class="ed">
+        <div class="tabs"><span class="on">dateParser.test.ts</span><span>dateParser.ts</span></div>
+<pre><span class="k">import</span> { parseInvoiceDate } <span class="k">from</span> <span class="s">"./dateParser"</span>;
+
+<span class="f">describe</span>(<span class="s">"parseInvoiceDate"</span>, () =&gt; {
+  <span class="f">it</span>(<span class="s">"reads day-first dates"</span>, () =&gt; {
+    <span class="f">expect</span>(<span class="f">parseInvoiceDate</span>(<span class="s">"31/10/26"</span>))
+      .<span class="f">toEqual</span>(<span class="k">new</span> <span class="f">Date</span>(<span class="s">"2026-10-31"</span>));
+  });
+  <span class="c">// 11 more cases</span>
+});</pre>
+      </div>
+      <div class="chat">
+        <h4>Copilot chat · agent</h4>
+        <div class="msg me">fix the date parser test</div>
+        <div class="msg">I changed the fallback format. The test still fails.</div>
+        <div class="msg me">please fix the date parser test, it still fails</div>
+        <div class="msg">I adjusted the regex. 1 test still fails on "31/10/26".</div>
+        <div class="chatin" data-v="card waiting feedback paused nodata">Ask Copilot…</div>
+        <div class="chatin filled" data-v="tried">The test fails on "31/10/26" with: Expected 2026-10-31, received 1926-10-31. I expected day-first parsing with years 00–69 as 20xx. See src/dateParser.ts.</div>
+      </div>
+    </div>
+    <div class="status">
+      <span>main</span><span>0 ⚠ 1 ✕</span><span>TypeScript</span>
+      <span class="aiq" data-v="card tried feedback nodata" title="AIQ: on">AIQ</span>
+      <span class="aiq wait" data-v="waiting" title="AIQ: a tip is waiting">AIQ · 1 tip</span>
+      <span class="aiq warn" data-v="paused" title="AIQ: paused">AIQ paused</span>
+    </div>
+    <div class="toast" role="status" aria-live="polite" data-v="card">
+      <div class="hd"><span>AIQ tip</span><span>Esc to close</span></div>
+      <p>You've rephrased this three times without adding anything new.</p>
+      <p class="why">The agent needs something new to go on, such as the error or what you expected.</p>
+      <div class="acts">
+        <button class="btn">Try this: add the failing output</button>
+        <a class="lnk" href="#vscode">Evidence</a>
+        <div class="fb" aria-label="Feedback"><button title="Helpful">Helpful</button><button title="Not helpful">Not helpful</button><button title="Snooze 7 days">Snooze</button><button title="More">⋯</button></div>
+      </div>
+    </div>
+    <div class="toast" role="status" data-v="feedback">
+      <div class="hd"><span>AIQ tip</span><span>closing</span></div>
+      <p>Thanks. AIQ will show fewer tips like this one.</p>
+      <div class="acts"><a class="lnk" href="#vscode">Undo</a><a class="lnk" href="#vscode">Don't show this again</a></div>
+    </div>
+    <div class="toast" role="status" data-v="nodata">
+      <div class="hd"><span>AIQ tip</span><span>Esc to close</span></div>
+      <p>You've rephrased this three times without adding anything new.</p>
+      <p class="why">The evidence for this tip was deleted.</p>
+      <div class="acts"><button class="btn sec">Dismiss</button></div>
+    </div>
+  </div>
+  <p class="cap" data-v="card">Non-modal toast after the agent turn ends. Never takes focus. <span class="mono">Alt+A</span> focuses it; screen readers hear "noticed", then "try this".</p>
+  <p class="cap" data-v="tried">"Try this" filled a starter into the chat box with the real error and file. Nothing is sent for you.</p>
+  <p class="cap" data-v="waiting">The agent is still working, so the tip waits in the status bar until the turn ends.</p>
+  <p class="cap" data-v="feedback">After "Not helpful". Two of those in 30 days push this tip type below all others for you.</p>
+  <p class="cap" data-v="paused">Paused from the status bar menu (one click, then "Pause AIQ"). Nothing is captured.</p>
+  <p class="cap" data-v="nodata">The person deleted the prompts behind this tip in AIQ home.</p>
+</section>
+
+<!-- ===================== COPILOT CLI ===================== -->
+<section class="screen" id="s-copilot-cli">
+  <div class="grid2" style="gap:18px">
+    <div class="term"><div class="tb"><i></i><i></i><i></i><span>copilot · ~/src/billing</span></div>
+<pre><span class="d">&gt;</span> <span class="u">the date parser test is still failing</span>
+
+<span class="a">●</span> Updated the regex in dateParser.ts.
+  1 test still fails.
+
+<span class="d">(Copilot CLI shows no hook output,
+ so AIQ cannot print here.)</span></pre></div>
+    <div data-v="toast" class="desk">
+      <div class="tray" role="status">
+        <div class="hd"><span>AIQ</span><span>now</span></div>
+        <b>You've reworded this 3 times without new details.</b>
+        <span>Try this: say what was wrong with the last answer, and add the error.</span>
+        <div class="acts"><button>Details</button><button>Snooze</button><button>Pause AIQ</button></div>
+      </div>
+    </div>
+    <div data-v="mini" class="desk" style="background:linear-gradient(160deg,#2a2f38,#1b1e24)">
+      <div class="mini">
+        <div class="hd"><span>AIQ · Copilot CLI</span><span>pin ✕</span></div>
+        <div class="bd">
+          <b>You've reworded this 3 times without new details.</b>
+          <span class="muted">The agent needs something new to go on.</span>
+          <span>Try this: say what was wrong with the last answer, and add the error.</span>
+          <div class="row"><button class="b pri">Copy starter</button><button class="b">Not helpful</button></div>
+        </div>
+      </div>
+    </div>
+    <div data-v="next" class="term"><div class="tb"><i></i><i></i><i></i><span>next copilot prompt</span></div>
+<pre><span class="d">&gt;</span> <span class="u">ok try again</span>
+
+<span class="d">  AIQ added a note to this prompt (only you see it here):</span>
+  <span class="a">AIQ:</span> you've reworded this 3 times. Add the error
+  or what you expected. <span class="d">aiq show 01JB7Q3K</span></pre></div>
+  </div>
+  <p class="cap" data-v="toast">Option A: an OS notification from AIQ home, raised when Copilot's turn ends. Reaches the person even with no IDE open.</p>
+  <p class="cap" data-v="mini">Option B: a small always-on-top AIQ window docked beside the terminal. Quiet, but it is one more window.</p>
+  <p class="cap" data-v="next">Option C: shown at the start of the person's next prompt, if a hook can add text there. Unverified; needs a probe.</p>
+</section>
+
+<!-- ===================== CLI ===================== -->
+<section class="screen" id="s-cli">
+  <div class="term"><div class="tb"><i></i><i></i><i></i><span>pwsh · aiq</span></div>
+<pre data-v="status"><span class="d">PS&gt;</span> aiq status
+AIQ is running.                  <span class="d">core up 3h 12m</span>
+Tips today                       1 shown of 5 · 1 held
+Capture                          on · Claude Code hooks installed
+Stored on this computer          2,184 events · 3.1 MB · since 24 Oct
+Queued while the core was down   0 events
+Stop hook                        21.8 ms p95 <span class="d">(budget 50 ms)</span>
+
+<span class="d">Next: aiq show &lt;id&gt; · aiq pause · aiq forget --all</span></pre>
+<pre data-v="first"><span class="d">PS&gt;</span> aiq status
+No activity yet. Use Claude Code as usual; AIQ watches quietly.
+Capture                          on · Claude Code hooks installed
+Tips today                       0 shown of 5</pre>
+<pre data-v="down"><span class="d">PS&gt;</span> aiq status
+AIQ is not running. It starts with your next Claude Code prompt, or run aiq core.
+Queued while the core was down   14 events <span class="d">(sent when it starts)</span>
+Hook errors today                0</pre>
+<pre data-v="show"><span class="d">PS&gt;</span> aiq show 01JB7Q3K
+Tip 01JB7Q3K · shown 22:31 today in Claude Code
+  You've reworded this request 3 times without adding new details.
+
+Why AIQ showed it
+  3 prompts in 6 minutes, very similar wording, no new file, error or example.
+
+Evidence <span class="d">(your prompts, stored only on this computer)</span>
+  22:25  fix the failing date parser test
+  22:28  please fix the date parser test, it still fails
+  22:31  the date parser test is still failing, fix it
+
+<span class="d">Pack: code-a-change 0.1.0 · Delete this evidence: aiq forget 01JB7Q3K</span></pre>
+<pre data-v="pause"><span class="d">PS&gt;</span> aiq pause
+AIQ is paused. Nothing is captured and no tips show.
+Resume with: aiq resume
+
+<span class="d">PS&gt;</span> aiq resume
+AIQ is on again.</pre>
+<pre data-v="forget"><span class="d">PS&gt;</span> aiq forget --all
+This deletes everything AIQ stored on this computer:
+  2,184 events, 14 tips and their evidence, the queue (3.1 MB).
+It can't be undone. Hooks stay installed; aiq uninstall removes them.
+
+Type forget to continue: <span class="u">forget</span>
+<span class="g">Deleted.</span> AIQ has no stored history now.</pre>
+<pre data-v="later"><span class="d">PS&gt;</span> aiq forget --older-than 2026-10-01
+This deletes 1,402 events and 9 tips from before 1 Oct 2026.
+Type forget to continue: <span class="u">forget</span>
+<span class="g">Deleted.</span> 782 events remain, from 1 Oct onward.
+
+<span class="d">PS&gt;</span> aiq forget 01JB7Q3K
+Deleted tip 01JB7Q3K and its 3 prompts.</pre>
+  </div>
+  <p class="cap" data-v="later">Delete-one and older-than arrive in Phase 6 per the design; shown so the wording is settled now.</p>
+</section>
+
+<!-- ===================== SETUP ===================== -->
+<section class="screen" id="s-setup">
+  <div class="win">
+    <div class="chrome"><span>AIQ · Set up</span></div>
+    <div class="body">
+      <div class="side">
+        <div class="steps" id="setupSteps"></div>
+      </div>
+      <div class="page">
+        <div data-v="privacy">
+          <header><h2>Your coach, on your computer only</h2>
+            <p class="lede">AIQ watches how you work with AI agents and suggests one small change at a time, so agents finish more of your work with less redoing.</p></header>
+          <div class="grid3" style="margin-top:18px">
+            <div class="card"><h3>Only you see it</h3><p class="muted">No manager or team view exists. Nothing about you leaves this computer unless you share it.</p></div>
+            <div class="card"><h3>About the task, not you</h3><p class="muted">Tips are about the kind of work you are doing, never a score of you.</p></div>
+            <div class="card"><h3>You control the data</h3><p class="muted">Pause any time. Delete one item, anything older than a date, or everything.</p></div>
+          </div>
+          <div class="row" style="margin-top:20px"><button class="b pri">Continue <kbd>Enter</kbd></button></div>
+        </div>
+        <div data-v="tools">
+          <header><h2>Choose the tools AIQ watches</h2>
+            <p class="lede">AIQ reads your prompts and when each turn ends. It never slows your tools: if AIQ is down, they behave as before.</p></header>
+          <div style="display:flex;flex-direction:column;gap:8px;margin-top:16px">
+            <label class="opt on"><input type="checkbox" checked> <span><b>Claude Code</b> <span class="chip ok">found</span><br><span class="muted small">Adds two hooks to ~/.claude/settings.json. AIQ shows you the change and backs up the file first.</span></span></label>
+            <label class="opt on"><input type="checkbox" checked> <span><b>GitHub Copilot CLI</b> <span class="chip ok">found</span><br><span class="muted small">Tips show outside the terminal (Copilot shows no hook output). Also covers VS Code agent mode.</span></span></label>
+            <label class="opt"><input type="checkbox"> <span><b>VS Code</b> <span class="chip">install extension</span><br><span class="muted small">Shows tips beside Copilot chat.</span></span></label>
+          </div>
+          <div class="row" style="margin-top:16px"><button class="b pri">Review changes <kbd>Enter</kbd></button><button class="b">Back</button></div>
+        </div>
+        <div data-v="judge judgeerr">
+          <header><h2>Connect your Anthropic API key</h2>
+            <p class="lede">AIQ asks Claude to read a finished task and say how much the agent did. It uses your own key, so the same provider that already saw the work reads it again. Nothing goes to AIQ.</p></header>
+          <div class="field" style="margin-top:16px;max-width:460px">
+            <label for="apikey">API key</label>
+            <input id="apikey" class="input" type="password" value="sk-ant-api03-••••••••••••" data-v="judge">
+            <input id="apikey2" class="input err" type="password" value="sk-ant-api03-••••••••" data-v="judgeerr" aria-invalid="true" aria-describedby="keyerr">
+            <span class="small muted" data-v="judge">Stored in Windows Credential Manager. Only your user account can read it.</span>
+            <span class="small" id="keyerr" style="color:var(--bad)" data-v="judgeerr">Anthropic says this key is not valid. Check you copied all of it, or make a new one in the Anthropic Console.</span>
+          </div>
+          <div class="banner warn" style="margin-top:14px">
+            <div class="grow"><b>Using a work account?</b> Your organisation's policies apply to these calls, including any logging and retention it has set. Judging uses your quota, up to a daily budget you set below.</div>
+          </div>
+          <div class="field" style="margin-top:14px;max-width:460px"><label for="budget">Daily judging budget</label>
+            <select id="budget" class="input"><option>40 tasks a day (about US$0.30)</option><option>20 tasks a day</option><option>Unlimited</option></select></div>
+          <div class="row" style="margin-top:16px"><button class="b pri">Check key and continue</button><button class="b">Skip for now</button><span class="small muted">Without a key, tips still work. Rung views wait.</span></div>
+        </div>
+        <div data-v="tips">
+          <header><h2>How many tips a day?</h2>
+            <p class="lede">At most one tip per session, shown when the agent pauses. Change this any time in Settings.</p></header>
+          <div class="radio-row" style="margin-top:16px" role="radiogroup" aria-label="Daily tip limit">
+            <label class="opt"><input type="radio" name="cap"> 1 a day</label>
+            <label class="opt"><input type="radio" name="cap"> 3 a day</label>
+            <label class="opt on"><input type="radio" name="cap" checked> 5 a day <span class="chip">default</span></label>
+          </div>
+          <div class="field" style="margin-top:18px;max-width:460px"><label for="preset">Start with tips for</label>
+            <select id="preset" class="input"><option>Coding work (developer preset)</option><option>Writing specs and docs (PM preset)</option><option>Both equally</option></select>
+            <span class="small muted">This only sets where AIQ starts. It adjusts to the work it sees you do.</span></div>
+          <div class="row" style="margin-top:16px"><button class="b pri">Continue <kbd>Enter</kbd></button><button class="b">Back</button></div>
+        </div>
+        <div data-v="history">
+          <header><h2>One thing to know before you start</h2>
+            <p class="lede">Your history lives only on this computer. AIQ keeps no copy and has no backup in this version.</p></header>
+          <div class="card" style="margin-top:16px;max-width:560px">
+            <p style="margin:0">If you lose this computer or reinstall Windows, your AIQ history is gone. Your tools and work are not affected.</p>
+            <label class="row"><input type="checkbox" id="ack"> I understand</label>
+          </div>
+          <div class="row" style="margin-top:16px"><button class="b pri">Start AIQ</button><button class="b">Back</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== APP PAGES (sidebar injected) ===================== -->
+<section class="screen" id="s-home">
+  <div class="win"><div class="chrome"><span>AIQ</span><span class="search" data-palette>Search or run a command <kbd>Ctrl K</kbd></span></div>
+  <div class="body"><div class="side" data-side="home"></div>
+  <div class="page">
+    <div class="banner warn" data-v="paused"><span class="dot off"></span><div class="grow"><b>AIQ is paused.</b> Nothing is captured and no tips show.</div><button class="b">Resume <kbd>P</kbd></button></div>
+    <div class="banner info" data-v="queued"><div class="grow"><b>12 tasks are waiting to be judged.</b> Your computer was offline. AIQ judges them when it's back online, and never sends them anywhere else.</div></div>
+
+    <div data-v="default paused queued">
+      <header><span class="muted small">This week · 27 Oct to 31 Oct</span></header>
+      <div class="hero" style="margin-top:8px">
+        <div class="card">
+          <span class="muted">Tasks agents finished without you redoing them</span>
+          <div class="big">41%</div>
+          <svg class="spark" viewBox="0 0 300 64" preserveAspectRatio="none" aria-label="Weekly trend: 33, 35, 38, 41 percent">
+            <line x1="0" x2="300" y1="56" y2="56" stroke="var(--line)"/>
+            <path d="M0,40 L100,35 L200,28 L300,18 L300,56 L0,56 Z" fill="var(--accent-soft)"/>
+            <path d="M0,40 L100,35 L200,28 L300,18" fill="none" stroke="var(--accent)" stroke-width="2"/>
+            <circle cx="296" cy="18" r="4" fill="var(--accent)"/>
+          </svg>
+          <span class="small muted">Up from 33% four weeks ago. 58 of 141 tasks: you kept the agent's work with small edits only.</span>
+        </div>
+        <div class="card">
+          <span class="muted">Biggest win available</span>
+          <h3>Writing unit tests</h3>
+          <p class="muted" style="margin:0">23 times a week. You check and rerun the tests yourself. Letting the agent run them could save about 40 minutes a week.</p>
+          <div class="row" style="margin-top:auto"><button class="b pri" data-go="task">See the next step <kbd>Enter</kbd></button></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" data-v="default paused queued">
+      <div class="spread"><h3>Where agents could do more</h3><span class="small muted">Repeated tasks, last 30 days</span></div>
+      <div>
+        <div class="opp">
+          <div><div class="t">Writing unit tests</div><div class="move"><span class="chip">Code a change</span><span class="chip"><i style="background:var(--r2)"></i>Directed</span>→<span class="chip"><i style="background:var(--r3)"></i>Delegated</span></div></div>
+          <div class="side-r num">23 a week</div>
+          <div class="next">Next step: ask the agent to run the tests and keep fixing until they pass.</div>
+        </div>
+        <div class="opp">
+          <div><div class="t">Turning meeting notes into status updates</div><div class="move"><span class="chip">Write a spec or doc</span><span class="chip"><i style="background:var(--r1)"></i>Assisted</span>→<span class="chip"><i style="background:var(--r2)"></i>Directed</span></div></div>
+          <div class="side-r num">6 a week</div>
+          <div class="next">Next step: start from a saved prompt that names the audience and the three decisions you need.</div>
+        </div>
+        <div class="opp">
+          <div><div class="t">Fixing lint and build errors</div><div class="move"><span class="chip">Code a change</span><span class="chip warn">Blocked by the repo</span></div></div>
+          <div class="side-r num">17 a week</div>
+          <div class="next">This repo has no agent instructions file, so agents guess the build steps. That's a repo fix, not a habit. <a href="#home">See what to add</a></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" data-v="default paused queued">
+      <div class="spread"><h3>How you work with agents</h3><span class="small muted">Share of tasks per rung · today and potential</span></div>
+      <div class="rungs" id="rungs"></div>
+      <div class="legend"><span><i></i>Today</span><span><i class="p"></i>Where these tasks could be</span></div>
+      <p class="small muted" style="margin:0">Rungs: 1 Assisted (you write, AI suggests) · 2 Directed (you steer each step) · 3 Delegated (agent does the whole task) · 4 Orchestrated (several agents, with specs and checks) · 5 Factory (pipelines others reuse).</p>
+    </div>
+
+    <div class="grid2" data-v="default paused queued">
+      <div class="card"><div class="spread"><h3>Habits</h3><a href="#habits" class="small">All habits <kbd>G</kbd> <kbd>B</kbd></a></div>
+        <div class="row"><span class="chip ok">Adopted</span> Give the agent the failing output</div>
+        <div class="row"><span class="chip tried">Tried</span> Ask the agent to run the tests itself</div>
+        <div class="row"><span class="chip tried">Tried</span> Say what was wrong before asking again</div>
+      </div>
+      <div class="card"><h3>Recent tips</h3>
+        <div class="spread small"><span>Reworded 3 times without new details</span><span class="muted">22:31 · Claude Code</span></div>
+        <div class="spread small"><span>Accepted a drafted spec with no sources checked</span><span class="muted">Tue · VS Code</span></div>
+        <div class="spread small"><span>Same task, fresh session would help</span><span class="muted">Mon · Claude Code</span></div>
+      </div>
+    </div>
+
+    <div data-v="first">
+      <header><h2>AIQ is watching quietly</h2><p class="lede">Keep working as usual. Patterns show after about 10 tasks of the same kind. Tips can start sooner.</p></header>
+      <div class="card" style="margin-top:16px;max-width:520px">
+        <div class="spread"><span>Code a change</span><span class="muted num">4 of 10 tasks</span></div><div class="meter"><i style="width:40%"></i></div>
+        <div class="spread"><span>Write a spec or doc</span><span class="muted num">1 of 10 tasks</span></div><div class="meter"><i style="width:10%"></i></div>
+        <span class="small muted">Watching: Claude Code, Copilot CLI. <a href="#data">See what AIQ has captured</a></span>
+      </div>
+    </div>
+  </div></div></div>
+</section>
+
+<section class="screen" id="s-task">
+  <div class="win"><div class="chrome"><span>AIQ</span><span class="search" data-palette>Search or run a command <kbd>Ctrl K</kbd></span></div>
+  <div class="body"><div class="side" data-side="home"></div>
+  <div class="page">
+    <header>
+      <a href="#home" class="small">← Home <kbd>Esc</kbd></a>
+      <h2>Writing unit tests</h2>
+      <div class="row"><span class="chip">Code a change</span><span class="muted small">23 a week · 61 tasks in 30 days · Claude Code and Copilot CLI</span></div>
+    </header>
+
+    <div class="card" data-v="default fit sent">
+      <span class="muted">Next step</span>
+      <h3 style="font-size:18px">Ask the agent to run the tests and keep fixing until they pass.</h3>
+      <p class="muted" style="margin:0">Today you read each change, run the tests yourself, then paste failures back. That's the step agents can take over.</p>
+      <div class="payload">Write tests for &lt;function&gt; covering &lt;cases&gt;. Run them with npm test.
+Keep fixing until they all pass, then show me the diff and the test output.</div>
+      <div class="row"><button class="b pri">Copy starter prompt <kbd>C</kbd></button><button class="b" data-fit>This doesn't fit <kbd>F</kbd></button><span class="small muted">Confidence: high</span></div>
+    </div>
+
+    <div class="card" data-v="unsure">
+      <span class="muted">Next step</span>
+      <h3>AIQ isn't sure enough to suggest one yet.</h3>
+      <p class="muted" style="margin:0">These tasks vary a lot. AIQ will suggest a step once it has seen a few more that look alike.</p>
+    </div>
+
+    <div class="card" data-v="fit">
+      <h3>What doesn't fit?</h3>
+      <p class="muted small" style="margin:0">This tunes your tips. It doesn't change how the task is judged.</p>
+      <label class="opt on"><input type="radio" name="why" checked> The evidence is wrong</label>
+      <label class="opt"><input type="radio" name="why"> The step doesn't fit how I work</label>
+      <label class="opt"><input type="radio" name="why"> Something outside my control blocks it</label>
+      <label class="opt"><input type="radio" name="why"> Something else</label>
+      <input class="input" placeholder="Optional: what's wrong? (stays on this computer)" aria-label="Details">
+      <div class="row"><button class="b pri">Send to my AIQ</button><button class="b">Cancel <kbd>Esc</kbd></button></div>
+    </div>
+    <div class="banner info" data-v="sent"><div class="grow"><b>Thanks.</b> AIQ won't coach this step for this task. It stays on this computer.</div><button class="b">Undo</button></div>
+
+    <div class="grid2">
+      <div class="card">
+        <h3>What AIQ saw</h3>
+        <div class="facts">
+          <div class="fact"><span>The agent made the edits</span><span class="chip ok">yes, 58 of 61</span></div>
+          <div class="fact"><span>Who ran the tests</span><span class="chip">you, 49 of 61</span></div>
+          <div class="fact"><span>Your share of the final change</span><span class="num">about 30%</span></div>
+          <div class="fact"><span>Agent instructions file in the repo</span><span class="chip ok">yes</span></div>
+        </div>
+        <a href="#data" class="small">See the prompts behind this</a>
+      </div>
+      <div class="card">
+        <h3>Why this is Directed today</h3>
+        <p class="muted" style="margin:0">You steer the agent through each step and check its work by hand. At Delegated the agent does the whole task, checks it and hands you a result to review.</p>
+        <div class="row"><span class="chip"><i style="background:var(--r2)"></i>Today: Directed</span>→<span class="chip"><i style="background:var(--r3)"></i>Could be: Delegated</span></div>
+        <span class="small muted">Judged by Claude with your API key · 61 tasks · last judged 22:40</span>
+      </div>
+    </div>
+  </div></div></div>
+</section>
+
+<section class="screen" id="s-habits">
+  <div class="win"><div class="chrome"><span>AIQ</span><span class="search" data-palette>Search or run a command <kbd>Ctrl K</kbd></span></div>
+  <div class="body"><div class="side" data-side="habits"></div>
+  <div class="page">
+    <header><h2>Habits and tips</h2><p class="lede">A habit counts as adopted when you do it in more than half of the tasks where it fits, over 14 days.</p></header>
+    <div class="card" data-v="default">
+      <div class="tablewrap"><table>
+        <thead><tr><th>Habit</th><th>Job</th><th>Status</th><th class="r">Last 14 days</th></tr></thead>
+        <tbody>
+          <tr><td>Give the agent the failing output</td><td class="muted">Code a change</td><td><span class="chip ok">Adopted</span></td><td class="r num">9 of 12 tasks</td></tr>
+          <tr><td>Start a fresh session for a new task</td><td class="muted">Any</td><td><span class="chip ok">Adopted</span></td><td class="r num">11 of 15</td></tr>
+          <tr><td>Say what was wrong before asking again</td><td class="muted">Any</td><td><span class="chip tried">Tried</span></td><td class="r num">3 of 8</td></tr>
+          <tr><td>Ask the agent to run the tests itself</td><td class="muted">Code a change</td><td><span class="chip tried">Tried</span></td><td class="r num">2 of 7</td></tr>
+          <tr><td>Check drafted claims against a source</td><td class="muted">Write a spec or doc</td><td><span class="chip">Not yet</span></td><td class="r num">0 of 4</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+    <div class="card" data-v="default">
+      <h3>Tip history</h3>
+      <div class="tablewrap"><table>
+        <thead><tr><th>When</th><th>Tip</th><th>Where</th><th>Your answer</th></tr></thead>
+        <tbody>
+          <tr><td class="num muted">Today 22:31</td><td>Reworded 3 times without new details</td><td class="muted">Claude Code</td><td class="muted">no answer</td></tr>
+          <tr><td class="num muted">Tue 15:02</td><td>Accepted a drafted spec with no sources checked</td><td class="muted">VS Code</td><td>Helpful</td></tr>
+          <tr><td class="num muted">Mon 10:47</td><td>Same task, a fresh session would help</td><td class="muted">Claude Code</td><td>Snoozed 7 days</td></tr>
+        </tbody>
+      </table></div>
+      <span class="small muted">Tip types you turned off: none. <a href="#settings">Manage tip types</a></span>
+    </div>
+    <div class="empty" data-v="empty"><b>No habits tracked yet.</b><span>Habits appear after AIQ shows you a tip and sees the kind of task it fits.</span></div>
+  </div></div></div>
+</section>
+
+<section class="screen" id="s-data">
+  <div class="win"><div class="chrome"><span>AIQ</span><span class="search" data-palette>Search or run a command <kbd>Ctrl K</kbd></span></div>
+  <div class="body"><div class="side" data-side="data"></div>
+  <div class="page">
+    <header><h2>Your data</h2><p class="lede">Everything AIQ has captured, stored only on this computer in a file only your account can read. It stays until you delete it.</p></header>
+    <div class="banner warn" data-v="paused"><span class="dot off"></span><div class="grow"><b>Paused since 22:50.</b> Nothing is captured.</div><button class="b">Resume <kbd>P</kbd></button></div>
+    <div class="row" data-v="default paused confirm">
+      <button class="b" data-v="default confirm">Pause AIQ <kbd>P</kbd></button>
+      <button class="b">Delete selected <kbd>Del</kbd></button>
+      <button class="b">Delete older than…</button>
+      <button class="b danger">Delete everything</button>
+      <span class="small muted" style="margin-left:auto">2,184 events · 3.1 MB · since 24 Oct</span>
+    </div>
+    <div class="card" data-v="default paused">
+      <div class="tablewrap"><table>
+        <thead><tr><th>Time</th><th>Tool</th><th>What</th><th>Content</th></tr></thead>
+        <tbody>
+          <tr><td class="num muted">22:31</td><td>Claude Code</td><td>Tip shown</td><td>Reworded 3 times without new details</td></tr>
+          <tr class="sel"><td class="num muted">22:31</td><td>Claude Code</td><td>Prompt</td><td class="mono small">the date parser test is still failing, fix it</td></tr>
+          <tr><td class="num muted">22:30</td><td>Claude Code</td><td>Turn ended</td><td class="muted">1 test failed</td></tr>
+          <tr><td class="num muted">22:28</td><td>Claude Code</td><td>Prompt</td><td class="mono small">please fix the date parser test, it still fails</td></tr>
+          <tr><td class="num muted">22:25</td><td>Claude Code</td><td>Prompt</td><td class="mono small">fix the failing date parser test</td></tr>
+          <tr><td class="num muted">21:58</td><td>Copilot CLI</td><td>Prompt</td><td class="mono small">summarise the open PRs for the weekly update</td></tr>
+        </tbody>
+      </table></div>
+      <span class="small muted"><kbd>J</kbd> <kbd>K</kbd> move · <kbd>X</kbd> select · <kbd>Del</kbd> delete selected · <kbd>/</kbd> search</span>
+    </div>
+    <div class="overlay" data-v="confirm">
+      <div class="dialog" role="dialog" aria-labelledby="dlgT">
+        <h3 id="dlgT">Delete everything AIQ stored?</h3>
+        <p style="margin:0">This deletes 2,184 events, 14 tips and their evidence, and the queue. It can't be undone. Your tools and your work are not affected.</p>
+        <div class="field"><label for="typeit">Type <b>forget</b> to confirm</label><input id="typeit" class="input" value="forg"></div>
+        <div class="row"><button class="b danger" disabled>Delete everything</button><button class="b">Cancel <kbd>Esc</kbd></button></div>
+      </div>
+    </div>
+    <div class="empty" data-v="emptied"><b>AIQ has no stored history.</b><span>Deleted at 22:52. Capture is still on; new activity will appear here.</span><button class="b">Pause AIQ <kbd>P</kbd></button></div>
+  </div></div></div>
+</section>
+
+<section class="screen" id="s-settings">
+  <div class="win"><div class="chrome"><span>AIQ</span><span class="search" data-palette>Search or run a command <kbd>Ctrl K</kbd></span></div>
+  <div class="body"><div class="side" data-side="settings"></div>
+  <div class="page">
+    <header><h2>Settings</h2></header>
+    <div class="grid2">
+      <div class="card"><h3>Tips</h3>
+        <div class="tog"><span>Tips a day</span><div class="seg"><button aria-pressed="false">1</button><button aria-pressed="false">3</button><button aria-pressed="true">5</button></div></div>
+        <div class="tog"><span>Quiet hours<br><span class="small muted">No tips and no capture</span></span><span class="num">18:00 to 08:00</span></div>
+        <div class="tog"><span>Reworded without new details</span><button class="switch" role="switch" aria-checked="true" aria-label="Reworded without new details"></button></div>
+        <div class="tog"><span>Accepted a draft with no sources checked</span><button class="switch" role="switch" aria-checked="true" aria-label="Accepted a draft with no sources checked"></button></div>
+        <div class="tog"><span>Long session on a new task</span><button class="switch" role="switch" aria-checked="false" aria-label="Long session on a new task"></button></div>
+      </div>
+      <div class="card"><h3>Your work mix</h3>
+        <span class="small muted">What AIQ has seen in 4 weeks. Tips follow this, not your job title.</span>
+        <div class="mix" aria-label="Code a change 68 percent, write a spec or doc 32 percent"><i style="width:68%;background:var(--r3)"></i><i style="width:32%;background:var(--r1)"></i></div>
+        <div class="spread small"><span>Code a change 68%</span><span>Write a spec or doc 32%</span></div>
+        <div class="tog"><span>Starting preset</span><select class="input" style="width:auto"><option>Developer</option><option>Program manager</option></select></div>
+        <h3 style="margin-top:6px">Judge</h3>
+        <div class="tog"><span>Anthropic API key</span><span class="chip ok">connected</span></div>
+        <div class="tog"><span>Daily judging budget</span><span class="num">40 tasks</span></div>
+        <div class="tog"><span>Allow another provider to judge<br><span class="small muted">Off: Copilot work is judged by Copilot</span></span><button class="switch" role="switch" aria-checked="false" aria-label="Allow another provider"></button></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="spread"><h3>Sharing</h3><span class="chip" data-v="default">Off · nothing leaves this computer</span><span class="chip tried" data-v="preview">Previewing</span></div>
+      <p style="margin:0" class="muted">You can choose to add your numbers to an anonymous total that helps improve tips. Only rung counts are sent, never prompts, code, task names or anything that identifies you, and only if at least 50 people contribute.</p>
+      <div class="row" data-v="default"><button class="b">See exactly what would be sent</button></div>
+      <div data-v="preview" style="display:flex;flex-direction:column;gap:10px">
+        <span class="small muted">This is the whole message, for this week:</span>
+        <div class="payload">{
+  "week": "2026-W44",
+  "job": "code-a-change",
+  "tasks_by_rung": [12, 21, 13, 8, 4],
+  "tips_helpful": 3, "tips_not_helpful": 1
+}</div>
+        <div class="row"><button class="b pri">Share weekly totals</button><button class="b">Keep sharing off</button></div>
+      </div>
+    </div>
+  </div></div></div>
+</section>
+
+      </div></div>
+
+      <aside class="notes" id="notes" aria-live="polite"></aside>
+    </div>
+  </div>
+</div>
+
+<div class="pal-back" id="pal" role="dialog" aria-label="Command palette">
+  <div class="pal"><input id="palIn" placeholder="Type a command or page" aria-label="Command"><ul id="palList"></ul></div>
+</div>
+
+<script>
+const SCREENS = [
+  { id: "claude-code", grp: "In your tools", name: "Claude Code tip", states: [["shown","Tip shown"],["held","Second tip held"],["unsure","Low confidence"],["feedback","Phase 3 feedback"]],
+    notes: { what: "The Phase 1 card from the design doc, as Claude Code draws it under the reply.",
+      react: ["Is four lines too long under every reply that triggers? A two-line version would drop Why.", "Should the tip say \"AIQ tip:\" or just \"AIQ:\"? It follows Claude Code's \"Stop says:\" prefix."],
+      q: "Keep \"Turn off tips for now: aiq pause\" on every card, or move it to aiq status once feedback commands exist?" } },
+  { id: "vscode", grp: "In your tools", name: "VS Code tip", states: [["card","Tip shown"],["tried","Try this used"],["waiting","Waiting for pause"],["feedback","After feedback"],["paused","Paused"],["nodata","Evidence deleted"]],
+    notes: { what: "The AIQ extension's toast and status bar item, beside Copilot agent chat.",
+      react: ["The toast sits over the editor corner. A side-panel entry is the quieter alternative in the spec.", "\"Try this\" fills the chat box with a starter built from the real error. It never sends it."],
+      q: "Toast or side-panel entry as the default in VS Code?" } },
+  { id: "copilot-cli", grp: "In your tools", name: "Copilot CLI tip", states: [["toast","A: OS notification"],["mini","B: AIQ mini window"],["next","C: on next prompt"]],
+    notes: { what: "Copilot CLI shows no hook output, so the tip must appear somewhere AIQ controls. This is the open choice in PR #10.",
+      react: ["A reaches you anywhere but is the most interruptive.", "C keeps you in the terminal but is unproven and late."],
+      q: "Which option do you want for Copilot CLI tips? This mockup is meant to make that call easier." } },
+  { id: "cli", grp: "aiq command line", name: "aiq status, show, pause, forget", states: [["status","status"],["first","status: first run"],["down","status: core down"],["show","show"],["pause","pause / resume"],["forget","forget --all"],["later","forget one / older (Phase 6)"]],
+    notes: { what: "Plain-text output for the commands in PR #9, using the wording from the design doc.",
+      react: ["Stop hook latency in status is there for the dogfood week. It may move behind aiq status --verbose later."],
+      q: "Is typing \"forget\" the right confirm for delete-all, or is y/N enough on the command line?" } },
+  { id: "setup", grp: "AIQ home (desktop app)", name: "Setup", states: [["privacy","1 Privacy"],["tools","2 Tools"],["judge","3 API key"],["judgeerr","3 Key invalid"],["tips","4 Tips"],["history","5 History notice"]],
+    notes: { what: "First run of the Tauri app: privacy promise, tools, API key with the work-account caveat, tip limit (default 5), lost-machine notice.",
+      react: ["The API key step is skippable: tips work without it, rung views wait.", "The judging budget shows a rough cost. That number is a guess and needs checking."],
+      q: "Should setup ask for the API key at all on day one, or only when the first rung view is ready?" } },
+  { id: "home", grp: "AIQ home (desktop app)", name: "Home", states: [["default","Normal week"],["first","First week"],["queued","Offline queue"],["paused","Paused"]],
+    notes: { what: "Leads with the outcome (tasks agents finished without redoing), then the next opportunities by job, then rungs as the explanation underneath.",
+      react: ["\"Without redoing\" is a new metric I made up for this mockup: kept the agent's work with small edits only. It needs a definition we can measure.", "The repo-blocked row is an environment finding, shown so it is never counted against you."],
+      q: "Is this the right order: outcome, opportunities, rungs, habits?" } },
+  { id: "task", grp: "AIQ home (desktop app)", name: "Opportunity detail", states: [["default","Next step"],["fit","This doesn't fit"],["sent","Feedback sent"],["unsure","Below 0.8 confidence"]],
+    notes: { what: "One recurring task: the next step, a starter prompt, the facts the judge used, and why it sits on its rung.",
+      react: ["\"This doesn't fit\" offers the reasons from the rung spec and never lets you change the rung.", "Below the 0.8 bar AIQ shows no next step, only that it isn't sure."],
+      q: "Should the minutes-saved estimate on Home exist at all, given we can't measure it yet?" } },
+  { id: "habits", grp: "AIQ home (desktop app)", name: "Habits and tips", states: [["default","Normal"],["empty","Empty"]],
+    notes: { what: "Habit status (Not yet, Tried, Adopted with the 14-day rule) and the tip history, so a hidden tip can be found again.",
+      react: ["No streaks or badges, per the calm feedback rule."],
+      q: "Do you want the tip history on its own page?" } },
+  { id: "data", grp: "AIQ home (desktop app)", name: "Your data", states: [["default","Capture log"],["paused","Paused"],["confirm","Delete everything"],["emptied","After delete"]],
+    notes: { what: "The capture log with pause, delete selected, delete older than a date, and delete everything.",
+      react: ["Prompts show in full here, because only you can open this app."],
+      q: "Should pause have a timer (1 hour, until tomorrow) or stay on until you resume?" } },
+  { id: "settings", grp: "AIQ home (desktop app)", name: "Settings and sharing", states: [["default","Sharing off"],["preview","Sharing preview"]],
+    notes: { what: "Tip limit, quiet hours, tip types, work mix, judge, and sharing.",
+      react: ["Sharing shows the exact message before you opt in. The 50-person minimum is a placeholder for the open cohort-size question."],
+      q: "Is a payload preview the right way to make sharing easy to reason about?" } },
+];
+const PAGES = [["home","Home","H"],["habits","Habits and tips","B"],["data","Your data","D"],["settings","Settings","S"],["setup","Set up again","U"]];
+const RUNGS = [["Assisted",24,14],["Directed",35,28],["Delegated",22,31],["Orchestrated",13,19],["Factory",6,8]];
+
+const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+let cur = SCREENS[5], state = {};
+
+// nav
+const nav = $("#screenNav");
+[...new Set(SCREENS.map(s => s.grp))].forEach(g => {
+  const d = document.createElement("div"); d.className = "grp";
+  d.innerHTML = `<b>${g}</b>` + SCREENS.filter(s => s.grp === g).map(s => `<a href="#${s.id}" data-id="${s.id}">${s.name}</a>`).join("");
+  nav.appendChild(d);
+});
+// app sidebars
+$$("[data-side]").forEach(el => {
+  const on = el.dataset.side;
+  el.innerHTML = PAGES.slice(0, 4).map(([id, n, k]) => `<a href="#${id}" class="${id === on ? "on" : ""}">${n}<kbd>G ${k}</kbd></a>`).join("") +
+    `<div class="state"><span><span class="dot"></span>Watching Claude Code, Copilot CLI</span><span>1 of 5 tips today</span><span><kbd>P</kbd> pause</span></div>`;
+});
+// rungs
+$("#rungs").innerHTML = RUNGS.slice().reverse().map(([n, now, pot], k) => {
+  const i = 4 - k;
+  return `<div class="rrow"><span>${i + 1} ${n}</span><div class="track"><span class="pot" style="width:${pot / 40 * 100}%"></span><span class="now" style="width:${now / 40 * 100}%;background:var(--r${i + 1})"></span></div><span class="v">${now}% → ${pot}%</span></div>`;
+}).join("");
+// setup steps
+function setupSteps(v) {
+  const order = ["privacy","tools","judge","tips","history"], idx = order.indexOf(v === "judgeerr" ? "judge" : v);
+  $("#setupSteps").innerHTML = [["privacy","Privacy"],["tools","Tools"],["judge","API key"],["tips","Tips"],["history","Your history"]]
+    .map(([id, n], i) => `<a data-step="${id}" class="${i < idx ? "done" : i === idx ? "on" : ""}"><span class="n">${i < idx ? "✓" : i + 1}</span>${n}</a>`).join("");
+}
+
+function show(id, v) {
+  cur = SCREENS.find(s => s.id === id) || SCREENS[5];
+  v = v || state[cur.id] || cur.states[0][0]; state[cur.id] = v;
+  $$(".screen").forEach(s => s.classList.toggle("on", s.id === "s-" + cur.id));
+  $$("#screenNav a").forEach(a => a.setAttribute("aria-current", a.dataset.id === cur.id ? "page" : "false"));
+  $("#screenTitle").textContent = `${cur.grp} · ${cur.name}`;
+  $("#stateSeg").innerHTML = cur.states.map(([k, n]) => `<button data-s="${k}" aria-pressed="${k === v}">${n}</button>`).join("");
+  $$(`#s-${cur.id} [data-v]`).forEach(el => el.classList.toggle("vis", el.dataset.v.split(" ").includes(v)));
+  if (cur.id === "setup") setupSteps(v);
+  const n = cur.notes;
+  $("#notes").innerHTML = `<h2>What this shows</h2><p>${n.what}</p><h2>Things to react to</h2><ul>${n.react.map(r => `<li>${r}</li>`).join("")}</ul><h2>Question for you</h2><p class="q">${n.q}</p>`;
+}
+$("#stateSeg").addEventListener("click", e => { const b = e.target.closest("button"); if (b) show(cur.id, b.dataset.s); });
+document.addEventListener("click", e => {
+  const st = e.target.closest("[data-step]"); if (st) show("setup", st.dataset.step);
+  const g = e.target.closest("[data-go]"); if (g) location.hash = g.dataset.go;
+  const f = e.target.closest("[data-fit]"); if (f) show("task", "fit");
+  if (e.target.closest("[data-palette]")) openPal();
+  const sw = e.target.closest(".switch"); if (sw) sw.setAttribute("aria-checked", sw.getAttribute("aria-checked") !== "true");
+});
+// theme / width
+$("#themeSeg").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return;
+  $$("#themeSeg button").forEach(x => x.setAttribute("aria-pressed", x === b));
+  if (b.dataset.t === "system") document.documentElement.removeAttribute("data-theme"); else document.documentElement.dataset.theme = b.dataset.t; });
+$("#widthSeg").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return;
+  $$("#widthSeg button").forEach(x => x.setAttribute("aria-pressed", x === b));
+  $("#stage").classList.toggle("narrow", b.dataset.w === "narrow"); });
+// hash routing
+const route = () => show(location.hash.slice(1) || "home");
+addEventListener("hashchange", route);
+
+// command palette
+const CMDS = [
+  ...PAGES.map(([id, n, k]) => ({ n: `Go to ${n}`, k: `G ${k}`, run: () => location.hash = id })),
+  { n: "Pause AIQ", k: "P", run: () => { location.hash = "home"; show("home", "paused"); } },
+  { n: "Delete everything AIQ stored", k: "", run: () => { location.hash = "data"; show("data", "confirm"); } },
+  { n: "Delete items older than a date", k: "", run: () => location.hash = "data" },
+  { n: "Change tips a day", k: "", run: () => location.hash = "settings" },
+  { n: "Preview what sharing would send", k: "", run: () => { location.hash = "settings"; show("settings", "preview"); } },
+  { n: "Show the latest tip's evidence", k: "", run: () => { location.hash = "cli"; show("cli", "show"); } },
+];
+let palIdx = 0, palItems = CMDS;
+function drawPal() {
+  const q = $("#palIn").value.toLowerCase(); palItems = CMDS.filter(c => c.n.toLowerCase().includes(q));
+  palIdx = Math.min(palIdx, Math.max(0, palItems.length - 1));
+  $("#palList").innerHTML = palItems.map((c, i) => `<li class="${i === palIdx ? "act" : ""}" data-i="${i}"><span>${c.n}</span><span class="k">${c.k}</span></li>`).join("") || `<li class="muted">No command matches.</li>`;
+}
+function openPal() { $("#pal").classList.add("open"); $("#palIn").value = ""; palIdx = 0; drawPal(); $("#palIn").focus(); }
+function closePal() { $("#pal").classList.remove("open"); }
+$("#palIn").addEventListener("input", () => { palIdx = 0; drawPal(); });
+$("#palList").addEventListener("click", e => { const li = e.target.closest("li[data-i]"); if (li) { closePal(); palItems[+li.dataset.i].run(); } });
+$("#pal").addEventListener("click", e => { if (e.target.id === "pal") closePal(); });
+let gPending = false;
+document.addEventListener("keydown", e => {
+  const open = $("#pal").classList.contains("open");
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); open ? closePal() : openPal(); return; }
+  if (open) {
+    if (e.key === "Escape") closePal();
+    else if (e.key === "ArrowDown") { palIdx = Math.min(palIdx + 1, palItems.length - 1); drawPal(); e.preventDefault(); }
+    else if (e.key === "ArrowUp") { palIdx = Math.max(palIdx - 1, 0); drawPal(); e.preventDefault(); }
+    else if (e.key === "Enter" && palItems[palIdx]) { closePal(); palItems[palIdx].run(); }
+    return;
+  }
+  if (e.target.matches("input, select, textarea")) return;
+  if (e.key === "[" || e.key === "]") {
+    const ks = cur.states.map(s => s[0]), i = ks.indexOf(state[cur.id]);
+    show(cur.id, ks[(i + (e.key === "]" ? 1 : ks.length - 1)) % ks.length]); return;
+  }
+  if (gPending) { gPending = false; const p = PAGES.find(p => p[2] === e.key.toUpperCase()); if (p) location.hash = p[0]; return; }
+  if (e.key.toLowerCase() === "g") { gPending = true; setTimeout(() => gPending = false, 900); }
+});
+route();
+</script>
+</body>
+</html>
