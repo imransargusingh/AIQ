@@ -26,7 +26,7 @@ Source of truth: AIQ brief and Design > Coaching tab (https://claude.ai/artifact
 |---|---|---|
 | D1 | Specify the coaching loop (card + triggers) first | Imran, 2026-10-31 (decision card) |
 | D2 | Surfaces: VS Code, Claude Code and GitHub Copilot CLI, all from the start | Imran, 2026-10-31 (decision card) |
-| D3 | Frequency: at most one in-the-moment tip per session, a small daily cap, per-trigger cooldowns | Design > Coaching > Guardrails (recorded owner ruling) |
+| D3 | Frequency: at most one in-the-moment tip per session and per-trigger cooldowns (Design > Coaching > Guardrails). Daily cap is chosen by the person at setup and in Settings (1, 3 or 5), **default 5** | Guardrails: recorded owner ruling; cap: Imran, 2026-10-31 (thread reply) |
 | D4 | Only the person sees their data; AIQ never posts anything others can see | Imran, 2026-10-31 (privacy rule) |
 | D5 | Habit states: **Tried** after one observed use; **Adopted** when seen in more than half of eligible tasks over 14 days, with at least 3 eligible tasks. Thresholds are tunable and expected to change | Imran, 2026-10-31 (thread reply) |
 | D6 | PMs are primary users of this loop on the same surfaces: they are expected to work in CLI agents and possibly VS Code | Imran, 2026-10-31 (thread reply) |
@@ -134,7 +134,7 @@ Value objects: Signal, Evidence link, Feedback, Trigger rule.
 
 **US-2 — As anyone working with AI, I want at most one tip at a time, shown at a natural pause, so that coaching never breaks my flow.**
 - **Given** an in-the-moment card was already shown in this session (on any surface) **When** another Opportunity qualifies **Then** it is held, not shown.
-- **Given** the person's daily cap is reached **When** an Opportunity qualifies **Then** nothing is shown until the next local day; on-demand requests still work.
+- **Given** the person's daily cap (their setting; default 5) is reached **When** an Opportunity qualifies **Then** nothing is shown until the next local day; on-demand requests still work.
 - **Given** an agent turn is still streaming or a tool call is running **When** a card is ready **Then** it is shown only after that turn or call ends.
 - **Given** quiet hours or the pause control is on **When** an Opportunity qualifies **Then** nothing is shown and nothing is captured while paused.
 
@@ -322,12 +322,11 @@ below the mid-task bar and the card is shown at a pause instead.
 - Grouping events into Tasks has no evidence yet. Probe: hand-label a week of the team's own sessions.
 - D5 thresholds are a first guess. Probe: alpha data on Tried→Adopted rates; tune via pack data.
 - Comparables are from memory (Flagged). Probe: `/collectknowledge` on feedback timing and comparable coaches.
-- Daily cap number is not set (Coaching tab says "small"). Proposed default: 3 per day, tunable.
 
 ## Gate record
 `GATE specify · 2026-10-31 · Simplifier, Test Architect, UX Researcher/IA, UX & Accessibility, Security & Privacy (run by Claude in one session; not independent) · verdict: pass with conditions · vetoes→resolution:`
 - Simplifier (soft): PR and work-item notes cut from this spec's must-haves; kept only as the US-6 "never writes to shared systems" guard. Resolved.
-- Test Architect (hard): "low dismiss rate" and "fast" replaced with numbers; US-5 got a below-minimum case. Resolved. Open: daily cap value (proposed 3).
+- Test Architect (hard): "low dismiss rate" and "fast" replaced with numbers; US-5 got a below-minimum case. Resolved.
 - UX Researcher/IA: added render-failure and lapse paths to the flow, and recovery via coaching history. Resolved.
 - UX & Accessibility: screen-reader politeness and `NO_COLOR` added. Resolved.
 - Security & Privacy (hard): STRIDE not yet run. **Recorded, not cleared**: must run in `/define-architecture` before build.
