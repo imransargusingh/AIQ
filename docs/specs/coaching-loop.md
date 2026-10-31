@@ -28,6 +28,7 @@ Source of truth: AIQ brief and Design > Coaching tab (https://claude.ai/artifact
 | D3 | Frequency: at most one in-the-moment tip per session, a small daily cap, per-trigger cooldowns | Design > Coaching > Guardrails (recorded owner ruling) |
 | D4 | Only the person sees their data; AIQ never posts anything others can see | Imran, 2026-10-31 (privacy rule) |
 | D5 | Habit states: **Tried** after one observed use; **Adopted** when seen in more than half of eligible tasks over 14 days, with at least 3 eligible tasks. Thresholds are tunable and expected to change | Imran, 2026-10-31 (thread reply) |
+| D6 | PMs are primary users of this loop on the same surfaces: they are expected to work in CLI agents and possibly VS Code | Imran, 2026-10-31 (thread reply) |
 
 ## Part A — Functional specification
 
@@ -41,7 +42,13 @@ it matters. Reports a week later don't change habits; feedback during the task d
 - **Dev, rung 1–2 (primary):** uses completions and chat; rarely delegates whole tasks. Motivated
   (self-selected), short on time, wary of being watched.
 - **Dev, rung 3 (secondary):** delegates tasks to a CLI agent; loses time to rework and missing context.
-- PMs are out of this spec (their surfaces are summary-first).
+- **PM, rung 1–3 (primary):** expected to work in CLI agents and possibly VS Code, writing specs,
+  research, backlog and status. Gets the same loop, card and budget as developers. Whether
+  PM-specific tip types ship in this spec or with the PM pack in Beta is **pending**; until then PMs
+  see the role-neutral tip types (1–3 below).
+- The loop is role-neutral: nothing in it depends on the person's discipline. Role specifics live in
+  coaching packs (decision, 2026-10-31). PMs on Office, Teams and planning tools are out of this spec
+  because those surfaces are summary-only today.
 
 ### Core scenario
 Priya asks the agent to fix a failing test. After her third rephrase with no new information, AIQ
@@ -57,7 +64,7 @@ GitHub Copilot CLI;
 the coaching card; trigger rules (condition, cooldown, surface, priority); the interruption budget;
 per-person tip ranking and suppression from feedback.
 
-Initial Opportunity types (dev pack v1, from the Design > Coaching tab):
+Initial Opportunity types (from the Design > Coaching tab; 1–3 are role-neutral, 4 is dev pack v1):
 1. Re-prompting the same request 3+ times without adding new information (fast path).
 2. Pasting large context by hand that the agent could read itself (fast path).
 3. Long manual edits of AI output instead of fixing the instruction (fast path).
@@ -94,35 +101,35 @@ Value objects: Signal, Evidence link, Feedback, Trigger rule.
 
 ### User stories & acceptance criteria
 
-**US-1 — As a developer, I want AIQ to notice a habit that is costing me time while I'm still in the task, so that I can change it when it matters.**
+**US-1 — As a developer or PM, I want AIQ to notice a habit that is costing me time while I'm still in the task, so that I can change it when it matters.**
 - **Given** a fast detector's condition is met in a Task on VS Code, Claude Code or Copilot CLI **When** the Signal is emitted **Then** AIQ decides show / hold / drop within 2 s (p95) of the triggering event.
 - **Given** the Opportunity's cause is an Environment blocker (e.g. no agent instructions file in the repo) **When** AIQ evaluates it **Then** no habit card is shown and the finding is recorded as an environment finding, never against the person.
 - **Given** a detector's confidence is below the pack's in-the-moment threshold **When** it fires **Then** the card is held for the next pause or dropped, never shown mid-task.
 
-**US-2 — As a developer, I want at most one tip at a time, shown at a natural pause, so that coaching never breaks my flow.**
+**US-2 — As a developer or PM, I want at most one tip at a time, shown at a natural pause, so that coaching never breaks my flow.**
 - **Given** an in-the-moment card was already shown in this session (on any surface) **When** another Opportunity qualifies **Then** it is held, not shown.
 - **Given** the person's daily cap is reached **When** an Opportunity qualifies **Then** nothing is shown until the next local day; on-demand requests still work.
 - **Given** an agent turn is still streaming or a tool call is running **When** a card is ready **Then** it is shown only after that turn or call ends.
 - **Given** quiet hours or the pause control is on **When** an Opportunity qualifies **Then** nothing is shown and nothing is captured while paused.
 
-**US-3 — As a developer, I want each card to show what it noticed, why it matters, one thing to try, and the evidence, so that I can trust and act on it in one step.**
+**US-3 — As a developer or PM, I want each card to show what it noticed, why it matters, one thing to try, and the evidence, so that I can trust and act on it in one step.**
 - **Given** any card **When** it renders **Then** it has exactly one "What we noticed" sentence that cites the person's own activity, one "Why it matters", one "Try this" action and an Evidence link to the triggering events.
 - **Given** the Try-this action is a starter prompt or file **When** the person selects it **Then** it is inserted or opened in the current surface without leaving it, and nothing is sent or committed on their behalf.
 - **Given** the evidence events were deleted by the person **When** they open Evidence **Then** the card says the evidence was deleted and offers to dismiss the card.
 
-**US-4 — As a developer, I want to say whether a tip helped, snooze it or turn it off, so that AIQ learns what's useful for me.**
+**US-4 — As a developer or PM, I want to say whether a tip helped, snooze it or turn it off, so that AIQ learns what's useful for me.**
 - **Given** a card **When** the person picks "Don't show this again" **Then** that Tip type is never shown to them again on any surface until they re-enable it in Settings.
 - **Given** "Snooze" **When** chosen **Then** that Tip type is not shown for 7 days.
 - **Given** "Not helpful" twice for the same Tip type within 30 days **When** that type next qualifies **Then** its ranking for that person drops below every Tip type without negative feedback.
 - **Given** the person dismisses a card without choosing **When** it closes **Then** it counts as "no answer", not "not helpful".
 
-**US-5 — As a developer, I want AIQ to tell me when I've tried and then adopted a habit, so that I can see my own progress.**
+**US-5 — As a developer or PM, I want AIQ to tell me when I've tried and then adopted a habit, so that I can see my own progress.**
 - **Given** a Habit in *Not yet* **When** its behavior is observed once in an eligible task **Then** it becomes *Tried*.
 - **Given** a Habit in *Tried* **When** in the last 14 days there were ≥ 3 eligible tasks and the behavior appeared in more than half of them **Then** it becomes *Adopted* and a milestone card is queued for the next pause (counts against the daily cap).
 - **Given** 2 eligible tasks in 14 days, both with the behavior **When** evaluated **Then** it stays *Tried* (below the minimum).
 - **Given** an *Adopted* Habit **When** it appears in half or fewer of eligible tasks over a later 14-day window with ≥ 3 eligible tasks **Then** it returns to *Tried*, with no card shown.
 
-**US-6 — As a developer, I want all of this to stay on my machine and visible only to me.**
+**US-6 — As a developer or PM, I want all of this to stay on my machine and visible only to me.**
 - **Given** normal operation **When** AIQ runs for a week **Then** no event, Signal, card or feedback leaves the device (verified by network capture with only pack and update checks allowed).
 - **Given** a card would appear in a PR or work-item view **When** shown **Then** it is visible only in the person's own client; AIQ makes no API call that writes to GitHub or any shared system.
 
@@ -179,6 +186,8 @@ surface's next pause; the bar is never lowered for that surface.
 ### Personas & jobs-to-be-done
 - **Priya, rung 1–2 dev:** "When I'm stuck re-prompting, help me get unstuck without making me stop
   and read." Success: fewer loops, no feeling of being watched.
+- **Dana, rung 2 PM:** "When I ask an agent for a spec or status report and then rewrite most of it,
+  show me what brief would have got it right first time." Success: drafts she ships with light edits.
 - **Marcus, rung 3 dev:** "When I hand a task to an agent, tell me what context would have avoided the
   rework." Success: first-try agent PRs more often.
 
