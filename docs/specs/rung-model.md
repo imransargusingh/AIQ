@@ -36,7 +36,7 @@ Sibling spec: `docs/specs/coaching-loop.md` (consumes this model's output for Op
 | Q1 | Scope: the judge, its explanation and the person's feedback on it (see Q3). The rung distribution and opportunity views get their own spec | Imran, 2026-10-31 (decision card) |
 | Q2 | The judge is a cloud model called **through the person's own AI account**, and only that way in alpha (no on-device judge). It reads the task's prompts and outputs. Conditions: a task goes only to the provider that already saw it unless the person chooses otherwise; setup states plainly that a work account's admin policies, logging and retention apply; offline or no account means the task is queued, never rerouted; judging uses the person's quota | Imran, 2026-10-31 (decision card, after asking why not judge in the cloud under the user's own account) |
 | Q3 | People **do not reclassify** a task's rung; the rung is always the judge's. "Easy to correct" means correcting the *guidance*: the person can say the evidence, next step or blockers miss, and AIQ withdraws that guidance and learns which guidance helps them. Rung placement is calibrated only against the evaluation regime (Q6), never against the person's own view | Imran, 2026-10-31 (thread reply: users may not have the experience to classify consistently) |
-| Q4 | Accuracy bar before the judge drives coaching | **Pending** (recommended: current rung ≥ 70% exact, ≥ 95% within one; potential ≥ 60% exact, ≥ 90% within one) |
+| Q4 | Accuracy bars as in US-7: model-read facts right on ≥ 90% of check tasks; tasks built at a known rung land on it ≥ 90%; expert sanity check ≥ 70% exact and ≥ 95% within one (potential ≥ 60% / ≥ 90%); in alpha ≥ 70% of next steps not flagged "isn't useful" and "evidence is wrong" on ≤ 10%. Tunable after the first check runs | Imran, 2026-10-31 (decision card) |
 | Q6 | **Facts first, plus cheap labels.** The model answers narrow questions about how the work was done (task facts); the rubric's rules turn facts into a rung. Accuracy comes from tasks done at a known rung on purpose (labels by construction), the team's own sessions, a small expert sanity check, two-run consistency, and private feedback signals in alpha. Replaces the large golden set | Imran, 2026-10-31 (decision card, after raising that a golden set is costly and tasks vary too much to generalize from few examples) |
 | Q5 | Does weak context management cap a task at Directed? | **Pending** (recommended: a rubric signal, not a hard cap, until it can be detected reliably) |
 
@@ -193,7 +193,7 @@ Aggregates and the invariant each protects:
 - **Given** a judgment below the pack's confidence threshold **When** stored **Then** it is marked Uncertain, shown as "uncertain" wherever it appears, and never used by the coaching loop.
 - **Given** the judge is unavailable (model missing, crash, timeout) **When** a task closes **Then** the task is queued and judged later, and the coaching loop treats it as "no rung estimate available" (coaching-loop scope note).
 
-**US-7 — As the AIQ team, we want the judge held to a measured accuracy bar before it drives coaching, so that people get fair judgments from day one.** (Q6; numbers pending Q4)
+**US-7 — As the AIQ team, we want the judge held to a measured accuracy bar before it drives coaching, so that people get fair judgments from day one.** (Q4, Q6)
 - **Given** the check set for a job **When** the judge is evaluated **Then** each model-read fact matches its expected value on ≥ 90% of tasks (shares within 10 percentage points).
 - **Given** the rubric for a job **When** its rule tests run **Then** every rung boundary has a passing case on each side.
 - **Given** tasks built at a known rung on purpose **When** judged **Then** ≥ 90% land on that rung.
@@ -285,7 +285,7 @@ a fact the logs cannot answer and the content was deleted (fact unknown, rule no
   depends on makes the judgment Uncertain.
 - **Alpha signals:** "next step isn't useful" and "evidence is wrong" rates, private per person, and
   across people only through opt-in privacy-preserving aggregates with no content.
-- **Bars:** US-7 (numbers pending Q4).
+- **Bars:** US-7 (Q4).
 - **Dependency:** task grouping, job classification and the first dogfood traces come from the Phase 0
   feasibility spike. This spec does not repeat that work.
 
