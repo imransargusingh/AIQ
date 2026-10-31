@@ -194,7 +194,7 @@ Aggregates and the invariant each protects:
 - **Given** the person sets up the judge with a work account **When** setup completes **Then** AIQ has shown, in plain words, that the account's admin policies, logging and retention apply to what the judge sends.
 - **Given** the device is offline, the account is signed out, or the quota is exhausted **When** a task closes **Then** it is queued and judged later, never sent to another account or model.
 - **Given** a judgment **When** the person opens "What was read?" **Then** the panel lists exactly the prompts, outputs and signals sent, and which account received them.
-- **Given** a judge call runs through a tool AIQ also observes (e.g. Claude Code or Copilot CLI) **When** AIQ's collectors see it **Then** it is never grouped into a task, judged or coached; and setup tells the person that judge calls appear in that tool's own session history.
+- **Given** a judge call made through the VS Code Language Model API **When** AIQ's VS Code collector sees it **Then** it is never grouped into a task, judged or coached; and setup tells the person that judge calls count toward their Copilot usage.
 - **Given** the person deleted the task's content **When** it is re-judged **Then** only log facts are used; model-read facts are kept from the earlier judgment or marked unknown, and the judgment says so.
 - **Given** the person paused capture during part of a task **When** it is judged **Then** content from the paused period is never sent, because it was never captured.
 
@@ -276,7 +276,7 @@ Alpha job examples (pack data, illustrative):
 | Functional suitability | US-7 fact accuracy, rule, construction, sanity-check, consistency and gaming bars per job, measured on each release |
 | Performance efficiency | Judgment ≤ 60 s p95 from judge call start; judging adds no measurable load to the core's coaching-loop budgets; judging stays within a daily budget the person sets, and its cost is visible to them (TR-8) |
 | Reliability | A judge failure never blocks a collector or the coaching fast path; unjudged tasks are queued and retried |
-| Security | See the threat review (TR-1 to TR-9). The judge calls only the person's chosen judge account; AIQ never holds provider OAuth tokens and keeps any API key in the OS keychain; the judge binary is resolved by absolute path; pack rubrics are data and cannot run code; task content is passed to the judge as quoted data, never as instructions (prompt-injection gaming case in US-7) |
+| Security | See the threat review (TR-1 to TR-9). The judge calls only the person's chosen judge account: the Anthropic API with their own API key (kept in the OS keychain) or the VS Code Language Model API; AIQ never reads provider sign-in tokens; the API endpoint is fixed, not taken from repo or environment overrides; pack rubrics are data and cannot run code; task content is passed to the judge as quoted data, never as instructions (prompt-injection gaming case in US-7) |
 | Privacy | R6; content goes only to the person's own judge account (Q2); judgment feedback and guidance preferences stay on device; full export and delete cover judgments |
 | Usability | In a 5-person hallway test, ≥ 4 can say why a task got its rung from the panel alone |
 | Accessibility | Panel keyboard-operable and screen-reader readable; rung never conveyed by colour alone |
@@ -354,7 +354,7 @@ a fact the logs cannot answer and the content was deleted (fact unknown, rule no
 - **Task judgment panel:** Task title · Current rung (with confidence) · Next step (potential + gap) ·
   Why (evidence items) · Blockers · This doesn't fit · History (judgments and feedback).
 - **Entry points:** a coaching card's Evidence link; a task row in AIQ home (views spec).
-- **Settings > Rung model:** judge account (choose, sign in, cross-provider on/off, daily budget, cost so far),
+- **Settings > Rung model:** judge account (choose Claude with your own API key, or Copilot with VS Code consent; cross-provider on/off, daily budget, cost so far),
   my guidance preferences (view, reset per job).
 - Labels for the glossary: *Rung, Current rung, Next step, Ceiling, Evidence, Blocker, Right rung,
   Uncertain, This doesn't fit, You flagged this.*
@@ -469,9 +469,9 @@ judge account's credentials and quota, judgments and evidence (reveal how someon
 | TR-4 | Tampering | Judge output that fails the schema, or carries extra text, is trusted | Any response that fails the schema is discarded and the fact is unknown; free-text fields are length-capped | New |
 | TR-5 | Tampering / elevation | Model-written evidence or gap text, steered by injected content, renders as markup or links in the VS Code panel or a card | All model-written text renders as plain text: no HTML, Markdown links or commands | New |
 | T-B5-3 | Tampering | AIQ observes its own judge calls | Tagged and skipped at ingest (US-5) | Existing |
-| T-B5-4 | Elevation | The judge CLI acts on the repo | No tools granted; empty temp working directory | Existing |
-| TR-6 | Spoofing | A `claude` or `copilot` executable earlier on PATH, or in the repo, impersonates the judge | The core resolves the judge binary by absolute path at setup and runs it outside any repo; same-user malware stays out of scope (T-B1-4) | New |
-| TR-7 | Spoofing / info disclosure | AIQ handles the person's provider credentials | AIQ never reads or stores the provider's OAuth tokens: it calls the provider's own CLI or the VS Code Language Model API, which hold them. An API key, if used, lives in the OS keychain | New |
+| T-B5-4 | Elevation | The judge acts on the repo | Judge calls are plain model API calls with no tools granted; no CLI agent is run for judging (Q7) | Existing, narrowed by Q7 |
+| TR-6 | Spoofing | A repo or environment setting (e.g. a base-URL variable in a project `.env`) points the judge at a look-alike endpoint that collects task content and the API key | The judge uses the provider's fixed official endpoint over TLS and ignores repo and environment overrides; same-user malware stays out of scope (T-B1-4) | New |
+| TR-7 | Spoofing / info disclosure | AIQ handles the person's provider credentials | Claude: the person's own Anthropic API key, entered at setup and stored only in the OS keychain, never in the store, logs or packs; AIQ never uses or reads their Claude sign-in. Copilot: the VS Code Language Model API holds the credentials and AIQ never sees them (Q7) | New |
 | TR-8 | Denial of service (cost) | Runaway judging drains the person's quota or premium requests: event floods creating tasks, two runs per fact, re-judging every task after a rubric update | A daily judge budget the person sets (calls and, where known, cost), visible in Settings; re-judging after an update is lazy (on open) or batched within the budget; when the budget is spent, tasks queue | New |
 | TR-9 | Repudiation | The person can't tell what was sent where, or which version judged a task | "What was read?" lists content, account and time per call (US-5); judgments record fact set, rubric and judge versions | New (control already in spec) |
 
