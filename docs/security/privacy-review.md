@@ -8,6 +8,7 @@ phase: "0-1"
 tags: [privacy, linddun]
 links:
   - { to: aiq-architecture, rel: documents }
+  - { to: design-claude-code-skeleton, rel: documents }
 review-by: 2027-01-29
 summary: >-
   System-level privacy pass: what personal data AIQ holds, where it lives and flows, how long, and
@@ -41,6 +42,22 @@ designs with `python3 docs/ai-forward-pack/scripts/docs-graph.py rollup --headin
 | Unawareness | The person may not know what is captured | Capture log; opt-in per surface; pause everywhere |
 | Non-compliance | Monitoring tools can need works-council review in some regions (brief, Risks) | Engage legal before any rollout beyond volunteers |
 
+### 2a. Component privacy register (generated)
+*Generated with `docs-graph.py rollup` from component designs; do not edit by hand.*
+
+| source | Data flow / category | LINDDUN finding | Disposition | Control / rationale | Retention and rights path |
+|---|---|---|---|---|---|
+| [design-claude-code-skeleton](../design/claude-code-skeleton.md) | Prompt text (may hold code, customer data, secrets) → store | D: disclosure on a shared or lost machine | mitigate | Encrypted store; user-only files; no network | Kept until the person deletes it (ADR-0002); `aiq forget --all` deletes the store, spool and keychain entry. Delete-one and older-than arrive in Phase 6 |
+| [design-claude-code-skeleton](../design/claude-code-skeleton.md) | Prompt text → card | D: card text visible on screen-share | mitigate | Card never quotes prompt text; only counts | n/a |
+| [design-claude-code-skeleton](../design/claude-code-skeleton.md) | Coaching history (how someone works) | L/I: could profile the person if shared | mitigate | Nothing leaves the device; no sync, no telemetry in Phase 1 (US-6) | Same as above |
+| [design-claude-code-skeleton](../design/claude-code-skeleton.md) | Capture while paused | U: person unaware capture continues | prevent | Pause flag checked in the hook before sending; `aiq status` shows paused | `aiq pause` / `aiq resume` |
+| [design-claude-code-skeleton](../design/claude-code-skeleton.md) | Installed hooks | U: person unaware AIQ is installed | mitigate | Explicit `install` with diff and consent; card shows how to pause | `aiq uninstall` |
+| [design-claude-code-skeleton](../design/claude-code-skeleton.md) | Tool calls and outputs | D: code and file contents | prevent (not captured) | Phase 1 subscribes only to UserPromptSubmit and Stop | n/a |
+| [design-claude-code-skeleton](../design/claude-code-skeleton.md) | Logs | D: prompt text in logs | prevent | O11 log scan test | Logs rotate at 5 MB × 3 files, local only |
+
+<!-- rolled up from 1 artifact(s) by docs-graph.py rollup on 2026-10-31 -->
+
+
 ## 3. Data-subject rights paths
 Access: capture log and AIQ home. Export: Settings → Export. Delete: one item, older-than, all.
 Rectify: feedback on guidance (rung placement itself is not edited, per the rung-model spec).
@@ -58,6 +75,7 @@ calls only. AIQ operates no processor that sees user data. The pack CDN receives
 |---|---|---|
 | Lost machine loses history (ADR-0003) | Imran, 2026-10-31 | Simplicity for alpha |
 | Judge calls visible to work-account admins (ADR-0007) | Imran, 2026-10-31 | Provider already saw the content; disclosed |
+| Plain-text spool of recent prompts while the core is down (design-claude-code-skeleton) | Pending Imran | Bounded (1 MB), user-only, emptied on drain; encrypting needs the key on the hot path |
 
 ## 7. Gaps and flagged unknowns
 - Works-council / legal review not started.

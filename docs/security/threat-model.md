@@ -8,6 +8,7 @@ phase: "0-1"
 tags: [security, stride]
 links:
   - { to: aiq-architecture, rel: documents }
+  - { to: design-claude-code-skeleton, rel: documents }
 review-by: 2027-01-29
 summary: >-
   System-level STRIDE pass over AIQ's five trust boundaries. The main assets are the person's
@@ -71,12 +72,36 @@ or manager (social, not technical: AIQ must give them nothing to ask for).
 | T-SOC-1 | — | Info disclosure (social) | A manager asks the person to "show their AIQ" | No views built for others; share types are fixed and previewed; nothing to export wholesale | Mitigate (design) |
 | T-REPO-1 | — | Info disclosure | AIQ hooks in a repo config are seen or run by teammates | Install at user level only (ADR-0005) | Mitigate |
 
+### 2a. Component threat register (generated)
+*Generated with `docs-graph.py rollup` from component designs; do not edit by hand.*
+
+| source | Trust boundary | STRIDE threat | Disposition | Control / rationale | Negative test |
+|---|---|---|---|---|---|
+| [design-claude-code-skeleton](../design/claude-code-skeleton.md) | B1 hook client → core (local socket / pipe) | S: another local process or OS user sends frames | mitigate | Socket in a user-only directory (0700) / pipe with a DACL for the current user only; per-boot token in a user-only file; core checks the peer's user id where the OS gives it | Frame without token → closed, nothing stored; another OS user cannot connect (Linux CI with a second user; Windows via spike S1) |
+| [design-claude-code-skeleton](../design/claude-code-skeleton.md) | B1 | T: tampered frames inject fake prompts to trigger cards | accept | Needs the same OS user and the token; such a process can already read everything the person can. Residual: none beyond existing user compromise | — |
+| [design-claude-code-skeleton](../design/claude-code-skeleton.md) | B1 | I: another process reads frames or the token | mitigate | User-only permissions on socket dir, token file, spool and pause file | Permission tests on created files (mode 0600 / DACL) |
+| [design-claude-code-skeleton](../design/claude-code-skeleton.md) | B1 | D: flood the core | mitigate | Bounded channel, frame size cap (256 KB), one frame per connection | Flood test: hook latency stays within budget |
+| [design-claude-code-skeleton](../design/claude-code-skeleton.md) | B1 | E: frame triggers code execution | prevent | Frames are data parsed by serde into typed structs; no eval, no paths from frames are opened | Fuzz frames |
+| [design-claude-code-skeleton](../design/claude-code-skeleton.md) | B2 Claude Code → hook stdin | T: hostile prompt text (e.g. control characters) echoed into the card | mitigate | The card never echoes prompt text; `aiq show` strips terminal control sequences before printing | `Show_PromptWithAnsiEscapes_PrintsSanitised` |
+| [design-claude-code-skeleton](../design/claude-code-skeleton.md) | B2 | E: AIQ alters the agent's behaviour | prevent | Hook never writes `additionalContext`, `decision` or `continue`; output only `systemMessage` on Stop | Contract test: hook stdout is empty or exactly `{"systemMessage": string}` |
+| [design-claude-code-skeleton](../design/claude-code-skeleton.md) | B3 store at rest | I: stolen disk or backup reads prompts | mitigate | SQLCipher, key only in the OS keychain (ADR-0003) | Opening `aiq.db` without the key fails; file does not contain a known prompt string |
+| [design-claude-code-skeleton](../design/claude-code-skeleton.md) | B3 | I: spool holds plain text while the core is down | mitigate + accept | Spool is user-only, ≤ 1 MB, truncated on drain. Residual: plain text on disk briefly. Encrypting the spool needs the key on the hot path, which ADR-0005 rejects | File-mode test; spool empty after drain |
+| [design-claude-code-skeleton](../design/claude-code-skeleton.md) | B4 settings file (`~/.claude/settings.json`) | T: install corrupts the person's settings | mitigate | Parse, merge only AIQ entries, write to a temp file and rename, keep a backup, refuse on invalid JSON | Golden tests on settings files with other hooks; invalid JSON untouched |
+| [design-claude-code-skeleton](../design/claude-code-skeleton.md) | B4 | R: person cannot tell what AIQ changed | mitigate | `install` shows the diff and asks; `uninstall` restores only AIQ entries | Round-trip test install → uninstall → byte-identical file |
+| [design-claude-code-skeleton](../design/claude-code-skeleton.md) | B4 | E: repo-level hooks run AIQ for teammates | prevent | AIQ never writes to a repo's `.claude/` (ADR-0005) | Test: install never touches the working directory |
+| [design-claude-code-skeleton](../design/claude-code-skeleton.md) | B5 local logs | I: prompts leak into logs | prevent | Logs carry ids, counts and codes only; never prompt text (O11) | Log scan test with a canary prompt string |
+
+<!-- rolled up from 1 artifact(s) by docs-graph.py rollup on 2026-10-31 -->
+
+
 ## 3. Accepted-risk register
 | Boundary / threat | Accepted by | Rationale | Residual risk | Revisit when |
 |---|---|---|---|---|
 | T-B1-4 | Pending Imran | Malware running as the same user can already read every file AIQ reads | Full local compromise exposes AIQ data too | If AIQ ever stores data the user's own tools do not already hold |
 | T-B5-2 | Imran (ADR-0007) | Judging through the person's own account is the chosen design | Admin of a work account can see judge calls | If an on-device judge becomes good enough |
 | T-B4-3 | Pending Imran | Data is private to the person; tampering only fools themselves | None to others | If aggregates or sharing use these values (then sign shares) |
+| Phase 1 B1-T: forged frames from the same OS user (design-claude-code-skeleton) | Pending Imran | Needs the same user and the per-boot token; that process can already read everything | None beyond existing user compromise | If frames ever carry other people's data |
+| Phase 1 B3-I: plain-text spool while the core is down (design-claude-code-skeleton) | Pending Imran | Encrypting it needs the store key on the hook's hot path (ADR-0005) | Up to 1 MB of recent prompts in a user-only file until the core drains it | If a spike shows keychain reads fit the hook budget |
 
 ## 4. Cross-cutting controls
 OS user isolation and keychain; SQLCipher; Ed25519 pack signing with pinned keys; WASM sandbox;
