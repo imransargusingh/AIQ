@@ -1,0 +1,118 @@
+{
+  "adddomainexperts": [
+    "SKILL.md"
+  ],
+  "addpacktorepo": [
+    "SKILL.md",
+    "reference/co-s0.md"
+  ],
+  "adopt": [
+    "SKILL.md",
+    "reference/co-s0.md"
+  ],
+  "also": [
+    "SKILL.md"
+  ],
+  "apply-learnings": [
+    "SKILL.md",
+    "reference/co-s0.md"
+  ],
+  "auditlog": [
+    "SKILL.md"
+  ],
+  "code-hygiene": [
+    "SKILL.md"
+  ],
+  "collectknowledge": [
+    "SKILL.md",
+    "reference/co-s0.md"
+  ],
+  "compile": [
+    "SKILL.md"
+  ],
+  "create-proposal": [
+    "SKILL.md"
+  ],
+  "define-architecture": [
+    "SKILL.md"
+  ],
+  "deliver": [
+    "SKILL.md",
+    "reference/checkpoints.md",
+    "reference/routing.md"
+  ],
+  "design-slice": [
+    "SKILL.md",
+    "reference/co-s0.md",
+    "reference/definition-of-done.md",
+    "reference/flow.md"
+  ],
+  "document": [
+    "SKILL.md"
+  ],
+  "dream": [
+    "SKILL.md",
+    "reference/co-s0.md"
+  ],
+  "execute-with-coordination": [
+    "SKILL.md",
+    "reference/co-s0.md",
+    "reference/copilot.md",
+    "reference/join.md",
+    "reference/launch.md"
+  ],
+  "extendaibundle": [
+    "SKILL.md",
+    "reference/co-s0.md"
+  ],
+  "forensicreview": [
+    "SKILL.md",
+    "reference/co-s0.md"
+  ],
+  "implement": [
+    "SKILL.md",
+    "reference/co-s0.md",
+    "reference/definition-of-done.md",
+    "reference/flow.md"
+  ],
+  "investigate": [
+    "SKILL.md"
+  ],
+  "migrate": [
+    "SKILL.md",
+    "reference/co-s0.md"
+  ],
+  "optimize-graph": [
+    "SKILL.md"
+  ],
+  "prepare-for-coordination": [
+    "SKILL.md"
+  ],
+  "prompts": [
+    "SKILL.md"
+  ],
+  "searchprompts": [
+    "SKILL.md"
+  ],
+  "session-profiler": [
+    "SKILL.md",
+    "reference/co-s0.md"
+  ],
+  "specify": [
+    "SKILL.md"
+  ],
+  "ui-design": [
+    "SKILL.md",
+    "reference/co-s0.md",
+    "reference/definition-of-done.md",
+    "reference/flow.md",
+    "reference/triggered-standards.md"
+  ],
+  "updatepack": [
+    "SKILL.md",
+    "reference/co-s0.md"
+  ],
+  "visualize": [
+    "SKILL.md"
+  ]
+}

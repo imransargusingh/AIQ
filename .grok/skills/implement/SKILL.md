@@ -1,0 +1,48 @@
+---
+name: implement
+description: Implement a feature or component under TDD from a design or prompt. Decomposes into verifiable tasks, pairs the language developer with the Test Architect red-green-refactor, applies the Testing Strategy, and runs adversarial pre-merge review with a Proof Pack. Use to build the thing.
+runs_as: either
+---
+
+# Skill: /implement
+
+Build the feature/component as a sequence of **small, independently verifiable increments**, each proven correct against the spec's boundary set — not against a green checkmark (BoK D1). Implementation is the micro-loop: **red → green → refactor** (BoK §IV.2), worked as a *pair* between the language Developer and the Test Architect, then handed to an adversarial pre-merge review that the author cannot self-approve (BoK D3).
+
+**Spine:** Rigor Protocol, with Stage 3 = execution (the tests *are* the evidence) and Stage 4 = the Test Architect's hard veto. **Authority:** the **Testing Strategy** (`testing-strategy.md`) is the normative, **mandatory** decision procedure for what to test — triggered directives are *applied*, not chosen (a forcing function); the **Observability & Instrumentation Standard** (`observability-and-instrumentation.md`) governs logging, tracing, error codes, and error responses; the **C# Style Guide** / language craft (BoK Part VII) for how code is written; the **LOA** idiom map for AI-integrated code; and the **Solution-Selection Ladder** (`solution-selection-ladder.md`) — climbed per task before writing each slice (reuse-before-write, stdlib/native before code, one line before fifty), a forcing function for the *smallest correct* build. **Mode:** Peer Mode (pairing) for building, Adversary Mode for review.
+
+## Grounding (first action — before any code)
+CO-S0 applies first — the sentence is `reference/co-s0.md`. Load the artifacts this implementation must conform to and treat them as the **authoritative source of truth** (Rigor Protocol Stage 0; BoK §III.1): the design (`docs/design/<component>.md`) **and** its spec (`docs/specs/<feature>.md`), the architecture (`docs/architecture.md`), and the existing code and tests in the area you are touching. **Re-read them now — do not work from memory of them.** Quote the specific spec statements and design contracts each increment must satisfy, and trace every task back to one. If the request, the existing code, or your emerging implementation conflicts with the spec or design, **stop and surface the drift** (reconcile against the spec, or record a deviation per Rules of the Road §4) rather than quietly building something else — this is the failure mode that produces spec-to-implementation drift. Prefer **graph traversal** for this grounding (`knowledge-visualization.md` V15): start from this task's artifact(s) in the knowledge graph and follow the typed edges 1–2 hops (upstream `implements`/`refines`/`depends-on`, downstream `tested-by`/`documents`, and `uses-term` into the glossary), citing the traversal path; a missing edge, stale node, or orphan found here is a finding to surface. Skip this grounding only if the user explicitly tells you not to consult the prior artifacts.
+
+## Input
+A design (`docs/design/<component>.md`) or — for small, low-risk work — a prompt. If implementing from a prompt would touch security/identity/data/contracts/money/concurrency, raise the tier and run `/design-slice` first (Rules of the Road §0.2; the higher tier wins when unsure).
+
+## Cast
+- **Peers (pair to build):** the relevant **language Developer** (C#/Rust/Python — idiomatic shape) ⇄ **Test Architect** (testable slices). **Domain Researcher** for any just-in-time spike a contract turns out to need. **Orchestrator** keeps the thread and the Proof Pack.
+- **Adversaries (attack pre-merge):** **Test Architect** (hard veto — no unverifiable claim, and no triggered Testing Strategy directive left unapplied), the **language Developer** (idiom/style/async correctness), **SRE** (enforces the Instrumentation Standard — structured logs in the OTel model with trace context, stable error codes, RFC 9457 responses — plus resource bounds), and the relevant architects if the increment touches their lens. *Generated code is a proposal until reviewed; the producer does not certify the producer* (BoK §VII.7).
+
+## Flow (Rigor Protocol, specialized to building)
+
+The stages below are the contract; **the full stage text is `reference/flow.md`** — read it once, at Stage 0, and work from it. Do not re-invoke this skill to re-read it (a second invocation re-injects this whole file — class CTX-E), and do not paraphrase a stage from memory when the file is one read away.
+
+- **Stage 0 — Interdict the rush.**
+- **Stage 1 — OPEN (plan tasks).**
+- **Stage 2 — INTERROGATE (shape the tests).**
+- **Stage 3 — EVIDENCE (TDD: red → green → refactor).**
+- **Stage 4 — DISCONFIRM (pre-merge review).**
+- **Stage 5 — CONVERGE (verify & report).**
+
+## Output artifacts
+- The code and its tests (tests ship with code, traceable to spec statements, covering the boundary set).
+- The **Proof Pack** (`templates/proof-pack.template.md`) and gate records, committed with the change for T1/T2.
+- Updated confidence ledger; any ADR/deviation notes.
+
+## Definition of done (exit gate)
+
+**20 falsifiable items in `reference/definition-of-done.md`** — read it at Stage 4 (before the gate), tick each item against evidence, and quote the unmet ones in the status table. The gate is the checklist, not this summary: every task traced to a spec statement with the boundary set covered, instrumented by default, the change-surface list ticked off with a writer and a compute reader per field, surface and cross-surface proof through the real composition root, the data model honoured, defect classes registered, every failure mode handled and proven red-first, all triggered Testing Strategy directives applied as a union, the Observability Standard met, the ladder climbed per task, ceremony matched to the tier, the Test Architect's hard veto cleared by the reviewer, the Proof Pack complete, the UI built to the system and the craft gate run where there is an interface, and the status table emitted.
+
+## Documentation & discoverability (last action)
+Per the **Knowledge Visualization & Docs Explorer Standard** (`knowledge/knowledge-visualization.md`, the Discoverability Mandate V10): after producing the Proof Pack and any indexed source modules, **write the artifact's frontmatter** (the record, V2: id, title, type, status, **owner**, phase, tags, **typed links** per the relation registry, **review-by** per the type's SLA, and a real 1–3-sentence summary) and **sync the derived `docs/docs-index.js`** by running the script bundle — `python3 docs/ai-forward-pack/scripts/docs-graph.py derive` (and `flag --changed <id> --reason …` for V16 propagation) — never by generating ad-hoc scripts (V18); frontmatter wins wherever the two disagree. Ensure `docs/index.html` (the Docs Explorer) exists — instantiate it from `templates/docs-explorer.template.html` if missing — and verify the new entry has at least one typed link into the graph (an orphan is a finding). Index and diagrams land **in the same change** as the content (V11). **Update the repo security/privacy rollups:** if this implementation changed or added any STRIDE/LINDDUN finding, refresh the generated registers in `docs/security/threat-model.md` and `docs/security/privacy-review.md` via `docs-graph.py rollup` (both headings) and update the accepted-risk tables. **Propagate impact (V16):** if this change is material (a contract, requirement, decision, public shape, or proven claim changed), traverse the **inbound** edges and push `review-suggested: { by, on, reason }` into each inbound neighbor's frontmatter (and its index entry) in this same change. **Capture session exhaust (V17):** any mid-session decision, discovered assumption, or resolved question below ADR weight becomes a linked **decision note** (`docs/notes/`, from `templates/decision-note.template.md`) before close — promote to an ADR if it later bears load. Work that is not discoverable in the Explorer is not done.
+
+**Audit (last action).** Append an audit-log entry for this run — `python3 docs/ai-forward-pack/scripts/audit-log.py append --shortname "implement-<subject>" --session "<id>" --skill implement --kind skill --prompt "<the prompt, verbatim>" --summary "<what shipped + Proof Pack>" --artifact <changed paths>` — per the Audit Mandate (`knowledge/audit-and-change-log.md`, AL5); if a decision was made mid-build (not merely executed), add a change-log entry too (`audit-log.py change`, CL1). A run that left no trace in `docs/audit/` is, like an un-indexed artifact, not done. **Emit the honest watcher signals (AL2a).** Because an `/implement` run that reaches this step has demonstrated its acceptance criteria and committed a Proof Pack, record the deterministic signals the watcher scores on — add `--signal-acceptance-met true` (the spec's success criteria were demonstrated, Stage 5), `--signal-verification-path true` (a Proof Pack was committed), and `--signal-verification-executed true` when every claimed control was **seen red before green** (Stage 3). These are a claim, not a courtesy: emit a signal **only when it is genuinely true** — a run that did not meet its `done_when`, or shipped without a Proof Pack, **omits** the corresponding flag so the watcher falls back to a conservative default rather than a fabricated score (spec L127 / NG1). Never pass the judgement-laden `guidance_*`/`coordination_*` counts by hand.
+
+**Handoff:** → ship, or → `/investigate` if a defect surfaces.

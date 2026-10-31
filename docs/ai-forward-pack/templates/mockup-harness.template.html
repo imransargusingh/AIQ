@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en" data-theme="light" data-density="comfortable" data-state="default" data-persona="primary" data-viewport="desktop" data-ai="on">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__PROJECT__ — __SURFACE__ mockup</title>
+<!--
+  HIGH-FIDELITY MOCKUP + REVIEW HARNESS  (templates/mockup-harness.template.html)
+  Produced by /ui-design. Authority: ui-design-craft.md DX8-DX11; floors: ui-interaction-design.md U9/U10/U16/U17.
+
+  RULES THIS FILE MUST KEEP (they are why it exists):
+   * SELF-CONTAINED. One file. No build step, no CDN, no framework, no network. It must open
+     over file:// on a machine with no toolchain, because reviewability must not depend on npm.
+   * HARD STATES ARE RENDERED, not described: empty/first-run, loading (skeleton shaped like the
+     content it replaces), error (with its real recovery affordance), partial/degraded, overflow
+     (longest realistic name, 7-digit number, negative value, missing avatar).  [DX9, DX16, U9]
+   * THE HARNESS IS REVIEW CHROME. It never ships to production. Everything inside <main> is the
+     design under review; everything in <header class="harness"> is the instrument.
+   * TOKENS ONLY. Every value in the design region resolves to a --token defined below, mirrored
+     from the project's DESIGN.md. A raw hex or magic px inside <main> is a finding.  [U3]
+
+  HOW /ui-design FILLS THIS IN:
+   1. Replace __PROJECT__ / __SURFACE__ and the :root token block with the real DESIGN.md tokens.
+   2. Replace the <main> demo content with the real surface; keep the data-state hooks.
+   3. Fill PERSONAS / VIEWPORTS / FLAGS to match the design; delete controls that do not apply.
+   4. Fill AUDIT.pairs with the real text/surface token pairings so contrast is computed, not claimed.
+-->
+<style>
+  /* ---- TOKENS (mirror DESIGN.md; replace wholesale) --------------------------------- */
+  :root{
+    --canvas:#ffffff; --surface:#f7f8fa; --surface-raised:#ffffff;
+    --ink:#14161a; --ink-muted:#5b6270; --line:#e2e5ea;
+    --accent:#1c5fd6; --accent-ink:#ffffff;
+    --ok:#0a7d33; --warn:#8a6100; --danger:#b3261e;
+    --font-sans:system-ui,-apple-system,"Segoe UI",sans-serif;
+    --font-mono:ui-monospace,"SF Mono",Menlo,monospace;
+    --step--1:.82rem; --step-0:1rem; --step-1:1.25rem; --step-2:1.563rem; --step-3:1.953rem;
+    --sp-1:.25rem; --sp-2:.5rem; --sp-3:.75rem; --sp-4:1rem; --sp-6:1.5rem; --sp-8:2rem;
+    --radius:10px; --shadow:0 1px 2px rgba(16,20,28,.06),0 4px 12px rgba(16,20,28,.05);
+    --dur-fast:140ms; --dur-base:220ms; --ease-out:cubic-bezier(.2,.8,.3,1);
+  }
+  [data-theme="dark"]{
+    --canvas:#0d1015; --surface:#14181f; --surface-raised:#1a1f27;
+    --ink:#e7e9ee; --ink-muted:#9aa3b2; --line:#262c36;
+    --accent:#6aa2ff; --accent-ink:#0d1015;
+    --ok:#5fd08a; --warn:#e0b44a; --danger:#ff8a80;
+  }
+  [data-theme="contrast"]{ --canvas:#000; --surface:#000; --surface-raised:#000; --ink:#fff; --ink-muted:#e8e8e8; --line:#fff; --accent:#ffd400; --accent-ink:#000;
+    /* Semantic colours MUST be re-stated here — inheriting the dark theme's values against a pure-black
+       canvas drops them below AA (the in-artifact audit catches exactly this). */
+    --ok:#7ee2a8; --warn:#ffd166; --danger:#ffb4ab; }
+  [data-density="compact"]{ --sp-3:.5rem; --sp-4:.625rem; --sp-6:1rem; --sp-8:1.25rem; }
+
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--canvas);color:var(--ink);font:var(--step-0)/1.55 var(--font-sans)}
+  /* U10 / DX19 — every transition collapses under reduced motion, and the harness can force it. */
+  @media (prefers-reduced-motion:reduce){ *{animation:none!important;transition:none!important} }
+  [data-motion="reduced"] *{animation:none!important;transition:none!important}
+
+  /* ---- REVIEW HARNESS (chrome — never ships) ---------------------------------------- */
+  .harness{position:sticky;top:0;z-index:99;display:flex;flex-wrap:wrap;gap:.5rem 1rem;align-items:center;
+    padding:.55rem .9rem;background:#101418;color:#e9edf2;border-bottom:2px solid #2b323c;font-size:.78rem}
+  .harness strong{font-size:.78rem;letter-spacing:.04em;text-transform:uppercase;color:#9fb0c4}
+  .harness label{display:flex;gap:.35rem;align-items:center;color:#c7d2df}
+  .harness select,.harness button{background:#1b222b;color:#e9edf2;border:1px solid #333c48;border-radius:6px;
+    padding:.25rem .5rem;font:inherit;cursor:pointer}
+  .harness .spacer{flex:1}
+  .harness .verdict{font-family:var(--font-mono)}
+  .harness .pass{color:#5fd08a}.harness .fail{color:#ff8a80}
+
+  /* Viewport simulation — the design region is constrained, no device required.
+     No transition on max-width: animating a layout property causes layout thrash
+     (U17/DX20), and switching viewport is a discrete comparison, not a journey. */
+  .frame{margin:0 auto}
+  [data-viewport="mobile"] .frame{max-width:390px}
+  [data-viewport="tablet"] .frame{max-width:768px}
+  [data-viewport="desktop"] .frame{max-width:1120px}
+  [data-viewport="wide"] .frame{max-width:1600px}
+
+  /* ---- DESIGN REGION (replace with the real surface) -------------------------------- */
+  main{padding:var(--sp-6) var(--sp-4)}
+  .panel{background:var(--surface-raised);border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:var(--shadow);padding:var(--sp-6)}
+  .h{font-size:var(--step-2);line-height:1.2;margin:0 0 var(--sp-2)}
+  .sub{color:var(--ink-muted);margin:0 0 var(--sp-6)}
+  .row{display:flex;justify-content:space-between;gap:var(--sp-4);padding:var(--sp-3) 0;border-bottom:1px solid var(--line)}
+  .num{font-family:var(--font-mono);font-variant-numeric:tabular-nums;text-align:right}
+  .btn{min-height:44px;padding:0 var(--sp-4);border:0;border-radius:var(--radius);background:var(--accent);
+    color:var(--accent-ink);font:600 var(--step-0)/44px var(--font-sans);cursor:pointer;transition:filter var(--dur-fast) var(--ease-out)}
+  .btn:hover{filter:brightness(1.08)} .btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .btn[disabled]{opacity:.5;cursor:not-allowed}
+  /* Error message. Deliberately NOT a thick coloured left border — the "side-tab"
+     accent is the single most recognizable tell of AI-generated UI (DX3), and this
+     template shipped it until the detector caught it. A 1px full hairline in the
+     semantic colour over a tinted ground reads as designed, not as the default. */
+  .msg{border:1px solid color-mix(in srgb,var(--danger) 45%,transparent);
+    background:color-mix(in srgb,var(--danger) 8%,transparent);
+    padding:var(--sp-3) var(--sp-4);border-radius:var(--radius)}
+  .skeleton{background:linear-gradient(90deg,var(--surface),var(--line),var(--surface));
+    background-size:200% 100%;animation:sh 1.2s infinite;border-radius:6px;height:1rem}
+  @keyframes sh{to{background-position:-200% 0}}
+  .muted{color:var(--ink-muted)}
+  /* Only the block matching the harness state is shown — this is what makes states reviewable. */
+  [data-show]{display:none}
+  [data-state="default"]  [data-show~="default"],
+  [data-state="loading"]  [data-show~="loading"],
+  [data-state="empty"]    [data-show~="empty"],
+  [data-state="error"]    [data-show~="error"],
+  [data-state="partial"]  [data-show~="partial"],
+  [data-state="overflow"] [data-show~="overflow"],
+  [data-state="success"]  [data-show~="success"]{display:block}
+  [data-persona="secondary"] .primary-only{display:none}
+  [data-ai="off"] .ai-only{display:none}
+  .audit{margin:var(--sp-8) auto 0;max-width:1120px;font-size:.8rem;border-top:1px dashed var(--line);padding-top:var(--sp-4)}
+  .audit table{border-collapse:collapse;width:100%} .audit td,.audit th{text-align:left;padding:.3rem .5rem;border-bottom:1px solid var(--line)}
+</style>
+</head>
+<body>
+
+<!-- ============ REVIEW HARNESS (DX10) — review chrome, never ships ============ -->
+<header class="harness" role="region" aria-label="Review harness">
+  <strong>Review</strong>
+  <label>Persona <select id="h-persona"><option value="primary">Primary user</option><option value="secondary">Read-only / secondary</option></select></label>
+  <label>Viewport <select id="h-viewport"><option>mobile</option><option>tablet</option><option selected>desktop</option><option>wide</option></select></label>
+  <label>State <select id="h-state">
+    <option value="default">default</option><option value="loading">loading</option>
+    <option value="empty">empty / first-run</option><option value="error">error</option>
+    <option value="partial">partial / degraded</option><option value="overflow">overflow</option>
+    <option value="success">success</option></select></label>
+  <label>Theme <select id="h-theme"><option>light</option><option>dark</option><option value="contrast">high-contrast</option></select></label>
+  <label>Density <select id="h-density"><option>comfortable</option><option>compact</option></select></label>
+  <label>AI <select id="h-ai"><option value="on">available</option><option value="off">unavailable</option></select></label>
+  <label><input type="checkbox" id="h-motion"> Reduced motion</label>
+  <span class="spacer"></span>
+  <span class="verdict" id="h-verdict">audit —</span>
+</header>
+
+<div class="frame">
+<!-- ============ DESIGN UNDER REVIEW — replace everything in <main> ============ -->
+<main>
+  <h1 class="h">__SURFACE__</h1>
+  <p class="sub">Replace this region with the real surface. Keep the <code>data-show</code> hooks so every
+     hard state stays reviewable from the harness.</p>
+
+  <div class="panel">
+    <!-- DEFAULT -->
+    <div data-show="default">
+      <div class="row"><span>Realistic item name</span><span class="num">1,284.50</span></div>
+      <div class="row"><span>Another real item</span><span class="num">-96.20</span></div>
+      <div class="row"><span>A third</span><span class="num">0.00</span></div>
+      <p style="margin-top:var(--sp-6)"><button class="btn">Save changes</button></p>
+    </div>
+
+    <!-- LOADING — skeleton shaped like the content it replaces, so nothing shifts (DX20) -->
+    <div data-show="loading" aria-busy="true">
+      <div class="row"><span class="skeleton" style="width:12rem"></span><span class="skeleton" style="width:5rem"></span></div>
+      <div class="row"><span class="skeleton" style="width:9rem"></span><span class="skeleton" style="width:5rem"></span></div>
+      <div class="row"><span class="skeleton" style="width:14rem"></span><span class="skeleton" style="width:5rem"></span></div>
+    </div>
+
+    <!-- EMPTY — teaches the first action; never just "No data" (DX21) -->
+    <div data-show="empty">
+      <p class="muted">Nothing here yet. Add your first entry and it will appear in this list.</p>
+      <button class="btn">Add the first entry</button>
+    </div>
+
+    <!-- ERROR — says what happened and what to do, and carries the real recovery affordance -->
+    <div data-show="error">
+      <div class="msg"><strong>We couldn't load your entries.</strong><br>
+        The service didn't respond. Your saved data is safe — nothing was changed.</div>
+      <p style="margin-top:var(--sp-4)"><button class="btn">Try again</button></p>
+    </div>
+
+    <!-- PARTIAL / DEGRADED — some data arrived; say which part is missing and why -->
+    <div data-show="partial">
+      <div class="row"><span>Loaded item</span><span class="num">412.00</span></div>
+      <p class="muted ai-only">Suggestions are unavailable right now — the list below is complete without them.</p>
+    </div>
+
+    <!-- OVERFLOW — the longest realistic name, the 7-digit number, the negative (DX16) -->
+    <div data-show="overflow">
+      <div class="row"><span>Quarterly discretionary reallocation — international small-cap tracker (hedged)</span><span class="num">1,284,905.75</span></div>
+      <div class="row"><span>Ω</span><span class="num">-1,000,000.00</span></div>
+    </div>
+
+    <!-- SUCCESS -->
+    <div data-show="success"><div class="msg" style="border-color:var(--ok);background:color-mix(in srgb,var(--ok) 8%,transparent)">Saved. 3 entries updated.</div></div>
+  </div>
+</main>
+</div>
+
+<!-- ============ IN-ARTIFACT MECHANICAL AUDIT (DX11) ============ -->
+<section class="audit" aria-label="Mechanical audit">
+  <table><thead><tr><th>Pairing (token on token)</th><th>Contrast</th><th>WCAG AA</th></tr></thead>
+    <tbody id="audit-rows"></tbody></table>
+  <p class="muted" id="audit-targets"></p>
+  <p class="muted">Computed live from the rendered tokens — a measurement, not a claim. AA needs 4.5:1 for body text, 3.0:1 for large text and UI boundaries.</p>
+</section>
+
+<script>
+/* Harness wiring — deterministic, dependency-free. */
+const root = document.documentElement;
+const bind = (id, attr) => {
+  const el = document.getElementById(id);
+  el.addEventListener('change', () => { root.dataset[attr] = el.value; audit(); });
+};
+bind('h-persona','persona'); bind('h-viewport','viewport'); bind('h-state','state');
+bind('h-theme','theme'); bind('h-density','density'); bind('h-ai','ai');
+document.getElementById('h-motion').addEventListener('change', e => {
+  root.dataset.motion = e.target.checked ? 'reduced' : 'full';
+});
+
+/* --- contrast + target-size audit -------------------------------------------------- */
+/* Fill AUDIT with the real text/surface token pairings from DESIGN.md.
+   kind decides the threshold AND whether a shortfall counts as a failure:
+     text        4.5:1  required  — body text (WCAG 1.4.3)
+     large       3.0:1  required  — >=24px, or >=19px bold
+     ui          3.0:1  required  — a boundary/indicator NEEDED to identify a control,
+                                    and focus indicators (WCAG 1.4.11 / 2.4.11)
+     decorative  measured, REPORTED, but not counted — purely decorative dividers and
+                 separators are explicitly exempt from 1.4.11. Counting them would teach
+                 heavy, ugly borders in the name of accessibility, which is the wrong lesson.
+   Reclassify honestly: if a divider is the only thing separating two interactive rows,
+   it is `ui`, not `decorative`. */
+const AUDIT = { pairs: [
+  ['--ink','--canvas','body text','text'],
+  ['--ink-muted','--canvas','secondary text','text'],
+  ['--ink','--surface-raised','text on panel','text'],
+  ['--accent-ink','--accent','button label','text'],
+  ['--danger','--canvas','error text','text'],
+  ['--accent','--canvas','focus ring / control boundary','ui'],
+  ['--line','--canvas','row dividers','decorative']
+]};
+const THRESHOLD = { text:4.5, large:3, ui:3, decorative:3 };
+const srgb = c => { c/=255; return c <= .03928 ? c/12.92 : Math.pow((c+.055)/1.055, 2.4); };
+const lum = ([r,g,b]) => .2126*srgb(r) + .7152*srgb(g) + .0722*srgb(b);
+function parse(v){
+  const p = document.createElement('span'); p.style.color = v.trim(); document.body.appendChild(p);
+  const m = getComputedStyle(p).color.match(/\d+(\.\d+)?/g); p.remove();
+  return m ? m.slice(0,3).map(Number) : null;
+}
+function audit(){
+  /* DC-200: a harness gating selector that matches the element carrying the harness state
+     (`[data-restore]{display:none}` on a <body data-restore=...>) hides the WHOLE page while
+     every number below still computes, and a headless sweep that reads only the verdict
+     strip passes. So the first measurement is the page box itself: a hidden page reports
+     "not rendered" and NO numbers, never a pass. Scope every gating selector to the frame
+     (`.window [data-...]`), never to <body> or <html>. */
+  const frame = document.querySelector('main') || document.body;
+  const box = frame ? frame.getBoundingClientRect() : { width: 0, height: 0 };
+  const v = document.getElementById('h-verdict');
+  if (!box.width || !box.height) {
+    document.getElementById('audit-rows').innerHTML = '';
+    document.getElementById('audit-targets').textContent = '';
+    v.textContent = `audit: page not rendered (${box.width|0}x${box.height|0} page box) — a gating selector is hiding the frame; no number is reported`;
+    v.className = 'verdict fail';
+    return;
+  }
+  const cs = getComputedStyle(root), rows = [];
+  for (const [fg, bg, label, kind] of AUDIT.pairs){
+    const a = parse(cs.getPropertyValue(fg)), b = parse(cs.getPropertyValue(bg));
+    if (!a || !b) continue;
+    const l1 = lum(a), l2 = lum(b);
+    const ratio = (Math.max(l1,l2) + .05) / (Math.min(l1,l2) + .05);
+    const needed = THRESHOLD[kind] ?? 4.5;
+    const required = kind !== 'decorative';
+    rows.push({ label, fg, bg, kind, ratio, needed, required, pass: ratio >= needed });
+  }
+  document.getElementById('audit-rows').innerHTML = rows.map(r =>
+    `<tr><td>${r.label} <span class="muted">(${r.fg} on ${r.bg} · ${r.kind})</span></td>
+         <td>${r.ratio.toFixed(2)}:1</td>
+         <td class="${r.required ? (r.pass?'pass':'fail') : 'muted'}">${
+           r.required ? (r.pass?'PASS':'FAIL') + ` (needs ${r.needed}:1)` : 'not required (decorative)'
+         }</td></tr>`).join('');
+  const failures = rows.filter(r => r.required && !r.pass).length;
+  const small = [...document.querySelectorAll('main button, main a, main input, main select')]
+    .filter(el => { const r = el.getBoundingClientRect(); return r.width && (r.height < 44 || r.width < 44); });
+  document.getElementById('audit-targets').textContent =
+    small.length ? `${small.length} interactive target(s) under 44x44 CSS px.` : 'All interactive targets meet 44x44 CSS px.';
+  v.textContent = `audit: ${failures} contrast fail · ${small.length} small target`;
+  v.className = 'verdict ' + (failures || small.length ? 'fail' : 'pass');
+}
+audit();
+</script>
+</body>
+</html>

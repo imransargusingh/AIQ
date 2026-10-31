@@ -1,0 +1,50 @@
+---
+name: design-slice
+description: Produce the detailed design for a feature or component from a prompt, spec, or architecture. Names the patterns and contracts, spikes unfamiliar dependencies, and runs Patterns-Expert-vs-Simplifier adversarial review. Use after architecture is set, before implementation.
+runs_as: either
+---
+
+# Skill: /design-slice
+
+Produce the **detailed design** for a component or feature: the contracts it exposes and consumes, the patterns it uses (named and justified), the data shapes, the error and concurrency model, the failure modes and telemetry, and the test plan. This is the technical blueprint (BoK §IV.1 Plan; Rules of the Road Phase 6) that turns architecture into something implementable one verifiable increment at a time.
+
+**Spine:** Rigor Protocol with **contract due diligence + spikes** at Stage 3. **Authority:** the **Domain & Data Modelling Standard** (`domain-and-data-modelling.md`, DM1–DM18) — *the data model is the highest-priority decision in the design and is settled before the contracts, the endpoints or the tables*; the **LOA pattern catalog** (Part IV) and conformance criteria for AI-integrated components; the **C# Style Guide** for C# shape; the **Testing Strategy** trigger table for the test plan (a *forcing function* — see Stage 3); the **Observability & Instrumentation Standard** (`observability-and-instrumentation.md`) for the telemetry design; the **End-to-End Integrity** standard (`end-to-end-integrity.md`, E6–E10) for the change-surface completeness the design must enumerate; and — whenever the component has a user-facing interface — the **UI Archetype Grammar** (`ui-archetype-grammar.md` + `ui-archetype-catalog.md`) to fix the UI archetype (the determinism selector) and the **UI & Interaction Design Standard** (`ui-interaction-design.md`, U1) to make every facet concrete (tokens, states, patterns), with `/ui-design` as the craft skill when the surface needs direction, a mockup, or a rubric review; and the **Solution-Selection Ladder** (`solution-selection-ladder.md`) — climbed before any pattern or dependency is named, a forcing function for the *smallest correct* idiom (the constructive mirror of the Simplifier's veto). **Mode:** Peer Mode for authoring, Adversary Mode at the gate.
+
+## Grounding (first action)
+CO-S0 applies first — the sentence is `reference/co-s0.md`. Load the artifacts this design must conform to and treat them as the **authoritative source of truth** (Rigor Protocol Stage 0; BoK §III.1): the spec (`docs/specs/<feature>.md`), the architecture (`docs/architecture.md`), and any existing design in `docs/design/`. Read them before proposing anything, quote the specific spec statements and architectural decisions the design must satisfy, and if the request — or a later artifact — conflicts with them, **stop and surface the drift** (re-spec, or record a deviation) instead of silently diverging (anti-pattern: Specification Drift). Prefer **graph traversal** for this grounding (`knowledge-visualization.md` V15): start from this task's artifact(s) in the knowledge graph and follow the typed edges 1–2 hops (upstream `implements`/`refines`/`depends-on`, downstream `tested-by`/`documents`, and `uses-term` into the glossary), citing the traversal path; a missing edge, stale node, or orphan found here is a finding to surface. Skip this only if the user explicitly tells you not to consult the prior artifacts.
+
+## Input
+A spec and/or `docs/architecture.md`, or a prompt for a feature within an existing architecture. If the design would introduce a load-bearing architectural decision, stop and run `/define-architecture` (re-spec, don't quietly expand — anti-pattern: Scope Drift).
+
+## Cast
+- **Peers (author together):** Orchestrator, **Patterns Expert** (the established idiom for the problem), **The Simplifier** (the smallest correct version), the relevant **language Developer** (idiomatic shape), **Domain Researcher** (spikes unfamiliar contracts), and the **Distributed Systems** / **Security** architects when the component touches async/messaging or a trust boundary.
+- **Adversaries (attack the design at the gate):** **Patterns Expert ⇄ Simplifier** (mutual check — a pattern survives only if it passes both), **Test Architect** (is every behavior verifiable, and is **every triggered Testing Strategy directive** in the plan — hard veto), **Security** (hard veto if identity/secrets/PII), **Distributed Systems** (hard veto if unsafe async/messaging), **SRE** (observability — enforces the Instrumentation Standard: spans, trace-correlated structured logs, stable error codes, RFC 9457 responses).
+
+## Flow (Rigor Protocol, specialized to component shape)
+
+**Decision closure.** Read `knowledge/decision-interrogation.md`. Research technical facts rather
+than asking the human. Before handoff, run DI6 for unresolved component trade-offs: show the
+Question / Needed for / Recommendation table, then ask one question at a time.
+
+The stages below are the contract; **the full stage text is `reference/flow.md`** — read it once, at Stage 0, and work from it. Do not re-invoke this skill to re-read it (a second invocation re-injects this whole file — class CTX-E), and do not paraphrase a stage from memory when the file is one read away.
+
+- **Stage 0 — Interdict the rush.**
+- **Stage 1 — OPEN.**
+- **Stage 2 — INTERROGATE.**
+- **Stage 3 — EVIDENCE (spikes for the unfamiliar).**
+- **Stage 4 — DISCONFIRM (the gate).**
+- **Stage 5 — CONVERGE.**
+
+## Output artifact
+`docs/design/<component>.md` (from `templates/design.template.md`): responsibility, contracts (exposed + consumed, sourced), patterns (named + justified), data shapes, error/concurrency model, **failure-mode analysis (mode → disposition)** + **adversarial analysis (boundary → STRIDE threat → disposition)** + telemetry, test plan (Testing Strategy directives), conformance notes, flagged risks, gate record.
+
+## Definition of done (exit gate)
+
+**20 falsifiable items in `reference/definition-of-done.md`** — read it at Stage 4 (before the gate), tick each item against evidence, and quote the unmet ones in the status table. The gate is the checklist, not this summary: the data model settled first (aggregates, grain, additivity, history rule, derive-don't-store, tested invariants), the E7 change-surface list written, every consumed contract established (unfamiliar ones spiked), every pattern named and justified past both the Patterns Expert and the Simplifier, the failure-mode / STRIDE-lite / LINDDUN-lite analyses complete with dispositions and tests, the UI design complete where there is an interface, telemetry designed to the Observability Standard, every triggered Testing Strategy directive in the plan, the hard vetoes resolved by someone other than the author, and the status table emitted.
+
+## Documentation & discoverability (last action)
+Per the **Knowledge Visualization & Docs Explorer Standard** (`knowledge/knowledge-visualization.md`, the Discoverability Mandate V10): after producing the design (`docs/design/<component>.md`), **write the artifact's frontmatter** (the record, V2: id, title, type, status, **owner**, phase, tags, **typed links** per the relation registry, **review-by** per the type's SLA, and a real 1–3-sentence summary) and **sync the derived `docs/docs-index.js`** by running the script bundle — `python3 docs/ai-forward-pack/scripts/docs-graph.py derive` (and `flag --changed <id> --reason …` for V16 propagation) — never by generating ad-hoc scripts (V18); frontmatter wins wherever the two disagree. Ensure `docs/index.html` (the Docs Explorer) exists — instantiate it from `templates/docs-explorer.template.html` if missing — and verify the new entry has at least one typed link into the graph (an orphan is a finding). Index and diagrams land **in the same change** as the content (V11). **Update the repo security/privacy rollups:** ensure `docs/security/threat-model.md` and `docs/security/privacy-review.md` exist (stub from `templates/threat-model.template.md` / `templates/privacy-review.template.md` if missing) and each carries a `documents` link to this design (that link is what makes V16 flag them automatically on future changes); refresh their generated registers with the script bundle — `python3 docs/ai-forward-pack/scripts/docs-graph.py rollup --heading "Adversarial analysis (STRIDE-lite)" --type design` and `… rollup --heading "Privacy analysis (LINDDUN-lite)" --type design` — and update the accepted-risk registers by hand for any new `accept`. **Propagate impact (V16):** if this change is material (a contract, requirement, decision, public shape, or proven claim changed), traverse the **inbound** edges and push `review-suggested: { by, on, reason }` into each inbound neighbor's frontmatter (and its index entry) in this same change. **Capture session exhaust (V17):** any mid-session decision, discovered assumption, or resolved question below ADR weight becomes a linked **decision note** (`docs/notes/`, from `templates/decision-note.template.md`) before close — promote to an ADR if it later bears load. Work that is not discoverable in the Explorer is not done.
+
+**Audit & change (last action).** Append an audit-log entry for this run — `python3 docs/ai-forward-pack/scripts/audit-log.py append --shortname "design-slice-<component>" --session "<id>" --skill design-slice --kind skill --prompt "<the prompt, verbatim>" --summary "<what it produced>" --artifact docs/design/<component>.md` — per the Audit Mandate (`knowledge/audit-and-change-log.md`, AL5). Because this skill shapes a load-bearing decision, **also append a change-log entry** capturing the decision and its git context — `… audit-log.py change --title "<the decision>" --kind design --skill design-slice --prompt "<driving prompt>" --summary "<result>" --rationale "<why>" --artifact docs/design/<component>.md --git-before "<HEAD sha at grounding; from audit-log.py git-context>"` (Change Mandate, CL1–CL2). A run that left no trace in `docs/audit/` is, like an un-indexed artifact, not done.
+
+**Handoff:** → `/implement`.

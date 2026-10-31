@@ -1,0 +1,686 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UI &amp; UX Capability Guide</title>
+<meta name="description" content="How to drive the UI and UX capability in this repository: the layer stack, the workflow, the commands, the archetypes, the gates, and the controls.">
+<style>
+  /* Tokens mirror docs/DESIGN.md. Reference a token, never a literal (U3/U20).
+     The craft detector checks this file's colours, fonts, sizes and radii
+     against that design language (ui-craft-detection.md CD4). */
+  :root {
+    color-scheme: light dark;
+    --canvas: #f7f4ef;      --surface: #fcfbf8;     --surface-soft: #f2efe9;
+    --ink: #242424;         --ink-mute: #5c5c5c;    --hairline: #8a8886;
+    --primary: #b11f4b;
+    --success: #146c2e;     --warning: #8a4b08;     --danger: #b3261e;
+    --focus: #006cbe;
+
+    --font-sans: "Segoe UI", Aptos, Calibri, sans-serif;
+    --font-mono: Consolas, "Courier New", Courier, monospace;
+    /* Type ramp from DESIGN.md, plus the two document steps it gained for
+       long-form reading surfaces (display-lg / display-sm). A guide needs more
+       scale contrast than app chrome does: laundering the ramp to silence a
+       hierarchy warning would be the wrong fix (CD15). */
+    --t-display-lg: 32px;   --t-display: 22px;      --t-display-sm: 18px;
+    --t-body: 14px;         --t-label: 12px;
+
+    --r-sm: 5px;            --r-md: 8px;            --r-lg: 12px;   --r-pill: 9999px;
+    --s-1: 2px;  --s-2: 4px;  --s-3: 8px;  --s-4: 12px;
+    --s-5: 16px; --s-6: 24px; --s-7: 32px; --s-8: 48px;
+    --shadow: 0 6px 24px rgba(0,0,0,0.08);
+    --dur-fast: 120ms; --ease: cubic-bezier(0.2,0,0,1);
+    --focus-w: 3px; --focus-o: 2px; --target: 44px;
+    --measure: 68ch;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --canvas: #3d3b3a;    --surface: #343231;     --surface-soft: #383635;
+      --ink: #dedede;       --ink-mute: #a8a8a8;    --hairline: #888684;
+      --primary: #fd8ea1;
+      --success: #4ade80;   --warning: #fbbf24;     --danger: #ff9191;
+      --focus: #62b0ff;
+      --shadow: 0 6px 24px rgba(0,0,0,0.28);
+    }
+  }
+  /* High contrast uses the standards-track forced-colors system palette rather than
+     hardcoded hex. It is the correct modern mechanism, it inherits the user's own
+     chosen scheme, and it keeps the token layer free of same-on-same pairs. */
+  @media (forced-colors: active) {
+    :root {
+      --canvas: Canvas;     --surface: Canvas;      --surface-soft: Canvas;
+      --ink: CanvasText;    --ink-mute: CanvasText; --hairline: CanvasText;
+      --primary: LinkText;
+      --success: CanvasText; --warning: CanvasText; --danger: CanvasText;
+      --focus: Highlight;   --shadow: none;
+    }
+    .card, .note, pre, details, .tag { border-color: CanvasText; }
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after { animation-duration: 1ms !important; transition-duration: 1ms !important; }
+  }
+  body {
+    margin: 0; background: var(--canvas); color: var(--ink);
+    font-family: var(--font-sans); font-size: var(--t-body); font-weight: 400; line-height: 1.55;
+  }
+  a { color: var(--primary); }
+  a:focus-visible, button:focus-visible, summary:focus-visible {
+    outline: var(--focus-w) solid var(--focus); outline-offset: var(--focus-o); border-radius: var(--r-sm);
+  }
+  .skip {
+    position: absolute; left: var(--s-3); top: calc(var(--s-3) * -6);
+    background: var(--surface); color: var(--ink); padding: var(--s-3) var(--s-4);
+    border: 1px solid var(--hairline); border-radius: var(--r-md); z-index: 20;
+    transition: top var(--dur-fast) var(--ease);
+  }
+  .skip:focus { top: var(--s-3); }
+
+  .wrap { max-width: 1080px; margin: 0 auto; padding: var(--s-6) var(--s-5) var(--s-8); }
+
+  header.page { border-bottom: 1px solid var(--hairline); }
+  header.page .wrap { padding-bottom: var(--s-6); }
+  h1 { font-family: var(--font-sans); font-size: var(--t-display-lg); font-weight: 700; line-height: 1.15; letter-spacing: -0.4px; margin: 0 0 var(--s-4); }
+  .lede { font-size: var(--t-display-sm); line-height: 1.5; color: var(--ink); margin: 0; max-width: var(--measure); }
+  .lede + .lede { margin-top: var(--s-4); color: var(--ink-mute); font-size: var(--t-body); }
+
+  nav.toc { position: sticky; top: 0; z-index: 10; background: var(--canvas);
+            border-bottom: 1px solid var(--hairline); }
+  nav.toc ol { list-style: none; display: flex; flex-wrap: wrap; gap: var(--s-2);
+               margin: 0 auto; padding: var(--s-3) var(--s-5); max-width: 1080px; }
+  nav.toc a { display: inline-block; padding: var(--s-2) var(--s-3); border-radius: var(--r-pill);
+              text-decoration: none; color: var(--ink-mute); font-size: var(--t-label); font-weight: 600;
+              min-height: var(--target); line-height: calc(var(--target) - var(--s-2) * 2); }
+  nav.toc a:hover { color: var(--ink); background: var(--surface-soft); }
+
+  section { margin-top: var(--s-8); }
+  h2 { font-family: var(--font-sans); font-size: var(--t-display); font-weight: 650; line-height: 1.25; margin: 0 0 var(--s-3);
+       padding-bottom: var(--s-3); border-bottom: 1px solid var(--hairline); }
+  h3 { font-family: var(--font-sans); font-size: var(--t-display-sm); font-weight: 650; line-height: 1.3; margin: var(--s-6) 0 var(--s-3); }
+  p, li { max-width: var(--measure); }
+  p { margin: 0 0 var(--s-4); }
+  .muted { color: var(--ink-mute); }
+
+  table { width: 100%; border-collapse: collapse; margin: var(--s-4) 0 var(--s-6); font-size: var(--t-body); }
+  caption { text-align: left; color: var(--ink-mute); font-size: var(--t-label);
+            padding-bottom: var(--s-3); }
+  th, td { text-align: left; vertical-align: top; padding: var(--s-3) var(--s-4);
+           border-bottom: 1px solid var(--hairline); }
+  thead th { font-size: var(--t-label); text-transform: uppercase; letter-spacing: 0.06em;
+             color: var(--ink-mute); font-weight: 600; }
+  tbody tr:hover { background: var(--surface-soft); }
+
+  code, kbd { font-family: var(--font-mono); font-size: var(--t-label); font-weight: 400; line-height: 1.45; background: var(--surface-soft);
+              padding: var(--s-1) var(--s-2); border-radius: var(--r-sm); }
+  pre { background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--r-md);
+        padding: var(--s-4); overflow-x: auto; margin: 0 0 var(--s-4); }
+  pre code { background: none; padding: 0; font-size: var(--t-label); }
+
+  .cards { display: grid; gap: var(--s-4); grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); }
+  .card { background: var(--surface); border: 1px solid var(--hairline);
+          border-radius: var(--r-lg); padding: var(--s-5); display: grid; gap: var(--s-3);
+          align-content: start; }
+  .card h3 { margin: 0; font-size: var(--t-body); }
+  .card p { margin: 0; font-size: var(--t-body); color: var(--ink-mute); }
+  .card .run { margin-top: auto; }
+
+  .tag { display: inline-block; font-family: var(--font-sans); font-size: var(--t-label); font-weight: 600; line-height: 1.3;
+         padding: var(--s-1) var(--s-3); border-radius: var(--r-pill);
+         border: 1px solid var(--hairline); color: var(--ink-mute); }
+  .tag[data-level="block"] { border-color: var(--danger); color: var(--danger); }
+  .tag[data-level="soft"] { border-color: var(--warning); color: var(--warning); }
+  .tag[data-level="ok"] { border-color: var(--success); color: var(--success); }
+
+  .note { background: var(--surface); border: 1px solid var(--hairline);
+          border-radius: var(--r-md); padding: var(--s-4) var(--s-5); margin: var(--s-5) 0; }
+  .note > :last-child { margin-bottom: 0; }
+  .note strong { color: var(--ink); }
+
+  details { border: 1px solid var(--hairline); border-radius: var(--r-md);
+            padding: var(--s-3) var(--s-4); margin-bottom: var(--s-3); background: var(--surface); }
+  summary { cursor: pointer; font-weight: 600; min-height: var(--target);
+            display: flex; align-items: center; }
+
+  footer.page { margin-top: var(--s-8); border-top: 1px solid var(--hairline); }
+  footer.page .wrap { padding-top: var(--s-5); color: var(--ink-mute); font-size: var(--t-label); }
+
+  @media print {
+    nav.toc, .skip { display: none; }
+    body { background: #ffffff; color: #000000; }
+  }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="page">
+  <div class="wrap">
+    <h1>UI &amp; UX Capability Guide</h1>
+    <p class="lede">Everything this repository knows about designing and building interfaces, and the order to
+      use it in. Seven standards, one craft workflow, two linters, four templates and a persona council with
+      real veto power.</p>
+    <p class="lede">The short version: settle <strong>what it does</strong> before <strong>how it works</strong>
+      before <strong>how it looks</strong>. Pick the archetype from the job, not the data. Build the token
+      system before the screens. Then let a deterministic control prove what you built, because a craft rule
+      that lives only in prose is a memoir.</p>
+    <p><a href="index.html">Back to the Docs Explorer</a></p>
+  </div>
+</header>
+
+<nav class="toc" aria-label="On this page">
+  <ol>
+    <li><a href="#stack">The stack</a></li>
+    <li><a href="#start">Start here</a></li>
+    <li><a href="#triggers">Triggers</a></li>
+    <li><a href="#loop">The loop</a></li>
+    <li><a href="#commands">Commands</a></li>
+    <li><a href="#archetypes">Archetypes</a></li>
+    <li><a href="#gates">Gates</a></li>
+    <li><a href="#tells">Anti-patterns</a></li>
+    <li><a href="#artifacts">Artifacts</a></li>
+  </ol>
+</nav>
+
+<main id="main" class="wrap">
+
+  <section id="stack">
+    <h2>1. The stack</h2>
+    <p>Seven standards, each owning one question. They compose downward: a lower layer constrains the one
+      above it, so an unsettled layer below makes the layer above guesswork.</p>
+    <table>
+      <caption>Each standard, what it decides, and its directive prefix.</caption>
+      <thead>
+        <tr><th scope="col">Layer</th><th scope="col">The question it answers</th><th scope="col">Directives</th><th scope="col">Standard</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Specification</strong></td>
+          <td>What must it do, how does it work, how does it look? Three layers, written bottom-up, each absent one marked N/A with a reason.</td>
+          <td><code>S1&ndash;S10</code></td>
+          <td><code>specification-standards.md</code></td>
+        </tr>
+        <tr>
+          <td><strong>Archetype</strong></td>
+          <td>What <em>kind</em> of interface is this? A determinism control that constrains generation before it starts.</td>
+          <td><code>G1&ndash;G16</code></td>
+          <td><code>ui-archetype-grammar.md</code>, <code>ui-archetype-catalog.md</code></td>
+        </tr>
+        <tr>
+          <td><strong>Craft process</strong></td>
+          <td>How do you get from a brief to a surface that looks designed rather than generated?</td>
+          <td><code>DX1&ndash;DX25</code></td>
+          <td><code>ui-design-craft.md</code></td>
+        </tr>
+        <tr>
+          <td><strong>Floors</strong></td>
+          <td>What must every interface meet regardless of taste? Tokens, complete states, motion, copy, WCAG 2.2 AA, performance.</td>
+          <td><code>U1&ndash;U20</code></td>
+          <td><code>ui-interaction-design.md</code></td>
+        </tr>
+        <tr>
+          <td><strong>Expert surfaces</strong></td>
+          <td>Extra rules when users are experts working with quantities: numeric legibility, colormaps, uncertainty, provenance.</td>
+          <td><code>TQ1&ndash;TQ12</code></td>
+          <td><code>technical-ui-design.md</code></td>
+        </tr>
+        <tr>
+          <td><strong>Detection</strong></td>
+          <td>Did the thing you built actually meet the floors? A 59-rule deterministic control, no model required.</td>
+          <td><code>CD1&ndash;CD20</code></td>
+          <td><code>ui-craft-detection.md</code></td>
+        </tr>
+        <tr>
+          <td><strong>Visual assets</strong></td>
+          <td>May imagery be generated, and under what conditions? Cost, provenance, privacy, alt text, non-determinism.</td>
+          <td><code>VA1&ndash;VA22</code></td>
+          <td><code>ui-visual-assets.md</code></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="note">
+      <p><strong>The one ordering rule that matters.</strong> Surface never precedes Structure. A settled UI
+        over an unsettled UX layer is a block (S2), and the most expensive UI defect on record in this pack
+        is an archetype chosen from the shape of the <em>data</em> rather than the shape of the
+        <em>task</em>. Reading is parallel. Entering is serial.</p>
+    </div>
+  </section>
+
+  <section id="start">
+    <h2>2. Start here: pick your job</h2>
+    <p>Six common situations and the path each one takes. When the surface already exists, review before you
+      rebuild: replacing something you have not measured produces a differently flawed screen.</p>
+    <div class="cards">
+
+      <article class="card">
+        <h3>Nothing exists yet</h3>
+        <p>No spec, no screens. Settle the functional and UX layers first, then design the surface.</p>
+        <p class="run"><code>/specify</code> then <code>/ui-design</code> (create)</p>
+      </article>
+
+      <article class="card">
+        <h3>It exists. Is it any good?</h3>
+        <p>Measure before diagnosing. You get counts, a rubric critique and a ranked plan, not opinions.</p>
+        <p class="run"><code>/ui-design</code> (review)</p>
+      </article>
+
+      <article class="card">
+        <h3>It works but is not good enough</h3>
+        <p>Review first, then rebuild the weakest layer. That is often the archetype, not the pixels.</p>
+        <p class="run"><code>/ui-design</code> (elevate)</p>
+      </article>
+
+      <article class="card">
+        <h3>The design is approved. Build it.</h3>
+        <p>Build against the tokens, implement every state, prove WCAG and the performance budget red-first.</p>
+        <p class="run"><code>/design-slice</code> then <code>/implement</code></p>
+      </article>
+
+      <article class="card">
+        <h3>Dense, scientific or quantitative</h3>
+        <p>CAD, notebooks, dashboards, simulation, trading. Density is welcome, but hierarchy must rise with it.</p>
+        <p class="run"><code>/ui-design</code>, which trips <strong>UI-T1</strong></p>
+      </article>
+
+      <article class="card">
+        <h3>Marketing or landing surface</h3>
+        <p>The one place generated imagery and cinematic motion genuinely earn their place.</p>
+        <p class="run"><code>/ui-design</code> (trips <strong>UI-T2</strong>), then
+          <code>/visualize</code> to produce the assets</p>
+      </article>
+
+    </div>
+  </section>
+
+  <section id="triggers">
+    <h2>3. Triggered standards</h2>
+    <p>Two of the cards above say a job "trips UI-T1" rather than telling you to load a document. That
+      wording is deliberate. The mode you run (create, review, elevate) is <em>mutually exclusive</em>: you
+      are doing exactly one. The standards below are <em>orthogonal and composable</em>: any combination can
+      be true at once, they apply on top of whichever mode you chose, and several often fire together. A
+      CFD post-processing tool with a generated hero image trips two of them.</p>
+    <p>This is the same trigger mechanism the Testing Strategy uses for choosing tests, and it carries the
+      same force. Map the surface against every row, apply all matching directives as a <strong>union</strong>
+      rather than the first match, and treat a triggered-but-unmet directive as a gap the gate catches. The
+      mapping happens at <strong>Stage 1</strong>, because the triggers reshape that stage: a trigger
+      discovered in the definition of done has already cost you the archetype decision it should have
+      informed.</p>
+
+    <table>
+      <caption>Always on, plus the four conditional rows.</caption>
+      <thead>
+        <tr><th scope="col">Trigger</th><th scope="col">The surface</th><th scope="col">What it adds</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Always</strong></td>
+          <td>Renders anything</td>
+          <td>The floors (U1&ndash;U20), the craft process (DX1&ndash;DX25), the deterministic control
+            (CD1&ndash;CD20), and the rule that an unsettled UX layer blocks the surface (S2, S7)</td>
+        </tr>
+        <tr>
+          <td><strong>UI-T1</strong></td>
+          <td>Serves an expert working with quantities: CAD, scientific visualization, notebooks,
+            spreadsheet or financial modelling, simulation and risk, quant terminals</td>
+          <td>The archetype comes from catalog section G rather than A to F. Perceptually-uniform colormaps,
+            tabular unit-bearing numerics, uncertainty-first output, provenance, reactive recompute. A
+            rainbow colormap, a unit-less quantity or a point estimate for a stochastic result is a
+            <em>correctness</em> defect, not a taste one</td>
+        </tr>
+        <tr>
+          <td><strong>UI-T2</strong></td>
+          <td>Contains generated imagery, personas or motion</td>
+          <td>The optional visual world, and the asset rules: mood never structure, supplementing never
+            replacing real references, never the interface itself, committed rather than linked, with a
+            manifest and alt text. Convenes the AI Systems Engineer and the Privacy lens</td>
+        </tr>
+        <tr>
+          <td><strong>UI-T3</strong></td>
+          <td>Fronts a model</td>
+          <td>The wrong answer and uncertainty join empty, loading and error as first-class states. Name the
+            HAX guidelines and the Shape-of-AI patterns. Oversight precedes any consequential action</td>
+        </tr>
+        <tr>
+          <td><strong>UI-T4</strong></td>
+          <td>Ships as a native client app (WPF, WinUI, Avalonia, Blazor Hybrid first)</td>
+          <td>The run declares medium/platform/framework/distribution/accessibility API, cites the platform HIG,
+            fills the native proof pack, and proves keyboard, accessibility tree, theme/high-contrast,
+            DPI/windowing, OS integration, performance and signing/SmartScreen/notarization where applicable.
+            HTML mockups and static craft scans are direction evidence only; they cannot clear native PASS.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="note">
+      <p><strong>A trigger is a claim about the surface, so establish it rather than assume it.</strong>
+        "This is not really an expert surface" is a decision with consequences. When it is genuinely
+        borderline, take the higher tier until evidence says otherwise.</p>
+    </div>
+  </section>
+
+  <section id="loop">
+    <h2>4. The <code>/ui-design</code> loop</h2>
+    <p>Five stages of the Rigor Protocol applied to an interface. The weight sits on the first stage
+      (direction, before any visual artifact exists) and the fourth (critique, structure before surface).</p>
+
+    <table>
+      <caption>What each stage decides and what it leaves behind.</caption>
+      <thead>
+        <tr><th scope="col">Stage</th><th scope="col">What happens</th><th scope="col">Output</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>0. Interdict</strong></td>
+          <td>Do not generate a screen. One pass that decides direction, system and composition together
+            averages all three into the generic default. In review mode: do not diagnose before you measure.</td>
+          <td>Nothing. That is the point.</td>
+        </tr>
+        <tr>
+          <td><strong>1. Open</strong></td>
+          <td>The direction brief <em>in words</em>: user and the state they arrive in, job-to-be-done,
+            Archetype Signature chosen from that job, three adjectives <em>and their opposites</em>, named
+            references with what is taken from each, anti-goals, constraints. Optionally then a visual world
+            that makes the register concrete.</td>
+          <td>Direction brief</td>
+        </tr>
+        <tr>
+          <td><strong>2. Interrogate</strong></td>
+          <td>What is this surface for and explicitly not for. What does the archetype force and forbid.
+            Enumerate the surface inventory: every component and its full state set.</td>
+          <td>Surface inventory</td>
+        </tr>
+        <tr>
+          <td><strong>3. Evidence</strong></td>
+          <td>Measure, then build the system before the screens. Both linters run. Establish platform
+            guidelines from sources rather than memory. Write the motion inventory and the real copy.</td>
+          <td><code>DESIGN.md</code>, measurements</td>
+        </tr>
+        <tr>
+          <td><strong>4. Disconfirm</strong></td>
+          <td>The gate. Rubric critique structure-before-surface, detector findings folded in with the
+            severity floors, the tells self-check, the Simplifier's delete-list. Accessibility veto cleared
+            by someone other than the author.</td>
+          <td>Findings with severities</td>
+        </tr>
+        <tr>
+          <td><strong>5. Converge</strong></td>
+          <td>Produce the artifacts and a ranked plan naming the single highest improvement-to-effort change.</td>
+          <td>Mockup, review, hub node</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="note">
+      <p><strong>The mockup is the deliverable that makes review possible.</strong> One self-contained HTML
+        file, no build step and no CDN, opening over <code>file://</code>. It renders the hard states
+        (empty, loading, error, partial, overflow) with realistic extreme content, and it ships a review
+        harness that switches persona, viewport, state, theme, capability flags and reduced motion. A
+        mockup showing one persona in one state with populated data is a screenshot with extra steps.</p>
+    </div>
+  </section>
+
+  <section id="commands">
+    <h2>5. Commands</h2>
+
+    <h3>Run the workflow</h3>
+    <pre><code>/specify      # functional + UX + UI layers; settles Part B before Part C
+/ui-design    # direction, design language, mockup, rubric critique
+/design-slice       # component contracts, failure modes, test plan behind the surface
+/implement    # build to the tokens, prove the floors red-first
+/investigate  # a defect in running software enters here, never /implement</code></pre>
+
+    <h3>Run the controls</h3>
+    <pre><code># inward: is the design language internally consistent?
+python3 docs/ai-forward-pack/scripts/design-lint.py DESIGN.md --strict
+
+# outward: does the built surface obey it? 59 deterministic rules, no model.
+python3 docs/ai-forward-pack/scripts/ui-craft-gate.py src/ --markdown
+python3 docs/ai-forward-pack/scripts/ui-craft-gate.py src/ --gate --a11y-obligation
+
+# the detector reads DESIGN.md from the repo root or docs/. Install it once:
+npm install --save-dev impeccable</code></pre>
+
+    <h3>Generate the imagery a surface shows</h3>
+<pre><code># which generation backend can this environment actually reach?
+python3 docs/ai-forward-pack/scripts/visual-assets-setup.py --check
+python3 docs/ai-forward-pack/scripts/visual-assets-setup.py --backends   # capability matrix
+python3 docs/ai-forward-pack/scripts/visual-assets-setup.py --init       # assets dir + manifest + hygiene
+
+/visualize    # board | asset | persona | motion</code></pre>
+    <div class="note">
+      <p><strong>A consumer AI subscription is not API access.</strong> A Google AI Pro or Ultra
+        plan grants the Gemini app, Flow and Whisk, and grants no programmatic API access at all.
+        The API is a separate billing relationship, and image and video generation are not on its
+        free tier. Establish which you hold before designing around it.</p>
+    </div>
+
+    <h3>Keep the graph honest</h3>
+    <pre><code>python3 docs/ai-forward-pack/scripts/docs-graph.py derive     # frontmatter to index
+python3 docs/ai-forward-pack/scripts/docs-graph.py validate   # dangling links, orphans
+python3 docs/ai-forward-pack/scripts/docs-graph.py freshness  # stale and flagged</code></pre>
+
+    <div class="note">
+      <p><strong>A gate that scanned nothing is not a passing gate.</strong> Confirm the detector matched a
+        non-empty corpus and reported its own status. An empty result exits clean and proves nothing, and a
+        chained shell block propagates only its last exit code.</p>
+    </div>
+  </section>
+
+  <section id="archetypes">
+    <h2>6. Archetype picker</h2>
+    <p>Choose the row whose job matches yours, take its Archetype Signature, then adjust facets with a
+      recorded rationale. The signature constrains the <em>kind</em> of interface, which is what stops a
+      model reaching for the same card grid every time.</p>
+
+    <details>
+      <summary>Temporal and guided: the highest-determinism archetypes</summary>
+      <table>
+        <thead><tr><th scope="col">Archetype</th><th scope="col">Use when</th></tr></thead>
+        <tbody>
+          <tr><td>A1 Phased Narrative Orchestrator</td><td>Multi-stage assessment with a long-running job and a narrated wait</td></tr>
+          <tr><td>A2 Secure Checkout Pipeline</td><td>Linear, escape-proof, sequential secure data entry</td></tr>
+          <tr><td>A3 Branching Diagnostic Wizard</td><td>The next question depends on the last answer</td></tr>
+          <tr><td>A4 Gamified Learning Loop</td><td>Fast sequential practice with instant reward</td></tr>
+        </tbody>
+      </table>
+    </details>
+
+    <details>
+      <summary>Operational and data-dense: admin, tools, dashboards</summary>
+      <table>
+        <thead><tr><th scope="col">Archetype</th><th scope="col">Use when</th></tr></thead>
+        <tbody>
+          <tr><td>B1 Keyboard-Velocity GUI</td><td>Power users triaging at speed; command palette is primary navigation</td></tr>
+          <tr><td>B2 Enterprise Master-Detail</td><td>Relational business records at volume</td></tr>
+          <tr><td>B3 Telemetry Bento Box</td><td>Real-time metrics in uniform bounded cells</td></tr>
+          <tr><td>B4 Oversized POS Utility</td><td>Touch-first under physical stress; error reduction outranks density</td></tr>
+        </tbody>
+      </table>
+    </details>
+
+    <details>
+      <summary>Streaming, spatial, authoring and content</summary>
+      <table>
+        <thead><tr><th scope="col">Archetype</th><th scope="col">Use when</th></tr></thead>
+        <tbody>
+          <tr><td>C1 Unbounded Spatial Canvas</td><td>Infinite pan-and-zoom collaborative workspace</td></tr>
+          <tr><td>D1 Generative Stream Thread</td><td>Conversational AI with token streaming and stop or regenerate</td></tr>
+          <tr><td>D2 Immersive Infinite Feed</td><td>Full-screen media paginated by gesture</td></tr>
+          <tr><td>D3 Chronological Presence Hub</td><td>Concurrent real-time chat with live presence</td></tr>
+          <tr><td>E1 Distraction-Free Block Document</td><td>Prose authoring where chrome hides until needed</td></tr>
+          <tr><td>E2 Cinematic Scrollytelling</td><td>Marketing surface where scroll scrubs a timeline</td></tr>
+          <tr><td>F1 Content Portal</td><td>High-volume editorial discovery</td></tr>
+          <tr><td>F2 Settings Surface</td><td>Grouped configuration with consequential, often irreversible actions</td></tr>
+        </tbody>
+      </table>
+    </details>
+
+    <details>
+      <summary>Technical, scientific and quantitative</summary>
+      <table>
+        <thead><tr><th scope="col">Archetype</th><th scope="col">Use when</th></tr></thead>
+        <tbody>
+          <tr><td>G1 Parametric Modeling Workbench</td><td>CAD: viewport plus non-destructive feature history</td></tr>
+          <tr><td>G2 Scientific Visualization Pipeline</td><td>CFD or FEA post-processing; filter pipeline plus colormap legend</td></tr>
+          <tr><td>G3 Computational Notebook</td><td>Prose, code cells, a kernel and live rich output</td></tr>
+          <tr><td>G4 Computational Spreadsheet</td><td>Addressable cells with a formula dependency graph</td></tr>
+          <tr><td>G5 Probabilistic Explorer</td><td>Monte Carlo, risk, forecasting; output is uncertainty-first</td></tr>
+          <tr><td>G6 Multi-Panel Data Terminal</td><td>Command-code-driven linked real-time panels at ultra-density</td></tr>
+        </tbody>
+      </table>
+    </details>
+
+    <div class="note">
+      <p><strong>Verify the archetype against the shape of the task, including on screens that already
+        exist.</strong> A dashboard archetype applied to a data-entry job puts every control on screen at
+        once and sequences nothing. Each component passes its own review; the screen is still wrong.</p>
+    </div>
+  </section>
+
+  <section id="gates">
+    <h2>7. Gates and vetoes</h2>
+    <p>Who can block, on what, and what clears it. The author never clears their own hard veto, even when
+      one model is playing both roles in sequence.</p>
+    <table>
+      <caption>Veto authority on UI work.</caption>
+      <thead>
+        <tr><th scope="col">Lens</th><th scope="col">Authority</th><th scope="col">Blocks on</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>UX &amp; Accessibility</td>
+          <td><span class="tag" data-level="block">Hard</span></td>
+          <td>WCAG 2.2 AA, complete component states, token discipline on the visual surface</td>
+        </tr>
+        <tr>
+          <td>UX Researcher / IA</td>
+          <td><span class="tag" data-level="block">Hard</span></td>
+          <td>Evidenced need, coherent information architecture, flows covering alternate, error and recovery paths</td>
+        </tr>
+        <tr>
+          <td>Test Architect</td>
+          <td><span class="tag" data-level="block">Hard</span></td>
+          <td>Any correctness claim with no verification path; UI acceptance criteria that cannot fail</td>
+        </tr>
+        <tr>
+          <td>Privacy &amp; Data Governance</td>
+          <td><span class="tag" data-level="block">Hard</span></td>
+          <td>Personal data or a real likeness sent to a generation provider</td>
+        </tr>
+        <tr>
+          <td>AI Systems Engineer</td>
+          <td><span class="tag" data-level="block">Hard</span></td>
+          <td>Non-determinism leaking into a deterministic artifact; a model capability with no eval</td>
+        </tr>
+        <tr>
+          <td>The Simplifier</td>
+          <td><span class="tag" data-level="soft">Soft</span></td>
+          <td>Anything that does not earn its place. Emits a delete-list ending in <code>net: -N</code></td>
+        </tr>
+        <tr>
+          <td>Craft detector</td>
+          <td><span class="tag" data-level="ok">Control</span></td>
+          <td>Not a veto holder. It supplies evidence the lenses consume, and it gates CI</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="note">
+      <p><strong>A clean detector run is a floor, never a verdict.</strong> It proves 59 specific patterns
+        are absent. It cannot see whether the archetype fits the job, whether the information architecture
+        lets anyone reach their goal, whether the empty and error states exist at all, whether the copy is
+        true, or whether the focal point is defended. Reporting "detector clean" as "the design is good" is
+        the most likely way this control gets misused.</p>
+    </div>
+  </section>
+
+  <section id="tells">
+    <h2>8. Anti-patterns</h2>
+
+    <h3>The generic look, and what now catches it</h3>
+    <p>Models trained on the same corpus converge on the same tells. The craft standard names them in prose;
+      the detector catches the mechanizable ones in CI. This repository shipped three of them in its own
+      templates until the detector was adopted.</p>
+    <table>
+      <caption>Recognisable tells and their antidotes.</caption>
+      <thead>
+        <tr><th scope="col">Tell</th><th scope="col">Antidote</th><th scope="col">Caught by</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Thick coloured border on one side of a card</td><td>A full hairline in the semantic colour over a tinted ground</td><td><code>side-tab</code></td></tr>
+        <tr><td>Violet or indigo gradient; gradient text</td><td>Derive the palette from the direction brief; emphasis by weight or size</td><td><code>ai-color-palette</code>, <code>gradient-text</code></td></tr>
+        <tr><td>Cards inside cards as page structure</td><td>Vary containment: rules, spacing, background shifts, or nothing</td><td><code>nested-cards</code></td></tr>
+        <tr><td>Icon tile above every heading; eyebrow chips</td><td>Delete them. No brief earns them back</td><td><code>icon-tile-stack</code>, <code>kicker-above-heading</code></td></tr>
+        <tr><td>Everything one or two sizes with weight doing the work</td><td>Commit to a type scale with real ratio contrast</td><td><code>flat-type-hierarchy</code></td></tr>
+        <tr><td>Uniform spacing everywhere</td><td>Tight within a group, generous between groups</td><td><code>monotonous-spacing</code></td></tr>
+        <tr><td>Animating width, height, padding or margin</td><td>Transform and opacity only</td><td><code>layout-transition</code></td></tr>
+        <tr><td>Lorem, placeholder names, perfectly full screens</td><td>Real copy, real extremes, and the hard states designed first</td><td><code>text-overflow</code>, <code>broken-image</code></td></tr>
+      </tbody>
+    </table>
+
+    <h3>Registered defect classes</h3>
+    <p>Classes captured from real failures, each with the control that now catches the shape. The full
+      register lives in <code>docs/lessons/defect-classes.md</code> and is read at grounding.</p>
+    <table>
+      <thead><tr><th scope="col">Class</th><th scope="col">Shape</th><th scope="col">Status</th></tr></thead>
+      <tbody>
+        <tr><td>UX-A</td><td>Archetype mismatched to the task</td><td><span class="tag">uncontrolled</span></td></tr>
+        <tr><td>UX-B</td><td>Shipped with data-only states; it looked fine with data</td><td><span class="tag">uncontrolled</span></td></tr>
+        <tr><td>UX-C</td><td>Craft rule documented but not controlled</td><td><span class="tag" data-level="ok">controlled</span></td></tr>
+        <tr><td>VA-A</td><td>Generated asset referenced by a provider URL that expires</td><td><span class="tag" data-level="ok">controlled</span></td></tr>
+        <tr><td>VA-B</td><td>Generated interface passed off as design</td><td><span class="tag">uncontrolled</span></td></tr>
+      </tbody>
+    </table>
+
+    <h3>Generated imagery: the hard limits</h3>
+    <p>Imagery, personas and motion that a UI <em>contains</em> may be generated. The interface itself may
+      not: image models render illegible text and invented controls, so a generated screenshot makes a
+      design look finished while encoding nothing anyone can build. Generate once, then download, optimise
+      and commit the file. Provider results expire, and an asset that re-rolls per run is non-determinism
+      inside a deterministic artifact. Never upload a real person's likeness or customer data.</p>
+  </section>
+
+  <section id="artifacts">
+    <h2>9. Artifacts</h2>
+    <table>
+      <caption>Templates, scripts and examples that support UI work.</caption>
+      <thead>
+        <tr><th scope="col">Artifact</th><th scope="col">What it gives you</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>templates/design-language.template.md</code></td><td>The <code>DESIGN.md</code> token system in Stitch format, extended with the pack floors: contrast audit at the token layer, complete state matrix, modes, paired Archetype Signature, motion, performance budget</td></tr>
+        <tr><td><code>templates/design-language-preview.template.html</code></td><td>Rendered visual catalogue of the token system with computed contrast per pairing</td></tr>
+        <tr><td><code>templates/mockup-harness.template.html</code></td><td>The self-contained mockup shell with the review harness and in-artifact contrast checks</td></tr>
+        <tr><td><code>templates/ui-review.template.md</code></td><td>Review artifact: measurements, rubric findings, scorecard, ranked plan</td></tr>
+        <tr><td><code>scripts/design-lint.py</code></td><td>Inward linter: every token reference resolves; no raw hex in a component spec</td></tr>
+        <tr><td><code>scripts/ui-craft-gate.py</code></td><td>Outward control: runs the detector, translates findings into rubric shape, applies the severity floors, gates on blockers</td></tr>
+        <tr><td><code>examples/design-languages/linear.design.md</code></td><td>A worked design language to adapt, never clone, with attribution</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Where things land</h3>
+    <pre><code>DESIGN.md                      # the token system (detector reads this)
+docs/specs/&lt;feature&gt;.md         # Parts A functional, B UX, C UI
+docs/mockups/&lt;surface&gt;.html     # self-contained mockup + review harness
+docs/mockups/&lt;surface&gt;.md       # its graph node (the .html is data)
+docs/reviews/ui-&lt;surface&gt;.md    # measurements, findings, ranked plan
+docs/assets/&lt;surface&gt;/          # committed generated assets
+docs/lessons/defect-classes.md  # the register, read at grounding</code></pre>
+  </section>
+
+</main>
+
+<footer class="page">
+  <div class="wrap">
+    <p>Part of the AI-Forward Pack. Standards live in <code>.claude/knowledge/</code> and
+      <code>.github/instructions/</code>. This guide is derived from them; where they disagree with it,
+      the standards win.</p>
+  </div>
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>__PROJECT__ — Audit & Change Log</title>
+<script>
+  (() => {
+    const param = new URLSearchParams(window.location.search).get("clawpilotTheme");
+    const theme =
+      param || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    document.documentElement.setAttribute("data-theme", theme);
+  })();
+</script>
+<!-- AI-FORWARD-PACK:AUDIT-EXPLORER (managed — regenerated from templates/audit-explorer.template.html) -->
+<!--
+  The Audit & Change Log viewer (knowledge/audit-and-change-log.md).
+  A searchable timeline over the project's own history — every prompt/skill/script (audit)
+  and every meaningful design decision (changes), so a human or a new agent session can read
+  what was done and why.
+
+  DATA: loads ONLY audit-data.js (window.AUDIT_DATA) from the same directory — a <script src>
+  so it works over file:// where fetch() of local files is blocked. audit-log.py regenerates it
+  on every append; this file never needs editing.
+
+  RUNTIME: dependency-free DOM APIs with no remote code or build step. Toggle FULL HISTORY
+  (audit) vs CHANGES (meaningful decisions) vs MESSAGES (the board, spec-board: the coord
+  ledger's message twins — who → whom · kind · ref — with no bodies, because the ledger carries
+  none; ack state lives only in the inboxes, so the page says "not recorded here" and points at
+  `coord board`); search by session, date range, kind, or keyword; expand any row; copy a
+  prompt to re-run it. An audit-data.js without `messages` (older render) still loads: the
+  Messages view then shows NOT CHECKED.
+-->
+<style>
+  :root {
+    color-scheme: light;
+    --cp-bg: #f7f4ef;
+    --cp-bg-elevated: #fcfbf8;
+    --cp-surface: #ffffff;
+    --cp-surface-soft: #f5f5f5;
+    --cp-border: #dedede;
+    --cp-border-strong: #919191;
+    --cp-text: #242424;
+    --cp-text-muted: #5c5c5c;
+    --cp-text-soft: #6f6f6f;
+    --cp-accent: #b11f4b;
+    --cp-accent-hover: #9a1a41;
+    --cp-accent-soft: rgba(177, 31, 75, 0.08);
+    --cp-accent-fg: #ffffff;
+    --cp-success: #16a34a;
+    --cp-danger: #dc2626;
+    --cp-warning: #f59e0b;
+    --cp-link: #0078d4;
+    --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.12);
+    --cp-overlay: rgba(255, 255, 255, 0.8);
+    --cp-panel: rgba(255, 255, 255, 0.86);
+    --cp-panel-strong: rgba(255, 255, 255, 0.96);
+    --cp-sheen: rgba(255, 255, 255, 0.55);
+    --cp-highlight: rgba(177, 31, 75, 0.12);
+  }
+  html[data-theme="dark"] {
+    color-scheme: dark;
+    --cp-bg: #3d3b3a;
+    --cp-bg-elevated: #343231;
+    --cp-surface: #292929;
+    --cp-surface-soft: #2e2e2e;
+    --cp-border: #474747;
+    --cp-border-strong: #5f5f5f;
+    --cp-text: #dedede;
+    --cp-text-muted: #919191;
+    --cp-text-soft: #b0b0b0;
+    --cp-accent: #fd8ea1;
+    --cp-accent-hover: #fb7b91;
+    --cp-accent-soft: rgba(253, 142, 161, 0.14);
+    --cp-accent-fg: #1a1a1a;
+    --cp-success: #4ade80;
+    --cp-danger: #f87171;
+    --cp-warning: #fbbf24;
+    --cp-link: #4da6ff;
+    --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+    --cp-overlay: rgba(41, 41, 41, 0.88);
+    --cp-panel: rgba(41, 41, 41, 0.72);
+    --cp-panel-strong: rgba(41, 41, 41, 0.96);
+    --cp-sheen: rgba(255, 255, 255, 0.04);
+    --cp-highlight: rgba(253, 142, 161, 0.12);
+  }
+  *{box-sizing:border-box} html,body,#root{height:100%}
+  body{margin:0; background:var(--cp-bg); color:var(--cp-text);
+       font:14px/1.6 "Segoe UI",Aptos,Calibri,-apple-system,BlinkMacSystemFont,sans-serif;}
+  button,input,select{font:inherit}
+  button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{
+    outline:3px solid var(--cp-link); outline-offset:3px;
+  }
+  a{color:var(--cp-link); text-decoration:none} a:hover{text-decoration:underline}
+  .wrap{max-width:1080px; margin:0 auto; padding:0 18px 80px}
+  header{position:sticky; top:0; z-index:5; background:var(--cp-bg); border-bottom:1px solid var(--cp-border);
+         padding:14px 0 12px; margin-bottom:8px}
+  .titlerow{display:flex; align-items:baseline; gap:12px; flex-wrap:wrap}
+  h1{font-size:18px; margin:0; letter-spacing:.02em}
+  .gen{font-size:11px; color:var(--cp-text-muted)}
+  .toggle{display:inline-flex; border:1px solid var(--cp-border); border-radius:0.625rem; overflow:hidden; margin-left:auto}
+  .toggle button{min-height:44px; background:transparent; color:var(--cp-text-muted); border:0; padding:6px 14px; cursor:pointer}
+  .toggle button.on{background:var(--cp-accent); color:var(--cp-accent-fg)}
+  .controls{display:flex; gap:8px; flex-wrap:wrap; margin-top:11px; align-items:center}
+  .controls input, .controls select{min-height:44px; background:var(--cp-surface); color:var(--cp-text); border:1px solid var(--cp-border);
+       border-radius:0.625rem; padding:7px 10px}
+  .controls input.kw{flex:1; min-width:180px}
+  .controls .lbl{font-size:11px; color:var(--cp-text-muted); margin:0 -2px 0 6px}
+  .count{font-size:12px; color:var(--cp-text-muted); margin-left:auto}
+  .clear{min-height:44px; background:transparent; border:1px solid var(--cp-border); color:var(--cp-text); border-radius:0.625rem;
+         padding:7px 10px; cursor:pointer}
+  .day{font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--cp-text-muted);
+       margin:20px 2px 6px; border-bottom:1px dashed var(--cp-border); padding-bottom:4px}
+  .row{border:1px solid var(--cp-border); border-radius:0.625rem; background:var(--cp-surface); margin:8px 0; overflow:hidden}
+  .head{display:flex; width:100%; min-height:44px; gap:11px; align-items:center; padding:10px 13px;
+        border:0; background:transparent; color:var(--cp-text); text-align:left; cursor:pointer}
+  .head:hover{background:var(--cp-surface-soft)}
+  .time{font-size:12px; color:var(--cp-text-muted); font-variant-numeric:tabular-nums; white-space:nowrap}
+  .badge{font-size:10.5px; letter-spacing:.04em; text-transform:uppercase; padding:2px 8px; border-radius:999px;
+         background:var(--cp-surface-soft); border:1px solid var(--cp-border-strong); color:var(--cp-text); white-space:nowrap}
+  .label{font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:240px}
+  .summ{color:var(--cp-text-muted); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:80px}
+  .chev{color:var(--cp-text-muted); flex:none}
+  .row.open .chev{transform:rotate(90deg)}
+  .body{padding:2px 14px 14px; border-top:1px solid var(--cp-border)}
+  .kv{display:grid; grid-template-columns:84px 1fr; gap:4px 12px; font-size:12.5px; margin:10px 0}
+  .kv .k{color:var(--cp-text-muted)}
+  .promptbox{position:relative; margin:10px 0}
+  pre.prompt{background:var(--cp-surface-soft); border:1px solid var(--cp-border); border-radius:0.625rem; padding:11px 12px;
+       margin:0; white-space:pre-wrap; word-break:break-word; font:12.5px/1.55 Consolas,"Courier New",Courier,monospace;
+       max-height:340px; overflow:auto}
+  .copy{position:absolute; top:8px; right:8px; min-height:44px; background:var(--cp-accent); color:var(--cp-accent-fg);
+        border:0; border-radius:0.625rem; padding:4px 10px; font-size:12px; cursor:pointer}
+  .copy.done{background:var(--cp-text); color:var(--cp-bg)}
+  .tagrow{display:flex; flex-wrap:wrap; gap:6px; margin:8px 0}
+  .tag{font-size:11px; background:var(--cp-surface-soft); border:1px solid var(--cp-border); border-radius:999px; padding:1px 9px; color:var(--cp-text-muted)}
+  .git{font-size:12px; color:var(--cp-text-muted)} .git code{background:var(--cp-surface-soft); padding:1px 5px; border-radius:5px}
+  .commits{margin:6px 0 0; padding-left:18px} .commits li{font-size:12px; color:var(--cp-text-muted)}
+  .out-success,.out-partial,.out-blocked,.out-failed{color:var(--cp-text); font-weight:700}
+  .empty,.loading{color:var(--cp-text-muted); padding:48px; text-align:center}
+  .empty .guide{display:block; margin-top:8px; font-size:12.5px}
+  .empty code{background:var(--cp-surface-soft); border:1px solid var(--cp-border); border-radius:5px; padding:1px 5px; color:var(--cp-text)}
+  .msgs{width:100%; border-collapse:separate; border-spacing:0; margin:8px 0; background:var(--cp-surface);
+        border:1px solid var(--cp-border); border-radius:0.625rem; overflow:hidden; font-size:12.5px}
+  .msgs th{position:sticky; top:0; text-align:left; font-weight:600; font-size:11px; letter-spacing:.06em;
+           text-transform:uppercase; color:var(--cp-text-muted); background:var(--cp-surface-soft);
+           border-bottom:1px solid var(--cp-border-strong); padding:8px 10px}
+  .msgs td{padding:8px 10px; border-bottom:1px solid var(--cp-border); vertical-align:top; color:var(--cp-text)}
+  .msgs tr:last-child td{border-bottom:0}
+  .msgs td.time{white-space:nowrap}
+  .msgs td.ref{max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .msgs td.ack{color:var(--cp-text-muted); white-space:nowrap}
+  .msgs .who{font-weight:600}
+  .msgs .arrow{color:var(--cp-text-muted); padding:0 4px}
+  .msgs-wrap{overflow-x:auto}
+  .note{font-size:12px; color:var(--cp-text-muted); border:1px dashed var(--cp-border); border-radius:0.625rem; padding:9px 11px; margin-top:14px}
+  .sr-only{position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden;
+           clip:rect(0,0,0,0); white-space:nowrap; border:0}
+  @media (prefers-reduced-motion: no-preference){
+    .chev{transition:transform .15s}
+  }
+  @media (forced-colors: active){
+    :root{
+      --cp-bg:Canvas; --cp-bg-elevated:Canvas; --cp-surface:Canvas; --cp-surface-soft:Canvas;
+      --cp-border:CanvasText; --cp-border-strong:CanvasText; --cp-text:CanvasText;
+      --cp-text-muted:CanvasText; --cp-text-soft:CanvasText; --cp-accent:Highlight;
+      --cp-accent-hover:Highlight; --cp-accent-fg:HighlightText; --cp-link:LinkText;
+    }
+    .head,.copy,.clear,.toggle button,.controls input,.controls select{forced-color-adjust:auto}
+  }
+</style>
+</head>
+<body>
+<div id="root"><div class="loading" role="status">Loading audit history…</div></div>
+<script>
+window.__auditExplorerLoadFailed = false;
+window.__auditExplorerFail = function(message){
+  window.__auditExplorerLoadFailed = true;
+  var root=document.getElementById("root");
+  root.setAttribute("role","alert");
+  root.textContent=message||"Audit history could not be loaded.";
+  root.className="empty";
+};
+window.__auditExplorerLoadTimer = setTimeout(function(){
+  window.__auditExplorerFail("Audit history loading timed out. Check audit-data.js, then reload.");
+},5000);
+</script>
+<script src="audit-data.js" onerror="window.__auditExplorerFail('Audit data could not be loaded.')"></script>
+<script>
+(function(){
+"use strict";
+clearTimeout(window.__auditExplorerLoadTimer);
+if(window.__auditExplorerLoadFailed) return;
+var DATA=window.AUDIT_DATA, root=document.getElementById("root");
+if(!DATA || !Array.isArray(DATA.audit) || !Array.isArray(DATA.changes)){
+  window.__auditExplorerFail("Audit data is invalid. Run audit-log.py render, then reload.");
+  return;
+}
+
+// The board's page-side data (spec-board): an older audit-data.js has no `messages` and must
+// still load — the Messages view then renders its NOT CHECKED state instead of throwing.
+var MESSAGES=Array.isArray(DATA.messages)?DATA.messages:[];
+var state={view:"audit",keyword:"",session:"",from:"",to:"",kind:""}, ui={};
+function node(tag,className,text){
+  var value=document.createElement(tag);
+  if(className) value.className=className;
+  if(text!==undefined) value.textContent=text;
+  return value;
+}
+function dayOf(value){return String(value||"").slice(0,10)||"undated";}
+function timeOf(value){return String(value||"").slice(11,16);}
+function short(value,length){
+  var text=String(value||""), limit=length||170;
+  return text.length>limit?text.slice(0,limit-1)+"…":text;
+}
+function safeId(value){return String(value||"entry").replace(/[^A-Za-z0-9_-]/g,"-");}
+function appendPair(parent,key,value,code){
+  parent.appendChild(node("span","k",key));
+  var holder=node("span");
+  holder.appendChild(node(code?"code":"span","",value));
+  parent.appendChild(holder);
+}
+function copy(text,status,button){
+  function finished(){
+    button.textContent="copied";
+    button.classList.add("done");
+    status.textContent="Prompt copied";
+    setTimeout(function(){
+      button.textContent="copy prompt";
+      button.classList.remove("done");
+      status.textContent="";
+    },1400);
+  }
+  function fallback(){
+    var input=node("textarea"); input.value=text||""; document.body.appendChild(input);
+    input.select(); try{document.execCommand("copy");}catch(_){} input.remove(); finished();
+  }
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text||"").then(finished,fallback);
+  }else fallback();
+}
+function detailRow(entry,isChange,index){
+  var label=isChange?(entry.title||entry.kind||"—"):(entry.shortname||entry.skill||entry.kind||"—");
+  var row=node("div","row"), head=node("button","head"), panel=node("div","body");
+  var panelId="entry-"+safeId(entry.id||label)+"-"+index, git=entry.git||{};
+  head.type="button";
+  head.setAttribute("aria-expanded","false");
+  head.setAttribute("aria-controls",panelId);
+  head.setAttribute("aria-label","Review entry "+label);
+  var chevron=node("span","chev","▶"); chevron.setAttribute("aria-hidden","true");
+  head.append(
+    node("span","time",timeOf(entry.datetime)),
+    node("span","badge",isChange?(entry.kind||"change"):(entry.skill||entry.kind||"manual")),
+    node("span","label",label),
+    node("span","summ",entry.summary||""),
+    chevron
+  );
+  panel.id=panelId; panel.hidden=true; panel.setAttribute("role","region");
+  panel.setAttribute("aria-label",label+" details");
+  var kv=node("div","kv");
+  appendPair(kv,"id",entry.id||"—",true);
+  appendPair(kv,"when",entry.datetime||"—",false);
+  if(entry.session) appendPair(kv,"session",entry.session,true);
+  if(entry.skill) appendPair(kv,"skill","/"+entry.skill,false);
+  if(entry.tool) appendPair(kv,"tool",entry.tool,false);
+  if(!isChange&&entry.outcome) appendPair(kv,"outcome",entry.outcome,false);
+  if(isChange&&entry.rationale) appendPair(kv,"why",entry.rationale,false);
+  panel.appendChild(kv);
+  var summary=node("div"); summary.append(node("b","","Summary. "),document.createTextNode(entry.summary||"—"));
+  panel.appendChild(summary);
+  if(entry.prompt){
+    var promptBox=node("div","promptbox"), prompt=node("pre","prompt",entry.prompt);
+    var copyButton=node("button","copy","copy prompt"), status=node("span","sr-only");
+    copyButton.type="button"; status.setAttribute("role","status"); status.setAttribute("aria-live","polite");
+    copyButton.addEventListener("click",function(){copy(entry.prompt,status,copyButton);});
+    promptBox.append(prompt,copyButton,status); panel.appendChild(promptBox);
+  }
+  if(entry.artifacts&&entry.artifacts.length){
+    var artifacts=node("div","git"); artifacts.appendChild(node("b","","Artifacts. "));
+    entry.artifacts.forEach(function(path){
+      var link=node("a","",path); link.href="../../"+path; artifacts.append(link,document.createTextNode(" "));
+    });
+    panel.appendChild(artifacts);
+  }
+  if(entry.tags&&entry.tags.length){
+    var tags=node("div","tagrow");
+    entry.tags.forEach(function(tag){tags.appendChild(node("span","tag",tag));});
+    panel.appendChild(tags);
+  }
+  if(isChange&&(git.before||git.after)){
+    var gitBlock=node("div","git");
+    gitBlock.append(
+      node("b","","Git. "),
+      node("code","",(git.before||"—").slice(0,9)),
+      document.createTextNode(" → "),
+      node("code","",(git.after||"—").slice(0,9)),
+      document.createTextNode(git.branch?" on "+git.branch:"")
+    );
+    if(git.commits&&git.commits.length){
+      var commits=node("ul","commits");
+      git.commits.forEach(function(commit){commits.appendChild(node("li","",commit));});
+      gitBlock.appendChild(commits);
+    }
+    panel.appendChild(gitBlock);
+  }
+  head.addEventListener("click",function(){
+    var open=head.getAttribute("aria-expanded")!=="true";
+    head.setAttribute("aria-expanded",String(open)); panel.hidden=!open;
+    row.classList.toggle("open",open);
+  });
+  row.append(head,panel); return row;
+}
+function messageRow(entry){
+  // One row per mail id (the ledger twin). No body: the ledger carries none and the page never
+  // invents one. Ack state is not twinned, so it is "not recorded here" — a word, never a colour.
+  var tr=node("tr"), time=node("td","time",entry.ts||"ts not recorded");
+  var who=node("td"); who.append(node("span","who",entry.from||"?"),node("span","arrow","→"),node("span","who",entry.to||"?"));
+  var kind=node("td"); kind.appendChild(node("span","badge",entry.kind||"?"));
+  var ref=node("td","ref",entry.ref||"—"); if(entry.ref) ref.title=entry.ref;
+  var ack=node("td","ack","not recorded here — see coord board");
+  tr.append(time,who,kind,ref,ack); return tr;
+}
+function messageRows(){
+  var query=state.keyword.trim().toLowerCase();
+  return MESSAGES.filter(function(entry){
+    if(state.session&&entry.from!==state.session&&entry.to!==state.session&&entry.to!=="*") return false;
+    if(state.kind&&entry.kind!==state.kind) return false;
+    var date=dayOf(entry.ts);
+    if(state.from&&date<state.from) return false;
+    if(state.to&&date>state.to) return false;
+    if(!query) return true;
+    return [entry.id,entry.from,entry.to,entry.kind,entry.ref,entry.session].join(" ").toLowerCase().indexOf(query)!==-1;
+  }).slice().reverse();
+}
+function renderMessages(current,filtered){
+  if(!current.length){
+    var empty=node("div","empty");
+    if(!MESSAGES.length){
+      empty.appendChild(node("span","","NOT CHECKED — nothing recorded."));
+      var guide=node("span","guide");
+      guide.append(document.createTextNode("Run "),node("code","","coord board"),
+        document.createTextNode(" in the repository to read the inboxes on this machine; the ledger's message twins appear here after "),
+        node("code","","audit-log.py render"),document.createTextNode("."));
+      empty.appendChild(guide);
+    }else{
+      empty.appendChild(node("span","","No messages match the filters."));
+      if(filtered){
+        var clear=node("button","","Clear filters"); clear.type="button";
+        clear.addEventListener("click",clearFilters); empty.appendChild(clear);
+      }
+    }
+    ui.timeline.appendChild(empty); return;
+  }
+  var wrap=node("div","msgs-wrap"), table=node("table","msgs"), caption=node("caption","sr-only",
+    "Messages between sessions, newest first: when, from and to, kind, reference, ack state");
+  var thead=node("thead"), hr=node("tr");
+  ["when","from → to","kind","ref","ack"].forEach(function(text){
+    var th=node("th","",text); th.setAttribute("scope","col"); hr.appendChild(th);
+  });
+  thead.appendChild(hr); var tbody=node("tbody");
+  current.forEach(function(entry){tbody.appendChild(messageRow(entry));});
+  table.append(caption,thead,tbody); wrap.appendChild(table); ui.timeline.appendChild(wrap);
+  ui.timeline.appendChild(node("div","note","Ack state lives in the inboxes, not the ledger — run coord board for it. Bodies are never committed."));
+}
+function rows(){
+  var query=state.keyword.trim().toLowerCase();
+  return (state.view==="audit"?DATA.audit:DATA.changes).filter(function(entry){
+    if(state.session&&String(entry.session||"")!==state.session) return false;
+    var date=dayOf(entry.datetime);
+    if(state.from&&date<state.from) return false;
+    if(state.to&&date>state.to) return false;
+    if(!query) return true;
+    return [
+      entry.id,entry.shortname,entry.title,entry.prompt,entry.summary,entry.skill,
+      entry.kind,entry.actor,entry.rationale
+    ].concat(entry.tags||[],entry.artifacts||[]).join(" ").toLowerCase().indexOf(query)!==-1;
+  }).slice().reverse();
+}
+function clearFilters(){
+  state.keyword=state.session=state.from=state.to=state.kind="";
+  ui.search.value=ui.session.value=ui.from.value=ui.to.value=ui.kind.value="";
+  render();
+}
+function render(){
+  var messages=state.view==="message";
+  var current=messages?messageRows():rows(), filtered=Boolean(state.keyword||state.session||state.from||state.to||(messages&&state.kind));
+  ui.audit.classList.toggle("on",state.view==="audit");
+  ui.changes.classList.toggle("on",state.view==="change");
+  ui.messages.classList.toggle("on",messages);
+  ui.audit.setAttribute("aria-pressed",String(state.view==="audit"));
+  ui.changes.setAttribute("aria-pressed",String(state.view==="change"));
+  ui.messages.setAttribute("aria-pressed",String(messages));
+  ui.kind.hidden=ui.kindLabel.hidden=!messages;
+  ui.title.textContent=DATA.project+" — "+(messages?"Messages":state.view==="change"?"Change Log":"Audit Log");
+  ui.clear.hidden=!filtered; ui.count.textContent=current.length+" shown"; ui.timeline.replaceChildren();
+  if(messages){ renderMessages(current,filtered); return; }
+  if(!current.length){
+    var empty=node("div","empty","No "+(state.view==="change"?"changes":"actions")+" match the filters.");
+    if(filtered){
+      var clear=node("button","","Clear filters"); clear.type="button";
+      clear.addEventListener("click",clearFilters); empty.appendChild(clear);
+    }
+    ui.timeline.appendChild(empty); return;
+  }
+  var last="", section=null, index=0;
+  current.forEach(function(entry){
+    var date=dayOf(entry.datetime);
+    if(date!==last){
+      section=node("section"); section.appendChild(node("div","day",date));
+      ui.timeline.appendChild(section); last=date;
+    }
+    section.appendChild(detailRow(entry,state.view==="change",index++));
+  });
+}
+function build(){
+  var wrap=node("div","wrap"), header=node("header"), titleRow=node("div","titlerow");
+  ui.title=node("h1");
+  titleRow.append(ui.title,node("span","gen",
+    DATA.audit.length+" actions · "+DATA.changes.length+" changes · "+MESSAGES.length+" messages · generated "+DATA.generated));
+  var toggle=node("div","toggle"); toggle.setAttribute("role","group"); toggle.setAttribute("aria-label","History view");
+  ui.audit=node("button","on","Full history"); ui.changes=node("button","","Changes"); ui.messages=node("button","","Messages");
+  ui.audit.type=ui.changes.type=ui.messages.type="button";
+  ui.audit.addEventListener("click",function(){state.view="audit";render();});
+  ui.changes.addEventListener("click",function(){state.view="change";render();});
+  ui.messages.addEventListener("click",function(){state.view="message";render();});
+  toggle.append(ui.audit,ui.changes,ui.messages); titleRow.appendChild(toggle);
+  var controls=node("div","controls"), searchLabel=node("label","sr-only","Search audit history");
+  searchLabel.htmlFor="audit-search"; ui.search=node("input","kw"); ui.search.id="audit-search";
+  ui.search.type="search"; ui.search.placeholder="Search prompt, summary, shortname, tags…";
+  ui.search.addEventListener("input",function(){state.keyword=ui.search.value;render();});
+  ui.session=node("select"); ui.session.id="audit-session"; var all=node("option","","all"); all.value=""; ui.session.appendChild(all);
+  var sessions={}; DATA.audit.concat(DATA.changes).forEach(function(entry){if(entry.session)sessions[entry.session]=true;});
+  MESSAGES.forEach(function(entry){if(entry.from)sessions[entry.from]=true; if(entry.to&&entry.to!=="*")sessions[entry.to]=true;});
+  Object.keys(sessions).sort().forEach(function(session){
+    var option=node("option","",short(session,12)); option.value=session; ui.session.appendChild(option);
+  });
+  ui.session.addEventListener("change",function(){state.session=ui.session.value;render();});
+  ui.kind=node("select"); ui.kind.id="audit-kind"; var anyKind=node("option","","all"); anyKind.value=""; ui.kind.appendChild(anyKind);
+  var kinds={}; MESSAGES.forEach(function(entry){if(entry.kind)kinds[entry.kind]=true;});
+  Object.keys(kinds).sort().forEach(function(kind){var option=node("option","",kind); option.value=kind; ui.kind.appendChild(option);});
+  ui.kind.addEventListener("change",function(){state.kind=ui.kind.value;render();});
+  ui.from=node("input"); ui.from.id="audit-from"; ui.from.type="date";
+  ui.to=node("input"); ui.to.id="audit-to"; ui.to.type="date";
+  ui.from.addEventListener("input",function(){state.from=ui.from.value;render();});
+  ui.to.addEventListener("input",function(){state.to=ui.to.value;render();});
+  ui.clear=node("button","clear","clear"); ui.clear.type="button"; ui.clear.addEventListener("click",clearFilters);
+  ui.count=node("span","count"); ui.count.setAttribute("role","status"); ui.count.setAttribute("aria-live","polite");
+  function fieldLabel(text,id){var label=node("label","lbl",text);label.htmlFor=id;return label;}
+  ui.kindLabel=fieldLabel("kind","audit-kind"); ui.kind.hidden=ui.kindLabel.hidden=true;
+  controls.append(searchLabel,ui.search,fieldLabel("session","audit-session"),ui.session,ui.kindLabel,ui.kind,
+    fieldLabel("from","audit-from"),ui.from,fieldLabel("to","audit-to"),ui.to,ui.clear,ui.count);
+  header.append(titleRow,controls); ui.timeline=node("div");
+  var note=node("div","note","This is the project's committed history — every meaningful prompt, skill run, and decision. ");
+  note.append(document.createTextNode("The JSONL logs are the source of truth; this view is regenerated by audit-log.py. CLI: /auditlog."));
+  wrap.append(header,ui.timeline,note); root.replaceChildren(wrap); root.removeAttribute("role"); root.className="";
+  render();
+}
+build();
+})();
+</script>
+</body>
+</html>

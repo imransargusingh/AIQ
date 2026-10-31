@@ -1,0 +1,20 @@
+
+# AI-Forward Pack (INSTALL 2): local coordination and per-run state, never committed
+*.jsonl.lock
+spikes/
+docs/audit/.run-starts.json
+docs/audit/.run-starts.json.tmp
+.agents/*
+!.agents/artifacts.yml
+!.agents/log/
+!.agents/skills*
+!.agents/hooks.json
+!.agents/rules*
+!.agents/session-checks.json
+.agents/mail/
+.agents/log/audit/.run-starts.json
+.agents/log/audit/.run-starts.json.tmp
+**/docs/audit/.run-starts.json
+**/docs/audit/.run-starts.json.tmp
+**/.agents/log/audit/.run-starts.json
+**/.agents/log/audit/.run-starts.json.tmp

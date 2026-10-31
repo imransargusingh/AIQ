@@ -1,0 +1,198 @@
+<!doctype html>
+<!--
+  Dream Manifest — a learnings×repos targeting/record matrix (ADR-0006).
+  Self-contained, dependency-free, works over file://. Rendered by apply-learnings.py; the manifest
+  data is inlined at __MANIFEST_DATA__ so the file needs no network and no sibling data file.
+  Two modes (data.mode):
+    compose — toggle each (learning, repo) cell, then Export the manifest JSON + copy the apply command.
+    rollout — read-only status matrix after `apply-learnings.py push --manifest`.
+  Tokens are copied verbatim from docs/DESIGN.md (the AA-audited knowledge-surface system).
+-->
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dream Manifest</title>
+<style>
+  :root{
+    --canvas:#3d3b3a; --surface:#343231; --surface-2:#2c2a29;
+    --ink:#dedede; --ink-mute:#a8a8a8; --reduced:#b0b0b0; --hairline:#888684;
+    --primary:#fd8ea1; --on-primary:#1a1a1a; --focus:#62b0ff;
+    --success:#4ade80; --warning:#fbbf24; --danger:#ff9191;
+    --sp-3:8px; --sp-4:12px; --sp-5:16px; --sp-6:24px; --sp-7:32px; --sp-8:48px;
+    --r-sm:5px; --r-md:8px; --r-lg:12px; --r-pill:9999px;
+    --fast:120ms; --ease:cubic-bezier(0.2,0,0,1); --ring:3px; --ring-off:2px; --target:44px;
+    --font:"Segoe UI",Aptos,Calibri,system-ui,sans-serif; --mono:Consolas,"Courier New",monospace;
+    --el-panel:0 8px 28px rgba(0,0,0,0.28); --el-float:0 18px 48px rgba(0,0,0,0.38);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:var(--canvas);color:var(--ink);font-family:var(--font);line-height:1.5;font-size:16px}
+  a{color:var(--primary)}
+  .wrap{max-width:1180px;margin:0 auto;padding:var(--sp-7) var(--sp-6) var(--sp-8)}
+  header{border-bottom:1px solid var(--hairline);padding-bottom:var(--sp-5);margin-bottom:var(--sp-6)}
+  .eyebrow{font-family:var(--mono);font-size:max(0.8em,12px);letter-spacing:.08em;text-transform:uppercase;color:var(--primary);margin:0 0 6px}
+  h1{margin:0 0 6px;font-size:1.9rem;letter-spacing:-.01em}
+  .sub{color:var(--ink-mute);margin:0}
+  .meta{font-family:var(--mono);font-size:max(0.82em,12px);color:var(--reduced);margin-top:10px;display:flex;gap:var(--sp-5);flex-wrap:wrap}
+  .meta .k{color:var(--hairline)}
+  .modebar{display:flex;gap:var(--sp-4);align-items:center;margin:var(--sp-5) 0 var(--sp-6);flex-wrap:wrap}
+  .pill{font-family:var(--mono);font-size:max(0.8em,12px);padding:5px 12px;border-radius:var(--r-pill);border:1px solid var(--hairline);color:var(--reduced)}
+  .pill.on{background:var(--primary);color:var(--on-primary);border-color:var(--primary);font-weight:600}
+  .btn{font-family:var(--font);font-size:.95rem;padding:9px 16px;border-radius:var(--r-md);border:1px solid var(--primary);
+       background:var(--primary);color:var(--on-primary);cursor:pointer;min-height:var(--target);font-weight:600}
+  .btn.ghost{background:transparent;color:var(--primary)}
+  .btn:focus-visible{outline:var(--ring) solid var(--focus);outline-offset:var(--ring-off)}
+  .matrix{width:100%;border-collapse:collapse;margin-top:var(--sp-4);font-size:.95rem}
+  .matrix th,.matrix td{border:1px solid var(--hairline);padding:10px 12px;text-align:left;vertical-align:top}
+  .matrix thead th{background:var(--surface-2);position:sticky;top:0;z-index:1}
+  .matrix th.repo{font-family:var(--mono);font-size:max(0.8em,12px);white-space:nowrap;color:var(--reduced);text-align:center}
+  .matrix td.cell{text-align:center;cursor:pointer;user-select:none}
+  .matrix tbody tr:nth-child(even){background:rgba(0,0,0,.10)}
+  .lname{font-weight:600}
+  .lsig{font-family:var(--mono);font-size:max(0.82em,12px);color:var(--ink-mute);display:block;margin-top:3px}
+  .lctl{color:var(--reduced);font-size:.9rem;display:block;margin-top:4px}
+  .dot{display:inline-block;min-width:56px;text-align:center;font-family:var(--mono);font-size:max(0.78em,11px);
+       padding:3px 8px;border-radius:var(--r-pill);border:1px solid var(--hairline);color:var(--reduced)}
+  .dot.on{background:var(--primary);color:var(--on-primary);border-color:var(--primary)}
+  .dot.off{color:var(--hairline)}
+  .st-planned{background:rgba(98,176,255,.16);color:var(--focus);border-color:var(--focus)}
+  .st-merge{background:rgba(74,222,128,.14);color:var(--success);border-color:var(--success)}
+  .st-conflict{background:rgba(255,145,145,.16);color:var(--danger);border-color:var(--danger)}
+  .st-skipped{color:var(--hairline)}
+  .st-pending{color:var(--reduced)}
+  .cell:focus-visible{outline:var(--ring) solid var(--focus);outline-offset:-2px}
+  .cmd{font-family:var(--mono);font-size:.9rem;background:var(--surface-2);border:1px solid var(--hairline);
+       border-radius:var(--r-md);padding:12px 14px;margin-top:var(--sp-5);white-space:pre-wrap;word-break:break-all;color:var(--reduced)}
+  .legend{display:flex;gap:var(--sp-5);flex-wrap:wrap;margin-top:var(--sp-5);font-size:.85rem;color:var(--ink-mute)}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .swatch{width:12px;height:12px;border-radius:3px;display:inline-block;border:1px solid var(--hairline)}
+  .note{color:var(--ink-mute);font-size:.9rem;margin-top:var(--sp-6);border-top:1px solid var(--hairline);padding-top:var(--sp-5)}
+  .empty{color:var(--ink-mute);padding:var(--sp-6);text-align:center;border:1px dashed var(--hairline);border-radius:var(--r-md)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">AI-Forward · Federation</p>
+    <h1>Dream Manifest</h1>
+    <p class="sub" id="sub">A learnings × repos targeting matrix — decide which promoted learning goes to which repo, then apply.</p>
+    <div class="meta" id="meta"></div>
+  </header>
+  <div class="modebar" id="modebar"></div>
+  <div id="body"></div>
+  <p class="note">Manifests name repositories, so they are <strong>local-only</strong> (excluded from the published site) — ADR-0006. Nothing here is merged: <code>apply-learnings.py push --manifest</code> writes a reviewable plan per repo and records status back here.</p>
+</div>
+<script id="manifest-data" type="application/json">__MANIFEST_DATA__</script>
+<script>
+(function(){
+  var D;
+  try{ D = JSON.parse(document.getElementById("manifest-data").textContent); }
+  catch(e){ document.getElementById("body").innerHTML = '<div class="empty">Manifest data failed to load: '+String(e)+'</div>'; return; }
+  var esc=function(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});};
+  D.repos = D.repos||[]; D.learnings = D.learnings||[]; D.assignments = D.assignments||[];
+  // index assignment by learning slug
+  var byLearning = {};
+  D.assignments.forEach(function(a){ byLearning[a.learning] = a; });
+  var compose = (D.mode||"compose")==="compose";
+
+  document.getElementById("sub").textContent = compose
+    ? "Compose mode — toggle each cell to target a learning at a repo, then export the manifest JSON and run the apply command."
+    : "Rollout mode — the recorded outcome of the last push, per (learning, repo).";
+  document.getElementById("meta").innerHTML =
+    '<span><span class="k">manifest</span> '+esc(D.id)+'</span>'+
+    '<span><span class="k">created</span> '+esc(D.created||"")+'</span>'+
+    (D.dream?'<span><span class="k">dream</span> '+esc(D.dream)+'</span>':'')+
+    '<span><span class="k">learnings</span> '+D.learnings.length+'</span>'+
+    '<span><span class="k">repos</span> '+D.repos.length+'</span>'+
+    '<span><span class="k">mode</span> '+esc(D.mode||"compose")+'</span>';
+
+  // mode bar
+  var mb=document.getElementById("modebar");
+  mb.innerHTML = '<span class="pill '+(compose?"on":"")+'">Compose</span><span class="pill '+(!compose?"on":"")+'">Rollout</span>';
+  if(compose){
+    var ex=document.createElement("button"); ex.className="btn"; ex.textContent="Export manifest JSON"; ex.onclick=exportJson; mb.appendChild(ex);
+    var cp=document.createElement("button"); cp.className="btn ghost"; cp.textContent="Copy apply command"; cp.onclick=copyCmd; mb.appendChild(cp);
+  }
+
+  var body=document.getElementById("body");
+  if(!D.learnings.length){ body.innerHTML='<div class="empty">No promoted fleet learnings yet. Run <code>/dream</code>, approve, then <code>apply-decisions</code> to promote a class before composing a manifest.</div>'; return; }
+  if(!D.repos.length){ body.innerHTML='<div class="empty">No target repos. Re-run <code>manifest-init --repos a,b,c</code>.</div>'; return; }
+
+  function targeted(slug, repoPath){ var a=byLearning[slug]; if(!a) return false; return (a.targets||[]).indexOf(repoPath)>=0; }
+  function statusOf(slug, repoPath){ var a=byLearning[slug]; if(!a||!a.status) return "pending"; return a.status[repoPath]||"pending"; }
+
+  function renderMatrix(){
+    var h=['<table class="matrix"><thead><tr><th>Learning</th>'];
+    D.repos.forEach(function(r){ h.push('<th class="repo">'+esc(r.name||r.path)+'</th>'); });
+    h.push('</tr></thead><tbody>');
+    D.learnings.forEach(function(l){
+      h.push('<tr><td><span class="lname">'+esc(l.sig||l.slug)+'</span>'+
+             '<span class="lsig">'+esc(l.slug)+(l.confidence?' · '+esc(l.confidence):'')+'</span>'+
+             (l.control?'<span class="lctl">control: '+esc(l.control)+'</span>':'')+'</td>');
+      D.repos.forEach(function(r){
+        if(compose){
+          var on=targeted(l.slug,r.path);
+          h.push('<td class="cell" tabindex="0" role="button" aria-pressed="'+on+'" data-l="'+esc(l.slug)+'" data-r="'+esc(r.path)+'">'+
+                 '<span class="dot '+(on?"on":"off")+'">'+(on?"on":"off")+'</span></td>');
+        } else {
+          var st=statusOf(l.slug,r.path);
+          h.push('<td class="cell"><span class="dot st-'+esc(st)+'">'+esc(st)+'</span></td>');
+        }
+      });
+      h.push('</tr>');
+    });
+    h.push('</tbody></table>');
+    if(!compose){
+      h.push('<div class="legend">'+
+        '<span><span class="swatch" style="background:rgba(98,176,255,.4)"></span>planned</span>'+
+        '<span><span class="swatch" style="background:rgba(74,222,128,.4)"></span>merge (already present)</span>'+
+        '<span><span class="swatch" style="background:rgba(255,145,145,.4)"></span>conflict (resolve by hand)</span>'+
+        '<span><span class="swatch"></span>skipped / pending</span></div>');
+    } else {
+      h.push('<div class="cmd" id="cmd"></div>');
+    }
+    body.innerHTML=h.join("");
+    if(compose){
+      body.querySelectorAll(".cell").forEach(function(c){
+        c.addEventListener("click", toggle);
+        c.addEventListener("keydown", function(e){ if(e.key===" "||e.key==="Enter"){ e.preventDefault(); toggle.call(c); } });
+      });
+      renderCmd();
+    }
+  }
+  function toggle(){
+    var slug=this.getAttribute("data-l"), repo=this.getAttribute("data-r");
+    var a=byLearning[slug]; if(!a){ a={learning:slug, scope:"targeted", targets:[], status:{}}; byLearning[slug]=a; D.assignments.push(a); }
+    a.targets = a.targets||[];
+    var i=a.targets.indexOf(repo);
+    if(i>=0){ a.targets.splice(i,1); } else { a.targets.push(repo); }
+    a.scope = (a.targets.length===D.repos.length)?"all":"targeted";
+    var dot=this.querySelector(".dot"); var on=a.targets.indexOf(repo)>=0;
+    dot.className="dot "+(on?"on":"off"); dot.textContent=on?"on":"off"; this.setAttribute("aria-pressed",on);
+    renderCmd();
+  }
+  function currentManifest(){
+    return { id:D.id, created:D.created, dream:D.dream||null, repos:D.repos.map(function(r){return r.path;}),
+      assignments:D.learnings.map(function(l){ var a=byLearning[l.slug]||{targets:[]};
+        return { learning:l.slug, sig:l.sig||l.slug, scope:(a.targets&&a.targets.length===D.repos.length)?"all":"targeted",
+                 targets:(a.targets||[]).slice(), status:a.status||{} }; }) };
+  }
+  function renderCmd(){
+    var el=document.getElementById("cmd"); if(!el) return;
+    el.textContent = "# 1. Export the JSON (button above) and save it as:\n"+
+      "learnings/manifests/"+D.id+".json\n\n"+
+      "# 2. Apply (writes a reviewable plan per repo, records status back here — never merges):\n"+
+      "python pack/scripts/apply-learnings.py push --manifest learnings/manifests/"+D.id+".json";
+  }
+  function exportJson(){
+    var blob=new Blob([JSON.stringify(currentManifest(),null,2)],{type:"application/json"});
+    var u=URL.createObjectURL(blob), a=document.createElement("a"); a.href=u; a.download=D.id+".json"; a.click();
+    setTimeout(function(){URL.revokeObjectURL(u);},1000);
+  }
+  function copyCmd(){
+    var t="python pack/scripts/apply-learnings.py push --manifest learnings/manifests/"+D.id+".json";
+    if(navigator.clipboard){ navigator.clipboard.writeText(t); }
+  }
+  renderMatrix();
+})();
+</script>
+</body></html>

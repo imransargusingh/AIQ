@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-motion="full">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Dream Review</title>
+<!--
+  Production Dream Review view. Loads ./dream-data.js (window.DREAM_DATA) emitted by dream.py.
+  Self-contained, dependency-free, opens over file://. Tokens: docs/DESIGN.md (AA-audited).
+  The human gate: this page WRITES NOTHING. The only path to a durable store is Export decisions ->
+  dream.py apply-decisions, which re-validates + re-scrubs first (spec-dreaming Part C).
+-->
+<style>
+  :root{
+    --canvas:#3d3b3a; --surface:#343231; --surface-2:#2c2a29;
+    --ink:#dedede; --ink-mute:#a8a8a8; --reduced:#b0b0b0; --hairline:#888684;
+    --primary:#fd8ea1; --on-primary:#1a1a1a; --focus:#62b0ff;
+    --success:#4ade80; --warning:#fbbf24; --danger:#ff9191;
+    --sp-3:8px; --sp-4:12px; --sp-5:16px; --sp-6:24px; --sp-7:32px; --sp-8:48px;
+    --r-sm:5px; --r-md:8px; --r-lg:12px; --r-pill:9999px;
+    --fast:120ms; --ease:cubic-bezier(0.2,0,0,1); --ring:3px; --ring-off:2px; --target:44px;
+    --font:"Segoe UI",Aptos,Calibri,system-ui,sans-serif; --mono:Consolas,"Courier New",monospace;
+    --el-panel:0 8px 28px rgba(0,0,0,0.28); --el-float:0 18px 48px rgba(0,0,0,0.38);
+  }
+  html[data-theme="light"]{--canvas:#f7f4ef;--surface:#fcfbf8;--surface-2:#efece6;--ink:#242424;--ink-mute:#5c5c5c;--reduced:#6f6f6f;--hairline:#8a8886;--primary:#b11f4b;--on-primary:#fff;--focus:#006cbe;--success:#146c2e;--warning:#8a4b08;--danger:#b3261e;--el-panel:0 8px 28px rgba(0,0,0,0.06);--el-float:0 18px 48px rgba(0,0,0,0.12)}
+  html[data-theme="hc"]{--canvas:#000;--surface:#000;--surface-2:#000;--ink:#fff;--ink-mute:#fff;--reduced:#fff;--hairline:#fff;--primary:#ff0;--on-primary:#000;--focus:#ff0;--success:#0f0;--warning:#ff0;--danger:#ff8080;--el-panel:none;--el-float:none}
+  html[data-motion="reduced"] *{transition:none!important;animation:none!important;scroll-behavior:auto!important}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--canvas);color:var(--ink);font-family:var(--font);font-size:14px;line-height:1.5}
+  :focus-visible{outline:var(--ring) solid var(--focus);outline-offset:var(--ring-off)}
+  .mono{font-family:var(--mono);font-size:12px}
+  .bar{position:sticky;top:0;z-index:10;display:flex;gap:var(--sp-5);align-items:center;padding:var(--sp-3) var(--sp-5);background:var(--surface-2);border-bottom:1px solid var(--hairline)}
+  .bar .brand{font-size:13px;color:var(--ink-mute);margin-right:auto}.bar .brand b{color:var(--ink)}
+  .seg{display:inline-flex;border:1px solid var(--hairline);border-radius:var(--r-sm);overflow:hidden}
+  .seg button{background:var(--surface);color:var(--ink);border:0;border-right:1px solid var(--hairline);padding:6px 10px;font-size:12px;min-height:34px;cursor:pointer}
+  .seg button:last-child{border-right:0}.seg button[aria-pressed="true"]{background:var(--primary);color:var(--on-primary);font-weight:600}
+  .app{max-width:1200px;margin:0 auto;padding:var(--sp-5)}
+  header.top{display:flex;flex-wrap:wrap;gap:var(--sp-4);align-items:center;background:var(--surface);border:1px solid var(--hairline);border-radius:var(--r-lg);padding:var(--sp-5);box-shadow:var(--el-panel);margin-bottom:var(--sp-5)}
+  header.top h1{font-size:20px;margin:0;flex:1 1 auto;font-weight:700}
+  header.top .meta{font-size:12px;color:var(--ink-mute)}header.top .meta b{color:var(--ink)}
+  .counts{display:flex;gap:var(--sp-3);flex-wrap:wrap}
+  .count{font-size:12px;padding:4px 10px;border-radius:var(--r-pill);border:1px solid var(--hairline);background:var(--surface-2)}
+  .count b{font-variant-numeric:tabular-nums}.count.a b{color:var(--success)}.count.r b{color:var(--danger)}.count.d b{color:var(--warning)}
+  .btn{background:var(--surface-2);color:var(--ink);border:1px solid var(--hairline);border-radius:var(--r-md);padding:9px 14px;min-height:var(--target);cursor:pointer;font-size:13px;font-weight:600}
+  .btn:hover{border-color:var(--primary)}.btn.primary{background:var(--primary);color:var(--on-primary);border-color:var(--primary)}
+  .btn.primary[disabled]{opacity:.5;cursor:not-allowed;background:var(--surface-2);color:var(--ink-mute);border-color:var(--hairline)}
+  .grid{display:grid;grid-template-columns:minmax(300px,380px) 1fr;gap:var(--sp-5);align-items:start}
+  @media(max-width:720px){.grid{grid-template-columns:1fr}}
+  .rail{background:var(--surface);border:1px solid var(--hairline);border-radius:var(--r-lg);padding:var(--sp-4);box-shadow:var(--el-panel)}
+  .filters{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:var(--sp-4)}
+  .chip{font-size:11px;padding:4px 9px;border-radius:var(--r-pill);border:1px solid var(--hairline);background:var(--surface-2);color:var(--ink-mute);cursor:pointer}
+  .chip[aria-pressed="true"]{background:var(--primary);color:var(--on-primary);border-color:var(--primary);font-weight:600}
+  .group-h{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--ink-mute);margin:var(--sp-4) 0 4px;font-weight:700}
+  .group-h:first-child{margin-top:0}
+  .row{display:flex;gap:var(--sp-3);align-items:flex-start;width:100%;text-align:left;cursor:pointer;background:transparent;border:1px solid transparent;border-radius:var(--r-md);padding:var(--sp-3);min-height:var(--target)}
+  .row:hover{background:var(--surface-2)}.row[aria-selected="true"]{background:var(--surface-2);border-color:var(--primary)}
+  .row .dot{width:22px;flex:0 0 22px;text-align:center;font-size:13px;margin-top:1px}
+  .row .rt{flex:1 1 auto;font-size:13px;line-height:1.35}
+  .row .rm{display:flex;gap:6px;margin-top:4px;flex-wrap:wrap}
+  .kindchip{font-size:10px;padding:1px 7px;border-radius:var(--r-pill);border:1px solid var(--hairline);color:var(--ink-mute)}
+  .score{font-size:10px;color:var(--reduced);font-variant-numeric:tabular-nums}
+  .detail{background:var(--surface);border:1px solid var(--hairline);border-radius:var(--r-lg);padding:var(--sp-6);box-shadow:var(--el-panel);min-height:420px}
+  .detail .sig{font-size:18px;font-weight:700;line-height:1.25;margin:0 0 var(--sp-2);word-break:break-word}
+  .subrow{display:flex;gap:var(--sp-3);flex-wrap:wrap;align-items:center;margin-bottom:var(--sp-5)}
+  .conf{font-size:11px;padding:2px 9px;border-radius:var(--r-pill);border:1px solid var(--hairline);font-weight:600}
+  .conf.v{color:var(--success)}.conf.i{color:var(--focus)}.conf.f{color:var(--warning)}
+  .src{font-size:11px;color:var(--ink-mute)}.src.model{color:var(--warning)}
+  section.block{border-top:1px solid var(--hairline);padding-top:var(--sp-4);margin-top:var(--sp-4)}
+  section.block h3{font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-mute);margin:0 0 var(--sp-3)}
+  .evidence li{margin:0 0 4px;font-size:13px}.evidence .eid{font-family:var(--mono);font-size:12px;color:var(--primary)}.evidence .en{color:var(--ink-mute)}
+  .control{background:var(--surface-2);border:1px solid var(--hairline);border-radius:var(--r-md);padding:var(--sp-4)}
+  .control .rung{font-size:11px;color:var(--success);font-weight:700;text-transform:uppercase;letter-spacing:.4px}
+  .control .ct{margin:4px 0;word-break:break-word}.control .loc{font-family:var(--mono);font-size:11px;color:var(--ink-mute);word-break:break-all}
+  .boundary{font-size:13px;color:var(--reduced);font-style:italic}
+  .scope{display:inline-flex;border:1px solid var(--hairline);border-radius:var(--r-sm);overflow:hidden}
+  .scope button{background:var(--surface-2);color:var(--ink);border:0;border-right:1px solid var(--hairline);padding:6px 12px;font-size:12px;cursor:pointer;min-height:36px}
+  .scope button:last-child{border-right:0}.scope button[aria-pressed="true"]{background:var(--primary);color:var(--on-primary);font-weight:600}
+  .decide{display:flex;gap:var(--sp-3);flex-wrap:wrap;margin-top:var(--sp-5);border-top:1px solid var(--hairline);padding-top:var(--sp-5)}
+  .decide button{min-height:var(--target);border-radius:var(--r-md);padding:0 18px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid var(--hairline);background:var(--surface-2);color:var(--ink)}
+  .decide .ap[aria-pressed="true"]{background:var(--success);color:#08130a;border-color:var(--success)}
+  .decide .rj[aria-pressed="true"]{background:var(--danger);color:#1a0808;border-color:var(--danger)}
+  .decide .df[aria-pressed="true"]{background:var(--warning);color:#1a1400;border-color:var(--warning)}
+  .placeholder{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:var(--sp-8) var(--sp-6);color:var(--ink-mute);min-height:360px;gap:var(--sp-3)}
+  .placeholder .big{font-size:16px;color:var(--ink);font-weight:600}.placeholder.err .big{color:var(--danger)}
+  .placeholder code{font-family:var(--mono);font-size:12px;background:var(--surface-2);padding:2px 7px;border-radius:var(--r-sm);color:var(--ink)}
+  .drawer{background:var(--surface);border:1px solid var(--hairline);border-radius:var(--r-lg);padding:var(--sp-5);box-shadow:var(--el-float);margin-top:var(--sp-5)}
+  .drawer h3{margin:0 0 var(--sp-3);font-size:14px}
+  .drawer pre{background:var(--surface-2);border:1px solid var(--hairline);border-radius:var(--r-md);padding:var(--sp-4);overflow:auto;max-height:260px;font-family:var(--mono);font-size:12px;white-space:pre-wrap;word-break:break-word}
+  .drawer .cmd{font-family:var(--mono);font-size:12px;color:var(--primary);margin-top:var(--sp-3);display:block;word-break:break-all}
+  .drawer .note{font-size:12px;color:var(--ink-mute);margin-top:var(--sp-3)}
+</style>
+</head>
+<body>
+<div class="bar" role="region" aria-label="View controls">
+  <span class="brand"><b>Dream Review</b> · human gate · this page writes nothing</span>
+  <div class="seg" id="h-theme" role="group" aria-label="Theme">
+    <button data-theme="dark" aria-pressed="true">Dark</button>
+    <button data-theme="light" aria-pressed="false">Light</button>
+    <button data-theme="hc" aria-pressed="false">High-contrast</button>
+  </div>
+  <div class="seg" id="h-motion" role="group" aria-label="Motion">
+    <button data-motion="full" aria-pressed="true">Motion</button>
+    <button data-motion="reduced" aria-pressed="false">Reduced</button>
+  </div>
+</div>
+<main class="app" id="app"></main>
+<script src="./dream-data.js" onerror="window.__DREAM_LOAD_ERR=true"></script>
+<script>
+const KINDS=["New class","Confirmed mitigation \u2192 learning","Control upgrade","Register dedup","Doc / knowledge update"];
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const decIcon=d=>d==="approve"?"\u2714":d==="reject"?"\u2716":d==="defer"?"\u25CB":"\u00B7";
+const app=document.getElementById("app");
+let D=window.DREAM_DATA||null;
+let st={selected:null,decisions:{},scopeOverride:{},fKind:null,fScope:null};
+
+function proposals(){
+  if(!D||!D.proposals) return [];
+  let ps=D.proposals.slice();
+  if(st.fKind) ps=ps.filter(p=>p.group===st.fKind);
+  if(st.fScope) ps=ps.filter(p=>(st.scopeOverride[p.id]||p.scope)===st.fScope);
+  return ps.sort((a,b)=>b.score-a.score);
+}
+function counts(){const v=Object.values(st.decisions);return{proposed:(D&&D.proposals?D.proposals.length:0),
+  approve:v.filter(x=>x==="approve").length,reject:v.filter(x=>x==="reject").length,defer:v.filter(x=>x==="defer").length};}
+function decisionsJSON(){
+  const out={dream:D?D.id:"",date:D?D.date:"",decisions:[]};
+  Object.keys(st.decisions).forEach(id=>{const p=(D.proposals||[]).find(x=>x.id===id);if(!p)return;
+    out.decisions.push({id,decision:st.decisions[id],scope:st.scopeOverride[id]||p.scope,sig:p.sig});});
+  return JSON.stringify(out,null,2);
+}
+function render(){
+  if(window.__DREAM_LOAD_ERR||!D){app.innerHTML=errorShell();return;}
+  const c=counts(),any=Object.keys(st.decisions).length>0;
+  app.innerHTML=`
+  <header class="top">
+    <h1>Dream review</h1>
+    <div class="meta"><b>${esc(D.id)}</b> · ${esc(D.date)}<br>${esc(D.window||"")}</div>
+    <div class="counts" aria-live="polite">
+      <span class="count">Proposed <b>${c.proposed}</b></span>
+      <span class="count a">Approved <b>${c.approve}</b></span>
+      <span class="count r">Rejected <b>${c.reject}</b></span>
+      <span class="count d">Deferred <b>${c.defer}</b></span>
+    </div>
+    <button class="btn primary" id="exp" ${any?"":"disabled"} aria-disabled="${any?"false":"true"}>Export decisions</button>
+  </header>
+  ${(D.proposals&&D.proposals.length)?bodyGrid():emptyBody()}
+  ${any?drawer():""}`;
+  wire();
+}
+function bodyGrid(){
+  const ps=proposals();
+  let sel=ps.find(p=>p.id===st.selected)||ps[0]; if(sel) st.selected=sel.id;
+  return `<div class="grid">
+    <nav class="rail" aria-label="Proposal queue">
+      <div class="filters" role="group" aria-label="Filters">
+        ${KINDS.map(k=>`<button class="chip" data-fk="${esc(k)}" aria-pressed="${st.fKind===k}">${esc(k)}</button>`).join("")}
+        <button class="chip" data-fs="general" aria-pressed="${st.fScope==="general"}">general</button>
+        <button class="chip" data-fs="repo-local" aria-pressed="${st.fScope==="repo-local"}">repo-local</button>
+      </div>${queue(ps)}
+    </nav>
+    <div class="detail" aria-live="polite">${sel?detail(sel):`<div class="placeholder"><span class="big">No proposals match these filters.</span><button class="btn" id="cf">Clear filters</button></div>`}</div>
+  </div>`;
+}
+function queue(ps){
+  if(!ps.length) return `<p class="mono" style="color:var(--ink-mute)">No proposals match.</p>`;
+  let h="";
+  KINDS.forEach(g=>{const inG=ps.filter(p=>p.group===g);if(!inG.length)return;
+    h+=`<div class="group-h">${esc(g)} (${inG.length})</div>`;
+    inG.forEach(p=>{const d=st.decisions[p.id];
+      h+=`<button class="row" data-id="${esc(p.id)}" aria-selected="${st.selected===p.id}" role="option">
+        <span class="dot" title="${d||"undecided"}" style="color:${d==="approve"?"var(--success)":d==="reject"?"var(--danger)":d==="defer"?"var(--warning)":"var(--ink-mute)"}">${decIcon(d)}</span>
+        <span class="rt">${esc(p.title)}<span class="rm"><span class="kindchip">${esc(p.scope)}</span><span class="score">score ${(p.score||0).toFixed(2)}</span></span></span></button>`;});});
+  return h;
+}
+function detail(p){
+  const scope=st.scopeOverride[p.id]||p.scope, d=st.decisions[p.id];
+  const cl={v:"Verified",i:"Inferred",f:"Flagged"}[p.confidence]||"Inferred";
+  return `
+    <p class="mono src ${p.source==="model"?"model":""}">${p.source==="model"?"\u25C6 model-proposed \u2014 verify before approving":"\u25A0 deterministic \u2014 mechanical"}</p>
+    <h2 class="sig">${esc(p.sig)}</h2>
+    <div class="subrow"><span class="conf ${p.confidence||"i"}">${cl}</span><span class="kindchip">${esc(p.kind)}</span><span class="src">score <b class="mono">${(p.score||0).toFixed(2)}</b></span></div>
+    <section class="block"><h3>Evidence &amp; provenance (${(p.evidence||[]).length})</h3><ul class="evidence" style="margin:0;padding-left:18px">
+      ${(p.evidence||[]).map(e=>`<li><span class="eid">${esc(e.eid)}</span> \u2014 <span class="en">${esc(e.note)}</span></li>`).join("")}</ul></section>
+    <section class="block"><h3>Proposed control</h3><div class="control">
+      <div class="rung">ladder rung \u00b7 ${esc((p.control||{}).rung)}</div>
+      <p class="ct">${esc((p.control||{}).text)}</p><div class="loc">${esc((p.control||{}).loc)}</div></div></section>
+    <section class="block"><h3>Boundary statement</h3><p class="boundary">${esc(p.boundary)}</p></section>
+    <section class="block"><h3>Federation scope</h3><div class="scope" role="group" aria-label="Federation scope">
+      <button data-sc="repo-local" data-pid="${esc(p.id)}" aria-pressed="${scope==="repo-local"}">Repo-local</button>
+      <button data-sc="general" data-pid="${esc(p.id)}" aria-pressed="${scope==="general"}">General (federate)</button></div>
+      <p class="mono" style="color:var(--ink-mute);margin-top:8px">${scope==="general"?"Will be abstracted, scrubbed, offered to the fleet store + /apply-learnings.":"Stays in this repo until it recurs or is blessed general."}</p></section>
+    <div class="decide" role="group" aria-label="Decision">
+      <button class="ap" data-de="approve" data-pid="${esc(p.id)}" aria-pressed="${d==="approve"}">\u2714 Approve</button>
+      <button class="rj" data-de="reject" data-pid="${esc(p.id)}" aria-pressed="${d==="reject"}">\u2716 Reject</button>
+      <button class="df" data-de="defer" data-pid="${esc(p.id)}" aria-pressed="${d==="defer"}">\u25CB Defer</button></div>`;
+}
+function emptyBody(){return `<div class="detail"><div class="placeholder">
+  <span class="big">No proposals in this dream</span>
+  <p>The corpus produced nothing worth consolidating in this window. This is a valid, healthy result.</p>
+  <p>Run <code>dream.py run</code> again after more work accumulates, or widen the window.</p></div></div>`;}
+function errorShell(){return `<header class="top"><h1>Dream review</h1></header><div class="detail"><div class="placeholder err">
+  <span class="big">Dream data is missing or malformed</span>
+  <p><code>dream-data.js</code> did not load. Nothing was changed.</p>
+  <p>Regenerate with <code>python docs/ai-forward-pack/scripts/dream.py run</code>, then reopen this view.</p></div></div>`;}
+function drawer(){return `<section class="drawer" aria-label="Export decisions"><h3>Export decisions</h3>
+  <p class="note">This writes nothing to disk. Save the JSON below and feed it to <span class="mono">apply-decisions</span> \u2014 the only path that touches a durable store, and it re-validates + re-scrubs first.</p>
+  <pre id="dj">${esc(decisionsJSON())}</pre>
+  <span class="cmd">$ python docs/ai-forward-pack/scripts/dream.py apply-decisions ${esc(D.id)}-decisions.json</span>
+  <p class="note">Approved <b>general</b> learnings are abstracted + scrubbed, then offered to the fleet store. Approved <b>repo-local</b> ones update this repo only. Push later with <span class="mono">/apply-learnings</span>.</p></section>`;}
+function wire(){
+  app.querySelectorAll(".row").forEach(r=>r.addEventListener("click",()=>{st.selected=r.dataset.id;render();}));
+  app.querySelectorAll("[data-de]").forEach(b=>b.addEventListener("click",()=>{const id=b.dataset.pid,v=b.dataset.de;
+    st.decisions[id]=(st.decisions[id]===v)?undefined:v;if(st.decisions[id]===undefined)delete st.decisions[id];render();}));
+  app.querySelectorAll("[data-sc]").forEach(b=>b.addEventListener("click",()=>{st.scopeOverride[b.dataset.pid]=b.dataset.sc;render();}));
+  app.querySelectorAll("[data-fk]").forEach(b=>b.addEventListener("click",()=>{st.fKind=(st.fKind===b.dataset.fk)?null:b.dataset.fk;render();}));
+  app.querySelectorAll("[data-fs]").forEach(b=>b.addEventListener("click",()=>{st.fScope=(st.fScope===b.dataset.fs)?null:b.dataset.fs;render();}));
+  const cf=app.querySelector("#cf");if(cf)cf.addEventListener("click",()=>{st.fKind=null;st.fScope=null;render();});
+  const ex=app.querySelector("#exp");if(ex)ex.addEventListener("click",()=>{const dr=app.querySelector(".drawer");if(dr)dr.scrollIntoView({behavior:document.documentElement.dataset.motion==="reduced"?"auto":"smooth"});});
+}
+document.querySelectorAll("#h-theme button").forEach(b=>b.addEventListener("click",()=>{document.querySelectorAll("#h-theme button").forEach(x=>x.setAttribute("aria-pressed","false"));b.setAttribute("aria-pressed","true");document.documentElement.setAttribute("data-theme",b.dataset.theme);}));
+document.querySelectorAll("#h-motion button").forEach(b=>b.addEventListener("click",()=>{document.querySelectorAll("#h-motion button").forEach(x=>x.setAttribute("aria-pressed","false"));b.setAttribute("aria-pressed","true");document.documentElement.setAttribute("data-motion",b.dataset.motion);}));
+render();
+</script>
+</body>
+</html>

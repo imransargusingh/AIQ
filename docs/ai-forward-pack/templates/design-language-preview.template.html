@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__PROJECT__ — Design Language Preview</title>
+<!--
+  Design-language token catalog (pairs with templates/design-language.template.md).
+  Self-contained, no build, no CDN. The skill fills the TOKENS object below from the
+  design-language doc's frontmatter; the page renders swatches (with WCAG contrast),
+  the type scale, and every component STATE (incl. empty/loading/error — U9), with a
+  light/dark toggle (U4). It is the visual surface the UX & Accessibility lens vetoes
+  against (U9 state completeness, U16 contrast — made visible).
+-->
+<style>
+  :root{ --bg:#fff; --fg:#111; --muted:#666; --line:#e3e3e3; --card:#fafafa; }
+  [data-theme="dark"]{ --bg:#0b0b0c; --fg:#f2f2f2; --muted:#9aa0a6; --line:#26282b; --card:#151517; }
+  *{box-sizing:border-box} body{margin:0;font:15px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+  header{display:flex;align-items:center;gap:1rem;padding:1rem 1.5rem;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg)}
+  h1{font-size:1.1rem;margin:0} h2{font-size:.8rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:2rem 0 .75rem}
+  main{padding:1.5rem;max-width:1100px;margin:0 auto} button.t{margin-left:auto;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:8px;padding:.4rem .8rem;cursor:pointer}
+  .grid{display:grid;gap:.75rem;grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}
+  .swatch{border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .swatch .chip{height:64px;display:flex;align-items:flex-end;justify-content:space-between;padding:.4rem .5rem;font-size:.72rem;font-weight:600}
+  .swatch .meta{padding:.5rem;font-size:.72rem;color:var(--muted)}
+  .pass{color:#0a7d33;font-weight:700}.fail{color:#c0271e;font-weight:700}
+  .states{display:grid;gap:.6rem;grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
+  .state{border:1px dashed var(--line);border-radius:10px;padding:.7rem;min-height:84px;display:flex;flex-direction:column;gap:.4rem}
+  .state .lbl{font-size:.68rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+  .typerow{display:flex;align-items:baseline;gap:1rem;border-bottom:1px solid var(--line);padding:.5rem 0}
+  .typerow .tok{font-size:.72rem;color:var(--muted);min-width:140px}
+  .note{color:var(--muted);font-size:.8rem}
+</style>
+</head>
+<body>
+<header><h1>__PROJECT__ · Design Language</h1><span class="note">contrast = WCAG 2.1 · AA needs 4.5:1 (text) / 3.0:1 (large/UI)</span><button class="t" onclick="document.documentElement.dataset.theme=document.documentElement.dataset.theme==='dark'?'light':'dark'">Toggle theme</button></header>
+<main>
+  <h2>Palette &amp; contrast</h2><div class="grid" id="swatches"></div>
+  <h2>Type scale</h2><div id="type"></div>
+  <h2>Component states (U9)</h2><div class="states" id="states"></div>
+  <p class="note">Empty / loading / error are mandatory states — a blank cell is a finding, not a default.</p>
+</main>
+<script>
+/* The skill replaces TOKENS with the design-language doc's frontmatter values. */
+const TOKENS = {
+  colors: { primary:"#533afd", "on-primary":"#ffffff", canvas:"#ffffff", ink:"#0d253d", "ink-mute":"#64748d", danger:"#c0271e", "focus-ring":"#533afd" },
+  // text-on-bg pairs to audit: [foregroundToken, backgroundToken, requiredRatio]
+  pairs: [ ["ink","canvas",4.5], ["ink-mute","canvas",4.5], ["on-primary","primary",4.5], ["danger","canvas",4.5] ],
+  type: [ ["display-xl","48px/1.1 600","Hero headline"], ["body-md","15px/1.5 400","Default body"] ]
+};
+const lum = h => { const c=h.replace('#','').match(/.{2}/g).map(x=>{let v=parseInt(x,16)/255;return v<=.03928?v/12.92:((v+.055)/1.055)**2.4}); return .2126*c[0]+.7152*c[1]+.0722*c[2]; };
+const ratio = (a,b)=>{const L1=lum(a),L2=lum(b);return ((Math.max(L1,L2)+.05)/(Math.min(L1,L2)+.05));};
+// swatches
+document.getElementById('swatches').innerHTML = Object.entries(TOKENS.colors).map(([n,hex])=>{
+  const onLight=ratio(hex,'#ffffff').toFixed(2), onDark=ratio(hex,'#0b0b0c').toFixed(2);
+  return `<div class="swatch"><div class="chip" style="background:${hex};color:${lum(hex)>.4?'#000':'#fff'}"><span>${n}</span><span>${hex}</span></div><div class="meta">on #fff ${onLight}:1 · on #0b0b0c ${onDark}:1</div></div>`;
+}).join('');
+// audited pairs
+document.getElementById('swatches').innerHTML += TOKENS.pairs.map(([fg,bg,req])=>{
+  const r=ratio(TOKENS.colors[fg],TOKENS.colors[bg]), ok=r>=req;
+  return `<div class="swatch"><div class="chip" style="background:${TOKENS.colors[bg]};color:${TOKENS.colors[fg]}">${fg} on ${bg}</div><div class="meta">${r.toFixed(2)}:1 — <span class="${ok?'pass':'fail'}">${ok?'PASS':'FAIL'} AA ${req}</span></div></div>`;
+}).join('');
+// type
+document.getElementById('type').innerHTML = TOKENS.type.map(([tok,spec,use])=>{
+  const size=(spec.match(/(\d+)px/)||[])[1]||16;
+  return `<div class="typerow"><span class="tok">{typography.${tok}}<br>${spec}</span><span style="font-size:${size}px;line-height:1.1">${use}</span></div>`;
+}).join('');
+// component states grid
+const STATES=["default","hover","focus","active","disabled","loading","empty","error","success"];
+document.getElementById('states').innerHTML = STATES.map(s=>{
+  const c=TOKENS.colors, body = s==='empty' ? 'No items yet — create your first' : s==='error' ? 'Something went wrong — retry' : s==='loading' ? '…' : 'Button';
+  const bg = (s==='error')?c.danger:(s==='disabled')?c['ink-mute']:c.primary;
+  const ring = s==='focus'?`box-shadow:0 0 0 3px ${c['focus-ring']}`:'';
+  return `<div class="state"><span class="lbl">${s}</span><button style="background:${bg};color:${c['on-primary']};border:0;border-radius:9999px;padding:.5rem 1rem;${s==='disabled'?'opacity:.4':''};${ring}">${body}</button></div>`;
+}).join('');
+</script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+# AI-Forward Pack (INSTALL 2, revision 75): the editor-level twin of .gitattributes eol=lf,
+# so a Windows editor does not re-introduce CRLF between commits. Yours to extend.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = false

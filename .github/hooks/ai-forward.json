@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "type": "command",
+        "bash": "git -c alias.aif-hook=!sh aif-hook -c 'r=.;n=0;while [ ! -f \"$r/docs/ai-forward-pack/hooks/run-hook.sh\" ];do [ -e \"$r/.git\" ] && exit 2;n=$((n+1));[ \"$n\" -le 64 ] || exit 2;r=$r/..;done;cd \"$r\" || exit 2;exec sh docs/ai-forward-pack/hooks/run-hook.sh \"$@\"' aif-hook dispatch.py --host copilot --event sessionStart",
+        "powershell": "git -c alias.aif-hook=!sh aif-hook -c 'r=.;n=0;while [ ! -f \"$r/docs/ai-forward-pack/hooks/run-hook.sh\" ];do [ -e \"$r/.git\" ] && exit 2;n=$((n+1));[ \"$n\" -le 64 ] || exit 2;r=$r/..;done;cd \"$r\" || exit 2;exec sh docs/ai-forward-pack/hooks/run-hook.sh \"$@\"' aif-hook dispatch.py --host copilot --event sessionStart",
+        "timeoutSec": 10
+      }
+    ],
+    "subagentStart": [
+      {
+        "type": "command",
+        "bash": "git -c alias.aif-hook=!sh aif-hook -c 'r=.;n=0;while [ ! -f \"$r/docs/ai-forward-pack/hooks/run-hook.sh\" ];do [ -e \"$r/.git\" ] && exit 2;n=$((n+1));[ \"$n\" -le 64 ] || exit 2;r=$r/..;done;cd \"$r\" || exit 2;exec sh docs/ai-forward-pack/hooks/run-hook.sh \"$@\"' aif-hook dispatch.py --host copilot --event subagentStart",
+        "powershell": "git -c alias.aif-hook=!sh aif-hook -c 'r=.;n=0;while [ ! -f \"$r/docs/ai-forward-pack/hooks/run-hook.sh\" ];do [ -e \"$r/.git\" ] && exit 2;n=$((n+1));[ \"$n\" -le 64 ] || exit 2;r=$r/..;done;cd \"$r\" || exit 2;exec sh docs/ai-forward-pack/hooks/run-hook.sh \"$@\"' aif-hook dispatch.py --host copilot --event subagentStart",
+        "timeoutSec": 10
+      }
+    ],
+    "preToolUse": [
+      {
+        "type": "command",
+        "bash": "git -c alias.aif-hook=!sh aif-hook docs/ai-forward-pack/hooks/run-hook.sh dispatch.py --host copilot --event preToolUse",
+        "powershell": "git -c alias.aif-hook=!sh aif-hook docs/ai-forward-pack/hooks/run-hook.sh dispatch.py --host copilot --event preToolUse",
+        "timeoutSec": 10
+      }
+    ],
+    "postToolUse": [
+      {
+        "type": "command",
+        "bash": "git -c alias.aif-hook=!sh aif-hook docs/ai-forward-pack/hooks/run-hook.sh dispatch.py --host copilot --event postToolUse",
+        "powershell": "git -c alias.aif-hook=!sh aif-hook docs/ai-forward-pack/hooks/run-hook.sh dispatch.py --host copilot --event postToolUse",
+        "timeoutSec": 10
+      }
+    ],
+    "userPromptSubmitted": [
+      {
+        "type": "command",
+        "bash": "git -c alias.aif-hook=!sh aif-hook docs/ai-forward-pack/hooks/run-hook.sh dispatch.py --host copilot --event userPromptSubmitted",
+        "powershell": "git -c alias.aif-hook=!sh aif-hook docs/ai-forward-pack/hooks/run-hook.sh dispatch.py --host copilot --event userPromptSubmitted",
+        "timeoutSec": 10
+      }
+    ],
+    "agentStop": [
+      {
+        "type": "command",
+        "bash": "git -c alias.aif-hook=!sh aif-hook docs/ai-forward-pack/hooks/run-hook.sh dispatch.py --host copilot --event agentStop",
+        "powershell": "git -c alias.aif-hook=!sh aif-hook docs/ai-forward-pack/hooks/run-hook.sh dispatch.py --host copilot --event agentStop",
+        "timeoutSec": 10
+      }
+    ],
+    "subagentStop": [
+      {
+        "type": "command",
+        "bash": "git -c alias.aif-hook=!sh aif-hook docs/ai-forward-pack/hooks/run-hook.sh dispatch.py --host copilot --event subagentStop",
+        "powershell": "git -c alias.aif-hook=!sh aif-hook docs/ai-forward-pack/hooks/run-hook.sh dispatch.py --host copilot --event subagentStop",
+        "timeoutSec": 10
+      }
+    ]
+  }
+}

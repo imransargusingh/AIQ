@@ -1,0 +1,2522 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Docs Explorer</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --cp-bg: #f7f4ef;
+      --cp-bg-elevated: #fcfbf8;
+      --cp-surface: #ffffff;
+      --cp-surface-soft: #f5f5f5;
+      --cp-border: #dedede;
+      --cp-border-strong: #8a8886;
+      --cp-text: #242424;
+      --cp-text-muted: #5c5c5c;
+      --cp-text-soft: #6f6f6f;
+      --cp-accent: #b11f4b;
+      --cp-accent-hover: #9a1a41;
+      --cp-accent-soft: rgba(177, 31, 75, 0.08);
+      --cp-accent-fg: #ffffff;
+      --cp-success: #146c2e;
+      --cp-danger: #b3261e;
+      --cp-warning: #8a4b08;
+      --cp-link: #006cbe;
+      --cp-shadow-sm: 0 6px 24px rgba(0, 0, 0, 0.08);
+      --cp-shadow-md: 0 8px 28px rgba(0, 0, 0, 0.06);
+      --cp-shadow-lg: 0 18px 48px rgba(0, 0, 0, 0.12);
+      --cp-panel: rgba(255, 255, 255, 0.86);
+      --cp-panel-strong: rgba(255, 255, 255, 0.96);
+      --cp-highlight: rgba(177, 31, 75, 0.12);
+      --color-bg: var(--cp-bg);
+      --color-surface: var(--cp-bg-elevated);
+      --color-surface-raised: var(--cp-surface);
+      --color-border: var(--cp-border-strong);
+      --color-text: var(--cp-text);
+      --color-text-muted: var(--cp-text-muted);
+      --color-primary: var(--cp-accent);
+      --color-on-primary: var(--cp-accent-fg);
+      --color-focus: var(--cp-link);
+      --color-warning: var(--cp-warning);
+      --color-error: var(--cp-danger);
+      --color-success: var(--cp-success);
+      --color-info: var(--cp-link);
+      --color-graph-path: var(--cp-accent);
+      --color-graph-ghost: var(--cp-border-strong);
+      --color-graph-node-muted: var(--cp-text-soft);
+      --space-1: 2px;
+      --space-2: 4px;
+      --space-3: 8px;
+      --space-4: 12px;
+      --space-5: 16px;
+      --space-6: 24px;
+      --space-7: 32px;
+      --space-8: 48px;
+      --radius-sm: 5px;
+      --radius-md: 8px;
+      --radius-lg: 12px;
+      --target-min: 44px;
+      --focus-width: 3px;
+      --border-width: 1px;
+      --focus-offset: 2px;
+      --skip-offset: -5rem;
+      --brand-min: 14rem;
+      --title-size: 1.25rem;
+      --search-min: 12rem;
+      --search-max: 24rem;
+
+      --viewport-header-offset: 9rem;
+      --label-size: 0.75rem;
+      --label-tracking: 0.08em;
+      --selection-inset: 4px;
+      --search-outline-width: 2px;
+      --search-outline-offset: -4px;
+      --meta-size: 0.8125rem;
+      --visual-min-height: 32rem;
+      --graph-label-size: 12px;
+      --edge-width: 1.5;
+      --edge-path-width: 3;
+      --node-width: 9rem;
+      --context-ring-width: 2px;
+      --badge-min-height: 1.75rem;
+      --pill-radius: 999px;
+      --source-max-height: 28rem;
+      --sr-size: 1px;
+      --sr-offset: -1px;
+      --narrow-panel-offset: 11rem;
+      --narrow-visual-min-height: 24rem;
+      --motion-fast: 120ms;
+      --motion-context: 220ms;
+      --skeleton-short-width: 68%;
+      --font-body: "Segoe UI", Aptos, Calibri, sans-serif;
+      --font-mono: Consolas, "Courier New", Courier, monospace;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        color-scheme: dark;
+        --cp-bg: #3d3b3a;
+        --cp-bg-elevated: #343231;
+        --cp-surface: #292929;
+        --cp-surface-soft: #2e2e2e;
+        --cp-border: #474747;
+        --cp-border-strong: #888684;
+        --cp-text: #dedede;
+        --cp-text-muted: #a8a8a8;
+        --cp-text-soft: #b0b0b0;
+        --cp-accent: #fd8ea1;
+        --cp-accent-hover: #fb7b91;
+        --cp-accent-soft: rgba(253, 142, 161, 0.14);
+        --cp-accent-fg: #1a1a1a;
+        --cp-success: #4ade80;
+        --cp-danger: #ff9191;
+        --cp-warning: #fbbf24;
+        --cp-link: #62b0ff;
+        --cp-shadow-sm: 0 6px 24px rgba(0, 0, 0, 0.22);
+        --cp-shadow-md: 0 8px 28px rgba(0, 0, 0, 0.26);
+        --cp-shadow-lg: 0 18px 48px rgba(0, 0, 0, 0.32);
+        --cp-panel: rgba(41, 41, 41, 0.72);
+        --cp-panel-strong: rgba(41, 41, 41, 0.96);
+        --cp-highlight: rgba(253, 142, 161, 0.12);
+      }
+    }
+    @media (prefers-contrast: more) {
+      :root {
+        --cp-bg: #000000;
+        --cp-bg-elevated: #000000;
+        --cp-surface: #000000;
+        --cp-surface-soft: #000000;
+        --cp-border: #ffffff;
+        --cp-border-strong: #ffffff;
+        --cp-text: #ffffff;
+        --cp-text-muted: #ffffff;
+        --cp-text-soft: #ffffff;
+        --cp-accent: #ffff00;
+        --cp-accent-hover: #ffff00;
+        --cp-accent-soft: transparent;
+        --cp-accent-fg: #000000;
+        --cp-success: #00ff00;
+        --cp-danger: #ff8080;
+        --cp-warning: #ffff00;
+        --cp-link: #ffff00;
+        --cp-shadow-sm: none;
+        --cp-shadow-md: none;
+        --cp-shadow-lg: none;
+        --cp-panel: #000000;
+        --cp-panel-strong: #000000;
+        --cp-highlight: transparent;
+        --color-bg: #000000;
+        --color-surface: #000000;
+        --color-surface-raised: #000000;
+        --color-border: #ffffff;
+        --color-text: #ffffff;
+        --color-text-muted: #ffffff;
+        --color-primary: #ffff00;
+        --color-on-primary: #000000;
+        --color-focus: #ffff00;
+        --color-warning: #ffff00;
+        --color-error: #ff8080;
+        --color-success: #00ff00;
+        --color-info: #ffff00;
+        --color-graph-path: #ffff00;
+        --color-graph-ghost: #ffffff;
+        --color-graph-node-muted: #ffffff;
+      }
+    }
+    * { box-sizing: border-box; }
+    html { background: var(--color-bg); color: var(--color-text); font-family: var(--font-body); }
+    body { margin: 0; min-width: 20rem; background: var(--color-bg); }
+    button, input, select, a, summary { font: inherit; }
+    button, .button {
+      min-height: var(--target-min);
+      max-width: 100%;
+      min-width: 0;
+      border: var(--border-width) solid var(--color-border);
+      border-radius: var(--radius-sm);
+      background: var(--color-surface-raised);
+      color: var(--color-text);
+      padding: var(--space-2) var(--space-3);
+      overflow-wrap: anywhere;
+      cursor: pointer;
+    }
+    button:hover, .button:hover { border-color: var(--color-primary); }
+    button:disabled { cursor: not-allowed; color: var(--color-text-muted); }
+    :focus-visible {
+      outline: var(--focus-width) solid var(--color-focus);
+      outline-offset: var(--focus-offset);
+      scroll-margin-top: var(--viewport-header-offset);
+    }
+    a { color: var(--color-primary); }
+    a[href], summary {
+      min-height: var(--target-min);
+      display: inline-flex;
+      align-items: center;
+    }
+    .skip-link {
+      position: fixed; left: var(--space-2); top: var(--skip-offset); z-index: 20;
+      background: var(--color-surface); padding: var(--space-3);
+    }
+    .skip-link:focus { top: var(--space-2); }
+    .app-header {
+      position: sticky; top: 0; z-index: 10;
+      display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap;
+      padding: var(--space-4) var(--space-6);
+      border-bottom: var(--border-width) solid var(--color-border);
+      background: var(--cp-panel-strong);
+      box-shadow: var(--cp-shadow-sm);
+    }
+    .brand { min-width: var(--brand-min); flex: 1; }
+    .brand h1 { margin: 0; font-size: var(--title-size); }
+    .brand p { margin: var(--space-1) 0 0; color: var(--color-text-muted); }
+    .search {
+      display: grid; grid-template-columns: minmax(var(--search-min), var(--search-max)) auto auto;
+      gap: var(--space-2); align-items: center;
+    }
+    .search input {
+      min-height: var(--target-min); width: 100%; padding: var(--space-2) var(--space-3);
+      border: var(--border-width) solid var(--color-border); border-radius: var(--radius-sm);
+      background: var(--color-bg); color: var(--color-text);
+    }
+    .tabs {
+      display: flex; gap: var(--space-2); padding: var(--space-3) var(--space-6); overflow-x: auto;
+      border-bottom: var(--border-width) solid var(--color-border); background: var(--cp-bg-elevated);
+    }
+    .projection-choice { min-width: var(--target-min); justify-content: center; }
+    .projection-choice[aria-selected="true"] {
+      background: var(--color-primary);
+      color: var(--color-on-primary);
+      border-color: var(--color-primary);
+      border-bottom-width: calc(var(--border-width) * 4);
+    }
+    .projection-choice[aria-selected="true"]::after {
+      content: " \2713";
+      font-weight: 800;
+    }
+    .loading-main { padding: var(--space-3); }
+    .loading-panel { max-width: var(--search-max); }
+    .skeleton-list { display: grid; gap: var(--space-2); }
+    .skeleton-row {
+      min-height: var(--target-min);
+      border: var(--border-width) solid var(--color-border);
+      border-radius: var(--radius-sm);
+      background: var(--cp-surface-soft);
+    }
+    .skeleton-row:nth-child(even) { width: var(--skeleton-short-width); }
+    .notice, .health {
+      margin: 0 var(--space-6) var(--space-3); padding: var(--space-3);
+      /* Full hairline in the warning colour over a tinted ground — not a thick
+         left stripe, which is the side-tab tell (DX3). Same semantic, less slop. */
+      border: var(--border-width) solid var(--color-warning);
+      background: var(--color-surface); border-radius: var(--radius-md);
+    }
+    .shell {
+      display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.7fr) minmax(0, 0.9fr);
+      gap: var(--space-3); min-height: calc(100vh - var(--viewport-header-offset));
+      padding: var(--space-3);
+    }
+    .index-shell { grid-template-columns: minmax(0, 2.2fr) minmax(0, 1fr); }
+    .panel {
+      min-width: 0; padding: var(--space-4); border: var(--border-width) solid var(--color-border);
+      border-radius: var(--radius-lg); background: var(--cp-panel); box-shadow: var(--cp-shadow-md);
+    }
+    .panel h2, .panel h3 { margin-top: 0; }
+    .panel-header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+    .route-back { display: none; }
+    .narrow-selection-actions { display: none; }
+    .narrow-selection-action { display: none; }
+    .filters {
+      display: grid; gap: var(--space-2); padding: var(--space-3);
+      border: var(--border-width) solid var(--color-border); border-radius: var(--radius-md);
+      background: var(--color-surface);
+    }
+    .filter-group { min-width: 0; margin: 0; padding: 0; border: 0; }
+    .filter-group legend { padding: 0; font-weight: 700; }
+    .filter-options { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+    .filter-options label {
+      display: inline-flex; align-items: center; gap: var(--space-1);
+      min-width: var(--target-min); min-height: var(--target-min);
+    }
+    .tree-group { margin-top: var(--space-4); }
+    .tree-group h3 {
+      color: var(--color-text-muted); font-size: var(--label-size); letter-spacing: var(--label-tracking);
+      text-transform: uppercase; margin-bottom: var(--space-2);
+    }
+    [role="tree"], [role="group"] { display: grid; gap: var(--space-1); }
+    [role="group"] { padding-left: var(--space-4); }
+    [role="treeitem"] { width: 100%; text-align: left; display: grid; gap: var(--space-1); }
+    [role="treeitem"][data-kind="group"] { font-weight: 700; color: var(--color-text-muted); }
+    [role="treeitem"][aria-selected="true"], [data-selected="true"] {
+      border-color: var(--color-primary); box-shadow: inset var(--selection-inset) 0 var(--color-primary);
+    }
+    [data-search-match="true"] { outline: var(--search-outline-width) dashed var(--color-warning); outline-offset: var(--search-outline-offset); }
+    .match-indicator { font-size: var(--label-size); font-weight: 700; color: var(--color-warning); }
+    .meta { color: var(--color-text-muted); font-size: var(--meta-size); }
+    .projection-toolbar, .detail-actions {
+      display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-3);
+    }
+    .current-title { flex-basis: 100%; margin: 0; overflow-wrap: anywhere; }
+    .visualization {
+      min-height: var(--visual-min-height); border: var(--border-width) solid var(--color-border);
+      border-radius: var(--radius-md); overflow: auto; background: var(--cp-bg-elevated);
+    }
+    .visualization svg { display: block; min-width: 100%; }
+    .lane-label { fill: var(--color-text-muted); font: 700 var(--graph-label-size) var(--font-body); text-transform: uppercase; }
+    .edge { stroke: var(--color-border); stroke-width: var(--edge-width); fill: none; marker-end: url(#arrow); }
+    .edge.path { stroke: var(--color-graph-path); stroke-width: var(--edge-path-width); }
+    .edge.ghost, .edge.unrelated { stroke: var(--color-graph-ghost); stroke-dasharray: 5 5; }
+    .edge-label {
+      fill: var(--color-text); font: 700 var(--label-size) var(--font-body);
+      paint-order: stroke; stroke: var(--color-bg); stroke-width: 4px; pointer-events: none;
+    }
+    .node-control {
+      width: var(--node-width); min-height: var(--target-min); overflow: hidden;
+      white-space: nowrap; text-overflow: ellipsis; text-align: left;
+      /* No side-tab stripe (DX3): .type-dot below already carries the type signal,
+         so the thick left border was a redundant second indicator. */
+    }
+    .node-control .type-dot { margin-right: var(--space-1); }
+    .node-control:focus {
+      outline: var(--focus-width) solid var(--color-focus);
+      outline-offset: var(--focus-offset);
+    }
+    .node-control.context {
+      border-color: var(--color-warning);
+      box-shadow: inset 0 0 0 var(--context-ring-width) var(--color-warning);
+    }
+    .context-indicator { font-weight: 700; }
+    .health-marker {
+      display: inline-flex; align-items: center; justify-content: center;
+      min-width: 1.25em; margin-right: var(--space-1); border: var(--border-width) solid currentColor;
+      border-radius: var(--pill-radius); font-weight: 800;
+    }
+    .node-control.depth-2, .node-control.unrelated { color: var(--color-graph-node-muted); }
+    .node-control.unrelated { border-style: dashed; }
+    .node-control.unrelated:focus {
+      box-shadow: 0 0 0 var(--focus-width) var(--color-focus);
+    }
+    .node-control .visual-label[aria-hidden="true"] { color: var(--color-graph-node-muted); }
+    .relationship-list { margin-top: var(--space-4); }
+    .relationship-list ul { list-style: none; padding: 0; display: grid; gap: var(--space-2); }
+    .relationship-list li { padding: var(--space-2); border: var(--border-width) solid var(--color-border); border-radius: var(--radius-sm); }
+    .relationship-list li.path { border-color: var(--color-graph-path); }
+    .relationship-list button { width: 100%; text-align: left; }
+    .details-card { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); }
+    .summary { line-height: 1.55; }
+    .badge {
+      display: inline-flex; align-items: center; min-height: var(--badge-min-height); padding: 0 var(--space-2);
+      border: var(--border-width) solid var(--color-border); border-radius: var(--pill-radius); font-size: var(--label-size);
+    }
+    .badge.stale, .badge.review-suggested { border-color: var(--color-warning); }
+    pre {
+      max-height: var(--source-max-height); overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere;
+      background: var(--color-bg); border: var(--border-width) solid var(--color-border);
+      border-radius: var(--radius-sm); padding: var(--space-3); font-family: var(--font-mono);
+    }
+    .empty { color: var(--color-text-muted); padding: var(--space-6); text-align: center; }
+    .knowledge-surfaces {
+      margin: var(--space-3) var(--space-6); padding: var(--space-4);
+      border: var(--border-width) solid var(--color-border); border-radius: var(--radius-lg);
+      background: var(--cp-panel); box-shadow: var(--cp-shadow-md);
+    }
+    .knowledge-surfaces header {
+      display: flex; align-items: end; justify-content: space-between; gap: var(--space-3);
+      margin-bottom: var(--space-3);
+    }
+    .knowledge-surfaces h2, .knowledge-surfaces p { margin: 0; }
+    .surface-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: var(--space-3);
+    }
+    .surface-card {
+      display: grid; gap: var(--space-2); align-content: start; min-height: 8rem;
+      padding: var(--space-4); border: var(--border-width) solid var(--color-border);
+      border-radius: var(--radius-md); background: var(--cp-surface);
+    }
+    /* The accent border alone marks the audit surface — the inset 3px top stripe
+       was the same side-tab tell rotated 90° (DX3), and carried no extra signal. */
+    .surface-card[data-kind="audit"] { border-color: var(--cp-accent); }
+    .surface-card strong { font-size: 1rem; }
+    .surface-card .surface-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; margin-top: auto; }
+    .spatial-stage { position: relative; overflow: hidden; min-height: var(--visual-min-height); }
+    .spatial-stage svg { width: 100%; height: var(--visual-min-height); min-height: var(--visual-min-height); touch-action: none; cursor: grab; }
+    .spatial-stage:focus-visible { outline-offset: calc(var(--focus-offset) * -1); }
+    .spatial-stage svg[data-dragging="true"] { cursor: grabbing; }
+    .spatial-hint {
+      position: absolute; left: var(--space-3); bottom: var(--space-3); margin: 0;
+      padding: var(--space-2) var(--space-3); border: var(--border-width) solid var(--color-border);
+      border-radius: var(--pill-radius); background: var(--cp-panel-strong); color: var(--color-text-muted);
+      pointer-events: none;
+    }
+    .spatial-edge { stroke: var(--color-border); stroke-width: 1.3; opacity: 0.7; }
+    .spatial-edge.path { stroke: var(--color-graph-path); stroke-width: 3; opacity: 1; }
+    .spatial-edge.unrelated { stroke-dasharray: 5 5; opacity: 0.35; }
+    .spatial-node-wrap { transition: opacity var(--motion-fast); }
+    .sr-only {
+      position: absolute; width: var(--sr-size); height: var(--sr-size); padding: 0; margin: var(--sr-offset);
+      overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+    }
+    [hidden] { display: none !important; }
+    @media (prefers-reduced-motion: no-preference) {
+      button, .surface-card { transition: border-color var(--motion-fast), background-color var(--motion-fast), transform var(--motion-fast); }
+      .surface-card:hover { transform: translateY(-2px); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .spatial-node-wrap { transition: none; }
+    }
+    @media (forced-colors: active) {
+      :root {
+        --color-bg: Canvas;
+        --color-surface: Canvas;
+        --color-surface-raised: Canvas;
+        --color-border: ButtonText;
+        --color-text: CanvasText;
+        --color-text-muted: CanvasText;
+        --color-primary: Highlight;
+        --color-on-primary: HighlightText;
+        --color-focus: Highlight;
+        --color-warning: Mark;
+        --color-graph-path: Highlight;
+        --color-graph-ghost: GrayText;
+        --color-graph-node-muted: GrayText;
+      }
+      .edge { forced-color-adjust: auto; }
+      [data-search-match="true"],
+      [data-search-match="true"]:focus,
+      [data-search-match="true"]:focus-visible { outline-style: double; }
+      .spatial-stage:focus,
+      .spatial-stage:focus-visible {
+        outline: 3px double Highlight;
+        outline-offset: -3px;
+      }
+      .node-control.context {
+        border-color: Mark;
+        border-style: double;
+        border-width: 3px;
+      }
+      .surface-card[data-kind="audit"] {
+        border-style: double;
+        box-shadow: none;
+      }
+      .projection-choice[aria-selected="true"],
+      [role="treeitem"][aria-selected="true"],
+      [data-selected="true"] { border-color: Highlight; }
+    }
+    /* ---- Colour-by-type system (shared by Index, 2D graph, 3D) ---- */
+    .type-dot {
+      display: inline-block; width: 0.72em; height: 0.72em; border-radius: 999px;
+      background: var(--type-color, var(--color-text-muted)); vertical-align: baseline;
+      border: 1px solid rgba(0,0,0,0.25); flex: none;
+    }
+    .legend {
+      display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4);
+      padding: var(--space-3); margin-bottom: var(--space-3);
+      border: var(--border-width) solid var(--color-border); border-radius: var(--radius-md);
+      background: var(--color-surface);
+    }
+    .legend h3 { margin: 0 var(--space-3) 0 0; font-size: var(--label-size); text-transform: uppercase; letter-spacing: var(--label-tracking); color: var(--color-text-muted); }
+    .legend-item { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--meta-size); }
+    /* ---- Index (searchable knowledge directory) ---- */
+    .index-page { padding: var(--space-3) var(--space-6) var(--space-8); display: grid; gap: var(--space-5); }
+    .index-intro { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-4); flex-wrap: wrap; }
+    .index-intro h2 { margin: 0; }
+    .index-intro p { margin: var(--space-1) 0 0; color: var(--color-text-muted); max-width: 46rem; }
+    .catalog-toolbar { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+    .catalog-toolbar .meta { margin-left: auto; }
+    .catalog-group { margin: 0; }
+    .catalog-group > h3 {
+      display: flex; align-items: center; gap: var(--space-2); margin: 0 0 var(--space-2);
+      font-size: 0.95rem; color: var(--color-text);
+    }
+    .catalog-group > h3 .meta { font-weight: 400; }
+    .catalog-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr)); gap: var(--space-3); }
+    .catalog-card {
+      display: grid; gap: var(--space-2); align-content: start; min-height: 8.5rem;
+      padding: var(--space-4);
+      /* The artifact type is still colour-coded, but carried by the full hairline
+         rather than a thick left stripe — same signal, without the side-tab tell (DX3). */
+      border: var(--border-width) solid var(--type-color, var(--color-border));
+      border-radius: var(--radius-md); background: var(--cp-surface); box-shadow: var(--cp-shadow-sm);
+    }
+    .catalog-card h4 { margin: 0; font-size: 1rem; overflow-wrap: anywhere; }
+    .catalog-card .card-title-button {
+      width: 100%; text-align: left; border: 0; background: transparent; padding: 0;
+      font-size: 1rem; font-weight: 700; color: var(--color-text); cursor: pointer;
+    }
+    .catalog-card .card-title-button:hover { border: 0; color: var(--color-primary); text-decoration: underline; }
+    .catalog-card .card-title-button[data-selected="true"] { color: var(--color-primary); }
+    .catalog-card .card-title-button[data-search-match="true"] { outline: var(--search-outline-width) dashed var(--color-warning); outline-offset: 2px; }
+    .catalog-card .card-badges { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+    .catalog-card .card-summary { margin: 0; color: var(--color-text-muted); font-size: var(--meta-size); line-height: 1.5; }
+    .catalog-card .card-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: auto; }
+    .catalog-card .card-actions .button, .catalog-card .card-actions button { min-height: var(--target-min); min-width: var(--target-min); padding: var(--space-2) var(--space-3); }
+    .catalog-card[data-selected="true"] { border-color: var(--color-primary); box-shadow: inset var(--selection-inset) 0 var(--color-primary), var(--cp-shadow-sm); }
+    .catalog-card[data-search-match="true"] { outline: var(--search-outline-width) dashed var(--color-warning); outline-offset: 2px; }
+    @media (prefers-reduced-motion: no-preference) { .catalog-card { transition: border-color var(--motion-fast), transform var(--motion-fast); } .catalog-card:hover { transform: translateY(-2px); } }
+    /* ---- Immersive WebGL 3D layer ---- */
+    .spatial-stage canvas[data-spatial-gl] {
+      position: absolute; inset: 0; width: 100%; height: 100%; display: block;
+      touch-action: none; z-index: 0; pointer-events: none;
+      background:
+        radial-gradient(120% 120% at 30% 15%, rgba(80,120,200,0.16), transparent 55%),
+        radial-gradient(120% 130% at 80% 90%, rgba(177,31,75,0.16), transparent 55%),
+        #0b1020;
+    }
+    @media (prefers-color-scheme: light) {
+      .spatial-stage canvas[data-spatial-gl] {
+        background:
+          radial-gradient(120% 120% at 30% 15%, rgba(120,150,220,0.20), transparent 55%),
+          radial-gradient(120% 130% at 80% 90%, rgba(177,31,75,0.14), transparent 55%),
+          #10162c;
+      }
+    }
+    .spatial-stage[data-immersive="true"] svg[data-spatial-svg] { position: absolute; inset: 0; z-index: 1; background: transparent; }
+    .spatial-stage[data-immersive="true"] .spatial-edge { stroke: transparent; }
+    .spatial-stage[data-immersive="true"] .node-control {
+      background: transparent; border-color: transparent; color: #f4f6ff;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.9), 0 0 2px rgba(0,0,0,0.9);
+    }
+    .spatial-stage[data-immersive="true"] .node-control[data-selected="true"] { border-color: #ffffff; }
+    .spatial-stage[data-immersive="true"] .node-control:focus { outline-color: #ffffff; }
+    .spatial-stage[data-immersive="true"] .spatial-hint { z-index: 2; background: rgba(12,18,38,0.82); color: #d7ddf0; border-color: rgba(255,255,255,0.18); }
+    .spatial-tooltip {
+      position: absolute; z-index: 3; pointer-events: none; max-width: 20rem;
+      padding: var(--space-2) var(--space-3); border-radius: var(--radius-md);
+      background: rgba(12,18,38,0.94); color: #eef1fb; border: 1px solid rgba(255,255,255,0.22);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.45); font-size: var(--meta-size);
+      transform: translate(-50%, calc(-100% - 14px)); opacity: 0; transition: opacity var(--motion-fast);
+    }
+    .spatial-tooltip[data-visible="true"] { opacity: 1; }
+    .spatial-tooltip strong { display: block; }
+    .spatial-tooltip .tt-type { display: inline-flex; align-items: center; gap: var(--space-2); margin-top: 2px; opacity: 0.85; }
+    @media (forced-colors: active) {
+      .spatial-stage canvas[data-spatial-gl] { display: none; }
+      .spatial-stage[data-immersive="true"] svg[data-spatial-svg] { position: static; }
+      .spatial-stage[data-immersive="true"] .spatial-edge { stroke: GrayText; }
+      .spatial-stage[data-immersive="true"] .node-control { background: Canvas; border-color: ButtonText; color: CanvasText; text-shadow: none; }
+      .type-dot { forced-color-adjust: auto; }
+    }
+    @media (max-width: 720px) {
+      .index-page { padding: var(--space-3); }
+      .catalog-grid { grid-template-columns: 1fr; }
+      .app-header { padding: var(--space-3); }
+      .search { grid-template-columns: minmax(0, 1fr) auto auto; width: 100%; min-width: 0; }
+      .search input { min-width: 0; }
+      .tabs, .notice, .health { margin-left: 0; margin-right: 0; padding-left: var(--space-3); padding-right: var(--space-3); }
+      .knowledge-surfaces { margin: var(--space-3); }
+      .shell { display: block; min-height: 0; }
+      .panel { display: none; border: 0; min-height: calc(100vh - var(--narrow-panel-offset)); padding: var(--space-3); }
+      body[data-route="browse"] .browse-panel,
+      body[data-route="visualization"] .visual-panel,
+      body[data-route="details"] .details-panel { display: block; }
+      .route-back { display: inline-flex; }
+      .narrow-selection-actions {
+        display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2);
+        margin-bottom: var(--space-3);
+      }
+      .narrow-selection-action { display: inline-flex; }
+      .narrow-selection-actions .meta { flex-basis: 100%; margin: 0; }
+      .visualization { min-height: var(--narrow-visual-min-height); }
+    }
+  </style>
+</head>
+<body data-route="browse">
+  <a class="skip-link" href="#main">Skip to project map</a>
+  <div id="app" data-state="loading">
+    <header class="app-header">
+      <div class="brand"><h1>Docs Explorer</h1><p>Loading project map...</p></div>
+      <div class="search">
+        <label class="sr-only" for="loading-search">Search artifacts and knowledge surfaces</label>
+        <input id="loading-search" type="search" placeholder="Find an artifact or knowledge surface" disabled>
+        <button type="button" disabled>Previous match</button>
+        <button type="button" disabled>Next match</button>
+      </div>
+    </header>
+    <div class="tabs" role="tablist" aria-label="Explorer projection">
+      <button class="projection-choice" role="tab" aria-selected="true" disabled>Index</button>
+      <button class="projection-choice" role="tab" aria-selected="false" disabled>Graph</button>
+      <button class="projection-choice" role="tab" aria-selected="false" disabled>Mind map</button>
+      <button class="projection-choice" role="tab" aria-selected="false" disabled>3D</button>
+    </div>
+    <main id="main" class="loading-main" aria-busy="true">
+      <section class="panel loading-panel" aria-labelledby="loading-heading">
+        <h2 id="loading-heading">Knowledge index</h2>
+        <p>Loading the local project index...</p>
+        <div class="skeleton-list" aria-hidden="true">
+          <div class="skeleton-row" data-skeleton-row></div>
+          <div class="skeleton-row" data-skeleton-row></div>
+          <div class="skeleton-row" data-skeleton-row></div>
+          <div class="skeleton-row" data-skeleton-row></div>
+        </div>
+      </section>
+    </main>
+  </div>
+  <div id="explorer-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+  <script>
+    window.__docsExplorerLoadState = "loading";
+    window.__docsExplorerLoadFailed = function (code) {
+      if (window.__docsExplorerLoadState === "ready") return;
+      window.__docsExplorerLoadState = "failed";
+      clearTimeout(window.__docsExplorerLoadTimer);
+      document.getElementById("app").dataset.state = "failed";
+      document.getElementById("app").innerHTML =
+        '<header class="app-header"><div class="brand"><h1>Docs Explorer</h1><p>Local project map</p></div></header>' +
+        '<main id="main"><section role="alert" class="notice"><strong>' + code +
+        '</strong> The project map could not be loaded. Check the local Explorer assets and retry. ' +
+        '<button type="button" onclick="location.reload()">Retry loading</button></section></main>';
+    };
+    window.__docsExplorerLoadTimer = setTimeout(function () {
+      window.__docsExplorerLoadFailed("DOC.INDEX.UNAVAILABLE");
+    }, 5000);
+  </script>
+  <script src="./docs-index.js" onerror="window.__docsExplorerLoadFailed('DOC.INDEX.UNAVAILABLE')"></script>
+  <script src="./ai-forward-pack/scripts/docs-explorer-core.js" onerror="window.__docsExplorerLoadFailed('DOC.INDEX.UNAVAILABLE')"></script>
+  <script>
+    (function () {
+      "use strict";
+      if (window.__docsExplorerLoadState === "failed") return;
+      const app = document.getElementById("app");
+      const statusRegion = document.getElementById("explorer-status");
+      const index = window.DOCS_INDEX;
+      const core = window.DocsExplorerCore;
+      if (!index || !core) {
+        window.__docsExplorerLoadFailed("DOC.INDEX.UNAVAILABLE");
+        return;
+      }
+      const SOURCE_DEADLINE_MS = 5000;
+      const SOURCE_MAX_BYTES = 1024 * 1024;
+      const narrow = () => matchMedia("(max-width: 720px)").matches;
+      let state = core.decodeUrlState(new URLSearchParams(location.hash.slice(1)), index, { narrow: narrow() });
+      let activeMatchIndex = 0;
+      let sourceState = { artifactId: null, status: "idle", text: "", errorCode: "" };
+      let sourceRequestSequence = 0;
+      let sourceAbortController = null;
+      let searchComposing = false;
+      let searchRenderFrame = null;
+      let focusRestoreGeneration = 0;
+      let appHistoryDepth = Number(history.state?.docsExplorerDepth || 0);
+      let spatialZoomTier = "overview";
+      let spatialCamera = null;
+      let spatialCameraFocusId = null;
+      let spatialCameraTargetKey = null;
+      let activeSpatialProjection = null;
+      let spatialDrag = null;
+      let spatialCameraFrame = null;
+      let spatialCameraDestination = null;
+      let spatialInputFrame = null;
+      let spatialDomNodes = new Map();
+      let spatialDomEdges = new Map();
+      let pendingSpatialTarget = null;
+      let spatialGL = null;
+      let spatialGLStyle = null;
+      let spatialTooltipEl = null;
+      const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+      const forcedColors = matchMedia("(forced-colors: active)");
+      const spatial3DSupported =
+        typeof SVGSVGElement !== "undefined" &&
+        typeof PointerEvent !== "undefined" &&
+        typeof requestAnimationFrame === "function";
+      const indexBytes = new TextEncoder().encode(JSON.stringify(index)).length;
+      const relationshipCount = (index.artifacts || []).reduce(
+        (total, artifact) => total + (artifact.links || []).length,
+        0,
+      );
+
+      function esc(value) {
+        return String(value ?? "").replace(/[&<>"']/g, (character) => ({
+          "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+        }[character]));
+      }
+      function artifactById(id) { return index.artifacts.find((artifact) => artifact.id === id); }
+      const TYPE_PALETTE = [
+        "#4f9dff", "#ff6b6b", "#ffc857", "#34d399", "#a78bfa", "#f472b6",
+        "#38bdf8", "#fb923c", "#22d3ee", "#a3e635", "#e879f9", "#f59e0b",
+        "#2dd4bf", "#818cf8", "#fca5a5", "#86efac",
+      ];
+      const typeOrder = (index.artifactTypes && index.artifactTypes.length)
+        ? index.artifactTypes
+        : [...new Set((index.artifacts || []).map((a) => a.type))].sort();
+      function typeRankOf(type) {
+        const rank = typeOrder.indexOf(type);
+        if (rank >= 0) return rank;
+        let hash = 0;
+        for (const ch of String(type || "")) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+        return hash;
+      }
+      function typeColorHex(type) { return TYPE_PALETTE[typeRankOf(type) % TYPE_PALETTE.length]; }
+      function typeColorRgb(type) {
+        const hex = typeColorHex(type);
+        return [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+      }
+      const webglSupported = (() => {
+        if (typeof document === "undefined" || typeof WebGLRenderingContext === "undefined") return false;
+        try {
+          const probe = document.createElement("canvas");
+          const gl = probe.getContext("webgl") || probe.getContext("experimental-webgl");
+          return Boolean(gl);
+        } catch (_) { return false; }
+      })();
+      function safeDocsHref(rawPath, requiredSuffix = "") {
+        const path = String(rawPath || "").replace(/\\/g, "/");
+        if (!path.startsWith("docs/") || path.split("/").includes("..") ||
+            (requiredSuffix && !path.endsWith(requiredSuffix))) {
+          return null;
+        }
+        try {
+          const base = new URL("./", document.baseURI);
+          const target = new URL(path.slice("docs/".length), base);
+          return target.origin === base.origin && target.pathname.startsWith(base.pathname)
+            ? target.href
+            : null;
+        } catch (_) {
+          return null;
+        }
+      }
+      function hrefFor(artifact) {
+        const href = safeDocsHref(artifact.path);
+        if (!href) throw sourceFailure("DOC.SOURCE.PATH_REJECTED");
+        return href;
+      }
+      function safeHrefFor(artifact) {
+        try { return hrefFor(artifact); }
+        catch (_) { return null; }
+      }
+      function safeSurfaceHref(surface) {
+        return safeDocsHref(surface?.path, ".html");
+      }
+      async function sourceSha256(text) {
+        if (!crypto.subtle) throw sourceFailure("DOC.SOURCE.INTEGRITY_UNAVAILABLE");
+        const normalized = String(text).replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+        const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(normalized));
+        return [...new Uint8Array(digest)]
+          .map((byte) => byte.toString(16).padStart(2, "0"))
+          .join("");
+      }
+      function sourceFailure(code) {
+        const error = new Error(code);
+        error.code = code;
+        return error;
+      }
+      function sourceFailureCode(error) {
+        if (error?.code) return error.code;
+        if (error?.name === "TimeoutError") return "DOC.SOURCE.TIMEOUT";
+        return "DOC.SOURCE.FETCH_FAILED";
+      }
+      function focusKey() {
+        const active = document.activeElement;
+        return active?.dataset?.focusKey || active?.id || null;
+      }
+      function policy(name) { return index.traversalPolicies?.[name] || []; }
+      function contextFor(model, rootId) {
+        return core.neighborhood(model, rootId, 2, policy("explore-neighborhood"));
+      }
+      async function boundedResponseText(response, maximumBytes) {
+        const declared = Number(response.headers.get("content-length") || 0);
+        if (declared > maximumBytes) throw sourceFailure("DOC.SOURCE.TOO_LARGE");
+        if (!response.body?.getReader) {
+          const bytes = new Uint8Array(await response.arrayBuffer());
+          if (bytes.byteLength > maximumBytes) throw sourceFailure("DOC.SOURCE.TOO_LARGE");
+          return new TextDecoder().decode(bytes);
+        }
+        const reader = response.body.getReader();
+        const chunks = [];
+        let total = 0;
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            total += value.byteLength;
+            if (total > maximumBytes) {
+              await reader.cancel("source over limit");
+              throw sourceFailure("DOC.SOURCE.TOO_LARGE");
+            }
+            chunks.push(value);
+          }
+        } finally {
+          reader.releaseLock();
+        }
+        const bytes = new Uint8Array(total);
+        let offset = 0;
+        for (const chunk of chunks) {
+          bytes.set(chunk, offset);
+          offset += chunk.byteLength;
+        }
+        return new TextDecoder().decode(bytes);
+      }
+      function indexLimitFailure() {
+        if (indexBytes > (index.limits?.indexBytes ?? 5 * 1024 * 1024)) return "indexBytes";
+        if (index.artifacts.length > (index.limits?.artifacts ?? 1000)) return "artifacts";
+        if (relationshipCount > (index.limits?.relationships ?? 5000)) return "relationships";
+        if ((index.surfaces || []).length > (index.limits?.surfaces ?? 100)) return "surfaces";
+        return null;
+      }
+      function announce(message) {
+        if (!message) return;
+        statusRegion.textContent = "";
+        requestAnimationFrame(() => { statusRegion.textContent = message; });
+      }
+      function cancelSourceRequest() {
+        sourceRequestSequence += 1;
+        sourceAbortController?.abort();
+        sourceAbortController = null;
+        sourceState = { artifactId: null, status: "idle", text: "", errorCode: "" };
+      }
+      function recoveryShell(code, message) {
+        window.__docsExplorerLoadState = "failed";
+        clearTimeout(window.__docsExplorerLoadTimer);
+        app.dataset.state = "failed";
+        app.innerHTML = `<header class="app-header"><div class="brand"><h1>Docs Explorer</h1>
+          <p>Local project map</p></div></header>
+          <main id="main"><section role="alert" class="notice"><strong>${esc(code)}</strong>
+            ${esc(message)} <button type="button" onclick="location.reload()">Retry loading</button>
+          </section></main>`;
+      }
+      function announcementFor(event, model) {
+        if (event.type === "SELECT_NODE") {
+          return `Selected ${artifactById(event.id)?.title || event.id}.`;
+        }
+        if (event.type === "SET_SEARCH" && !event.query) return "Search cleared";
+        if (event.type === "EXPLORE_CONTEXT") {
+          const context = contextFor(model, event.id);
+          const direct = [...context.depth.values()].filter((depth) => depth === 1).length;
+          const second = [...context.depth.values()].filter((depth) => depth === 2).length;
+          return `Explored ${artifactById(event.id)?.title || event.id}: ${direct} direct and ${second} two-hop neighbors.`;
+        }
+        if (event.type === "LEAVE_CONTEXT") return "Left neighborhood context.";
+        return state.notice;
+      }
+      function commit(event, options = {}) {
+        const returnFocusKey = options.focusKey ?? focusKey();
+        if (options.history !== false && options.history !== "replace") {
+          history.replaceState({
+            ...(history.state || {}),
+            focusKey: returnFocusKey,
+            docsExplorerDepth: appHistoryDepth,
+          }, "", location.href);
+        }
+        state = core.reduceState(state, event, index, { narrow: narrow() });
+        const encoded = core.encodeUrlState(state);
+        const destination = encoded ? "#" + encoded : location.pathname;
+        if (options.history === "replace") {
+          history.replaceState({ docsExplorerDepth: appHistoryDepth }, "", destination);
+        } else if (options.history !== false) {
+          appHistoryDepth += 1;
+          history.pushState({ docsExplorerDepth: appHistoryDepth }, "", destination);
+        }
+        const model = core.normalizeProjection(index, state.filters);
+        render({
+          focusKey: options.nextFocusKey ?? returnFocusKey,
+          focusHeading: options.focusHeading,
+          announcement: options.announcement || announcementFor(event, model),
+          restoreFallback: options.restoreFallback,
+        });
+      }
+      function focusRestoredState() {
+        let target = null;
+        if (state.route === "browse" && state.selectedNodeId) {
+          target = app.querySelector(`[data-focus-key="index-${CSS.escape(state.selectedNodeId)}"]`) ||
+            app.querySelector(`[role="treeitem"][data-id="${CSS.escape(state.selectedNodeId)}"]`);
+        } else if (state.route === "visualization" && state.selectedNodeId) {
+          target = app.querySelector(`[data-node-id="${CSS.escape(state.selectedNodeId)}"]`);
+        } else if (state.route === "details") {
+          target = document.getElementById("details-heading");
+        }
+        (target || app.querySelector('.projection-choice[aria-selected="true"]'))?.focus();
+      }
+      function searchSnapshot() {
+        try {
+          const model = core.normalizeProjection(index, state.filters);
+          const query = state.search.query.trim();
+          return {
+            query: state.search.query,
+            matches: core.searchMatches(model.nodes, state.search.query).length
+              + (query ? knowledgeSurfaceMatches(query).length : 0),
+          };
+        } catch {
+          return { query: state.search.query, matches: 0 };
+        }
+      }
+      function scheduleSearchRender(selection, previousSearch) {
+        focusRestoreGeneration += 1;
+        if (searchRenderFrame !== null) cancelAnimationFrame(searchRenderFrame);
+        searchRenderFrame = requestAnimationFrame(() => {
+          searchRenderFrame = null;
+          render({ searchSelection: selection, previousSearch });
+        });
+      }
+      function restore(event) {
+        appHistoryDepth = Number(event?.state?.docsExplorerDepth || 0);
+        const decoded = core.decodeUrlState(
+          new URLSearchParams(location.hash.slice(1)),
+          index,
+          { narrow: narrow() },
+        );
+        state = core.reduceState(
+          state,
+          { type: "RESTORE_STATE", state: decoded },
+          index,
+          { narrow: narrow() },
+        );
+        render({ focusKey: event?.state?.focusKey, restoreFallback: true });
+      }
+      window.addEventListener("popstate", restore);
+      window.addEventListener("resize", () => {
+        const priorFocus = focusKey();
+        state = core.normalizeState(state, index, narrow());
+        render({ focusKey: priorFocus, restoreFallback: true });
+      });
+
+      function healthSummary(model) {
+        const stale = model.nodes.filter((node) => node.health.includes("stale")).length;
+        const flagged = model.nodes.filter((node) => node.health.includes("review-suggested")).length;
+        if (!stale && !flagged) return "";
+        return `<div class="health">Some context is stale or incomplete. Review graph health before using it. ` +
+          `<span class="meta">${stale} stale, ${flagged} review suggested.</span></div>`;
+      }
+
+      const PROJECTION_LABELS = { browse: "Index", graph: "Graph", mindmap: "Mind map", spatial3d: "3D" };
+      function tabs() {
+        return `<div class="tabs" role="tablist" aria-label="Explorer projection">
+          ${["browse","graph","mindmap","spatial3d"].map((projection) => {
+            const label = PROJECTION_LABELS[projection];
+            const selected = state.projection === projection;
+            return `<button class="projection-choice" id="projection-${projection}" role="tab"
+              data-focus-key="tab-${projection}" data-action="projection" data-value="${projection}"
+              aria-selected="${selected}" aria-controls="main" tabindex="${selected ? "0" : "-1"}">${label}</button>`;
+          }).join("")}
+        </div>`;
+      }
+
+      function safeKnowledgeSurfaces() {
+        return (index.surfaces || [])
+          .map((surface) => ({ ...surface, href: safeSurfaceHref(surface) }))
+          .filter((surface) => surface.href);
+      }
+
+      function knowledgeSurfaceMatches(query = state.search.query) {
+        const normalizedQuery = String(query || "").trim().toLowerCase();
+        return safeKnowledgeSurfaces().filter((surface) =>
+          !normalizedQuery || [surface.title, surface.kind, surface.description]
+            .some((value) => String(value || "").toLowerCase().includes(normalizedQuery)));
+      }
+
+      function knowledgeSurfaces(surfaces = knowledgeSurfaceMatches()) {
+        const emptyMessage = safeKnowledgeSurfaces().length
+          ? "No knowledge surfaces match this search."
+          : "No standalone knowledge surfaces were discovered.";
+        return `<nav class="knowledge-surfaces" aria-labelledby="knowledge-surfaces-heading">
+          <header>
+            <div><h2 id="knowledge-surfaces-heading">Knowledge surfaces</h2>
+              <p class="meta">Open the project timeline, deep documentation, and visual design tools.</p></div>
+            <span class="badge">${surfaces.length} destination${surfaces.length === 1 ? "" : "s"}</span>
+          </header>
+          ${surfaces.length ? `<div class="surface-grid">${surfaces.map((surface) => `
+            <article class="surface-card" data-kind="${esc(surface.kind)}">
+              <span class="badge">${esc(surface.kind)}</span>
+              <strong>${esc(surface.title)}</strong>
+              <p class="meta">${esc(surface.description || "Project knowledge surface")}</p>
+              <div class="surface-actions">
+                <a class="button" href="${esc(surface.href)}"
+                  aria-label="Open ${esc(surface.title)}">Open</a>
+                ${surface.artifactId && artifactById(surface.artifactId)
+                  ? `<button data-action="select-surface-artifact" data-id="${esc(surface.artifactId)}"
+                      data-focus-key="surface-${esc(surface.id)}">Locate in graph</button>`
+                  : ""}
+              </div>
+            </article>`).join("")}</div>` : `<p class="meta">${emptyMessage}</p>`}
+        </nav>`;
+      }
+
+      function filterPanel(model) {
+        const types = [...new Set(index.artifacts.map((artifact) => artifact.type))].sort();
+        return `<form class="filters" id="filters-form">
+          <strong>Filters</strong>
+          <fieldset class="filter-group"><legend>Type</legend>
+            <div class="filter-options">${types.map((type) =>
+              `<label><input type="checkbox" name="type" value="${esc(type)}" ${state.filters.types.includes(type) ? "checked" : ""}>${esc(type)}</label>`
+            ).join("")}</div>
+          </fieldset>
+          <fieldset class="filter-group"><legend>Health</legend>
+            <div class="filter-options">
+              <label><input type="checkbox" name="health" value="stale" ${state.filters.health.includes("stale") ? "checked" : ""}>Stale</label>
+              <label><input type="checkbox" name="health" value="review-suggested" ${state.filters.health.includes("review-suggested") ? "checked" : ""}>Review suggested</label>
+            </div>
+          </fieldset>
+          <div class="filter-options">
+            <button type="submit" data-focus-key="apply-filters">Apply filters</button>
+            <button type="button" data-action="clear-filters" data-focus-key="clear-filters">Clear filters</button>
+            <span class="meta">${model.nodes.length} visible artifacts</span>
+          </div>
+        </form>`;
+      }
+
+      function browse(model, matches) {
+        const groups = new Map();
+        for (const node of model.nodes) {
+          if (!groups.has(node.type)) groups.set(node.type, []);
+          groups.get(node.type).push(node);
+        }
+        if (!model.nodes.length) return `<div class="empty">No artifacts match these filters.
+          <button type="button" data-action="clear-filters" data-focus-key="clear-filters-empty">Clear filters</button>
+        </div>`;
+        const entries = [...groups.entries()];
+        const treeSelectionVisible = model.nodes.some((node) => node.id === state.selectedNodeId);
+        return `<div role="tree" aria-label="Project artifacts">${entries.map(([type, nodes], groupIndex) => `
+          <button role="treeitem" data-kind="group" data-group-id="${esc(type)}"
+            aria-owns="tree-group-children-${esc(type)}"
+            data-focus-key="tree-group-${esc(type)}" aria-expanded="true" aria-level="1"
+            aria-posinset="${groupIndex + 1}" aria-setsize="${entries.length}"
+            tabindex="${!treeSelectionVisible && groupIndex === 0 ? "0" : "-1"}">
+            ${esc(type)} <span class="meta">${nodes.length} artifacts</span>
+          </button>
+          <div id="tree-group-children-${esc(type)}" role="group" data-group="${esc(type)}">
+            ${nodes.map((node, nodeIndex) => {
+              const match = matches.includes(node.id);
+              return `<button role="treeitem" data-kind="artifact" data-parent-group="${esc(type)}"
+                data-action="select" data-id="${esc(node.id)}" data-focus-key="tree-${esc(node.id)}"
+                aria-selected="${state.selectedNodeId === node.id}" data-search-match="${match}"
+                aria-level="2" aria-posinset="${nodeIndex + 1}" aria-setsize="${nodes.length}"
+                tabindex="${state.selectedNodeId === node.id ? "0" : "-1"}">
+                <span>${esc(node.title)}</span>
+                ${match ? '<span class="match-indicator">Search match</span>' : ""}
+                <span class="meta">${esc(node.status)} · ${esc(node.id)}</span>
+              </button>`;
+            }).join("")}
+          </div>`).join("")}</div>`;
+      }
+
+      function catalogCard(node, matches) {
+        const color = typeColorHex(node.type);
+        const match = matches.includes(node.id);
+        const selected = state.selectedNodeId === node.id;
+        const health = (node.health || []).filter((item) => item !== "healthy");
+        const href = safeHrefFor(node);
+        const relationshipCount = (node.links || []).length;
+        const accessibleName = `${node.title}, ${node.type}, ${node.status}${health.length ? `, health ${health.join(", ")}` : ""}${match ? ", search match" : ""}`;
+        return `<article class="catalog-card" data-artifact-card data-id="${esc(node.id)}"
+            data-selected="${selected}" data-search-match="${match}" style="--type-color:${color}">
+          <div class="card-badges">
+            <span class="badge"><span class="type-dot"></span> ${esc(node.type)}</span>
+            <span class="badge">${esc(node.status)}</span>
+            ${health.map((item) => `<span class="badge ${esc(item)}">${esc(item)}</span>`).join(" ")}
+            ${match ? '<span class="match-indicator">Search match</span>' : ""}
+          </div>
+          <button class="card-title-button" data-action="select" data-id="${esc(node.id)}"
+            data-focus-key="index-${esc(node.id)}" data-selected="${selected}" data-search-match="${match}"
+            aria-pressed="${selected}" aria-label="${esc(accessibleName)}">
+            <span class="card-title">${esc(node.title)}</span>
+          </button>
+          <p class="card-summary">${esc(node.summary || "No summary available.")}</p>
+          <div class="card-actions">
+            ${href ? `<a class="button" href="${esc(href)}" aria-label="Open ${esc(node.title)} source file">Open</a>` : ""}
+            <button data-action="locate-graph" data-id="${esc(node.id)}" data-focus-key="graph-locate-${esc(node.id)}"
+              aria-label="Show ${esc(node.title)} in the graph">Graph</button>
+          </div>
+        </article>`;
+      }
+
+      function typeLegend(types) {
+        if (!types.length) return "";
+        return `<div class="legend"><h3>Types</h3>${types.map((type) =>
+          `<span class="legend-item"><span class="type-dot" style="--type-color:${typeColorHex(type)}"></span>${esc(type)}</span>`
+        ).join("")}</div>`;
+      }
+
+      function catalog(model, matches) {
+        if (!model.nodes.length) return `<div class="empty">No artifacts match this search or these filters.
+          <button type="button" data-action="clear-filters" data-focus-key="clear-filters-empty">Clear filters</button>
+        </div>`;
+        const groups = new Map();
+        for (const node of model.nodes) {
+          if (!groups.has(node.type)) groups.set(node.type, []);
+          groups.get(node.type).push(node);
+        }
+        const usedTypes = [...groups.keys()];
+        const matchNote = state.search.query.trim()
+          ? `<span class="meta">${matches.length} of ${model.nodes.length} match "${esc(state.search.query.trim())}"</span>`
+          : `<span class="meta">${model.nodes.length} artifacts</span>`;
+        const groupsMarkup = [...groups.entries()].map(([type, nodes]) => `
+          <section class="catalog-group" aria-label="${esc(type)} artifacts">
+            <h3><span class="type-dot" style="--type-color:${typeColorHex(type)}"></span> ${esc(type)}
+              <span class="meta">${nodes.length}</span></h3>
+            <div class="catalog-grid">${nodes.map((node) => catalogCard(node, matches)).join("")}</div>
+          </section>`).join("");
+        return `<div class="catalog-toolbar">${matchNote}</div>${typeLegend(usedTypes)}${groupsMarkup}`;
+      }
+
+      function pathEdgeIds(model) {
+        if (state.pathMode === "none" || !state.selectedNodeId) return new Set();
+        return new Set(
+          core.policyPaths(model, state.selectedNodeId, policy(state.pathMode), 2)
+            .map((path) => path.edgeId),
+        );
+      }
+
+      function graphViewBox(layout, context) {
+        if (!context || !context.ids.size) return `0 0 ${layout.width} ${layout.height}`;
+        const focusNodes = layout.nodes.filter((node) => (context.depth.get(node.id) ?? 99) <= 1);
+        if (!focusNodes.length) return `0 0 ${layout.width} ${layout.height}`;
+        const xs = focusNodes.map((node) => node.x);
+        const ys = focusNodes.map((node) => node.y);
+        const left = Math.max(0, Math.min(...xs) - 130);
+        const top = Math.max(0, Math.min(...ys) - 90);
+        const width = Math.max(320, Math.max(...xs) - Math.min(...xs) + 260);
+        const height = Math.max(240, Math.max(...ys) - Math.min(...ys) + 180);
+        return `${left} ${top} ${width} ${height}`;
+      }
+
+      function graphNodeViewBox(layout, nodeId) {
+        const node = layout.nodes.find((candidate) => candidate.id === nodeId);
+        if (!node) return graphViewBox(layout, null);
+        const width = Math.min(layout.width, 360);
+        const height = Math.min(layout.height, 280);
+        const left = Math.max(0, Math.min(layout.width - width, node.x - width / 2));
+        const top = Math.max(0, Math.min(layout.height - height, node.y - height / 2));
+        return `${left} ${top} ${width} ${height}`;
+      }
+
+      function spatialLayout(model, projection) {
+        const nodeLimit = index.limits?.spatialNodes ?? 500;
+        const edgeLimit = index.limits?.spatialEdges ?? 1000;
+        if (model.nodes.length > nodeLimit || model.edges.length > edgeLimit) return null;
+        if (projection === "spatial3d") return core.deterministic3DLayout(model);
+        const dimensions = core.layoutDimensions(model.nodes.length);
+        const rootId = core.mindMapRoot(state, index);
+        return projection === "mindmap"
+          ? core.radialLayout(model, rootId, dimensions.width, dimensions.height, policy("explore-neighborhood"))
+          : core.deterministicLayout(model, dimensions.width, dimensions.height);
+      }
+
+      function canonicalSpatialTarget(layout) {
+        const availableSelected = layout.nodes.some((node) => node.id === state.selectedNodeId)
+          ? state.selectedNodeId
+          : null;
+        const availableContext = layout.nodes.some((node) => node.id === state.contextNodeId)
+          ? state.contextNodeId
+          : null;
+        const focusId = availableSelected || availableContext || "__centroid__";
+        const camera = core.canonicalSpatialCamera(layout, availableSelected, availableContext);
+        const targetKey = `${focusId}:${camera.target.x}:${camera.target.y}:${camera.target.z}`;
+        return { availableSelected, availableContext, focusId, camera, targetKey };
+      }
+
+      function ensureSpatialCamera(layout) {
+        const target = canonicalSpatialTarget(layout);
+        if (!spatialCamera) {
+          spatialCamera = target.camera;
+          spatialCameraFocusId = target.focusId;
+          spatialCameraTargetKey = target.targetKey;
+        } else if (spatialCameraTargetKey !== target.targetKey) {
+          spatialCameraFocusId = target.focusId;
+          spatialCameraTargetKey = target.targetKey;
+          if (reducedMotion.matches || forcedColors.matches) {
+            spatialCamera = { ...spatialCamera, target: target.camera.target };
+          } else {
+            pendingSpatialTarget = target.camera.target;
+          }
+        }
+        return spatialCamera;
+      }
+
+      function spatialProjection(layout) {
+        const projected = core.projectSpatialLayout(layout, ensureSpatialCamera(layout), 1200, 760);
+        activeSpatialProjection = {
+          ...projected,
+          nodes: projected.nodes.map((node) => ({ ...node, x: node.screenX, y: node.screenY })),
+        };
+        return projected;
+      }
+
+      function spatial3DView(model, matches, worldLayout, projected) {
+        if (!worldLayout || !projected) return "";
+        if (!projected.nodes.length) return `<div class="empty">No artifacts match these filters.
+          <button type="button" data-action="clear-filters" data-focus-key="clear-filters-empty">Clear filters</button>
+        </div>`;
+        const pathIds = pathEdgeIds(model);
+        const context = state.contextNodeId ? contextFor(model, state.contextNodeId) : null;
+        spatialGLStyle = {
+          colors: new Map(projected.nodes.map((node) => [node.id, typeColorRgb(node.type)])),
+          selectedId: state.selectedNodeId,
+          contextNodeId: state.contextNodeId,
+          contextIds: context ? context.ids : null,
+          depth: context ? context.depth : null,
+          pathEdgeIds: pathIds,
+          matchIds: new Set(matches),
+        };
+        const labelLimit = index.limits?.visibleLabels ?? 150;
+        const labelIds = new Set(projected.nodes
+          .filter((node) =>
+            node.id === state.selectedNodeId ||
+            node.id === state.contextNodeId ||
+            matches.includes(node.id) ||
+            node.health?.some((item) => item !== "healthy") ||
+            (context?.depth.get(node.id) ?? 99) <= 1
+          )
+          .slice(-labelLimit)
+          .map((node) => node.id));
+        const edgeSvg = projected.edges.map((edge) => {
+          const source = edge.sourcePoint;
+          const target = edge.targetPoint;
+          if (!source?.visible || !target?.visible) return "";
+          const unrelated = context && (!context.ids.has(edge.source) || !context.ids.has(edge.target));
+          const classes = ["spatial-edge", pathIds.has(edge.id) ? "path" : "", unrelated ? "unrelated" : ""]
+            .filter(Boolean).join(" ");
+          return `<line class="${classes}" data-spatial-edge="${esc(edge.id)}"
+            data-source-id="${esc(edge.source)}" data-target-id="${esc(edge.target)}"
+            x1="${source.screenX}" y1="${source.screenY}" x2="${target.screenX}" y2="${target.screenY}">
+            <title>${esc(edge.source)} ${esc(edge.rel)} ${esc(edge.target)}</title>
+          </line>`;
+        }).join("");
+        const rovingId = projected.nodes.some((node) => node.id === state.selectedNodeId)
+          ? state.selectedNodeId
+          : projected.nodes.at(-1)?.id;
+        const nodeSvg = projected.nodes.map((node) => {
+          const selected = state.selectedNodeId === node.id;
+          const isContext = state.contextNodeId === node.id;
+          const depth = context?.depth.get(node.id);
+          const contextClass = !context ? "" : isContext ? "context" :
+            depth === 1 ? "depth-1" : depth === 2 ? "depth-2" : "unrelated";
+          const match = matches.includes(node.id);
+          const relationships = model.edges.filter((edge) => edge.source === node.id || edge.target === node.id).length;
+          const health = (node.health || []).filter((item) => item !== "healthy");
+          const opacity = Math.max(0.48, Math.min(1, node.scale * 1.35));
+          const accessibleName = `${node.title}, ${node.type}, ${node.status}, ${relationships} relationships${health.length ? `, health ${health.join(", ")}` : ""}${match ? ", search match" : ""}`;
+          return `<foreignObject class="spatial-node-wrap" data-spatial-node="${esc(node.id)}"
+              x="${node.screenX - 72}" y="${node.screenY - 24}" width="144" height="64"
+              opacity="${opacity}" visibility="${node.visible ? "visible" : "hidden"}">
+            <button xmlns="http://www.w3.org/1999/xhtml" class="node-control ${contextClass}"
+              data-node-id="${esc(node.id)}" data-action="select" data-id="${esc(node.id)}"
+              data-focus-key="node-${esc(node.id)}" data-selected="${selected}" data-search-match="${match}"
+              aria-pressed="${selected}" tabindex="${node.id === rovingId ? "0" : "-1"}"
+              aria-label="${esc(accessibleName)}" title="${esc(node.title)}">
+              ${isContext ? '<span class="context-indicator" aria-hidden="true">◆ </span>' : ""}
+              ${health.length ? '<span class="health-marker" aria-hidden="true">!</span>' : ""}
+              ${labelIds.has(node.id)
+                ? `<span class="visual-label">${esc(node.title)}</span>`
+                : `<span class="visual-label" aria-hidden="true">•</span><span class="sr-only">${esc(node.title)}</span>`}
+              ${match ? '<span class="match-indicator">Match</span>' : ""}
+            </button>
+          </foreignObject>`;
+        }).join("");
+        const cameraTargetId = spatialCameraFocusId === "__centroid__" ? "" : spatialCameraFocusId;
+        return `<div class="visualization spatial-stage" role="region" aria-label="Spatial 3D project graph"
+            data-immersive="${webglSupported ? "true" : "false"}" tabindex="0">
+          <canvas data-spatial-gl aria-hidden="true"></canvas>
+          <svg data-spatial-svg data-camera-target-id="${esc(cameraTargetId)}"
+            data-camera-yaw="${spatialCamera.yaw}" data-camera-pitch="${spatialCamera.pitch}"
+            data-camera-zoom="${spatialCamera.zoom}"
+            data-camera-transitioning="${pendingSpatialTarget ? "true" : "false"}"
+            viewBox="0 0 1200 760" width="1200" height="760" preserveAspectRatio="none"
+            aria-label="Spatial 3D canvas. Use the orbit and zoom controls above, or drag and use the mouse wheel.">
+            <rect data-spatial-bg x="0" y="0" width="1200" height="760" fill="transparent" pointer-events="all"></rect>
+            ${edgeSvg}${nodeSvg}
+          </svg>
+          <div class="spatial-tooltip" data-spatial-tooltip aria-hidden="true"></div>
+          <p class="spatial-hint" aria-hidden="true">Immersive graph · drag to orbit · wheel to zoom · hover a sphere · select to focus</p>
+        </div>`;
+      }
+
+      const SPATIAL_VW = 1200;
+      const SPATIAL_VH = 760;
+
+      function compileShader(gl, type, src) {
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, src);
+        gl.compileShader(shader);
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+          throw new Error("shader compile failed: " + gl.getShaderInfoLog(shader));
+        }
+        return shader;
+      }
+      function makeProgram(gl, vsSrc, fsSrc) {
+        const program = gl.createProgram();
+        gl.attachShader(program, compileShader(gl, gl.VERTEX_SHADER, vsSrc));
+        gl.attachShader(program, compileShader(gl, gl.FRAGMENT_SHADER, fsSrc));
+        gl.linkProgram(program);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+          throw new Error("program link failed: " + gl.getProgramInfoLog(program));
+        }
+        return program;
+      }
+
+      const SPHERE_VS = `
+        attribute vec2 aPos; attribute float aSize; attribute vec3 aColor;
+        attribute float aAlpha; attribute float aRing;
+        varying vec3 vColor; varying float vAlpha; varying float vRing;
+        void main(){ gl_Position=vec4(aPos,0.0,1.0); gl_PointSize=aSize;
+          vColor=aColor; vAlpha=aAlpha; vRing=aRing; }`;
+      const SPHERE_FS = `
+        precision mediump float;
+        varying vec3 vColor; varying float vAlpha; varying float vRing;
+        void main(){
+          vec2 uv = gl_PointCoord*2.0-1.0;
+          float r2 = dot(uv,uv);
+          if(r2>1.0) discard;
+          float z = sqrt(max(0.0,1.0-r2));
+          vec3 n = vec3(uv, z);
+          vec3 lightDir = normalize(vec3(-0.35,-0.55,0.75));
+          float diff = clamp(dot(n,lightDir),0.0,1.0);
+          float rim = pow(1.0-z, 2.2)*0.55;
+          float spec = pow(clamp(dot(reflect(-lightDir,n),vec3(0.0,0.0,1.0)),0.0,1.0), 20.0)*0.5;
+          vec3 col = vColor*(0.34+diff*0.82) + vColor*rim + vec3(spec);
+          float a = vAlpha * smoothstep(1.0,0.82,r2);
+          if(vRing>0.5){
+            float ring = smoothstep(0.70,0.80,r2)*(1.0-smoothstep(0.93,1.0,r2));
+            col = mix(col, vec3(1.0), ring*0.95);
+          }
+          gl_FragColor = vec4(col, a);
+        }`;
+      const GLOW_FS = `
+        precision mediump float;
+        varying vec3 vColor; varying float vAlpha; varying float vRing;
+        void main(){
+          vec2 uv = gl_PointCoord*2.0-1.0;
+          float r = length(uv);
+          if(r>1.0) discard;
+          float a = exp(-r*r*3.0) * vAlpha * (vRing>0.5?0.9:0.5);
+          gl_FragColor = vec4(vColor, a);
+        }`;
+      const EDGE_VS = `
+        attribute vec2 aPos; attribute vec4 aColor; varying vec4 vC;
+        void main(){ gl_Position=vec4(aPos,0.0,1.0); vC=aColor; }`;
+      const EDGE_FS = `
+        precision mediump float; varying vec4 vC;
+        void main(){ gl_FragColor = vC; }`;
+
+      function setupSpatialGL() {
+        if (!webglSupported) return null;
+        const canvas = app.querySelector("[data-spatial-gl]");
+        if (!canvas) return null;
+        if (spatialGL && spatialGL.canvas === canvas) return spatialGL;
+        if (spatialGL && spatialGL.canvas !== canvas) {
+          try { spatialGL.gl.getExtension("WEBGL_lose_context")?.loseContext(); } catch (_) { /* ignore */ }
+          spatialGL = null;
+        }
+        try {
+          const gl = canvas.getContext("webgl", { alpha: true, antialias: true, premultipliedAlpha: false })
+            || canvas.getContext("experimental-webgl");
+          if (!gl) return null;
+          spatialGL = {
+            canvas, gl,
+            sphere: makeProgram(gl, SPHERE_VS, SPHERE_FS),
+            glow: makeProgram(gl, SPHERE_VS, GLOW_FS),
+            edge: makeProgram(gl, EDGE_VS, EDGE_FS),
+            pointBuffer: gl.createBuffer(),
+            edgeBuffer: gl.createBuffer(),
+          };
+          return spatialGL;
+        } catch (error) {
+          spatialGL = null;
+          app.querySelector(".spatial-stage")?.setAttribute("data-immersive", "false");
+          return null;
+        }
+      }
+
+      function drawSpatialGL(projected) {
+        const ctx = spatialGL;
+        if (!ctx || !projected || !spatialGLStyle) return;
+        const { gl, canvas } = ctx;
+        try {
+          const dpr = Math.min(2, window.devicePixelRatio || 1);
+          const cw = Math.max(1, Math.round(canvas.clientWidth * dpr));
+          const ch = Math.max(1, Math.round(canvas.clientHeight * dpr));
+          if (canvas.width !== cw || canvas.height !== ch) { canvas.width = cw; canvas.height = ch; }
+          gl.viewport(0, 0, cw, ch);
+          gl.clearColor(0, 0, 0, 0);
+          gl.clear(gl.COLOR_BUFFER_BIT);
+          gl.enable(gl.BLEND);
+          gl.disable(gl.DEPTH_TEST);
+
+          const style = spatialGLStyle;
+          const visible = projected.nodes.filter((node) => node.visible);
+          const depths = visible.map((node) => node.depth);
+          const minDepth = depths.length ? Math.min(...depths) : 0;
+          const maxDepth = depths.length ? Math.max(...depths) : 1;
+          const depthSpan = Math.max(1, maxDepth - minDepth);
+          const sizeScale = Math.min(cw, ch) / 760;
+
+          if (projected.edges.length) {
+            const verts = [];
+            for (const edge of projected.edges) {
+              const s = edge.sourcePoint, t = edge.targetPoint;
+              if (!s?.visible || !t?.visible) continue;
+              const path = style.pathEdgeIds.has(edge.id);
+              const unrelated = style.contextIds && (!style.contextIds.has(edge.source) || !style.contextIds.has(edge.target));
+              let r = 0.62, g = 0.68, b = 0.85, a = unrelated ? 0.12 : 0.28;
+              if (path) { r = 1.0; g = 0.85; b = 0.4; a = 0.85; }
+              verts.push((s.screenX / SPATIAL_VW) * 2 - 1, 1 - (s.screenY / SPATIAL_VH) * 2, r, g, b, a);
+              verts.push((t.screenX / SPATIAL_VW) * 2 - 1, 1 - (t.screenY / SPATIAL_VH) * 2, r, g, b, a);
+            }
+            if (verts.length) {
+              gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+              gl.useProgram(ctx.edge);
+              gl.bindBuffer(gl.ARRAY_BUFFER, ctx.edgeBuffer);
+              gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(verts), gl.DYNAMIC_DRAW);
+              const stride = 6 * 4;
+              const posLoc = gl.getAttribLocation(ctx.edge, "aPos");
+              const colLoc = gl.getAttribLocation(ctx.edge, "aColor");
+              gl.enableVertexAttribArray(posLoc); gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, stride, 0);
+              gl.enableVertexAttribArray(colLoc); gl.vertexAttribPointer(colLoc, 4, gl.FLOAT, false, stride, 2 * 4);
+              gl.drawArrays(gl.LINES, 0, verts.length / 6);
+            }
+          }
+
+          const points = [];
+          for (const node of visible) {
+            const color = style.colors.get(node.id) || [0.6, 0.6, 0.6];
+            const depthFactor = 1 - (node.depth - minDepth) / depthSpan;
+            let alpha = 0.4 + 0.6 * depthFactor;
+            const selected = node.id === style.selectedId;
+            if (style.contextIds) {
+              const depth = style.depth?.get(node.id);
+              const isContext = node.id === style.contextNodeId;
+              alpha *= (isContext || depth === 1) ? 1 : depth === 2 ? 0.55 : 0.22;
+            }
+            let size = Math.max(14, Math.min(170, 54 * node.scale * sizeScale));
+            if (selected) size *= 1.45;
+            points.push(
+              (node.screenX / SPATIAL_VW) * 2 - 1, 1 - (node.screenY / SPATIAL_VH) * 2,
+              size, color[0], color[1], color[2], Math.min(1, alpha), selected ? 1 : 0,
+            );
+          }
+          if (points.length) {
+            const array = new Float32Array(points);
+            gl.bindBuffer(gl.ARRAY_BUFFER, ctx.pointBuffer);
+            const stride = 8 * 4;
+            const bindPointAttribs = (program) => {
+              gl.useProgram(program);
+              const posLoc = gl.getAttribLocation(program, "aPos");
+              const sizeLoc = gl.getAttribLocation(program, "aSize");
+              const colLoc = gl.getAttribLocation(program, "aColor");
+              const alphaLoc = gl.getAttribLocation(program, "aAlpha");
+              const ringLoc = gl.getAttribLocation(program, "aRing");
+              gl.enableVertexAttribArray(posLoc); gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, stride, 0);
+              gl.enableVertexAttribArray(sizeLoc); gl.vertexAttribPointer(sizeLoc, 1, gl.FLOAT, false, stride, 2 * 4);
+              gl.enableVertexAttribArray(colLoc); gl.vertexAttribPointer(colLoc, 3, gl.FLOAT, false, stride, 3 * 4);
+              gl.enableVertexAttribArray(alphaLoc); gl.vertexAttribPointer(alphaLoc, 1, gl.FLOAT, false, stride, 6 * 4);
+              gl.enableVertexAttribArray(ringLoc); gl.vertexAttribPointer(ringLoc, 1, gl.FLOAT, false, stride, 7 * 4);
+            };
+            for (let i = 0; i < points.length; i += 8) array[i + 2] = points[i + 2] * 2.4;
+            gl.bufferData(gl.ARRAY_BUFFER, array, gl.DYNAMIC_DRAW);
+            gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+            bindPointAttribs(ctx.glow);
+            gl.drawArrays(gl.POINTS, 0, points.length / 8);
+            for (let i = 0; i < points.length; i += 8) array[i + 2] = points[i + 2] / 2.4;
+            gl.bufferData(gl.ARRAY_BUFFER, array, gl.DYNAMIC_DRAW);
+            gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+            bindPointAttribs(ctx.sphere);
+            gl.drawArrays(gl.POINTS, 0, points.length / 8);
+          }
+        } catch (error) {
+          spatialGL = null;
+          app.querySelector(".spatial-stage")?.setAttribute("data-immersive", "false");
+        }
+      }
+
+      function updateSpatialTooltip(clientX, clientY) {
+        if (!spatialTooltipEl || !activeSpatialProjection) return;
+        const stage = spatialTooltipEl.parentElement;
+        if (!stage) return;
+        const rect = stage.getBoundingClientRect();
+        const vx = ((clientX - rect.left) / rect.width) * SPATIAL_VW;
+        const vy = ((clientY - rect.top) / rect.height) * SPATIAL_VH;
+        let best = null; let bestDist = Infinity;
+        for (const node of activeSpatialProjection.nodes) {
+          if (!node.visible) continue;
+          const dx = node.screenX - vx, dy = node.screenY - vy;
+          const d = dx * dx + dy * dy;
+          const hitRadius = Math.max(18, 26 * node.scale);
+          if (d < hitRadius * hitRadius && d < bestDist) { bestDist = d; best = node; }
+        }
+        if (!best) { spatialTooltipEl.dataset.visible = "false"; return; }
+        spatialTooltipEl.innerHTML =
+          `<strong>${esc(best.title)}</strong>` +
+          `<span class="tt-type"><span class="type-dot" style="--type-color:${typeColorHex(best.type)}"></span>${esc(best.type)} · ${esc(best.status)}</span>`;
+        spatialTooltipEl.style.left = `${(best.screenX / SPATIAL_VW) * rect.width}px`;
+        spatialTooltipEl.style.top = `${(best.screenY / SPATIAL_VH) * rect.height}px`;
+        spatialTooltipEl.dataset.visible = "true";
+      }
+
+      function updateSpatialDom(worldLayout) {
+        if (!worldLayout || !spatialCamera) return;
+        const spatialSvg = app.querySelector("[data-spatial-svg]");
+        spatialSvg?.setAttribute("data-camera-yaw", spatialCamera.yaw);
+        spatialSvg?.setAttribute("data-camera-pitch", spatialCamera.pitch);
+        spatialSvg?.setAttribute("data-camera-zoom", spatialCamera.zoom);
+        const projected = core.projectSpatialLayout(worldLayout, spatialCamera, 1200, 760);
+        const byId = new Map(projected.nodes.map((node) => [node.id, node]));
+        activeSpatialProjection = {
+          ...projected,
+          nodes: projected.nodes.map((node) => ({ ...node, x: node.screenX, y: node.screenY })),
+        };
+        drawSpatialGL(projected);
+        for (const node of projected.nodes) {
+          const element = spatialDomNodes.get(node.id);
+          if (!element) continue;
+          element.setAttribute("x", node.screenX - 72);
+          element.setAttribute("y", node.screenY - 24);
+          element.setAttribute("opacity", Math.max(0.48, Math.min(1, node.scale * 1.35)));
+          element.setAttribute("visibility", node.visible ? "visible" : "hidden");
+        }
+        for (const edge of projected.edges) {
+          const element = spatialDomEdges.get(edge.id);
+          const source = byId.get(edge.source);
+          const target = byId.get(edge.target);
+          if (!element || !source || !target) continue;
+          element.setAttribute("x1", source.screenX);
+          element.setAttribute("y1", source.screenY);
+          element.setAttribute("x2", target.screenX);
+          element.setAttribute("y2", target.screenY);
+          element.style.visibility = source.visible && target.visible ? "visible" : "hidden";
+        }
+      }
+
+      function scheduleSpatialDomUpdate(worldLayout) {
+        if (spatialInputFrame !== null) return;
+        spatialInputFrame = requestAnimationFrame(() => {
+          spatialInputFrame = null;
+          updateSpatialDom(worldLayout);
+        });
+      }
+
+      function cancelSpatialCameraTransition(completeTarget = false) {
+        if (completeTarget && spatialCameraDestination && spatialCamera) {
+          spatialCamera = { ...spatialCamera, target: spatialCameraDestination };
+        } else if (spatialCameraDestination) {
+          spatialCameraFocusId = null;
+          spatialCameraTargetKey = null;
+          app.querySelector("[data-spatial-svg]")?.setAttribute("data-camera-target-id", "");
+        }
+        if (spatialCameraFrame !== null) cancelAnimationFrame(spatialCameraFrame);
+        spatialCameraFrame = null;
+        spatialCameraDestination = null;
+        pendingSpatialTarget = null;
+        app.querySelector("[data-spatial-svg]")?.setAttribute("data-camera-transitioning", "false");
+      }
+
+      function animateSpatialTarget(
+        worldLayout,
+        target,
+        targetKey = spatialCameraTargetKey,
+        focusId = spatialCameraFocusId,
+      ) {
+        cancelSpatialCameraTransition();
+        if (!worldLayout || !spatialCamera) return;
+        spatialCameraTargetKey = targetKey;
+        spatialCameraFocusId = focusId;
+        app.querySelector("[data-spatial-svg]")?.setAttribute(
+          "data-camera-target-id",
+          focusId === "__centroid__" ? "" : focusId || "",
+        );
+        if (reducedMotion.matches || forcedColors.matches) {
+          spatialCamera = { ...spatialCamera, target };
+          spatialCameraDestination = null;
+          updateSpatialDom(worldLayout);
+          return;
+        }
+        const start = { ...spatialCamera.target };
+        spatialCameraDestination = { ...target };
+        const startedAt = performance.now();
+        const duration = Number.parseFloat(
+          getComputedStyle(document.documentElement).getPropertyValue("--motion-context"),
+        ) || 220;
+        const spatialSvg = app.querySelector("[data-spatial-svg]");
+        spatialSvg?.setAttribute("data-camera-transitioning", "true");
+        const tick = (now) => {
+          const progress = Math.min(1, (now - startedAt) / duration);
+          const eased = 1 - Math.pow(1 - progress, 3);
+          spatialCamera = {
+            ...spatialCamera,
+            target: {
+              x: start.x + (target.x - start.x) * eased,
+              y: start.y + (target.y - start.y) * eased,
+              z: start.z + (target.z - start.z) * eased,
+            },
+          };
+          updateSpatialDom(worldLayout);
+          if (progress < 1) {
+            spatialCameraFrame = requestAnimationFrame(tick);
+          } else {
+            spatialCameraFrame = null;
+            spatialCameraDestination = null;
+            spatialSvg?.setAttribute("data-camera-transitioning", "false");
+          }
+        };
+        spatialCameraFrame = requestAnimationFrame(tick);
+      }
+
+      function startPendingSpatialTransition(worldLayout) {
+        if (!pendingSpatialTarget) return;
+        const target = pendingSpatialTarget;
+        pendingSpatialTarget = null;
+        animateSpatialTarget(worldLayout, target);
+      }
+
+      function graphView(model, matches, mindMap, layout) {
+        if (!layout) {
+          const nodeLimit = index.limits?.spatialNodes ?? 500;
+          const edgeLimit = index.limits?.spatialEdges ?? 1000;
+          return `<div role="alert" class="empty"><strong>DOC.INDEX.LIMIT_EXCEEDED</strong>
+            This graph exceeds the spatial view limit (${nodeLimit} nodes / ${edgeLimit} edges).
+            Browse and relationship lists remain available.</div>`;
+        }
+        const width = layout.width;
+        const height = layout.height;
+        const fullViewBox = graphViewBox(layout, null);
+        const positions = new Map(layout.nodes.map((node) => [node.id, node]));
+        const pathIds = pathEdgeIds(model);
+        const context = state.contextNodeId ? contextFor(model, state.contextNodeId) : null;
+        const labelLimit = index.limits?.visibleLabels ?? 150;
+        const pathNodeIds = new Set();
+        for (const edge of model.edges) {
+          if (!pathIds.has(edge.id)) continue;
+          pathNodeIds.add(edge.source);
+          pathNodeIds.add(edge.target);
+        }
+        const prioritized = [...layout.nodes].sort((left, right) => {
+          const score = (node) => {
+            if (node.id === state.selectedNodeId) return 0;
+            if (node.id === state.contextNodeId) return 1;
+            if (matches.includes(node.id)) return 2;
+            const depth = context?.depth.get(node.id);
+            if (depth === 1) return 3;
+            if (node.health?.some((item) => item !== "healthy")) return 4;
+            if (depth === 2) return 5;
+            if (context) return 9;
+            return 6;
+          };
+          return score(left) - score(right) || left.id.localeCompare(right.id);
+        });
+        const labelCandidates = prioritized.filter((node) => {
+          if (node.id === state.selectedNodeId || node.id === state.contextNodeId) return true;
+          if (spatialZoomTier === "overview") {
+            return node.health?.some((item) => item !== "healthy");
+          }
+          if (spatialZoomTier === "neighborhood") {
+            const depth = context?.depth.get(node.id);
+            return depth === 1 || pathNodeIds.has(node.id);
+          }
+          return true;
+        });
+        const labelIds = new Set(
+          labelCandidates.slice(0, labelLimit).map((node) => node.id),
+        );
+        if (!layout.nodes.length) return `<div class="empty">No artifacts match these filters.
+          <button type="button" data-action="clear-filters" data-focus-key="clear-filters-empty">Clear filters</button>
+        </div>`;
+        const edgeSvg = layout.edges.map((edge) => {
+          const source = positions.get(edge.source), target = positions.get(edge.target);
+          if (!source || !target) return "";
+          const unrelated = context && (!context.ids.has(edge.source) || !context.ids.has(edge.target));
+          const classes = ["edge", pathIds.has(edge.id) ? "path" : "",
+            layout.ghostEdgeIds?.has(edge.id) ? "ghost" : "", unrelated ? "unrelated" : ""]
+            .filter(Boolean).join(" ");
+          const label = spatialZoomTier === "detail"
+            ? `<text class="edge-label" x="${(source.x + target.x) / 2}" y="${(source.y + target.y) / 2 - 6}">${esc(edge.rel)}</text>`
+            : "";
+          return `<g><line id="edge-${esc(edge.id)}" class="${classes}" x1="${source.x}" y1="${source.y}" x2="${target.x}" y2="${target.y}">
+            <title>${esc(edge.source)} ${esc(edge.rel)} ${esc(edge.target)}</title></line>${label}</g>`;
+        }).join("");
+        const laneSvg = mindMap ? "" : layout.lanes.map((lane) =>
+          `<text class="lane-label" x="${lane.x + 12}" y="24">${esc(lane.id)} · ${
+            layout.nodes.filter((node) =>
+              node.lane === lane.id && node.health?.some((item) => item !== "healthy")
+            ).length
+          } review</text>`
+        ).join("");
+        const rovingId = layout.nodes.some((node) => node.id === state.selectedNodeId)
+          ? state.selectedNodeId
+          : layout.nodes.some((node) => node.id === state.contextNodeId)
+            ? state.contextNodeId
+            : layout.nodes[0]?.id;
+        const nodeSvg = layout.nodes.map((node, indexInLayout) => {
+          const relationshipCount = model.edges.filter((edge) => edge.source === node.id || edge.target === node.id).length;
+          const selected = state.selectedNodeId === node.id;
+          const isContext = state.contextNodeId === node.id;
+          const depth = context?.depth.get(node.id);
+          const contextClass = !context ? "" : isContext ? "context" :
+            depth === 1 ? "depth-1" : depth === 2 ? "depth-2" : "unrelated";
+          const match = matches.includes(node.id);
+          const labelVisible = labelIds.has(node.id);
+          const health = (node.health || []).filter((item) => item !== "healthy");
+          const accessibleName = `${node.title}, ${node.type}, ${node.status}, ${relationshipCount} relationships${health.length ? `, health ${health.join(", ")}` : ""}${match ? ", search match" : ""}`;
+          return `<foreignObject x="${node.x - 72}" y="${node.y - 24}" width="144" height="64">
+            <button xmlns="http://www.w3.org/1999/xhtml" class="node-control ${contextClass}"
+              style="--type-color:${typeColorHex(node.type)}"
+              data-node-id="${esc(node.id)}" data-action="select" data-id="${esc(node.id)}"
+              data-focus-key="node-${esc(node.id)}" data-selected="${selected}" data-search-match="${match}"
+              aria-pressed="${selected}" tabindex="${node.id === rovingId ? "0" : "-1"}"
+              aria-label="${esc(accessibleName)}" title="${esc(node.title)}">
+              <span class="type-dot" aria-hidden="true"></span>
+              ${isContext ? '<span class="context-indicator" aria-hidden="true">◆ </span>' : ""}
+              ${spatialZoomTier === "detail" && health.length ? '<span class="health-marker" aria-hidden="true">!</span>' : ""}
+              ${labelVisible ? `<span class="visual-label">${esc(node.title)}</span>` :
+                `<span class="visual-label" aria-hidden="true">•</span><span class="sr-only">${esc(node.title)}</span>`}
+              ${match ? '<span class="match-indicator">Match</span>' : ""}
+            </button></foreignObject>`;
+        }).join("");
+        const fitViewBox = graphViewBox(layout, mindMap ? null : context);
+        const detailViewBox = graphNodeViewBox(
+          layout,
+          state.selectedNodeId || state.contextNodeId || layout.nodes[0]?.id,
+        );
+        const initialViewBox = spatialZoomTier === "detail"
+          ? detailViewBox
+          : spatialZoomTier === "neighborhood"
+            ? fitViewBox
+            : fullViewBox;
+        const usedGraphTypes = [...new Set(layout.nodes.map((node) => node.type))]
+          .sort((a, b) => typeRankOf(a) - typeRankOf(b));
+        return `${typeLegend(usedGraphTypes)}<div class="visualization" role="region" aria-label="${mindMap ? "Project mind map" : "Project graph"}">
+          <svg data-graph-svg data-zoom-tier="${spatialZoomTier}" data-full-viewbox="${esc(fullViewBox)}"
+            data-fit-viewbox="${esc(fitViewBox)}" data-detail-viewbox="${esc(detailViewBox)}"
+            viewBox="${esc(initialViewBox)}" width="${width}" height="${height}" aria-hidden="false">
+            <defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke"/></marker></defs>
+            ${laneSvg}${edgeSvg}${nodeSvg}
+          </svg>
+        </div>`;
+      }
+
+      function relationshipList(model, layout, artifactId = null) {
+        const byId = new Map(model.nodes.map((node) => [node.id, node]));
+        const visibleEdges = layout?.edges || model.edges;
+        const edges = artifactId
+          ? visibleEdges.filter((edge) => edge.source === artifactId || edge.target === artifactId)
+          : visibleEdges;
+        const pathIds = pathEdgeIds(model);
+        const heading = artifactId ? "Relationships" : `Visible relationships (${edges.length})`;
+        return `<section class="relationship-list"><h3>${heading}</h3>
+          ${edges.length ? `<ul>${edges.map((edge) => `<li id="list-${esc(edge.id)}" class="${pathIds.has(edge.id) ? "path" : ""}">
+            <button data-action="select" data-id="${esc(edge.source)}"
+              data-focus-key="relationship-${esc(artifactId || "visible")}-${esc(edge.id)}-source">${esc(byId.get(edge.source)?.title || edge.source)}</button>
+            <strong>${esc(edge.rel)}</strong>
+            <button data-action="select" data-id="${esc(edge.target)}"
+              data-focus-key="relationship-${esc(artifactId || "visible")}-${esc(edge.id)}-target">${esc(byId.get(edge.target)?.title || edge.target)}</button>
+            ${pathIds.has(edge.id) ? '<span class="meta">On traced path</span>' : ""}
+          </li>`).join("")}</ul>` : '<p class="empty">No visible relationships.</p>'}
+        </section>`;
+      }
+
+      function details(model) {
+        const artifact = artifactById(state.selectedNodeId);
+        if (!artifact) return `<div class="empty">
+          <h2 id="details-heading" tabindex="-1">Artifact details</h2>
+          <p>Select an artifact to inspect its context.</p>
+          <button disabled aria-describedby="explore-disabled-reason">Explore neighborhood</button>
+          <p id="explore-disabled-reason" class="meta">Select an artifact before exploring its neighborhood.</p>
+        </div>`;
+        const health = core.artifactHealth(artifact);
+        const outside = !model.nodes.some((node) => node.id === artifact.id);
+        const source = sourceState.artifactId === artifact.id ? sourceState : { status: "idle", text: "" };
+        const sourceHref = safeHrefFor(artifact);
+        const pathCount = pathEdgeIds(model).size;
+        return `<article class="details-card">
+          <div><span class="badge">${esc(artifact.type)}</span> <span class="badge">${esc(artifact.status)}</span>
+            ${health.map((item) => `<span class="badge ${esc(item)}">${esc(item)}</span>`).join(" ")}</div>
+          <h2 id="details-heading" tabindex="-1">${esc(artifact.title)}</h2>
+          ${outside ? '<p class="notice">This selection is outside the active filters.</p>' : ""}
+          <p class="summary">${esc(artifact.summary || "No summary available.")}</p>
+          <dl><dt>Artifact ID</dt><dd><code>${esc(artifact.id)}</code></dd>
+            <dt>Owner</dt><dd>${esc(artifact.owner || "Unassigned")}</dd>
+            <dt>Review by</dt><dd>${esc(artifact.reviewBy || "Frozen record")}</dd></dl>
+          <div class="detail-actions">
+            <button data-action="explore" data-focus-key="explore-${esc(artifact.id)}"
+              ${outside ? 'disabled aria-describedby="outside-filter-reason"' : ""}>Explore neighborhood</button>
+            <button data-action="route" data-value="details" data-focus-key="open-details">Open details</button>
+            <button data-action="path" data-value="grounding" data-focus-key="path-grounding"
+              aria-pressed="${state.pathMode === "grounding"}">Trace grounding</button>
+            <button data-action="path" data-value="impact" data-focus-key="path-impact"
+              aria-pressed="${state.pathMode === "impact"}">Trace impact</button>
+            <button data-action="path" data-value="proof" data-focus-key="path-proof"
+              aria-pressed="${state.pathMode === "proof"}">Show proofs</button>
+            ${sourceHref
+              ? `<a class="button" href="${esc(sourceHref)}">Open source file</a>`
+              : '<span class="button" aria-disabled="true">Source path unavailable</span>'}
+          </div>
+          ${state.pathMode !== "none"
+            ? `<p>${pathCount
+                ? `${pathCount} relationship${pathCount === 1 ? "" : "s"} highlighted for the ${esc(state.pathMode)} trace.`
+                : `No ${esc(state.pathMode)} relationships are available from this artifact.`}</p>`
+            : ""}
+          ${outside ? '<p id="outside-filter-reason" class="meta">Clear the excluding filters before exploring this artifact.</p>' : ""}
+          ${state.contextNodeId ? '<button data-action="leave-context" data-focus-key="leave-context-details">Leave neighborhood</button>' : ""}
+          ${relationshipList(model, null, artifact.id)}
+          <section><h3>Source and diagrams</h3>
+            <button data-action="load-source" data-focus-key="load-source" ${source.status === "loading" ? "disabled" : ""}>
+              ${source.status === "loading" ? "Loading source..." : source.status === "error" ? "Retry source body" : source.status === "ready" ? "Reload source body" : "Load source body"}
+            </button>
+            ${source.status === "loading" ? "<p>Loading source...</p>" : ""}
+            ${source.status === "error" ? `<p role="alert"><strong>${esc(source.errorCode || "DOC.SOURCE.FETCH_FAILED")}</strong> The source body is unavailable; metadata and links remain usable.</p>` : ""}
+            ${source.status === "ready" ? `<pre>${esc(source.text)}</pre>` : ""}
+            ${(artifact.diagrams || []).map((diagram) => `<details><summary>${esc(diagram.title)}</summary><pre>${esc(diagram.mermaid)}</pre></details>`).join("")}
+          </section>
+        </article>`;
+      }
+
+      function restoreFocus(options) {
+        if (options.searchSelection) {
+          const search = document.getElementById("search");
+          if (document.activeElement !== search) {
+            search?.focus();
+            search?.setSelectionRange(options.searchSelection.start, options.searchSelection.end);
+          }
+          return;
+        }
+        let target = options.focusHeading ? document.getElementById(options.focusHeading) : null;
+        if (!target && options.focusKey) {
+          target = app.querySelector(`[data-focus-key="${CSS.escape(options.focusKey)}"]`) ||
+            document.getElementById(options.focusKey);
+        }
+        if (target && !target.closest("[hidden]") && target.getClientRects().length > 0 &&
+            getComputedStyle(target).visibility !== "hidden") target.focus();
+        else if (options.restoreFallback) focusRestoredState();
+      }
+
+      function replaceShell(markup) {
+        const liveSearchInput = document.activeElement?.id === "search"
+          ? document.activeElement
+          : null;
+        const currentHeader = liveSearchInput?.closest(".app-header");
+        const currentSearch = liveSearchInput?.closest(".search");
+        if (!liveSearchInput || currentHeader?.parentElement !== app || !currentSearch) {
+          app.innerHTML = markup;
+          return;
+        }
+
+        const template = document.createElement("template");
+        template.innerHTML = markup.trim();
+        const nextHeader = template.content.querySelector(".app-header");
+        const nextSearch = nextHeader?.querySelector(".search");
+        const nextSearchInput = nextSearch?.querySelector("#search");
+        if (!nextHeader || !nextSearch || !nextSearchInput) {
+          app.innerHTML = markup;
+          return;
+        }
+
+        if (liveSearchInput.value !== nextSearchInput.value) {
+          liveSearchInput.value = nextSearchInput.value;
+          liveSearchInput.setSelectionRange(
+            nextSearchInput.value.length,
+            nextSearchInput.value.length,
+          );
+        }
+        currentHeader.querySelector(".brand")?.replaceWith(nextHeader.querySelector(".brand"));
+        currentSearch.querySelector("label")?.replaceWith(nextSearch.querySelector("label"));
+        currentSearch.querySelector('[data-value="previous"]')
+          ?.replaceWith(nextSearch.querySelector('[data-value="previous"]'));
+        currentSearch.querySelector('[data-value="next"]')
+          ?.replaceWith(nextSearch.querySelector('[data-value="next"]'));
+        currentSearch.querySelector(".match-count")?.replaceWith(nextSearch.querySelector(".match-count"));
+
+        for (const child of [...app.childNodes]) {
+          if (child !== currentHeader) child.remove();
+        }
+        for (const child of [...template.content.childNodes]) {
+          if (child !== nextHeader) app.appendChild(child);
+        }
+      }
+
+      function render(options = {}) {
+        cancelSpatialCameraTransition(true);
+        if (spatialInputFrame !== null) cancelAnimationFrame(spatialInputFrame);
+        spatialInputFrame = null;
+        spatialDrag = null;
+        spatialDomNodes = new Map();
+        spatialDomEdges = new Map();
+        let model;
+        try { model = core.normalizeProjection(index, state.filters); }
+        catch (error) {
+          recoveryShell(
+            "DOC.INDEX.INVALID",
+            "The project map could not be loaded. Repair the graph and regenerate the index.",
+          );
+          return;
+        }
+        if (!index.artifacts.length) {
+          app.dataset.loadState = "empty";
+          app.innerHTML = `<header class="app-header"><div class="brand"><h1>${esc(index.project || "Project")} Docs Explorer</h1></div></header>
+            ${knowledgeSurfaces(safeKnowledgeSurfaces())}
+            <main id="main"><section class="notice" data-first-run-empty>
+              <strong>No indexed artifacts yet.</strong>
+              Add graph frontmatter, then run <code>docs-graph.py derive</code> to build the project map.
+            </section></main>`;
+          return;
+        }
+        const exceeded = indexLimitFailure();
+        if (exceeded) {
+          recoveryShell(
+            "DOC.INDEX.LIMIT_EXCEEDED",
+            `The project index exceeds the supported ${exceeded} limit. Use docs-graph.py context or reduce the corpus.`,
+          );
+          return;
+        }
+        const spatialNodeLimit = index.limits?.spatialNodes ?? 500;
+        const spatialEdgeLimit = index.limits?.spatialEdges ?? 1000;
+        if (state.projection === "spatial3d" &&
+            (!spatial3DSupported || model.nodes.length > spatialNodeLimit || model.edges.length > spatialEdgeLimit)) {
+          const reason = spatial3DSupported
+            ? `DOC.SPATIAL3D.LIMIT_EXCEEDED Spatial 3D supports up to ${spatialNodeLimit} nodes and ${spatialEdgeLimit} relationships.`
+            : "DOC.SPATIAL3D.UNAVAILABLE Spatial 3D is unavailable in this browser.";
+          state = core.normalizeState(
+            { ...state, projection: "graph", notice: `${reason} The same semantic state is shown in Graph.` },
+            index,
+            narrow(),
+            { preserveNotice: true },
+          );
+          const encoded = core.encodeUrlState(state);
+          history.replaceState(history.state, "", encoded ? "#" + encoded : location.pathname);
+        }
+        app.dataset.loadState = "loaded";
+        const matches = core.searchMatches(model.nodes, state.search.query);
+        const matchingSurfaces = knowledgeSurfaceMatches();
+        const surfaceMatchCount = state.search.query.trim() ? matchingSurfaces.length : 0;
+        const totalSearchMatches = matches.length + surfaceMatchCount;
+        if (activeMatchIndex >= matches.length) activeMatchIndex = 0;
+        const selectedOutsideFilters = state.selectedNodeId &&
+          !model.nodes.some((node) => node.id === state.selectedNodeId);
+        document.body.dataset.route = state.route;
+        if (state.contextNodeId) document.body.dataset.context = state.contextNodeId;
+        else delete document.body.dataset.context;
+        let layout = null;
+        let projectedSpatial = null;
+        let relationshipLayout = null;
+        let layoutError = null;
+        if (state.projection !== "browse") {
+          try {
+            layout = spatialLayout(model, state.projection);
+            if (state.projection === "spatial3d" && layout) {
+              projectedSpatial = spatialProjection(layout);
+              relationshipLayout = projectedSpatial;
+            } else {
+              activeSpatialProjection = null;
+              relationshipLayout = layout;
+            }
+          } catch (error) {
+            if (state.projection === "spatial3d") {
+              state = core.normalizeState(
+                { ...state, projection: "graph", notice: "DOC.SPATIAL3D.RENDER_FAILED Spatial 3D could not render. The same semantic state is shown in Graph." },
+                index,
+                narrow(),
+                { preserveNotice: true },
+              );
+              const encoded = core.encodeUrlState(state);
+              history.replaceState(history.state, "", encoded ? "#" + encoded : location.pathname);
+              try {
+                layout = spatialLayout(model, "graph");
+                relationshipLayout = layout;
+              } catch (fallbackError) {
+                layoutError = fallbackError;
+              }
+            } else layoutError = error;
+          }
+        }
+        const visual = state.projection === "browse"
+          ? '<div class="empty">Choose Graph, Mind map, or Spatial 3D to visualize the typed network.</div>'
+          : layoutError
+            ? `<div role="alert" class="notice"><strong>DOC.LAYOUT.UNAVAILABLE</strong>
+                The spatial view could not be calculated. Browse and relationship lists remain available.
+                <button data-action="projection" data-value="browse" data-focus-key="layout-recovery">Return to Browse</button>
+              </div>`
+            : state.projection === "spatial3d"
+              ? spatial3DView(model, matches, layout, projectedSpatial)
+              : graphView(model, matches, state.projection === "mindmap", layout);
+        const selectedTitle = artifactById(state.selectedNodeId)?.title;
+        const contextTitle = artifactById(state.contextNodeId)?.title;
+        const projectionTitle = PROJECTION_LABELS[state.projection];
+        document.title = `${selectedTitle || projectionTitle} - ${index.project || "Project"} Docs Explorer`;
+        const indexMain = `
+          <main id="main" class="shell index-shell" role="tabpanel" aria-labelledby="projection-browse">
+            <section class="panel browse-panel" aria-labelledby="browse-heading">
+              <div class="panel-header"><h2 id="browse-heading" tabindex="-1">Index</h2></div>
+              <div class="index-intro"><p>Every knowledge artifact in this repository, searchable. Open a file directly, or inspect its context and relationships.</p></div>
+              ${state.selectedNodeId ? `<div class="narrow-selection-actions">
+                <button class="narrow-selection-action" data-action="route" data-value="details"
+                  data-focus-key="open-details-narrow">Open details</button>
+                <button class="narrow-selection-action" data-action="explore"
+                  data-focus-key="explore-narrow-${esc(state.selectedNodeId)}"
+                  ${selectedOutsideFilters ? 'disabled aria-describedby="outside-filter-reason-narrow"' : ""}>
+                  Explore neighborhood
+                </button>
+                ${selectedOutsideFilters ? '<p id="outside-filter-reason-narrow" class="meta">Clear the excluding filters before exploring this artifact.</p>' : ""}
+              </div>` : ""}
+              ${filterPanel(model)}${catalog(model, matches)}
+            </section>
+            <aside class="panel details-panel" aria-labelledby="details-heading">
+              <div class="panel-header"><button class="route-back" data-action="back" data-focus-key="back-details">Back</button><span></span></div>
+              ${details(model)}
+            </aside>
+          </main>`;
+        const visualMain = `
+          <main id="main" class="shell" role="tabpanel" aria-labelledby="projection-${esc(state.projection)}">
+            <section class="panel browse-panel" aria-labelledby="browse-heading">
+              <div class="panel-header"><h2 id="browse-heading" tabindex="-1">Browse</h2></div>
+              ${state.selectedNodeId ? `<div class="narrow-selection-actions">
+                <button class="narrow-selection-action" data-action="route" data-value="details"
+                  data-focus-key="open-details-narrow">Open details</button>
+                <button class="narrow-selection-action" data-action="explore"
+                  data-focus-key="explore-narrow-${esc(state.selectedNodeId)}"
+                  ${selectedOutsideFilters ? 'disabled aria-describedby="outside-filter-reason-narrow"' : ""}>
+                  Explore neighborhood
+                </button>
+                ${selectedOutsideFilters ? '<p id="outside-filter-reason-narrow" class="meta">Clear the excluding filters before exploring this artifact.</p>' : ""}
+              </div>` : ""}
+              ${filterPanel(model)}${browse(model, matches)}
+            </section>
+            <section class="panel visual-panel" aria-labelledby="visual-heading">
+              <div class="panel-header"><button class="route-back" data-action="back" data-focus-key="back-visualization">Back</button>
+                <h2 id="visual-heading" tabindex="-1">${esc(projectionTitle)}</h2></div>
+              <div class="projection-toolbar" role="toolbar" aria-label="Projection controls"
+                tabindex="-1" data-focus-key="projection-toolbar">
+                ${state.contextNodeId ? '<button data-action="leave-context" data-focus-key="leave-context-toolbar">Leave neighborhood</button>' : ""}
+                ${layout && state.projection === "spatial3d"
+                  ? `<button data-action="spatial-focus" data-focus-key="spatial-focus" ${state.selectedNodeId && !selectedOutsideFilters ? "" : "disabled"}>Focus selected</button>
+                     <button data-action="spatial-orbit-left" data-focus-key="spatial-orbit-left" aria-label="Orbit left">Orbit left</button>
+                     <button data-action="spatial-orbit-right" data-focus-key="spatial-orbit-right" aria-label="Orbit right">Orbit right</button>
+                     <button data-action="spatial-orbit-up" data-focus-key="spatial-orbit-up" aria-label="Orbit up">Orbit up</button>
+                     <button data-action="spatial-orbit-down" data-focus-key="spatial-orbit-down" aria-label="Orbit down">Orbit down</button>
+                     <button data-action="spatial-zoom-in" data-focus-key="spatial-zoom-in" aria-label="Zoom in">Zoom in</button>
+                     <button data-action="spatial-zoom-out" data-focus-key="spatial-zoom-out" aria-label="Zoom out">Zoom out</button>
+                     <button data-action="spatial-reset" data-focus-key="spatial-reset">Reset camera</button>`
+                  : layout
+                    ? '<button data-action="reset-view" data-focus-key="reset-view">Reset project view</button><button data-action="fit-view" data-focus-key="fit-view">Fit neighborhood</button><button data-action="detail-view" data-focus-key="detail-view">Show detail</button>'
+                    : ""}
+                <span class="meta">${state.contextNodeId ? "Context: " + esc(contextTitle || state.contextNodeId) : "Project context"}</span>
+                ${selectedTitle ? `<p class="current-title"><strong>Selected:</strong> ${esc(selectedTitle)}</p>` : ""}
+              </div>
+              ${visual}${relationshipList(model, relationshipLayout)}
+            </section>
+            <aside class="panel details-panel" aria-labelledby="details-heading">
+              <div class="panel-header"><button class="route-back" data-action="back" data-focus-key="back-details">Back</button><span></span></div>
+              ${details(model)}
+            </aside>
+          </main>`;
+        replaceShell(`
+          <header class="app-header">
+            <div class="brand"><h1>${esc(index.project)} Docs Explorer</h1>
+              <p>${index.artifacts.length} artifacts · deterministic graph ${esc((index.graphSha256 || "").slice(0, 12))}</p></div>
+            <div class="search">
+              <label class="sr-only" for="search">Search artifacts and knowledge surfaces</label>
+              <input id="search" data-focus-key="search" type="search"
+                value="${esc(state.search.query)}" placeholder="Find an artifact or knowledge surface">
+              <button data-action="match" data-value="previous" data-focus-key="match-previous"
+                ${matches.length ? "" : "disabled"}>Previous</button>
+              <button data-action="match" data-value="next" data-focus-key="match-next"
+                ${matches.length ? "" : "disabled"}>Next</button>
+              <span class="meta match-count">${totalSearchMatches} ${totalSearchMatches === 1 ? "match" : "matches"}
+                ${state.search.query.trim()
+                  ? `(${matches.length} artifact${matches.length === 1 ? "" : "s"}, ${surfaceMatchCount} surface${surfaceMatchCount === 1 ? "" : "s"})`
+                  : ""}
+              </span>
+            </div>
+          </header>
+          ${tabs()}${state.notice ? `<div class="notice">${esc(state.notice)}</div>` : ""}
+          ${state.search.query && !totalSearchMatches ? `<div class="notice">No search results for "${esc(state.search.query)}". The graph remains unchanged.
+            <button type="button" data-action="clear-search" data-focus-key="clear-search">Clear search</button>
+          </div>` : ""}
+          ${healthSummary(model)}
+          ${knowledgeSurfaces(matchingSurfaces)}
+          ${state.projection === "browse" ? indexMain : visualMain}`);
+        bind(
+          model,
+          matches,
+          state.projection === "spatial3d" ? activeSpatialProjection : layout,
+          state.projection === "spatial3d" ? layout : null,
+        );
+        const restoreGeneration = ++focusRestoreGeneration;
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          if (restoreGeneration === focusRestoreGeneration) restoreFocus(options);
+        }));
+        const priorSearch = options.previousSearch;
+        const searchAnnouncement = priorSearch && state.search.query && totalSearchMatches === 0 &&
+            (priorSearch.matches !== 0 || priorSearch.query !== state.search.query)
+          ? `No search results for "${state.search.query}"`
+          : priorSearch && state.search.query && totalSearchMatches > 0 && priorSearch.matches === 0
+            ? `Search results available for "${state.search.query}"`
+          : priorSearch && priorSearch.query && !state.search.query
+            ? "Search cleared"
+            : "";
+        announce(options.announcement || searchAnnouncement || state.notice);
+      }
+
+      function bind(model, matches, layoutModel, spatialWorld) {
+        const search = document.getElementById("search");
+        if (search && !search.dataset.searchBound) {
+          search.dataset.searchBound = "true";
+          search.addEventListener("compositionstart", () => { searchComposing = true; });
+          search.addEventListener("compositionend", (event) => {
+            searchComposing = false;
+            const previousSearch = searchSnapshot();
+            state = core.reduceState(state, { type: "SET_SEARCH", query: event.target.value }, index, { narrow: narrow() });
+            scheduleSearchRender({ start: event.target.selectionStart, end: event.target.selectionEnd }, previousSearch);
+          });
+          search.addEventListener("input", (event) => {
+            if (searchComposing || state.search.query === event.target.value) return;
+            const previousSearch = searchSnapshot();
+            state = core.reduceState(state, { type: "SET_SEARCH", query: event.target.value }, index, { narrow: narrow() });
+            scheduleSearchRender({ start: event.target.selectionStart, end: event.target.selectionEnd }, previousSearch);
+          });
+        }
+        document.getElementById("filters-form")?.addEventListener("submit", (event) => {
+          event.preventDefault();
+          const data = new FormData(event.currentTarget);
+          commit({ type: "APPLY_FILTERS", filters: {
+            types: data.getAll("type"), statuses: data.getAll("status"),
+            health: data.getAll("health"), relations: data.getAll("relation"),
+          }}, { nextFocusKey: "apply-filters" });
+        });
+        app.querySelectorAll("[data-action]").forEach((control) => control.addEventListener("click", async (event) => {
+          const action = event.currentTarget.dataset.action;
+          const value = event.currentTarget.dataset.value;
+          const initiatorFocusKey = event.currentTarget.dataset.focusKey || focusKey();
+          if (action === "projection") commit(
+            { type: "SET_PROJECTION", value },
+            {
+              focusKey: initiatorFocusKey,
+              nextFocusKey: `tab-${value}`,
+              focusHeading: narrow() ? (value === "browse" ? "browse-heading" : "visual-heading") : null,
+            },
+          );
+          if (action === "select") {
+            const id = event.currentTarget.dataset.id;
+            if (state.selectedNodeId !== id) cancelSourceRequest();
+            commit(
+              { type: "SELECT_NODE", id },
+              { focusKey: initiatorFocusKey, restoreFallback: true },
+            );
+          }
+          if (action === "select-surface-artifact") {
+            const id = event.currentTarget.dataset.id;
+            state = core.reduceState(state, { type: "SELECT_NODE", id }, index, { narrow: narrow() });
+            commit(
+              { type: "SET_PROJECTION", value: "graph" },
+              { focusKey: initiatorFocusKey, nextFocusKey: `node-${id}`, restoreFallback: true },
+            );
+          }
+          if (action === "locate-graph") {
+            const id = event.currentTarget.dataset.id;
+            state = core.reduceState(state, { type: "SELECT_NODE", id }, index, { narrow: narrow() });
+            commit(
+              { type: "SET_PROJECTION", value: "graph" },
+              { focusKey: initiatorFocusKey, nextFocusKey: `node-${id}`, restoreFallback: true },
+            );
+          }
+          if (action === "explore" && state.selectedNodeId) {
+            spatialZoomTier = "neighborhood";
+            if (state.projection === "browse") {
+              const exploreId = state.selectedNodeId;
+              const exploreAnnouncement = announcementFor({ type: "EXPLORE_CONTEXT", id: exploreId }, model);
+              state = core.reduceState(
+                state, { type: "EXPLORE_CONTEXT", id: exploreId }, index, { narrow: narrow() },
+              );
+              commit(
+                { type: "SET_PROJECTION", value: "graph" },
+                {
+                  focusKey: initiatorFocusKey,
+                  focusHeading: narrow() ? "visual-heading" : null,
+                  announcement: exploreAnnouncement,
+                },
+              );
+            } else {
+              commit(
+                { type: "EXPLORE_CONTEXT", id: state.selectedNodeId },
+                { focusKey: initiatorFocusKey, focusHeading: narrow() ? "visual-heading" : null },
+              );
+            }
+          }
+          if (action === "leave-context") {
+            spatialZoomTier = "overview";
+            commit(
+              { type: "LEAVE_CONTEXT" },
+              { focusKey: initiatorFocusKey, nextFocusKey: "projection-toolbar" },
+            );
+          }
+          if (action === "path") commit(
+            { type: "SET_PATH_MODE", value },
+            {
+              focusKey: initiatorFocusKey,
+              nextFocusKey: `path-${value}`,
+              focusHeading: narrow() ? "visual-heading" : null,
+            },
+          );
+          if (action === "route") commit(
+            { type: "SET_ROUTE", value },
+            { focusKey: initiatorFocusKey, focusHeading: `${value}-heading` },
+          );
+          if (action === "clear-filters") commit(
+            { type: "APPLY_FILTERS", filters: {} },
+            { focusKey: initiatorFocusKey, nextFocusKey: "clear-filters" },
+          );
+          if (action === "clear-search") commit(
+            { type: "SET_SEARCH", query: "" },
+            { focusKey: "search" },
+          );
+          if (action === "back") {
+            if (appHistoryDepth > 0) history.back();
+            else commit(
+              { type: "SET_PROJECTION", value: "browse" },
+              { focusHeading: "browse-heading" },
+            );
+          }
+          if (action === "match" && matches.length) {
+            activeMatchIndex = (activeMatchIndex + (value === "next" ? 1 : -1) + matches.length) % matches.length;
+            const id = matches[activeMatchIndex];
+            commit(
+              { type: "SET_ROUTE", value: "browse" },
+              {
+                nextFocusKey: state.projection === "browse" ? `index-${id}` : `tree-${id}`,
+                announcement: `Match ${activeMatchIndex + 1} of ${matches.length}: ${artifactById(id)?.title || id}`,
+              },
+            );
+          }
+          if (action === "fit-view" || action === "reset-view" || action === "detail-view") {
+            spatialZoomTier = action === "detail-view"
+              ? "detail"
+              : action === "fit-view"
+                ? "neighborhood"
+                : "overview";
+            render({
+              focusKey: initiatorFocusKey,
+              nextFocusKey: action,
+              announcement: `Showing ${spatialZoomTier} graph detail`,
+            });
+          }
+          if (action === "spatial-focus" && spatialWorld) {
+            const target = canonicalSpatialTarget(spatialWorld);
+            if (!target.availableSelected) return;
+            animateSpatialTarget(
+              spatialWorld,
+              target.camera.target,
+              target.targetKey,
+              target.focusId,
+            );
+            announce(reducedMotion.matches
+              ? `Focused ${artifactById(target.availableSelected)?.title || target.availableSelected}.`
+              : `Moving camera to ${artifactById(target.availableSelected)?.title || target.availableSelected}.`);
+          }
+          if (action.startsWith("spatial-orbit-") && spatialWorld) {
+            cancelSpatialCameraTransition();
+            const delta = 0.14;
+            const horizontal = action === "spatial-orbit-left" ? -delta :
+              action === "spatial-orbit-right" ? delta : 0;
+            const vertical = action === "spatial-orbit-up" ? -delta :
+              action === "spatial-orbit-down" ? delta : 0;
+            spatialCamera = {
+              ...spatialCamera,
+              yaw: spatialCamera.yaw + horizontal,
+              pitch: Math.max(-1.2, Math.min(1.2, spatialCamera.pitch + vertical)),
+            };
+            updateSpatialDom(spatialWorld);
+            announce(`${event.currentTarget.textContent.trim()}.`);
+          }
+          if ((action === "spatial-zoom-in" || action === "spatial-zoom-out") && spatialWorld) {
+            cancelSpatialCameraTransition();
+            const factor = action === "spatial-zoom-in" ? 1.18 : 1 / 1.18;
+            spatialCamera = { ...spatialCamera, zoom: Math.max(0.35, Math.min(3, spatialCamera.zoom * factor)) };
+            updateSpatialDom(spatialWorld);
+            announce(`Spatial zoom ${Math.round(spatialCamera.zoom * 100)} percent.`);
+          }
+          if (action === "spatial-reset" && spatialWorld) {
+            const target = canonicalSpatialTarget(spatialWorld);
+            cancelSpatialCameraTransition();
+            spatialCamera = target.camera;
+            spatialCameraFocusId = target.focusId;
+            spatialCameraTargetKey = target.targetKey;
+            const canonicalTargetId = target.availableSelected || target.availableContext || null;
+            app.querySelector("[data-spatial-svg]")?.setAttribute(
+              "data-camera-target-id",
+              canonicalTargetId || "",
+            );
+            updateSpatialDom(spatialWorld);
+            announce(canonicalTargetId
+              ? `Spatial camera reset to ${artifactById(canonicalTargetId)?.title || canonicalTargetId}.`
+              : "Spatial camera reset to the project overview.");
+          }
+          if (action === "load-source" && state.selectedNodeId) {
+            const artifact = artifactById(state.selectedNodeId);
+            const requestedId = artifact.id;
+            cancelSourceRequest();
+            const requestSequence = ++sourceRequestSequence;
+            const requestController = new AbortController();
+            sourceAbortController = requestController;
+            sourceState = { artifactId: requestedId, status: "loading", text: "", errorCode: "" };
+            render({
+              focusKey: "load-source",
+              announcement: `Loading source for ${artifact.title}`,
+            });
+            try {
+              const text = await core.runWithDeadline(async (deadlineSignal) => {
+                const abortForDeadline = () => requestController.abort(deadlineSignal.reason);
+                if (deadlineSignal.aborted) abortForDeadline();
+                else deadlineSignal.addEventListener("abort", abortForDeadline, { once: true });
+                try {
+                  const response = await fetch(hrefFor(artifact), { signal: requestController.signal });
+                  if (!response.ok) throw sourceFailure("DOC.SOURCE.FETCH_FAILED");
+                  const body = await boundedResponseText(response, SOURCE_MAX_BYTES);
+                  if (!artifact.sourceSha256 || await sourceSha256(body) !== artifact.sourceSha256) {
+                    throw sourceFailure("DOC.SOURCE.INTEGRITY_MISMATCH");
+                  }
+                  return body;
+                } finally {
+                  deadlineSignal.removeEventListener("abort", abortForDeadline);
+                }
+              }, SOURCE_DEADLINE_MS);
+              if (state.selectedNodeId !== requestedId || requestSequence !== sourceRequestSequence) return;
+              sourceState = { artifactId: requestedId, status: "ready", text, errorCode: "" };
+            } catch (error) {
+              if (state.selectedNodeId !== requestedId || requestSequence !== sourceRequestSequence) return;
+              sourceState = {
+                artifactId: requestedId,
+                status: "error",
+                text: "",
+                errorCode: sourceFailureCode(error),
+              };
+            } finally {
+              if (sourceAbortController === requestController) sourceAbortController = null;
+            }
+            render({
+              focusKey: "load-source",
+              announcement: sourceState.status === "ready"
+                ? `Source loaded for ${artifact.title}`
+                : `Source unavailable for ${artifact.title}`,
+            });
+          }
+        }));
+        const spatialSvg = app.querySelector("[data-spatial-svg]");
+        spatialDomNodes = new Map(
+          [...app.querySelectorAll("[data-spatial-node]")].map((element) => [element.dataset.spatialNode, element]),
+        );
+        spatialDomEdges = new Map(
+          [...app.querySelectorAll("[data-spatial-edge]")].map((element) => [element.dataset.spatialEdge, element]),
+        );
+        if (spatialSvg && spatialWorld) {
+          setupSpatialGL();
+          spatialTooltipEl = app.querySelector("[data-spatial-tooltip]");
+          drawSpatialGL(activeSpatialProjection);
+          requestAnimationFrame(() => { if (spatialGL) drawSpatialGL(activeSpatialProjection); });
+          spatialSvg.addEventListener("pointermove", (event) => {
+            if (spatialDrag) { if (spatialTooltipEl) spatialTooltipEl.dataset.visible = "false"; return; }
+            updateSpatialTooltip(event.clientX, event.clientY);
+          });
+          spatialSvg.addEventListener("pointerleave", () => {
+            if (spatialTooltipEl) spatialTooltipEl.dataset.visible = "false";
+          });
+        } else {
+          spatialTooltipEl = null;
+        }
+        spatialSvg?.addEventListener("pointerdown", (event) => {
+         if (event.button !== 0) return;
+         if (event.target.closest("[data-action]")) return;
+         cancelSpatialCameraTransition();
+         spatialDrag = {
+           pointerId: event.pointerId,
+           x: event.clientX,
+           y: event.clientY,
+           yaw: spatialCamera.yaw,
+           pitch: spatialCamera.pitch,
+         };
+         spatialSvg.dataset.dragging = "true";
+         spatialSvg.setPointerCapture(event.pointerId);
+        });
+        spatialSvg?.addEventListener("pointermove", (event) => {
+         if (!spatialDrag || spatialDrag.pointerId !== event.pointerId || !spatialWorld) return;
+         spatialCamera = {
+           ...spatialCamera,
+           yaw: spatialDrag.yaw + (event.clientX - spatialDrag.x) * 0.006,
+           pitch: Math.max(-1.2, Math.min(1.2, spatialDrag.pitch + (event.clientY - spatialDrag.y) * 0.006)),
+         };
+         scheduleSpatialDomUpdate(spatialWorld);
+        });
+        const endSpatialDrag = (event) => {
+         if (!spatialDrag || spatialDrag.pointerId !== event.pointerId) return;
+         spatialDrag = null;
+         spatialSvg.dataset.dragging = "false";
+         if (spatialSvg.hasPointerCapture(event.pointerId)) spatialSvg.releasePointerCapture(event.pointerId);
+        };
+        spatialSvg?.addEventListener("pointerup", endSpatialDrag);
+        spatialSvg?.addEventListener("pointercancel", endSpatialDrag);
+        spatialSvg?.addEventListener("lostpointercapture", () => {
+          spatialDrag = null;
+          spatialSvg.dataset.dragging = "false";
+        });
+        spatialSvg?.addEventListener("wheel", (event) => {
+         if (!spatialWorld) return;
+         event.preventDefault();
+         cancelSpatialCameraTransition();
+         const factor = event.deltaY < 0 ? 1.1 : 1 / 1.1;
+         spatialCamera = { ...spatialCamera, zoom: Math.max(0.35, Math.min(3, spatialCamera.zoom * factor)) };
+         scheduleSpatialDomUpdate(spatialWorld);
+        }, { passive: false });
+        startPendingSpatialTransition(spatialWorld);
+        app.querySelectorAll('[role="treeitem"]').forEach((item) => item.addEventListener("keydown", (event) => {
+          const items = [...app.querySelectorAll('[role="treeitem"]')].filter((candidate) => !candidate.closest("[hidden]"));
+          const indexInList = items.indexOf(event.currentTarget);
+          const group = event.currentTarget.dataset.groupId;
+          const childGroup = group ? app.querySelector(`[role="group"][data-group="${CSS.escape(group)}"]`) : null;
+          const moveFocus = (target) => {
+            if (!target) return;
+            app.querySelectorAll('[role="treeitem"]').forEach((candidate) => { candidate.tabIndex = -1; });
+            target.tabIndex = 0;
+            target.focus();
+          };
+          if (event.key === "ArrowDown") { event.preventDefault(); moveFocus(items[Math.min(indexInList + 1, items.length - 1)]); }
+          if (event.key === "ArrowUp") { event.preventDefault(); moveFocus(items[Math.max(indexInList - 1, 0)]); }
+          if (event.key === "Home") { event.preventDefault(); moveFocus(items[0]); }
+          if (event.key === "End") { event.preventDefault(); moveFocus(items.at(-1)); }
+          if (event.key === "ArrowRight" && group) {
+            event.preventDefault();
+            if (event.currentTarget.getAttribute("aria-expanded") === "false") {
+              event.currentTarget.setAttribute("aria-expanded", "true");
+              childGroup.hidden = false;
+            } else moveFocus(childGroup.querySelector('[role="treeitem"]'));
+          }
+          if (event.key === "ArrowLeft") {
+            const parentGroup = event.currentTarget.dataset.parentGroup;
+            if (group && event.currentTarget.getAttribute("aria-expanded") === "true") {
+              event.preventDefault();
+              if (childGroup.contains(document.activeElement)) moveFocus(event.currentTarget);
+              event.currentTarget.setAttribute("aria-expanded", "false");
+              childGroup.hidden = true;
+            } else if (parentGroup) {
+              event.preventDefault();
+              moveFocus(app.querySelector(`[data-group-id="${CSS.escape(parentGroup)}"]`));
+            }
+          }
+          if ((event.key === "Enter" || event.key === " ") && group) {
+            event.preventDefault();
+            const expanded = event.currentTarget.getAttribute("aria-expanded") === "true";
+            if (expanded && childGroup.contains(document.activeElement)) moveFocus(event.currentTarget);
+            event.currentTarget.setAttribute("aria-expanded", String(!expanded));
+            childGroup.hidden = expanded;
+          } else if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            event.currentTarget.click();
+          }
+        }));
+        app.querySelectorAll('[role="treeitem"][data-kind="group"]').forEach((item) =>
+          item.addEventListener("click", (event) => {
+            const group = event.currentTarget.dataset.groupId;
+            const childGroup = app.querySelector(`[role="group"][data-group="${CSS.escape(group)}"]`);
+            const expanded = event.currentTarget.getAttribute("aria-expanded") === "true";
+            if (expanded) {
+              app.querySelectorAll('[role="treeitem"]').forEach((candidate) => { candidate.tabIndex = -1; });
+              event.currentTarget.tabIndex = 0;
+            }
+            event.currentTarget.setAttribute("aria-expanded", String(!expanded));
+            childGroup.hidden = expanded;
+          }),
+        );
+        app.querySelectorAll(".projection-choice").forEach((tab) => tab.addEventListener("keydown", (event) => {
+          const tabs = [...app.querySelectorAll(".projection-choice")];
+          const current = tabs.indexOf(event.currentTarget);
+          let target = null;
+          if (event.key === "ArrowRight") target = tabs[(current + 1) % tabs.length];
+          if (event.key === "ArrowLeft") target = tabs[(current - 1 + tabs.length) % tabs.length];
+          if (event.key === "Home") target = tabs[0];
+          if (event.key === "End") target = tabs.at(-1);
+          if (target) {
+            event.preventDefault();
+            target.click();
+          }
+        }));
+        app.querySelectorAll("[data-node-id]").forEach((node) => node.addEventListener("keydown", (event) => {
+          if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.currentTarget.click(); }
+          if (event.key === "Escape") {
+            event.preventDefault();
+            if (state.contextNodeId) commit(
+              { type: "LEAVE_CONTEXT" },
+              { nextFocusKey: "projection-toolbar" },
+            );
+            else app.querySelector('[data-focus-key="projection-toolbar"]')?.focus();
+          }
+          if (event.key.startsWith("Arrow")) {
+            const navigationLayout = state.projection === "spatial3d"
+              ? {
+                  ...activeSpatialProjection,
+                  nodes: (activeSpatialProjection?.nodes || []).filter((candidate) =>
+                    candidate.visible &&
+                    candidate.screenX >= 0 &&
+                    candidate.screenX <= activeSpatialProjection.width &&
+                    candidate.screenY >= 0 &&
+                    candidate.screenY <= activeSpatialProjection.height),
+                }
+              : layoutModel;
+            const target = navigationLayout
+              ? core.directionalNeighbor(navigationLayout.nodes, event.currentTarget.dataset.nodeId, event.key)
+              : null;
+            if (target) {
+              const targetNode = app.querySelector(`[data-node-id="${CSS.escape(target)}"]`);
+              if (targetNode && targetNode.getClientRects().length > 0 &&
+                  getComputedStyle(targetNode).visibility !== "hidden") {
+                event.preventDefault();
+                targetNode.tabIndex = 0;
+                targetNode.focus();
+                if (document.activeElement === targetNode) {
+                  app.querySelectorAll("[data-node-id]").forEach((candidate) => {
+                    if (candidate !== targetNode) candidate.tabIndex = -1;
+                  });
+                }
+              }
+            }
+          }
+        }));
+      }
+      history.replaceState({
+        ...(history.state || {}),
+        docsExplorerDepth: appHistoryDepth,
+      }, "", location.href);
+      render();
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        if (window.__docsExplorerLoadState === "failed") return;
+        const browseControl = app.querySelector('[role="tab"][data-value="browse"]:not([disabled])');
+        const stableEmptyState = app.querySelector("[data-first-run-empty]");
+        if (!browseControl && !stableEmptyState) {
+          window.__docsExplorerLoadFailed("DOC.INDEX.UNAVAILABLE");
+          return;
+        }
+        clearTimeout(window.__docsExplorerLoadTimer);
+        window.__docsExplorerLoadState = "ready";
+        app.dataset.state = "ready";
+      }));
+    })();
+  </script>
+</body>
+</html>
