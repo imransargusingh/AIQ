@@ -86,8 +86,24 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <p>not enter the model&#x27;s context.</p>
 <ul><li>A Python collector process costs <strong>35 ms p50, 47 ms p95, 58 ms max</strong> (50 cold runs, wall time).</li></ul>
 <p>That is inside the 50 ms p95 budget with almost no margin. Use a compiled collector, or a tiny client that hands off to the running core, for the sync Stop hook.</p>
-<ul><li><strong>Not tested:</strong> Copilot CLI hooks (Copilot CLI is not installed or signed in in this environment)</li></ul>
-<p>and rendering in the interactive TUI (only the headless stream).</p>
+<ul><li><strong>Not tested here:</strong> Copilot CLI hooks (Copilot CLI is not installed or signed in in this</li></ul>
+<p>environment) and rendering in the interactive TUI (only the headless stream). Both were then measured on Windows; see the next section.</p>
+<h3>Hook probe on Windows (Claude Code and Copilot CLI)</h3>
+<p>Measured on Imran&#x27;s Windows 11 laptop. Full detail is in <code>prototypes/phase0-spike/results/hook-probe-windows.md</code> and the raw numbers in <code>hook-probe-windows.json</code>.</p>
+<ul><li><strong>Claude Code works end to end.</strong> All three hooks fired in 3 of 3 runs, and the async hooks did not</li></ul>
+<p>block the turn. The Stop card renders in the interactive TUI as <code>⎿  Stop says: &lt;card text&gt;</code>. Claude Code adds the &quot;Stop says:&quot; prefix.</p>
+<ul><li><strong>Copilot CLI can observe a turn but cannot show a card.</strong> Versions 1.0.104 and 1.0.105 were tested,</li></ul>
+<p>at repo level and at user level, both headless (<code>-p</code>) and interactive.</p>
+<ul><li>All six events fired: sessionStart, userPromptSubmitted, preToolUse, postToolUse, agentStop and</li></ul>
+<p>sessionEnd.</p>
+<ul><li>No hook output reached the person. That covers <code>systemMessage</code>, and <code>progress</code> lines with or</li></ul>
+<p>without <code>temporary</code>.</p>
+<ul><li>Copilot hooks are synchronous: <code>&quot;async&quot;: true</code> is ignored, and every hook blocks the agent.</li><li><strong>Collector cost on Windows is mostly process start-up.</strong> The collector&#x27;s own work takes about 1 to</li></ul>
+<p>2 ms. Whole-process times over 50 runs:</p>
+<table><thead><tr><th>Collector</th><th>p50</th><th>p95</th></tr></thead><tbody><tr><td><code>.cmd</code></td><td>60 ms</td><td>77 ms</td></tr><tr><td>C# (.NET 10)</td><td>80 ms</td><td>106 ms</td></tr><tr><td>Python</td><td>98 to 115 ms</td><td>134 to 137 ms</td></tr><tr><td>PowerShell</td><td>335 ms or more</td><td>n/a</td></tr></tbody></table>
+<p>None meets the 50 ms p95 budget. On Windows the budget needs a resident client (the hook hands off to the running core) or a smaller native binary than tested, and the budget should be re-set per OS.</p>
+<ul><li><strong>Implication for the coaching loop:</strong> in-the-moment cards work on Claude Code today. On Copilot</li></ul>
+<p>CLI, AIQ can observe but must render cards elsewhere: the AIQ app, a notification, or the next Claude Code or VS Code surface.</p>
 <h3>Facts-first judge (rung-model spec, PR #3)</h3>
 <p>After the first run, the rung-model spec moved to <strong>facts first</strong>: the model answers narrow fact questions, and deterministic per-job rules place the rung (decision Q6). The prototype in <code>aiq_spike/facts.py</code> and <code>run_facts.py</code> reproduces this:</p>
 <ul><li><strong>Model facts:</strong> F2, F4, F5, F6, F7 and F12, each with a confidence.</li><li><strong>Log facts:</strong> F1, F3, F7 and F8.</li><li><strong>F9 (reuse):</strong> repo reuse counts, simulated per corpus because a session cannot supply them.</li><li><strong>Rules:</strong> the spec&#x27;s illustrative rubric table.</li></ul>

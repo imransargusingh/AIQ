@@ -174,8 +174,41 @@ and `PostToolUse` hooks and a sync `Stop` hook. It ran 3 live headless sessions 
 - A Python collector process costs **35 ms p50, 47 ms p95, 58 ms max** (50 cold runs, wall time).
   That is inside the 50 ms p95 budget with almost no margin. Use a compiled collector, or a tiny
   client that hands off to the running core, for the sync Stop hook.
-- **Not tested:** Copilot CLI hooks (Copilot CLI is not installed or signed in in this environment)
-  and rendering in the interactive TUI (only the headless stream).
+- **Not tested here:** Copilot CLI hooks (Copilot CLI is not installed or signed in in this
+  environment) and rendering in the interactive TUI (only the headless stream). Both were then
+  measured on Windows; see the next section.
+
+### Hook probe on Windows (Claude Code and Copilot CLI)
+
+Measured on Imran's Windows 11 laptop. Full detail is in
+`prototypes/phase0-spike/results/hook-probe-windows.md` and the raw numbers in `hook-probe-windows.json`.
+
+- **Claude Code works end to end.** All three hooks fired in 3 of 3 runs, and the async hooks did not
+  block the turn. The Stop card renders in the interactive TUI as `⎿  Stop says: <card text>`.
+  Claude Code adds the "Stop says:" prefix.
+- **Copilot CLI can observe a turn but cannot show a card.** Versions 1.0.104 and 1.0.105 were tested,
+  at repo level and at user level, both headless (`-p`) and interactive.
+  - All six events fired: sessionStart, userPromptSubmitted, preToolUse, postToolUse, agentStop and
+    sessionEnd.
+  - No hook output reached the person. That covers `systemMessage`, and `progress` lines with or
+    without `temporary`.
+  - Copilot hooks are synchronous: `"async": true` is ignored, and every hook blocks the agent.
+- **Collector cost on Windows is mostly process start-up.** The collector's own work takes about 1 to
+  2 ms. Whole-process times over 50 runs:
+
+  | Collector | p50 | p95 |
+  |---|---|---|
+  | `.cmd` | 60 ms | 77 ms |
+  | C# (.NET 10) | 80 ms | 106 ms |
+  | Python | 98 to 115 ms | 134 to 137 ms |
+  | PowerShell | 335 ms or more | n/a |
+
+  None meets the 50 ms p95 budget. On Windows the budget needs a resident client (the hook hands
+  off to the running core) or a smaller native binary than tested, and the budget should be re-set
+  per OS.
+- **Implication for the coaching loop:** in-the-moment cards work on Claude Code today. On Copilot
+  CLI, AIQ can observe but must render cards elsewhere: the AIQ app, a notification, or the next
+  Claude Code or VS Code surface.
 
 ### Facts-first judge (rung-model spec, PR #3)
 
