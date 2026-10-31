@@ -59,7 +59,7 @@ In `-p` mode, repo hooks load only when the folder is trusted (`--trust-folder`)
 
 ```json
 {"version": 1, "hooks": {"postToolUse": [
-  {"type": "command", "exec": "C:\\Python314\\python.exe",
+  {"type": "command", "exec": "<python>",
    "args": ["...collector.py", "postToolUse"], "timeoutSec": 10}]}}
 ```
 

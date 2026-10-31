@@ -149,8 +149,8 @@
     "sessionStart": [
      {
       "type": "command",
-      "powershell": "& \"C:/Python314/python.exe\" \"C:/Users/imrans/source/repos/AIQ/prototypes/phase0-spike/hook_probe/collector.py\" sessionStart",
-      "bash": "\"C:/Python314/python.exe\" \"C:/Users/imrans/source/repos/AIQ/prototypes/phase0-spike/hook_probe/collector.py\" sessionStart",
+      "powershell": "& \"<python>\" \"<repo>/prototypes/phase0-spike/hook_probe/collector.py\" sessionStart",
+      "bash": "\"<python>\" \"<repo>/prototypes/phase0-spike/hook_probe/collector.py\" sessionStart",
       "timeoutSec": 10,
       "async": true
      }
@@ -158,8 +158,8 @@
     "userPromptSubmitted": [
      {
       "type": "command",
-      "powershell": "& \"C:/Python314/python.exe\" \"C:/Users/imrans/source/repos/AIQ/prototypes/phase0-spike/hook_probe/collector.py\" userPromptSubmitted",
-      "bash": "\"C:/Python314/python.exe\" \"C:/Users/imrans/source/repos/AIQ/prototypes/phase0-spike/hook_probe/collector.py\" userPromptSubmitted",
+      "powershell": "& \"<python>\" \"<repo>/prototypes/phase0-spike/hook_probe/collector.py\" userPromptSubmitted",
+      "bash": "\"<python>\" \"<repo>/prototypes/phase0-spike/hook_probe/collector.py\" userPromptSubmitted",
       "timeoutSec": 10,
       "async": true
      }
@@ -167,8 +167,8 @@
     "postToolUse": [
      {
       "type": "command",
-      "powershell": "& \"C:/Python314/python.exe\" \"C:/Users/imrans/source/repos/AIQ/prototypes/phase0-spike/hook_probe/collector.py\" postToolUse",
-      "bash": "\"C:/Python314/python.exe\" \"C:/Users/imrans/source/repos/AIQ/prototypes/phase0-spike/hook_probe/collector.py\" postToolUse",
+      "powershell": "& \"<python>\" \"<repo>/prototypes/phase0-spike/hook_probe/collector.py\" postToolUse",
+      "bash": "\"<python>\" \"<repo>/prototypes/phase0-spike/hook_probe/collector.py\" postToolUse",
       "timeoutSec": 10,
       "async": true
      }
@@ -176,16 +176,16 @@
     "agentStop": [
      {
       "type": "command",
-      "powershell": "& \"C:/Python314/python.exe\" \"C:/Users/imrans/source/repos/AIQ/prototypes/phase0-spike/hook_probe/collector.py\" agentStop",
-      "bash": "\"C:/Python314/python.exe\" \"C:/Users/imrans/source/repos/AIQ/prototypes/phase0-spike/hook_probe/collector.py\" agentStop",
+      "powershell": "& \"<python>\" \"<repo>/prototypes/phase0-spike/hook_probe/collector.py\" agentStop",
+      "bash": "\"<python>\" \"<repo>/prototypes/phase0-spike/hook_probe/collector.py\" agentStop",
       "timeoutSec": 10
      }
     ],
     "sessionEnd": [
      {
       "type": "command",
-      "powershell": "& \"C:/Python314/python.exe\" \"C:/Users/imrans/source/repos/AIQ/prototypes/phase0-spike/hook_probe/collector.py\" sessionEnd",
-      "bash": "\"C:/Python314/python.exe\" \"C:/Users/imrans/source/repos/AIQ/prototypes/phase0-spike/hook_probe/collector.py\" sessionEnd",
+      "powershell": "& \"<python>\" \"<repo>/prototypes/phase0-spike/hook_probe/collector.py\" sessionEnd",
+      "bash": "\"<python>\" \"<repo>/prototypes/phase0-spike/hook_probe/collector.py\" sessionEnd",
       "timeoutSec": 10,
       "async": true
      }
@@ -198,9 +198,9 @@
     "sessionStart": [
      {
       "type": "command",
-      "exec": "C:\\Python314\\python.exe",
+      "exec": "<python>",
       "args": [
-       "C:\\Users\\imrans\\source\\repos\\AIQ\\prototypes\\phase0-spike\\hook_probe\\collector.py",
+       "<repo>\\prototypes\\phase0-spike\\hook_probe\\collector.py",
        "sessionStart"
       ],
       "timeoutSec": 10,
@@ -210,9 +210,9 @@
     "userPromptSubmitted": [
      {
       "type": "command",
-      "exec": "C:\\Python314\\python.exe",
+      "exec": "<python>",
       "args": [
-       "C:\\Users\\imrans\\source\\repos\\AIQ\\prototypes\\phase0-spike\\hook_probe\\collector.py",
+       "<repo>\\prototypes\\phase0-spike\\hook_probe\\collector.py",
        "userPromptSubmitted"
       ],
       "timeoutSec": 10,
@@ -222,9 +222,9 @@
     "postToolUse": [
      {
       "type": "command",
-      "exec": "C:\\Python314\\python.exe",
+      "exec": "<python>",
       "args": [
-       "C:\\Users\\imrans\\source\\repos\\AIQ\\prototypes\\phase0-spike\\hook_probe\\collector.py",
+       "<repo>\\prototypes\\phase0-spike\\hook_probe\\collector.py",
        "postToolUse"
       ],
       "timeoutSec": 10,
@@ -234,9 +234,9 @@
     "agentStop": [
      {
       "type": "command",
-      "exec": "C:\\Python314\\python.exe",
+      "exec": "<python>",
       "args": [
-       "C:\\Users\\imrans\\source\\repos\\AIQ\\prototypes\\phase0-spike\\hook_probe\\collector.py",
+       "<repo>\\prototypes\\phase0-spike\\hook_probe\\collector.py",
        "agentStop"
       ],
       "timeoutSec": 10
@@ -245,9 +245,9 @@
     "sessionEnd": [
      {
       "type": "command",
-      "exec": "C:\\Python314\\python.exe",
+      "exec": "<python>",
       "args": [
-       "C:\\Users\\imrans\\source\\repos\\AIQ\\prototypes\\phase0-spike\\hook_probe\\collector.py",
+       "<repo>\\prototypes\\phase0-spike\\hook_probe\\collector.py",
        "sessionEnd"
       ],
       "timeoutSec": 10,
