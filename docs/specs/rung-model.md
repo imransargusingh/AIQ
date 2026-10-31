@@ -11,7 +11,7 @@ links:
 review-by: 2026-11-30
 summary: >-
   What AIQ's rung model must do: for each task a person does with AI, judge the rung it was done at
-  and the next rung it could reach, explain why in plain language, and let the person correct it.
+  and the next rung it could reach, explain why in plain language, and let the person say when the guidance misses.
   Judged against a per-job rubric, privately on the person's device, and held to a golden-set
   accuracy bar before it drives coaching.
 ---
@@ -33,9 +33,9 @@ Sibling spec: `docs/specs/coaching-loop.md` (consumes this model's output for Op
 | R5 | The rubric is tuned **per job, not per role**. The ladder is shared; each job pack supplies its own rung examples and signal weights. This replaces the tab's "adjusted for each role" and "role-specific rubric emphasis" | Follows from coaching-loop D7 (Imran, 2026-10-31: "aligning to the jobs-to-be-done framework") |
 | R6 | Only the person sees their judgments; AIQ runs no server that sees task content | Imran, 2026-10-31 (privacy rule) |
 | R7 | Evaluation uses a golden set of synthetic and volunteer-donated tasks labeled by experts, never users' private data | Design > Rung model tab |
-| Q1 | Scope: the judge, its explanation and the person's correction. The rung distribution and opportunity views get their own spec | Imran, 2026-10-31 (decision card) |
+| Q1 | Scope: the judge, its explanation and the person's feedback on it (see Q3). The rung distribution and opportunity views get their own spec | Imran, 2026-10-31 (decision card) |
 | Q2 | The judge is a cloud model called **through the person's own AI account**, and only that way in alpha (no on-device judge). It reads the task's prompts and outputs. Conditions: a task goes only to the provider that already saw it unless the person chooses otherwise; setup states plainly that a work account's admin policies, logging and retention apply; offline or no account means the task is queued, never rerouted; judging uses the person's quota | Imran, 2026-10-31 (decision card, after asking why not judge in the cloud under the user's own account) |
-| Q3 | What a correction does | **Pending** (recommended: replaces the shown rung for that task, tunes the person's own calibration) |
+| Q3 | People **do not reclassify** a task's rung; the rung is always the judge's. "Easy to correct" means correcting the *guidance*: the person can say the evidence, next step or blockers miss, and AIQ withdraws that guidance and learns which guidance helps them. Rung placement is calibrated only against expert labels (golden set) | Imran, 2026-10-31 (thread reply: users may not have the experience to classify consistently) |
 | Q4 | Accuracy bar before the judge drives coaching | **Pending** (recommended: current rung ≥ 70% exact, ≥ 95% within one; potential ≥ 60% exact, ≥ 90% within one) |
 | Q5 | Does weak context management cap a task at Directed? | **Pending** (recommended: a rubric signal, not a hard cap, until it can be detected reliably) |
 
@@ -47,7 +47,7 @@ what rung was this task done, and what rung could it reach next? People don't kn
 own work, and a usage count (prompts, agent runs) doesn't tell them. If the judgment is wrong,
 unexplained or unfair, every view and tip built on it loses trust. So the judgment has to be
 consistent, explained with the person's own evidence, fair to the job being done and the tools
-available, and easy to correct.
+available, and open to feedback when its guidance misses.
 
 ### Target users & jobs-to-be-done
 The same people as the coaching loop: anyone doing the alpha jobs **Code a change** or **Write a spec
@@ -69,16 +69,18 @@ criteria and let it run the tests itself." The coaching loop can now offer that 
 pause.
 
 Priya thinks the task was really Delegated because the agent wrote the fix and she only renamed
-variables. She corrects it. AIQ shows "Delegated (corrected by you)", records her reason, and the
-next similar task is judged with her own calibration. Nobody else can see either judgment.
+variables, and that the gap is wrong because the agent already ran the tests. She picks "This doesn't
+fit: evidence is wrong" and adds a line. AIQ withdraws that next step so it is never coached, keeps
+the rung as judged, and marks the task "you flagged this". Nobody else can see the judgment or her
+feedback.
 
 ### In scope / Out of scope (explicit non-goals)
 In scope (Q1):
 - Judging each closed task: current rung, next reachable rung, ceiling, confidence, evidence, gap,
   blockers.
 - The per-job rubric as pack data, and the placement rule.
-- The person's correction of a judgment and their private calibration.
-- The task judgment panel that shows one judgment and its correction controls.
+- The person's feedback on a judgment's guidance, and how it changes what AIQ coaches them on.
+- The task judgment panel that shows one judgment and its feedback control.
 - The evaluation regime: golden set, accuracy bar, consistency and gaming checks.
 
 Out of scope:
@@ -91,6 +93,7 @@ Out of scope:
 - Any sharing, team or org view, or comparison with other people.
 - Judging work on surfaces other than the three alpha ones.
 - Rules-based or peer-based calibration (R1: later).
+- The person changing a task's rung (Q3).
 
 ### Conceptual domain model (bounded context: Rung assessment)
 Shares **Task**, **Job**, **Job pack** and **Environment blocker** with the Coaching context
@@ -120,24 +123,25 @@ Ubiquitous language:
   as a cause, never as a low score.
 - **Right rung**: potential equals current with no blocker. Shown neutrally and never coached.
 - **Uncertain**: a judgment whose confidence is below the pack's threshold. Kept out of coaching.
-- **Correction**: the person's statement that a judgment is wrong, with the rung they believe and an
-  optional reason.
-- **Calibration profile**: the person's private adjustments for one job, learned from their own
-  corrections and feedback.
+- **Judgment feedback**: the person's statement that a judgment's guidance misses, with one reason
+  (evidence is wrong or incomplete · next step isn't useful or doable · a blocker is missing · doesn't
+  fit this kind of task) and an optional note. It never changes the rung.
+- **Guidance preference**: the person's private ranking of gap types for one job, learned from their
+  own judgment feedback and coaching feedback.
 - **Golden task**: a synthetic or donated task trace with independent expert labels, used only for
   evaluation.
 
-Entities: Rung judgment, Correction, Calibration profile, Golden task, Rubric (versioned).
+Entities: Rung judgment, Judgment feedback, Guidance preference, Golden task, Rubric (versioned).
 Value objects: Rung, Signal profile, Task content, Evidence item, Gap, Blocker, Confidence.
 
 Aggregates and the invariant each protects:
 - **Rung judgment** (root: the judgment of one Task): potential is never below current and never more
   than one rung above it; every rung claim cites at least one evidence item. A re-judgment creates a
   new version and never edits an old one.
-- **Task rating** (root: Task): once the person corrects a task, their correction is the rung shown
-  for it, and no later re-judgment overrides it (pending Q3).
-- **Calibration profile** (root: person × Job): changes only from that person's own corrections and
-  feedback, and never leaves their device.
+- **Task guidance** (root: Task): once the person flags a judgment's guidance, that gap is never
+  coached for the task, and no re-judgment brings it back; the rung itself is unaffected.
+- **Guidance preference** (root: person × Job): changes only from that person's own feedback, never
+  moves a rung, and never leaves their device.
 - **Golden set** (root: golden set version): every golden task has at least two independent expert
   labels, and a donated task is included only with its donor's explicit consent.
 
@@ -161,11 +165,12 @@ Aggregates and the invariant each protects:
 - **Given** the person deleted the events an evidence item cites **When** the judgment is opened **Then** the item says the evidence was deleted; the rung stays and is marked "evidence removed".
 - **Given** any judgment **When** rendered **Then** it never names the person's role or compares them with anyone.
 
-**US-4 — As anyone working with AI, I want to correct a judgment I think is wrong, so that AIQ gets better for me.** (pending Q3)
-- **Given** a judgment **When** the person picks a different rung and confirms **Then** that rung is shown for the task, labeled "corrected by you", and the model's judgment stays visible in the task's history.
-- **Given** a corrected task **When** the rubric or judge version changes and the task is re-judged **Then** the correction still wins.
-- **Given** 3 corrections in the same direction on one job's tasks within 30 days **When** the next task of that job is judged **Then** the calibration profile shifts that job's placement threshold one step in that direction, and the person can see and reset that adjustment.
-- **Given** a correction **When** saved **Then** nothing about it leaves the device.
+**US-4 — As anyone working with AI, I want to say when a judgment's guidance misses, so that AIQ stops coaching me on the wrong thing.** (Q3)
+- **Given** a judgment **When** the person picks "This doesn't fit" with a reason **Then** the task's gap is withdrawn from coaching, the task shows "you flagged this", and the rung stays as judged.
+- **Given** a flagged task **When** it is re-judged after a rubric or judge version change **Then** the withdrawn gap is not coached again, even if the judge produces it again.
+- **Given** "next step isn't useful or doable" on the same gap type 2 times for one job within 30 days **When** that gap type next qualifies **Then** it ranks below every gap type without negative feedback for that person (same rule as coaching-loop US-4).
+- **Given** any feedback **When** saved **Then** no control lets the person set a task's rung, and nothing about the feedback leaves the device.
+- **Given** "evidence is wrong or incomplete" **When** saved **Then** it is kept as a local count per job, visible to the person, as a sign the judge may be misreading their work.
 
 **US-5 — As anyone working with AI, I want the judge to understand what I asked for, while my work goes nowhere except back to my own AI account.** (Q2)
 - **Given** a closed task **When** it is judged **Then** its content is sent only to the person's chosen judge account, and a network capture over a week shows no task content, signal or judgment going to any other destination, AIQ's included.
@@ -219,18 +224,18 @@ Alpha job examples (pack data, illustrative):
 | Performance efficiency | Judgment ≤ 60 s p95 from judge call start; judging adds no measurable load to the core's coaching-loop budgets; a person's daily judging cost is visible to them (to confirm in the Phase 0 spike) |
 | Reliability | A judge failure never blocks a collector or the coaching fast path; unjudged tasks are queued and retried |
 | Security | The judge calls only the person's chosen judge account endpoint; credentials stay in the OS keychain; pack rubrics are data and cannot run code |
-| Privacy | R6; content goes only to the person's own judge account (Q2); corrections and calibration stay on device; full export and delete cover judgments |
+| Privacy | R6; content goes only to the person's own judge account (Q2); judgment feedback and guidance preferences stay on device; full export and delete cover judgments |
 | Usability | In a 5-person hallway test, ≥ 4 can say why a task got its rung from the panel alone |
 | Accessibility | Panel keyboard-operable and screen-reader readable; rung never conveyed by colour alone |
 | Compatibility | Same as coaching-loop spec |
-| Maintainability | Rubric, thresholds, repetition rule and calibration step are pack data; every judgment records the rubric and judge versions |
+| Maintainability | Rubric, thresholds, repetition rule and feedback ranking rule are pack data; every judgment records the rubric and judge versions |
 | Portability | Judgment schema is the same on all surfaces and in AIQ home |
 
 ### Boundary set
 A task with one prompt; a task with 10,000+ events; a task spanning two surfaces and a day boundary;
 a task the person deletes after it was judged; a judge or rubric version upgrade mid-week (old
 judgments keep their versions); a task with an agent run that produced nothing; a person with no
-agent access at all; an Unclassified task; a correction on an Uncertain judgment; a task re-judged
+agent access at all; an Unclassified task; feedback on an Uncertain judgment; a task re-judged
 after its content passed the retention window; a task spanning two providers; quota running out mid-week;
 the person switching judge accounts; a golden task whose two experts disagree by two or more rungs (adjudicate or drop).
 
@@ -240,8 +245,8 @@ the person switching judge accounts; a golden task whose two experts disagree by
   practitioners against the rubric, with disagreements adjudicated. Inter-rater agreement is
   reported alongside the judge's score; the judge is not expected to beat the experts' own agreement.
 - **Bars:** US-7 (pending Q4).
-- **Local signal:** each person's correction rate is visible only to them and can trigger their own
-  recalibration (US-4).
+- **Local signal:** each person's "evidence is wrong" count per job is visible only to them (US-4). It
+  never changes their rungs; rung placement is calibrated only against expert labels.
 - **Dependency:** the golden set's first traces and the task-grouping and job-classification inputs
   come from the Phase 0 feasibility spike. This spec does not repeat that work.
 
@@ -251,7 +256,7 @@ the person switching judge accounts; a golden task whose two experts disagree by
 | LLM-as-judge with an explicit rubric agrees with human raters reasonably well on structured tasks, with known biases (position, verbosity) | Zheng et al. 2023, "Judging LLM-as-a-Judge" (MT-Bench) | Inferred (from memory, not re-checked) |
 | Maturity models are usually assessed per organisation or team, not per task | CMMI; DORA capabilities | Flagged (from memory) |
 | Labeled golden sets with inter-rater agreement are the standard for judging a classifier against experts | Common annotation practice (Cohen's kappa) | Inferred |
-| People accept automated assessments more when they can see the evidence and correct it | HAX guidelines G11, G15 (Amershi et al. 2019) | Inferred |
+| People accept automated assessments more when they can see the evidence and give feedback on it | HAX guidelines G11, G15 (Amershi et al. 2019) | Inferred |
 | People want a per-task rung judgment | None yet | Flagged: validate in Phase 1 alpha |
 
 ### Applicable governance lenses
@@ -261,18 +266,18 @@ the person switching judge accounts; a golden task whose two experts disagree by
 - [x] Accessibility: NFR row; Part C
 - [x] Performance budget: NFR row; to confirm in the spike
 - [x] Release / rollback: rubric and judge versions on every judgment; a failing job pack ships Uncertain-only (US-7)
-- [x] Observability: local-only judge health, latency and correction rate; no remote telemetry
+- [x] Observability: local-only judge health, latency and feedback counts; no remote telemetry
 
 ### AI-integrated allocation
 - **Archetype:** advisory assessor. AIQ judges and explains; the person can always override.
 - **Tier allocation:** stage 1 deterministic feature extraction on device; stage 2 model judge with the
-  rubric, called through the person's own AI account; stage 3 personal calibration from the person's own corrections.
+  rubric, called through the person's own AI account; stage 3 personal guidance ranking from the person's own feedback (never moves a rung).
 
 ## Part B — UX specification
 
 ### Personas & jobs-to-be-done
 - **Priya, rung 1–2, doing Code a change:** "Show me why you think this task was Directed and what
-  would make it Delegated." Success: she agrees with most judgments, and corrects the rest in seconds.
+  would make it Delegated." Success: she finds most next steps useful, and flags the rest in seconds.
 - **Dana, rung 2, doing Write a spec or doc:** "Don't judge my spec work by coding norms." Success:
   her doc tasks are judged against doc examples, never against "did the agent run the tests".
 - **Marcus, rung 3, no agent with repo access at work:** "Don't tell me I'm low when the tool isn't
@@ -280,12 +285,12 @@ the person switching judge accounts; a golden task whose two experts disagree by
 
 ### Information architecture
 - **Task judgment panel:** Task title · Current rung (with confidence) · Next step (potential + gap) ·
-  Why (evidence items) · Blockers · Correct this · History (model judgments and corrections).
+  Why (evidence items) · Blockers · This doesn't fit · History (judgments and feedback).
 - **Entry points:** a coaching card's Evidence link; a task row in AIQ home (views spec).
 - **Settings > Rung model:** judge account (choose, sign in, cross-provider on/off, cost so far),
-  my calibration (view, reset per job).
+  my guidance preferences (view, reset per job).
 - Labels for the glossary: *Rung, Current rung, Next step, Ceiling, Evidence, Blocker, Right rung,
-  Uncertain, Correct this, Corrected by you, Calibration.*
+  Uncertain, This doesn't fit, You flagged this.*
 
 ### User flows
 ```mermaid
@@ -310,26 +315,26 @@ flowchart TD
   act -->|reads evidence| ev{Evidence still there?}
   ev -->|yes| show[Show cited events]
   ev -->|no| del["Say evidence was deleted"]
-  act -->|Correct this| pick[Pick a rung, optional reason] --> conf2{Confirm?}
+  act -->|This doesn't fit| pick[Pick a reason, optional note] --> conf2{Confirm?}
   conf2 -->|no| panel
-  conf2 -->|yes| corr["Corrected by you; calibration updated"]
+  conf2 -->|yes| corr["You flagged this; gap withdrawn, rung unchanged"]
   corr --> undo{Undo?}
   undo -->|yes| panel
   act -->|"What was read?"| read["Show the prompts, outputs and signals used"]
 ```
 
-Recovery paths: a correction can be undone from History; calibration can be reset per job in
+Recovery paths: feedback can be undone from History (the gap returns); guidance preferences can be reset per job in
 Settings.
 
 ### Wireframe-level structure
 - **Panel (AIQ home, and a VS Code side panel when opened from a card):** header with task title and
   surfaces used; a two-column rung line "Done at: Directed → Next step: Delegated"; one gap sentence;
-  an evidence list; a blocker note if any; footer with [Correct this] and "What was read?".
-- **CLI:** `aiq task <id>` prints the same fields as plain text; `aiq correct <id> <rung>` corrects.
+  an evidence list; a blocker note if any; footer with [This doesn't fit] and "What was read?".
+- **CLI:** `aiq task <id>` prints the same fields as plain text; `aiq flag <id> <reason>` gives feedback.
 
 ### UX acceptance criteria
 - From a coaching card, the panel opens in 1 step.
-- A correction takes ≤ 3 steps (open, pick rung, confirm) and can be undone in 1.
+- Feedback takes ≤ 3 steps (open, pick reason, confirm) and can be undone in 1.
 - Every branch of the flow ends in a shown state or a queued retry; none is a dead end.
 - Uncertain, Right rung and Blocker states are each distinguishable in words, not only by colour.
 
@@ -338,20 +343,20 @@ Settings.
 ### UI Archetype Signature
 - **Archetype:** B1 · Keyboard-Velocity GUI (nearest row; the panel is a detail pane in a keyboard-first tool)
 - **Signature deviations:** `Layout: DetailPane` (no master list in this spec), `Persistence: LocalOnly`, `Sync: LocalOnly`, `Color: HostTheme` (VS Code) / light and dark (AIQ home), `Feedback: Calm`.
-- **Selection:** auto-selected from the JTBD. The job is "look at one task's judgment, understand it and correct it fast", which maps to B-series keyboard-first record detail (Linear issue view), not to A4 gamified progress: the tone is honest feedback, not grading.
+- **Selection:** auto-selected from the JTBD. The job is "look at one task's judgment, understand it and flag it fast", which maps to B-series keyboard-first record detail (Linear issue view), not to A4 gamified progress: the tone is honest feedback, not grading.
 
 ### Medium(s) & platform guidelines
 VS Code webview view guidelines; AIQ home desktop app (framework decided in `/define-architecture`);
 terminal conventions for the CLI (plain text, respects `NO_COLOR`).
 
 ### Visual intent & tokens
-Qualities: honest, specific, calm, correctable. Not: grading, celebratory, comparative, preachy.
+Qualities: honest, specific, calm, open to feedback. Not: grading, celebratory, comparative, preachy.
 Rungs use names first, numbers second ("Directed (2)"). Host theme tokens in VS Code; AIQ home tokens
 come from `DESIGN.md`, to be produced in `/design-slice`.
 
 ### Key screens & component states
-Task judgment panel: loading (judging), judged, uncertain, right rung, capped by blocker, corrected
-by you, evidence removed, judge unavailable (queued), error. Correct-this control: closed, picking,
+Task judgment panel: loading (judging), judged, uncertain, right rung, capped by blocker, you flagged
+this, evidence removed, judge unavailable (queued), error. This-doesn't-fit control: closed, picking,
 confirming, saved, undone.
 
 ### Motion, copy, accessibility & performance
@@ -365,11 +370,11 @@ confirming, saved, undone.
 
 ### AI-UX
 HAX G2 (make clear how well AIQ can judge: confidence and Uncertain), G11 (why: evidence), G9 (efficient
-correction), G15 (granular feedback), G16 (convey consequences: what a correction changes).
+feedback), G15 (granular feedback), G16 (convey consequences: what feedback changes).
 
 ### UI acceptance criteria
 - No panel text compares the person with anyone or names their role.
-- Uncertain, Right rung, capped and corrected states each carry a text label.
+- Uncertain, Right rung, capped and flagged states each carry a text label.
 - All panel controls work by keyboard alone; CLI output is readable with `NO_COLOR=1`.
 
 ## Flagged risks & residual unknowns
