@@ -517,8 +517,8 @@ crate (paths from `HOME` / `LOCALAPPDATA` / `XDG_*`, a few owned lines).
 | B1 | E: frame triggers code execution | prevent | Frames are data parsed by serde into typed structs; no eval, no paths from frames are opened | Fuzz frames |
 | B2 Claude Code → hook stdin | T: hostile prompt text (e.g. control characters) echoed into the card | mitigate | The card never echoes prompt text; `aiq show` strips terminal control sequences before printing | `Show_PromptWithAnsiEscapes_PrintsSanitised` |
 | B2 | E: AIQ alters the agent's behaviour | prevent | Hook never writes `additionalContext`, `decision` or `continue`; output only `systemMessage` on Stop | Contract test: hook stdout is empty or exactly `{"systemMessage": string}` |
-| B3 store at rest | I: stolen disk or backup reads prompts | mitigate | SQLCipher, key only in the OS keychain (ADR-0003) | Opening `aiq.db` without the key fails; file does not contain a known prompt string |
-| B3 | I: spool holds plain text while the core is down | mitigate + accept | Spool is user-only, ≤ 1 MB, truncated on drain. Residual: plain text on disk briefly. Encrypting the spool needs the key on the hot path, which ADR-0005 rejects | File-mode test; spool empty after drain |
+| B3 store at rest | I: stolen disk or backup reads prompts | accept (was mitigate) | **Encryption deferred by Imran, 2026-10-31** ([note](../notes/note-20261031-encryption-deferred.md)): plain SQLite in a 0700 directory, files 0600 (Windows: per-user `%LOCALAPPDATA%` ACL). Residual: anyone with the disk, a backup or admin rights reads prompts | `store_file_is_owner_only`, `spool_file_is_owner_only` (file modes) |
+| B3 | I: spool holds plain text while the core is down | mitigate + accept | Spool is user-only, ≤ 1 MB, removed on drain. Residual: plain text on disk briefly (the store is also plain text now; see row above) | File-mode test; spool empty after drain |
 | B4 settings file (`~/.claude/settings.json`) | T: install corrupts the person's settings | mitigate | Parse, merge only AIQ entries, write to a temp file and rename, keep a backup, refuse on invalid JSON | Golden tests on settings files with other hooks; invalid JSON untouched |
 | B4 | R: person cannot tell what AIQ changed | mitigate | `install` shows the diff and asks; `uninstall` restores only AIQ entries | Round-trip test install → uninstall → byte-identical file |
 | B4 | E: repo-level hooks run AIQ for teammates | prevent | AIQ never writes to a repo's `.claude/` (ADR-0005) | Test: install never touches the working directory |
@@ -528,7 +528,7 @@ crate (paths from `HOME` / `LOCALAPPDATA` / `XDG_*`, a few owned lines).
 
 | Data flow / category | LINDDUN finding | Disposition | Control / rationale | Retention and rights path |
 |---|---|---|---|---|
-| Prompt text (may hold code, customer data, secrets) → store | D: disclosure on a shared or lost machine | mitigate | Encrypted store; user-only files; no network | Kept until the person deletes it (ADR-0002); `aiq forget --all` deletes the store, spool and keychain entry. Delete-one and older-than arrive in Phase 6 |
+| Prompt text (may hold code, customer data, secrets) → store | D: disclosure on a shared or lost machine | mitigate + accept | User-only files; no network. Encryption at rest deferred (Imran, 2026-10-31) | Kept until the person deletes it (ADR-0002); `aiq forget --all` deletes the store and spool. Delete-one and older-than arrive in Phase 6 |
 | Prompt text → card | D: card text visible on screen-share | mitigate | Card never quotes prompt text; only counts | n/a |
 | Coaching history (how someone works) | L/I: could profile the person if shared | mitigate | Nothing leaves the device; no sync, no telemetry in Phase 1 (US-6) | Same as above |
 | Capture while paused | U: person unaware capture continues | prevent | Pause flag checked in the hook before sending; `aiq status` shows paused | `aiq pause` / `aiq resume` |
@@ -621,6 +621,34 @@ Not triggered: D5 (no HTTP/gRPC), A1–A6 (no model call in this slice).
 | **Completed** | Detailed design for the Phase 1 walking skeleton on Claude Code (collector, core, store schema v1, re-prompt detector, trigger engine, card) |
 | **Remaining** | S3c (SQLCipher build on Windows); Phases 2–6 designs; revisit Copilot CLI and VS Code (Phase 2) |
 | **Best next action** | `/implement` this design; prove the SQLCipher Windows build (S3c) during implementation (Imran, 2026-10-31) |
+
+## Implementation notes (`/implement`, 2026-10-31)
+
+Built in `crates/` (Proof Pack: [docs/proof/claude-code-skeleton.md](../proof/claude-code-skeleton.md)).
+Where the build differs from the text above:
+
+- **Encryption at rest deferred (Imran, 2026-10-31).** Plain SQLite (`rusqlite` `bundled`), no SQLCipher,
+  no `keyring`, no `KeyProvider` seam, no `TestKey`. S3c is moot. ADR-0002 / ADR-0003 flagged.
+- **Task is derived in one place**, the `aiq-domain` grouping rule, not also as a SQL view (two
+  definitions of one quantity is a DM7 defect signature). The detector rebuild reads `event` + `content`.
+- **`card_decision` key is `decision_id`**, with `card_id` as a column: expiry appends a second decision
+  row (`drop/expired`) for the same card, so `card_id` alone cannot be the key.
+- **Cue-only re-prompts do not join the request's word window**, so a repeated "try again" stays cue-only
+  (score 0.5) instead of counting as "similar" to the previous cue.
+- **Daily-cap rule:** a delivery is allowed when deliveries with local day ≥ today are below the cap
+  (`deliveries_counted_today`). Counting only "today" let a clock moved backwards re-open used days;
+  property-tested over random clock and offset moves.
+- **Spool drain sorts by `event_id` and de-duplicates**, so any interleaving or duplication replays the
+  same; the drain renames the spool aside first so concurrent hook appends are never lost.
+- **`take_card` honours `wait_ms` on the core side:** a request that waited longer than the client will
+  wait is answered null and delivers nothing, so a card is never handed to a client that already left.
+- **Hook timings** are written by the hook to a small user-only log (in-process time), and `aiq status`
+  reports p50/p95 from it, instead of being sent in the next frame. Whole-process time is measured by
+  the e2e test and on the laptop.
+- **Not built (recorded):** JSON Schema for local-API frames (serde types are shared by both ends in one
+  binary); peer-uid check on the Unix socket (0700 directory + token instead); graceful SIGTERM drain
+  (the store is transactional; unflushed frames are lost as already accepted); install self-test uses
+  `stop_hook_active: true` so it stores one Stop event for a synthetic session and never takes a card.
 
 ## Gate record
 `GATE design · 2026-10-31 · Patterns Expert ⇄ Simplifier, Test Architect, Security & Identity, Distributed Systems, Data & Persistence, SRE, Privacy, UX & Accessibility (all seats played by Claude in one session; not independent) · verdict: pass with conditions`

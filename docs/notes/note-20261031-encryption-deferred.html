@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Note 20261031 Encryption Deferred</title><style>
+:root { color-scheme: light dark; --bg:#f7f5ef; --panel:#fff; --text:#20201d;
+  --muted:#66645f; --line:#d9d5ca; --accent:#3157a4; --code:#f0eee7; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#171816; --panel:#20221f; --text:#f2f1eb; --muted:#b8b6ae;
+    --line:#3d403a; --accent:#8fb0ff; --code:#292c27; }
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text);
+  font:16px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif; }
+main { width:min(920px,calc(100% - 32px)); margin:32px auto; padding:40px;
+  background:var(--panel); border:1px solid var(--line); border-radius:12px; }
+h1,h2,h3,h4,h5,h6 { line-height:1.2; margin:1.5em 0 .55em; }
+h1 { margin-top:0; font-size:2.2rem; } h2 { border-bottom:1px solid var(--line); padding-bottom:.3em; }
+a { color:var(--accent); } code { background:var(--code); padding:.12em .35em; border-radius:4px; }
+pre { overflow:auto; padding:16px; background:var(--code); border-radius:8px; }
+pre code { padding:0; } blockquote { margin:1em 0; padding:.2em 1em; color:var(--muted);
+  border-left:4px solid var(--line); }
+table { width:100%; border-collapse:collapse; margin:1em 0; display:block; overflow:auto; }
+th,td { padding:.55em .75em; border:1px solid var(--line); text-align:left; vertical-align:top; }
+th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); }
+.source { color:var(--muted); font-size:.9rem; margin-bottom:2rem; }
+@media (max-width:640px) { main { width:100%; margin:0; padding:24px 18px; border:0; border-radius:0; } }
+</style></head><body><main><div class="source">Rendered from note-20261031-encryption-deferred.md</div><h1>Phase 1 stores data in plain SQLite; encryption at rest is deferred</h1>
+<ul><li><strong>Kind:</strong> decision</li><li><strong>Confidence:</strong> Verified (Imran&#x27;s message in the project thread, 2026-10-31 19:42 UTC: &quot;Let&#x27;s defer</li></ul>
+<p>encryption - we can revisit later whether we even require it&quot;)</p>
+<ul><li><strong>Made during:</strong> <code>/implement</code> of <code>design-claude-code-skeleton</code></li></ul>
+<h2>The call</h2>
+<p>The Phase 1 store is <code>aiq.db</code>, a plain SQLite file (rusqlite <code>bundled</code>), not SQLCipher. There is no store key and no OS-keychain entry. Protection at rest is the OS user boundary: the data directory is <code>0700</code> and every file AIQ creates is <code>0600</code> on Linux/macOS; on Windows the files live under <code>%LOCALAPPDATA%\AIQ</code> and inherit its per-user ACL. This also removes spike S3c (SQLCipher&#x27;s vendored OpenSSL needs a native Perl on Windows) from the critical path.</p>
+<h2>Alternatives dismissed</h2>
+<ul><li><strong>Build SQLCipher anyway</strong> (CI Windows runner has Perl; laptop needs Strawberry Perl). Dismissed by the</li></ul>
+<p>owner: the cost (build friction, key management, keychain prompts) is not yet justified.</p>
+<ul><li><strong>Keep the keychain seam with a no-op key.</strong> Dismissed as dead code (HYG-A): nothing reads it.</li></ul>
+<h2>What it constrains / what breaks if it is wrong</h2>
+<ul><li>A stolen disk, an unencrypted backup or another administrator on the machine can read stored prompts.</li></ul>
+<p>This was threat T-B4-1 (mitigated by SQLCipher); it is now an <strong>accepted risk</strong> in <code>docs/security/threat-model.md</code> until revisited.</p>
+<ul><li>Raw prompts are kept until the person deletes them (<code>aiq forget --all</code> in Phase 1), so exposure grows</li></ul>
+<p>with time. <code>aiq status</code> shows the store size.</p>
+<ul><li>Re-adding encryption later is an expand-migrate-contract change: open the plain file, <code>sqlcipher_export</code></li></ul>
+<p>into an encrypted copy, swap. No data model change.</p>
+<h2>Revisit when</h2>
+<p>Before any alpha user other than Imran installs AIQ, or when an enterprise / managed-device requirement names encryption at rest.</p></main></body></html>

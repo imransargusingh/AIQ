@@ -1,0 +1,44 @@
+# Bundled Phase 1 pack (unsigned, compiled into the binary behind the PackSource seam).
+# Every number here is uncalibrated pack data; the real-data week tunes it (design: assume: lines).
+schema = "aiq.pack.v1"
+pack_id = "aiq.core"
+version = "bundled-1"
+idle_gap_min = 30
+
+[reprompt]
+detector_id = "reprompt"
+detector_version = 1
+opportunity_id = "reprompt"
+core_opportunity = true
+similarity = 0.6
+max_new_words = 4
+threshold = 3
+window = 8
+min_word_len = 3
+# Phase 0 spike stop words (prototypes/phase0-spike/aiq_spike/group.py).
+stop_words = [
+  "a", "an", "the", "and", "or", "to", "of", "in", "on", "for", "with", "from", "by", "is", "are", "be", "it",
+  "this", "that", "these", "those", "i", "we", "you", "my", "our", "me", "us", "do", "does", "did", "can",
+  "could", "should", "would", "will", "please", "just", "also", "then", "now", "so", "if", "at", "as", "not",
+  "no", "yes", "ok", "okay", "use", "using", "make", "add", "run", "show", "write", "fix", "get", "let", "what",
+  "how", "why", "when", "which", "there", "here", "all", "any", "one", "into", "out", "up", "don't", "dont",
+  "its", "it's", "been", "was", "were", "has", "have", "had", "them", "they", "he", "she",
+]
+cues = [
+  "try again", "again", "still not working", "still doesn't work", "still does not work", "still broken",
+  "still wrong", "that's wrong", "that is wrong", "that's not it", "not what i asked", "no, i meant",
+  "no i meant", "doesn't work", "does not work", "not working",
+]
+
+[trigger]
+rule_id = "in_moment.v1"
+in_moment_threshold = 0.75
+ready_expiry_min = 30
+default_daily_cap = 5
+
+[[tips]]
+tip_id = "reprompt.add-what-changed"
+opportunity_id = "reprompt"
+noticed = "you've reworded this request {count} times without adding new details."
+why = "rewording alone rarely changes the result; the agent needs something new to go on."
+try_this = "say what was wrong with the last answer, and add one example, file or constraint."
