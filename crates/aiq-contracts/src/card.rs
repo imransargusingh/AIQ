@@ -27,16 +27,21 @@ pub fn render_claude_code(card: &CardV1) -> String {
     )
 }
 
-/// Bold yellow (basic 16-colour, so it also works in Claude Code's "ANSI colors only" themes), then
-/// bold off and default colour. Claude Code draws hook messages dim; this makes the card's label stand out.
+/// Basic 16-colour codes, so they also work in Claude Code's "ANSI colors only" themes. Claude Code draws
+/// hook messages dim; line 1 is lifted out of it (label bold yellow, tip sentence bright white) while the
+/// Why / Try this / Details lines stay dim. Every code opens and closes on line 1, so nothing leaks.
+/// `22` ends bold and dim, which is what puts the tip sentence at normal intensity.
 const TIP_LABEL_ON: &str = "\u{1b}[1;33m";
-const TIP_LABEL_OFF: &str = "\u{1b}[22;39m";
+const TIP_TEXT_ON: &str = "\u{1b}[22;97m";
+const TIP_TEXT_OFF: &str = "\u{1b}[39m";
 
 /// The only stdout a Claude Code hook may produce: `{"systemMessage": "<text>"}`.
-/// assume: Claude Code passes ANSI colour codes in `systemMessage` through to the terminal. Confirm on
-/// the laptop screenshot; if it shows raw "[1;33m", drop the codes (the plain text is unchanged).
+/// Checked on the Windows laptop (2026-11-01 screenshot): Claude Code renders ANSI colour in `systemMessage`.
 pub fn claude_code_system_message(card: &CardV1) -> String {
-    let text = render_claude_code(card).replacen("AIQ tip:", &format!("{TIP_LABEL_ON}AIQ tip:{TIP_LABEL_OFF}"), 1);
+    let plain = render_claude_code(card);
+    let (first, rest) = plain.split_once('\n').unwrap_or((&plain, ""));
+    let tip = first.strip_prefix("AIQ tip:").unwrap_or(first);
+    let text = format!("{TIP_LABEL_ON}AIQ tip:{TIP_TEXT_ON}{tip}{TIP_TEXT_OFF}\n{rest}");
     serde_json::json!({ "systemMessage": text }).to_string()
 }
 
@@ -78,11 +83,14 @@ mod tests {
     }
 
     #[test]
-    fn system_message_colours_only_the_label() {
+    fn system_message_colours_only_the_first_line() {
         let v: serde_json::Value = serde_json::from_str(&claude_code_system_message(&card())).unwrap();
         let t = v["systemMessage"].as_str().unwrap();
-        assert!(t.starts_with("\u{1b}[1;33mAIQ tip:\u{1b}[22;39m you've reworded"), "{t}");
-        assert_eq!(t.matches('\u{1b}').count(), 2, "no other escape codes");
-        assert_eq!(t.replace(TIP_LABEL_ON, "").replace(TIP_LABEL_OFF, ""), render_claude_code(&card()));
+        let first = t.lines().next().unwrap();
+        assert_eq!(first, "\u{1b}[1;33mAIQ tip:\u{1b}[22;97m you've reworded this request 3 times without adding new details.\u{1b}[39m");
+        assert_eq!(t.matches('\u{1b}').count(), 3, "no other escape codes");
+        assert!(t.lines().skip(1).all(|l| !l.contains('\u{1b}')), "Why / Try this / Details stay plain");
+        let stripped = t.replace(TIP_LABEL_ON, "").replace(TIP_TEXT_ON, "").replace(TIP_TEXT_OFF, "");
+        assert_eq!(stripped, render_claude_code(&card()));
     }
 }
