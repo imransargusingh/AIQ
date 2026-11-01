@@ -96,7 +96,23 @@
   .card{background:var(--surface);border:1px solid var(--hairline);border-radius:var(--r-md);padding:var(--s5) var(--s6);display:flex;flex-direction:column;gap:var(--s3)}
   .big{font:var(--t-display);font-variant-numeric:tabular-nums;letter-spacing:-.5px}
   .num{font-variant-numeric:tabular-nums}
-  svg.trend{width:100%;height:56px;display:block}
+  .tr{margin:0;display:grid;grid-template-columns:auto minmax(0,1fr);grid-template-rows:auto 72px auto;column-gap:var(--s3);row-gap:var(--s2)}
+  .tr figcaption{grid-column:1/-1;font:var(--t-caption);color:var(--ink-mute);margin-bottom:var(--s2)}
+  .tr-y{position:relative;width:32px;font:var(--t-caption);color:var(--ink-mute);font-variant-numeric:tabular-nums;text-align:right}
+  .tr-y span{position:absolute;right:0;transform:translateY(-50%)}
+  .tr-plot{position:relative}
+  .tr-plot svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+  .tr-dot{position:absolute;width:24px;height:24px;transform:translate(-50%,-50%);border-radius:var(--r-pill);cursor:default}
+  .tr-dot::after{content:"";position:absolute;inset:8px;border-radius:var(--r-pill);background:var(--primary);box-shadow:0 0 0 2px var(--surface)}
+  .tr-dot:focus-visible{outline:2px solid var(--focus-ring);outline-offset:0}
+  .tr-dot .tip{display:none;position:absolute;bottom:calc(100% + var(--s2));left:50%;transform:translateX(-50%);white-space:nowrap;z-index:2;
+    background:var(--surface);color:var(--ink);border:1px solid var(--hairline);border-radius:var(--r-sm);padding:var(--s2) var(--s3);font:var(--t-caption)}
+  .tr-dot:hover .tip,.tr-dot:focus-visible .tip{display:block}
+  .tr-dot:hover~.tr-val,.tr-plot:focus-within .tr-val{visibility:hidden}
+  .tr-val{position:absolute;transform:translate(-50%,calc(-100% - 8px));font:var(--t-caption);color:var(--ink-mute);font-variant-numeric:tabular-nums;pointer-events:none}
+  .tr-val.now{font-weight:600;color:var(--ink)}
+  .tr-x{grid-column:2;position:relative;height:17px;font:var(--t-caption);color:var(--ink-mute)}
+  .tr-x span{position:absolute;transform:translateX(-50%);white-space:nowrap}
   .btn{display:inline-flex;align-items:center;gap:var(--s3);min-height:32px;padding:0 var(--s5);border-radius:var(--r-sm);border:1px solid var(--hairline);
     background:var(--surface);color:var(--ink);font:600 14px/1 var(--f-text);cursor:pointer;transition:background var(--fast) var(--ease),filter var(--fast) var(--ease)}
   .btn:hover{background:var(--canvas-soft)}
@@ -309,14 +325,28 @@ const shellPaused = () => paused ? `<div class="banner" role="status"><div class
 const downBanner = () => st()==="error" && root.dataset.page!=="data" && root.dataset.page!=="detail" ? `<div class="banner bad" role="alert"><div class="grow"><b>AIQ isn't running, so this shows what was stored at 22:40.</b> It starts with your next prompt in Claude Code.</div><button class="btn" data-act="toast:Starting AIQ…">Start AIQ now</button></div>` : "";
 const sk = (w,h) => `<span class="sk" style="width:${w};${h?`height:${h}`:''}"></span>`;
 
+const WEEKS = ["5 Oct","12 Oct","19 Oct","26 Oct"];
 function trend(v){
-  const max=50, pts=v.map((x,i)=>[i*100, 56-(x/max)*48]);
-  const line = pts.map(p=>p.join(",")).join(" L");
-  return `<svg class="trend" viewBox="-4 0 308 60" preserveAspectRatio="none" role="img" aria-label="Weekly kept rate: ${v.join("%, ")}%">
-    <line x1="0" x2="300" y1="56" y2="56" stroke="var(--hairline)"/>
-    <path d="M${line} L300,56 L0,56 Z" fill="color-mix(in srgb,var(--primary) 12%,transparent)"/>
-    <path d="M${line}" fill="none" stroke="var(--primary)" stroke-width="2" vector-effect="non-scaling-stroke"/>
-    <circle cx="300" cy="${pts[3][1]}" r="3.5" fill="var(--primary)"/></svg>`;
+  /* Weekly kept rate: one series, so no legend; first and latest values labelled, the rest on hover/focus. */
+  const max = Math.max(50, Math.ceil(Math.max(...v)/25)*25), ticks = [0, max/2, max];
+  const x = i => 6 + i*(88/(v.length-1)), y = val => (1 - val/max)*100;
+  const pts = v.map((val,i) => `${x(i)},${y(val)}`).join(" L");
+  const last = v.length-1;
+  return `<figure class="tr" role="group" aria-label="Kept rate by week">
+    <figcaption>Kept rate each week (week starting)</figcaption>
+    <div class="tr-y" aria-hidden="true">${ticks.map(t=>`<span style="top:${y(t)}%">${t}%</span>`).join("")}</div>
+    <div class="tr-plot">
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+        ${ticks.map(t=>`<line x1="0" x2="100" y1="${y(t)}" y2="${y(t)}" stroke="var(--hairline)" vector-effect="non-scaling-stroke"/>`).join("")}
+        <path d="M${pts} L${x(last)},100 L${x(0)},100 Z" fill="color-mix(in srgb,var(--primary) 12%,transparent)"/>
+        <path d="M${pts}" fill="none" stroke="var(--primary)" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+      </svg>
+      ${v.map((val,i)=>`<span class="tr-dot" tabindex="0" style="left:${x(i)}%;top:${y(val)}%" aria-label="Week of ${WEEKS[i]}: ${val}% kept"><span class="tip" aria-hidden="true">Week of ${WEEKS[i]} · <b>${val}%</b> kept</span></span>`).join("")}
+      <span class="tr-val" style="left:${x(0)}%;top:${y(v[0])}%" aria-hidden="true">${v[0]}%</span>
+      <span class="tr-val now" style="left:${x(last)}%;top:${y(v[last])}%" aria-hidden="true">${v[last]}%</span>
+    </div>
+    <div class="tr-x" aria-hidden="true">${WEEKS.map((w,i)=>`<span style="left:${x(i)}%">${w}</span>`).join("")}</div>
+  </figure>`;
 }
 
 /* ---------------- pages ---------------- */
@@ -342,7 +372,7 @@ function home(){
     <div class="top">
       <section class="card" aria-labelledby="kr"><h2 id="kr" class="mute" style="font-weight:400">Tasks agents finished without you redoing them</h2>
         ${judgeOn()?`<div class="big">${rate}%</div>${trend(D.trend)}
-        <p class="meta">${kept} of ${judged} tasks: you kept the agent's work with small edits and no correcting re-prompt. Up from ${D.trend[0]}% four weeks ago.</p>`
+        <p class="meta">${kept} of ${judged} tasks: you kept the agent's work with small edits and no correcting re-prompt. Up from ${D.trend[0]}% in the week of ${WEEKS[0]}.</p>`
         :`<p class="mute">This number needs the rung model to read your finished tasks. Tips work without it.</p><div class="row"><button class="btn" data-go="settings">Connect in Settings</button></div>`}</section>
       <section class="card" aria-labelledby="nx"><h2 id="nx" class="mute" style="font-weight:400">Your best next step</h2>
         <p style="font:var(--t-heading)">${esc(over?LONG.name:t0.name)}</p>
