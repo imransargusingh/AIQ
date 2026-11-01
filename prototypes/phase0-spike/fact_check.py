@@ -259,9 +259,10 @@ def build_items(sess, lf, mf):
     return items
 
 
-def sample_sessions(sessions, n, seed):
+def sample_sessions(sessions, n, seed, since=None):
     rng = random.Random(seed)
     ok = [s for s in sessions if not s["auto"] and s["h"] >= 1
+          and (since is None or (s["start"] and s["start"] >= since))
           and sum(len(t["tools"]) for t in s["turns"]) > 0]
     by_folder = collections.defaultdict(list)
     for s in ok:
@@ -317,7 +318,7 @@ def render_task(i, s, items):
     parts = ['<section class="task"><h2>Task {0} · {1} · {2}</h2>'.format(
         i, "Copilot CLI" if s["tool"] == "copilot" else "Claude Code", e(s["folder"].split("\\")[-1].split("/")[-1]))]
     parts.append('<p class="muted">{0} · {1} prompt(s)</p>'.format(e(str(s["start"])[:16]), s["h"]))
-    parts.append("<details><summary>What happened</summary>")
+    parts.append("<details open><summary>What happened</summary>")
     for k, t in enumerate(s["turns"][:10], 1):
         parts.append("<pre><b>Prompt {0}:</b> {1}</pre>".format(k, e(t["prompt"][:1500])))
         if t["files"]:
@@ -353,7 +354,11 @@ def cmd_sample(a):
     except OSError:
         pass
     sessions = [s for s in sessions if s["id"] not in skip]
-    pick = sample_sessions(sessions, a.sessions, a.seed)
+    for s in sessions:  # Claude Code: ctime can be copy time; use the first turn's timestamp when present
+        if s["turns"] and s["turns"][0].get("start"):
+            s["start"] = _ts(s["turns"][0]["start"]) or s["start"]
+    since = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=a.since_days) if a.since_days else None
+    pick = sample_sessions(sessions, a.sessions, a.seed, since)
     calls = {"copilot": None if a.no_model else copilot_cli(a.copilot_model),
              "claude": None if a.no_model else llm.claude_cli(a.claude_model)}
     tasks_html, items_out, model_meta = [], [], []
@@ -392,6 +397,8 @@ def cmd_sample(a):
     summary = {"run": run, "wall_s": round(time.time() - t0, 1),
                "sessions": {t: {"total": by_tool[(t, True)] + by_tool[(t, False)], "automated": by_tool[(t, True)]}
                             for t in ("copilot", "claude")},
+               "since_days": a.since_days,
+               "eligible": len(sample_sessions(sessions, 10 ** 6, a.seed, since)),
                "sampled": len(pick), "items": len(items_out),
                "items_by_type": dict(collections.Counter(x["type"] for x in items_out)),
                "model_calls": model_meta}
@@ -432,6 +439,8 @@ def main(argv=None):
     s = sub.add_parser("sample")
     s.add_argument("--sessions", type=int, default=6)
     s.add_argument("--seed", type=int, default=7)
+    s.add_argument("--since-days", type=float, default=3,
+                   help="sample only sessions started in the last N days, so the person still remembers them (0 = all)")
     s.add_argument("--copilot-model", default="claude-haiku-5.5")
     s.add_argument("--claude-model", default="claude-haiku-5-5")
     s.add_argument("--no-model", action="store_true")
