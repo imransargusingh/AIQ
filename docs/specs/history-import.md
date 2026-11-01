@@ -188,6 +188,10 @@ Test on Imran's laptop (counts only; prompts hashed in memory, never printed or 
   outside a burst). Rule F is meant to catch these; not yet re-measured.
 - Claude Code: all 586 `sdk-cli` sessions are automated (Foresight 486, a temp folder 92, Tacit 12). Only
   9 `cli` and 22 `claude-desktop` sessions remain (**Verified**, counts).
+- The Foresight Claude Code sessions (489, one prompt each, all hours, one `autoresearch/*` branch) were
+  started by **Tacit**, a tool of Imran's that a Copilot hook in that repo triggers and that runs `claude`
+  headless (Imran confirmed as likely, 2026-11-01). Other AI tools calling a CLI in the background is a
+  real pattern; the rule set them aside correctly.
 - H ≤ 1 is common in hand-run Copilot work too (median H = 1 in several hand-run folders), so H alone must
   never decide; it always needs a second signal.
 
