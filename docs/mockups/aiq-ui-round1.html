@@ -268,7 +268,7 @@ td.r, th.r { text-align: right; }
   <aside class="rail">
     <div>
       <h1>AIQ UI mockups</h1>
-      <div class="sub">Round 1.2 · 1 Nov 2026 · sample data</div>
+      <div class="sub">Round 1.3 · 1 Nov 2026 · sample data</div>
     </div>
     <nav id="screenNav" aria-label="Screens"></nav>
     <div class="foot">Press <kbd>Ctrl</kbd> <kbd>K</kbd> for the AIQ command palette. <kbd>[</kbd> <kbd>]</kbd> step through states.</div>
@@ -300,33 +300,26 @@ td.r, th.r { text-align: right; }
   <span class="d">⎿  1 failed, 11 passed</span>
 
 <span class="a">●</span> The test still fails on "31/10/26". It may need a locale setting.
-<span data-v="shown"><span class="d">  ⎿  Stop says:</span> AIQ tip: you've reworded this request 3 times without adding new details.
+<span data-v="shown"><span class="d">  ⎿  Stop says: </span><span class="cy">AIQ tip:</span><span class="d"> you've reworded this request 3 times without adding new details.
      Why: rewording alone rarely changes the result; the agent needs something new to go on.
      Try this: say what was wrong with the last answer, and add one example, file or constraint.
-     Details: aiq show 01JB7Q3K  ·  Turn off tips for now: aiq pause</span><span data-v="unsure"><span class="d">  ⎿  Stop says:</span> AIQ tip: this may be a request you've asked a few ways without new details.
+     Details: aiq show 01JB7Q3K  ·  Turn off tips for now: aiq pause</span></span><span data-v="unsure"><span class="d">  ⎿  Stop says: </span><span class="cy">AIQ tip:</span><span class="d"> this may be a request you've asked a few ways without new details.
      Why: when the agent has nothing new to go on, it tends to repeat itself.
      Try this: paste the failing output and say what you expected instead.
-     Details: aiq show 01JB7R9M  ·  Turn off tips for now: aiq pause</span><span data-v="feedback"><span class="d">  ⎿  Stop says:</span> AIQ tip: you've reworded this request 3 times without adding new details.
+     Details: aiq show 01JB7R9M  ·  Turn off tips for now: aiq pause</span></span><span data-v="feedback"><span class="d">  ⎿  Stop says: </span><span class="cy">AIQ tip:</span><span class="d"> you've reworded this request 3 times without adding new details.
      Why: rewording alone rarely changes the result; the agent needs something new to go on.
      Try this: say what was wrong with the last answer, and add one example, file or constraint.
-     Details: aiq show 01JB7Q3K  ·  Feedback: aiq helpful | aiq not | aiq snooze | aiq off</span><span data-v="stand"><span class="d">  ⎿  Stop says:</span>
+     Details: aiq show 01JB7Q3K  ·  Feedback: aiq helpful | aiq not | aiq snooze | aiq off</span></span><span data-v="stand"><span class="d">  ⎿  Stop says:</span>
 
      <span class="u">&gt;&gt; AIQ TIP</span>  You've reworded this request 3 times without new details.
      <span class="u">&gt;&gt;</span> Try this: say what was wrong last time, and add one example,
      <span class="u">&gt;&gt;</span>           file or constraint.
      <span class="u">&gt;&gt;</span> aiq show 01JB7Q3K for details  ·  aiq pause to stop tips
-</span><span data-v="colour"><span class="d">  ⎿  Stop says:</span>
-
-     <span class="cy">&gt;&gt; AIQ TIP</span>  You've reworded this request 3 times without new details.
-     <span class="cy">&gt;&gt;</span> Try this: say what was wrong last time, and add one example,
-     <span class="cy">&gt;&gt;</span>           file or constraint.
-     <span class="cy">&gt;&gt;</span> <span class="d">aiq show 01JB7Q3K for details  ·  aiq pause to stop tips</span>
 </span><span data-v="held"><span class="d">  (nothing printed: a tip was already shown in this session, so this one is held)</span></span>
-<span class="inp">&gt; <span data-v="shown feedback unsure stand colour">_</span><span data-v="held">_</span></span></pre>
+<span class="inp">&gt; <span data-v="shown feedback unsure stand">_</span><span data-v="held">_</span></span></pre>
   </div>
-  <p class="cap" data-v="shown">The Phase 1 card exactly as Claude Code renders it: four lines under 80 columns, plain text, no colour carries meaning, never quotes the prompt.</p>
-  <p class="cap" data-v="stand">Stands out with plain text only: a blank line, an upper-case AIQ TIP label, and a "&gt;&gt;" gutter on every line. Works even if colour is stripped; screen readers hear "greater than" twice per line, which is the cost.</p>
-  <p class="cap" data-v="colour">Same layout with colour on the label and gutter, only if Claude Code passes colour codes through in Stop output (unverified). Colour adds emphasis but carries no meaning, and AIQ drops it when NO_COLOR is set.</p>
+  <p class="cap" data-v="shown">As built and checked on Imran's laptop: Claude Code adds the dim "Stop says:" prefix and draws hook text dim; AIQ adds one bold yellow "AIQ tip:" label (the only colour code). Colour adds emphasis, never meaning.</p>
+  <p class="cap" data-v="stand">Fallback when colour is off (NO_COLOR set, or a terminal that drops it): a blank line, an upper-case AIQ TIP label and a "&gt;&gt;" gutter keep it visible without colour. Screen readers hear "greater than" on each line, which is the cost.</p>
   <p class="cap" data-v="held">Second qualifying moment in the same session. The hook prints nothing; <span class="mono">aiq status</span> counts it as held.</p>
   <p class="cap" data-v="unsure">Below the in-the-moment confidence bar, so it waits for a natural pause and says "may be" instead of stating it as fact.</p>
   <p class="cap" data-v="feedback">Phase 3 adds one-word feedback commands in place of the pause hint. Pause stays reachable from <span class="mono">aiq</span> and AIQ home.</p>
@@ -824,10 +817,10 @@ Keep fixing until they all pass, then show me the diff and the test output.</div
 
 <script>
 const SCREENS = [
-  { id: "claude-code", grp: "In your tools", name: "Claude Code tip", states: [["shown","Phase 1 as built"],["stand","Stands out (plain)"],["colour","Stands out (colour)"],["held","Second tip held"],["unsure","Low confidence"],["feedback","Phase 3 feedback"]],
-    notes: { what: "The Claude Code card. You found the built version too easy to miss, so two louder variants follow it.",
-      react: ["Colour may not be available: Claude Code may strip or dim colour codes in Stop output. The implementation thread is checking. The plain variant is designed to work without colour.", "Both louder variants add a blank line and a label before the tip, so they cost one more line under the reply.", "The \"Why\" line is dropped in the louder variants to keep them to four lines. It moves to aiq show."],
-      q: "Which louder variant do you prefer, and is dropping \"Why\" from the card OK?" } },
+  { id: "claude-code", grp: "In your tools", name: "Claude Code tip", states: [["shown","As built (colour label)"],["stand","Fallback: no colour"],["held","Second tip held"],["unsure","Low confidence"],["feedback","Phase 3 feedback"]],
+    notes: { what: "The Claude Code card as it now renders: dim \"Stop says:\" from Claude Code, then AIQ's bold yellow \"AIQ tip:\" label, then dim text.",
+      react: ["Claude Code dims all hook text and adds \"Stop says:\" itself; no setting changes that. The yellow label is what makes it findable.", "The plain fallback only applies when colour is off. It costs one extra line and drops \"Why\" (moved to aiq show)."],
+      q: "With the yellow label, is the card easy enough to spot now, or should the fallback's blank line before it also be used with colour?" } },
   { id: "vscode", grp: "In your tools", name: "VS Code tip", states: [["card","Tip shown"],["tried","Try this used"],["waiting","Waiting for pause"],["feedback","After feedback"],["paused","Paused"],["nodata","Evidence deleted"]],
     notes: { what: "The AIQ extension's toast and status bar item, beside Copilot agent chat.",
       react: ["The toast sits over the editor corner. A side-panel entry is the quieter alternative in the spec.", "\"Try this\" fills the chat box with a starter built from the real error. It never sends it."],
