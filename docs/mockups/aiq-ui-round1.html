@@ -90,6 +90,11 @@ kbd { font: 500 11px/1 var(--font-mono); border: 1px solid var(--line); border-b
 .term .u { color: #e8eaee; font-weight: 500; }
 .term .inp { display: block; border: 1px solid #333944; border-radius: 6px; padding: 6px 10px; margin-top: 10px; color: var(--term-dim); }
 
+.term .sl { border-top: 1px solid #262a31; padding: 5px 16px; font-size: 12.5px; color: var(--term-ink); background: #161920; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 30px; }
+.term .sl b { color: var(--term-acc); font-weight: 600; }
+.term .sl u { color: var(--term-dim); }
+.term .sl-dim { color: var(--term-dim); }
+
 /* ---------- VS Code ---------- */
 .vsc { --v-bg: #1f1f1f; --v-side: #181818; --v-ink: #cccccc; --v-dim: #8b8b8b; --v-line: #2b2b2b; --v-acc: #0078d4; --v-card: #252526;
   background: var(--v-bg); color: var(--v-ink); border-radius: 10px; overflow: hidden; border: 1px solid #2b2b2b; font: 13px/1.5 "Segoe UI", var(--font-ui); position: relative; }
@@ -228,9 +233,6 @@ td.r, th.r { text-align: right; }
 .tray .acts { display: flex; gap: 8px; margin-top: 6px; }
 .tray button { background: #3c4043; color: #e8eaed; border: 0; border-radius: 4px; padding: 5px 10px; font-size: 12px; }
 .desk { background: linear-gradient(160deg, #26314a, #1a2133); border-radius: 10px; padding: 22px; min-height: 280px; display: flex; justify-content: flex-end; align-items: flex-end; }
-.mini { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; width: min(330px, 100%); box-shadow: 0 10px 30px rgba(0,0,0,.3); overflow: hidden; }
-.mini .hd { padding: 8px 12px; background: var(--panel-2); font-size: 12px; color: var(--ink-3); display: flex; justify-content: space-between; }
-.mini .bd { padding: 12px; display: flex; flex-direction: column; gap: 8px; }
 
 /* palette */
 .pal-back { position: fixed; inset: 0; background: color-mix(in srgb, #000 35%, transparent); display: none; place-items: start center; padding-top: 12vh; z-index: 20; }
@@ -265,7 +267,7 @@ td.r, th.r { text-align: right; }
   <aside class="rail">
     <div>
       <h1>AIQ UI mockups</h1>
-      <div class="sub">Round 1 · 31 Oct 2026 · sample data</div>
+      <div class="sub">Round 1.1 · 1 Nov 2026 · sample data</div>
     </div>
     <nav id="screenNav" aria-label="Screens"></nav>
     <div class="foot">Press <kbd>Ctrl</kbd> <kbd>K</kbd> for the AIQ command palette. <kbd>[</kbd> <kbd>]</kbd> step through states.</div>
@@ -380,44 +382,33 @@ td.r, th.r { text-align: right; }
 
 <!-- ===================== COPILOT CLI ===================== -->
 <section class="screen" id="s-copilot-cli">
-  <div class="grid2" style="gap:18px">
-    <div class="term"><div class="tb"><i></i><i></i><i></i><span>copilot · ~/src/billing</span></div>
-<pre><span class="d">&gt;</span> <span class="u">the date parser test is still failing</span>
+  <div class="term" data-v="tip idle paused down narrow"><div class="tb"><i></i><i></i><i></i><span>copilot · ~/src/billing</span></div>
+<pre><span class="d">&gt;</span> <span class="u">the date parser test is still failing, fix it</span>
 
-<span class="a">●</span> Updated the regex in dateParser.ts.
-  1 test still fails.
+<span class="a">●</span> Updated the regex in dateParser.ts to accept two-digit years.
 
-<span class="d">(Copilot CLI shows no hook output,
- so AIQ cannot print here.)</span></pre></div>
-    <div data-v="toast" class="desk">
-      <div class="tray" role="status">
-        <div class="hd"><span>AIQ</span><span>now</span></div>
-        <b>You've reworded this 3 times without new details.</b>
-        <span>Try this: say what was wrong with the last answer, and add the error.</span>
-        <div class="acts"><button>Details</button><button>Snooze</button><button>Pause AIQ</button></div>
-      </div>
-    </div>
-    <div data-v="mini" class="desk" style="background:linear-gradient(160deg,#2a2f38,#1b1e24)">
-      <div class="mini">
-        <div class="hd"><span>AIQ · Copilot CLI</span><span>pin ✕</span></div>
-        <div class="bd">
-          <b>You've reworded this 3 times without new details.</b>
-          <span class="muted">The agent needs something new to go on.</span>
-          <span>Try this: say what was wrong with the last answer, and add the error.</span>
-          <div class="row"><button class="b pri">Copy starter</button><button class="b">Not helpful</button></div>
-        </div>
-      </div>
-    </div>
-    <div data-v="next" class="term"><div class="tb"><i></i><i></i><i></i><span>next copilot prompt</span></div>
-<pre><span class="d">&gt;</span> <span class="u">ok try again</span>
+<span class="a">●</span> Run npm test -- dateParser
+  <span class="d">└ 1 failed, 11 passed</span>
 
-<span class="d">  AIQ added a note to this prompt (only you see it here):</span>
-  <span class="a">AIQ:</span> you've reworded this 3 times. Add the error
-  or what you expected. <span class="d">aiq show 01JB7Q3K</span></pre></div>
+<span class="a">●</span> The test still fails on "31/10/26". It may need a locale setting.
+
+<span class="inp">&gt; _</span></pre>
+    <div class="sl"><span data-v="tip"><b>AIQ tip:</b> reworded 3× without new details. Say what was wrong and add the error · <u>aiq show</u></span><span data-v="idle" class="sl-dim">AIQ on · 1 of 5 tips today</span><span data-v="paused" class="sl-dim">AIQ paused · aiq resume</span><span data-v="down" class="sl-dim">&#8203;</span><span data-v="narrow"><b>AIQ tip:</b> reworded 3× without new de…</span></div>
   </div>
-  <p class="cap" data-v="toast">Option A: an OS notification from AIQ home, raised when Copilot's turn ends. Reaches the person even with no IDE open.</p>
-  <p class="cap" data-v="mini">Option B: a small always-on-top AIQ window docked beside the terminal. Quiet, but it is one more window.</p>
-  <p class="cap" data-v="next">Option C: shown at the start of the person's next prompt, if a hook can add text there. Unverified; needs a probe.</p>
+  <div data-v="notify" class="desk">
+    <div class="tray" role="status">
+      <div class="hd"><span>AIQ</span><span>now</span></div>
+      <b>You've reworded this 3 times without new details.</b>
+      <span>Try this: say what was wrong with the last answer, and add the error.</span>
+      <div class="acts"><button>Details</button><button>Snooze</button><button>Pause AIQ</button></div>
+    </div>
+  </div>
+  <p class="cap" data-v="tip">Chosen: Copilot CLI's status line. One line at the bottom, set when Copilot's turn ends. It never prints into the conversation and never reaches the agent.</p>
+  <p class="cap" data-v="idle">After the next prompt the tip clears and the line goes quiet. The full tip stays in AIQ home and <span class="mono">aiq show</span>.</p>
+  <p class="cap" data-v="paused">Paused: the line says so, so the person can tell AIQ is off without opening anything.</p>
+  <p class="cap" data-v="down">AIQ core not running: the line is empty and Copilot behaves as before. <span class="mono">aiq status</span> explains.</p>
+  <p class="cap" data-v="narrow">Narrow terminal: the line is cut with an ellipsis, never wrapped. The first words carry the point, and <span class="mono">aiq show</span> has the rest.</p>
+  <p class="cap" data-v="notify">Kept for later, not built in Phase 2: a desktop notification at turn end, alone or alongside the status line. Fallback if the status line can't refresh per turn.</p>
 </section>
 
 <!-- ===================== CLI ===================== -->
@@ -826,10 +817,10 @@ const SCREENS = [
     notes: { what: "The AIQ extension's toast and status bar item, beside Copilot agent chat.",
       react: ["The toast sits over the editor corner. A side-panel entry is the quieter alternative in the spec.", "\"Try this\" fills the chat box with a starter built from the real error. It never sends it."],
       q: "Toast or side-panel entry as the default in VS Code?" } },
-  { id: "copilot-cli", grp: "In your tools", name: "Copilot CLI tip", states: [["toast","A: OS notification"],["mini","B: AIQ mini window"],["next","C: on next prompt"]],
-    notes: { what: "Copilot CLI shows no hook output, so the tip must appear somewhere AIQ controls. This is the open choice in PR #10.",
-      react: ["A reaches you anywhere but is the most interruptive.", "C keeps you in the terminal but is unproven and late."],
-      q: "Which option do you want for Copilot CLI tips? This mockup is meant to make that call easier." } },
+  { id: "copilot-cli", grp: "In your tools", name: "Copilot CLI tip", states: [["tip","Status line: tip"],["idle","After next prompt"],["paused","Paused"],["down","Core not running"],["narrow","Narrow terminal"],["notify","Later: notification"]],
+    notes: { what: "Your choice: tips show in Copilot CLI's status line. The desktop notification stays as a later option, here as the last state.",
+      react: ["The status line is experimental in Copilot CLI and needs a feature flag on Windows. The laptop check still has to confirm it refreshes each turn.", "The line holds about one short sentence, so it drops \"Why\" and keeps what happened plus the try-this."],
+      q: "When should the tip clear: on your next prompt (shown), or stay until you run aiq show or a timeout?" } },
   { id: "cli", grp: "aiq command line", name: "aiq status, show, pause, forget", states: [["status","status"],["first","status: first run"],["down","status: core down"],["show","show"],["pause","pause / resume"],["forget","forget --all"],["later","forget one / older (Phase 6)"]],
     notes: { what: "Plain-text output for the commands in PR #9, using the wording from the design doc.",
       react: ["Stop hook latency in status is there for the dogfood week. It may move behind aiq status --verbose later."],
