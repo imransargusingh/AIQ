@@ -33,7 +33,7 @@ view and the opportunity view in AIQ home" out of scope ("own spec"), and `coach
 |---|---|---|---|
 | Q1 | What counts as a task "finished without you redoing it" (the Home headline)? | Home hero, the outcome-first framing, any trend | **Decided (Imran, 2026-11-01): kept with small edits and no re-prompt.** The person wrote at most about 20% of the final change (rung-model F2) and sent no re-prompt that corrected the agent in that task (F5). Threshold is tunable |
 | Q2 | Which screens ship in the alpha app? | Scope, IA, effort | **Decided (Imran, 2026-11-01): all six.** Setup, Home, Task detail, Habits and tips, Your data, Settings. Sharing shown as off with a preview only |
-| Q3 | Default time window for Home? | Every number on Home | Last 30 days, with a weekly trend line |
+| Q3 | Default time window for Home? | Every number on Home | **Decided (Imran, 2026-11-01): last 30 days, with a weekly trend line** |
 | Q4 | Show an estimated time saved per opportunity? | Opportunity rows, trust | No, until it can be measured. Show times per week instead |
 | Q5 | Ask for the API key during setup, or when the first rung view is ready? | Setup flow, first-run drop-off | Offer it in setup but allow skip; tips work without it; ask again when the first rung view has enough tasks |
 | Q6 | Is there a full task list, or only the top opportunities? | IA, navigation | A Tasks page listing recurring task groups, sortable by how often and by gap |
