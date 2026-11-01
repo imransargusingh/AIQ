@@ -381,6 +381,60 @@ fn e2e_install_uninstall_round_trip_byte_identical() {
     assert!(!e.dir.path().join(".claude").exists(), "never writes to the working directory");
 }
 
+/// Found on the Windows laptop check: installing again from a moved aiq binary must not make
+/// uninstall "restore" a backup that still holds the first install's AIQ hooks (DC-006).
+#[test]
+fn e2e_reinstall_from_moved_binary_then_uninstall_restores_original() {
+    let e = Env::new();
+    std::fs::create_dir_all(e.claude()).unwrap();
+    std::fs::write(settings(&e), ODD_SETTINGS).unwrap();
+    assert!(e.run(&["install", "claude-code", "--yes"], b"").status.success());
+    let moved = e.dir.path().join("bin").join(Path::new(BIN).file_name().unwrap());
+    std::fs::create_dir_all(moved.parent().unwrap()).unwrap();
+    std::fs::copy(BIN, &moved).unwrap();
+    let o = Command::new(&moved)
+        .args(["install", "claude-code", "--yes"])
+        .env("AIQ_HOME", e.home())
+        .env("CLAUDE_CONFIG_DIR", e.claude())
+        .current_dir(e.dir.path())
+        .output()
+        .unwrap();
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    let v: Value = serde_json::from_str(&std::fs::read_to_string(settings(&e)).unwrap()).unwrap();
+    for ev in ["UserPromptSubmit", "Stop"] {
+        let aiq: Vec<_> = v["hooks"][ev]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|g| g["hooks"][0]["args"].get(0) == Some(&json!("hook")))
+            .collect();
+        assert_eq!(aiq.len(), 1, "{ev}: one AIQ entry after reinstall");
+        let cmd = Path::new(aiq[0]["hooks"][0]["command"].as_str().unwrap()).canonicalize().unwrap();
+        assert_eq!(cmd, moved.canonicalize().unwrap(), "{ev}: repointed to the moved binary");
+    }
+    assert!(e.run(&["uninstall", "claude-code", "--yes"], b"").status.success());
+    assert_eq!(std::fs::read_to_string(settings(&e)).unwrap(), ODD_SETTINGS, "no stale AIQ hooks left behind");
+}
+
+/// Edited between installs: the reinstall's fresh backup holds AIQ hooks, so uninstall strips
+/// instead of restoring it (DC-006).
+#[test]
+fn e2e_reinstall_after_edit_then_uninstall_strips_all_aiq() {
+    let e = Env::new();
+    std::fs::create_dir_all(e.claude()).unwrap();
+    std::fs::write(settings(&e), ODD_SETTINGS).unwrap();
+    e.run(&["install", "claude-code", "--yes"], b"");
+    let mut v: Value = serde_json::from_str(&std::fs::read_to_string(settings(&e)).unwrap()).unwrap();
+    v["theme"] = json!("dark");
+    v["hooks"]["Stop"][1]["hooks"][0]["command"] = json!("/old/place/aiq");
+    std::fs::write(settings(&e), serde_json::to_string_pretty(&v).unwrap()).unwrap();
+    assert!(e.run(&["install", "claude-code", "--yes"], b"").status.success());
+    assert!(e.run(&["uninstall", "claude-code", "--yes"], b"").status.success());
+    let after: Value = serde_json::from_str(&std::fs::read_to_string(settings(&e)).unwrap()).unwrap();
+    assert_eq!(after["theme"], "dark");
+    assert_eq!(after["hooks"], json!({"Stop": [{"hooks": [{"type": "command", "command": "notify-send done"}]}]}));
+}
+
 #[test]
 fn e2e_install_no_settings_then_uninstall_removes_file() {
     let e = Env::new();

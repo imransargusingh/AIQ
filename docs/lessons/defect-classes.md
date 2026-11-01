@@ -73,3 +73,18 @@ summary: >-
 - **Instances:** 2026-10-31, PR #9 Windows CI: `e2e_wrong_token_frame_closed_nothing_stored` (NotFound).
 - **Control:** the pipe name is a hash of `Paths::runtime`; the e2e test builds `Paths::at(dir)` with no
   environment override, so a regression fails on the Windows job.
+
+### DC-006 — A restore point taken from a state the tool itself already changed
+- **Signature:** `aiq install` took a fresh backup on every run. Run again after the binary moved, the
+  "backup" held the first install's AIQ hooks, and `uninstall` restored it byte for byte, leaving hooks
+  that point at the old path while printing "Removed AIQ's hooks."
+- **Why it survives:** every test installed once from one binary. Reinstalling from a new path only
+  happens on a real machine, when a build moves out of a temp folder.
+- **Instances:** 2026-11-01, Windows laptop check: hooks installed from `%TEMP%\aiq-pr9\...`, and the
+  plan to move them to `%LOCALAPPDATA%\AIQ\bin` exposed it. Found in review before it ran.
+- **Sweep:** the only other restore point is the spool drain, which renames the file aside and never
+  restores it. No other instance.
+- **Control:** reinstall over an untouched install keeps the first record's backup; uninstall never
+  restores a backup that still holds AIQ entries and strips instead. Tests:
+  `e2e_reinstall_from_moved_binary_then_uninstall_restores_original` and
+  `e2e_reinstall_after_edit_then_uninstall_strips_all_aiq` (both red without the fix).

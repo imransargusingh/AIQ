@@ -85,8 +85,14 @@ fn pretty(v: &Value) -> String {
 }
 
 /// Minimal line diff (LCS) for showing the change before asking.
+/// Lines that differ only by a trailing comma count as unchanged: adding a key after the last
+/// one gives the old last line a comma, and showing it as removed-and-added reads as a change.
 pub fn line_diff(old: &str, new: &str) -> String {
-    let (a, b): (Vec<&str>, Vec<&str>) = (old.lines().collect(), new.lines().collect());
+    let (oa, ob): (Vec<&str>, Vec<&str>) = (old.lines().collect(), new.lines().collect());
+    fn key<'a>(s: &&'a str) -> &'a str {
+        s.trim_end_matches(',')
+    }
+    let (a, b): (Vec<&str>, Vec<&str>) = (oa.iter().map(key).collect(), ob.iter().map(key).collect());
     let mut l = vec![vec![0u32; b.len() + 1]; a.len() + 1];
     for i in (0..a.len()).rev() {
         for j in (0..b.len()).rev() {
@@ -98,12 +104,12 @@ pub fn line_diff(old: &str, new: &str) -> String {
         if i < a.len() && j < b.len() && a[i] == b[j] {
             i += 1;
             j += 1;
-        } else if j < b.len() && (i == a.len() || l[i][j + 1] >= l[i + 1][j]) {
-            out += &format!("+ {}\n", b[j]);
-            j += 1;
-        } else {
-            out += &format!("- {}\n", a[i]);
+        } else if i < a.len() && (j == b.len() || l[i + 1][j] >= l[i][j + 1]) {
+            out += &format!("- {}\n", oa[i]);
             i += 1;
+        } else {
+            out += &format!("+ {}\n", ob[j]);
+            j += 1;
         }
     }
     out
@@ -174,26 +180,35 @@ pub fn install(yes: bool) -> ExitCode {
         println!("Nothing changed.");
         return ExitCode::SUCCESS;
     }
-    let backup = match &orig {
-        Some(text) => {
+    let paths = Paths::from_env();
+    // Reinstall over our own untouched install (the binary moved): keep the first record's backup,
+    // the person's real pre-AIQ file. A fresh backup would hold the old AIQ hooks (DC-006).
+    let prior = read_record(&paths, &p).filter(|r| orig.as_deref() == Some(r.written.as_str()));
+    let (existed, backup) = match (prior, &orig) {
+        (Some(r), _) => {
+            if let Some(b) = &r.backup {
+                println!("Backup kept from the first install: {}", b.display());
+            }
+            (r.existed, r.backup)
+        }
+        (None, Some(text)) => {
             let b = p.with_extension(format!("json.aiq-backup-{}", chrono::Local::now().format("%Y%m%d%H%M%S")));
             if let Err(e) = std::fs::write(&b, text) {
                 eprintln!("Could not write a backup ({e}); nothing changed.");
                 return ExitCode::from(1);
             }
             println!("Backup: {}", b.display());
-            Some(b)
+            (true, Some(b))
         }
-        None => None,
+        (None, None) => (false, None),
     };
     let written = pretty(&v);
     if let Err(e) = write_settings(&p, &written) {
         eprintln!("Could not write {}: {e}", p.display());
         return ExitCode::from(1);
     }
-    let paths = Paths::from_env();
     let _ = paths.ensure_dirs();
-    let rec = InstallRecord { settings_path: p.clone(), existed: orig.is_some(), backup, written };
+    let rec = InstallRecord { settings_path: p.clone(), existed, backup, written };
     let _ = aiq_core::paths::write_user_only(&paths.install_record(), serde_json::to_string(&rec).unwrap().as_bytes());
     println!("Installed. {}", self_test(&exe));
     ExitCode::SUCCESS
@@ -216,10 +231,25 @@ fn self_test(exe: &Path) -> String {
     }
     match child.wait_with_output() {
         Ok(o) if o.status.success() => {
-            format!("Self-test: the Stop hook ran in {} ms (budget 50 ms).", start.elapsed().as_millis())
+            let ms = start.elapsed().as_millis();
+            if ms <= 50 {
+                format!("Self-test: the Stop hook ran in {ms} ms (budget 50 ms).")
+            } else {
+                format!(
+                    "Self-test: the Stop hook ran in {ms} ms, over the 50 ms budget. The first run of a new aiq \
+                     binary is often slow while the system scans it; `aiq status` shows the times of real runs."
+                )
+            }
         }
         _ => "Self-test: the hook did not exit cleanly. Run `aiq status`.".into(),
     }
+}
+
+fn read_record(paths: &Paths, settings: &Path) -> Option<InstallRecord> {
+    std::fs::read_to_string(paths.install_record())
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .filter(|r: &InstallRecord| r.settings_path == settings)
 }
 
 pub fn uninstall(yes: bool) -> ExitCode {
@@ -232,14 +262,15 @@ pub fn uninstall(yes: bool) -> ExitCode {
             return ExitCode::from(1);
         }
     };
-    let rec: Option<InstallRecord> = std::fs::read_to_string(paths.install_record())
-        .ok()
-        .and_then(|t| serde_json::from_str(&t).ok())
-        .filter(|r: &InstallRecord| r.settings_path == p);
+    let rec = read_record(&paths, &p);
     let current = orig.clone().unwrap_or_default();
-    // Untouched since install: restore the exact bytes we replaced (byte-identical round trip).
+    // Untouched since install: restore the exact bytes we replaced (byte-identical round trip),
+    // but never a backup that itself still holds AIQ hooks (DC-006); strip instead.
     let restore: Option<Option<String>> = rec.as_ref().filter(|r| r.written == current).and_then(|r| match &r.backup {
-        Some(b) => std::fs::read_to_string(b).ok().map(Some),
+        Some(b) => std::fs::read_to_string(b)
+            .ok()
+            .filter(|t| !serde_json::from_str::<Value>(t).is_ok_and(|bv| has_aiq(&bv)))
+            .map(Some),
         None if !r.existed => Some(None),
         None => None,
     });
@@ -321,7 +352,14 @@ mod tests {
 
     #[test]
     fn line_diff_marks_added_and_removed() {
-        assert_eq!(line_diff("a\nb\nc\n", "a\nx\nc\n"), "+ x\n- b\n");
+        assert_eq!(line_diff("a\nb\nc\n", "a\nx\nc\n"), "- b\n+ x\n");
         assert_eq!(line_diff("", "a\n"), "+ a\n");
+    }
+
+    #[test]
+    fn line_diff_ignores_a_line_that_only_gained_a_comma() {
+        let old = "{\n  \"theme\": \"dark\"\n}\n";
+        let new = "{\n  \"theme\": \"dark\",\n  \"hooks\": {}\n}\n";
+        assert_eq!(line_diff(old, new), "+   \"hooks\": {}\n");
     }
 }

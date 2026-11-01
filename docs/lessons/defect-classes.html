@@ -58,4 +58,15 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <ul><li><strong>Why it survives:</strong> on Linux the socket is a file inside the <code>Paths</code> directory, so the bug exists only on</li></ul>
 <p>Windows.</p>
 <ul><li><strong>Instances:</strong> 2026-10-31, PR #9 Windows CI: <code>e2e_wrong_token_frame_closed_nothing_stored</code> (NotFound).</li><li><strong>Control:</strong> the pipe name is a hash of <code>Paths::runtime</code>; the e2e test builds <code>Paths::at(dir)</code> with no</li></ul>
-<p>environment override, so a regression fails on the Windows job.</p></main></body></html>
+<p>environment override, so a regression fails on the Windows job.</p>
+<h3>DC-006 — A restore point taken from a state the tool itself already changed</h3>
+<ul><li><strong>Signature:</strong> <code>aiq install</code> took a fresh backup on every run. Run again after the binary moved, the</li></ul>
+<p>&quot;backup&quot; held the first install&#x27;s AIQ hooks, and <code>uninstall</code> restored it byte for byte, leaving hooks that point at the old path while printing &quot;Removed AIQ&#x27;s hooks.&quot;</p>
+<ul><li><strong>Why it survives:</strong> every test installed once from one binary. Reinstalling from a new path only</li></ul>
+<p>happens on a real machine, when a build moves out of a temp folder.</p>
+<ul><li><strong>Instances:</strong> 2026-11-01, Windows laptop check: hooks installed from <code>%TEMP%\aiq-pr9\...</code>, and the</li></ul>
+<p>plan to move them to <code>%LOCALAPPDATA%\AIQ\bin</code> exposed it. Found in review before it ran.</p>
+<ul><li><strong>Sweep:</strong> the only other restore point is the spool drain, which renames the file aside and never</li></ul>
+<p>restores it. No other instance.</p>
+<ul><li><strong>Control:</strong> reinstall over an untouched install keeps the first record&#x27;s backup; uninstall never</li></ul>
+<p>restores a backup that still holds AIQ entries and strips instead. Tests: <code>e2e_reinstall_from_moved_binary_then_uninstall_restores_original</code> and <code>e2e_reinstall_after_edit_then_uninstall_strips_all_aiq</code> (both red without the fix).</p></main></body></html>
