@@ -664,6 +664,11 @@ Where the build differs from the text above:
   against the 0.6 bar, and even a hand-written close rewording set did not trigger. Only near-verbatim
   rewording fires. The Phase 0 thresholds were tuned on synthetic data. Upgrade trigger: the real-data
   week; likely fix is semantic similarity or the planned model judge, not more word rules.
+- **The agent already gives this nudge sometimes (open).** In the same session, after the 2nd of four
+  near-identical prompts, Claude wrote "You've asked this a few times now, so I may be answering the wrong
+  question." An AIQ card that repeats what the agent just said is noise. Later versions should check the
+  agent's last reply for an equivalent nudge before showing a card (needs the reply text, not captured in
+  Phase 1).
 - **Whole-process hook time on the laptop:** p50 about 27 ms, p95 65 to 70 ms; in-process p95 3.1 ms.
   The 50 ms p95 whole-process bar does not hold there; the budget is with Imran.
 
