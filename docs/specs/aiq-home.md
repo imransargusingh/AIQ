@@ -91,6 +91,12 @@ the sibling specs, plus the person's own controls. Terms it adds to the ubiquito
   never stored as its own field (one definition of the quantity).
 - **Kept rate** (new, measure): kept tasks ÷ judged tasks in a window. **Non-additive**: computed from
   the counts, never averaged across weeks or jobs.
+- **Within reach** (new, measure, *proposed 2026-11-01, Imran to confirm*): kept tasks plus "could be
+  kept" tasks, ÷ judged tasks. A "could be kept" task is a judged task that was not kept, whose task
+  type's potential rung is Delegated or higher at judge confidence ≥ 0.8. The rest are "needs you
+  today". Non-additive like Kept rate. Home shows it as one bar split into Kept / Could be kept /
+  Needs you today, under the kept rate. It covers only work done with an AI tool AIQ watches; work
+  done without any agent is invisible to AIQ and is not in the denominator.
 - **Opportunity row** (projection): one task type whose potential rung is above its current rung, with
   its job, how often it happens and the one next step.
 - **Environment finding** (from `coaching-loop.md`): a blocker outside the person's habits; shown on
@@ -270,6 +276,8 @@ Produced by `/ui-design` (2026-11-01): **`DESIGN.md`** (tokens, states, copy, mo
 - Whether `claude -p` judging fits "ordinary, individual usage" in Anthropic's terms at a 40-task
   daily budget is a reading of the docs, not a ruling. *Flagged.*
 - The 20% threshold in Kept task is a first guess; tunable pack data.
+- "Within reach" leans on the potential rung, which is a model judgment; tasks below the 0.8
+  confidence bar count as "needs you today", so the figure errs low. *Flagged.*
 
 ## Gate record
 Author-run adversarial pass, 2026-11-01 (independent review still owed; the author does not clear vetoes):

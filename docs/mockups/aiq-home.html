@@ -96,6 +96,26 @@
   .card{background:var(--surface);border:1px solid var(--hairline);border-radius:var(--r-md);padding:var(--s5) var(--s6);display:flex;flex-direction:column;gap:var(--s3)}
   .big{font:var(--t-display);font-variant-numeric:tabular-nums;letter-spacing:-.5px}
   .num{font-variant-numeric:tabular-nums}
+  .hl{display:flex;align-items:baseline;gap:var(--s4);flex-wrap:wrap}
+  .hl .of{font:var(--t-heading);color:var(--ink-mute)}
+  .hl .of b{color:var(--ink)}
+  .reach{display:flex;gap:2px;height:28px}
+  .reach>span{position:relative;display:flex;align-items:center;padding:0 var(--s3);border-radius:var(--r-sm);font:600 12px/1 var(--f-text);font-variant-numeric:tabular-nums;min-width:24px;border:1px solid transparent}
+  .reach .k{background:var(--primary);color:var(--on-primary)}
+  .reach .c{background:var(--rung-2);color:var(--ink)}
+  .reach .n{background:var(--canvas-soft);color:var(--ink-mute)}
+  .reach .n{border-color:var(--hairline)}
+  [data-theme="contrast"] .reach .c,[data-theme="contrast"] .reach .n{border-color:var(--ink)}
+  [data-theme="contrast"] .reach .c{background:repeating-linear-gradient(45deg,var(--surface) 0 4px,#4d4d4d 4px 6px);color:var(--ink)}
+  .reach>span:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}
+  .reach .tip{display:none;position:absolute;bottom:calc(100% + var(--s2));left:0;white-space:nowrap;z-index:2;font-weight:400;
+    background:var(--surface);color:var(--ink);border:1px solid var(--hairline);border-radius:var(--r-sm);padding:var(--s2) var(--s3);font-size:12px;line-height:1.4}
+  .reach>span:hover .tip,.reach>span:focus-visible .tip{display:block}
+  .reach-key{display:flex;gap:var(--s4);flex-wrap:wrap;font:var(--t-caption);color:var(--ink-mute)}
+  .reach-key i{display:inline-block;width:12px;height:12px;border-radius:var(--r-sm);margin-right:var(--s2);vertical-align:-2px;border:1px solid transparent}
+  .reach-key i.k{background:var(--primary)} .reach-key i.c{background:var(--rung-2)} .reach-key i.n{background:var(--canvas-soft)}
+  [data-theme="contrast"] .reach-key i{border-color:var(--ink)}
+  [data-theme="contrast"] .reach-key i.c{background:repeating-linear-gradient(45deg,var(--surface) 0 2px,#4d4d4d 2px 3px)}
   .tr{margin:0;display:grid;grid-template-columns:auto minmax(0,1fr);grid-template-rows:auto 72px auto;column-gap:var(--s3);row-gap:var(--s2)}
   .tr figcaption{grid-column:1/-1;font:var(--t-caption);color:var(--ink-mute);margin-bottom:var(--s2)}
   .tr-y{position:relative;width:32px;font:var(--t-caption);color:var(--ink-mute);font-variant-numeric:tabular-nums;text-align:right}
@@ -273,7 +293,7 @@ let paused = false, singleKeys = true, selCount = 1, invoker = null;
 
 /* ---- sample data (marked as sample in the page) ---- */
 const DATA = {
-  dev: { kept:58, judged:141, trend:[33,35,38,41], waiting:12,
+  dev: { kept:58, judged:141, could:37, trend:[33,35,38,41], waiting:12,
     mix:[["Code a change",68],["Write a spec or doc",32]],
     rungs:[[24,14],[35,28],[22,31],[13,19],[6,8]],
     tasks:[
@@ -291,7 +311,7 @@ const DATA = {
     tips:[["Today 22:31","Reworded 3 times without new details","Claude Code","No answer"],["Tue 15:02","Accepted a drafted spec with no sources checked","VS Code","Helpful"],["Mon 10:47","Same task, a fresh session would help","Claude Code","Snoozed 7 days"]],
     events:[["22:31","Claude Code","Tip shown","Reworded 3 times without new details"],["22:31","Claude Code","Prompt","the date parser test is still failing, fix it"],["22:30","Claude Code","Turn ended","1 test failed"],["22:28","Claude Code","Prompt","please fix the date parser test, it still fails"],["22:25","Claude Code","Prompt","fix the failing date parser test"],["21:58","Copilot CLI","Prompt","summarise the open PRs for the weekly update"]],
     store:"2,184 events · 3.1 MB · since 24 Oct" },
-  pm: { kept:19, judged:64, trend:[22,24,27,30], waiting:5,
+  pm: { kept:19, judged:64, could:22, trend:[22,24,27,30], waiting:5,
     mix:[["Write a spec or doc",71],["Code a change",29]],
     rungs:[[38,24],[34,32],[18,28],[8,12],[2,4]],
     tasks:[
@@ -325,6 +345,14 @@ const shellPaused = () => paused ? `<div class="banner" role="status"><div class
 const downBanner = () => st()==="error" && root.dataset.page!=="data" && root.dataset.page!=="detail" ? `<div class="banner bad" role="alert"><div class="grow"><b>AIQ isn't running, so this shows what was stored at 22:40.</b> It starts with your next prompt in Claude Code.</div><button class="btn" data-act="toast:Starting AIQ…">Start AIQ now</button></div>` : "";
 const sk = (w,h) => `<span class="sk" style="width:${w};${h?`height:${h}`:''}"></span>`;
 
+function reach(keptPct, couldPct, n){
+  /* One whole (judged tasks), three parts. Text inside each block; legend names only. */
+  const needPct = 100 - keptPct - couldPct;
+  const parts = [["k","Kept",keptPct,"you kept the agent's work"],["c","Could be kept",couldPct,"you redid it, but an agent could finish this kind of task"],["n","Needs you today",needPct,"the task needs more from you than agents can do yet"]];
+  return `<div class="reach" role="group" aria-label="Judged tasks, ${n}, split three ways">${parts.map(([c,l,v,why])=>
+      `<span class="${c}" tabindex="0" style="flex:${v} 1 0" aria-label="${l}: ${v}%, ${why}">${v>=8?v+"%":""}<span class="tip" aria-hidden="true"><b>${l} · ${v}%</b><br>${why}</span></span>`).join("")}</div>
+    <div class="reach-key" aria-hidden="true">${parts.map(([c,l])=>`<span><i class="${c}"></i>${l}</span>`).join("")}</div>`;
+}
 const WEEKS = ["5 Oct","12 Oct","19 Oct","26 Oct"];
 function trend(v){
   /* Weekly kept rate: one series, so no legend; first and latest values labelled, the rest on hover/focus. */
@@ -359,7 +387,7 @@ function home(){
     <div class="card" style="max-width:520px">${D.mix.map(([j],i)=>{const n=i?1:4;return `<div class="head"><span>${j}</span><span class="meta num">${n} of 10 tasks</span></div><div class="meter" role="progressbar" aria-label="${j}" aria-valuenow="${n}" aria-valuemax="10"><i style="width:${n*10}%"></i></div>`}).join("")}
     <p class="meta">Watching Claude Code and Copilot CLI. <a href="#data" data-go="data">See what AIQ has captured</a></p></div></div>`;
   const over = s==="overflow", ranked = D.tasks.filter(t=>t.next), fixes = D.tasks.filter(t=>t.blocked), tasks = ranked.slice(1,3);
-  const t0 = ranked[0], kept = over?"1,284":D.kept, judged = over?"3,109":D.judged, rate = over?41:Math.round(D.kept/D.judged*100);
+  const t0 = ranked[0], kept = over?"1,284":D.kept, judged = over?"3,109":D.judged, rate = over?41:Math.round(D.kept/D.judged*100), couldPct = Math.round(D.could/D.judged*100);
   const rows = tasks.map((t,i)=>{
     const name = t.name, wk = t.week;
     const move = t.blocked ? `<span class="chip warn">Blocked by the repo</span>` : (judgeOn()? `${chipR(t.now)} <span aria-label="could move to">→</span> ${chipR(t.pot)}` : `<span class="chip">Waiting for the rung model</span>`);
@@ -371,8 +399,11 @@ function home(){
     <h1 class="sr">Home</h1><p class="meta">Last 30 days · 2 Oct to 31 Oct · sample data</p>
     <div class="top">
       <section class="card" aria-labelledby="kr"><h2 id="kr" class="mute" style="font-weight:400">Tasks agents finished without you redoing them</h2>
-        ${judgeOn()?`<div class="big">${rate}%</div>${trend(D.trend)}
-        <p class="meta">${kept} of ${judged} tasks: you kept the agent's work with small edits and no correcting re-prompt. Up from ${D.trend[0]}% in the week of ${WEEKS[0]}.</p>`
+        ${judgeOn()?`<div class="hl"><span class="big">${rate}%</span><span class="of">of <b>${rate+couldPct}%</b> within reach</span></div>
+        ${reach(rate, couldPct, judged)}
+        <p class="meta">${kept} of ${judged} tasks: you kept the agent's work with small edits and no correcting re-prompt. On another ${couldPct}%, AIQ thinks an agent could have finished the work with a better setup or prompt. <a href="#tasks" data-go="tasks">See which tasks</a></p>
+        ${trend(D.trend)}
+        <p class="meta">Kept rate up from ${D.trend[0]}% in the week of ${WEEKS[0]}.</p>`
         :`<p class="mute">This number needs the rung model to read your finished tasks. Tips work without it.</p><div class="row"><button class="btn" data-go="settings">Connect in Settings</button></div>`}</section>
       <section class="card" aria-labelledby="nx"><h2 id="nx" class="mute" style="font-weight:400">Your best next step</h2>
         <p style="font:var(--t-heading)">${esc(over?LONG.name:t0.name)}</p>
