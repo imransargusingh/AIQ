@@ -142,12 +142,16 @@
   .opp .next{grid-column:1/-1;color:var(--ink-mute)}
   .opp .freq{text-align:right;font:var(--t-caption);color:var(--ink-mute);white-space:nowrap}
   .rungs{display:flex;flex-direction:column;gap:var(--s3)}
-  .rr{display:grid;grid-template-columns:140px minmax(0,1fr) 92px;gap:var(--s4);align-items:center}
+  .rr{display:grid;grid-template-columns:140px minmax(0,1fr) 72px 44px 112px;gap:var(--s4);align-items:center}
+  .rr.hd{font:var(--t-caption);color:var(--ink-mute);white-space:nowrap}
+  .rr.hd span:nth-child(3){grid-column:3/5;text-align:center}
+  .rr svg.sp{width:72px;height:20px;display:block;overflow:visible}
+  .rr .d{text-align:right;font:var(--t-caption);color:var(--ink-mute);font-variant-numeric:tabular-nums}
   .track{position:relative;height:16px;background:var(--canvas-soft);border-radius:var(--r-sm)}
   .track .now{position:absolute;inset:0 auto 0 0;border-radius:var(--r-sm)}
   [data-theme="contrast"] .track .now{border:1px solid var(--ink)}
   .track .pot{position:absolute;inset:-3px auto -3px 0;border:1.5px dashed var(--ink-mute);border-radius:var(--r-sm)}
-  .rr .v{text-align:right;font:var(--t-caption);color:var(--ink-mute);font-variant-numeric:tabular-nums}
+  .rr.hd span:last-child,.rr .v{text-align:right;font:var(--t-caption);color:var(--ink-mute);font-variant-numeric:tabular-nums}
   .legend{display:flex;gap:var(--s5);font:var(--t-caption);color:var(--ink-mute);flex-wrap:wrap}
   .legend i{display:inline-block;width:14px;height:10px;border-radius:var(--r-sm);background:var(--rung-3);margin-right:var(--s2);vertical-align:-1px}
   .legend i.p{background:none;border:1.5px dashed var(--ink-mute)}
@@ -282,6 +286,7 @@ const DATA = {
   dev: { kept:58, judged:141, could:37, trend:[33,35,38,41], couldTrend:[30,29,27,26], waiting:12,
     mix:[["Code a change",68],["Write a spec or doc",32]],
     rungs:[[24,14],[35,28],[22,31],[13,19],[6,8]],
+    rungWeeks:[[30,28,26,24],[36,36,35,35],[18,19,21,22],[11,12,12,13],[5,5,6,6]],
     tasks:[
       {id:"tests",name:"Writing unit tests",job:"Code a change",now:1,pot:2,week:23,kept:31,next:"Ask the agent to run the tests and keep fixing until they pass.",
        starter:"Write tests for <function> covering <cases>. Run them with npm test.\nKeep fixing until they all pass, then show me the diff and the test output.",
@@ -300,6 +305,7 @@ const DATA = {
   pm: { kept:19, judged:64, could:22, trend:[22,24,27,30], couldTrend:[36,35,35,34], waiting:5,
     mix:[["Write a spec or doc",71],["Code a change",29]],
     rungs:[[38,24],[34,32],[18,28],[8,12],[2,4]],
+    rungWeeks:[[45,43,40,38],[33,33,34,34],[14,15,17,18],[6,7,7,8],[2,2,2,2]],
     tasks:[
       {id:"status",name:"Writing the weekly status update",job:"Write a spec or doc",now:0,pot:1,week:5,kept:20,next:"Give the agent last week's update, the merged PRs and the three decisions you need, then edit its draft.",
        starter:"Draft this week's status update for <audience>. Use last week's update as the format.\nSources: <links>. Call out the three decisions I need from them.",
@@ -333,6 +339,12 @@ const sk = (w,h) => `<span class="sk" style="width:${w};${h?`height:${h}`:''}"><
 
 const PARTS = [["k","Agents finished","You kept the agent's work with small edits"],["c","Agents could finish","You redid these, but agents can finish this kind of task"],["n","Needs you","Agents can't finish these yet"]];
 const key = () => `<div class="key" aria-hidden="true">${PARTS.map(([c,l,why])=>`<span title="${why}."><i class="k-${c}"></i>${l}</span>`).join("")}</div>`;
+function spark(v){
+  const lo = Math.min(...v), hi = Math.max(...v), mid = (lo+hi)/2, span = Math.max(10, hi-lo);
+  const y = x => 10 - (x-mid)/span*16, xs = i => 4 + i*(64/(v.length-1));
+  return `<svg class="sp" viewBox="0 0 72 20" aria-hidden="true"><polyline points="${v.map((x,i)=>`${xs(i)},${y(x)}`).join(" ")}" fill="none" stroke="var(--ink-mute)" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><circle cx="${xs(v.length-1)}" cy="${y(v[v.length-1])}" r="3" fill="var(--primary)"/></svg>`;
+}
+const chg = d => d>0?`↑${d}`:d<0?`↓${-d}`:"0";
 const WEEKS = ["5 Oct","12 Oct","19 Oct","26 Oct"];
 function weekly(fin, could){
   /* 100% stacked column per week: Agents finished (bottom) · Agents could finish · Needs you (top).
@@ -383,8 +395,8 @@ function home(){
     </div>
     <section class="group" aria-labelledby="opps"><div class="head"><h2 id="opps">Where agents could do more</h2><a href="#tasks" data-go="tasks" class="meta">All tasks</a></div><div class="list">${rows}</div>
       ${fixes.length?`<div class="group" style="gap:var(--s2)"><h3 style="margin:0;font:var(--t-heading)">Repo fixes</h3>${fixes.map(f=>`<div class="fix"><code>${esc(f.repo)}</code><span>${esc(f.blocked)}</span><span class="meta">Holds back: ${esc(f.name)} · ${f.week} a week</span><a href="#detail" data-go="detail">How to fix</a></div>`).join("")}</div>`:""}</section>
-    <section class="group" aria-labelledby="rg"><div class="head"><h2 id="rg">How you work with agents</h2><span class="meta">Share of tasks per rung · today and where they could be</span></div>
-      ${judgeOn()?`<div class="rungs">${D.rungs.map(([n,p],i)=>`<div class="rr"><span>${RUNGS[i]} (${i+1})</span><div class="track" aria-hidden="true"><span class="pot" style="width:${p/40*100}%"></span><span class="now" style="width:${n/40*100}%;background:var(--rung-${i+1})"></span></div><span class="v">${n}% → ${p}%</span></div>`).reverse().join("")}</div>
+    <section class="group" aria-labelledby="rg"><div class="head"><h2 id="rg">How you work with agents</h2><span class="meta">Share of tasks per rung</span></div>
+      ${judgeOn()?`<div class="rungs"><div class="rr hd" aria-hidden="true"><span></span><span></span><span>Last 4 weeks</span><span>Today → could be</span></div>${D.rungs.map(([n,p],i)=>{const w=D.rungWeeks[i], d=w[w.length-1]-w[0]; return `<div class="rr"><span>${RUNGS[i]} (${i+1})</span><div class="track" aria-hidden="true"><span class="pot" style="width:${p/40*100}%"></span><span class="now" style="width:${n/40*100}%;background:var(--rung-${i+1})"></span></div>${spark(w)}<span class="d"><span class="sr">Change over 4 weeks: </span>${chg(d)}<span class="sr"> points</span></span><span class="v">${n}% → ${p}%</span></div>`}).reverse().join("")}</div>
       <div class="legend"><span><i></i>Today</span><span><i class="p"></i>Where these tasks could be</span></div>`
       :`<div class="empty"><b>Rungs need the rung model.</b><span class="mute">AIQ judges finished tasks with your own Claude Code. Tips work without it.</span><button class="btn" data-go="settings">Connect in Settings</button></div>`}
     </section>
