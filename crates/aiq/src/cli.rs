@@ -120,6 +120,9 @@ pub fn status() -> ExitCode {
             }
         }
     }
+    if let Some(l) = crate::import::status_line(&paths) {
+        out += &l;
+    }
     out += &format!("Claude Code: {}\n", crate::install::status_line());
     out += &format!("Copilot: {}\n", crate::install_copilot::status_line());
     let spooled = std::fs::read_to_string(paths.spool()).map(|s| s.lines().count()).unwrap_or(0);

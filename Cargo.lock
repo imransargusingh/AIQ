@@ -31,6 +31,8 @@ version = "0.1.0"
 dependencies = [
  "aiq-contracts",
  "aiq-core",
+ "aiq-domain",
+ "aiq-store",
  "chrono",
  "serde",
  "serde_json",

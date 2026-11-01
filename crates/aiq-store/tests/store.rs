@@ -72,9 +72,9 @@ fn decide(s: &Store, did: &str, cid: &str, outcome: &str, reason: &str, at: i64)
 }
 
 #[test]
-fn open_creates_latest_schema_version_3() {
+fn open_creates_latest_schema_version_4() {
     let (_d, s) = open();
-    assert_eq!(s.user_version().unwrap(), 3);
+    assert_eq!(s.user_version().unwrap(), 4);
 }
 
 #[test]
@@ -87,8 +87,9 @@ fn v1_store_migrates_to_latest_keeping_data() {
         assert_eq!(s.user_version().unwrap(), 1);
     }
     let s = Store::open(&p).unwrap();
-    assert_eq!(s.user_version().unwrap(), 3);
+    assert_eq!(s.user_version().unwrap(), 4);
     assert_eq!(s.events_by_kind().unwrap(), vec![("prompt".to_string(), 1)]);
+    assert!(s.import_counts().unwrap().is_empty());
     s.insert_open("c1", "cli", 5).unwrap();
     assert!(s.opened("c1").unwrap() && !s.opened("c2").unwrap());
 }
@@ -267,6 +268,8 @@ fn folder_rule_newest_action_wins() {
     );
     s.insert_folder_rule("/ep", "include", "person", "person", 3).unwrap();
     assert_eq!(s.set_aside_folders().unwrap().len(), 1);
+    let now = s.folder_rules_now().unwrap();
+    assert_eq!((now["/ep"].as_str(), now["/b"].as_str()), ("include", "set_aside"));
     s.insert_folder_rule("/ep", "set_aside", "burst", "live", 4).unwrap();
     assert_eq!(s.set_aside_folders().unwrap()[0].0, "/ep");
     assert!(s.insert_folder_rule("/x", "maybe", "r", "live", 5).is_err(), "action is checked");
