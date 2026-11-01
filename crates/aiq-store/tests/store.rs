@@ -71,13 +71,13 @@ fn decide(s: &Store, did: &str, cid: &str, outcome: &str, reason: &str, at: i64)
 }
 
 #[test]
-fn open_creates_latest_schema_version_2() {
+fn open_creates_latest_schema_version_3() {
     let (_d, s) = open();
-    assert_eq!(s.user_version().unwrap(), 2);
+    assert_eq!(s.user_version().unwrap(), 3);
 }
 
 #[test]
-fn v1_store_migrates_to_v2_keeping_data() {
+fn v1_store_migrates_to_latest_keeping_data() {
     let d = TempDir::new().unwrap();
     let p = d.path().join("aiq.db");
     {
@@ -86,8 +86,9 @@ fn v1_store_migrates_to_v2_keeping_data() {
         assert_eq!(s.user_version().unwrap(), 1);
     }
     let s = Store::open(&p).unwrap();
-    assert_eq!(s.user_version().unwrap(), 2);
+    assert_eq!(s.user_version().unwrap(), 3);
     assert_eq!(s.events_by_kind().unwrap(), vec![("prompt".to_string(), 1)]);
+    assert!(s.import_counts().unwrap().is_empty());
     s.insert_open("c1", "cli", 5).unwrap();
     assert!(s.opened("c1").unwrap() && !s.opened("c2").unwrap());
 }

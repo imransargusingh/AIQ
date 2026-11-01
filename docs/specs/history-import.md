@@ -241,6 +241,16 @@ the `aiq-home` spec once this spec is accepted.
 
 N/A here; follows `DESIGN.md` and the `aiq-home` spec.
 
+## Implementation status
+
+Slice 1 (`aiq import`, 2026-11-01): discovery of Claude Code and Copilot CLI transcripts; the automated
+rule (NI, T, B, F) with `--include <folder>` as the "Include them" action; imported sessions stored in
+their own tables (schema v3), which the live loop never reads, so no cards (US-5); set-aside sessions keep
+no content; unchanged sessions skipped on re-run (US-7); `aiq forget --imported` (US-8); judge session ids
+in `~/.aiq/judge-sessions.txt` skipped (US-11); `aiq status` line; `--dry-run`.
+Not yet: grouping into tasks, job classification and judging (waits for the rung judge), the
+`cleanupPeriodDays` warning (US-9), live-capture exclusion of set-aside folders (US-12), VS Code chat.
+
 ## Open questions for Imran
 
 None open.

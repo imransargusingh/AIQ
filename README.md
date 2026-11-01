@@ -35,6 +35,8 @@ aiq status                  # running or paused, tips today, store size, hook ti
 aiq show <card-id>          # a card, why it showed, and the prompts it counted
 aiq pause | aiq resume
 aiq config set daily-cap 3
+aiq import --dry-run        # count your past Claude Code / Copilot CLI sessions; aiq import stores them
+aiq forget --imported       # delete only what aiq import added
 aiq forget --all            # delete everything AIQ stored on this machine
 aiq uninstall claude-code   # removes only AIQ's two hook entries
 ```

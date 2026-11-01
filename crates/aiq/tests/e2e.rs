@@ -521,3 +521,33 @@ fn e2e_uninstall_after_user_edit_strips_only_aiq() {
     assert_eq!(after["theme"], "dark");
     assert_eq!(after["hooks"], json!({"Stop": [{"hooks": [{"type": "command", "command": "notify-send done"}]}]}));
 }
+
+#[test]
+fn e2e_import_dry_run_then_import_status_and_forget_imported() {
+    let e = Env::new();
+    let dir = e.claude().join("projects").join("C--repos-a");
+    std::fs::create_dir_all(&dir).unwrap();
+    let rows = [
+        json!({"type": "user", "entrypoint": "cli", "cwd": "/repos/a", "timestamp": "2026-10-20T10:00:00Z",
+               "message": {"content": "fix the failing test"}}),
+        json!({"type": "assistant", "timestamp": "2026-10-20T10:01:00Z",
+               "message": {"content": [{"type": "tool_use", "id": "t1", "name": "Edit", "input": {"file_path": "a.rs"}}]}}),
+    ];
+    let body: String = rows.iter().map(|r| format!("{r}\n")).collect();
+    std::fs::write(dir.join("s1.jsonl"), body).unwrap();
+    let copilot = e.dir.path().join("copilot");
+    let run = |args: &[&str]| {
+        let o = e.cmd(args).env("COPILOT_HOME", &copilot).stdin(Stdio::null()).output().unwrap();
+        assert!(o.status.success(), "{args:?}: {}", String::from_utf8_lossy(&o.stderr));
+        String::from_utf8_lossy(&o.stdout).into_owned()
+    };
+    let dry = run(&["import", "--dry-run"]);
+    assert!(dry.contains("Dry run") && dry.contains("Claude Code: 1 sessions found, 1 imported"), "{dry}");
+    assert!(!run(&["status"]).contains("Imported history"));
+    let done = run(&["import"]);
+    assert!(done.contains("Import finished."), "{done}");
+    assert!(run(&["status"]).contains("Imported history: 1 sessions, 0 set aside"));
+    assert!(run(&["import"]).contains("0 imported, 0 set aside as automated, 1 unchanged"));
+    assert!(run(&["forget", "--imported", "--yes"]).contains("Deleted 1 imported sessions."));
+    assert!(!run(&["status"]).contains("Imported history"));
+}

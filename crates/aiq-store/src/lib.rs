@@ -9,8 +9,9 @@ use std::path::{Path, PathBuf};
 
 pub const SCHEMA_V1: &str = include_str!("schema_v1.sql");
 pub const SCHEMA_V2: &str = include_str!("schema_v2.sql");
+pub const SCHEMA_V3: &str = include_str!("schema_v3.sql");
 /// Migration N takes the store from `user_version` N to N+1, in one transaction.
-pub const MIGRATIONS: &[&str] = &[SCHEMA_V1, SCHEMA_V2];
+pub const MIGRATIONS: &[&str] = &[SCHEMA_V1, SCHEMA_V2, SCHEMA_V3];
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StoreError {
@@ -55,6 +56,39 @@ pub struct NewEvent<'a> {
     pub prompt_chars: Option<i64>,
     pub payload_meta: &'a str,
     pub text: Option<&'a str>,
+}
+
+/// One imported source session and its events (history import, schema v3).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ImportedSession {
+    pub tool: String,
+    pub source_session_id: String,
+    pub source_mtime_ms: i64,
+    pub folder: String,
+    pub started_utc_ms: Option<i64>,
+    pub human_turns: u32,
+    /// `imported`, `automated` or `error`.
+    pub outcome: String,
+    pub why: String,
+    pub events: Vec<ImportedEvent>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ImportedEvent {
+    /// `prompt` or `stop`.
+    pub kind: String,
+    pub ts_utc_ms: Option<i64>,
+    pub text: Option<String>,
+    pub actions: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ImportRunCounts {
+    pub found: u64,
+    pub imported: u64,
+    pub automated: u64,
+    pub unchanged: u64,
+    pub errors: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -121,11 +155,19 @@ impl Store {
     pub fn open_with(path: &Path, migrations: &[&str]) -> Result<Self> {
         create_user_only(path).map_err(|e| StoreError { code: codes::STORE_OPEN, detail: e.to_string() })?;
         let conn = Connection::open(path).map_err(err(codes::STORE_OPEN))?;
-        conn.execute_batch("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;")
+        conn.execute_batch("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 5000;")
             .map_err(err(codes::STORE_OPEN))?;
         let mut s = Self { conn, path: path.to_owned() };
         s.migrate(migrations)?;
         Ok(s)
+    }
+
+    /// Open an existing store read-only: no migration, no pragmas, never creates the file. For CLI readers
+    /// that must not contend with the core (e.g. `aiq status` while the core starts).
+    pub fn open_read_only(path: &Path) -> Result<Self> {
+        let conn = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .map_err(err(codes::STORE_OPEN))?;
+        Ok(Self { conn, path: path.to_owned() })
     }
 
     pub fn path(&self) -> &Path {
@@ -514,6 +556,118 @@ impl Store {
         let mut st = self.conn.prepare(sql).map_err(err(codes::STORE_OPEN))?;
         let rows = st.query_map([], |r| Ok((r.get(0)?, r.get::<_, i64>(1)? as u64))).map_err(err(codes::STORE_OPEN))?;
         rows.collect::<std::result::Result<_, _>>().map_err(err(codes::STORE_OPEN))
+    }
+
+    /// Source mtime of a session as last imported, or None if never read.
+    pub fn import_mtime(&self, tool: &str, source_session_id: &str) -> Result<Option<i64>> {
+        self.conn
+            .query_row(
+                "SELECT source_mtime_ms FROM import_session WHERE tool = ?1 AND source_session_id = ?2",
+                params![tool, source_session_id],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(err(codes::STORE_OPEN))
+    }
+
+    /// Write one source session and its events, replacing what an earlier run stored for it.
+    pub fn put_import_session(&mut self, run_id: &str, s: &ImportedSession) -> Result<()> {
+        let tx = self.conn.transaction().map_err(err(codes::STORE_WRITE))?;
+        tx.execute(
+            "DELETE FROM import_session WHERE tool = ?1 AND source_session_id = ?2",
+            params![s.tool, s.source_session_id],
+        )
+        .map_err(err(codes::STORE_WRITE))?;
+        tx.execute(
+            "INSERT INTO import_session (tool, source_session_id, source_mtime_ms, run_id, folder, started_utc_ms,
+                                         human_turns, outcome, why)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            params![
+                s.tool,
+                s.source_session_id,
+                s.source_mtime_ms,
+                run_id,
+                s.folder,
+                s.started_utc_ms,
+                s.human_turns,
+                s.outcome,
+                s.why
+            ],
+        )
+        .map_err(err(codes::STORE_WRITE))?;
+        for (i, e) in s.events.iter().enumerate() {
+            tx.execute(
+                "INSERT INTO import_event (tool, source_session_id, seq, kind, ts_utc_ms, text, actions)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![s.tool, s.source_session_id, i as i64, e.kind, e.ts_utc_ms, e.text, e.actions],
+            )
+            .map_err(err(codes::STORE_WRITE))?;
+        }
+        tx.commit().map_err(err(codes::STORE_WRITE))
+    }
+
+    pub fn insert_import_run(
+        &self,
+        run_id: &str,
+        started_ms: i64,
+        finished_ms: i64,
+        c: &ImportRunCounts,
+    ) -> Result<()> {
+        self.conn
+            .execute(
+                "INSERT INTO import_run (run_id, started_utc_ms, finished_utc_ms, found, imported, automated, unchanged,
+                                         errors, aiq_version)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                params![
+                    run_id,
+                    started_ms,
+                    finished_ms,
+                    c.found as i64,
+                    c.imported as i64,
+                    c.automated as i64,
+                    c.unchanged as i64,
+                    c.errors as i64,
+                    env!("CARGO_PKG_VERSION")
+                ],
+            )
+            .map(|_| ())
+            .map_err(err(codes::STORE_WRITE))
+    }
+
+    /// Imported sessions now held, by (tool, outcome).
+    pub fn import_counts(&self) -> Result<Vec<(String, String, u64)>> {
+        let mut st = self
+            .conn
+            .prepare("SELECT tool, outcome, count(*) FROM import_session GROUP BY tool, outcome ORDER BY tool, outcome")
+            .map_err(err(codes::STORE_OPEN))?;
+        let rows = st
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get::<_, i64>(2)? as u64)))
+            .map_err(err(codes::STORE_OPEN))?;
+        rows.collect::<std::result::Result<_, _>>().map_err(err(codes::STORE_OPEN))
+    }
+
+    /// Folders whose sessions were set aside as automated, with counts, largest first.
+    pub fn set_aside_folders(&self) -> Result<Vec<(String, u64)>> {
+        self.pairs(
+            "SELECT folder, count(*) AS n FROM import_session WHERE outcome = 'automated'
+             GROUP BY folder ORDER BY n DESC, folder",
+        )
+    }
+
+    pub fn last_import_ms(&self) -> Result<Option<i64>> {
+        self.conn
+            .query_row("SELECT max(finished_utc_ms) FROM import_run", [], |r| r.get(0))
+            .map_err(err(codes::STORE_OPEN))
+    }
+
+    /// Delete everything history import stored (US-8). Live capture is untouched.
+    pub fn forget_imported(&mut self) -> Result<u64> {
+        let tx = self.conn.transaction().map_err(err(codes::STORE_WRITE))?;
+        tx.execute("DELETE FROM import_event", []).map_err(err(codes::STORE_WRITE))?;
+        let n = tx.execute("DELETE FROM import_session", []).map_err(err(codes::STORE_WRITE))?;
+        tx.execute("DELETE FROM import_run", []).map_err(err(codes::STORE_WRITE))?;
+        tx.commit().map_err(err(codes::STORE_WRITE))?;
+        Ok(n as u64)
     }
 
     /// Bytes on disk for the store, including the WAL.
