@@ -392,13 +392,24 @@ fn e2e_reinstall_from_moved_binary_then_uninstall_restores_original() {
     let moved = e.dir.path().join("bin").join(Path::new(BIN).file_name().unwrap());
     std::fs::create_dir_all(moved.parent().unwrap()).unwrap();
     std::fs::copy(BIN, &moved).unwrap();
-    let o = Command::new(&moved)
-        .args(["install", "claude-code", "--yes"])
-        .env("AIQ_HOME", e.home())
-        .env("CLAUDE_CONFIG_DIR", e.claude())
-        .current_dir(e.dir.path())
-        .output()
-        .unwrap();
+    // A freshly copied binary can be briefly "text file busy" on Linux: another test thread's fork
+    // may still hold the copy's write fd until its exec. Retry only that error.
+    let mut tries = 0;
+    let o = loop {
+        match Command::new(&moved)
+            .args(["install", "claude-code", "--yes"])
+            .env("AIQ_HOME", e.home())
+            .env("CLAUDE_CONFIG_DIR", e.claude())
+            .current_dir(e.dir.path())
+            .output()
+        {
+            Err(err) if err.kind() == std::io::ErrorKind::ExecutableFileBusy && tries < 50 => {
+                tries += 1;
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            r => break r.unwrap(),
+        }
+    };
     assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
     let v: Value = serde_json::from_str(&std::fs::read_to_string(settings(&e)).unwrap()).unwrap();
     for ev in ["UserPromptSubmit", "Stop"] {
