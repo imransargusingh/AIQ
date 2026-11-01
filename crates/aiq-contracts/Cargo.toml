@@ -1,0 +1,15 @@
+[package]
+name = "aiq-contracts"
+description = "AIQ wire contracts: aiq.event.v1, aiq.card.v1, local-API frames, pack schema, error codes."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+jsonschema.workspace = true

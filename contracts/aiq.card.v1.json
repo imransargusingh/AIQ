@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aiq.local/contracts/aiq.card.v1.json",
+  "title": "aiq.card.v1",
+  "description": "One coaching card: one noticed sentence, one why, one try-this, one evidence link (spec US-3).",
+  "type": "object",
+  "required": ["schema", "card_id", "opportunity_id", "tip_id", "noticed", "why", "try_this", "evidence_ref", "pack_version"],
+  "properties": {
+    "schema": { "const": "aiq.card.v1" },
+    "card_id": { "type": "string", "minLength": 1 },
+    "opportunity_id": { "type": "string", "minLength": 1 },
+    "tip_id": { "type": "string", "minLength": 1 },
+    "noticed": { "type": "string", "minLength": 1, "pattern": "^[^\\n]*$" },
+    "why": { "type": "string", "minLength": 1, "pattern": "^[^\\n]*$" },
+    "try_this": { "type": "string", "minLength": 1, "pattern": "^[^\\n]*$" },
+    "evidence_ref": { "type": "string", "pattern": "^aiq show \\S+$" },
+    "pack_version": { "type": "string", "minLength": 1 }
+  },
+  "additionalProperties": false
+}

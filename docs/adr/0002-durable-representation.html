@@ -23,7 +23,7 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 .source { color:var(--muted); font-size:.9rem; margin-bottom:2rem; }
 @media (max-width:640px) { main { width:100%; margin:0; padding:24px 18px; border:0; border-radius:0; } }
 </style></head><body><main><div class="source">Rendered from 0002-durable-representation.md</div><h1>ADR-0002: Append-only facts and dimensions in an encrypted local SQLite store</h1>
-<ul><li><strong>Status:</strong> Proposed (retention decided by Imran 2026-10-31)</li><li><strong>Date:</strong> 2026-10-31</li><li><strong>Deciders:</strong> Imran (owner); drafted with Claude via /define-architecture</li></ul>
+<ul><li><strong>Status:</strong> Proposed (retention decided by Imran 2026-10-31)</li><li><strong>Note (2026-10-31):</strong> encryption at rest is deferred for Phase 1 (Imran); the store ships as plain SQLite in a user-only file. See <a href="../notes/note-20261031-encryption-deferred.md">note-20261031-encryption-deferred</a>.</li><li><strong>Date:</strong> 2026-10-31</li><li><strong>Deciders:</strong> Imran (owner); drafted with Claude via /define-architecture</li></ul>
 <h2>Context</h2>
 <p>Bounded context: <strong>Coaching</strong> (spec domain model). Aggregates and invariants: Coaching session (budget never exceeded, one card at a time), Habit track (status only from observed behaviour; never Adopted from one Task), Tip preference (&quot;don&#x27;t show again&quot; never overridden), Job classification (exactly one Job or Unclassified per Task). D5 needs 14-day windows over history; rung judgments are versioned (rung-model spec); US-6 needs export and delete-all.</p>
 <h2>Decision</h2>

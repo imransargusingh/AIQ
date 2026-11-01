@@ -1,0 +1,26 @@
+[package]
+name = "aiq"
+description = "AIQ: the Claude Code hook client, the background core and the CLI, in one binary."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "aiq"
+path = "src/main.rs"
+
+[dependencies]
+aiq-contracts.workspace = true
+aiq-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Console", "Win32_System_Threading"] }
+
+[dev-dependencies]
+tempfile.workspace = true
