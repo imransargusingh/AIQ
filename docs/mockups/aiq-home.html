@@ -431,7 +431,7 @@ function home(){
   }).join("");
   return `<div class="page">${downBanner()}
     ${s==="partial"?`<div class="banner info" role="status"><div class="grow"><b>${D.waiting} tasks are waiting to be judged.</b> They're left out of these numbers until then, and judged as your daily limit allows.</div></div>`:""}
-    <h1 class="sr">Home</h1><p class="meta">Last 30 days · 2 Oct to 31 Oct · sample data</p>
+    <h1 class="sr">Home</h1>
     ${judgeOn()?`<section class="mainrung" role="img" aria-label="Your most common rung: ${RUNGS[D.main.rung]}, rung ${D.main.rung+1} of 5, for ${D.main.days} days">
       <div class="lbl" aria-hidden="true"><span class="mute">Your most common rung</span><span class="meta">for ${D.main.days} days</span></div>
       <div class="scale" aria-hidden="true">${RUNGS.map((r,i)=>`<span class="${i===D.main.rung?"on":""}">${r} (${i+1})</span>`).join("")}</div></section>`:""}
