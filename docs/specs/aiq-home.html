@@ -47,8 +47,8 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <p>of the final change (rung-model F2) and sent no re-prompt that corrected the agent (F5). Derived, never stored as its own field (one definition of the quantity).</p>
 <ul><li><strong>Kept rate</strong> (new, measure): kept tasks ÷ judged tasks in a window. <strong>Non-additive</strong>: computed from</li></ul>
 <p>the counts, never averaged across weeks or jobs.</p>
-<ul><li><strong>Within reach</strong> (new, measure, <em>proposed 2026-11-01, Imran to confirm</em>): kept tasks plus &quot;could be</li></ul>
-<p>kept&quot; tasks, ÷ judged tasks. A &quot;could be kept&quot; task is a judged task that was not kept, whose task type&#x27;s potential rung is Delegated or higher at judge confidence ≥ 0.8. The rest are &quot;needs you today&quot;. Non-additive like Kept rate. Home shows it as one bar split into Kept / Could be kept / Needs you today, under the kept rate. It covers only work done with an AI tool AIQ watches; work done without any agent is invisible to AIQ and is not in the denominator.</p>
+<ul><li><strong>Could be</strong> (new, measure, <em>proposed 2026-11-01, Imran to confirm</em>): the share of judged tasks</li></ul>
+<p>agents finished plus those agents could finish. &quot;Agents could finish&quot; = a judged task not kept, whose task type&#x27;s potential rung is Delegated or higher at judge confidence ≥ 0.8; the rest are &quot;Needs you&quot;. Non-additive like Kept rate. Home shows one bar: Agents finished / Agents could finish / Needs you. Covers only work done with an AI tool AIQ watches.</p>
 <ul><li><strong>Opportunity row</strong> (projection): one task type whose potential rung is above its current rung, with</li></ul>
 <p>its job, how often it happens and the one next step.</p>
 <ul><li><strong>Environment finding</strong> (from <code>coaching-loop.md</code>): a blocker outside the person&#x27;s habits; shown on</li></ul>
@@ -149,8 +149,8 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <p>their Claude Code allowance. Budget default to be set from dogfood measurement. <em>Flagged.</em></p>
 <ul><li>Whether <code>claude -p</code> judging fits &quot;ordinary, individual usage&quot; in Anthropic&#x27;s terms at a 40-task</li></ul>
 <p>daily budget is a reading of the docs, not a ruling. <em>Flagged.</em></p>
-<ul><li>The 20% threshold in Kept task is a first guess; tunable pack data.</li><li>&quot;Within reach&quot; leans on the potential rung, which is a model judgment; tasks below the 0.8</li></ul>
-<p>confidence bar count as &quot;needs you today&quot;, so the figure errs low. <em>Flagged.</em></p>
+<ul><li>The 20% threshold in Kept task is a first guess; tunable pack data.</li><li>&quot;Could be&quot; leans on the potential rung, which is a model judgment; tasks below the 0.8</li></ul>
+<p>confidence bar count as &quot;Needs you&quot;, so the figure errs low. <em>Flagged.</em></p>
 <h2>Gate record</h2>
 <p>Author-run adversarial pass, 2026-11-01 (independent review still owed; the author does not clear vetoes):</p>
 <ul><li><strong>Simplifier:</strong> seven places is the floor for the decided scope (Q2 + Q6); the rung bars duplicate</li></ul>

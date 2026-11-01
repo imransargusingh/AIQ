@@ -77,6 +77,7 @@ truth were judged by the reviewer and are recorded below.
 | 21 | Older-than confirm (re-test) | Copy truth | 2 | Count recomputed on date change; `aria-describedby` | Fixed |
 | 22 | Home kept-rate trend (Imran, 2026-11-01) | Data viz: no axis labels or values | 2 | Labelled weekly chart: caption, 0/25/50% gridlines, week-start labels, first and latest values direct-labelled, every point focusable with a tooltip and an accessible name; copy says "in the week of 5 Oct" instead of "four weeks ago" | Fixed |
 | 23 | Home kept-rate card (Imran, 2026-11-01) | IA: no sense of how much agents could do | 2 | "of N% within reach" next to the headline, one bar split Kept / Could be kept / Needs you today (2px gaps, labels inside, names-only legend, hatched in high contrast, each part focusable with a tooltip), link to Tasks | Proposed, Imran to confirm |
+| 24 | Home headline card + repo fixes (Imran, 2026-11-01) | Copy: "Could be kept" unclear; card too wordy; repo fixes didn't name the repo | 2 | Parts renamed Agents finished / Agents could finish / Needs you; headline "41% could be 67%"; prose cut to "58 of 141 tasks · See which" (definitions in tooltips); repo fixes are one row per repo: repo name, what's missing, the task type it holds back, How to fix; chips say "Blocked by <repo>" | Fixed |
 
 **Suppressed detector findings (CD16):** 8 colour/radius findings on lines 54–60 are the review
 harness (dark control bar, verdict colours). The harness is review chrome and never ships, so its

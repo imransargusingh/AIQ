@@ -99,6 +99,10 @@
   .hl{display:flex;align-items:baseline;gap:var(--s4);flex-wrap:wrap}
   .hl .of{font:var(--t-heading);color:var(--ink-mute)}
   .hl .of b{color:var(--ink)}
+  .fix{display:grid;grid-template-columns:auto auto 1fr auto;align-items:center;gap:var(--s2) var(--s4);padding:var(--s3) var(--s4);border:1px solid var(--hairline);border-radius:var(--r-md);background:var(--surface)}
+  .fix code{font:var(--t-mono)}
+  .fix a{display:inline-flex;align-items:center;min-height:24px;color:var(--primary);font:var(--t-caption)}
+  [data-viewport="narrow"] .fix{grid-template-columns:1fr}
   .reach{display:flex;gap:2px;height:28px}
   .reach>span{position:relative;display:flex;align-items:center;padding:0 var(--s3);border-radius:var(--r-sm);font:600 12px/1 var(--f-text);font-variant-numeric:tabular-nums;min-width:24px;border:1px solid transparent}
   .reach .k{background:var(--primary);color:var(--on-primary)}
@@ -301,7 +305,7 @@ const DATA = {
        starter:"Write tests for <function> covering <cases>. Run them with npm test.\nKeep fixing until they all pass, then show me the diff and the test output.",
        facts:[["The agent made the edits","yes, 58 of 61","ok"],["Who ran the tests","you, 49 of 61",""],["Your share of the final change","about 30%",""],["Agent instructions file in the repo","yes","ok"]],
        why:"You steer the agent through each step and check its work by hand. At Delegated the agent does the whole task, checks it, and hands you a result to review."},
-      {id:"lint",name:"Fixing lint and build errors",job:"Code a change",now:0,pot:0,week:17,kept:22,blocked:"this repo has no agent instructions file, so agents guess the build steps"},
+      {id:"lint",name:"Fixing lint and build errors",job:"Code a change",now:0,pot:0,week:17,kept:22,blocked:"No agent instructions file", repo:"contoso/payments-api"},
       {id:"review",name:"Reviewing pull requests",job:"Code a change",now:1,pot:2,week:12,kept:48,next:"Give the agent the PR and your review checklist, and ask for findings with file and line."},
       {id:"notes",name:"Turning meeting notes into status updates",job:"Write a spec or doc",now:0,pot:1,week:6,kept:17,next:"Start from a saved prompt that names the audience and the three decisions you need."},
       {id:"scaffold",name:"Scaffolding a service from a spec",job:"Code a change",now:2,pot:2,week:3,kept:67},
@@ -348,9 +352,9 @@ const sk = (w,h) => `<span class="sk" style="width:${w};${h?`height:${h}`:''}"><
 function reach(keptPct, couldPct, n){
   /* One whole (judged tasks), three parts. Text inside each block; legend names only. */
   const needPct = 100 - keptPct - couldPct;
-  const parts = [["k","Kept",keptPct,"you kept the agent's work"],["c","Could be kept",couldPct,"you redid it, but an agent could finish this kind of task"],["n","Needs you today",needPct,"the task needs more from you than agents can do yet"]];
-  return `<div class="reach" role="group" aria-label="Judged tasks, ${n}, split three ways">${parts.map(([c,l,v,why])=>
-      `<span class="${c}" tabindex="0" style="flex:${v} 1 0" aria-label="${l}: ${v}%, ${why}">${v>=8?v+"%":""}<span class="tip" aria-hidden="true"><b>${l} · ${v}%</b><br>${why}</span></span>`).join("")}</div>
+  const parts = [["k","Agents finished",keptPct,"You kept the agent's work with small edits"],["c","Agents could finish",couldPct,"You redid these, but agents can finish this kind of task"],["n","Needs you",needPct,"Agents can't finish these yet"]];
+  return `<div class="reach" role="group" aria-label="${n} judged tasks">${parts.map(([c,l,v,why])=>
+      `<span class="${c}" tabindex="0" style="flex:${v} 1 0" aria-label="${l}: ${v}%. ${why}.">${v>=8?v+"%":""}<span class="tip" aria-hidden="true"><b>${l} · ${v}%</b><br>${why}.</span></span>`).join("")}</div>
     <div class="reach-key" aria-hidden="true">${parts.map(([c,l])=>`<span><i class="${c}"></i>${l}</span>`).join("")}</div>`;
 }
 const WEEKS = ["5 Oct","12 Oct","19 Oct","26 Oct"];
@@ -360,8 +364,8 @@ function trend(v){
   const x = i => 6 + i*(88/(v.length-1)), y = val => (1 - val/max)*100;
   const pts = v.map((val,i) => `${x(i)},${y(val)}`).join(" L");
   const last = v.length-1;
-  return `<figure class="tr" role="group" aria-label="Kept rate by week">
-    <figcaption>Kept rate each week (week starting)</figcaption>
+  return `<figure class="tr" role="group" aria-label="Tasks agents finished, each week">
+    <figcaption>Each week</figcaption>
     <div class="tr-y" aria-hidden="true">${ticks.map(t=>`<span style="top:${y(t)}%">${t}%</span>`).join("")}</div>
     <div class="tr-plot">
       <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
@@ -369,7 +373,7 @@ function trend(v){
         <path d="M${pts} L${x(last)},100 L${x(0)},100 Z" fill="color-mix(in srgb,var(--primary) 12%,transparent)"/>
         <path d="M${pts}" fill="none" stroke="var(--primary)" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
       </svg>
-      ${v.map((val,i)=>`<span class="tr-dot" tabindex="0" style="left:${x(i)}%;top:${y(val)}%" aria-label="Week of ${WEEKS[i]}: ${val}% kept"><span class="tip" aria-hidden="true">Week of ${WEEKS[i]} · <b>${val}%</b> kept</span></span>`).join("")}
+      ${v.map((val,i)=>`<span class="tr-dot" tabindex="0" style="left:${x(i)}%;top:${y(val)}%" aria-label="Week of ${WEEKS[i]}: ${val}%"><span class="tip" aria-hidden="true">Week of ${WEEKS[i]} · <b>${val}%</b></span></span>`).join("")}
       <span class="tr-val" style="left:${x(0)}%;top:${y(v[0])}%" aria-hidden="true">${v[0]}%</span>
       <span class="tr-val now" style="left:${x(last)}%;top:${y(v[last])}%" aria-hidden="true">${v[last]}%</span>
     </div>
@@ -390,20 +394,19 @@ function home(){
   const t0 = ranked[0], kept = over?"1,284":D.kept, judged = over?"3,109":D.judged, rate = over?41:Math.round(D.kept/D.judged*100), couldPct = Math.round(D.could/D.judged*100);
   const rows = tasks.map((t,i)=>{
     const name = t.name, wk = t.week;
-    const move = t.blocked ? `<span class="chip warn">Blocked by the repo</span>` : (judgeOn()? `${chipR(t.now)} <span aria-label="could move to">→</span> ${chipR(t.pot)}` : `<span class="chip">Waiting for the rung model</span>`);
-    const next = t.blocked ? `Blocked by the repo: ${t.blocked}. That's a repo fix, not a habit.` : (judgeOn()? `Next step: ${t.next}` : "Connect the rung model in Settings to see a next step.");
+    const move = t.blocked ? `<span class="chip warn">Blocked by ${esc(t.repo)}</span>` : (judgeOn()? `${chipR(t.now)} <span aria-label="could move to">→</span> ${chipR(t.pot)}` : `<span class="chip">Waiting for the rung model</span>`);
+    const next = t.blocked ? `${t.blocked} in ${t.repo}` : (judgeOn()? `Next step: ${t.next}` : "Connect the rung model in Settings to see a next step.");
     return `<a class="opp" href="#detail" data-go="detail"><div class="group" style="gap:var(--s2)"><span class="name">${esc(name)}</span><span class="row">${`<span class="chip">${t.job}</span>`} ${move}</span></div><span class="freq num">${wk} a week</span><span class="next">${esc(next)}</span></a>`;
   }).join("");
   return `<div class="page">${downBanner()}
     ${s==="partial"?`<div class="banner info" role="status"><div class="grow"><b>${D.waiting} tasks are waiting to be judged.</b> They're left out of these numbers until then, and judged as your daily limit allows.</div></div>`:""}
     <h1 class="sr">Home</h1><p class="meta">Last 30 days · 2 Oct to 31 Oct · sample data</p>
     <div class="top">
-      <section class="card" aria-labelledby="kr"><h2 id="kr" class="mute" style="font-weight:400">Tasks agents finished without you redoing them</h2>
-        ${judgeOn()?`<div class="hl"><span class="big">${rate}%</span><span class="of">of <b>${rate+couldPct}%</b> within reach</span></div>
+      <section class="card" aria-labelledby="kr"><h2 id="kr" class="mute" style="font-weight:400">Tasks agents finished</h2>
+        ${judgeOn()?`<div class="hl"><span class="big">${rate}%</span><span class="of">could be <b>${rate+couldPct}%</b></span></div>
         ${reach(rate, couldPct, judged)}
-        <p class="meta">${kept} of ${judged} tasks: you kept the agent's work with small edits and no correcting re-prompt. On another ${couldPct}%, AIQ thinks an agent could have finished the work with a better setup or prompt. <a href="#tasks" data-go="tasks">See which tasks</a></p>
-        ${trend(D.trend)}
-        <p class="meta">Kept rate up from ${D.trend[0]}% in the week of ${WEEKS[0]}.</p>`
+        <p class="meta">${kept} of ${judged} tasks · <a href="#tasks" data-go="tasks">See which</a></p>
+        ${trend(D.trend)}`
         :`<p class="mute">This number needs the rung model to read your finished tasks. Tips work without it.</p><div class="row"><button class="btn" data-go="settings">Connect in Settings</button></div>`}</section>
       <section class="card" aria-labelledby="nx"><h2 id="nx" class="mute" style="font-weight:400">Your best next step</h2>
         <p style="font:var(--t-heading)">${esc(over?LONG.name:t0.name)}</p>
@@ -411,7 +414,7 @@ function home(){
         <div class="row" style="margin-top:auto"><button class="btn pri" data-go="${judgeOn()?"detail":"settings"}">${judgeOn()?"See the next step":"Connect the rung model"}</button></div></section>
     </div>
     <section class="group" aria-labelledby="opps"><div class="head"><h2 id="opps">Where agents could do more</h2><a href="#tasks" data-go="tasks" class="meta">All tasks</a></div><div class="list">${rows}</div>
-      ${fixes.length?`<div class="group" style="gap:var(--s2)"><h3 class="meta" style="margin:0">Repo fixes (not habits)</h3>${fixes.map(f=>`<p><span class="chip warn">Blocked by the repo</span> ${esc(f.name)}: ${esc(f.blocked)}.</p>`).join("")}</div>`:""}</section>
+      ${fixes.length?`<div class="group" style="gap:var(--s2)"><h3 style="margin:0;font:var(--t-heading)">Repo fixes</h3>${fixes.map(f=>`<div class="fix"><code>${esc(f.repo)}</code><span>${esc(f.blocked)}</span><span class="meta">Holds back: ${esc(f.name)} · ${f.week} a week</span><a href="#detail" data-go="detail">How to fix</a></div>`).join("")}</div>`:""}</section>
     <section class="group" aria-labelledby="rg"><div class="head"><h2 id="rg">How you work with agents</h2><span class="meta">Share of tasks per rung · today and where they could be</span></div>
       ${judgeOn()?`<div class="rungs">${D.rungs.map(([n,p],i)=>`<div class="rr"><span>${RUNGS[i]} (${i+1})</span><div class="track" aria-hidden="true"><span class="pot" style="width:${p/40*100}%"></span><span class="now" style="width:${n/40*100}%;background:var(--rung-${i+1})"></span></div><span class="v">${n}% → ${p}%</span></div>`).reverse().join("")}</div>
       <div class="legend"><span><i></i>Today</span><span><i class="p"></i>Where these tasks could be</span></div>`
@@ -433,7 +436,7 @@ function tasks(){
   else {
     const list = s==="overflow" ? [{...D.tasks[0],name:LONG.name,week:LONG.week}, ...D.tasks.slice(1)] : D.tasks;
     body = `<tbody>${list.map((t,i)=>{
-      const rung = t.blocked?`<span class="chip warn">Blocked by the repo</span>`: !judgeOn()||(s==="partial"&&i===2)?`<span class="meta">Waiting to be judged</span>`: t.pot>t.now?`${RUNGS[t.now]} → <b>${RUNGS[t.pot]}</b>`:`${RUNGS[t.now]} <span class="meta">(right rung)</span>`;
+      const rung = t.blocked?`<span class="chip warn">Blocked by ${esc(t.repo)}</span>`: !judgeOn()||(s==="partial"&&i===2)?`<span class="meta">Waiting to be judged</span>`: t.pot>t.now?`${RUNGS[t.now]} → <b>${RUNGS[t.pot]}</b>`:`${RUNGS[t.now]} <span class="meta">(right rung)</span>`;
       return `<tr tabindex="0" data-go="detail"><td style="max-width:420px">${esc(t.name)}</td><td class="mute">${t.job}</td><td>${rung}</td><td class="r num">${t.week.toLocaleString()}</td><td class="r num">${t.blocked?"—":t.pot-t.now}</td><td class="r num">${t.kept}%</td></tr>`;}).join("")}</tbody>`;
   }
   return `<div class="page wide">${downBanner()}<header class="head"><h1>Tasks</h1><div class="row"><span class="meta">Job</span><div class="seg" role="group" aria-label="Job"><button aria-pressed="true">All</button><button aria-pressed="false">Code a change</button><button aria-pressed="false">Write a spec or doc</button></div></div></header>
