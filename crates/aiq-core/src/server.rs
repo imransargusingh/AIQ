@@ -4,13 +4,13 @@ use crate::counters::Counters;
 use crate::ipc;
 use crate::pack::BundledPack;
 use crate::paths::{Paths, write_user_only};
-use crate::service::{SETTING_PAUSED, Service};
+use crate::service::{SETTING_PAUSED, Service, TipLineOut};
 use crate::spool;
 use crate::sysclock::SystemClock;
 use aiq_contracts::card::CardV1;
 use aiq_contracts::codes;
 use aiq_contracts::event::EventV1;
-use aiq_contracts::frames::{MAX_FRAME_BYTES, OkReply, Request, ShowReply, StatusReply, TakeCardReply};
+use aiq_contracts::frames::{MAX_FRAME_BYTES, OkReply, Request, ShowReply, StatusReply, TakeCardReply, TipLineReply};
 use aiq_domain::PackSource;
 use aiq_store::Store;
 use interprocess::local_socket::traits::ListenerExt as _;
@@ -27,6 +27,8 @@ pub const CHANNEL_CAPACITY: usize = 1024;
 pub const MAX_CONNECTIONS: usize = 64;
 const TICK: Duration = Duration::from_secs(30);
 const CLI_TIMEOUT: Duration = Duration::from_secs(5);
+/// Renderers (status line, VS Code poll) wait at most this long; they are never queued behind a full channel.
+pub const RENDER_WAIT: Duration = Duration::from_millis(50);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CoreError {
@@ -57,7 +59,18 @@ pub enum Cmd {
     },
     Show {
         card_id: String,
+        opened_on: String,
         reply: mpsc::Sender<ShowReply>,
+    },
+    TipLine {
+        surface: String,
+        session: Option<String>,
+        reply: mpsc::Sender<TipLineReply>,
+    },
+    TakeCardAny {
+        surface: String,
+        received: Instant,
+        reply: mpsc::Sender<Option<CardV1>>,
     },
     Setting {
         key: String,
@@ -163,8 +176,21 @@ fn writer_loop(mut svc: Service<SystemClock>, rx: Receiver<Cmd>, paths: &Paths, 
             Cmd::Status { reply } => {
                 let _ = reply.send(svc.status());
             }
-            Cmd::Show { card_id, reply } => {
-                let _ = reply.send(svc.show(&card_id));
+            Cmd::Show { card_id, opened_on, reply } => {
+                let _ = reply.send(svc.show(&card_id, &opened_on));
+            }
+            Cmd::TipLine { surface, session, reply } => {
+                let r = match svc.tip_line(&surface, session.as_deref()) {
+                    Some(TipLineOut::Full(c)) => TipLineReply { card: Some(c), waiting_card_id: None },
+                    Some(TipLineOut::Waiting(id)) => TipLineReply { card: None, waiting_card_id: Some(id) },
+                    None => TipLineReply::default(),
+                };
+                let _ = reply.send(r);
+            }
+            Cmd::TakeCardAny { surface, received, reply } => {
+                // A card handed to a poller that already gave up would be lost; deliver only while it waits.
+                let card = if received.elapsed() <= RENDER_WAIT { svc.take_card_any(&surface) } else { None };
+                let _ = reply.send(card);
             }
             Cmd::Setting { key, value, reply } => {
                 let _ = reply.send(svc.set(&key, &value));
@@ -258,8 +284,26 @@ pub fn dispatch(req: Request, tx: &SyncSender<Cmd>, counters: &Counters, receive
         Request::Status { .. } => {
             ask(tx, |reply| Cmd::Status { reply }).map_or(Dispatch::NoReply, |s| Dispatch::Reply(to_line(&s)))
         }
-        Request::Show { card_id, .. } => {
-            ask(tx, |reply| Cmd::Show { card_id, reply }).map_or(Dispatch::NoReply, |s| Dispatch::Reply(to_line(&s)))
+        Request::Show { card_id, opened_on, .. } => {
+            let opened_on = opened_on.filter(|s| s == "vscode").unwrap_or_else(|| "cli".into());
+            ask(tx, |reply| Cmd::Show { card_id, opened_on, reply })
+                .map_or(Dispatch::NoReply, |s| Dispatch::Reply(to_line(&s)))
+        }
+        Request::TipLine { surface, session, .. } => {
+            let (rtx, rrx) = mpsc::channel();
+            let r = match tx.try_send(Cmd::TipLine { surface, session, reply: rtx }) {
+                Ok(()) => rrx.recv_timeout(RENDER_WAIT).unwrap_or_default(),
+                Err(_) => TipLineReply::default(),
+            };
+            Dispatch::Reply(to_line(&r))
+        }
+        Request::TakeCardAny { surface, .. } => {
+            let (rtx, rrx) = mpsc::channel();
+            let card = match tx.try_send(Cmd::TakeCardAny { surface, received, reply: rtx }) {
+                Ok(()) => rrx.recv_timeout(RENDER_WAIT).ok().flatten(),
+                Err(_) => None,
+            };
+            Dispatch::Reply(to_line(&TakeCardReply { card }))
         }
         Request::Setting { key, value, .. } => {
             let r = ask(tx, |reply| Cmd::Setting { key, value, reply })

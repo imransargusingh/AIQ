@@ -1,4 +1,4 @@
-//! Trigger engine, rule `in_moment.v1`: show-ready / hold / drop for one Signal (design decision table).
+//! Trigger engine, rule `in_moment.v2` (Phase 1 table plus the Phase 2 quiet period): show-ready / hold / drop for one Signal.
 use crate::job::{Job, opportunity_allowed};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -28,6 +28,8 @@ pub enum Reason {
     DailyCap,
     Ok,
     Expired,
+    /// A card was delivered on any surface within the quiet period (Phase 2: budget per person).
+    QuietPeriod,
 }
 
 impl Reason {
@@ -41,6 +43,7 @@ impl Reason {
             Reason::DailyCap => "daily_cap",
             Reason::Ok => "ok",
             Reason::Expired => "expired",
+            Reason::QuietPeriod => "quiet_period",
         }
     }
 }
@@ -53,9 +56,16 @@ pub struct DecideInput {
     pub score: f64,
     pub threshold: f64,
     pub delivered_in_session: bool,
+    /// A card was delivered on any surface less than the pack's quiet period ago.
+    pub in_quiet_period: bool,
     pub ready_in_session: bool,
     pub deliveries_counted_today: u32,
     pub daily_cap: u32,
+}
+
+/// Is `now` inside the person-wide quiet period that follows the last delivery on any surface?
+pub fn in_quiet_period(last_delivery_utc_ms: Option<i64>, now_utc_ms: i64, quiet_min: u32) -> bool {
+    last_delivery_utc_ms.is_some_and(|t| now_utc_ms - t < quiet_min as i64 * 60_000)
 }
 
 /// Checks run in the design's order; the first that matches decides.
@@ -68,6 +78,8 @@ pub fn decide(i: &DecideInput) -> (Outcome, Reason) {
         (Outcome::Hold, Reason::LowConfidence)
     } else if i.delivered_in_session {
         (Outcome::Hold, Reason::SessionBudget)
+    } else if i.in_quiet_period {
+        (Outcome::Hold, Reason::QuietPeriod)
     } else if i.ready_in_session {
         (Outcome::Hold, Reason::OneAtATime)
     } else if i.deliveries_counted_today >= i.daily_cap {
@@ -78,8 +90,14 @@ pub fn decide(i: &DecideInput) -> (Outcome, Reason) {
 }
 
 /// Re-check at Stop, just before delivery: the budget may have been used since the decision.
-pub fn may_deliver(paused: bool, delivered_in_session: bool, deliveries_counted_today: u32, daily_cap: u32) -> bool {
-    !paused && !delivered_in_session && deliveries_counted_today < daily_cap
+pub fn may_deliver(
+    paused: bool,
+    delivered_in_session: bool,
+    in_quiet_period: bool,
+    deliveries_counted_today: u32,
+    daily_cap: u32,
+) -> bool {
+    !paused && !delivered_in_session && !in_quiet_period && deliveries_counted_today < daily_cap
 }
 
 #[cfg(test)]
@@ -94,6 +112,7 @@ mod tests {
             score: 1.0,
             threshold: 0.75,
             delivered_in_session: false,
+            in_quiet_period: false,
             ready_in_session: false,
             deliveries_counted_today: 0,
             daily_cap: 5,
@@ -159,6 +178,7 @@ mod tests {
             Reason::DailyCap,
             Reason::Ok,
             Reason::Expired,
+            Reason::QuietPeriod,
         ]
         .map(Reason::as_str)
         .into();
@@ -172,16 +192,36 @@ mod tests {
                 "one_at_a_time",
                 "daily_cap",
                 "ok",
-                "expired"
+                "expired",
+                "quiet_period"
             ]
         );
     }
 
     #[test]
     fn may_deliver_each_guard() {
-        assert!(may_deliver(false, false, 4, 5));
-        assert!(!may_deliver(true, false, 0, 5));
-        assert!(!may_deliver(false, true, 0, 5));
-        assert!(!may_deliver(false, false, 5, 5));
+        assert!(may_deliver(false, false, false, 4, 5));
+        assert!(!may_deliver(true, false, false, 0, 5));
+        assert!(!may_deliver(false, true, false, 0, 5));
+        assert!(!may_deliver(false, false, true, 0, 5));
+        assert!(!may_deliver(false, false, false, 5, 5));
+    }
+
+    #[test]
+    fn decide_quiet_period_holds_after_session_budget_before_one_at_a_time() {
+        assert_eq!(decide(&DecideInput { in_quiet_period: true, ..ok() }), (Outcome::Hold, Reason::QuietPeriod));
+        let both = DecideInput { in_quiet_period: true, delivered_in_session: true, ..ok() };
+        assert_eq!(decide(&both).1, Reason::SessionBudget);
+        let ready = DecideInput { in_quiet_period: true, ready_in_session: true, ..ok() };
+        assert_eq!(decide(&ready).1, Reason::QuietPeriod);
+    }
+
+    #[test]
+    fn in_quiet_period_boundary_2959_inside_3000_outside() {
+        let t = 1_000_000_000;
+        assert!(!in_quiet_period(None, t, 30));
+        assert!(in_quiet_period(Some(t), t + 29 * 60_000 + 59_999, 30));
+        assert!(!in_quiet_period(Some(t), t + 30 * 60_000, 30));
+        assert!(!in_quiet_period(Some(t), t, 0));
     }
 }

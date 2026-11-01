@@ -5,7 +5,7 @@ use aiq_contracts::frames::{Request, SpoolLine};
 use aiq_core::counters::Counters;
 use aiq_core::pack::BundledPack;
 use aiq_core::server::{Cmd, Dispatch, authorize, dispatch};
-use aiq_core::service::Service;
+use aiq_core::service::{Service, TipLineOut};
 use aiq_core::sysclock::format_rfc3339_ms;
 use aiq_domain::PackSource;
 use aiq_domain::clock::{Clock, FakeClock, Now};
@@ -122,16 +122,47 @@ impl H {
         }
         self.send(session, R3)
     }
+    /// Copilot CLI: prompts carry no prompt id, and agentStop is a plain ingest.
+    fn cp_send(&mut self, session: &str, text: &str) {
+        self.clock.advance(MIN);
+        let id = self.id();
+        let body = EventBody::Prompt(PromptPayload {
+            text: Some(text.into()),
+            chars: text.len() as u64,
+            prompt_id: None,
+            truncated: false,
+        });
+        let e = ev_on("copilot-cli", &id, session, self.clock.now().utc_ms, body);
+        self.svc().ingest(&e, None);
+    }
+    fn cp_stop(&mut self, session: &str) {
+        let id = self.id();
+        let body = EventBody::Stop(StopPayload { stop_hook_active: false, prompt_id: None });
+        let e = ev_on("copilot-cli", &id, session, self.clock.now().utc_ms, body);
+        self.svc().ingest(&e, None);
+    }
+    fn cp_run(&mut self, session: &str) {
+        for t in [BASE, R1, R2, R3] {
+            self.cp_send(session, t);
+        }
+    }
+    fn tip(&mut self, session: &str) -> Option<TipLineOut> {
+        self.svc().tip_line("copilot-cli", Some(session))
+    }
     fn decisions(&mut self) -> Vec<(String, String, u64)> {
         self.svc().status().decisions
     }
 }
 
 fn ev(id: &str, session: &str, ms: i64, body: EventBody) -> EventV1 {
+    ev_on("claude-code", id, session, ms, body)
+}
+
+fn ev_on(surface: &str, id: &str, session: &str, ms: i64, body: EventBody) -> EventV1 {
     EventV1 {
         schema: SCHEMA.into(),
         event_id: id.into(),
-        surface: "claude-code".into(),
+        surface: surface.into(),
         surface_session_id: session.into(),
         seq: None,
         ts: format_rfc3339_ms(ms),
@@ -300,6 +331,7 @@ fn daily_cap_reached_holds_then_resets_next_local_day() {
     for s in ["a", "b"] {
         let pid = h.reprompt_run(s);
         assert!(h.stop(s, Some(&pid)).is_some());
+        h.clock.advance(30 * MIN); // past the person-wide quiet period
     }
     h.reprompt_run("c");
     assert!(h.decisions().contains(&d("hold", "daily_cap", 1)));
@@ -325,6 +357,7 @@ fn timezone_move_back_does_not_reopen_used_day() {
     let pid = h.reprompt_run("a");
     assert!(h.stop("a", Some(&pid)).is_some());
     h.clock.set_offset(-12 * 60); // far west: local date moves back a day
+    h.clock.advance(30 * MIN); // past the quiet period, so only the cap can hold it
     h.reprompt_run("b");
     assert!(h.decisions().contains(&d("hold", "daily_cap", 1)));
 }
@@ -344,12 +377,12 @@ fn show_returns_card_reason_and_evidence() {
     let mut h = H::new();
     let pid = h.reprompt_run("s");
     let card = h.stop("s", Some(&pid)).unwrap();
-    let r = h.svc().show(&card.card_id);
+    let r = h.svc().show(&card.card_id, "cli");
     assert!(r.delivered);
     assert_eq!(r.reason_code.as_deref(), Some("ok"));
     let texts: Vec<_> = r.evidence.iter().map(|e| e.text.clone().unwrap()).collect();
     assert_eq!(texts, vec![BASE, R1, R2, R3]);
-    assert!(h.svc().show("nope").card.is_none());
+    assert!(h.svc().show("nope", "cli").card.is_none());
 }
 
 #[test]
@@ -518,4 +551,152 @@ fn spool_replayed_twice_one_row_one_signal() {
     assert_eq!(st.signals, 1);
     assert_eq!(counters.get(codes::SPOOL_BAD_LINE), 2);
     assert!(!paths.spool().exists());
+}
+
+// ---- Phase 2: Copilot CLI status line, lifetime setting, budget across surfaces ----
+
+fn full(t: Option<TipLineOut>) -> aiq_contracts::card::CardV1 {
+    match t {
+        Some(TipLineOut::Full(c)) => c,
+        other => panic!("expected a full tip, got {other:?}"),
+    }
+}
+
+#[test]
+fn copilot_tip_shows_after_turn_ends_not_mid_turn() {
+    let mut h = H::new();
+    h.cp_run("c");
+    assert_eq!(h.tip("c"), None, "mid-turn: the agent is still working");
+    h.cp_stop("c");
+    let card = full(h.tip("c"));
+    assert!(card.noticed.contains("reworded this request 3 times"));
+    assert_eq!(h.decisions(), vec![d("shown", "ok", 1)]);
+}
+
+#[test]
+fn copilot_tip_default_clears_on_next_prompt_and_stays_in_history() {
+    let mut h = H::new();
+    h.cp_run("c");
+    h.cp_stop("c");
+    let card = full(h.tip("c"));
+    assert_eq!(full(h.tip("c")).card_id, card.card_id, "refreshes keep showing it");
+    h.cp_send("c", "ok, add a test for the empty case");
+    assert_eq!(h.tip("c"), None);
+    assert!(h.svc().show(&card.card_id, "cli").delivered, "still in history");
+}
+
+#[test]
+fn copilot_tip_two_prompts_or_5_min_then_waiting_until_opened() {
+    let mut h = H::new();
+    h.svc().set("copilot_tip_stays", "two-prompts-or-5-min").unwrap();
+    h.cp_run("c");
+    h.cp_stop("c");
+    let card = full(h.tip("c"));
+    h.cp_send("c", "next thing: write the changelog entry");
+    full(h.tip("c"));
+    h.clock.advance(5 * MIN);
+    assert_eq!(h.tip("c"), Some(TipLineOut::Waiting(card.card_id.clone())));
+    h.svc().show(&card.card_id, "cli");
+    assert_eq!(h.tip("c"), None);
+}
+
+#[test]
+fn copilot_tip_until_opened_survives_prompts() {
+    let mut h = H::new();
+    h.svc().set("copilot_tip_stays", "until-opened").unwrap();
+    h.cp_run("c");
+    h.cp_stop("c");
+    let card = full(h.tip("c"));
+    for t in ["one", "two", "three"] {
+        h.cp_send("c", t);
+    }
+    full(h.tip("c"));
+    h.svc().show(&card.card_id, "vscode");
+    assert_eq!(h.tip("c"), None);
+}
+
+#[test]
+fn copilot_tip_without_session_id_uses_newest_session() {
+    let mut h = H::new();
+    h.cp_run("c");
+    h.cp_stop("c");
+    full(h.svc().tip_line("copilot-cli", None));
+    assert_eq!(h.svc().tip_line("copilot-cli", Some("other")), None);
+}
+
+#[test]
+fn quiet_period_claude_card_then_copilot_signal_held() {
+    let mut h = H::new();
+    let pid = h.reprompt_run("cc");
+    assert!(h.stop("cc", Some(&pid)).is_some());
+    h.cp_run("c");
+    h.cp_stop("c");
+    assert_eq!(h.tip("c"), None);
+    assert!(h.decisions().contains(&d("hold", "quiet_period", 1)));
+}
+
+#[test]
+fn quiet_period_both_ready_only_first_delivered_until_30_min() {
+    let mut h = H::new();
+    h.reprompt_run("cc");
+    h.cp_run("c");
+    h.cp_stop("c");
+    // Both decided show-ready before either was delivered; the re-check at delivery holds the second.
+    full(h.tip("c"));
+    assert!(h.stop("cc", None).is_none());
+    h.clock.advance(29 * MIN);
+    assert!(h.stop("cc", None).is_none());
+}
+
+#[test]
+fn quiet_period_ends_after_30_minutes() {
+    let mut h = H::new();
+    let pid = h.reprompt_run("cc");
+    assert!(h.stop("cc", Some(&pid)).is_some());
+    h.clock.advance(30 * MIN);
+    h.cp_run("c");
+    h.cp_stop("c");
+    full(h.tip("c"));
+}
+
+#[test]
+fn daily_cap_counts_every_surface() {
+    let mut h = H::new();
+    h.svc().set("daily_cap", "1").unwrap();
+    let pid = h.reprompt_run("cc");
+    assert!(h.stop("cc", Some(&pid)).is_some());
+    h.clock.advance(31 * MIN);
+    h.cp_run("c");
+    h.cp_stop("c");
+    assert_eq!(h.tip("c"), None);
+    assert!(h.decisions().contains(&d("hold", "daily_cap", 1)));
+}
+
+#[test]
+fn copilot_tip_paused_shows_nothing() {
+    let mut h = H::new();
+    h.cp_run("c");
+    h.cp_stop("c");
+    h.svc().set("paused", "true").unwrap();
+    assert_eq!(h.tip("c"), None);
+}
+
+#[test]
+fn take_card_any_delivers_only_after_turn_end_once() {
+    let mut h = H::new();
+    h.cp_run("c");
+    assert!(h.svc().take_card_any("copilot-cli").is_none());
+    h.cp_stop("c");
+    assert!(h.svc().take_card_any("copilot-cli").is_some());
+    assert!(h.svc().take_card_any("copilot-cli").is_none());
+    assert!(h.svc().take_card_any("vscode").is_none());
+}
+
+#[test]
+fn set_copilot_tip_stays_validates() {
+    let mut h = H::new();
+    assert!(h.svc().set("copilot_tip_stays", "forever").is_err());
+    assert_eq!(h.svc().copilot_tip_stays(), aiq_domain::tipline::TipStays::NextPrompt);
+    h.svc().set("copilot_tip_stays", "until-opened").unwrap();
+    assert_eq!(h.svc().copilot_tip_stays(), aiq_domain::tipline::TipStays::UntilOpened);
 }

@@ -1,0 +1,37 @@
+{
+  "runs": 5,
+  "by_mode_event": {
+    "statusline::no-vscode-env": 4,
+    "hook:sessionEnd:no-vscode-env": 1
+  },
+  "payload_shapes": {
+    "statusline::no-vscode-env": [
+      "{\"ai_used\": {\"formatted\": \"<str 1>\", \"total_nano_aiu\": 0}, \"allow_all_enabled\": false, \"context_window\": {\"context_window_size\": 272000, \"current_context_tokens\": 0, \"current_context_used_percentage\": 0, \"displayed_context_limit\": 272000, \"last_call_input_tokens\": 0, \"last_call_output_tokens\": 0, \"remaining_percentage\": 100, \"remaining_tokens\": 272000, \"total_cache_read_tokens\": 0, \"total_cache_write_tokens\": 0, \"total_input_tokens\": 0, \"total_output_tokens\": 0, \"total_reasoning_tokens\": 0, \"total_tokens\": 0, \"used_percentage\": 0}, \"cost\": {\"total_api_duration_ms\": 0, \"total_duration_ms\": 1496, \"total_lines_added\": 0, \"total_lines_removed\": 0, \"total_premium_requests\": 0}, \"cwd\": \"<str 32>\", \"model\": {\"auto_tier\": null, \"display_name\": \"gpt-6.1-sol \\u00c2\\u00b7 medium\", \"id\": \"<id>\", \"pending_auto_tier\": null}, \"remote\": {\"connected\": false}, \"session_id\": \"<id>\", \"session_name\": null, \"transcript_path\": \"<str 109>\", \"username\": null, \"version\": \"1.0.105\", \"workspace\": {\"current_dir\": \"<str 32>\"}}",
+      "{\"ai_used\": {\"formatted\": \"<str 1>\", \"total_nano_aiu\": 0}, \"allow_all_enabled\": false, \"context_window\": {\"context_window_size\": 272000, \"current_context_tokens\": 0, \"current_context_used_percentage\": 0, \"displayed_context_limit\": 272000, \"last_call_input_tokens\": 0, \"last_call_output_tokens\": 0, \"remaining_percentage\": 100, \"remaining_tokens\": 272000, \"total_cache_read_tokens\": 0, \"total_cache_write_tokens\": 0, \"total_input_tokens\": 0, \"total_output_tokens\": 0, \"total_reasoning_tokens\": 0, \"total_tokens\": 0, \"used_percentage\": 0}, \"cost\": {\"total_api_duration_ms\": 0, \"total_duration_ms\": 3801, \"total_lines_added\": 0, \"total_lines_removed\": 0, \"total_premium_requests\": 0}, \"cwd\": \"<str 32>\", \"model\": {\"auto_tier\": null, \"display_name\": \"gpt-6.1-sol \\u00c2\\u00b7 medium\", \"id\": \"<id>\", \"pending_auto_tier\": null}, \"remote\": {\"connected\": false}, \"session_id\": \"<id>\", \"session_name\": null, \"transcript_path\": \"<str 109>\", \"username\": null, \"version\": \"1.0.105\", \"workspace\": {\"current_dir\": \"<str 32>\"}}",
+      "{\"ai_used\": {\"formatted\": \"<str 1>\", \"total_nano_aiu\": 0}, \"allow_all_enabled\": false, \"context_window\": {\"context_window_size\": 272000, \"current_context_tokens\": 0, \"current_context_used_percentage\": 0, \"displayed_context_limit\": 272000, \"last_call_input_tokens\": 0, \"last_call_output_tokens\": 0, \"remaining_percentage\": 100, \"remaining_tokens\": 272000, \"total_cache_read_tokens\": 0, \"total_cache_write_tokens\": 0, \"total_input_tokens\": 0, \"total_output_tokens\": 0, \"total_reasoning_tokens\": 0, \"total_tokens\": 0, \"used_percentage\": 0}, \"cost\": {\"total_api_duration_ms\": 0, \"total_duration_ms\": 992, \"total_lines_added\": 0, \"total_lines_removed\": 0, \"total_premium_requests\": 0}, \"cwd\": \"<str 32>\", \"model\": {\"auto_tier\": null, \"display_name\": \"gpt-6.1-sol \\u00c2\\u00b7 medium\", \"id\": \"<id>\", \"pending_auto_tier\": null}, \"remote\": {\"connected\": false}, \"session_id\": \"<id>\", \"session_name\": null, \"transcript_path\": \"<str 109>\", \"username\": null, \"version\": \"1.0.105\", \"workspace\": {\"current_dir\": \"<str 32>\"}}",
+      "{\"ai_used\": {\"formatted\": \"<str 1>\", \"total_nano_aiu\": 0}, \"allow_all_enabled\": false, \"context_window\": {\"context_window_size\": null, \"current_context_tokens\": 0, \"last_call_input_tokens\": 0, \"last_call_output_tokens\": 0, \"remaining_percentage\": null, \"remaining_tokens\": null, \"total_cache_read_tokens\": 0, \"total_cache_write_tokens\": 0, \"total_input_tokens\": 0, \"total_output_tokens\": 0, \"total_reasoning_tokens\": 0, \"total_tokens\": 0, \"used_percentage\": null}, \"cost\": {\"total_api_duration_ms\": 0, \"total_duration_ms\": 127, \"total_lines_added\": 0, \"total_lines_removed\": 0, \"total_premium_requests\": 0}, \"cwd\": \"<str 32>\", \"model\": {\"auto_tier\": null, \"display_name\": null, \"id\": null, \"pending_auto_tier\": null}, \"remote\": {\"connected\": false}, \"session_id\": \"<id>\", \"session_name\": null, \"transcript_path\": \"<str 109>\", \"username\": null, \"version\": \"1.0.105\", \"workspace\": {\"current_dir\": \"<str 32>\"}}"
+    ],
+    "hook:sessionEnd:no-vscode-env": [
+      "{\"cwd\": \"<str 32>\", \"reason\": \"user_exit\", \"sessionId\": \"<id>\", \"timestamp\": 1793552152114}"
+    ]
+  },
+  "env_names": {
+    "no-vscode-env": [
+      "COPILOT_CLI",
+      "COPILOT_CLI_BINARY_VERSION",
+      "COPILOT_CLI_PATH",
+      "COPILOT_CLI_RESOLVED_DIST_DIR",
+      "COPILOT_ENTRA_AUTH_AUD",
+      "COPILOT_HOME",
+      "COPILOT_HOOK_DIR",
+      "COPILOT_LOADER_PID",
+      "COPILOT_PROJECT_DIR"
+    ]
+  },
+  "statusline_gaps_s": [
+    0.55,
+    0.53,
+    2.15
+  ],
+  "hook_and_statusline_share_a_session_id": true
+}

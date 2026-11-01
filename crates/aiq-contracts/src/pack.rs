@@ -40,6 +40,9 @@ pub struct TriggerParams {
     pub in_moment_threshold: f64,
     pub ready_expiry_min: u32,
     pub default_daily_cap: u32,
+    /// After a card is delivered on any surface, cards on every surface are held this many minutes
+    /// (Phase 2: the budget is per person across surfaces).
+    pub quiet_min: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

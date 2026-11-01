@@ -1,0 +1,567 @@
+{
+ "note": "Run 2 timeline from the raw probe log. Session ids replaced; no prompt text, paths or values.",
+ "rows": [
+  {
+   "t_s": 0.0,
+   "mode": "statusline",
+   "event": null,
+   "session": "s1",
+   "payload_keys": [
+    "ai_used",
+    "allow_all_enabled",
+    "context_window",
+    "cost",
+    "cwd",
+    "model",
+    "remote",
+    "session_id",
+    "session_name",
+    "transcript_path",
+    "username",
+    "version",
+    "workspace"
+   ],
+   "copilot_env": [
+    "COPILOT_CLI_BINARY_VERSION",
+    "COPILOT_CLI_RESOLVED_DIST_DIR",
+    "COPILOT_ENTRA_AUTH_AUD",
+    "COPILOT_HOME",
+    "COPILOT_LOADER_PID"
+   ]
+  },
+  {
+   "t_s": 1.14,
+   "mode": "statusline",
+   "event": null,
+   "session": "s1",
+   "payload_keys": [
+    "ai_used",
+    "allow_all_enabled",
+    "context_window",
+    "cost",
+    "cwd",
+    "model",
+    "remote",
+    "session_id",
+    "session_name",
+    "transcript_path",
+    "username",
+    "version",
+    "workspace"
+   ],
+   "copilot_env": [
+    "COPILOT_CLI_BINARY_VERSION",
+    "COPILOT_CLI_PATH",
+    "COPILOT_CLI_RESOLVED_DIST_DIR",
+    "COPILOT_ENTRA_AUTH_AUD",
+    "COPILOT_HOME",
+    "COPILOT_LOADER_PID"
+   ]
+  },
+  {
+   "t_s": 1.55,
+   "mode": "statusline",
+   "event": null,
+   "session": "s1",
+   "payload_keys": [
+    "ai_used",
+    "allow_all_enabled",
+    "context_window",
+    "cost",
+    "cwd",
+    "model",
+    "remote",
+    "session_id",
+    "session_name",
+    "transcript_path",
+    "username",
+    "version",
+    "workspace"
+   ],
+   "copilot_env": [
+    "COPILOT_CLI_BINARY_VERSION",
+    "COPILOT_CLI_PATH",
+    "COPILOT_CLI_RESOLVED_DIST_DIR",
+    "COPILOT_ENTRA_AUTH_AUD",
+    "COPILOT_HOME",
+    "COPILOT_LOADER_PID"
+   ]
+  },
+  {
+   "t_s": 1.79,
+   "mode": "statusline",
+   "event": null,
+   "session": "s1",
+   "payload_keys": [
+    "ai_used",
+    "allow_all_enabled",
+    "context_window",
+    "cost",
+    "cwd",
+    "model",
+    "remote",
+    "session_id",
+    "session_name",
+    "transcript_path",
+    "username",
+    "version",
+    "workspace"
+   ],
+   "copilot_env": [
+    "COPILOT_CLI_BINARY_VERSION",
+    "COPILOT_CLI_PATH",
+    "COPILOT_CLI_RESOLVED_DIST_DIR",
+    "COPILOT_ENTRA_AUTH_AUD",
+    "COPILOT_HOME",
+    "COPILOT_LOADER_PID"
+   ]
+  },
+  {
+   "t_s": 10.29,
+   "mode": "statusline",
+   "event": null,
+   "session": "s1",
+   "payload_keys": [
+    "ai_used",
+    "allow_all_enabled",
+    "context_window",
+    "cost",
+    "cwd",
+    "model",
+    "remote",
+    "session_id",
+    "session_name",
+    "transcript_path",
+    "username",
+    "version",
+    "workspace"
+   ],
+   "copilot_env": [
+    "COPILOT_CLI_BINARY_VERSION",
+    "COPILOT_CLI_PATH",
+    "COPILOT_CLI_RESOLVED_DIST_DIR",
+    "COPILOT_ENTRA_AUTH_AUD",
+    "COPILOT_HOME",
+    "COPILOT_LOADER_PID"
+   ]
+  },
+  {
+   "t_s": 40.26,
+   "mode": "hook",
+   "event": "sessionStart",
+   "session": "s1",
+   "payload_keys": [
+    "cwd",
+    "initialPrompt",
+    "sessionId",
+    "source",
+    "timestamp"
+   ],
+   "source": "new",
+   "copilot_env": [
+    "COPILOT_CLI",
+    "COPILOT_CLI_BINARY_VERSION",
+    "COPILOT_CLI_PATH",
+    "COPILOT_CLI_RESOLVED_DIST_DIR",
+    "COPILOT_ENTRA_AUTH_AUD",
+    "COPILOT_HOME",
+    "COPILOT_HOOK_DIR",
+    "COPILOT_LOADER_PID",
+    "COPILOT_PROJECT_DIR"
+   ]
+  },
+  {
+   "t_s": 42.85,
+   "mode": "statusline",
+   "event": null,
+   "session": "s1",
+   "payload_keys": [
+    "ai_used",
+    "allow_all_enabled",
+    "context_window",
+    "cost",
+    "cwd",
+    "model",
+    "remote",
+    "session_id",
+    "session_name",
+    "transcript_path",
+    "username",
+    "version",
+    "workspace"
+   ],
+   "copilot_env": [
+    "COPILOT_CLI_BINARY_VERSION",
+    "COPILOT_CLI_PATH",
+    "COPILOT_CLI_RESOLVED_DIST_DIR",
+    "COPILOT_ENTRA_AUTH_AUD",
+    "COPILOT_HOME",
+    "COPILOT_LOADER_PID"
+   ]
+  },
+  {
+   "t_s": 46.51,
+   "mode": "hook",
+   "event": "userPromptSubmitted",
+   "session": "s1",
+   "payload_keys": [
+    "cwd",
+    "prompt",
+    "sessionId",
+    "timestamp"
+   ],
+   "copilot_env": [
+    "COPILOT_CLI",
+    "COPILOT_CLI_BINARY_VERSION",
+    "COPILOT_CLI_PATH",
+    "COPILOT_CLI_RESOLVED_DIST_DIR",
+    "COPILOT_ENTRA_AUTH_AUD",
+    "COPILOT_HOME",
+    "COPILOT_HOOK_DIR",
+    "COPILOT_LOADER_PID",
+    "COPILOT_PROJECT_DIR"
+   ]
+  },
+  {
+   "t_s": 70.06,
+   "mode": "statusline",
+   "event": null,
+   "session": "s1",
+   "payload_keys": [
+    "ai_used",
+    "allow_all_enabled",
+    "context_window",
+    "cost",
+    "cwd",
+    "model",
+    "remote",
+    "session_id",
+    "session_name",
+    "transcript_path",
+    "username",
+    "version",
+    "workspace"
+   ],
+   "copilot_env": [
+    "COPILOT_CLI_BINARY_VERSION",
+    "COPILOT_CLI_PATH",
+    "COPILOT_CLI_RESOLVED_DIST_DIR",
+    "COPILOT_ENTRA_AUTH_AUD",
+    "COPILOT_HOME",
+    "COPILOT_LOADER_PID"
+   ]
+  },
+  {
+   "t_s": 70.3,
+   "mode": "statusline",
+   "event": null,
+   "session": "s1",
+   "payload_keys": [
+    "ai_used",
+    "allow_all_enabled",
+    "context_window",
+    "cost",
+    "cwd",
+    "model",
+    "remote",
+    "session_id",
+    "session_name",
+    "transcript_path",
+    "username",
+    "version",
+    "workspace"
+   ],
+   "copilot_env": [
+    "COPILOT_CLI_BINARY_VERSION",
+    "COPILOT_CLI_PATH",
+    "COPILOT_CLI_RESOLVED_DIST_DIR",
+    "COPILOT_ENTRA_AUTH_AUD",
+    "COPILOT_HOME",
+    "COPILOT_LOADER_PID"
+   ]
+  },
+  {
+   "t_s": 75.59,
+   "mode": "statusline",
+   "event": null,
+   "session": "s1",
+   "payload_keys": [
+    "ai_used",
+    "allow_all_enabled",
+    "context_window",
+    "cost",
+    "cwd",
+    "model",
+    "remote",
+    "session_id",
+    "session_name",
+    "transcript_path",
+    "username",
+    "version",
+    "workspace"
+   ],
+   "copilot_env": [
+    "COPILOT_CLI_BINARY_VERSION",
+    "COPILOT_CLI_PATH",
+    "COPILOT_CLI_RESOLVED_DIST_DIR",
+    "COPILOT_ENTRA_AUTH_AUD",
+    "COPILOT_HOME",
+    "COPILOT_LOADER_PID"
+   ]
+  },
+  {
+   "t_s": 76.81,
+   "mode": "hook",
+   "event": "userPromptSubmitted",
+   "session": "s1",
+   "payload_keys": [
+    "cwd",
+    "prompt",
+    "sessionId",
+    "timestamp"
+   ],
+   "copilot_env": [
+    "COPILOT_CLI",
+    "COPILOT_CLI_BINARY_VERSION",
+    "COPILOT_CLI_PATH",
+    "COPILOT_CLI_RESOLVED_DIST_DIR",
+    "COPILOT_ENTRA_AUTH_AUD",
+    "COPILOT_HOME",
+    "COPILOT_HOOK_DIR",
+    "COPILOT_LOADER_PID",
+    "COPILOT_PROJECT_DIR"
+   ]
+  },
+  {
+   "t_s": 79.17,
+   "mode": "statusline",
+   "event": null,
+   "session": "s1",
+   "payload_keys": [
+    "ai_used",
+    "allow_all_enabled",
+    "context_window",
+    "cost",
+    "cwd",
+    "model",
+    "remote",
+    "session_id",
+    "session_name",
+    "transcript_path",
+    "username",
+    "version",
+    "workspace"
+   ],
+   "copilot_env": [
+    "COPILOT_CLI_BINARY_VERSION",
+    "COPILOT_CLI_PATH",
+    "COPILOT_CLI_RESOLVED_DIST_DIR",
+    "COPILOT_ENTRA_AUTH_AUD",
+    "COPILOT_HOME",
+    "COPILOT_LOADER_PID"
+   ]
+  },
+  {
+   "t_s": 80.77,
+   "mode": "hook",
+   "event": "agentStop",
+   "session": "s1",
+   "payload_keys": [
+    "cwd",
+    "sessionId",
+    "stopReason",
+    "stop_hook_active",
+    "timestamp",
+    "transcriptPath"
+   ],
+   "stopReason": "end_turn",
+   "copilot_env": [
+    "COPILOT_CLI",
+    "COPILOT_CLI_BINARY_VERSION",
+    "COPILOT_CLI_PATH",
+    "COPILOT_CLI_RESOLVED_DIST_DIR",
+    "COPILOT_ENTRA_AUTH_AUD",
+    "COPILOT_HOME",
+    "COPILOT_HOOK_DIR",
+    "COPILOT_LOADER_PID",
+    "COPILOT_PROJECT_DIR"
+   ]
+  },
+  {
+   "t_s": 80.95,
+   "mode": "statusline",
+   "event": null,
+   "session": "s1",
+   "payload_keys": [
+    "ai_used",
+    "allow_all_enabled",
+    "context_window",
+    "cost",
+    "cwd",
+    "model",
+    "remote",
+    "session_id",
+    "session_name",
+    "transcript_path",
+    "username",
+    "version",
+    "workspace"
+   ],
+   "copilot_env": [
+    "COPILOT_CLI_BINARY_VERSION",
+    "COPILOT_CLI_PATH",
+    "COPILOT_CLI_RESOLVED_DIST_DIR",
+    "COPILOT_ENTRA_AUTH_AUD",
+    "COPILOT_HOME",
+    "COPILOT_LOADER_PID"
+   ]
+  },
+  {
+   "t_s": 82.7,
+   "mode": "statusline",
+   "event": null,
+   "session": "s1",
+   "payload_keys": [
+    "ai_used",
+    "allow_all_enabled",
+    "context_window",
+    "cost",
+    "cwd",
+    "model",
+    "remote",
+    "session_id",
+    "session_name",
+    "transcript_path",
+    "username",
+    "version",
+    "workspace"
+   ],
+   "copilot_env": [
+    "COPILOT_CLI_BINARY_VERSION",
+    "COPILOT_CLI_PATH",
+    "COPILOT_CLI_RESOLVED_DIST_DIR",
+    "COPILOT_ENTRA_AUTH_AUD",
+    "COPILOT_HOME",
+    "COPILOT_LOADER_PID"
+   ]
+  },
+  {
+   "t_s": 92.82,
+   "mode": "hook",
+   "event": "sessionEnd",
+   "session": "s1",
+   "payload_keys": [
+    "cwd",
+    "reason",
+    "sessionId",
+    "timestamp"
+   ],
+   "reason": "user_exit",
+   "copilot_env": [
+    "COPILOT_CLI",
+    "COPILOT_CLI_BINARY_VERSION",
+    "COPILOT_CLI_PATH",
+    "COPILOT_CLI_RESOLVED_DIST_DIR",
+    "COPILOT_ENTRA_AUTH_AUD",
+    "COPILOT_HOME",
+    "COPILOT_HOOK_DIR",
+    "COPILOT_LOADER_PID",
+    "COPILOT_PROJECT_DIR"
+   ]
+  },
+  {
+   "t_s": 399.86,
+   "mode": "hook",
+   "event": "userPromptSubmitted",
+   "session": "s2",
+   "payload_keys": [
+    "cwd",
+    "prompt",
+    "sessionId",
+    "timestamp"
+   ],
+   "copilot_env": [
+    "COPILOT_CLI",
+    "COPILOT_CLI_RUN_AS_NODE",
+    "COPILOT_ENABLE_BUILTIN_GITHUB_MCP",
+    "COPILOT_ENTRA_AUTH_AUD",
+    "COPILOT_HOME",
+    "COPILOT_MCP_APPS",
+    "COPILOT_PROJECT_DIR",
+    "COPILOT_RUNTIME_PROCESS_FILE_LOGGING"
+   ]
+  },
+  {
+   "t_s": 399.99,
+   "mode": "hook",
+   "event": "sessionStart",
+   "session": "s2",
+   "payload_keys": [
+    "cwd",
+    "initialPrompt",
+    "sessionId",
+    "source",
+    "timestamp"
+   ],
+   "source": "new",
+   "copilot_env": [
+    "COPILOT_CLI",
+    "COPILOT_CLI_RUN_AS_NODE",
+    "COPILOT_ENABLE_BUILTIN_GITHUB_MCP",
+    "COPILOT_ENTRA_AUTH_AUD",
+    "COPILOT_HOME",
+    "COPILOT_MCP_APPS",
+    "COPILOT_PROJECT_DIR",
+    "COPILOT_RUNTIME_PROCESS_FILE_LOGGING"
+   ]
+  },
+  {
+   "t_s": 407.37,
+   "mode": "hook",
+   "event": "agentStop",
+   "session": "s2",
+   "payload_keys": [
+    "cwd",
+    "sessionId",
+    "stopReason",
+    "stop_hook_active",
+    "timestamp",
+    "transcriptPath"
+   ],
+   "stopReason": "end_turn",
+   "copilot_env": [
+    "COPILOT_CLI",
+    "COPILOT_CLI_RUN_AS_NODE",
+    "COPILOT_ENABLE_BUILTIN_GITHUB_MCP",
+    "COPILOT_ENTRA_AUTH_AUD",
+    "COPILOT_HOME",
+    "COPILOT_MCP_APPS",
+    "COPILOT_PROJECT_DIR",
+    "COPILOT_RUNTIME_PROCESS_FILE_LOGGING"
+   ]
+  },
+  {
+   "t_s": 407.57,
+   "mode": "hook",
+   "event": "sessionEnd",
+   "session": "s2",
+   "payload_keys": [
+    "cwd",
+    "reason",
+    "sessionId",
+    "timestamp"
+   ],
+   "reason": "complete",
+   "copilot_env": [
+    "COPILOT_CLI",
+    "COPILOT_CLI_RUN_AS_NODE",
+    "COPILOT_ENABLE_BUILTIN_GITHUB_MCP",
+    "COPILOT_ENTRA_AUTH_AUD",
+    "COPILOT_HOME",
+    "COPILOT_MCP_APPS",
+    "COPILOT_PROJECT_DIR",
+    "COPILOT_RUNTIME_PROCESS_FILE_LOGGING"
+   ]
+  }
+ ]
+}

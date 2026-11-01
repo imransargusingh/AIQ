@@ -8,7 +8,7 @@
   "properties": {
     "schema": { "const": "aiq.event.v1" },
     "event_id": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$" },
-    "surface": { "enum": ["claude-code"] },
+    "surface": { "enum": ["claude-code", "copilot-cli", "vscode"] },
     "surface_session_id": { "type": "string", "minLength": 1, "maxLength": 128 },
     "seq": { "type": ["integer", "null"] },
     "ts": { "type": "string", "format": "date-time" },

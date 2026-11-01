@@ -36,6 +36,16 @@ fn event_schema_accepts_serialized_prompt_and_stop() {
 }
 
 #[test]
+fn event_schema_surfaces_phase2_accepted_unknown_rejected() {
+    let s = schema("aiq.event.v1.json");
+    for (surface, ok) in [("copilot-cli", true), ("vscode", true), ("cursor", false)] {
+        let mut v = serde_json::to_value(ev(EventBody::Stop(StopPayload::default()))).unwrap();
+        v["surface"] = surface.into();
+        assert_eq!(s.is_valid(&v), ok, "{surface}");
+    }
+}
+
+#[test]
 fn event_schema_rejects_bad_kind_and_long_session() {
     let s = schema("aiq.event.v1.json");
     let mut v = serde_json::to_value(ev(EventBody::Stop(StopPayload::default()))).unwrap();

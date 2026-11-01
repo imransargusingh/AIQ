@@ -1,11 +1,15 @@
 //! `aiq`: one binary, three roles (design: Shape).
 //!   aiq hook claude-code <UserPromptSubmit|Stop>   short-lived hook client (always exits 0)
+//!   aiq hook copilot <userPromptSubmitted|agentStop>   Copilot CLI / VS Code agent hook (no output)
+//!   aiq statusline copilot                          Copilot CLI status-line command
 //!   aiq core                                        long-lived core, one per OS user
 //!   aiq install|uninstall claude-code, status, show <id>, pause, resume, config set daily-cap <n>, forget --all
 mod cli;
 mod hook;
 mod install;
+mod install_copilot;
 mod spawn;
+mod statusline;
 
 use std::process::ExitCode;
 
@@ -17,7 +21,12 @@ Usage:
   aiq status                          What AIQ is doing, cards today, store size, hook times
   aiq show <card-id>                  A card, why it showed, and the prompts it counted
   aiq pause | aiq resume              Stop or restart capture and tips
-  aiq config set daily-cap <n>        Most tips per day (0-50, default 5)
+  aiq endpoint                        Where the core listens (used by the VS Code extension)
+  aiq install copilot [--yes]         Add AIQ's hooks and status line to Copilot (~/.copilot)
+  aiq uninstall copilot [--yes]       Remove only AIQ's Copilot hooks and status line
+  aiq config set daily-cap <n>        Most tips per day, all tools together (0-50, default 5)
+  aiq config set copilot-tip-stays <next-prompt|two-prompts-or-5-min|until-opened>
+                                      How long a tip stays in Copilot CLI's status line
   aiq forget --all [--yes]            Delete everything AIQ stored on this machine
   aiq core                            Run the background core in this terminal
   aiq version
@@ -33,11 +42,18 @@ fn main() -> ExitCode {
         ["core", ..] => cli::core(),
         ["install", "claude-code", ..] => install::install(yes),
         ["uninstall", "claude-code", ..] => install::uninstall(yes),
+        ["install", "copilot", ..] => install_copilot::install(yes),
+        ["uninstall", "copilot", ..] => install_copilot::uninstall(yes),
         ["status", ..] => cli::status(),
         ["show", id, ..] => cli::show(id),
         ["pause", ..] => cli::pause(true),
         ["resume", ..] => cli::pause(false),
-        ["config", "set", "daily-cap", n, ..] => cli::set_daily_cap(n),
+        ["config", "set", name, value, ..] => cli::config_set(name, value),
+        ["statusline", "copilot", ..] => statusline::run(),
+        ["endpoint", ..] => {
+            println!("{}", aiq_core::paths::Paths::from_env().endpoint_json());
+            ExitCode::SUCCESS
+        }
         ["forget", "--all", ..] | ["forget", _, "--all", ..] => cli::forget_all(yes),
         ["version" | "--version" | "-V", ..] => {
             println!("aiq {}", env!("CARGO_PKG_VERSION"));

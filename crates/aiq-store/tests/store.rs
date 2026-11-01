@@ -48,6 +48,7 @@ fn seed(s: &mut Store) {
     decide(s, "d1", "c1", "show_ready", "ok", 10);
     s.set_setting("daily_cap", "5", 10).unwrap();
     s.insert_delivery("c1", "claude-code", "s", Now { utc_ms: 20, offset_min: 0 }).unwrap();
+    s.insert_open("c1", "cli", 30).unwrap();
 }
 
 fn decide(s: &Store, did: &str, cid: &str, outcome: &str, reason: &str, at: i64) {
@@ -70,9 +71,25 @@ fn decide(s: &Store, did: &str, cid: &str, outcome: &str, reason: &str, at: i64)
 }
 
 #[test]
-fn open_creates_schema_version_1() {
+fn open_creates_latest_schema_version_2() {
     let (_d, s) = open();
-    assert_eq!(s.user_version().unwrap(), 1);
+    assert_eq!(s.user_version().unwrap(), 2);
+}
+
+#[test]
+fn v1_store_migrates_to_v2_keeping_data() {
+    let d = TempDir::new().unwrap();
+    let p = d.path().join("aiq.db");
+    {
+        let mut s = Store::open_with(&p, &[SCHEMA_V1]).unwrap();
+        s.insert_event(&ev("e1", "s", Some("keep")), 1).unwrap();
+        assert_eq!(s.user_version().unwrap(), 1);
+    }
+    let s = Store::open(&p).unwrap();
+    assert_eq!(s.user_version().unwrap(), 2);
+    assert_eq!(s.events_by_kind().unwrap(), vec![("prompt".to_string(), 1)]);
+    s.insert_open("c1", "cli", 5).unwrap();
+    assert!(s.opened("c1").unwrap() && !s.opened("c2").unwrap());
 }
 
 #[test]
@@ -86,6 +103,7 @@ fn fact_tables_reject_update_and_delete() {
         ("card_decision", "utc_ms"),
         ("card_delivery", "delivered_utc_ms"),
         ("setting_change", "utc_ms"),
+        ("card_open", "utc_ms"),
     ] {
         let u = s.raw().execute(&format!("UPDATE {table} SET {col} = {col} + 1"), []);
         assert!(u.unwrap_err().to_string().contains(codes::STORE_APPEND_ONLY), "update {table}");
@@ -182,13 +200,13 @@ fn failing_migration_leaves_version_and_data_unchanged() {
     let d = TempDir::new().unwrap();
     let p = d.path().join("aiq.db");
     {
-        let mut s = Store::open(&p).unwrap();
+        let mut s = Store::open_with(&p, &[SCHEMA_V1]).unwrap();
         s.insert_event(&ev("e1", "s", Some("keep")), 1).unwrap();
     }
     let bad = "CREATE TABLE new_thing (x INTEGER); INSERT INTO no_such_table VALUES (1);";
     let e = Store::open_with(&p, &[SCHEMA_V1, bad]).err().unwrap();
     assert_eq!(e.code, codes::STORE_MIGRATION);
-    let s = Store::open(&p).unwrap();
+    let s = Store::open_with(&p, &[SCHEMA_V1]).unwrap();
     assert_eq!(s.user_version().unwrap(), 1);
     let t: i64 =
         s.raw().query_row("SELECT count(*) FROM sqlite_master WHERE name = 'new_thing'", [], |r| r.get(0)).unwrap();
@@ -218,4 +236,19 @@ fn delete_store_files_removes_all_and_tolerates_missing() {
     delete_store_files(&p).unwrap();
     delete_store_files(&p).unwrap();
     assert_eq!(std::fs::read_dir(d.path()).unwrap().count(), 0);
+}
+
+#[test]
+fn last_delivery_and_session_queries() {
+    let (_d, mut s) = open();
+    assert_eq!(s.last_delivery_ms().unwrap(), None);
+    seed(&mut s);
+    assert_eq!(s.last_delivery_ms().unwrap(), Some(20));
+    assert_eq!(s.last_event_kind("claude-code", "s").unwrap().as_deref(), Some("prompt"));
+    assert_eq!(s.latest_session("claude-code").unwrap().as_deref(), Some("s"));
+    assert_eq!(s.latest_session("copilot-cli").unwrap(), None);
+    let (id, _, at) = s.delivered_card("claude-code", "s").unwrap().unwrap();
+    assert_eq!((id.as_str(), at), ("c1", 20));
+    assert_eq!(s.prompts_after("claude-code", "s", 0).unwrap(), 1);
+    assert_eq!(s.prompts_after("claude-code", "s", i64::MAX).unwrap(), 0);
 }

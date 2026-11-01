@@ -80,7 +80,7 @@ pub fn status_line() -> String {
     }
 }
 
-fn pretty(v: &Value) -> String {
+pub(crate) fn pretty(v: &Value) -> String {
     serde_json::to_string_pretty(v).expect("json") + "\n"
 }
 
@@ -123,7 +123,7 @@ struct InstallRecord {
     written: String,
 }
 
-fn read_settings(p: &Path) -> Result<(Option<String>, Value), String> {
+pub(crate) fn read_settings(p: &Path) -> Result<(Option<String>, Value), String> {
     match std::fs::read_to_string(p) {
         Ok(t) => match serde_json::from_str::<Value>(&t) {
             Ok(v @ Value::Object(_)) => Ok((Some(t), v)),
@@ -136,7 +136,7 @@ fn read_settings(p: &Path) -> Result<(Option<String>, Value), String> {
 }
 
 /// Write via temp file + rename, keeping the original file's permissions.
-fn write_settings(p: &Path, text: &str) -> std::io::Result<()> {
+pub(crate) fn write_settings(p: &Path, text: &str) -> std::io::Result<()> {
     let perms = std::fs::metadata(p).ok().map(|m| m.permissions());
     if let Some(dir) = p.parent() {
         std::fs::create_dir_all(dir)?;

@@ -5,6 +5,7 @@ pub mod clock;
 pub mod job;
 pub mod reprompt;
 pub mod text;
+pub mod tipline;
 pub mod trigger;
 
 use aiq_contracts::pack::PackV1;

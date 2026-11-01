@@ -212,6 +212,7 @@ pub(crate) mod tests {
                 in_moment_threshold: 0.75,
                 ready_expiry_min: 30,
                 default_daily_cap: 5,
+                quiet_min: 30,
             },
             tips: vec![Tip {
                 tip_id: "t".into(),
