@@ -49,8 +49,9 @@ so the host will not protect us; the collector must enforce its own budget.
    one-line tip in **Copilot CLI's status line** (`statusLine` command in `~/.copilot/settings.json`,
    reading the pending card from the core), with `aiq show` for the full card (Imran, 2026-11-01; a
    desktop notification, alone or combined, may be revisited later). How long the tip stays before
-   clearing is a person's setting. The default is the next two prompts or five minutes, then a
-   `1 tip waiting` marker; the other choices are "clear on next prompt" and "stay until opened". The
+   clearing is a person's setting ("Copilot CLI tip stays"). The default is to clear on the next
+   prompt; the other choices are "for 2 prompts or 5 minutes, then a `1 tip waiting` marker" and
+   "stay until opened". The
    core owns that state, and the status-line command only reads it. VS Code: notification + status
    bar from the AIQ extension. Never `additionalContext` or exit code 2 to reach the person.
 5a. **Copilot hooks are synchronous,** so the Copilot collector subscribes to the fewest events a
