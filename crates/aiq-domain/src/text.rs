@@ -34,7 +34,8 @@ fn content_words(lower: &str, p: &RepromptParams) -> BTreeSet<String> {
     let mut cur = String::new();
     let mut flush = |cur: &mut String| {
         if cur.chars().count() >= p.min_word_len && !p.stop_words.iter().any(|s| s == cur) {
-            out.insert(std::mem::take(cur));
+            out.insert(stem(cur));
+            cur.clear();
         } else {
             cur.clear();
         }
@@ -79,6 +80,42 @@ fn is_mention(t: &str) -> bool {
         }
         None => false,
     }
+}
+
+/// Light suffix stripping, so inflections of one word compare equal: "errors"/"error",
+/// "refactoring"/"refactor", "configured"/"configure", "settings"/"setting", "queries"/"query".
+/// Not a full stemmer (no "-ation", "-er"); a word must keep a vowel before "-ing"/"-ed" comes off, so
+/// "string" and "red" stay whole. Laptop finding 2026-11-01: inflected rewords missed the 0.6 bar.
+pub fn stem(w: &str) -> String {
+    let vowel = |s: &str| s.chars().any(|c| "aeiouy".contains(c));
+    let mut s = w.to_owned();
+    let n = s.chars().count();
+    if n > 4 && s.ends_with("ies") {
+        s.truncate(s.len() - 3);
+        s.push('y');
+    } else if n > 4 && ["sses", "xes", "ches", "shes"].iter().any(|e| s.ends_with(e)) {
+        s.truncate(s.len() - 2);
+    } else if n > 3 && s.ends_with('s') && !["ss", "us", "is"].iter().any(|e| s.ends_with(e)) {
+        s.pop();
+    }
+    for suffix in ["ing", "ed"] {
+        if let Some(base) = s.strip_suffix(suffix)
+            && base.chars().count() >= 2
+            && vowel(base)
+        {
+            s = base.to_owned();
+            // "running" -> "runn" -> "run"; keep "ll", "ss", "zz" ("filling" -> "fill").
+            let b = s.as_bytes();
+            if b.len() >= 2 && b[b.len() - 1] == b[b.len() - 2] && !b"aeiouylsz".contains(&b[b.len() - 1]) {
+                s.pop();
+            }
+            break;
+        }
+    }
+    if s.chars().count() > 3 && s.ends_with('e') {
+        s.pop();
+    }
+    s
 }
 
 /// |a ∩ b| / |a ∪ b|; two empty sets have similarity 0 (nothing to compare).
@@ -126,6 +163,40 @@ mod tests {
         assert!(features("see ```x```", &params()).pasted);
         assert!(features("a\nb\nc\nd", &params()).pasted);
         assert!(!features("a\nb\nc", &params()).pasted);
+    }
+
+    #[test]
+    fn stem_merges_inflections() {
+        for group in [
+            &["error", "errors"][..],
+            &["refactor", "refactoring", "refactored", "refactors"],
+            &["configure", "configured", "configuring", "configures"],
+            &["setting", "settings"],
+            &["query", "queries"],
+            &["handle", "handled", "handling", "handles"],
+            &["run", "running", "runs"],
+            &["fill", "filling", "filled"],
+            &["type", "typed", "types"],
+            &["process", "processes"],
+        ] {
+            let stems: BTreeSet<String> = group.iter().map(|w| stem(w)).collect();
+            assert_eq!(stems.len(), 1, "{group:?} -> {stems:?}");
+        }
+    }
+
+    #[test]
+    fn stem_keeps_words_that_only_look_inflected() {
+        for w in ["string", "red", "bus", "status", "class", "analysis", "thing"] {
+            assert_eq!(stem(w), w.trim_end_matches('e'), "{w}");
+        }
+    }
+
+    #[test]
+    fn inflected_reword_now_clears_the_similarity_bar() {
+        let p = params();
+        let a = features("summarize the error handling in the store crate", &p).words;
+        let b = features("summarise how errors are handled in the store crate", &p).words;
+        assert!(jaccard(&a, &b) >= p.similarity, "{a:?} {b:?}");
     }
 
     #[test]

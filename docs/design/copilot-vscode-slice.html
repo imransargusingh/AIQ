@@ -153,6 +153,12 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <p>prompt means a person, so AIQ records the session from then on.</p>
 <ul><li>Hooks now send the host&#x27;s <code>cwd</code> in the event (optional <code>cwd</code>, not stored per event).</li><li><code>aiq status</code> names set-aside folders and how many prompts were ignored; <code>aiq include &lt;folder&gt;</code> undoes it.</li><li><code>simplify:</code> sessions before the rule fires in a new folder (≤ 10 for T, ≤ 49 for B) are recorded; they</li></ul>
 <p>have one prompt each, so no tip can come from them. Upgrade trigger: task views or the judge queue read them.</p>
+<h2>Follow-up: reword detector v2 (2026-11-01)</h2>
+<ul><li><strong>Stemming:</strong> content words lose plural and &quot;-ing&quot;/&quot;-ed&quot; endings before comparison (&quot;errors&quot;/&quot;error&quot;,</li></ul>
+<p>&quot;handled&quot;/&quot;handling&quot;), so inflected rewords clear the 0.6 bar. A word keeps a vowel before &quot;-ing&quot;/&quot;-ed&quot; comes off (&quot;string&quot; stays whole). Paraphrases with different words still miss; that needs the model judge.</p>
+<ul><li><strong>VS Code spans sessions:</strong> pack <code>span_surfaces = [&quot;vscode&quot;]</code> makes all VS Code sessions one stream for the</li></ul>
+<p>Task rule (idle gap 30 minutes still splits), because agent mode can open a new Copilot session every turn. The card belongs to the session of the prompt that fired and is delivered after that session&#x27;s stop.</p>
+<ul><li><code>detector_version = 2</code> in the pack, so signals record which rule produced them.</li></ul>
 <h2>Conformance notes</h2>
 <p>LOA F hot path (no model, no network, fail-open). Deviations: <code>seq</code> null for Copilot too; extension uses polling (<code>simplify:</code>); <code>DESIGN.md</code> not applicable (host-themed surfaces).</p>
 <h2>Flagged risks</h2>
