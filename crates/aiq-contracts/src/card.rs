@@ -37,11 +37,16 @@ const BOLD_ON: &str = "\u{1b}[1m";
 const BOLD_OFF: &str = "\u{1b}[22m";
 
 /// Copilot CLI status line (ADR-0005 rule 5): one line, the tip and where to read it in full. Never quotes
-/// prompt text. With colour, "AIQ tip:" is bold yellow as in Claude Code; `NO_COLOR` gives plain text.
+/// prompt text. With colour it looks like the Claude Code card: the whole line yellow, "AIQ tip:" bold
+/// (Imran, laptop check 2026-11-01); `NO_COLOR` gives plain text.
 pub fn render_status_line(card: &CardV1, color: bool) -> String {
     let noticed = card.noticed.trim_end_matches('.');
-    let label = if color { format!("{LINE_ON}{BOLD_ON}AIQ tip:{BOLD_OFF}{LINE_OFF}") } else { "AIQ tip:".into() };
-    format!("{label} {noticed} · {}", card.evidence_ref)
+    let plain = format!("AIQ tip: {noticed} · {}", card.evidence_ref);
+    if !color {
+        return plain;
+    }
+    let body = plain.replacen("AIQ tip:", &format!("{BOLD_ON}AIQ tip:{BOLD_OFF}"), 1);
+    format!("{LINE_ON}{body}{LINE_OFF}")
 }
 
 /// The shrunk status line once the full tip has had its time ("two prompts or 5 minutes" setting).
@@ -91,7 +96,8 @@ mod tests {
         assert_eq!(plain, "AIQ tip: you've reworded this request 3 times without adding new details · aiq show 01J");
         assert!(!plain.contains('\n') && plain.chars().count() <= 100);
         let colored = render_status_line(&card(), true);
-        assert!(colored.contains("\u{1b}[1mAIQ tip:") && !colored.contains('\n'));
+        assert!(colored.starts_with("\u{1b}[22;33m\u{1b}[1mAIQ tip:\u{1b}[22m ") && !colored.contains('\n'));
+        assert!(colored.ends_with(" · aiq show 01J\u{1b}[39m"), "whole line yellow, as the Claude Code card");
         assert_eq!(render_waiting_marker("01J"), "1 tip waiting · aiq show 01J");
     }
 
