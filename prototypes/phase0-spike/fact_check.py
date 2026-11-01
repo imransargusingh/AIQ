@@ -212,7 +212,7 @@ def copilot_cli(model):
         meta["latency_ms"] = int((time.time() - t0) * 1000)
         a, b = out.find("{"), out.rfind("}")
         try:
-            return json.loads(out[a:b + 1]), meta
+            return json.loads(out[a:b + 1], strict=False), meta  # copilot -s hard-wraps long lines inside strings
         except ValueError:
             meta["error"] = meta["error"] or "no JSON in reply"
             return None, meta
