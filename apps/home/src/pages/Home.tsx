@@ -1,7 +1,7 @@
 // Home (spec US-H2, US-H3; mockup "home", judge-not-connected state). No rung judge exists yet, so the
 // kept rate, the rung and the next steps say "not judged yet"; every number shown is a measured count.
 import { useState } from "react";
-import { RUNGS, day, folderName, plural, rungLabel, toolName, topPlaces, when } from "../format";
+import { RUNGS, day, folderName, plural, rungLabel, sentence, toolName, topPlaces, when } from "../format";
 import { Banners, Title, type Ctx } from "../ui";
 
 export function Home(ctx: Ctx) {
@@ -97,8 +97,8 @@ export function Home(ctx: Ctx) {
           <h2 id="nx" className="mute" style={{ fontWeight: 400 }}>Your latest tip</h2>
           {latest ? (
             <>
-              <p style={{ font: "var(--t-heading)" }}>{latest.try_this}</p>
-              <p className="mute">{latest.noticed}</p>
+              <p style={{ font: "var(--t-heading)" }}>{sentence(latest.try_this)}</p>
+              <p className="mute">{sentence(latest.noticed)}</p>
               <p className="meta">
                 {when(latest.delivered_ms, snap.now_ms, snap.offset_min)} · {toolName(latest.tool)}
               </p>
@@ -186,7 +186,7 @@ export function Home(ctx: Ctx) {
           {snap.tips.length === 0 && <p className="mute">No tips yet.</p>}
           {snap.tips.slice(0, 3).map((t) => (
             <div className="head" key={t.card_id}>
-              <span>{t.noticed}</span>
+              <span>{sentence(t.noticed)}</span>
               <span className="meta">
                 {when(t.delivered_ms, snap.now_ms, snap.offset_min)} · {toolName(t.tool)}
               </span>

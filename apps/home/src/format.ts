@@ -56,6 +56,9 @@ export function bytes(b: number): string {
   return `${b} bytes`;
 }
 
+/** Tip text is written to follow "AIQ tip:" in a terminal, so it starts lower case; shown alone it needs a capital. */
+export const sentence = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
 export const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString("en-GB")} ${n === 1 ? one : many}`;
 
 export type SortKey = "when" | "prompts" | "tool";

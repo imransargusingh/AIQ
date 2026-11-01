@@ -1,5 +1,5 @@
 // Habits and tips (spec US-H5). Tip history is real; habit tracking (coaching-loop D5) is a later phase.
-import { toolName, when } from "../format";
+import { sentence, toolName, when } from "../format";
 import { Banners, Chip, Title, type Ctx } from "../ui";
 
 export function Tips(ctx: Ctx) {
@@ -45,7 +45,7 @@ export function Tips(ctx: Ctx) {
                     <td className="num" style={{ whiteSpace: "nowrap" }}>{when(t.delivered_ms, snap.now_ms, snap.offset_min)}</td>
                     <td>
                       <div className="group" style={{ gap: "var(--s1)" }}>
-                        <span>{t.noticed}</span>
+                        <span>{sentence(t.noticed)}</span>
                         <span className="mute">Try this: {t.try_this}</span>
                       </div>
                     </td>
