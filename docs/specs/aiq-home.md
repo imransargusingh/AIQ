@@ -31,7 +31,7 @@ view and the opportunity view in AIQ home" out of scope ("own spec"), and `coach
 
 | # | Question | Needed for | Recommendation |
 |---|---|---|---|
-| Q1 | What counts as a task "finished without you redoing it" (the Home headline)? | Home hero, the outcome-first framing, any trend | Agent's change kept with only small edits by you (≤ 20% of the final change), and no correcting re-prompt in the same task. Uses facts the rung judge already answers |
+| Q1 | What counts as a task "finished without you redoing it" (the Home headline)? | Home hero, the outcome-first framing, any trend | **Decided (Imran, 2026-11-01): kept with small edits and no re-prompt.** The person wrote at most about 20% of the final change (rung-model F2) and sent no re-prompt that corrected the agent in that task (F5). Threshold is tunable |
 | Q2 | Which screens ship in the alpha app? | Scope, IA, effort | Setup, Home, Task detail, Habits and tips, Your data, Settings. Sharing shown as off with a preview only |
 | Q3 | Default time window for Home? | Every number on Home | Last 30 days, with a weekly trend line |
 | Q4 | Show an estimated time saved per opportunity? | Opportunity rows, trust | No, until it can be measured. Show times per week instead |
