@@ -4,8 +4,13 @@
 //! - Status line: AIQ's `statusLine` in `~/.copilot/settings.json`, added with the Phase 1 rules (diff, ask,
 //!   backup, temp-file-and-rename, refuse invalid JSON). An existing status line that is not AIQ's is never
 //!   replaced: install prints the one command to add to it instead.
+//! - Copilot runs a status line only with `experimental: true` and `STATUS_LINE` in `feature_flags.enabled`
+//!   (the settings laptop probe run 2 used; Copilot CLI 1.0.105). Install adds whichever is missing and
+//!   records what it changed in AIQ's data folder, so uninstall puts back exactly that and nothing else.
 use crate::cli::confirm;
 use crate::install::{line_diff, pretty, read_settings, write_settings};
+use aiq_core::paths::Paths;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -39,29 +44,111 @@ pub fn hooks_json(exe: &str) -> Value {
     json!({ "version": 1, "hooks": hooks })
 }
 
-/// `assume:` Copilot runs `statusLine.command` as one command line (third-party setups pass a path, and
-/// copilot-cli 1.0.11 expands `~` and env vars in it). Probe P1 confirms; if it takes a bare path only,
-/// install writes a one-line wrapper script instead.
-pub fn statusline_command(exe: &str) -> String {
+/// AIQ's own one-line wrapper in the Copilot home (Windows only).
+pub const WRAPPER: &str = "aiq-statusline.cmd";
+pub const STATUS_FLAG: &str = "STATUS_LINE";
+
+pub fn wrapper_file(home: &Path) -> PathBuf {
+    home.join(WRAPPER)
+}
+
+pub fn wrapper_text(exe: &str) -> String {
+    format!("@\"{exe}\" statusline copilot\r\n")
+}
+
+/// The command line a person adds to their own status-line script.
+pub fn direct_command(exe: &str) -> String {
     format!("\"{exe}\" statusline copilot")
+}
+
+/// The `statusLine.command` AIQ installs. Windows: a bare path to a one-line `.cmd` wrapper, the shape laptop
+/// probe run 2 proved (Copilot CLI 1.0.105 ran it 16 times, refreshing about 1 s after each `agentStop`).
+/// Elsewhere: the quoted executable and its arguments.
+/// assume: (Windows) a wrapper path that contains spaces still runs; the probe's path had none. Confirm: a
+/// person whose profile path has a space. If false: no tip in the status line; hooks and `aiq show` still work.
+/// assume: (macOS, Linux) Copilot runs the command through a shell. Unverified; not the alpha platform.
+pub fn statusline_command(exe: &str, home: &Path, windows: bool) -> String {
+    if windows { wrapper_file(home).to_string_lossy().into_owned() } else { direct_command(exe) }
 }
 
 pub fn is_aiq_statusline(v: &Value) -> bool {
     v.get("statusLine")
         .and_then(|s| s.get("command"))
         .and_then(Value::as_str)
-        .is_some_and(|c| c.ends_with(" statusline copilot"))
+        .is_some_and(|c| c.ends_with(" statusline copilot") || c.ends_with(WRAPPER))
+}
+
+/// What install changed to switch Copilot's status line on, so uninstall reverts only that.
+#[derive(Serialize, Deserialize, Default, Debug, PartialEq, Clone)]
+pub struct FeatureRecord {
+    /// Some(previous value) when AIQ set `experimental: true`; Some(Null) when the key was absent.
+    pub experimental_before: Option<Value>,
+    pub added_status_flag: bool,
+}
+
+/// Switch on `experimental` and the `STATUS_LINE` flag. Never clobbers a `feature_flags` or `enabled` of
+/// another shape (then it leaves them and the person turns the status line on with `/statusline`).
+pub fn enable_status_feature(settings: &mut Value) -> FeatureRecord {
+    let o = settings.as_object_mut().expect("checked object");
+    let mut rec = FeatureRecord::default();
+    if o.get("experimental") != Some(&Value::Bool(true)) {
+        rec.experimental_before = Some(o.get("experimental").cloned().unwrap_or(Value::Null));
+        o.insert("experimental".into(), Value::Bool(true));
+    }
+    let ff = o.entry("feature_flags").or_insert_with(|| json!({}));
+    if let Some(ff) = ff.as_object_mut()
+        && let Some(en) = ff.entry("enabled").or_insert_with(|| json!([])).as_array_mut()
+        && !en.iter().any(|f| f == STATUS_FLAG)
+    {
+        en.push(STATUS_FLAG.into());
+        rec.added_status_flag = true;
+    }
+    rec
+}
+
+/// Undo exactly what `rec` says install changed; drop `enabled` / `feature_flags` if that left them empty.
+pub fn revert_status_feature(settings: &mut Value, rec: &FeatureRecord) {
+    let Some(o) = settings.as_object_mut() else { return };
+    match &rec.experimental_before {
+        Some(Value::Null) => {
+            o.remove("experimental");
+        }
+        Some(v) => {
+            o.insert("experimental".into(), v.clone());
+        }
+        None => {}
+    }
+    if rec.added_status_flag
+        && let Some(ff) = o.get_mut("feature_flags").and_then(Value::as_object_mut)
+    {
+        if let Some(en) = ff.get_mut("enabled").and_then(Value::as_array_mut) {
+            en.retain(|f| f != STATUS_FLAG);
+            if en.is_empty() {
+                ff.remove("enabled");
+            }
+        }
+        if ff.is_empty() {
+            o.remove("feature_flags");
+        }
+    }
+}
+
+fn read_record(paths: &Paths) -> FeatureRecord {
+    std::fs::read_to_string(paths.copilot_install_record())
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default()
 }
 
 /// Add AIQ's status line. Err(existing command) when the person already has one that is not AIQ's.
-pub fn add_statusline(settings: &mut Value, exe: &str) -> Result<(), String> {
+pub fn add_statusline(settings: &mut Value, command: &str) -> Result<(), String> {
     if let Some(sl) = settings.get("statusLine").filter(|_| !is_aiq_statusline(settings)) {
         return Err(sl.get("command").and_then(Value::as_str).unwrap_or("(not a command)").to_owned());
     }
     settings
         .as_object_mut()
         .expect("checked object")
-        .insert("statusLine".into(), json!({ "type": "command", "command": statusline_command(exe) }));
+        .insert("statusLine".into(), json!({ "type": "command", "command": command }));
     Ok(())
 }
 
@@ -114,24 +201,38 @@ pub fn install(yes: bool) -> ExitCode {
         }
     };
     let before = v.clone();
-    let foreign_sl = add_statusline(&mut v, &exe_s).err();
+    let windows = cfg!(windows);
+    let foreign_sl = add_statusline(&mut v, &statusline_command(&exe_s, &home, windows)).err();
+    let rec = if foreign_sl.is_none() { enable_status_feature(&mut v) } else { FeatureRecord::default() };
     let new_hooks = pretty(&hooks_json(&exe_s));
     let old_hooks = std::fs::read_to_string(&hp).ok();
-    if v == before && old_hooks.as_deref() == Some(new_hooks.as_str()) && foreign_sl.is_none() {
+    let wp = wrapper_file(&home);
+    let new_wrapper = (windows && foreign_sl.is_none()).then(|| wrapper_text(&exe_s));
+    let wrapper_ok = new_wrapper.is_none() || std::fs::read_to_string(&wp).ok() == new_wrapper;
+    if v == before && old_hooks.as_deref() == Some(new_hooks.as_str()) && foreign_sl.is_none() && wrapper_ok {
         println!("Already installed.");
         return ExitCode::SUCCESS;
     }
     println!("AIQ will write {} (AIQ's own file):\n", hp.display());
     print!("{}", line_diff(old_hooks.as_deref().unwrap_or(""), &new_hooks));
+    if let Some(w) = new_wrapper.as_deref().filter(|_| !wrapper_ok) {
+        println!("\nAIQ will write {} (AIQ's own file, the status-line command):\n  {}", wp.display(), w.trim_end());
+    }
     if v != before {
         println!("\nAIQ will change {}:\n", sp.display());
         print!("{}", line_diff(&orig.as_deref().map_or_else(String::new, |_| pretty(&before)), &pretty(&v)));
+        if rec != FeatureRecord::default() {
+            println!(
+                "\n(Copilot shows a status line only with `experimental` on and the STATUS_LINE flag; uninstall \
+                      turns off only what AIQ turned on.)"
+            );
+        }
     }
     if let Some(cmd) = &foreign_sl {
         println!(
             "\nYou already have a Copilot status line ({cmd}). AIQ will not replace it.\nTo see AIQ tips in it, add \
              the output of this command to your status-line script:\n  {}",
-            statusline_command(&exe_s)
+            direct_command(&exe_s)
         );
     }
     println!("\nYour other Copilot settings and hooks stay as they are.");
@@ -153,6 +254,25 @@ pub fn install(yes: bool) -> ExitCode {
             eprintln!("Could not write {}: {e}", sp.display());
             return ExitCode::from(1);
         }
+        if rec != FeatureRecord::default() {
+            let paths = Paths::from_env();
+            let old = read_record(&paths); // a reinstall keeps what the first install changed
+            let merged = FeatureRecord {
+                experimental_before: old.experimental_before.or(rec.experimental_before),
+                added_status_flag: old.added_status_flag || rec.added_status_flag,
+            };
+            let _ = paths.ensure_dirs();
+            let json = serde_json::to_string(&merged).unwrap_or_default();
+            if let Err(e) = aiq_core::paths::write_user_only(&paths.copilot_install_record(), json.as_bytes()) {
+                eprintln!("Could not record the change ({e}); uninstall will leave `experimental` and the flag on.");
+            }
+        }
+    }
+    if let Some(w) = new_wrapper.filter(|_| !wrapper_ok)
+        && let Err(e) = std::fs::write(&wp, w)
+    {
+        eprintln!("Could not write {}: {e}", wp.display());
+        return ExitCode::from(1);
     }
     if let Err(e) = write_settings(&hp, &new_hooks) {
         eprintln!("Could not write {}: {e}", hp.display());
@@ -202,14 +322,21 @@ pub fn uninstall(yes: bool) -> ExitCode {
         }
     };
     let before = pretty(&v);
+    let paths = Paths::from_env();
+    let rec = read_record(&paths);
     let sl = strip_statusline(&mut v);
+    if sl {
+        revert_status_feature(&mut v, &rec);
+    }
     let hooks = hp.exists();
-    if !sl && !hooks {
+    let wp = wrapper_file(&home);
+    let wrapper = wp.exists();
+    if !sl && !hooks && !wrapper {
         println!("AIQ is not installed in {}.", home.display());
         return ExitCode::SUCCESS;
     }
-    if hooks {
-        println!("AIQ will delete {} (AIQ's own file).", hp.display());
+    for f in [hooks.then_some(&hp), wrapper.then_some(&wp)].into_iter().flatten() {
+        println!("AIQ will delete {} (AIQ's own file).", f.display());
     }
     if sl {
         println!("AIQ will change {}:\n", sp.display());
@@ -229,6 +356,13 @@ pub fn uninstall(yes: bool) -> ExitCode {
     if hooks && let Err(e) = std::fs::remove_file(&hp) {
         eprintln!("Could not delete {}: {e}", hp.display());
         return ExitCode::from(1);
+    }
+    if wrapper && let Err(e) = std::fs::remove_file(&wp) {
+        eprintln!("Could not delete {}: {e}", wp.display());
+        return ExitCode::from(1);
+    }
+    if sl {
+        let _ = std::fs::remove_file(paths.copilot_install_record());
     }
     println!("Removed AIQ from Copilot.");
     ExitCode::SUCCESS
@@ -258,7 +392,7 @@ mod tests {
     fn add_statusline_never_replaces_a_foreign_one() {
         let mut v = json!({"model":"x","statusLine":{"type":"command","command":"~/.copilot/mine.sh"}});
         let before = v.clone();
-        assert_eq!(add_statusline(&mut v, "/x/aiq").unwrap_err(), "~/.copilot/mine.sh");
+        assert_eq!(add_statusline(&mut v, &direct_command("/x/aiq")).unwrap_err(), "~/.copilot/mine.sh");
         assert_eq!(v, before);
         assert!(!strip_statusline(&mut v));
         assert_eq!(v, before);
@@ -268,11 +402,46 @@ mod tests {
     fn statusline_round_trip_leaves_other_settings() {
         let mut v = json!({"model":"x","experimental":true});
         let before = v.clone();
-        add_statusline(&mut v, "/x/aiq").unwrap();
+        add_statusline(&mut v, &direct_command("/x/aiq")).unwrap();
         assert!(is_aiq_statusline(&v));
-        add_statusline(&mut v, "/y/aiq").unwrap(); // reinstall from a moved binary replaces our own
+        add_statusline(&mut v, &direct_command("/y/aiq")).unwrap(); // reinstall from a moved binary replaces our own
         assert_eq!(v["statusLine"]["command"], "\"/y/aiq\" statusline copilot");
         assert!(strip_statusline(&mut v));
         assert_eq!(v, before);
+    }
+
+    #[test]
+    fn statusline_command_windows_is_the_probed_wrapper_path() {
+        let home = Path::new(r"C:\Users\p\.copilot");
+        let c = statusline_command(r"C:\bin\aiq.exe", home, true);
+        assert_eq!(c, home.join(WRAPPER).to_string_lossy());
+        assert!(is_aiq_statusline(&json!({"statusLine": {"command": c}})));
+        assert_eq!(wrapper_text(r"C:\bin\aiq.exe"), "@\"C:\\bin\\aiq.exe\" statusline copilot\r\n");
+        assert_eq!(statusline_command("/x/aiq", home, false), "\"/x/aiq\" statusline copilot");
+    }
+
+    #[test]
+    fn status_feature_round_trips_exactly() {
+        for original in [
+            json!({"model": "x"}),
+            json!({"experimental": false, "feature_flags": {"enabled": ["OTHER"], "disabled": []}}),
+            json!({"experimental": true, "feature_flags": {"enabled": ["STATUS_LINE"]}}),
+        ] {
+            let mut v = original.clone();
+            let rec = enable_status_feature(&mut v);
+            assert_eq!(v["experimental"], true);
+            assert!(v["feature_flags"]["enabled"].as_array().unwrap().iter().any(|f| f == STATUS_FLAG));
+            assert_eq!(enable_status_feature(&mut v.clone()), FeatureRecord::default(), "second run adds nothing");
+            revert_status_feature(&mut v, &rec);
+            assert_eq!(v, original);
+        }
+    }
+
+    #[test]
+    fn status_feature_never_clobbers_other_shapes() {
+        let original = json!({"experimental": true, "feature_flags": "odd"});
+        let mut v = original.clone();
+        assert_eq!(enable_status_feature(&mut v), FeatureRecord::default());
+        assert_eq!(v, original);
     }
 }

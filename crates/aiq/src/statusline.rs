@@ -45,7 +45,7 @@ fn inner(paths: &Paths) -> &'static str {
     let session = serde_json::from_slice::<Value>(&buf).ok().as_ref().and_then(session_id);
     let has_session = session.is_some();
     let token = ipc::read_token(paths).unwrap_or_default();
-    let frame = Request::TipLine { token, surface: crate::hook::COPILOT_SURFACE.into(), session };
+    let frame = Request::TipLine { token, surface: crate::hook::COPILOT_CLI_SURFACE.into(), session };
     let Ok(Some(line)) = ipc::request(paths, &serde_json::to_string(&frame).unwrap_or_default(), true, BUDGET) else {
         return "no-core";
     };

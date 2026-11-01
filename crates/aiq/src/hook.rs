@@ -85,7 +85,11 @@ fn inner_outcome(paths: &Paths, host: &str, event: &str, host_ms: &mut Option<i6
         let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);
         *host_ms = host_start_ms(&v, now);
     }
-    let parsed = if host == "copilot" { to_copilot_event(&v, event) } else { to_event(&v, event) };
+    let parsed = if host == "copilot" {
+        to_copilot_event(&v, event, copilot_surface(|k| std::env::var_os(k).is_some()))
+    } else {
+        to_event(&v, event)
+    };
     let Some(ev) = parsed else {
         count(paths, codes::HOOK_FOREIGN_HOST);
         return "foreign";
@@ -176,13 +180,27 @@ pub fn to_event(v: &Value, event: &str) -> Option<EventV1> {
     Some(new_event("claude-code", session, body))
 }
 
-/// Surface of a Copilot hook. Copilot CLI and VS Code agent mode share `~/.copilot/hooks`; whether a hook
-/// can tell them apart is laptop probe P3. Until then every Copilot event is `copilot-cli`.
-pub const COPILOT_SURFACE: &str = "copilot-cli";
+pub const COPILOT_CLI_SURFACE: &str = "copilot-cli";
+pub const VSCODE_SURFACE: &str = "vscode";
+
+/// Surface of a Copilot hook. Copilot CLI and VS Code agent mode share `~/.copilot/hooks` and send the same
+/// payload, so the environment decides. Laptop probe run 2 (2026-11-01): VS Code's agent host sets
+/// `COPILOT_CLI_RUN_AS_NODE` and not `COPILOT_LOADER_PID`; the Copilot CLI sets `COPILOT_LOADER_PID` (and
+/// `COPILOT_HOOK_DIR`) and not `COPILOT_CLI_RUN_AS_NODE`.
+/// assume: these env names hold across Copilot / VS Code updates (one VS Code turn and 2 CLI sessions seen,
+/// Copilot CLI 1.0.105). Confirm: the Phase 2 laptop check. If false: VS Code turns are tagged
+/// `copilot-cli`, so their tips wait for the status line instead of a VS Code notification (no data lost).
+pub fn copilot_surface(is_set: impl Fn(&str) -> bool) -> &'static str {
+    if is_set("COPILOT_CLI_RUN_AS_NODE") && !is_set("COPILOT_LOADER_PID") {
+        VSCODE_SURFACE
+    } else {
+        COPILOT_CLI_SURFACE
+    }
+}
 
 /// Build `aiq.event.v1` from a Copilot payload: camelCase `sessionId`, no event name (it comes from argv),
 /// and none of Claude Code's snake_case fields (a Claude-shaped payload here is a foreign host).
-pub fn to_copilot_event(v: &Value, event: &str) -> Option<EventV1> {
+pub fn to_copilot_event(v: &Value, event: &str, surface: &str) -> Option<EventV1> {
     if v.get("session_id").is_some() || v.get("hook_event_name").is_some() {
         return None;
     }
@@ -192,7 +210,7 @@ pub fn to_copilot_event(v: &Value, event: &str) -> Option<EventV1> {
         "agentStop" => EventBody::Stop(StopPayload { stop_hook_active: false, prompt_id: None }),
         _ => return None,
     };
-    Some(new_event(COPILOT_SURFACE, session, body))
+    Some(new_event(surface, session, body))
 }
 
 fn prompt_payload(raw: Option<&str>, prompt_id: Option<String>) -> PromptPayload {
@@ -281,29 +299,48 @@ mod tests {
     #[test]
     fn to_copilot_event_prompt_and_stop() {
         let v = json!({"sessionId":"c1","timestamp":1793500000000_i64,"cwd":"/x","prompt":"fix it"});
-        let e = to_copilot_event(&v, "userPromptSubmitted").unwrap();
+        let e = to_copilot_event(&v, "userPromptSubmitted", COPILOT_CLI_SURFACE).unwrap();
         assert_eq!((e.surface.as_str(), e.surface_session_id.as_str()), ("copilot-cli", "c1"));
         assert!(
             matches!(&e.body, EventBody::Prompt(p) if p.text.as_deref() == Some("fix it") && p.prompt_id.is_none())
         );
         let v = json!({"sessionId":"c1","timestamp":1,"stopReason":"end_turn","transcriptPath":"/t"});
-        let e = to_copilot_event(&v, "agentStop").unwrap();
+        let e = to_copilot_event(&v, "agentStop", COPILOT_CLI_SURFACE).unwrap();
         assert_eq!(e.body, EventBody::Stop(StopPayload { stop_hook_active: false, prompt_id: None }));
+    }
+
+    #[test]
+    fn copilot_surface_from_probe_env() {
+        let has = |names: &'static [&'static str]| move |k: &str| names.contains(&k);
+        // Laptop probe run 2: VS Code agent mode (session target Copilot) and Copilot CLI 1.0.105.
+        let vscode: &[&str] = &["COPILOT_CLI", "COPILOT_CLI_RUN_AS_NODE", "COPILOT_MCP_APPS", "COPILOT_PROJECT_DIR"];
+        let cli: &[&str] = &["COPILOT_CLI", "COPILOT_CLI_BINARY_VERSION", "COPILOT_HOOK_DIR", "COPILOT_LOADER_PID"];
+        assert_eq!(copilot_surface(has(vscode)), "vscode");
+        assert_eq!(copilot_surface(has(cli)), "copilot-cli");
+        assert_eq!(copilot_surface(has(&[])), "copilot-cli");
+        assert_eq!(copilot_surface(has(&["COPILOT_CLI_RUN_AS_NODE", "COPILOT_LOADER_PID"])), "copilot-cli");
+        let v = json!({"sessionId":"v1","prompt":"x"});
+        assert_eq!(to_copilot_event(&v, "userPromptSubmitted", VSCODE_SURFACE).unwrap().surface, "vscode");
     }
 
     #[test]
     fn to_copilot_event_claude_shaped_or_unknown_dropped() {
         let claude = json!({"session_id":"s","hook_event_name":"UserPromptSubmit","prompt":"x"});
-        assert!(to_copilot_event(&claude, "userPromptSubmitted").is_none());
-        assert!(to_copilot_event(&json!({"sessionId":"s","session_id":"s"}), "agentStop").is_none());
-        assert!(to_copilot_event(&json!({"sessionId":""}), "agentStop").is_none());
-        assert!(to_copilot_event(&json!({"sessionId":"s"}), "preToolUse").is_none());
+        assert!(to_copilot_event(&claude, "userPromptSubmitted", COPILOT_CLI_SURFACE).is_none());
+        assert!(
+            to_copilot_event(&json!({"sessionId":"s","session_id":"s"}), "agentStop", COPILOT_CLI_SURFACE).is_none()
+        );
+        assert!(to_copilot_event(&json!({"sessionId":""}), "agentStop", COPILOT_CLI_SURFACE).is_none());
+        assert!(to_copilot_event(&json!({"sessionId":"s"}), "preToolUse", COPILOT_CLI_SURFACE).is_none());
     }
 
     #[test]
     fn to_copilot_event_oversized_prompt_truncates() {
         let v = json!({"sessionId":"s","prompt":"x".repeat(MAX_PROMPT_BYTES + 10)});
-        let EventBody::Prompt(p) = to_copilot_event(&v, "userPromptSubmitted").unwrap().body else { panic!() };
+        let EventBody::Prompt(p) = to_copilot_event(&v, "userPromptSubmitted", COPILOT_CLI_SURFACE).unwrap().body
+        else {
+            panic!()
+        };
         assert!(p.truncated && p.text.unwrap().len() == MAX_PROMPT_BYTES);
     }
 

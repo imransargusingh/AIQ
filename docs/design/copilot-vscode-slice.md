@@ -23,7 +23,7 @@ summary: >-
 
 # Design: Phase 2 coaching loop on Copilot CLI and VS Code
 
-- **Status:** Draft. Parts marked **(P1–P4)** wait on the laptop probe in `prototypes/phase2-probe/`.
+- **Status:** Draft; P1–P4 answered by laptop probe run 2 (2026-11-01). Remaining: the laptop check of the real build.
 - **Spec / architecture:** [coaching-loop spec](../specs/coaching-loop.md) · [AIQ home spec](../specs/aiq-home.md) (Settings > Tips) · [architecture](../architecture.md) Phase 2 · [ADR-0005](../adr/0005-collector-contract.md) rules 5, 5a, 6 · [surface spike](../investigations/surface-spike-copilot-vscode.md) · [Phase 1 design](claude-code-skeleton.md)
 - **Delivery phase / vertical slice:** Phase 2. Real: one user-level Copilot collector (CLI and VS Code
   agent sessions), Copilot CLI status-line renderer, VS Code extension (notification + status bar),
@@ -58,7 +58,7 @@ synchronous; Copilot's own start-up per hook is 110–210 ms with `exec`. Copilo
 | Speed budget wording for Copilot hooks | NFR, tests | AIQ's own client ≤ 100 ms p95 (as Claude Code); Copilot's own start-up measured and shown in `aiq status`, not counted against AIQ | **Decided by Imran, 2026-11-01 16:53: AIQ's own part only** |
 | When is a Copilot CLI tip "delivered"? | Budget, lifetime | When the status-line command first renders it, after the turn has ended. Not at `agentStop`: the hook cannot show anything, so counting it then would count tips nobody saw | Decided by design |
 | Where does tip lifetime live? | ADR-0005 | Derived in the core from facts (delivery time, later prompts in the session, `card_open` rows) and the setting. Nothing about lifetime is stored as state | Decided by design (derive-don't-store) |
-| VS Code in Phase 2 | Scope | Observe VS Code agent sessions through the same hooks if P3 shows they fire there and can be told apart; render through the extension. If not, Phase 2 ships the extension as renderer + pause only, and VS Code observation moves to a later slice | **Waits on P3** |
+| VS Code in Phase 2 | Scope | Observe VS Code agent sessions through the same hooks if P3 shows they fire there and can be told apart; render through the extension. If not, Phase 2 ships the extension as renderer + pause only, and VS Code observation moves to a later slice | **Decided by P3 (run 2): observe in Phase 2** |
 | Person already has a Copilot status line | Install | Do not replace it. `install` stops and prints the one line to add to their own script (`aiq statusline copilot`), so their status line keeps working and shows the tip too | Decided by design |
 
 ## Responsibility
@@ -175,10 +175,10 @@ One transaction; rollback test as in Phase 1.
 | Copilot hook file `~/.copilot/hooks/*.json` | `{"version":1,"hooks":{"<event>":[{"type":"command","exec":…,"args":[…],"timeoutSec":…}]}}` | Copilot CLI hooks reference; laptop probe 2026-10-31 | Verified (run) |
 | `userPromptSubmitted` stdin | `sessionId`, `timestamp`, `cwd`, `prompt` | laptop probe | Verified (run) |
 | `agentStop` stdin | `sessionId`, `timestamp`, `stopReason`, `transcriptPath` | laptop probe | Verified (run) |
-| Copilot CLI `statusLine` | `{"type":"command","command":…}` in `~/.copilot/settings.json`; `experimental: true`; Windows `feature_flags.enabled: ["STATUS_LINE"]`; JSON session data on stdin on each refresh, incl. a session id and cwd | Third-party READMEs, Oh My Posh docs, copilot-cli#2266 | **Flagged → P1, P2** |
-| Same session id in hooks and status line | Lets the tip show only in the session it belongs to | — | **Unknown → P4** |
-| VS Code agent mode runs user-level Copilot hooks | Same file, same events | VS Code hooks docs (Preview) | **Docs only → P3** |
-| Telling VS Code from the CLI in a hook | `VSCODE_*` env in the hook process, or a payload field | — | **Unknown → P3** |
+| Copilot CLI `statusLine` | `{"type":"command","command":…}` in `~/.copilot/settings.json` with `experimental: true` and `feature_flags.enabled: ["STATUS_LINE"]`; on Windows the command is a bare path to a `.cmd`; JSON on stdin with top-level `session_id`; refreshes about 1 s after `agentStop` | Laptop probe runs 1–2 | Verified (run), with both settings on; whether either alone suffices is not tested |
+| Same session id in hooks and status line | Lets the tip show only in the session it belongs to | Laptop probe runs 1–2 | Verified (run) |
+| VS Code agent mode runs user-level Copilot hooks | Same file, same events, same payloads; session target **Copilot** only (the default **Local** target runs none) | Laptop probe run 2 | Verified (run, one turn) |
+| Telling VS Code from the CLI in a hook | Env: VS Code sets `COPILOT_CLI_RUN_AS_NODE`, not `COPILOT_LOADER_PID`; the CLI the reverse. No `VSCODE_*` env, no payload field | Laptop probe run 2 | Verified (run, one VS Code turn); `assume:` holds across updates |
 | Node `net.connect` to a Windows named pipe / Unix socket | Extension talks to the core over the same user-only channel | Node docs (`net` IPC paths) | Verified (docs); tested in the extension's integration test |
 
 ### Exposed
@@ -220,11 +220,14 @@ tip in the other; upgrade trigger: P2/P4 give a usable id.
 **4. Settings**: `aiq config set copilot-tip-stays next-prompt|two-prompts-or-5-min|until-opened`.
 
 **5. Install**: `aiq install copilot` writes `~/.copilot/hooks/aiq.json`, and adds `statusLine`
-(+ `experimental`, + the Windows feature flag if P1 shows it is needed) to `~/.copilot/settings.json`
+(+ `experimental: true` and `STATUS_LINE` in `feature_flags.enabled`, as the probe used; AIQ records what it
+turned on in `copilot-install.json` in its data folder, and uninstall turns off only that) to `~/.copilot/settings.json`.
+On Windows `statusLine.command` is the path of AIQ's one-line wrapper `~/.copilot/aiq-statusline.cmd`
+(the shape the probe proved); elsewhere it is `"<aiq>" statusline copilot`. Install applies these
 with the Phase 1 rules: show the diff, ask y/N, back up, temp-file-and-rename, refuse invalid JSON,
 refuse to replace an existing `statusLine` (print the line to add instead). Runs the installed hook
 once as a self-test and prints its time. `aiq uninstall copilot` removes the hook file and only an
-AIQ `statusLine`.
+AIQ `statusLine`, the wrapper, and what the record says AIQ turned on.
 
 **6. VS Code extension** (`extensions/vscode`, publisher-less VSIX for the alpha, installed by
 `code --install-extension`): polls `take_card_any` every 2 s while a window is focused; shows the card
@@ -250,9 +253,8 @@ interface, faked in its unit tests.
    `AIQ tip: you've reworded this 3 times without new details · aiq show 01J…`.
 5. Later refreshes reply with the line, the waiting marker, or nothing, per `tip_line_state`.
 
-`assume:` the status line refreshes after the agent's turn ends (P1). If it refreshes only on a
-timer or on the person's input, step 4 happens a little later; if it never refreshes without input,
-the tip shows at the next keystroke. Neither breaks the budget.
+The status line refreshes after the agent's turn ends: run 2 saw it run 1 s and 2 s after `agentStop`
+(*Verified, run 2*). It also refreshes on prompt submit and while the agent works; step 2 keeps those silent.
 
 ### Trigger engine change
 One check is added to `in_moment.v1` (becomes `in_moment.v2` in the pack, so old decisions keep their
@@ -265,9 +267,13 @@ rule id), after `session_budget` and before `one_at_a_time`:
 `may_deliver` gains the same check. A card held for `quiet_period` is not retried later (Phase 1 holds
 are final; the next qualifying signal decides afresh).
 
-### VS Code (if P3 passes)
-The hook client sets `surface = "vscode"` when the hook's environment shows VS Code (P3 names the
-variable), else `copilot-cli`. The extension's poll takes VS Code cards after the turn ends; status
+### VS Code
+The hook client sets `surface = "vscode"` when `COPILOT_CLI_RUN_AS_NODE` is set and `COPILOT_LOADER_PID`
+is not (P3, run 2), else `copilot-cli`. If Copilot changes these names, VS Code turns fall back to
+`copilot-cli`: their tips wait for a CLI status line in that session, which never asks, so they expire
+unseen. No data is lost and the budget holds; `AIQ-TIPLINE-NEVER-ASKED` counts it. In VS Code each agent
+turn is its own Copilot session (`sessionEnd` reason `complete` after every `agentStop`), so the
+reword detector, which works within a session, will rarely fire there until it looks across sessions. The extension's poll takes VS Code cards after the turn ends; status
 bar shows `AIQ` · `AIQ paused` · `AIQ: 1 tip`. `simplify:` with several VS Code windows open, the first
 focused window to poll shows the card; ceiling: one person, a few windows; upgrade trigger: a payload
 field that ties a session to a window.
@@ -399,6 +405,18 @@ D6 (Copilot payload goldens from the 2026-10-31 probe + P2 status-line payload; 
   `COPILOT_CLI`, `COPILOT_HOOK_DIR`, `COPILOT_LOADER_PID`, `COPILOT_PROJECT_DIR`; no `VSCODE_*`. *Open:
   which VS Code session target was used.*
 
+**Run 2 (Imran's laptop, 2026-11-01 17:17–17:24; `results/laptop-probe-run2.json`, raw log read from the laptop):**
+- **P1 — answered:** with `experimental` + `STATUS_LINE` on and a `.cmd` wrapper as the command, Copilot
+  ran the status line 16 times: at start-up, around each prompt, and 1 s and 2 s after `agentStop`.
+  *Verified (run).* One of two CLI prompts got no `agentStop` before the next prompt; AIQ then delivers
+  at the next stop. *Observed, cause unknown.*
+- **P3 — answered:** VS Code agent mode with session target **Copilot** runs `~/.copilot/hooks`
+  (`userPromptSubmitted` and `sessionStart` together, then `agentStop`, then `sessionEnd` reason
+  `complete`). Payloads match the CLI's. Its hook env has `COPILOT_CLI_RUN_AS_NODE`, `COPILOT_MCP_APPS`,
+  `COPILOT_ENABLE_BUILTIN_GITHUB_MCP`, `COPILOT_RUNTIME_PROCESS_FILE_LOGGING`, and lacks
+  `COPILOT_LOADER_PID`, `COPILOT_HOOK_DIR`, `COPILOT_CLI_BINARY_VERSION`, which CLI hooks carry. AIQ
+  uses `COPILOT_CLI_RUN_AS_NODE` and not `COPILOT_LOADER_PID`. *Verified (run, one VS Code turn).*
+
 ## Conformance notes
 LOA F hot path (no model, no network, fail-open). Deviations: `seq` null for Copilot too; extension
 uses polling (`simplify:`); `DESIGN.md` not applicable (host-themed surfaces).
@@ -411,7 +429,7 @@ uses polling (`simplify:`); `DESIGN.md` not applicable (host-themed surfaces).
 - All gate seats played by one author session; not independent. *Recorded.*
 
 ## Gate record
-`GATE design · 2026-11-01 · Patterns ⇄ Simplifier, Test Architect, Security, Distributed Systems, Data & Persistence, SRE, Privacy, UX & Accessibility (one author session; not independent) · verdict: pass with conditions (P1–P4)`
+`GATE design · 2026-11-01 · Patterns ⇄ Simplifier, Test Architect, Security, Distributed Systems, Data & Persistence, SRE, Privacy, UX & Accessibility (one author session; not independent) · verdict: pass with conditions (P1–P4; met by probe run 2, 2026-11-01)`
 - Simplifier removed: rendering at `agentStop`, a stored tip-line state table, a push channel to VS Code.
 - Data & Persistence: one new fact table with a writer and reader; lifetime derived; expand-only migration. Cleared.
 - Distributed Systems: delivery is check-and-insert in the single writer across surfaces. Cleared.
@@ -421,6 +439,6 @@ uses polling (`simplify:`); `DESIGN.md` not applicable (host-themed surfaces).
 ## Status and next action
 | | |
 |---|---|
-| **Completed** | Phase 2 design: Copilot collector, status-line renderer with lifetime setting, cross-surface quiet period, VS Code extension, install |
-| **Remaining** | P1–P4 results |
-| **Best next action** | Run the laptop probe, fold results in, then `/implement` |
+| **Completed** | Phase 2 design: Copilot collector, status-line renderer with lifetime setting, cross-surface quiet period, VS Code extension, install; P1–P4 answered; built in PR #14 |
+| **Remaining** | Laptop check of the real build (install, reword 3 times in Copilot CLI, tip in status line; quiet period with Claude Code; VS Code notification) |
+| **Best next action** | Laptop check, then merge PR #14 |

@@ -82,6 +82,10 @@ impl Paths {
     pub fn install_record(&self) -> PathBuf {
         self.data.join("claude-code-install.json")
     }
+    /// What `aiq install copilot` changed in Copilot's settings to switch the status line on.
+    pub fn copilot_install_record(&self) -> PathBuf {
+        self.data.join("copilot-install.json")
+    }
     pub fn core_lock(&self) -> PathBuf {
         self.runtime.join("core.lock")
     }

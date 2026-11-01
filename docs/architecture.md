@@ -191,9 +191,9 @@ B2 pack content → core; B3 core → backend; B4 store at rest; B5 core → the
 ## Status & next action
 | | |
 |---|---|
-| **Completed** | Draft architecture, ADRs 0001–0006, threat model and privacy review |
-| **Remaining** | Phases 1–6 above, in order |
-| **Best next action** | `/design-slice` for the Phase 1 walking skeleton (Claude Code collector → core → card) |
+| **Completed** | Draft architecture, ADRs 0001–0006, threat model and privacy review; Phase 0 spike (GO); Phase 1 Claude Code slice (PRs #5, #7–#9); Phase 2 design and build (Copilot CLI status line, VS Code extension, cross-surface quiet period; PR #14) |
+| **Remaining** | Phase 2 laptop check and merge; Phases 3–6 |
+| **Best next action** | Phase 2 laptop check of the real build, merge PR #14, then `/design-slice` for Phase 3 |
 
 ## Gate record
 `GATE define-architecture · 2026-10-31 · Enterprise, Distributed Systems, Security & Identity, Data & Persistence, SRE, Patterns, Simplifier (all seats played by Claude in one session; not independent) · verdict: pass with conditions`

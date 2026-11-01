@@ -140,6 +140,25 @@ fn e2e_copilot_reword_tip_in_status_line_after_turn_then_clears_on_next_prompt()
 }
 
 #[test]
+fn e2e_copilot_vscode_turn_never_reaches_the_cli_status_line() {
+    // Laptop probe run 2: VS Code agent mode sets COPILOT_CLI_RUN_AS_NODE and not COPILOT_LOADER_PID.
+    let mut e = Env::new();
+    e.start_core();
+    for t in TEXTS {
+        let mut c = e.cmd(&["hook", "copilot", "userPromptSubmitted"]);
+        c.env("COPILOT_CLI_RUN_AS_NODE", "1").env_remove("COPILOT_LOADER_PID");
+        let p = json!({"sessionId": "v1", "timestamp": chrono_ms(), "cwd": "/repo", "prompt": t});
+        assert!(e.run_with(c, p.to_string().as_bytes()).stdout.is_empty());
+    }
+    let mut c = e.cmd(&["hook", "copilot", "agentStop"]);
+    c.env("COPILOT_CLI_RUN_AS_NODE", "1").env_remove("COPILOT_LOADER_PID");
+    e.run_with(c, json!({"sessionId": "v1", "stopReason": "end_turn"}).to_string().as_bytes());
+    e.wait_for("1 stop");
+    assert_eq!(e.statusline(Some("v1")), "", "tagged vscode: the extension shows it, not the CLI");
+    assert_eq!(e.statusline(None), "", "nor the newest CLI session");
+}
+
+#[test]
 fn e2e_copilot_tip_stays_until_opened_setting() {
     let mut e = Env::new();
     e.start_core();
@@ -241,16 +260,46 @@ fn e2e_install_copilot_round_trip_keeps_other_settings() {
         serde_json::from_str(&std::fs::read_to_string(e.copilot().join("hooks").join("aiq.json")).unwrap()).unwrap();
     assert_eq!(hooks["hooks"]["agentStop"][0]["args"], json!(["hook", "copilot", "agentStop"]));
     let s: Value = serde_json::from_str(&std::fs::read_to_string(e.copilot().join("settings.json")).unwrap()).unwrap();
-    assert!(s["statusLine"]["command"].as_str().unwrap().ends_with(" statusline copilot"));
+    let cmd = s["statusLine"]["command"].as_str().unwrap();
+    let wrapper = e.copilot().join("aiq-statusline.cmd");
+    if cfg!(windows) {
+        // The shape laptop probe run 2 proved: a bare path to a one-line .cmd wrapper.
+        assert_eq!(cmd, wrapper.to_string_lossy());
+        let w = std::fs::read_to_string(&wrapper).unwrap();
+        assert!(w.starts_with("@\"") && w.ends_with("\" statusline copilot\r\n"), "{w}");
+        let line = Command::new("cmd").args(["/d", "/c", cmd]).env("AIQ_HOME", e.home()).output().unwrap();
+        assert!(line.status.success() && line.stderr.is_empty(), "the wrapper runs aiq");
+    } else {
+        assert!(cmd.ends_with(" statusline copilot") && !wrapper.exists());
+    }
+    assert_eq!(s["experimental"], true);
+    assert_eq!(s["feature_flags"]["enabled"], json!(["STATUS_LINE"]));
     assert_eq!(s["model"], "x");
     let out = String::from_utf8(o.stdout).unwrap();
     assert!(out.contains("Self-test: AIQ's Copilot hook ran in"), "{out}");
     assert!(e.run(&["uninstall", "copilot", "--yes"], b"").status.success());
     assert!(!e.copilot().join("hooks").join("aiq.json").exists());
     assert!(e.copilot().join("hooks").join("mine.json").exists(), "other hook files untouched");
+    assert!(!wrapper.exists());
     let after: Value =
         serde_json::from_str(&std::fs::read_to_string(e.copilot().join("settings.json")).unwrap()).unwrap();
     assert_eq!(after, serde_json::from_str::<Value>(original).unwrap());
+}
+
+#[test]
+fn e2e_install_copilot_reverts_only_what_it_turned_on() {
+    let e = Env::new();
+    std::fs::create_dir_all(e.copilot()).unwrap();
+    let original = json!({"experimental": false, "feature_flags": {"enabled": ["OTHER"]}});
+    std::fs::write(e.copilot().join("settings.json"), original.to_string()).unwrap();
+    assert!(e.run(&["install", "copilot", "--yes"], b"").status.success());
+    assert!(e.run(&["install", "copilot", "--yes"], b"").status.success(), "reinstall keeps the first record");
+    let s: Value = serde_json::from_str(&std::fs::read_to_string(e.copilot().join("settings.json")).unwrap()).unwrap();
+    assert_eq!((&s["experimental"], &s["feature_flags"]["enabled"]), (&json!(true), &json!(["OTHER", "STATUS_LINE"])));
+    assert!(e.run(&["uninstall", "copilot", "--yes"], b"").status.success());
+    let after: Value =
+        serde_json::from_str(&std::fs::read_to_string(e.copilot().join("settings.json")).unwrap()).unwrap();
+    assert_eq!(after, original);
 }
 
 #[test]

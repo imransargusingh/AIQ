@@ -122,7 +122,10 @@ def redact(v):
 
 
 def is_vscode(r):
-    return any(k.startswith("VSCODE") for k in r.get("env", {})) or r["env"].get("TERM_PROGRAM") == "vscode"
+    """Run 2 found no VSCODE_* env in hooks; VS Code's agent host sets COPILOT_CLI_RUN_AS_NODE, the CLI
+    sets COPILOT_LOADER_PID (the rule `aiq hook copilot` uses)."""
+    env = r.get("env", {})
+    return "COPILOT_CLI_RUN_AS_NODE" in env and "COPILOT_LOADER_PID" not in env
 
 
 def analyse(rows):
