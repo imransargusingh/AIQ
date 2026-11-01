@@ -2,12 +2,12 @@
 # Every number here is uncalibrated pack data; the real-data week tunes it (design: assume: lines).
 schema = "aiq.pack.v1"
 pack_id = "aiq.core"
-version = "bundled-3"
+version = "bundled-4"
 idle_gap_min = 30
 
 [reprompt]
 detector_id = "reprompt"
-detector_version = 1
+detector_version = 2
 opportunity_id = "reprompt"
 core_opportunity = true
 similarity = 0.6
@@ -24,6 +24,8 @@ stop_words = [
   "how", "why", "when", "which", "there", "here", "all", "any", "one", "into", "out", "up", "don't", "dont",
   "its", "it's", "been", "was", "were", "has", "have", "had", "them", "they", "he", "she",
 ]
+# VS Code agent mode can start a new Copilot session every turn: treat its sessions as one stream.
+span_surfaces = ["vscode"]
 cues = [
   "try again", "again", "still not working", "still doesn't work", "still does not work", "still broken",
   "still wrong", "that's wrong", "that is wrong", "that's not it", "not what i asked", "no, i meant",

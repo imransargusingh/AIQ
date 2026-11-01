@@ -1,7 +1,8 @@
 //! Task rule and the re-prompt detector (`reprompt.v1`, Opportunity 1).
 //!
 //! Task (Phase 1 rule): the prompts of one surface session, split when consecutive prompts are more
-//! than the pack's idle gap apart. Task id = event id of its first prompt.
+//! than the pack's idle gap apart. Task id = event id of its first prompt. On a surface in the pack's
+//! `span_surfaces` (VS Code), all sessions are one stream, so a reword loop that spans sessions counts.
 // simplify: one session = one Task within the idle gap. Ceiling: a topic switch inside 30 minutes stays
 // one Task. Upgrade trigger: real-data week shows grouping F1 < 0.9, or Phase 2 needs cross-surface Tasks.
 use crate::text::{Features, features, jaccard};
@@ -144,7 +145,7 @@ impl Engine {
         if obs.text.trim().is_empty() {
             return None;
         }
-        let key = (surface.to_owned(), session.to_owned());
+        let key = self.key(surface, session);
         let gap = self.idle_gap_ms;
         let task = self
             .tasks
@@ -165,7 +166,13 @@ impl Engine {
 
     /// Current Task id for a session, if one is open.
     pub fn task_id(&self, surface: &str, session: &str) -> Option<&str> {
-        self.tasks.get(&(surface.to_owned(), session.to_owned())).map(|t| t.task_id.as_str())
+        self.tasks.get(&self.key(surface, session)).map(|t| t.task_id.as_str())
+    }
+
+    /// Task key: the session, or the whole surface when it spans sessions.
+    fn key(&self, surface: &str, session: &str) -> (String, String) {
+        let spans = self.params.span_surfaces.iter().any(|s| s == surface);
+        (surface.to_owned(), if spans { String::new() } else { session.to_owned() })
     }
 
     /// Drop Tasks idle for longer than the idle gap; they can never receive another prompt.
@@ -197,6 +204,7 @@ pub(crate) mod tests {
             min_word_len: 3,
             stop_words: "a an the and or to of in on for with from by is are be it this that these those i we you my our me us do does did can could should would will please just also then now so if at as not no yes ok okay use using make add run show write fix get let what how why when which there here all any one into out up its them they he she".split(' ').map(String::from).collect(),
             cues: vec!["try again".into(), "still not working".into(), "still doesn't work".into(), "that's wrong".into(), "no, i meant".into()],
+            span_surfaces: vec!["vscode".into()],
         }
     }
 
@@ -395,6 +403,28 @@ pub(crate) mod tests {
         }
         assert!(e.observe("claude-code", "b", PromptObs { event_id: "b0", utc_ms: 5, text: R3 }).is_none());
         assert!(e.observe("claude-code", "a", PromptObs { event_id: "a3", utc_ms: 6, text: R3 }).is_some());
+    }
+
+    #[test]
+    fn observe_vscode_reword_loop_spans_per_turn_sessions() {
+        // Laptop probe run 2: VS Code agent mode can open a new Copilot session for every turn.
+        let mut e = Engine::new(&pack());
+        let mut sig = None;
+        for (i, t) in [BASE, R1, R2, R3].iter().enumerate() {
+            let (id, session) = (format!("v{i}"), format!("turn{i}"));
+            sig = e.observe("vscode", &session, PromptObs { event_id: &id, utc_ms: i as i64 * MIN, text: t });
+        }
+        let sig = sig.expect("one stream across VS Code sessions");
+        assert_eq!((sig.task_id.as_str(), sig.reprompt_count), ("v0", 3));
+        assert_eq!(e.task_id("vscode", "turn9"), Some("v0"), "any VS Code session maps to the open Task");
+        // Copilot CLI sessions stay separate.
+        for (i, t) in [BASE, R1, R2, R3].iter().enumerate() {
+            let (id, session) = (format!("c{i}"), format!("cli{i}"));
+            assert!(
+                e.observe("copilot-cli", &session, PromptObs { event_id: &id, utc_ms: i as i64 * MIN, text: t })
+                    .is_none()
+            );
+        }
     }
 
     #[test]

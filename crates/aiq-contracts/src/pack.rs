@@ -51,6 +51,10 @@ pub struct RepromptParams {
     pub min_word_len: usize,
     pub stop_words: Vec<String>,
     pub cues: Vec<String>,
+    /// Surfaces whose sessions are one stream for the Task rule. VS Code agent mode can start a new
+    /// Copilot session every turn (laptop probe run 2), so a reword loop there spans sessions.
+    #[serde(default)]
+    pub span_surfaces: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
