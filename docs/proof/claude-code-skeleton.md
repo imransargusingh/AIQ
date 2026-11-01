@@ -152,7 +152,7 @@ summary: >-
 | Claude desktop app (MSIX) redirects `%LOCALAPPDATA%`, splitting AIQ into two homes and tokens | Fixed: Windows home `%USERPROFILE%\.aiq` (DC-007) |
 | Reinstall from a moved binary left stale hooks on uninstall | Fixed (DC-006) |
 | Install diff showed a line that only gained a comma; self-test over budget read as a pass | Fixed |
-| Card too easy to miss (Claude Code draws hook text dim) | "AIQ tip:" in bold yellow; Claude Code renders it (screenshot); `NO_COLOR` gives plain text |
+| Card too easy to miss (Claude Code draws hook text dim) | Whole card yellow at normal intensity, label bold; `NO_COLOR` gives plain text. Label colour seen on screen (screenshot); full-card colour not yet seen (Imran: not needed now) |
 | Word-overlap detector misses paraphrases and word forms | Open finding (design) |
 | The agent sometimes gives the same nudge itself | Open finding (design) |
 | Prompts queued while Claude is busy count as rewords | Open question for the spec |
