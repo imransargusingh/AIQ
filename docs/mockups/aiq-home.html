@@ -462,19 +462,25 @@ function home(){
 }
 const habitChip = s => s==="Adopted"?`<span class="chip ok">Adopted</span>`:s==="Tried"?`<span class="chip tried">Tried</span>`:`<span class="chip">Not yet</span>`;
 
+let taskSort = {key:"week", dir:-1}, jobFilter = "All";
+const SORTS = {week:["Times a week", t=>t.week], gain:["Rungs to gain", t=>t.blocked?-1:t.pot-t.now], kept:["Kept", t=>t.kept]};
+const sortTh = k => { const on = taskSort.key===k, [label] = SORTS[k];
+  return `<th class="r" aria-sort="${on?(taskSort.dir<0?"descending":"ascending"):"none"}"><button data-sort="${k}">${label}${on?(taskSort.dir<0?" ↓":" ↑"):""}</button></th>`; };
 function tasks(){
   const D=d(), s=st();
   let body;
   if (s==="loading") body = `<tbody>${[1,2,3,4].map(()=>`<tr><td>${sk("70%")}</td><td>${sk("80px")}</td><td>${sk("140px")}</td><td>${sk("40px")}</td><td>${sk("40px")}</td><td>${sk("40px")}</td></tr>`).join("")}</tbody>`;
   else if (s==="empty") return `<div class="page"><header class="group"><h1>Tasks</h1></header><div class="empty"><b>No recurring tasks yet.</b><span class="mute">A task shows here once you've done the same kind of work a few times with an agent.</span></div></div>`;
   else {
-    const list = s==="overflow" ? [{...D.tasks[0],name:LONG.name,week:LONG.week}, ...D.tasks.slice(1)] : D.tasks;
-    body = `<tbody>${list.map((t,i)=>{
+    const all = s==="overflow" ? [{...D.tasks[0],name:LONG.name,week:LONG.week}, ...D.tasks.slice(1)] : D.tasks;
+    const f = SORTS[taskSort.key][1];
+    const list = all.filter(t=>jobFilter==="All"||t.job===jobFilter).sort((a,b)=>(f(a)-f(b))*taskSort.dir || b.week-a.week);
+    body = !list.length ? `<tbody><tr><td colspan="6" class="mute">No tasks in this job yet.</td></tr></tbody>` : `<tbody>${list.map((t,i)=>{
       const rung = t.blocked?`<span class="chip warn">Blocked by ${esc(t.repo)}</span>`: !judgeOn()||(s==="partial"&&i===2)?`<span class="meta">Waiting to be judged</span>`: t.pot>t.now?`${RUNGS[t.now]} → <b>${RUNGS[t.pot]}</b>`:`${RUNGS[t.now]} <span class="meta">(right rung)</span>`;
       return `<tr tabindex="0" data-go="detail"><td style="max-width:420px">${esc(t.name)}</td><td class="mute">${t.job}</td><td>${rung}</td><td class="r num">${t.week.toLocaleString()}</td><td class="r num">${t.blocked?"—":t.pot-t.now}</td><td class="r num">${t.kept}%</td></tr>`;}).join("")}</tbody>`;
   }
-  return `<div class="page wide">${downBanner()}<header class="head"><h1>Tasks</h1><div class="row"><span class="meta">Job</span><div class="seg" role="group" aria-label="Job"><button aria-pressed="true">All</button><button aria-pressed="false">Code a change</button><button aria-pressed="false">Write a spec or doc</button></div></div></header>
-    <div class="tablewrap"><table aria-label="Recurring tasks, last 30 days"><thead><tr><th>Task</th><th>Job</th><th>Today → could be</th><th class="r" aria-sort="descending"><button>Times a week ↓</button></th><th class="r" aria-sort="none"><button>Rungs to gain</button></th><th class="r" aria-sort="none"><button>Kept</button></th></tr></thead>${body}</table></div>
+  return `<div class="page wide">${downBanner()}<header class="head"><h1>Tasks</h1><div class="row"><span class="meta">Job</span><div class="seg" role="group" aria-label="Job">${["All","Code a change","Write a spec or doc"].map(j=>`<button data-job="${j}" aria-pressed="${jobFilter===j}">${j}</button>`).join("")}</div></div></header>
+    <div class="tablewrap"><table aria-label="Recurring tasks, last 30 days"><thead><tr><th>Task</th><th>Job</th><th>Today → could be</th>${sortTh("week")}${sortTh("gain")}${sortTh("kept")}</tr></thead>${body}</table></div>
     <p class="meta"><kbd>J</kbd> <kbd>K</kbd> move · <kbd>Enter</kbd> open · Kept = finished without you redoing it</p></div>`;
 }
 
@@ -647,6 +653,15 @@ document.addEventListener("click", e => {
   else if (act.startsWith("toast:")) toast(act.slice(6));
 });
 document.addEventListener("click", e => { const r=e.target.closest("button.rr[aria-controls]"); if (r){ const open=r.getAttribute("aria-expanded")!=="true"; r.setAttribute("aria-expanded", open); document.getElementById(r.getAttribute("aria-controls")).hidden=!open; } });
+document.addEventListener("click", e => {
+  const so=e.target.closest("button[data-sort]"), jb=e.target.closest("button[data-job]");
+  if (!so && !jb) return;
+  if (so){ const k=so.dataset.sort; taskSort = taskSort.key===k ? {key:k, dir:-taskSort.dir} : {key:k, dir:-1}; }
+  if (jb) jobFilter = jb.dataset.job;
+  render();
+  (so ? $(`button[data-sort="${taskSort.key}"]`) : $(`button[data-job="${jobFilter}"]`)).focus();
+  toast(so ? `Sorted by ${SORTS[taskSort.key][0].toLowerCase()}, ${taskSort.dir<0?"highest":"lowest"} first.` : `Showing ${jobFilter==="All"?"all jobs":jobFilter}.`);
+});
 document.addEventListener("click", e => { const s=e.target.closest(".switch"); if (s){ s.setAttribute("aria-checked", s.getAttribute("aria-checked")!=="true"); if (s.id==="singleKeys"){ singleKeys = s.getAttribute("aria-checked")==="true"; toast(singleKeys?"Single-key shortcuts on.":"Single-key shortcuts off. Ctrl+K still works."); } } const b=e.target.closest(".seg button"); if (b){ b.parentNode.querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed", x===b)); } });
 
 /* keyboard: Ctrl+K palette, G+letter, P pause, Esc back, J/K rows */
