@@ -258,7 +258,7 @@ redone, and that is likely 10–50× larger. **Gap that forced the model:** no r
 ```
 
 Exec form, never shell form: no Git Bash or PowerShell start-up, no quoting, no env-var prefixes.
-The `timeout: 5` is a safety net only; the client's own budget is 50 ms. Every AIQ entry has
+The `timeout: 5` is a safety net only; the client's own budget is 100 ms p95 whole process (was 50 ms; [note](../notes/note-20261101-hook-budget-100ms.md)). Every AIQ entry has
 `args[0..2]` = `hook`, `claude-code`, so `install` and `uninstall` find exactly their own entries and
 never touch the person's other hooks.
 
@@ -432,7 +432,7 @@ evidence link: `aiq show <card_id>` prints the triggering prompts (from the loca
 
 **Motion:** none. **Medium adaptation:** Phase 2 renders the same `aiq.card.v1` as a Copilot CLI
 progress line and a VS Code notification. **Accessibility:** plain text, no colour-only meaning,
-commands are copyable text. **Performance:** card appears with the Stop hook's ≤ 50 ms budget.
+commands are copyable text. **Performance:** card appears with the Stop hook's ≤ 100 ms p95 budget (was 50 ms).
 
 **AI-UX (HAX):** G1/G2 (make clear what AIQ can do and how well — "tip" wording, details command);
 G9/G10 (support efficient dismissal and correction — `aiq pause` on the card itself; feedback
@@ -483,7 +483,7 @@ crate (paths from `HOME` / `LOCALAPPDATA` / `XDG_*`, a few owned lines).
 
 | Failure mode | From which choice | Disposition | How it is addressed | Detection | Test |
 |---|---|---|---|---|---|
-| Core not running at a hook | Separate long-lived core | mitigate + recover | Spool the frame, start the core, exit 0 | spool line count in `aiq status`; `AIQ-HOOK-SPOOLED` counter | `Hook_CoreDown_ExitsZeroWithin50ms_AndSpools` |
+| Core not running at a hook | Separate long-lived core | mitigate + recover | Spool the frame, start the core, exit 0 | spool line count in `aiq status`; `AIQ-HOOK-SPOOLED` counter | `Hook_CoreDown_ExitsZeroWithinBudget_AndSpools` (100 ms) |
 | Core slow to answer `take_card` | Sync Stop hook | mitigate | Client waits ≤ 35 ms, then exits 0 with no output; card stays ready for the next Stop | `AIQ-HOOK-STOP-TIMEOUT` counter | `Hook_StopReplyLate_ExitsZeroNoOutput` |
 | Spool full | Bounded spool | accept | Oldest lines dropped; rare (1 MB ≈ 1,500 prompts while down). Residual: a few lost prompts may hide one re-prompt run | `AIQ-SPOOL-DROPPED` counter | `Spool_OverLimit_DropsOldestKeepsNewest` |
 | Spool replayed twice / partial line | At-least-once | prevent | Idempotent ingest; partial last line skipped | `AIQ-SPOOL-BAD-LINE` counter | Property test: any replay order/duplication yields the same rows and decisions (gate condition) |
@@ -500,7 +500,7 @@ crate (paths from `HOME` / `LOCALAPPDATA` / `XDG_*`, a few owned lines).
 | Store corrupt or migration fails | SQLite | detect | Core stays down, data untouched, status explains; `forget --all` is the reset | `AIQ-STORE-OPEN`, `AIQ-STORE-MIGRATION` | Migration rollback test |
 | Disk full | Store and spool | degrade | Writes fail → frame dropped and counted; hook still exits 0 | `AIQ-STORE-WRITE` | Integration test with a full temp volume (Linux CI) |
 | Ingest flood | Bounded channel | mitigate | Drop `ingest` frames beyond 1,024 queued; `take_card` answered null | `AIQ-INGEST-BACKPRESSURE` | `Core_ChannelFull_DropsIngestAnswersTakeCardNull` |
-| Hook runs through a shell (Git Bash 452 ms p95 on Windows) | Install writes the command | prevent | Exec form only (`command` + `args`); `install` refuses to write shell form and runs the installed entry once as a self-test, timing it | `aiq install` reports the measured time; hook duration histogram | Golden test: installed entries always have `args`; Windows dogfood: Stop p95 ≤ 50 ms |
+| Hook runs through a shell (Git Bash 452 ms p95 on Windows) | Install writes the command | prevent | Exec form only (`command` + `args`); `install` refuses to write shell form and runs the installed entry once as a self-test, timing it | `aiq install` reports the measured time; hook duration histogram | Golden test: installed entries always have `args`; Windows dogfood: Stop p95 ≤ 100 ms (was 50 ms) |
 | Auto-started core is killed when the hook's process tree ends (Claude Code or Git Bash cleans up children) | Hook starts the core | prevent | Start the core fully detached: `setsid` on Linux/macOS; `DETACHED_PROCESS` + `CREATE_NEW_PROCESS_GROUP` + `CREATE_BREAKAWAY_FROM_JOB` on Windows (measured: survives `claude -p` exit; breakaway was refused when the caller was already in a job, and the no-breakaway fallback still survived) | next hook finds no core → `AIQ-HOOK-SPOOLED` keeps rising in `aiq status` | `Hook_CoreDown_StartedCoreSurvivesHookExit` (Linux CI, Windows dogfood) |
 | Core auto-start storm | Hook starts the core | prevent | Lock file + 10 s back-off | `AIQ-CORE-START-BACKOFF` | `Hook_RepeatedCoreDown_StartsCoreOnce` |
 | Detector false positives | Lexical similarity | detect + accept | Values are pack data; dogfood week checks them; `aiq pause` on every card | held/shown counts in `aiq status` | Golden set of synthetic re-prompt / follow-up Tasks (labelled synthetic) |
@@ -581,7 +581,7 @@ Not triggered: D5 (no HTTP/gRPC), A1–A6 (no model call in this slice).
 | D4 | Real SQLCipher store in a temp dir: append-only triggers reject update/delete on every fact table; unique delivery index; migration rollback; rebuild equality of the detector working set; real socket round trip; spool on a real file; file permission checks |
 | D6 | JSON Schemas for `aiq.event.v1`, `aiq.card.v1`, frames; golden Claude Code payloads recorded by the Phase 0 probe (Linux 2.1.316, Windows 2.1.300/2.1.312), scrubbed and labelled; unknown-field and missing-optional-field tests; hook stdout contract (empty or exactly one `systemMessage`) |
 | D7 | `BundledPack` validated against the pack schema the Phase 4 loader will use; `AlwaysUnclassified` paired with the Job classification invariant test; `TestKey` compiled out of release (build test greps the release binary for the test-key marker) |
-| E2E (architecture) | Scripted hook payloads through the real binary: 4 similar prompts → card at the next Stop; a second qualifying run in the same session → held; pause → nothing captured; core killed → hook exits 0 in ≤ 50 ms p95 over 50 runs, on Linux CI and on Imran's Windows laptop |
+| E2E (architecture) | Scripted hook payloads through the real binary: 4 similar prompts → card at the next Stop; a second qualifying run in the same session → held; pause → nothing captured; core killed → hook exits 0 in ≤ 100 ms p95 over 50 runs (was 50 ms), on Linux CI and on Imran's Windows laptop |
 | Human check | Imran, Windows laptop, real Claude Code: reword a prompt 3 times, see one card under the reply; do it again in the same session, see no second card; `aiq status` shows one shown, one held |
 
 ## Spikes required before `/implement` completes
@@ -670,7 +670,8 @@ Where the build differs from the text above:
   agent's last reply for an equivalent nudge before showing a card (needs the reply text, not captured in
   Phase 1).
 - **Whole-process hook time on the laptop:** p50 about 27 ms, p95 65 to 70 ms; in-process p95 3.1 ms.
-  The 50 ms p95 whole-process bar does not hold there; the budget is with Imran.
+  The 50 ms p95 whole-process bar did not hold there. **Imran raised it to 100 ms p95** (2026-11-01,
+  [note](../notes/note-20261101-hook-budget-100ms.md)).
 
 ## Gate record
 `GATE design · 2026-10-31 · Patterns Expert ⇄ Simplifier, Test Architect, Security & Identity, Distributed Systems, Data & Persistence, SRE, Privacy, UX & Accessibility (all seats played by Claude in one session; not independent) · verdict: pass with conditions`

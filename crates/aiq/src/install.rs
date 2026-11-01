@@ -214,6 +214,9 @@ pub fn install(yes: bool) -> ExitCode {
     ExitCode::SUCCESS
 }
 
+/// Whole-process p95 budget for the Stop hook (Imran, 2026-11-01; note-20261101-hook-budget-100ms).
+const STOP_BUDGET_MS: u128 = 100;
+
 /// Run the installed Stop entry once, the way Claude Code will (direct exec, no shell), and time it.
 fn self_test(exe: &Path) -> String {
     use std::io::Write;
@@ -232,11 +235,11 @@ fn self_test(exe: &Path) -> String {
     match child.wait_with_output() {
         Ok(o) if o.status.success() => {
             let ms = start.elapsed().as_millis();
-            if ms <= 50 {
-                format!("Self-test: the Stop hook ran in {ms} ms (budget 50 ms).")
+            if ms <= STOP_BUDGET_MS {
+                format!("Self-test: the Stop hook ran in {ms} ms (budget {STOP_BUDGET_MS} ms).")
             } else {
                 format!(
-                    "Self-test: the Stop hook ran in {ms} ms, over the 50 ms budget. The first run of a new aiq \
+                    "Self-test: the Stop hook ran in {ms} ms, over the {STOP_BUDGET_MS} ms budget. The first run of a new aiq \
                      binary is often slow while the system scans it; `aiq status` shows the times of real runs."
                 )
             }

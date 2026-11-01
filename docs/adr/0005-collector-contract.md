@@ -8,7 +8,9 @@ phase: "0-1"
 tags: [architecture]
 links:
   - { to: aiq-architecture, rel: refines }
-review-suggested: { by: design-claude-code-skeleton, on: 2026-10-31, reason: "Phase 1 design: seq=null for Claude Code; Claude Code hooks must use exec form (command + args), since Git Bash shell form costs 452 ms p95 on Windows; 20 ms is the connect timeout, not a whole-process budget (Windows whole process 22-34 ms); only the async prompt hook may start the core." }
+review-suggested:
+  - { by: design-claude-code-skeleton, on: 2026-10-31, reason: "Phase 1 design: seq=null for Claude Code; Claude Code hooks must use exec form (command + args), since Git Bash shell form costs 452 ms p95 on Windows; 20 ms is the connect timeout, not a whole-process budget (Windows whole process 22-34 ms); only the async prompt hook may start the core." }
+  - { by: note-20261101-hook-budget-100ms, on: 2026-11-01, reason: "Imran raised the Claude Code Stop hook budget to 100 ms p95 whole process after the Windows laptop measured 65-70 ms (process start). Reword the 50 ms NFR or scope it per collector." }
 review-by: 2027-04-29
 summary: >-
   Collectors never block or slow the person's tools: they send versioned, idempotent events to the core with a strict time budget, spool briefly if the core is down, and install at user level only.
@@ -17,6 +19,7 @@ summary: >-
 # ADR-0005: Collectors are fail-open, fire-and-forget, schema-versioned pipes
 
 - **Status:** Proposed
+- **Note (2026-11-01):** the Claude Code Stop hook budget is 100 ms p95 whole process (Imran). See [note-20261101-hook-budget-100ms](../notes/note-20261101-hook-budget-100ms.md).
 - **Date:** 2026-10-31
 - **Deciders:** Imran (owner); drafted with Claude via /define-architecture
 

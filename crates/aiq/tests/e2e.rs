@@ -179,7 +179,7 @@ fn e2e_paused_nothing_captured_no_card() {
 }
 
 #[test]
-fn e2e_core_down_stop_exits_zero_within_50ms_p95_and_spools() {
+fn e2e_core_down_stop_exits_zero_within_budget_p95_and_spools() {
     let e = Env::new();
     let mut times = Vec::new();
     for i in 0..50 {
@@ -190,9 +190,10 @@ fn e2e_core_down_stop_exits_zero_within_50ms_p95_and_spools() {
     }
     times.sort();
     let p95 = times[(times.len() * 95).div_ceil(100) - 1];
-    // Budget of record is 50 ms (design). Shared Windows CI runners scan every new process, so that job
-    // widens it through AIQ_E2E_BUDGET_MS; the laptop run is the Windows measurement of record.
-    let budget = std::env::var("AIQ_E2E_BUDGET_MS").ok().and_then(|v| v.parse().ok()).unwrap_or(50);
+    // Budget of record is 100 ms p95 for the whole process (Imran, 2026-11-01; was 50 ms). Shared Windows
+    // CI runners scan every new process, so that job widens it through AIQ_E2E_BUDGET_MS; the laptop run
+    // is the Windows measurement of record.
+    let budget = std::env::var("AIQ_E2E_BUDGET_MS").ok().and_then(|v| v.parse().ok()).unwrap_or(100);
     assert!(p95 <= Duration::from_millis(budget), "p95 {p95:?} > {budget} ms");
     eprintln!("core-down Stop hook p95: {p95:?} over {} runs", times.len());
     let spool = std::fs::read_to_string(e.home().join("spool.jsonl")).unwrap();

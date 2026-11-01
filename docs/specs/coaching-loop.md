@@ -7,6 +7,8 @@ owner: "Imran"
 phase: specify
 tags: [coaching, triggers, coaching-card, phase-1]
 links: []
+review-suggested:
+  - { by: note-20261101-hook-budget-100ms, on: 2026-11-01, reason: "Imran raised the Claude Code Stop hook budget to 100 ms p95 whole process (Windows process start measured 65-70 ms). The 50 ms hook NFR here may need scoping per collector." }
 review-by: 2026-11-30
 summary: >-
   What AIQ's coaching loop must do for anyone coding or writing specs with AI in VS Code, Claude Code

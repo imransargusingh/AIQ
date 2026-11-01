@@ -28,8 +28,8 @@ summary: >-
   (after the laptop-check fixes, 2026-11-01). Windows CI (`cargo test --release`) green on every push since
   `4d4b2c2`.
 - **Windows laptop (Imran, 2026-11-01, Claude Code 2.1.316 in Windows Terminal):** `cargo build --release`
-  1 m 43 s; `cargo test --workspace --release` 131 of 132 (the whole-process 50 ms p95 timing test failed,
-  see C3); `aiq install claude-code` from his own PowerShell (backup kept, exec form); real prompts gave a
+  1 m 43 s; `cargo test --workspace --release` 131 of 132 (the whole-process timing test failed against the then 50 ms
+  budget, see C3); `aiq install claude-code` from his own PowerShell (backup kept, exec form); real prompts gave a
   card on screen. See "Laptop check" below.
 
 ## Claims & evidence
@@ -70,24 +70,24 @@ summary: >-
   reworded question after a card never fires again in that session (one signal per loop, by design).
 
 ### C3. The hook fails open within budget and never changes Claude Code's behaviour
-- **Evidence:** `e2e_core_down_stop_exits_zero_within_50ms_p95_and_spools` (50 Stop runs, core down: exit 0,
+- **Evidence:** `e2e_core_down_stop_exits_zero_within_budget_p95_and_spools` (50 Stop runs, core down: exit 0,
   no output, 50 spool lines, no token in the spool). Release build, Linux, whole process, 50 runs each:
-  **core down p50 2.2 / p95 3.0 ms; core up p50 2.8 / p95 3.8 ms** (budget 50 ms).
+  **core down p50 2.2 / p95 3.0 ms; core up p50 2.8 / p95 3.8 ms** (budget 100 ms; was 50 ms).
   `e2e_random_bytes_never_print_always_exit_zero` (0 B to 300 KB of random bytes, both events: exit 0,
   empty stdout and stderr). Every Stop output is checked by `assert_hook_stdout_contract` (empty, or one
   line that is an object with exactly the `systemMessage` key). `UserPromptSubmit` output is asserted empty
   on every call in the e2e suite.
 - **Oracle:** the stdout contract would fail on any `additionalContext`, `decision`, `continue` or stray
-  print; the timing assertion fails above 50 ms p95.
+  print; the timing assertion fails above 100 ms p95.
 - **Red observed:** the random-bytes test went red (broken pipe) when stdin was larger than the 256 KB cap;
   fixed by draining the rest of stdin (DC-002).
 - **Laptop (measurement of record for Windows):** whole process, direct exec, release build. Stop core
   down: p50 27.5 / p95 70.5 ms (n=50); Stop core up: p50 27.8 / p95 66.8 ms (n=50); UserPromptSubmit
   core up: p50 27.5 / p95 65.2 ms (n=20). In-process: Stop p95 3.1 ms, UserPromptSubmit p95 1.4 ms. All
   exit 0. Install self-test on a never-run exe: 344 ms.
-- **Confidence:** Verified on Linux. **Windows: the 50 ms p95 whole-process budget is not met** (p50 is);
-  nearly all of the time is process start, outside AIQ's code (Inferred: likely security scanning; not
-  measured). The budget is with Imran (decision card).
+- **Confidence:** Verified on Linux. **Windows: meets the 100 ms p95 budget** (Imran raised it from 50 ms
+  on 2026-11-01, [note](../notes/note-20261101-hook-budget-100ms.md)); nearly all of the time is process
+  start, outside AIQ's code (Inferred: likely security scanning; not measured).
 - **Residual risk:** one UserPromptSubmit run recorded 4.4 s in-process on the laptop (async hook, so the
   prompt was not delayed; 5 s timeout). Cause not yet confirmed; suspected the cold core start just after a
   rebuild.
@@ -156,7 +156,7 @@ summary: >-
 | Word-overlap detector misses paraphrases and word forms | Open finding (design) |
 | The agent sometimes gives the same nudge itself | Open finding (design) |
 | Prompts queued while Claude is busy count as rewords | Open question for the spec |
-| Whole-process hook p95 65–70 ms vs 50 ms budget | With Imran (decision card) |
+| Whole-process hook p95 65–70 ms vs 50 ms budget | Imran raised the budget to 100 ms p95 |
 
 ## Mutation testing
 `cargo mutants -p aiq-domain`: first run 141 mutants, **21 missed** (getters, `FakeClock`, window bound,
@@ -206,8 +206,8 @@ spool sort/dedup, core-side `wait_ms`, hook timing log, frames schema / peer-uid
 `GATE implement · 2026-10-31 · Rust Developer ⇄ Test Architect (author: Claude, one session; not independent) · verdict: pass on Linux, Windows pending`
 
 `GATE implement (Windows) · 2026-11-01 · same seats · verdict: pass with one open budget` — end to end on the
-laptop in real Claude Code; hold verified with the real Windows binary; whole-process p95 over 50 ms pending
-Imran's budget decision.
+laptop in real Claude Code; hold verified with the real Windows binary; whole-process p95 within the 100 ms budget
+Imran set on 2026-11-01.
 - **Test Architect (hard):** triggered directives D0–D4, D6, D7 applied; D7's `TestKey` is moot (no key);
   D3 enforced by `domain_dependencies_only_contracts`. Open: disk-full test, Windows run. Not cleared by the
   author for Windows.
@@ -218,5 +218,5 @@ Imran's budget decision.
 | | |
 |---|---|
 | **Completed** | `aiq` binary: hook client, core, CLI (install, uninstall, status, show, pause, resume, config, forget); store v1; re-prompt detector; trigger engine; spool; CI workflow |
-| **Remaining** | Hook speed budget (Imran's decision); confirm the 4.4 s UserPromptSubmit outlier's cause; disk-full test; detector paraphrase gap; Phases 2–6 |
-| **Best next action** | Imran picks the speed budget; then merge |
+| **Remaining** | Confirm the 4.4 s UserPromptSubmit outlier's cause; disk-full test; detector paraphrase gap; Phases 2–6 |
+| **Best next action** | Merge (Imran's call) |
