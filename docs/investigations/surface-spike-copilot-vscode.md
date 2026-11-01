@@ -96,7 +96,11 @@ owns. Imran chose the status line for Copilot CLI tips (point 4); the budget wor
    not work. AIQ will **not** use `additionalContext` or exit code 2 to get text in front of the person:
    both act on the agent, and coaching is for the person (ADR-0005 rule 1).
 4. **Where Copilot CLI cards show — decided (Imran, 2026-11-01): the status line (a).** A desktop
-   notification (b), or a combination, may be revisited later. Options considered:
+   notification (b), or a combination, may be revisited later. **How long the tip stays is a person's
+   setting** (Imran, 2026-11-01, UI mockup thread; recorded in the AIQ home spec, PR #12). The proposed
+   default keeps it through the next two prompts or five minutes, then shrinks it to
+   `1 tip waiting · aiq show`. The other choices are "clear on my next prompt" and "stay until I open
+   it". The core holds the tip's state, and the status-line command only reads it. Options considered:
    - **a) Copilot CLI's status line (recommended to try first):** a one-line nudge such as
      `AIQ tip: reworded 3× without new details · aiq show`, read from the core. It is persistent, in
      the person's view, and needs no window switch. It is experimental, needs a laptop check, and on
