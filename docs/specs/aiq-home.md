@@ -94,8 +94,8 @@ the sibling specs, plus the person's own controls. Terms it adds to the ubiquito
 - **Could be** (new, measure, *proposed 2026-11-01, Imran to confirm*): the share of judged tasks
   agents finished plus those agents could finish. "Agents could finish" = a judged task not kept,
   whose task type's potential rung is Delegated or higher at judge confidence ≥ 0.8; the rest are
-  "Needs you". Non-additive like Kept rate. Home shows one bar: Agents finished / Agents could
-  finish / Needs you. Covers only work done with an AI tool AIQ watches.
+  "Needs you". Non-additive like Kept rate. Home shows it as weekly 100% stacked columns: Agents
+  finished / Agents could finish / Needs you. Covers only work done with an AI tool AIQ watches.
 - **Opportunity row** (projection): one task type whose potential rung is above its current rung, with
   its job, how often it happens and the one next step.
 - **Environment finding** (from `coaching-loop.md`): a blocker outside the person's habits; shown on

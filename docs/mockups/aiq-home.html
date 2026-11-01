@@ -103,40 +103,22 @@
   .fix code{font:var(--t-mono)}
   .fix a{display:inline-flex;align-items:center;min-height:24px;color:var(--primary);font:var(--t-caption)}
   [data-viewport="narrow"] .fix{grid-template-columns:1fr}
-  .reach{display:flex;gap:2px;height:28px}
-  .reach>span{position:relative;display:flex;align-items:center;padding:0 var(--s3);border-radius:var(--r-sm);font:600 12px/1 var(--f-text);font-variant-numeric:tabular-nums;min-width:24px;border:1px solid transparent}
-  .reach .k{background:var(--primary);color:var(--on-primary)}
-  .reach .c{background:var(--rung-2);color:var(--ink)}
-  .reach .n{background:var(--canvas-soft);color:var(--ink-mute)}
-  .reach .n{border-color:var(--hairline)}
-  [data-theme="contrast"] .reach .c,[data-theme="contrast"] .reach .n{border-color:var(--ink)}
-  [data-theme="contrast"] .reach .c{background:repeating-linear-gradient(45deg,var(--surface) 0 4px,#4d4d4d 4px 6px);color:var(--ink)}
-  .reach>span:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}
-  .reach .tip{display:none;position:absolute;bottom:calc(100% + var(--s2));left:0;white-space:nowrap;z-index:2;font-weight:400;
-    background:var(--surface);color:var(--ink);border:1px solid var(--hairline);border-radius:var(--r-sm);padding:var(--s2) var(--s3);font-size:12px;line-height:1.4}
-  .reach>span:hover .tip,.reach>span:focus-visible .tip{display:block}
-  .reach-key{display:flex;gap:var(--s4);flex-wrap:wrap;font:var(--t-caption);color:var(--ink-mute)}
-  .reach-key i{display:inline-block;width:12px;height:12px;border-radius:var(--r-sm);margin-right:var(--s2);vertical-align:-2px;border:1px solid transparent}
-  .reach-key i.k{background:var(--primary)} .reach-key i.c{background:var(--rung-2)} .reach-key i.n{background:var(--canvas-soft)}
-  [data-theme="contrast"] .reach-key i{border-color:var(--ink)}
-  [data-theme="contrast"] .reach-key i.c{background:repeating-linear-gradient(45deg,var(--surface) 0 2px,#4d4d4d 2px 3px)}
-  .tr{margin:0;display:grid;grid-template-columns:auto minmax(0,1fr);grid-template-rows:auto 72px auto;column-gap:var(--s3);row-gap:var(--s2)}
-  .tr figcaption{grid-column:1/-1;font:var(--t-caption);color:var(--ink-mute);margin-bottom:var(--s2)}
-  .tr-y{position:relative;width:32px;font:var(--t-caption);color:var(--ink-mute);font-variant-numeric:tabular-nums;text-align:right}
-  .tr-y span{position:absolute;right:0;transform:translateY(-50%)}
-  .tr-plot{position:relative}
-  .tr-plot svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
-  .tr-dot{position:absolute;width:24px;height:24px;transform:translate(-50%,-50%);border-radius:var(--r-pill);cursor:default}
-  .tr-dot::after{content:"";position:absolute;inset:8px;border-radius:var(--r-pill);background:var(--primary);box-shadow:0 0 0 2px var(--surface)}
-  .tr-dot:focus-visible{outline:2px solid var(--focus-ring);outline-offset:0}
-  .tr-dot .tip{display:none;position:absolute;bottom:calc(100% + var(--s2));left:50%;transform:translateX(-50%);white-space:nowrap;z-index:2;
+  .key{display:flex;gap:var(--s4);flex-wrap:wrap;font:var(--t-caption);color:var(--ink-mute)}
+  .key i{display:inline-block;width:12px;height:12px;border-radius:var(--r-sm);margin-right:var(--s2);vertical-align:-2px;border:1px solid transparent}
+  .k-k{background:var(--primary)} .k-c{background:var(--rung-2)} .k-n{background:var(--canvas-soft);border:1px solid var(--hairline)!important}
+  [data-theme="contrast"] .k-c,[data-theme="contrast"] .k-n{border:1px solid var(--ink)!important}
+  [data-theme="contrast"] .k-c{background:repeating-linear-gradient(45deg,var(--surface) 0 3px,#4d4d4d 3px 5px)}
+  .wk{margin:0;display:grid;grid-template-columns:auto minmax(0,1fr);grid-template-rows:120px auto;column-gap:var(--s3);row-gap:var(--s2)}
+  .wk-y{position:relative;width:36px;font:var(--t-caption);color:var(--ink-mute);font-variant-numeric:tabular-nums;text-align:right}
+  .wk-y span{position:absolute;right:0;transform:translateY(-50%)}
+  .wk-plot{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--s4)}
+  .wk-col{position:relative;display:flex;flex-direction:column-reverse;gap:2px;width:min(100%,56px);justify-self:center;border-radius:var(--r-sm)}
+  .wk-col>i{display:flex;align-items:flex-end;justify-content:center;padding-bottom:var(--s1);border-radius:var(--r-sm);font:600 12px/1 var(--f-text);font-style:normal;font-variant-numeric:tabular-nums;color:var(--on-primary)}
+  .wk-col:focus-visible{outline:2px solid var(--focus-ring);outline-offset:3px}
+  .wk-col .tip{display:none;position:absolute;bottom:calc(100% + var(--s2));left:50%;transform:translateX(-50%);white-space:nowrap;z-index:2;
     background:var(--surface);color:var(--ink);border:1px solid var(--hairline);border-radius:var(--r-sm);padding:var(--s2) var(--s3);font:var(--t-caption)}
-  .tr-dot:hover .tip,.tr-dot:focus-visible .tip{display:block}
-  .tr-dot:hover~.tr-val,.tr-plot:focus-within .tr-val{visibility:hidden}
-  .tr-val{position:absolute;transform:translate(-50%,calc(-100% - 8px));font:var(--t-caption);color:var(--ink-mute);font-variant-numeric:tabular-nums;pointer-events:none}
-  .tr-val.now{font-weight:600;color:var(--ink)}
-  .tr-x{grid-column:2;position:relative;height:17px;font:var(--t-caption);color:var(--ink-mute)}
-  .tr-x span{position:absolute;transform:translateX(-50%);white-space:nowrap}
+  .wk-col:hover .tip,.wk-col:focus-visible .tip{display:block}
+  .wk-x{grid-column:2;display:grid;grid-template-columns:repeat(4,1fr);gap:var(--s4);font:var(--t-caption);color:var(--ink-mute);text-align:center}
   .btn{display:inline-flex;align-items:center;gap:var(--s3);min-height:32px;padding:0 var(--s5);border-radius:var(--r-sm);border:1px solid var(--hairline);
     background:var(--surface);color:var(--ink);font:600 14px/1 var(--f-text);cursor:pointer;transition:background var(--fast) var(--ease),filter var(--fast) var(--ease)}
   .btn:hover{background:var(--canvas-soft)}
@@ -297,7 +279,7 @@ let paused = false, singleKeys = true, selCount = 1, invoker = null;
 
 /* ---- sample data (marked as sample in the page) ---- */
 const DATA = {
-  dev: { kept:58, judged:141, could:37, trend:[33,35,38,41], waiting:12,
+  dev: { kept:58, judged:141, could:37, trend:[33,35,38,41], couldTrend:[30,29,27,26], waiting:12,
     mix:[["Code a change",68],["Write a spec or doc",32]],
     rungs:[[24,14],[35,28],[22,31],[13,19],[6,8]],
     tasks:[
@@ -315,7 +297,7 @@ const DATA = {
     tips:[["Today 22:31","Reworded 3 times without new details","Claude Code","No answer"],["Tue 15:02","Accepted a drafted spec with no sources checked","VS Code","Helpful"],["Mon 10:47","Same task, a fresh session would help","Claude Code","Snoozed 7 days"]],
     events:[["22:31","Claude Code","Tip shown","Reworded 3 times without new details"],["22:31","Claude Code","Prompt","the date parser test is still failing, fix it"],["22:30","Claude Code","Turn ended","1 test failed"],["22:28","Claude Code","Prompt","please fix the date parser test, it still fails"],["22:25","Claude Code","Prompt","fix the failing date parser test"],["21:58","Copilot CLI","Prompt","summarise the open PRs for the weekly update"]],
     store:"2,184 events · 3.1 MB · since 24 Oct" },
-  pm: { kept:19, judged:64, could:22, trend:[22,24,27,30], waiting:5,
+  pm: { kept:19, judged:64, could:22, trend:[22,24,27,30], couldTrend:[36,35,35,34], waiting:5,
     mix:[["Write a spec or doc",71],["Code a change",29]],
     rungs:[[38,24],[34,32],[18,28],[8,12],[2,4]],
     tasks:[
@@ -349,35 +331,21 @@ const shellPaused = () => paused ? `<div class="banner" role="status"><div class
 const downBanner = () => st()==="error" && root.dataset.page!=="data" && root.dataset.page!=="detail" ? `<div class="banner bad" role="alert"><div class="grow"><b>AIQ isn't running, so this shows what was stored at 22:40.</b> It starts with your next prompt in Claude Code.</div><button class="btn" data-act="toast:Starting AIQ…">Start AIQ now</button></div>` : "";
 const sk = (w,h) => `<span class="sk" style="width:${w};${h?`height:${h}`:''}"></span>`;
 
-function reach(keptPct, couldPct, n){
-  /* One whole (judged tasks), three parts. Text inside each block; legend names only. */
-  const needPct = 100 - keptPct - couldPct;
-  const parts = [["k","Agents finished",keptPct,"You kept the agent's work with small edits"],["c","Agents could finish",couldPct,"You redid these, but agents can finish this kind of task"],["n","Needs you",needPct,"Agents can't finish these yet"]];
-  return `<div class="reach" role="group" aria-label="${n} judged tasks">${parts.map(([c,l,v,why])=>
-      `<span class="${c}" tabindex="0" style="flex:${v} 1 0" aria-label="${l}: ${v}%. ${why}.">${v>=8?v+"%":""}<span class="tip" aria-hidden="true"><b>${l} · ${v}%</b><br>${why}.</span></span>`).join("")}</div>
-    <div class="reach-key" aria-hidden="true">${parts.map(([c,l])=>`<span><i class="${c}"></i>${l}</span>`).join("")}</div>`;
-}
+const PARTS = [["k","Agents finished","You kept the agent's work with small edits"],["c","Agents could finish","You redid these, but agents can finish this kind of task"],["n","Needs you","Agents can't finish these yet"]];
+const key = () => `<div class="key" aria-hidden="true">${PARTS.map(([c,l,why])=>`<span title="${why}."><i class="k-${c}"></i>${l}</span>`).join("")}</div>`;
 const WEEKS = ["5 Oct","12 Oct","19 Oct","26 Oct"];
-function trend(v){
-  /* Weekly kept rate: one series, so no legend; first and latest values labelled, the rest on hover/focus. */
-  const max = Math.max(50, Math.ceil(Math.max(...v)/25)*25), ticks = [0, max/2, max];
-  const x = i => 6 + i*(88/(v.length-1)), y = val => (1 - val/max)*100;
-  const pts = v.map((val,i) => `${x(i)},${y(val)}`).join(" L");
-  const last = v.length-1;
-  return `<figure class="tr" role="group" aria-label="Tasks agents finished, each week">
-    <figcaption>Each week</figcaption>
-    <div class="tr-y" aria-hidden="true">${ticks.map(t=>`<span style="top:${y(t)}%">${t}%</span>`).join("")}</div>
-    <div class="tr-plot">
-      <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-        ${ticks.map(t=>`<line x1="0" x2="100" y1="${y(t)}" y2="${y(t)}" stroke="var(--hairline)" vector-effect="non-scaling-stroke"/>`).join("")}
-        <path d="M${pts} L${x(last)},100 L${x(0)},100 Z" fill="color-mix(in srgb,var(--primary) 12%,transparent)"/>
-        <path d="M${pts}" fill="none" stroke="var(--primary)" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
-      </svg>
-      ${v.map((val,i)=>`<span class="tr-dot" tabindex="0" style="left:${x(i)}%;top:${y(val)}%" aria-label="Week of ${WEEKS[i]}: ${val}%"><span class="tip" aria-hidden="true">Week of ${WEEKS[i]} · <b>${val}%</b></span></span>`).join("")}
-      <span class="tr-val" style="left:${x(0)}%;top:${y(v[0])}%" aria-hidden="true">${v[0]}%</span>
-      <span class="tr-val now" style="left:${x(last)}%;top:${y(v[last])}%" aria-hidden="true">${v[last]}%</span>
-    </div>
-    <div class="tr-x" aria-hidden="true">${WEEKS.map((w,i)=>`<span style="left:${x(i)}%">${w}</span>`).join("")}</div>
+function weekly(fin, could){
+  /* 100% stacked column per week: Agents finished (bottom) · Agents could finish · Needs you (top).
+     One tab stop per week; its tooltip and accessible name carry all three parts. Finished is labelled in the bar. */
+  const cols = fin.map((f,i)=>{ const c = could[i], n = 100-f-c;
+    const label = `Week of ${WEEKS[i]}: agents finished ${f}%, agents could finish ${c}%, needs you ${n}%`;
+    return `<div class="wk-col" tabindex="0" role="img" aria-label="${label}">
+      <i class="k-k" style="flex:${f} 1 0">${f}%</i><i class="k-c" style="flex:${c} 1 0"></i><i class="k-n" style="flex:${n} 1 0"></i>
+      <span class="tip" aria-hidden="true"><b>Week of ${WEEKS[i]}</b><br>Agents finished ${f}%<br>Agents could finish ${c}%<br>Needs you ${n}%</span></div>`; }).join("");
+  return `<figure class="wk" role="group" aria-label="Each week">
+    <div class="wk-y" aria-hidden="true">${[0,50,100].map(t=>`<span style="top:${100-t}%">${t}%</span>`).join("")}</div>
+    <div class="wk-plot">${cols}</div>
+    <div class="wk-x" aria-hidden="true">${WEEKS.map(w=>`<span>${w}</span>`).join("")}</div>
   </figure>`;
 }
 
@@ -404,9 +372,9 @@ function home(){
     <div class="top">
       <section class="card" aria-labelledby="kr"><h2 id="kr" class="mute" style="font-weight:400">Tasks agents finished</h2>
         ${judgeOn()?`<div class="hl"><span class="big">${rate}%</span><span class="of">could be <b>${rate+couldPct}%</b></span></div>
-        ${reach(rate, couldPct, judged)}
+        ${key()}
         <p class="meta">${kept} of ${judged} tasks · <a href="#tasks" data-go="tasks">See which</a></p>
-        ${trend(D.trend)}`
+        ${weekly(D.trend, D.couldTrend)}`
         :`<p class="mute">This number needs the rung model to read your finished tasks. Tips work without it.</p><div class="row"><button class="btn" data-go="settings">Connect in Settings</button></div>`}</section>
       <section class="card" aria-labelledby="nx"><h2 id="nx" class="mute" style="font-weight:400">Your best next step</h2>
         <p style="font:var(--t-heading)">${esc(over?LONG.name:t0.name)}</p>
