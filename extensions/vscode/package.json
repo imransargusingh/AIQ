@@ -1,0 +1,59 @@
+{
+  "name": "aiq-coach",
+  "displayName": "AIQ",
+  "description": "Private coaching for how you work with AI agents. Shows AIQ tips after a Copilot agent turn ends. Everything stays on this machine.",
+  "version": "0.2.0",
+  "publisher": "aiq-local",
+  "private": true,
+  "license": "UNLICENSED",
+  "engines": {
+    "vscode": "^1.100.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "aiq.menu",
+        "title": "AIQ: Menu"
+      },
+      {
+        "command": "aiq.showTip",
+        "title": "AIQ: Show tip details"
+      },
+      {
+        "command": "aiq.pause",
+        "title": "AIQ: Pause"
+      },
+      {
+        "command": "aiq.resume",
+        "title": "AIQ: Resume"
+      }
+    ],
+    "configuration": {
+      "title": "AIQ",
+      "properties": {
+        "aiq.executable": {
+          "type": "string",
+          "default": "",
+          "description": "Full path to the aiq executable. Empty: look on PATH, then the usual install folders."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsc -p .",
+    "test": "tsc -p . && node --test out/test/*.test.js",
+    "package": "tsc -p . && npx --yes @vscode/vsce@3 package --no-dependencies --allow-missing-repository --skip-license -o aiq.vsix"
+  },
+  "devDependencies": {
+    "@types/node": "22.x",
+    "@types/vscode": "1.100.0",
+    "typescript": "5.9.x"
+  }
+}

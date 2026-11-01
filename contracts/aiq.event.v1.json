@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aiq.local/contracts/aiq.event.v1.json",
+  "title": "aiq.event.v1",
+  "description": "One collector event. Unknown fields are ignored by readers (Postel).",
+  "type": "object",
+  "required": ["schema", "event_id", "surface", "surface_session_id", "seq", "ts", "collector_version", "kind", "payload"],
+  "properties": {
+    "schema": { "const": "aiq.event.v1" },
+    "event_id": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+    "surface": { "enum": ["claude-code", "copilot-cli", "vscode"] },
+    "surface_session_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "seq": { "type": ["integer", "null"] },
+    "ts": { "type": "string", "format": "date-time" },
+    "collector_version": { "type": "string" },
+    "kind": { "enum": ["prompt", "stop"] },
+    "payload": { "type": "object" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "kind": { "const": "prompt" } } },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "required": ["text", "chars", "prompt_id"],
+            "properties": {
+              "text": { "type": ["string", "null"], "maxLength": 65536 },
+              "chars": { "type": "integer", "minimum": 0 },
+              "prompt_id": { "type": ["string", "null"] },
+              "truncated": { "type": "boolean" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "stop" } } },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "required": ["stop_hook_active", "prompt_id"],
+            "properties": {
+              "stop_hook_active": { "type": "boolean" },
+              "prompt_id": { "type": ["string", "null"] }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

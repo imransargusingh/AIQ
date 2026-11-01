@@ -8,7 +8,9 @@ phase: "0-1"
 tags: [architecture]
 links:
   - { to: aiq-architecture, rel: refines }
-review-suggested: { by: design-claude-code-skeleton, on: 2026-10-31, reason: "Phase 1 design: seq=null for Claude Code; Claude Code hooks must use exec form (command + args), since Git Bash shell form costs 452 ms p95 on Windows; 20 ms is the connect timeout, not a whole-process budget (Windows whole process 22-34 ms); only the async prompt hook may start the core." }
+review-suggested:
+  - { by: design-claude-code-skeleton, on: 2026-10-31, reason: "Phase 1 design: seq=null for Claude Code; Claude Code hooks must use exec form (command + args), since Git Bash shell form costs 452 ms p95 on Windows; 20 ms is the connect timeout, not a whole-process budget (Windows whole process 22-34 ms); only the async prompt hook may start the core." }
+  - { by: note-20261101-hook-budget-100ms, on: 2026-11-01, reason: "Imran raised the Claude Code Stop hook budget to 100 ms p95 whole process after the Windows laptop measured 65-70 ms (process start). Reword the 50 ms NFR or scope it per collector." }
 review-by: 2027-04-29
 summary: >-
   Collectors never block or slow the person's tools: they send versioned, idempotent events to the core with a strict time budget, spool briefly if the core is down, and install at user level only.
@@ -17,6 +19,7 @@ summary: >-
 # ADR-0005: Collectors are fail-open, fire-and-forget, schema-versioned pipes
 
 - **Status:** Proposed
+- **Note (2026-11-01):** the Claude Code Stop hook budget is 100 ms p95 whole process (Imran). See [note-20261101-hook-budget-100ms](../notes/note-20261101-hook-budget-100ms.md).
 - **Date:** 2026-10-31
 - **Deciders:** Imran (owner); drafted with Claude via /define-architecture
 
@@ -45,7 +48,18 @@ so the host will not protect us; the collector must enforce its own budget.
    `seq`, `kind`, `ts`, payload by kind. At-least-once delivery; the core upserts by `event_id`.
    Content fields are optional and subject to the retention policy (ADR-0002).
 5. **Rendering:** cards come back as `aiq.card.v1`. Claude Code: `systemMessage` from the Stop hook.
-   Copilot CLI: a `progress` line at `agentStop`. VS Code: notification + status bar.
+   Copilot CLI: hooks cannot show the person anything (laptop probe, 2026-10-31), so AIQ renders a
+   one-line tip in **Copilot CLI's status line** (`statusLine` command in `~/.copilot/settings.json`,
+   reading the pending card from the core), with `aiq show` for the full card (Imran, 2026-11-01; a
+   desktop notification, alone or combined, may be revisited later). How long the tip stays before
+   clearing is a person's setting ("Copilot CLI tip stays"). The default is to clear on the next
+   prompt; the other choices are "for 2 prompts or 5 minutes, then a `1 tip waiting` marker" and
+   "stay until opened". The
+   core owns that state, and the status-line command only reads it. VS Code: notification + status
+   bar from the AIQ extension. Never `additionalContext` or exit code 2 to reach the person.
+5a. **Copilot hooks are synchronous,** so the Copilot collector subscribes to the fewest events a
+   detector needs (Phase 2: `userPromptSubmitted`, `agentStop`). Both hosts use exec form
+   (`command`/`exec` + `args`), never a shell.
 6. **Install at user level only:** `~/.claude/settings.json` and `~/.copilot/hooks/`, never a repo's
    `.claude/` or `.github/hooks/`, so teammates never see or run AIQ hooks.
 
@@ -58,7 +72,7 @@ so the host will not protect us; the collector must enforce its own budget.
 ## Consequences
 - **Positive:** AIQ can crash, upgrade or be paused with zero impact on the tools.
 - **Negative:** events can arrive late or (rarely) be lost when the spool is full; Tasks tolerate it.
-- **Follow-ups:** the hook semantics above are verified from docs only; Phase 0 spike must run them.
+- **Follow-ups:** Claude Code and Copilot CLI hook semantics were run on Windows and Linux (Phase 0 probe, design spikes); the Copilot status line and VS Code agent-mode hooks still need a run.
 
 ## Evidence
 Hook docs linked above (read 2026-10-31). Phase 0 hook probe (Claude Code 2.1.316, headless, 3 live

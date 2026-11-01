@@ -29,7 +29,7 @@ designs with `python3 docs/ai-forward-pack/scripts/docs-graph.py rollup --headin
 | Coaching history | Cards shown, feedback, habit states, rung judgments | Encrypted store, facts | Nowhere | Coaching, progress | Until deleted | store |
 | Repo metadata | Distinct author **count**, CI run counts, workflow file present | Encrypted store | Nowhere | Rung floor facts (F9) | Until deleted | git reader |
 | Settings | Daily cap (default 5), role preset, quiet hours | Encrypted store | Nowhere | Behaviour | Until changed | core |
-| Credentials | Store key, the person's Anthropic API key | OS keychain | API key to Anthropic API only | Encryption; judging | Until removed | core |
+| Credentials | Store key, the person's optional Anthropic API key (Claude Code's own sign-in is never read) | OS keychain | API key to Anthropic API only | Encryption; judging | Until removed | core |
 
 ## 2. Findings (system level, LINDDUN-lite)
 | Category | Finding | Control |
@@ -47,7 +47,7 @@ designs with `python3 docs/ai-forward-pack/scripts/docs-graph.py rollup --headin
 
 | source | Data flow / category | LINDDUN finding | Disposition | Control / rationale | Retention and rights path |
 |---|---|---|---|---|---|
-| [design-claude-code-skeleton](../design/claude-code-skeleton.md) | Prompt text (may hold code, customer data, secrets) → store | D: disclosure on a shared or lost machine | mitigate | Encrypted store; user-only files; no network | Kept until the person deletes it (ADR-0002); `aiq forget --all` deletes the store, spool and keychain entry. Delete-one and older-than arrive in Phase 6 |
+| [design-claude-code-skeleton](../design/claude-code-skeleton.md) | Prompt text (may hold code, customer data, secrets) → store | D: disclosure on a shared or lost machine | mitigate + accept | User-only files; no network. Encryption at rest deferred (Imran, 2026-10-31) | Kept until the person deletes it (ADR-0002); `aiq forget --all` deletes the store and spool. Delete-one and older-than arrive in Phase 6 |
 | [design-claude-code-skeleton](../design/claude-code-skeleton.md) | Prompt text → card | D: card text visible on screen-share | mitigate | Card never quotes prompt text; only counts | n/a |
 | [design-claude-code-skeleton](../design/claude-code-skeleton.md) | Coaching history (how someone works) | L/I: could profile the person if shared | mitigate | Nothing leaves the device; no sync, no telemetry in Phase 1 (US-6) | Same as above |
 | [design-claude-code-skeleton](../design/claude-code-skeleton.md) | Capture while paused | U: person unaware capture continues | prevent | Pause flag checked in the hook before sending; `aiq status` shows paused | `aiq pause` / `aiq resume` |
@@ -76,6 +76,7 @@ calls only. AIQ operates no processor that sees user data. The pack CDN receives
 | Lost machine loses history (ADR-0003) | Imran, 2026-10-31 | Simplicity for alpha |
 | Judge calls visible to work-account admins (ADR-0007) | Imran, 2026-10-31 | Provider already saw the content; disclosed |
 | Plain-text spool of recent prompts while the core is down (design-claude-code-skeleton) | Imran, 2026-10-31 | Bounded (1 MB), user-only, emptied on drain; encrypting needs the key on the hot path |
+| Prompts stored unencrypted at rest in Phase 1 (design-claude-code-skeleton) | Imran, 2026-10-31 | Encryption deferred; files are user-only; revisit whether it is needed ([note](../notes/note-20261031-encryption-deferred.md)) |
 
 ## 7. Gaps and flagged unknowns
 - Works-council / legal review not started.

@@ -7,6 +7,8 @@ owner: "Imran"
 phase: specify
 tags: [coaching, triggers, coaching-card, phase-1]
 links: []
+review-suggested:
+  - { by: note-20261101-hook-budget-100ms, on: 2026-11-01, reason: "Imran raised the Claude Code Stop hook budget to 100 ms p95 whole process (Windows process start measured 65-70 ms). The 50 ms hook NFR here may need scoping per collector." }
 review-by: 2026-11-30
 summary: >-
   What AIQ's coaching loop must do for anyone coding or writing specs with AI in VS Code, Claude Code
@@ -168,7 +170,7 @@ Value objects: Signal, Evidence link, Feedback, Trigger rule.
 ### Non-functional requirements (ISO/IEC 25010)
 | Attribute | Requirement (measurable) |
 |---|---|
-| Performance efficiency | Show/hold/drop decision ≤ 2 s p95 from triggering event; collector adds ≤ 50 ms p95 to any hook it runs in; core idle CPU < 1% and RSS < 150 MB on a reference dev laptop (budgets to confirm in the Phase 0 spike) |
+| Performance efficiency | Show/hold/drop decision ≤ 2 s p95 from triggering event; AIQ's own hook client takes ≤ 100 ms p95 whole process on every surface (Imran, 2026-11-01); a host's own hook start-up (Copilot: 110–210 ms) is measured and shown in `aiq status`, not counted against AIQ; core idle CPU < 1% and RSS < 150 MB on a reference dev laptop (budgets to confirm in the Phase 0 spike) |
 | Reliability | If the core is down, every collector fails open: the IDE and agents work unchanged, and no hook blocks or errors visibly |
 | Security | Collectors have least-privilege permissions; local API accepts only the current OS user; pack rules run sandboxed with no network or store access |
 | Privacy | All data on device, encrypted at rest; capture log viewable; pause on every surface; full export and delete |

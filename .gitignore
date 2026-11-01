@@ -18,3 +18,6 @@ docs/audit/.run-starts.json.tmp
 **/docs/audit/.run-starts.json.tmp
 **/.agents/log/audit/.run-starts.json
 **/.agents/log/audit/.run-starts.json.tmp
+target/
+mutants.out*/
+__pycache__/

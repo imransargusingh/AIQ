@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>0007 Rung Judge Via Own Account</title><style>
+:root { color-scheme: light dark; --bg:#f7f5ef; --panel:#fff; --text:#20201d;
+  --muted:#66645f; --line:#d9d5ca; --accent:#3157a4; --code:#f0eee7; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#171816; --panel:#20221f; --text:#f2f1eb; --muted:#b8b6ae;
+    --line:#3d403a; --accent:#8fb0ff; --code:#292c27; }
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text);
+  font:16px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif; }
+main { width:min(920px,calc(100% - 32px)); margin:32px auto; padding:40px;
+  background:var(--panel); border:1px solid var(--line); border-radius:12px; }
+h1,h2,h3,h4,h5,h6 { line-height:1.2; margin:1.5em 0 .55em; }
+h1 { margin-top:0; font-size:2.2rem; } h2 { border-bottom:1px solid var(--line); padding-bottom:.3em; }
+a { color:var(--accent); } code { background:var(--code); padding:.12em .35em; border-radius:4px; }
+pre { overflow:auto; padding:16px; background:var(--code); border-radius:8px; }
+pre code { padding:0; } blockquote { margin:1em 0; padding:.2em 1em; color:var(--muted);
+  border-left:4px solid var(--line); }
+table { width:100%; border-collapse:collapse; margin:1em 0; display:block; overflow:auto; }
+th,td { padding:.55em .75em; border:1px solid var(--line); text-align:left; vertical-align:top; }
+th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); }
+.source { color:var(--muted); font-size:.9rem; margin-bottom:2rem; }
+@media (max-width:640px) { main { width:100%; margin:0; padding:24px 18px; border:0; border-radius:0; } }
+</style></head><body><main><div class="source">Rendered from 0007-rung-judge-via-own-account.md</div><h1>ADR-0007: The rung judge runs through the person&#x27;s own AI account</h1>
+<ul><li><strong>Status:</strong> Accepted (Imran, 2026-10-31, decision card in the rung-model thread); Claude credential path revised by Imran 2026-11-01</li><li><strong>Date:</strong> 2026-10-31</li><li><strong>Deciders:</strong> Imran</li><li><strong>Context spec/architecture:</strong> docs/architecture.md, docs/specs/rung-model.md (PR #3)</li></ul>
+<h2>Context</h2>
+<p>The rung model judges each closed Task&#x27;s current and potential rung (slow path, never deciding in-the-moment cards). Options were a small on-device model (T2), an AIQ-operated cloud model, or the person&#x27;s own AI account.</p>
+<h2>Decision</h2>
+<ul><li>The judge is a <strong>T3</strong> call made by the core through the <strong>person&#x27;s own account</strong>, sent to</li></ul>
+<p>the same provider that already saw the Task unless the person chooses otherwise:</p>
+<ul><li>Claude (tasks seen by Claude Code): the core runs the <strong>person&#x27;s own, unmodified Claude Code</strong> in</li></ul>
+<p>headless mode (<code>claude -p</code>), on whatever sign-in that Claude Code already has (their Claude subscription, their own API key, or their cloud provider). Claude Code does the sign-in; <strong>AIQ never reads, stores or passes a token</strong> (Imran, 2026-11-01, superseding the API-key ruling of 2026-10-31). Setup needs nothing extra when Claude Code is already signed in.</p>
+<ul><li><strong>Isolated call</strong> (verified with Claude Code 2.1.316 on Linux, 2026-11-01): run in an empty temp</li></ul>
+<p>folder; <code>--setting-sources user</code>, so no project <code>CLAUDE.md</code> or project hooks load; <code>--settings &#x27;{&quot;disableAllHooks&quot;: true}&#x27;</code> (a control run without it fired the hook; with it, the hook did not fire); <code>--tools &quot;&quot;</code> (no tools); <code>--no-session-persistence</code>; <code>--output-format json</code> with <code>--json-schema</code> (returned <code>structured_output</code>); a fixed <code>--model</code>. The env var <code>AIQ_JUDGE=1</code> makes AIQ&#x27;s own hook client drop anything it sees from the call, as a second guard. <code>--bare</code> is not used, because it never reads the subscription sign-in.</p>
+<ul><li><strong>Fallback, off by default:</strong> the person&#x27;s own Anthropic API key in the OS keychain, called</li></ul>
+<p>directly on the Messages API. It is for people who don&#x27;t use Claude Code&#x27;s sign-in or who prefer API billing. With neither, Claude-seen Tasks get signals-only judging.</p>
+<ul><li>Copilot (tasks seen by VS Code or Copilot CLI): the VS Code Language Model API (<code>vscode.lm</code>) from</li></ul>
+<p>the AIQ extension, after the consent dialog, on the person&#x27;s Copilot sign-in. Copilot-seen Tasks queue while VS Code is not running.</p>
+<ul><li><strong>How the rung is placed (Imran, 2026-10-31, rung-model Q8/Q9):</strong> the model places the rung. Facts</li></ul>
+<p>that can be verified from logs or the repo (T0) set a floor for Orchestrated and Factory, and guardrails (e.g. pack &quot;don&#x27;t delegate&quot; rules) can lower it. The model also answers narrow facts (F1–F12) to a JSON schema, asked twice for consistency. Task content is passed as quoted data. Judgments are versioned by fact set + rubric + judge version, never edited.</p>
+<ul><li><strong>Judge calls are tagged</strong> (marker in the prompt and session) and the core never ingests them as</li></ul>
+<p>Tasks.</p>
+<ul><li><strong>No account or offline:</strong> judgments queue; they are never rerouted to another provider.</li><li>Judging uses the person&#x27;s quota; budgets per day are set in settings.</li><li>Every call is recorded locally (P10): provider, model, rubric version, tier, Task ref, outcome.</li></ul>
+<h2>Alternatives considered</h2>
+<ul><li><strong>On-device T2 model:</strong> rejected for alpha by Imran; may return if the golden set shows it is enough</li></ul>
+<p>and cheaper.</p>
+<ul><li><strong>AIQ-operated cloud model:</strong> rejected; puts AIQ servers in the data path, against D4.</li></ul>
+<h2>Consequences</h2>
+<ul><li><strong>Positive:</strong> frontier-quality judgments with no model to ship; no AIQ servers see data; data goes</li></ul>
+<p>only to a provider that already saw it.</p>
+<ul><li><strong>Negative / accepted trade-offs:</strong> judge calls appear in the tool&#x27;s own session history and in a</li></ul>
+<p>work account&#x27;s admin usage/audit logs, and that account&#x27;s retention applies; this is disclosed at setup. Uses the person&#x27;s quota: on a Claude subscription, judge calls count toward its usage limits, which Anthropic says &quot;assume ordinary, individual usage of Claude Code and the Agent SDK&quot;, so the daily judging budget must stay small. Depends on Claude Code CLI flags that can change (<code>--json-schema</code>, <code>--no-session-persistence</code>, <code>disableAllHooks</code>); pin and test them per Claude Code release.</p>
+<ul><li><strong>Follow-ups / new risks:</strong></li><li><strong>Terms check (done 2026-10-31, reading only; not legal advice):</strong></li><li><strong>Anthropic (re-read 2026-11-01; a reading, not legal advice).</strong> The page</li></ul>
+<p>(https://code.claude.com/docs/en/legal-and-compliance) says both of these:</p>
+<ul><li><em>For:</em> &quot;Nor does it prevent an end user from signing in to the unmodified Claude Code binary</li></ul>
+<p>with their own Claude subscription&quot;. AIQ runs the person&#x27;s unmodified binary on their own sign-in, and never offers a Claude login of its own or touches the token (&quot;developers may not collect, store, or intermediate Claude.ai credentials or session tokens&quot;).</p>
+<ul><li><em>Against:</em> &quot;Anthropic does not permit third-party developers to … route requests through Free,</li></ul>
+<p>Pro, or Max plan credentials on behalf of their users&quot;, and developers building products &quot;should use API key authentication&quot;. AIQ&#x27;s judge prompts are AIQ&#x27;s, not the person&#x27;s, so a reviewer could read <code>claude -p</code> from AIQ as that.</p>
+<ul><li><strong>Owner ruling (Imran, 2026-11-01):</strong> use the person&#x27;s own <code>claude -p</code>. Imran&#x27;s position: AIQ is</li></ul>
+<p>first-party to the person who builds and installs it, runs only on their machine, and works only for them. The API key stays as an opt-in fallback.</p>
+<ul><li><strong>Open, owed before AIQ is given to anyone else:</strong> the independent review should check this</li></ul>
+<p>reading, or Anthropic should confirm it (the page&#x27;s contact link). If the reading fails, flip the default to the API-key fallback. That is a settings change, not a redesign.</p>
+<ul><li><strong>GitHub: no blocker found.</strong> <code>vscode.lm</code> is GitHub&#x27;s sanctioned route for extensions to use the</li></ul>
+<p>person&#x27;s Copilot models with consent, under the Copilot extensibility acceptable use policy; Copilot CLI programmatic mode is documented. Confirm against the current Copilot product terms before alpha.</p>
+<ul><li>Spike: run each call path end to end; measure the 60 s p95 budget; confirm <code>disableAllHooks</code> via</li></ul>
+<p><code>--settings</code> also suppresses hooks from the person&#x27;s user-level <code>~/.claude/settings.json</code> (verified only for hooks in the same <code>--settings</code> source); confirm judge calls are not observed by AIQ&#x27;s own hooks.</p>
+<ul><li>VS Code consent must be triggered by a user action (first-run setup).</li></ul>
+<h2>Evidence</h2>
+<p>https://code.claude.com/docs/en/headless · https://code.claude.com/docs/en/legal-and-compliance (re-read 2026-11-01) · <code>claude --help</code> 2.1.316 · https://docs.github.com/en/copilot/how-tos/copilot-cli/automate-copilot-cli/run-cli-programmatically · https://code.visualstudio.com/api/extension-guides/ai/language-model (read 2026-10-31, not run).</p></main></body></html>

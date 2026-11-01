@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Defect Classes</title><style>
+:root { color-scheme: light dark; --bg:#f7f5ef; --panel:#fff; --text:#20201d;
+  --muted:#66645f; --line:#d9d5ca; --accent:#3157a4; --code:#f0eee7; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#171816; --panel:#20221f; --text:#f2f1eb; --muted:#b8b6ae;
+    --line:#3d403a; --accent:#8fb0ff; --code:#292c27; }
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text);
+  font:16px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif; }
+main { width:min(920px,calc(100% - 32px)); margin:32px auto; padding:40px;
+  background:var(--panel); border:1px solid var(--line); border-radius:12px; }
+h1,h2,h3,h4,h5,h6 { line-height:1.2; margin:1.5em 0 .55em; }
+h1 { margin-top:0; font-size:2.2rem; } h2 { border-bottom:1px solid var(--line); padding-bottom:.3em; }
+a { color:var(--accent); } code { background:var(--code); padding:.12em .35em; border-radius:4px; }
+pre { overflow:auto; padding:16px; background:var(--code); border-radius:8px; }
+pre code { padding:0; } blockquote { margin:1em 0; padding:.2em 1em; color:var(--muted);
+  border-left:4px solid var(--line); }
+table { width:100%; border-collapse:collapse; margin:1em 0; display:block; overflow:auto; }
+th,td { padding:.55em .75em; border:1px solid var(--line); text-align:left; vertical-align:top; }
+th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); }
+.source { color:var(--muted); font-size:.9rem; margin-bottom:2rem; }
+@media (max-width:640px) { main { width:100%; margin:0; padding:24px 18px; border:0; border-radius:0; } }
+</style></head><body><main><div class="source">Rendered from defect-classes.md</div><h1>Defect-class register</h1>
+<p><em>Governed by `continuous-improvement.md` (CI1–CI12). One entry per class, not per bug.</em></p>
+<p><strong>Status counts:</strong> controlled 5 · partially-controlled 0 · uncontrolled 0</p>
+<hr>
+<h3>DC-001 — A classification rule that compares against its own earlier outputs drifts</h3>
+<ul><li><strong>Signature:</strong> a detector keeps a window of &quot;what the request looks like&quot; and adds every accepted item to</li></ul>
+<p>it, including items accepted for a <em>different</em> reason (here: a cue-only &quot;try again&quot; joined the word window, so the next &quot;try again&quot; matched it as <em>similar</em> and scored 1.0 instead of 0.5).</p>
+<ul><li><strong>Why it survives:</strong> happy-path tests use content prompts only; the mixed case looks plausible in review.</li><li><strong>Instances:</strong> 2026-10-31, <code>aiq-domain::reprompt</code> (first implementation).</li><li><strong>Sweep:</strong> other windows in the domain: none (Task grouping uses only timestamps).</li><li><strong>Control:</strong> automated test <code>observe_cue_only_run_scores_half</code> (seen red), plus mutation testing on</li></ul>
+<p><code>aiq-domain</code> with 0 survivors. Rung: automated control.</p>
+<h3>DC-002 — A test harness ignores pipe semantics, so a correct early exit looks like a failure (or a flake)</h3>
+<ul><li><strong>Signature:</strong> the child stops reading stdin at a cap and exits; the parent&#x27;s <code>write_all</code> races it and gets</li></ul>
+<p><code>EPIPE</code>, sometimes. In production the host (Claude Code) is the writer and may log or surface the error.</p>
+<ul><li><strong>Why it survives:</strong> passes when the child is slower than the writer, so the first few runs are green.</li><li><strong>Instances:</strong> 2026-10-31, <code>e2e_random_bytes_never_print_always_exit_zero</code> (passed 3 runs, failed 6/6 later).</li><li><strong>Sweep:</strong> the hook is the only reader with a cap.</li><li><strong>Control:</strong> the hook drains stdin up to 16 MB after its 256 KB cap (<code>hook::MAX_DRAIN</code>); the e2e test writes</li></ul>
+<p>300 KB and unwraps the write, so a regression fails deterministically. Every e2e change is run at least 8×.</p>
+<h3>DC-003 — &quot;Reset at midnight&quot; rules that key on the current date re-open budgets when the clock moves back</h3>
+<ul><li><strong>Signature:</strong> a cap counted as &quot;deliveries whose local date equals today&quot; (or an &quot;effective day&quot;) lets the</li></ul>
+<p>clock or time zone move backwards and grant a fresh budget, or count deliveries against a day they are not stamped with.</p>
+<ul><li><strong>Why it survives:</strong> example tests move time forward only.</li><li><strong>Instances:</strong> 2026-10-31, caught in reasoning before code during <code>/implement</code> (first candidate rule allowed</li></ul>
+<p>unbounded deliveries while the clock was behind).</p>
+<ul><li><strong>Control:</strong> single definition <code>aiq_domain::clock::deliveries_counted_today</code> (local day ≥ today) and the</li></ul>
+<p>property test <code>cap_never_exceeded_for_any_clock_moves</code>; the store returns raw (utc, offset) pairs so no second definition exists in SQL.</p>
+<h3>DC-004 — A detached child inherits the parent&#x27;s stdio pipes on Windows, so the host never sees EOF</h3>
+<ul><li><strong>Signature:</strong> a short-lived process (the hook) starts a long-lived one (the core) with null stdio, but</li></ul>
+<p>Windows <code>CreateProcess</code> with handle inheritance passes every inheritable handle, including the hook&#x27;s own stdout/stderr pipes from its host. The host&#x27;s read never ends while the core lives.</p>
+<ul><li><strong>Why it survives:</strong> Linux closes nothing it doesn&#x27;t need to (fds 0–2 are replaced by <code>/dev/null</code>), so the</li></ul>
+<p>Linux suite is green; the Windows spike&#x27;s harness did not read the hook&#x27;s stdout to EOF.</p>
+<ul><li><strong>Instances:</strong> 2026-10-31, PR #9 Windows CI: <code>e2e_core_down_prompt_starts_core_once_core_survives_and_drains_spool</code></li></ul>
+<p>hung until the 40-minute job timeout.</p>
+<ul><li><strong>Sweep:</strong> <code>spawn::core_detached</code> is the only place AIQ starts a long-lived process (hook and CLI share it).</li><li><strong>Control:</strong> <code>core_detached</code> clears <code>HANDLE_FLAG_INHERIT</code> on the std handles before spawning; the e2e test</li></ul>
+<p>reads the hook&#x27;s stdout to EOF on the Windows CI job, so a regression hangs and fails the job (timeout lowered to 25 minutes).</p>
+<h3>DC-005 — An address derived from process environment instead of the value passed in</h3>
+<ul><li><strong>Signature:</strong> <code>Paths::pipe_name</code> read <code>AIQ_HOME</code> from the environment, while every other path came from</li></ul>
+<p>the <code>Paths</code> value. A caller holding a <code>Paths</code> for another directory reached a different pipe.</p>
+<ul><li><strong>Why it survives:</strong> on Linux the socket is a file inside the <code>Paths</code> directory, so the bug exists only on</li></ul>
+<p>Windows.</p>
+<ul><li><strong>Instances:</strong> 2026-10-31, PR #9 Windows CI: <code>e2e_wrong_token_frame_closed_nothing_stored</code> (NotFound).</li><li><strong>Control:</strong> the pipe name is a hash of <code>Paths::runtime</code>; the e2e test builds <code>Paths::at(dir)</code> with no</li></ul>
+<p>environment override, so a regression fails on the Windows job.</p>
+<h3>DC-006 — A restore point taken from a state the tool itself already changed</h3>
+<ul><li><strong>Signature:</strong> <code>aiq install</code> took a fresh backup on every run. Run again after the binary moved, the</li></ul>
+<p>&quot;backup&quot; held the first install&#x27;s AIQ hooks, and <code>uninstall</code> restored it byte for byte, leaving hooks that point at the old path while printing &quot;Removed AIQ&#x27;s hooks.&quot;</p>
+<ul><li><strong>Why it survives:</strong> every test installed once from one binary. Reinstalling from a new path only</li></ul>
+<p>happens on a real machine, when a build moves out of a temp folder.</p>
+<ul><li><strong>Instances:</strong> 2026-11-01, Windows laptop check: hooks installed from <code>%TEMP%\aiq-pr9\...</code>, and the</li></ul>
+<p>plan to move them to <code>%LOCALAPPDATA%\AIQ\bin</code> exposed it. Found in review before it ran.</p>
+<ul><li><strong>Sweep:</strong> the only other restore point is the spool drain, which renames the file aside and never</li></ul>
+<p>restores it. No other instance.</p>
+<ul><li><strong>Control:</strong> reinstall over an untouched install keeps the first record&#x27;s backup; uninstall never</li></ul>
+<p>restores a backup that still holds AIQ entries and strips instead. Tests: <code>e2e_reinstall_from_moved_binary_then_uninstall_restores_original</code> and <code>e2e_reinstall_after_edit_then_uninstall_strips_all_aiq</code> (both red without the fix).</p>
+<h3>DC-007 — A per-user path that the OS silently virtualizes for some callers</h3>
+<ul><li><strong>Signature:</strong> AIQ&#x27;s Windows home was <code>%LOCALAPPDATA%\AIQ</code>. Hooks started by the Claude desktop app</li></ul>
+<p>(a packaged MSIX app) had those writes redirected to a private copy; hooks started from a terminal used the real folder. Same path string, so the same pipe name, but two tokens: terminal hooks were refused with <code>AIQ-API-AUTH</code> and their events spooled where no core drained them.</p>
+<ul><li><strong>Why it survives:</strong> every test sets <code>AIQ_HOME</code>, and CI never runs a hook from inside a packaged app.</li></ul>
+<p>The path looks identical from both sides; only the file contents differ.</p>
+<ul><li><strong>Instances:</strong> 2026-11-01, Imran&#x27;s laptop: core started from the desktop app&#x27;s Code session; terminal</li></ul>
+<p><code>claude</code> test produced 8 refused connections and no card. Same root cause hid a copied <code>aiq.exe</code> earlier.</p>
+<ul><li><strong>Sweep:</strong> every default path AIQ derives (<code>Paths::from_env</code>, install&#x27;s backup and record, the copy of</li></ul>
+<p>the binary). Settings live in <code>%USERPROFILE%\.claude</code>, which is not redirected. No other AppData use.</p>
+<ul><li><strong>Control:</strong> the Windows default is <code>%USERPROFILE%\.aiq</code> via <code>windows_home</code>; unit test</li></ul>
+<p><code>windows_home_is_in_the_profile_not_appdata</code> and Windows-only <code>windows_default_paths_use_the_profile_home</code>. <code>aiq status</code> names the home and explains an <code>AIQ-API-AUTH</code> count, so a split is visible, not silent.</p></main></body></html>

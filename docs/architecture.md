@@ -8,6 +8,8 @@ phase: "0-1"
 tags: [architecture, local-first, privacy, coaching]
 links:
   - { to: spec-coaching-loop, rel: implements }
+review-suggested:
+  - { by: note-20261101-hook-budget-100ms, on: 2026-11-01, reason: "Imran raised the Claude Code Stop hook budget to 100 ms p95 whole process (Windows process start measured 65-70 ms). The 50 ms hook NFR here may need scoping per collector." }
 review-by: 2027-04-29
 summary: >-
   AIQ is local-first: one background core per machine owns an encrypted store, the detectors, the
@@ -106,7 +108,7 @@ flowchart LR
   STORE -. key .- KEY
   HOME <--> API
   PK -- "HTTPS pull, verify signature" --> BE
-  RNG -- "judge call: own Anthropic API key / Copilot via vscode.lm" --> PROV["Person's AI provider\n(already saw the Task)"]
+  RNG -- "judge call: own claude -p (or own API key) / Copilot via vscode.lm" --> PROV["Person's AI provider\n(already saw the Task)"]
   PK --> DET
 ```
 
@@ -153,13 +155,13 @@ B2 pack content → core; B3 core → backend; B4 store at rest; B5 core → the
 | [0004](adr/0004-core-language.md) | Rust core, hook client and Tauri shell; TypeScript extension and UI | Accepted (Imran) |
 | [0005](adr/0005-collector-contract.md) | Collectors are fail-open, fire-and-forget, schema-versioned pipes | Proposed |
 | [0006](adr/0006-packs-as-signed-data.md) | Packs are signed data; code only in a WASM sandbox; caps and thresholds live in packs | Proposed |
-| [0007](adr/0007-rung-judge-via-own-account.md) | Rung judge runs through the person's own account (own Anthropic API key for Claude; Copilot via VS Code's model API); no on-device judge in alpha | Accepted (Imran) |
+| [0007](adr/0007-rung-judge-via-own-account.md) | Rung judge runs through the person's own account (the person's own `claude -p` for Claude, API key as fallback; Copilot via VS Code's model API); no on-device judge in alpha | Accepted (Imran) |
 
 ## Delivery phasing (vertical slices)
 | Phase | End-to-end capability | Real | Mocked (seam = contract) | Human validation | Test validation | Unblocks |
 |---|---|---|---|---|---|---|
 | 1 Walking skeleton | Re-prompt detector (Opp. 1) fires in Claude Code and a card shows as a `systemMessage` at Stop | Claude Code hook collector, core ingest, store, one T0 detector, trigger engine with budget, CLI renderer | Pack = bundled unsigned file; Job classifier returns *Unclassified*; no rung model | Rephrase a prompt 3 times in Claude Code; see one card; second qualifying event in the session is held | E2E: scripted hook payloads → expected card / hold; core killed → hook still exits 0 in ≤ 50 ms | Every later slice |
-| 2 | Same loop on Copilot CLI and VS Code; budget shared across surfaces | Copilot CLI collector (progress line), VS Code extension (notification + status bar) | Same as 1 | Trigger on Claude Code, then on Copilot CLI in the same session: second is held | E2E per surface + cross-surface budget test | Parity rule |
+| 2 | Same loop on Copilot CLI and VS Code; budget shared across surfaces | One user-level Copilot collector (hooks, exec form; CLI and VS Code agent sessions), Copilot CLI status-line renderer (Imran, 2026-11-01), VS Code extension (notification + status bar) | Same as 1 | Trigger on Claude Code, then on Copilot CLI in the same session: second is held; the Copilot tip appears in the status line | E2E per surface + cross-surface budget test | Parity rule |
 | 3 | Feedback and Habit tracks (US-4, US-5) | Feedback controls on all surfaces, ranking, D5 tracker, milestone card | Clock is injectable for 14-day windows | Mark "don't show again"; it never returns | Property tests on D5 rule incl. boundary set | Coaching history |
 | 4 | Jobs and the two alpha job packs (D7, Opp. 2, 3, 5) | T0 Job classifier, signed pack pipeline, WASM sandbox | Rung model still stubbed | PM-preset user coding gets coding tips | Golden set of labelled Tasks; classifier agreement target | Rung model integration |
 | 5 | Slow path (Opp. 4, 6) via the rung model | Judge calls through the person's own account (ADR-0007) | — | Delegation-fit tip at next pause | Rung-model evals (from its spec) | Alpha |
@@ -182,20 +184,21 @@ B2 pack content → core; B3 core → backend; B4 store at rest; B5 core → the
   install at user level only (`~/.copilot/hooks/`), and Claude Code hooks in user settings, never in
   a repo.
 - GitHub Copilot terms for the judge path: no blocker found; confirm against current product terms before alpha (ADR-0007).
+- Anthropic terms for `claude -p` judging: the terms page supports an end user using the unmodified binary on their own subscription but bars developers routing requests through plan credentials on users' behalf. Independent review or Anthropic confirmation owed before AIQ is given to others; fallback is the API key (ADR-0007).
 - Session-store formats are undocumented and can change. Owned by the Phase 0 spike thread.
 - Task grouping and Job classification accuracy unproven (spec risks).
 
 ## Status & next action
 | | |
 |---|---|
-| **Completed** | Draft architecture, ADRs 0001–0006, threat model and privacy review |
-| **Remaining** | Phases 1–6 above, in order |
-| **Best next action** | `/design-slice` for the Phase 1 walking skeleton (Claude Code collector → core → card) |
+| **Completed** | Draft architecture, ADRs 0001–0006, threat model and privacy review; Phase 0 spike (GO); Phase 1 Claude Code slice (PRs #5, #7–#9); Phase 2 design and build (Copilot CLI status line, VS Code extension, cross-surface quiet period; PR #14) |
+| **Remaining** | Phase 2 laptop check and merge; Phases 3–6 |
+| **Best next action** | Phase 2 laptop check of the real build, merge PR #14, then `/design-slice` for Phase 3 |
 
 ## Gate record
 `GATE define-architecture · 2026-10-31 · Enterprise, Distributed Systems, Security & Identity, Data & Persistence, SRE, Patterns, Simplifier (all seats played by Claude in one session; not independent) · verdict: pass with conditions`
 - **Distributed Systems (hard):** at-least-once events need idempotent ingest (event_id upsert) and ordering by session seq; spool replay must not double-count budget. Resolved in cross-cutting concerns. Condition: property test for spool replay in Phase 1.
-- **Security & Identity (hard):** local API must reject other OS users and other processes without the per-boot token; pack keys pinned; Anthropic API key only in keychain. Resolved (threat model T-B1-*, T-B2-*, TR-7). Condition: Windows named-pipe ACL and Linux keyring fallback must be spiked before Phase 1 ships. Not cleared by the author for production; recorded.
+- **Security & Identity (hard):** local API must reject other OS users and other processes without the per-boot token; pack keys pinned; AIQ never reads Claude Code's sign-in; the optional Anthropic API key only in keychain. Resolved (threat model T-B1-*, T-B2-*, TR-7). Condition: Windows named-pipe ACL and Linux keyring fallback must be spiked before Phase 1 ships. Not cleared by the author for production; recorded.
 - **Data & Persistence:** grain declared per fact table in ADR-0002 (one row = one event / one signal / one card decision / one judgment version). Unlimited retention accepted by the owner; size budget needed. Condition: size-per-year estimate in /design-slice.
 - **SRE:** the 3 a.m. story is local: health page + capture log + per-component counters; no remote telemetry by design, so field debugging relies on the person sharing a help packet. Accepted.
 - **Enterprise / Patterns:** F + G + A composition is coherent; no model on the hot path (C9). Resolved.

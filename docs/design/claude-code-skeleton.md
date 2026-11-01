@@ -258,7 +258,7 @@ redone, and that is likely 10–50× larger. **Gap that forced the model:** no r
 ```
 
 Exec form, never shell form: no Git Bash or PowerShell start-up, no quoting, no env-var prefixes.
-The `timeout: 5` is a safety net only; the client's own budget is 50 ms. Every AIQ entry has
+The `timeout: 5` is a safety net only; the client's own budget is 100 ms p95 whole process (was 50 ms; [note](../notes/note-20261101-hook-budget-100ms.md)). Every AIQ entry has
 `args[0..2]` = `hook`, `claude-code`, so `install` and `uninstall` find exactly their own entries and
 never touch the person's other hooks.
 
@@ -432,7 +432,7 @@ evidence link: `aiq show <card_id>` prints the triggering prompts (from the loca
 
 **Motion:** none. **Medium adaptation:** Phase 2 renders the same `aiq.card.v1` as a Copilot CLI
 progress line and a VS Code notification. **Accessibility:** plain text, no colour-only meaning,
-commands are copyable text. **Performance:** card appears with the Stop hook's ≤ 50 ms budget.
+commands are copyable text. **Performance:** card appears with the Stop hook's ≤ 100 ms p95 budget (was 50 ms).
 
 **AI-UX (HAX):** G1/G2 (make clear what AIQ can do and how well — "tip" wording, details command);
 G9/G10 (support efficient dismissal and correction — `aiq pause` on the card itself; feedback
@@ -483,7 +483,7 @@ crate (paths from `HOME` / `LOCALAPPDATA` / `XDG_*`, a few owned lines).
 
 | Failure mode | From which choice | Disposition | How it is addressed | Detection | Test |
 |---|---|---|---|---|---|
-| Core not running at a hook | Separate long-lived core | mitigate + recover | Spool the frame, start the core, exit 0 | spool line count in `aiq status`; `AIQ-HOOK-SPOOLED` counter | `Hook_CoreDown_ExitsZeroWithin50ms_AndSpools` |
+| Core not running at a hook | Separate long-lived core | mitigate + recover | Spool the frame, start the core, exit 0 | spool line count in `aiq status`; `AIQ-HOOK-SPOOLED` counter | `Hook_CoreDown_ExitsZeroWithinBudget_AndSpools` (100 ms) |
 | Core slow to answer `take_card` | Sync Stop hook | mitigate | Client waits ≤ 35 ms, then exits 0 with no output; card stays ready for the next Stop | `AIQ-HOOK-STOP-TIMEOUT` counter | `Hook_StopReplyLate_ExitsZeroNoOutput` |
 | Spool full | Bounded spool | accept | Oldest lines dropped; rare (1 MB ≈ 1,500 prompts while down). Residual: a few lost prompts may hide one re-prompt run | `AIQ-SPOOL-DROPPED` counter | `Spool_OverLimit_DropsOldestKeepsNewest` |
 | Spool replayed twice / partial line | At-least-once | prevent | Idempotent ingest; partial last line skipped | `AIQ-SPOOL-BAD-LINE` counter | Property test: any replay order/duplication yields the same rows and decisions (gate condition) |
@@ -500,7 +500,7 @@ crate (paths from `HOME` / `LOCALAPPDATA` / `XDG_*`, a few owned lines).
 | Store corrupt or migration fails | SQLite | detect | Core stays down, data untouched, status explains; `forget --all` is the reset | `AIQ-STORE-OPEN`, `AIQ-STORE-MIGRATION` | Migration rollback test |
 | Disk full | Store and spool | degrade | Writes fail → frame dropped and counted; hook still exits 0 | `AIQ-STORE-WRITE` | Integration test with a full temp volume (Linux CI) |
 | Ingest flood | Bounded channel | mitigate | Drop `ingest` frames beyond 1,024 queued; `take_card` answered null | `AIQ-INGEST-BACKPRESSURE` | `Core_ChannelFull_DropsIngestAnswersTakeCardNull` |
-| Hook runs through a shell (Git Bash 452 ms p95 on Windows) | Install writes the command | prevent | Exec form only (`command` + `args`); `install` refuses to write shell form and runs the installed entry once as a self-test, timing it | `aiq install` reports the measured time; hook duration histogram | Golden test: installed entries always have `args`; Windows dogfood: Stop p95 ≤ 50 ms |
+| Hook runs through a shell (Git Bash 452 ms p95 on Windows) | Install writes the command | prevent | Exec form only (`command` + `args`); `install` refuses to write shell form and runs the installed entry once as a self-test, timing it | `aiq install` reports the measured time; hook duration histogram | Golden test: installed entries always have `args`; Windows dogfood: Stop p95 ≤ 100 ms (was 50 ms) |
 | Auto-started core is killed when the hook's process tree ends (Claude Code or Git Bash cleans up children) | Hook starts the core | prevent | Start the core fully detached: `setsid` on Linux/macOS; `DETACHED_PROCESS` + `CREATE_NEW_PROCESS_GROUP` + `CREATE_BREAKAWAY_FROM_JOB` on Windows (measured: survives `claude -p` exit; breakaway was refused when the caller was already in a job, and the no-breakaway fallback still survived) | next hook finds no core → `AIQ-HOOK-SPOOLED` keeps rising in `aiq status` | `Hook_CoreDown_StartedCoreSurvivesHookExit` (Linux CI, Windows dogfood) |
 | Core auto-start storm | Hook starts the core | prevent | Lock file + 10 s back-off | `AIQ-CORE-START-BACKOFF` | `Hook_RepeatedCoreDown_StartsCoreOnce` |
 | Detector false positives | Lexical similarity | detect + accept | Values are pack data; dogfood week checks them; `aiq pause` on every card | held/shown counts in `aiq status` | Golden set of synthetic re-prompt / follow-up Tasks (labelled synthetic) |
@@ -517,8 +517,8 @@ crate (paths from `HOME` / `LOCALAPPDATA` / `XDG_*`, a few owned lines).
 | B1 | E: frame triggers code execution | prevent | Frames are data parsed by serde into typed structs; no eval, no paths from frames are opened | Fuzz frames |
 | B2 Claude Code → hook stdin | T: hostile prompt text (e.g. control characters) echoed into the card | mitigate | The card never echoes prompt text; `aiq show` strips terminal control sequences before printing | `Show_PromptWithAnsiEscapes_PrintsSanitised` |
 | B2 | E: AIQ alters the agent's behaviour | prevent | Hook never writes `additionalContext`, `decision` or `continue`; output only `systemMessage` on Stop | Contract test: hook stdout is empty or exactly `{"systemMessage": string}` |
-| B3 store at rest | I: stolen disk or backup reads prompts | mitigate | SQLCipher, key only in the OS keychain (ADR-0003) | Opening `aiq.db` without the key fails; file does not contain a known prompt string |
-| B3 | I: spool holds plain text while the core is down | mitigate + accept | Spool is user-only, ≤ 1 MB, truncated on drain. Residual: plain text on disk briefly. Encrypting the spool needs the key on the hot path, which ADR-0005 rejects | File-mode test; spool empty after drain |
+| B3 store at rest | I: stolen disk or backup reads prompts | accept (was mitigate) | **Encryption deferred by Imran, 2026-10-31** ([note](../notes/note-20261031-encryption-deferred.md)): plain SQLite in a 0700 directory, files 0600 (Windows: per-user `%USERPROFILE%\.aiq` ACL). Residual: anyone with the disk, a backup or admin rights reads prompts | `store_file_is_owner_only`, `spool_file_is_owner_only` (file modes) |
+| B3 | I: spool holds plain text while the core is down | mitigate + accept | Spool is user-only, ≤ 1 MB, removed on drain. Residual: plain text on disk briefly (the store is also plain text now; see row above) | File-mode test; spool empty after drain |
 | B4 settings file (`~/.claude/settings.json`) | T: install corrupts the person's settings | mitigate | Parse, merge only AIQ entries, write to a temp file and rename, keep a backup, refuse on invalid JSON | Golden tests on settings files with other hooks; invalid JSON untouched |
 | B4 | R: person cannot tell what AIQ changed | mitigate | `install` shows the diff and asks; `uninstall` restores only AIQ entries | Round-trip test install → uninstall → byte-identical file |
 | B4 | E: repo-level hooks run AIQ for teammates | prevent | AIQ never writes to a repo's `.claude/` (ADR-0005) | Test: install never touches the working directory |
@@ -528,7 +528,7 @@ crate (paths from `HOME` / `LOCALAPPDATA` / `XDG_*`, a few owned lines).
 
 | Data flow / category | LINDDUN finding | Disposition | Control / rationale | Retention and rights path |
 |---|---|---|---|---|
-| Prompt text (may hold code, customer data, secrets) → store | D: disclosure on a shared or lost machine | mitigate | Encrypted store; user-only files; no network | Kept until the person deletes it (ADR-0002); `aiq forget --all` deletes the store, spool and keychain entry. Delete-one and older-than arrive in Phase 6 |
+| Prompt text (may hold code, customer data, secrets) → store | D: disclosure on a shared or lost machine | mitigate + accept | User-only files; no network. Encryption at rest deferred (Imran, 2026-10-31) | Kept until the person deletes it (ADR-0002); `aiq forget --all` deletes the store and spool. Delete-one and older-than arrive in Phase 6 |
 | Prompt text → card | D: card text visible on screen-share | mitigate | Card never quotes prompt text; only counts | n/a |
 | Coaching history (how someone works) | L/I: could profile the person if shared | mitigate | Nothing leaves the device; no sync, no telemetry in Phase 1 (US-6) | Same as above |
 | Capture while paused | U: person unaware capture continues | prevent | Pause flag checked in the hook before sending; `aiq status` shows paused | `aiq pause` / `aiq resume` |
@@ -581,7 +581,7 @@ Not triggered: D5 (no HTTP/gRPC), A1–A6 (no model call in this slice).
 | D4 | Real SQLCipher store in a temp dir: append-only triggers reject update/delete on every fact table; unique delivery index; migration rollback; rebuild equality of the detector working set; real socket round trip; spool on a real file; file permission checks |
 | D6 | JSON Schemas for `aiq.event.v1`, `aiq.card.v1`, frames; golden Claude Code payloads recorded by the Phase 0 probe (Linux 2.1.316, Windows 2.1.300/2.1.312), scrubbed and labelled; unknown-field and missing-optional-field tests; hook stdout contract (empty or exactly one `systemMessage`) |
 | D7 | `BundledPack` validated against the pack schema the Phase 4 loader will use; `AlwaysUnclassified` paired with the Job classification invariant test; `TestKey` compiled out of release (build test greps the release binary for the test-key marker) |
-| E2E (architecture) | Scripted hook payloads through the real binary: 4 similar prompts → card at the next Stop; a second qualifying run in the same session → held; pause → nothing captured; core killed → hook exits 0 in ≤ 50 ms p95 over 50 runs, on Linux CI and on Imran's Windows laptop |
+| E2E (architecture) | Scripted hook payloads through the real binary: 4 similar prompts → card at the next Stop; a second qualifying run in the same session → held; pause → nothing captured; core killed → hook exits 0 in ≤ 100 ms p95 over 50 runs (was 50 ms), on Linux CI and on Imran's Windows laptop |
 | Human check | Imran, Windows laptop, real Claude Code: reword a prompt 3 times, see one card under the reply; do it again in the same session, see no second card; `aiq status` shows one shown, one held |
 
 ## Spikes required before `/implement` completes
@@ -621,6 +621,57 @@ Not triggered: D5 (no HTTP/gRPC), A1–A6 (no model call in this slice).
 | **Completed** | Detailed design for the Phase 1 walking skeleton on Claude Code (collector, core, store schema v1, re-prompt detector, trigger engine, card) |
 | **Remaining** | S3c (SQLCipher build on Windows); Phases 2–6 designs; revisit Copilot CLI and VS Code (Phase 2) |
 | **Best next action** | `/implement` this design; prove the SQLCipher Windows build (S3c) during implementation (Imran, 2026-10-31) |
+
+## Implementation notes (`/implement`, 2026-10-31)
+
+Built in `crates/` (Proof Pack: [docs/proof/claude-code-skeleton.md](../proof/claude-code-skeleton.md)).
+Where the build differs from the text above:
+
+- **Encryption at rest deferred (Imran, 2026-10-31).** Plain SQLite (`rusqlite` `bundled`), no SQLCipher,
+  no `keyring`, no `KeyProvider` seam, no `TestKey`. S3c is moot. ADR-0002 / ADR-0003 flagged.
+- **Task is derived in one place**, the `aiq-domain` grouping rule, not also as a SQL view (two
+  definitions of one quantity is a DM7 defect signature). The detector rebuild reads `event` + `content`.
+- **`card_decision` key is `decision_id`**, with `card_id` as a column: expiry appends a second decision
+  row (`drop/expired`) for the same card, so `card_id` alone cannot be the key.
+- **Cue-only re-prompts do not join the request's word window**, so a repeated "try again" stays cue-only
+  (score 0.5) instead of counting as "similar" to the previous cue.
+- **Daily-cap rule:** a delivery is allowed when deliveries with local day ≥ today are below the cap
+  (`deliveries_counted_today`). Counting only "today" let a clock moved backwards re-open used days;
+  property-tested over random clock and offset moves.
+- **Spool drain sorts by `event_id` and de-duplicates**, so any interleaving or duplication replays the
+  same; the drain renames the spool aside first so concurrent hook appends are never lost.
+- **`take_card` honours `wait_ms` on the core side:** a request that waited longer than the client will
+  wait is answered null and delivers nothing, so a card is never handed to a client that already left.
+- **Hook timings** are written by the hook to a small user-only log (in-process time), and `aiq status`
+  reports p50/p95 from it, instead of being sent in the next frame. Whole-process time is measured by
+  the e2e test and on the laptop.
+- **Not built (recorded):** JSON Schema for local-API frames (serde types are shared by both ends in one
+  binary); peer-uid check on the Unix socket (0700 directory + token instead); graceful SIGTERM drain
+  (the store is transactional; unflushed frames are lost as already accepted); install self-test uses
+  `stop_hook_active: true` so it stores one Stop event for a synthetic session and never takes a card.
+
+### Findings from the Windows laptop check (2026-11-01)
+
+- **Windows home moved to `%USERPROFILE%\.aiq` (DC-007).** The Claude desktop app is a packaged (MSIX)
+  app, so writes under `%LOCALAPPDATA%` from hooks it starts land in a private redirected copy. Hooks
+  from a terminal used the real folder: two homes, two tokens, one shared pipe name, so terminal hooks
+  were refused (`AIQ-API-AUTH`) and spooled where no core drained them. The profile root is not
+  redirected and sits beside Claude Code's own `.claude`, which already holds the same prompts. `aiq
+  status` now explains an `AIQ-API-AUTH` count in words.
+- **Reinstall from a moved binary left stale hooks on uninstall (DC-006).** Fixed; see the register.
+- **The reword detector misses natural paraphrases (open, not fixed in this slice).** Imran's first real
+  run, four ways of asking "which models can I use in Claude Code?", peaked at 0.40 key-word overlap
+  against the 0.6 bar, and even a hand-written close rewording set did not trigger. Only near-verbatim
+  rewording fires. The Phase 0 thresholds were tuned on synthetic data. Upgrade trigger: the real-data
+  week; likely fix is semantic similarity or the planned model judge, not more word rules.
+- **The agent already gives this nudge sometimes (open).** In the same session, after the 2nd of four
+  near-identical prompts, Claude wrote "You've asked this a few times now, so I may be answering the wrong
+  question." An AIQ card that repeats what the agent just said is noise. Later versions should check the
+  agent's last reply for an equivalent nudge before showing a card (needs the reply text, not captured in
+  Phase 1).
+- **Whole-process hook time on the laptop:** p50 about 27 ms, p95 65 to 70 ms; in-process p95 3.1 ms.
+  The 50 ms p95 whole-process bar did not hold there. **Imran raised it to 100 ms p95** (2026-11-01,
+  [note](../notes/note-20261101-hook-budget-100ms.md)).
 
 ## Gate record
 `GATE design · 2026-10-31 · Patterns Expert ⇄ Simplifier, Test Architect, Security & Identity, Distributed Systems, Data & Persistence, SRE, Privacy, UX & Accessibility (all seats played by Claude in one session; not independent) · verdict: pass with conditions`
