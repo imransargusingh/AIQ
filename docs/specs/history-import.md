@@ -31,7 +31,7 @@ those tasks?"*
 | H1 | Import reads only stores already on the device. Nothing is uploaded, and no new provider sees any content | Privacy rule (only the person can access their data), applied here |
 | H2 | Order of sources: Copilot CLI first, Claude Code second, VS Code Copilot Chat later | Laptop inventory below: Copilot CLI holds the longest and largest history |
 | H3 | Imported tasks are judged and shown in history, but never raise a coaching card or count against the daily tip cap | Coaching is in-the-moment; a card about a task from August is noise |
-| H4 | Sessions that look automated are not judged as hand-done tasks. They count as reuse evidence (F9) for the workflow they ran | Laptop inventory: ~6,000 Copilot sessions in Aug–Sep in one repo look automated |
+| H4 | High-volume sessions are not judged as hand-done tasks. AIQ flags them per folder and the person sorts each folder: **app pipeline** (an app that calls AI at run time; excluded from AIQ entirely, import and live capture), **my workflow** (a reusable workflow of theirs; counts as F9 reuse evidence) or **my work** (imported as tasks) | Imran, 2026-11-01: the ~6,000 Executive_Presence sessions are a data-collection pipeline that uses AI, not AI-assisted work |
 | H5 | Imported Copilot tasks are judged by **Copilot**, through the person's own signed-in Copilot CLI (`copilot -p`), not VS Code. Same provider that saw the session, so no cross-provider opt-in is needed | Imran, 2026-11-01 (in thread, after the decision card). Laptop probe below |
 
 ## What is on the device (measured 2026-11-01, Imran's laptop)
@@ -40,7 +40,7 @@ Counts, dates and folder names only; no content was opened.
 
 | Source | Store | Sessions | Range | Notes |
 |---|---|---|---|---|
-| Copilot CLI | `~/.copilot/session-state/<id>/events.jsonl` + `~/.copilot/session-store.db` | ~6,500 | 2026-02-19 .. 11-01 | ~6,000 in Aug–Sep in one repo (likely automated); ~500 others across ~15 repos. `repository` column null for most rows, `cwd` set |
+| Copilot CLI | `~/.copilot/session-state/<id>/events.jsonl` + `~/.copilot/session-store.db` | ~6,500 | 2026-02-19 .. 11-01 | ~6,000 in Aug–Sep in Executive_Presence (an app pipeline that calls Copilot, per Imran); ~500 others across ~15 repos. `repository` column null for most rows, `cwd` set |
 | Claude Code | `~/.claude/projects/<slug>/*.jsonl` | 592 | 2026-10-15 .. 11-01 | `cleanupPeriodDays` unset, so the 30-day default deletes older transcripts |
 | VS Code Insiders chat | `%APPDATA%\Code - Insiders\User\workspaceStorage\<hash>\chatSessions\*.json` | 272 | 2026-02-23 .. 10-29 | Workspace path in `workspace.json` |
 | VS Code stable chat | same, under `Code` | 31 | 2025-09 .. 2026-06 | |
@@ -138,9 +138,15 @@ another person's sessions; recovering transcripts the tool already deleted; any 
   spent **Then** judging stops for the day, and live tasks are always judged before imported ones.
 - **US-5 No cards.** **Given** an imported task is judged **Then** no coaching card is shown and the
   daily tip cap is unchanged.
-- **US-6 Automated runs.** **Given** a session classed as automated (rules below) **Then** it is not
-  queued as a task; it adds a run to the F9 count for the workflow it ran; the person can see and
-  override the count of sessions set aside.
+- **US-6 Automated runs.** **Given** a folder whose sessions meet the high-volume rule (below) **When**
+  discovery runs **Then** AIQ shows it as flagged, with session count and date range, and asks the person
+  to sort it: app pipeline, my workflow, or my work. Until sorted, its sessions are not imported.
+  **App pipeline:** nothing is imported or judged and no fact is counted. **My workflow:** each session
+  adds one run to the F9 count for that workflow and is not judged as a task. **My work:** imported
+  like any other session. The choice is per folder, changeable, and listed in *Your data*.
+- **US-12 Pipelines ignored live.** **Given** a folder is sorted as app pipeline **When** a live hook
+  fires for a session in that folder **Then** AIQ records nothing and never shows a tip. (Copilot hooks
+  are user-level, so a pipeline's own CLI runs would otherwise reach AIQ.)
 - **US-7 Idempotent.** **Given** a session was imported before **When** import runs again **Then**
   it is skipped (keyed by tool + session id + last-modified time); a session that grew since is
   re-read.
@@ -156,9 +162,11 @@ another person's sessions; recovering transcripts the tool already deleted; any 
   import or live capture sees that CLI's sessions **Then** sessions with AIQ's recorded judge ids are
   ignored.
 
-### Automated-session rule (first cut, tunable)
+### High-volume rule (first cut, tunable)
 
-A session is **automated** when any holds: it was started non-interactively (`-p`/prompt flag or no
+This rule only **flags** a folder for the person to sort; it never decides on its own, because a script
+that calls AI (an app pipeline) and a person's reused workflow look alike in the logs. A folder is
+flagged when any of its sessions meets one of these: it was started non-interactively (`-p`/prompt flag or no
 TTY, where recorded); it has exactly one user turn and the same first prompt as 10+ other sessions in
 the same repo; or 50+ sessions started in the same repo within one hour. Thresholds to be checked on
 the Aug–Sep Copilot sessions before they drive anything (**Inferred**, not yet measured).
@@ -211,8 +219,9 @@ N/A here; follows `DESIGN.md` and the `aiq-home` spec.
 
 ## Open questions for Imran
 
-1. Should automated runs ever be shown as their own tasks (a Factory-rung view), or only as F9
-   evidence?
+1. For folders sorted as **my workflow**: show each workflow as one entry (run count, judged once,
+   placed by the F9 floor), or count runs as F9 evidence only? (App pipelines such as
+   Executive_Presence are excluded either way.)
 
 ## Flagged risks and unknowns
 
