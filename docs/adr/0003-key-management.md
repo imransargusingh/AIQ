@@ -8,6 +8,8 @@ phase: "0-1"
 tags: [architecture, security, privacy]
 links:
   - { to: aiq-architecture, rel: refines }
+review-suggested:
+  - { by: note-20261031-encryption-deferred, on: 2026-10-31, reason: "Imran deferred encryption at rest; Phase 1 has no store key and no keychain entry. Decide whether this ADR is deferred or superseded." }
 review-by: 2027-04-29
 summary: >-
   The store's encryption key is generated on first run and kept only in the OS keychain under the
@@ -18,6 +20,7 @@ summary: >-
 # ADR-0003: Store key lives only in the OS keychain; no recovery in the alpha
 
 - **Status:** Accepted (Imran, 2026-10-31, decision card)
+- **Note (2026-10-31):** not exercised in Phase 1: encryption at rest is deferred (Imran), so there is no key to store. See [note-20261031-encryption-deferred](../notes/note-20261031-encryption-deferred.md).
 - **Date:** 2026-10-31
 - **Deciders:** Imran
 
@@ -33,7 +36,7 @@ or a passphrase-protected backup file.
 - The key never leaves the keychain except into core memory; it is never logged, exported or synced.
 - **No recovery in the alpha:** a lost, wiped or re-imaged machine loses the AIQ history. Setup says
   so in plain words.
-- The person's Anthropic API key (ADR-0007) is a separate keychain entry under the same rules.
+- The person's optional Anthropic API key (ADR-0007 fallback) is a separate keychain entry under the same rules. Claude Code's own sign-in is never read by AIQ.
 - Export (ADR-0002) writes plaintext only to a location the person chooses, with a warning.
 
 ## Alternatives considered

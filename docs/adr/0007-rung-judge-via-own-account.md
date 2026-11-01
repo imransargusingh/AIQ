@@ -12,13 +12,13 @@ links:
 review-by: 2027-04-29
 summary: >-
   In the alpha the rung judge is a frontier model reached through the person's own account: their own
-  Anthropic API key for Claude, and their Copilot sign-in via VS Code's language model API or Copilot CLI. No on-device judge, no AIQ
-  servers in the path.
+  signed-in Claude Code (`claude -p`, unmodified binary) for Claude, and their Copilot sign-in via VS
+  Code's language model API. AIQ never handles a token. No on-device judge, no AIQ servers in the path.
 ---
 
 # ADR-0007: The rung judge runs through the person's own AI account
 
-- **Status:** Accepted (Imran, 2026-10-31, decision card in the rung-model thread)
+- **Status:** Accepted (Imran, 2026-10-31, decision card in the rung-model thread); Claude credential path revised by Imran 2026-11-01
 - **Date:** 2026-10-31
 - **Deciders:** Imran
 - **Context spec/architecture:** docs/architecture.md, docs/specs/rung-model.md (PR #3)
@@ -31,10 +31,21 @@ person's own AI account.
 ## Decision
 - The judge is a **T3** call made by the core through the **person's own account**, sent to
   the same provider that already saw the Task unless the person chooses otherwise:
-  - Claude (tasks seen by Claude Code): the core calls the Anthropic Messages API directly with the
-    **person's own Anthropic API key**, stored in the OS keychain and billed to them. Not their
-    Pro/Max sign-in (Imran, 2026-10-31, revised). No `claude -p`, so AIQ's own hooks never see the
-    call. Without a key, Claude-seen Tasks get signals-only judging.
+  - Claude (tasks seen by Claude Code): the core runs the **person's own, unmodified Claude Code** in
+    headless mode (`claude -p`), on whatever sign-in that Claude Code already has (their Claude
+    subscription, their own API key, or their cloud provider). Claude Code does the sign-in; **AIQ
+    never reads, stores or passes a token** (Imran, 2026-11-01, superseding the API-key ruling of
+    2026-10-31). Setup needs nothing extra when Claude Code is already signed in.
+    - **Isolated call** (verified with Claude Code 2.1.316 on Linux, 2026-11-01): run in an empty temp
+      folder; `--setting-sources user`, so no project `CLAUDE.md` or project hooks load;
+      `--settings '{"disableAllHooks": true}'` (a control run without it fired the hook; with it, the
+      hook did not fire); `--tools ""` (no tools); `--no-session-persistence`; `--output-format json`
+      with `--json-schema` (returned `structured_output`); a fixed `--model`. The env var `AIQ_JUDGE=1`
+      makes AIQ's own hook client drop anything it sees from the call, as a second guard.
+      `--bare` is not used, because it never reads the subscription sign-in.
+    - **Fallback, off by default:** the person's own Anthropic API key in the OS keychain, called
+      directly on the Messages API. It is for people who don't use Claude Code's sign-in or who prefer
+      API billing. With neither, Claude-seen Tasks get signals-only judging.
   - Copilot (tasks seen by VS Code or Copilot CLI): the VS Code Language Model API (`vscode.lm`) from
     the AIQ extension, after the consent dialog, on the person's Copilot sign-in. Copilot-seen Tasks
     queue while VS Code is not running.
@@ -58,28 +69,38 @@ person's own AI account.
   only to a provider that already saw it.
 - **Negative / accepted trade-offs:** judge calls appear in the tool's own session history and in a
   work account's admin usage/audit logs, and that account's retention applies; this is disclosed at
-  setup. Uses the person's quota. Depends on CLI flags that can change (Copilot CLI). Claude judging needs people to create and pay for an API key.
+  setup. Uses the person's quota: on a Claude subscription, judge calls count toward its usage limits, which
+  Anthropic says "assume ordinary, individual usage of Claude Code and the Agent SDK", so the daily
+  judging budget must stay small. Depends on Claude Code CLI flags that can change (`--json-schema`,
+  `--no-session-persistence`, `disableAllHooks`); pin and test them per Claude Code release.
 - **Follow-ups / new risks:**
   - **Terms check (done 2026-10-31, reading only; not legal advice):**
-    - **Anthropic: blocking for consumer sign-in.** Claude Code's legal page says OAuth sign-in "is
-      intended exclusively for purchasers of Claude Free, Pro, Max, Team, and Enterprise subscription
-      plans and is designed to support ordinary use of Claude Code and other native Anthropic
-      applications", and that developers building products, including with the Agent SDK, "should use
-      API key authentication… Anthropic does not permit third-party developers to… route requests
-      through Free, Pro, or Max plan credentials on behalf of their users"
-      (https://code.claude.com/docs/en/legal-and-compliance). AIQ calling `claude -p` on the person's
-      subscription could read as that.
-    - **Owner ruling (Imran, 2026-10-31, revised):** Claude judging uses each person's own Anthropic
-      API key, which the terms explicitly allow when usage is billed to the key owner. No subscription
-      sign-in is used, so no accepted risk remains on the Anthropic side.
+    - **Anthropic (re-read 2026-11-01; a reading, not legal advice).** The page
+      (https://code.claude.com/docs/en/legal-and-compliance) says both of these:
+      - *For:* "Nor does it prevent an end user from signing in to the unmodified Claude Code binary
+        with their own Claude subscription". AIQ runs the person's unmodified binary on their own
+        sign-in, and never offers a Claude login of its own or touches the token ("developers may not
+        collect, store, or intermediate Claude.ai credentials or session tokens").
+      - *Against:* "Anthropic does not permit third-party developers to … route requests through Free,
+        Pro, or Max plan credentials on behalf of their users", and developers building products
+        "should use API key authentication". AIQ's judge prompts are AIQ's, not the person's, so a
+        reviewer could read `claude -p` from AIQ as that.
+    - **Owner ruling (Imran, 2026-11-01):** use the person's own `claude -p`. Imran's position: AIQ is
+      first-party to the person who builds and installs it, runs only on their machine, and works only
+      for them. The API key stays as an opt-in fallback.
+    - **Open, owed before AIQ is given to anyone else:** the independent review should check this
+      reading, or Anthropic should confirm it (the page's contact link). If the reading fails, flip
+      the default to the API-key fallback. That is a settings change, not a redesign.
     - **GitHub: no blocker found.** `vscode.lm` is GitHub's sanctioned route for extensions to use the
       person's Copilot models with consent, under the Copilot extensibility acceptable use policy;
       Copilot CLI programmatic mode is documented. Confirm against the current Copilot product terms
       before alpha.
-  - Spike: run each call path end to end; measure the 60 s p95 budget; confirm Copilot CLI judge calls are not
-    observed by AIQ's own hooks.
+  - Spike: run each call path end to end; measure the 60 s p95 budget; confirm `disableAllHooks` via
+    `--settings` also suppresses hooks from the person's user-level `~/.claude/settings.json` (verified
+    only for hooks in the same `--settings` source); confirm judge calls are not observed by AIQ's
+    own hooks.
   - VS Code consent must be triggered by a user action (first-run setup).
 
 ## Evidence
-https://code.claude.com/docs/en/headless · https://docs.github.com/en/copilot/how-tos/copilot-cli/automate-copilot-cli/run-cli-programmatically ·
+https://code.claude.com/docs/en/headless · https://code.claude.com/docs/en/legal-and-compliance (re-read 2026-11-01) · `claude --help` 2.1.316 · https://docs.github.com/en/copilot/how-tos/copilot-cli/automate-copilot-cli/run-cli-programmatically ·
 https://code.visualstudio.com/api/extension-guides/ai/language-model (read 2026-10-31, not run).

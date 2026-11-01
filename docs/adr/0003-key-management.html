@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>0003 Key Management</title><style>
+:root { color-scheme: light dark; --bg:#f7f5ef; --panel:#fff; --text:#20201d;
+  --muted:#66645f; --line:#d9d5ca; --accent:#3157a4; --code:#f0eee7; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#171816; --panel:#20221f; --text:#f2f1eb; --muted:#b8b6ae;
+    --line:#3d403a; --accent:#8fb0ff; --code:#292c27; }
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text);
+  font:16px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif; }
+main { width:min(920px,calc(100% - 32px)); margin:32px auto; padding:40px;
+  background:var(--panel); border:1px solid var(--line); border-radius:12px; }
+h1,h2,h3,h4,h5,h6 { line-height:1.2; margin:1.5em 0 .55em; }
+h1 { margin-top:0; font-size:2.2rem; } h2 { border-bottom:1px solid var(--line); padding-bottom:.3em; }
+a { color:var(--accent); } code { background:var(--code); padding:.12em .35em; border-radius:4px; }
+pre { overflow:auto; padding:16px; background:var(--code); border-radius:8px; }
+pre code { padding:0; } blockquote { margin:1em 0; padding:.2em 1em; color:var(--muted);
+  border-left:4px solid var(--line); }
+table { width:100%; border-collapse:collapse; margin:1em 0; display:block; overflow:auto; }
+th,td { padding:.55em .75em; border:1px solid var(--line); text-align:left; vertical-align:top; }
+th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); }
+.source { color:var(--muted); font-size:.9rem; margin-bottom:2rem; }
+@media (max-width:640px) { main { width:100%; margin:0; padding:24px 18px; border:0; border-radius:0; } }
+</style></head><body><main><div class="source">Rendered from 0003-key-management.md</div><h1>ADR-0003: Store key lives only in the OS keychain; no recovery in the alpha</h1>
+<ul><li><strong>Status:</strong> Accepted (Imran, 2026-10-31, decision card)</li><li><strong>Date:</strong> 2026-10-31</li><li><strong>Deciders:</strong> Imran</li></ul>
+<h2>Context</h2>
+<p>ADR-0002 keeps raw prompts and code until the person deletes them, so the store holds sensitive, growing history. D4 says only the person can read it. Options were keychain-only, a recovery phrase, or a passphrase-protected backup file.</p>
+<h2>Decision</h2>
+<ul><li>On first run the core generates a random 256-bit key and stores it in the OS keychain (Windows</li></ul>
+<p>Credential Manager / DPAPI, macOS Keychain, Linux Secret Service), scoped to the OS user and to the AIQ binary where the OS supports it.</p>
+<ul><li>The key never leaves the keychain except into core memory; it is never logged, exported or synced.</li><li><strong>No recovery in the alpha:</strong> a lost, wiped or re-imaged machine loses the AIQ history. Setup says</li></ul>
+<p>so in plain words.</p>
+<ul><li>The person&#x27;s optional Anthropic API key (ADR-0007 fallback) is a separate keychain entry under the same rules. Claude Code&#x27;s own sign-in is never read by AIQ.</li><li>Export (ADR-0002) writes plaintext only to a location the person chooses, with a warning.</li></ul>
+<h2>Alternatives considered</h2>
+<ul><li><strong>Recovery phrase from day one:</strong> deferred to the sync relay (Platform phase); one more secret to lose.</li><li><strong>Passphrase-protected backup file:</strong> deferred; a backup in a synced folder adds an offline-attack</li></ul>
+<p>target.</p>
+<h2>Consequences</h2>
+<ul><li><strong>Positive:</strong> nothing new for people to manage; no key ever leaves the device.</li><li><strong>Negative / accepted trade-offs:</strong> history is lost with the machine; moving to a new laptop starts</li></ul>
+<p>fresh (export/import is the manual path).</p>
+<ul><li><strong>Follow-ups:</strong> Linux machines without a Secret Service need a fallback (spike); keychain prompts on</li></ul>
+<p>macOS must not appear on every hook (the core holds the key, hooks never touch it).</p></main></body></html>

@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Aiq Home</title><style>
+:root { color-scheme: light dark; --bg:#f7f5ef; --panel:#fff; --text:#20201d;
+  --muted:#66645f; --line:#d9d5ca; --accent:#3157a4; --code:#f0eee7; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#171816; --panel:#20221f; --text:#f2f1eb; --muted:#b8b6ae;
+    --line:#3d403a; --accent:#8fb0ff; --code:#292c27; }
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text);
+  font:16px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif; }
+main { width:min(920px,calc(100% - 32px)); margin:32px auto; padding:40px;
+  background:var(--panel); border:1px solid var(--line); border-radius:12px; }
+h1,h2,h3,h4,h5,h6 { line-height:1.2; margin:1.5em 0 .55em; }
+h1 { margin-top:0; font-size:2.2rem; } h2 { border-bottom:1px solid var(--line); padding-bottom:.3em; }
+a { color:var(--accent); } code { background:var(--code); padding:.12em .35em; border-radius:4px; }
+pre { overflow:auto; padding:16px; background:var(--code); border-radius:8px; }
+pre code { padding:0; } blockquote { margin:1em 0; padding:.2em 1em; color:var(--muted);
+  border-left:4px solid var(--line); }
+table { width:100%; border-collapse:collapse; margin:1em 0; display:block; overflow:auto; }
+th,td { padding:.55em .75em; border:1px solid var(--line); text-align:left; vertical-align:top; }
+th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); }
+.source { color:var(--muted); font-size:.9rem; margin-bottom:2rem; }
+@media (max-width:640px) { main { width:100%; margin:0; padding:24px 18px; border:0; border-radius:0; } }
+</style></head><body><main><div class="source">Rendered from aiq-home.md</div><h1>Spec: AIQ home (desktop app views)</h1>
+<p>Produced with AI-Forward <code>/specify</code> (v2026.10.19.4) as the UX layer <code>/ui-design</code> needs before it can design AIQ home. <strong>Status: draft for Imran&#x27;s review. Q1–Q6 decided; Part C produced by /ui-design.</strong> Starting point: round-1 mockups (<code>docs/mockups/aiq-ui-round1.html</code>, https://claude.ai/artifact/SAhC7cYJCHDqmVvGmWKwwH).</p>
+<p>This spec fills the gap both sibling specs leave open: <code>rung-model.md</code> puts &quot;the rung distribution view and the opportunity view in AIQ home&quot; out of scope (&quot;own spec&quot;), and <code>coaching-loop.md</code> puts &quot;AIQ home views&quot; out of scope.</p>
+<h2>Questions settled (decision interrogation, asked one at a time)</h2>
+<table><thead><tr><th>#</th><th>Question</th><th>Needed for</th><th>Recommendation</th></tr></thead><tbody><tr><td>Q1</td><td>What counts as a task &quot;finished without you redoing it&quot; (the Home headline)?</td><td>Home hero, the outcome-first framing, any trend</td><td><strong>Decided (Imran, 2026-11-01): kept with small edits and no re-prompt.</strong> The person wrote at most about 20% of the final change (rung-model F2) and sent no re-prompt that corrected the agent in that task (F5). Threshold is tunable</td></tr><tr><td>Q2</td><td>Which screens ship in the alpha app?</td><td>Scope, IA, effort</td><td><strong>Decided (Imran, 2026-11-01): all six.</strong> Setup, Home, Task detail, Habits and tips, Your data, Settings. Sharing shown as off with a preview only</td></tr><tr><td>Q3</td><td>Default time window for Home?</td><td>Every number on Home</td><td><strong>Decided (Imran, 2026-11-01): last 30 days, with a weekly trend line</strong></td></tr><tr><td>Q4</td><td>Show an estimated time saved per opportunity?</td><td>Opportunity rows, trust</td><td><strong>Decided (Imran, 2026-11-01): no.</strong> Show how often the task happens (times per week) instead</td></tr><tr><td>Q5</td><td>Ask for the API key during setup, or when the first rung view is ready?</td><td>Setup flow, first-run drop-off</td><td><strong>Decided (Imran, 2026-11-01): mostly no key at all.</strong> The Claude judge runs through the person&#x27;s own signed-in Claude Code (<code>claude -p</code>); AIQ never reads Claude Code&#x27;s credentials. Setup detects that Claude Code is signed in. Only if it isn&#x27;t, setup offers the API-key step (detect <code>ANTHROPIC_API_KEY</code> first; skippable; tips work without it). Copilot work is judged through VS Code&#x27;s language model API. Supersedes the key-only credential rule in ADR-0007 (H11)</td></tr><tr><td>Q6</td><td>Is there a full task list, or only the top opportunities?</td><td>IA, navigation</td><td><strong>Decided (Imran, 2026-11-01): yes, a Tasks page</strong> listing every task type, sortable by how often and by rungs to gain. Home keeps the top three</td></tr></tbody></table>
+<h2>Part A — Functional specification</h2>
+<h3>Problem</h3>
+<p>People who work with AI agents cannot see, in one private place, how much of their work agents now finish, which recurring tasks agents could take further, and what single change would get them there. They also need to trust AIQ: see what it captured, pause it, and delete it.</p>
+<h3>Target users &amp; personas</h3>
+<p>Developers and PMs first (shared surfaces); data scientists and other knowledge workers later. Coaching follows the job being done (Code a change; Write a spec or doc), never the job title. Roles are presets only (coaching-loop D7).</p>
+<h3>Core scenario</h3>
+<p>Once a week, or after a tip, a person opens AIQ home. In under a minute they see how much of their work agents finished without rework, the top recurring task where agents could do more, and one next step with a starter prompt. They try it on their next task in their own tool.</p>
+<h3>In scope / Out of scope</h3>
+<p>In scope: setup; Home; task detail (rung judgment, evidence facts, next step, &quot;This doesn&#x27;t fit&quot;); habits and tip history; your data (capture log, pause, delete one / older than / all); settings (tip limit, quiet hours, tip types, work mix and preset, judge, sharing).</p>
+<p>Out of scope: any team or manager view (never); the in-tool cards (<code>coaching-loop.md</code>); how the rung is judged (<code>rung-model.md</code>); sync across devices; weekly summary emails.</p>
+<h3>Decisions already made (inherited, not re-opened)</h3>
+<table><thead><tr><th>Ref</th><th>Decision</th><th>Source</th></tr></thead><tbody><tr><td>H1</td><td>Only the person sees their data; no manager or team view; sharing is opt-in and must be easy to reason about</td><td>Imran, 2026-10-31</td></tr><tr><td>H2</td><td>Lead with the user outcome (agents do more with less rework); rungs explain underneath</td><td>Imran, 2026-10-31</td></tr><tr><td>H3</td><td>Task-level, not person-level, framing; success is a recurring task moving up a rung</td><td>Imran, 2026-10-31</td></tr><tr><td>H4</td><td>Rung ladder: 1 Assisted, 2 Directed, 3 Delegated, 4 Orchestrated, 5 Factory; names first, numbers second</td><td>Brief; rung-model Part C</td></tr><tr><td>H5</td><td>People never reclassify a rung; &quot;This doesn&#x27;t fit&quot; gives feedback on the guidance with a reason</td><td>rung-model Q3</td></tr><tr><td>H6</td><td>No next step coached below 0.8 confidence</td><td>rung-model</td></tr><tr><td>H7</td><td>Raw prompts stay on device until the person deletes them (one item, older than a date, all)</td><td>ADR-0002</td></tr><tr><td>H8</td><td>Lost machine means lost history; stated at setup</td><td>Imran, 2026-10-31</td></tr><tr><td>H9</td><td>Daily tip limit 1, 3 or 5, default 5, set at setup and in Settings</td><td>coaching-loop D3</td></tr><tr><td>H10</td><td>Habit states Not yet / Tried / Adopted (rule D5)</td><td>coaching-loop D5</td></tr><tr><td>H11</td><td>Judge runs under the person&#x27;s own account: their signed-in Claude Code (<code>claude -p</code>), else their own API key; Copilot via VS Code&#x27;s language model API; work-account caveat shown at setup</td><td>ADR-0007, amended by Q5 (Imran, 2026-11-01). Basis: Claude Code legal-and-compliance page allows signing in to unmodified Claude Code with one&#x27;s own plan</td></tr><tr><td>H12</td><td>Keyboard-first UI style</td><td>coaching-loop</td></tr><tr><td>H13</td><td>AIQ home is a Tauri desktop app with a React UI; no server holds user data</td><td>ADR-0004</td></tr></tbody></table>
+<h3>Conceptual domain model</h3>
+<p>AIQ home adds <strong>no new aggregate</strong>. It is a set of read views (projections) over aggregates owned by the sibling specs, plus the person&#x27;s own controls. Terms it adds to the ubiquitous language:</p>
+<ul><li><strong>Task type</strong> (from <code>rung-model.md</code>): a kind of task the person repeats, e.g. &quot;Writing unit tests&quot;.</li></ul>
+<p>The Tasks page lists task types, never single tasks.</p>
+<ul><li><strong>Kept task</strong> (new, value object derived per Task): a Task where the person wrote at most about 20%</li></ul>
+<p>of the final change (rung-model F2) and sent no re-prompt that corrected the agent (F5). Derived, never stored as its own field (one definition of the quantity).</p>
+<ul><li><strong>Kept rate</strong> (new, measure): kept tasks ÷ judged tasks in a window. <strong>Non-additive</strong>: computed from</li></ul>
+<p>the counts, never averaged across weeks or jobs.</p>
+<ul><li><strong>Could be</strong> (new, measure, <em>accepted by Imran 2026-11-01</em>): the share of judged tasks</li></ul>
+<p>agents finished plus those agents could finish. &quot;Agents could finish&quot; = a judged task not kept, whose task type&#x27;s potential rung is Delegated or higher at judge confidence ≥ 0.8; the rest are &quot;Needs you&quot;. Non-additive like Kept rate. Home shows it as weekly 100% stacked columns: Agents finished / Agents could finish / Needs you. Covers only work done with an AI tool AIQ watches.</p>
+<ul><li><strong>Most common rung</strong> (new, projection, <em>accepted by Imran 2026-11-01</em>): the rung holding the</li></ul>
+<p>largest share of judged tasks in the window, with the number of days it has held that place. Shown at the top of Home as a five-step rung scale with that rung marked. Task-level, never a grade of the person.</p>
+<ul><li><strong>Opportunity row</strong> (projection): one task type whose potential rung is above its current rung, with</li></ul>
+<p>its job, how often it happens and the one next step.</p>
+<ul><li><strong>Environment finding</strong> (from <code>coaching-loop.md</code>): a blocker outside the person&#x27;s habits; shown on</li></ul>
+<p>its task type, never counted against the person.</p>
+<p>Grain of the Home numbers: one judged Task in the last 30 days (Q3). Tasks still queued for judging are counted separately and never guessed.</p>
+<h3>User stories &amp; acceptance criteria</h3>
+<p><strong>US-H1 — Set up in a few minutes, knowing what AIQ will and won&#x27;t do.</strong></p>
+<ul><li><strong>Given</strong> a first run <strong>When</strong> setup opens <strong>Then</strong> it shows, in order: the privacy promise, the tools AIQ found, the judge connection, the tip limit and starting preset, and the lost-machine notice; each step can go back.</li><li><strong>Given</strong> Claude Code is installed and signed in <strong>When</strong> setup reaches the judge step <strong>Then</strong> it asks for nothing extra: it runs one test judge call and says, in plain words, that judge calls use the person&#x27;s Claude Code plan usage; AIQ never reads or stores the sign-in (rung-model, PR #11).</li><li><strong>Given</strong> Claude Code is not installed or not signed in <strong>When</strong> setup reaches the judge step <strong>Then</strong> it offers three choices: &quot;Sign in to Claude Code&quot; (Claude Code&#x27;s own flow, never an AIQ login), &quot;Use an API key instead&quot; (kept only in the OS keychain; offers <code>ANTHROPIC_API_KEY</code> if set, never used without a yes), or &quot;Skip for now&quot; (tips work without it).</li><li><strong>Given</strong> any judge choice <strong>When</strong> shown <strong>Then</strong> the work-account caveat is on the same step (admin policies, logging and retention apply), and setup copy never claims Anthropic approves the arrangement.</li><li><strong>Given</strong> an API key Anthropic rejects <strong>When</strong> checked <strong>Then</strong> setup says it is not valid and how to fix it, and stores nothing.</li><li><strong>Given</strong> the lost-machine notice <strong>When</strong> the person has not ticked &quot;I understand&quot; <strong>Then</strong> &quot;Start AIQ&quot; is disabled.</li></ul>
+<p><strong>US-H2 — See at a glance whether agents are finishing more of my work.</strong></p>
+<ul><li><strong>Given</strong> at least 10 judged tasks in the last 30 days <strong>When</strong> Home opens <strong>Then</strong> the first number is the kept rate, with the count behind it (&quot;58 of 141 tasks&quot;) and a weekly trend for the last 4 weeks.</li><li><strong>Given</strong> fewer than 10 judged tasks <strong>When</strong> Home opens <strong>Then</strong> no kept rate is shown; Home shows progress toward 10 per job instead.</li><li><strong>Given</strong> tasks waiting to be judged <strong>When</strong> Home opens <strong>Then</strong> it says how many are waiting, and those tasks are left out of every number.</li><li><strong>Given</strong> AIQ is paused <strong>When</strong> Home opens <strong>Then</strong> a banner says so, with Resume one action away.</li></ul>
+<p><strong>US-H3 — Find where agents could do more, and the one next step.</strong></p>
+<ul><li><strong>Given</strong> opportunity rows exist <strong>When</strong> Home opens <strong>Then</strong> it shows at most 3, ranked by times per week, each with its job, today&#x27;s rung, potential rung, times per week and next step; <strong>no time-saved number</strong> (Q4).</li><li><strong>Given</strong> a task type capped by an environment finding <strong>When</strong> listed <strong>Then</strong> it is labelled as blocked by the environment, with what to fix, and is never ranked as a habit opportunity.</li><li><strong>Given</strong> the Tasks page <strong>When</strong> opened <strong>Then</strong> it lists every task type seen in 30 days, sortable by times per week and by rungs to gain, and filterable by job.</li></ul>
+<p><strong>US-H4 — Understand why a task type sits where it does, and say when the guidance misses.</strong></p>
+<ul><li><strong>Given</strong> a task type&#x27;s detail page <strong>When</strong> opened <strong>Then</strong> it shows the next step and a starter prompt, the facts the judge used, why it is on its rung today, and the judge&#x27;s source (&quot;judged by your Claude Code&quot;).</li><li><strong>Given</strong> confidence below 0.8 <strong>When</strong> the detail opens <strong>Then</strong> no next step is shown; it says AIQ isn&#x27;t sure yet.</li><li><strong>Given</strong> &quot;This doesn&#x27;t fit&quot; <strong>When</strong> the person picks a reason (evidence wrong · step doesn&#x27;t fit how I work · blocked by something outside my control · other) <strong>Then</strong> that guidance is withdrawn for this task type, the rung is unchanged, and the person can undo.</li><li><strong>Given</strong> the starter prompt <strong>When</strong> copied <strong>Then</strong> nothing is sent anywhere.</li></ul>
+<p><strong>US-H5 — Follow my habits and find a tip I dismissed.</strong></p>
+<ul><li><strong>Given</strong> the Habits page <strong>When</strong> opened <strong>Then</strong> each habit shows Not yet, Tried or Adopted and &quot;seen in N of M tasks in 14 days&quot;.</li><li><strong>Given</strong> a tip shown in the last 90 days <strong>When</strong> the person opens tip history <strong>Then</strong> it is listed with time, tool and their answer, and a turned-off tip type can be turned back on from there.</li></ul>
+<p><strong>US-H6 — See, pause and delete what AIQ captured.</strong></p>
+<ul><li><strong>Given</strong> Your data <strong>When</strong> opened <strong>Then</strong> it lists captured events newest first, with time, tool, kind and content, and shows total count and size.</li><li><strong>Given</strong> a selected item, an older-than date, or &quot;everything&quot; <strong>When</strong> the person deletes <strong>Then</strong> AIQ names exactly what will go and asks for confirmation; &quot;everything&quot; requires typing <code>forget</code>.</li><li><strong>Given</strong> a deletion <strong>When</strong> done <strong>Then</strong> the items are gone from every view and from evidence links, which say the evidence was deleted.</li><li><strong>Given</strong> Pause <strong>When</strong> pressed (P, or the palette) <strong>Then</strong> capture and tips stop on every surface, and every screen shows that AIQ is paused.</li></ul>
+<p><strong>US-H7 — Change how AIQ coaches me, and decide about sharing with full sight of what is sent.</strong></p>
+<ul><li><strong>Given</strong> Settings <strong>When</strong> opened <strong>Then</strong> the person can set tips a day (1, 3, 5), how long a Copilot CLI status-line tip stays (until the next prompt (default, Imran 2026-11-01), 2 prompts or 5 minutes, or until opened), quiet hours, tip types on/off, starting preset, rung model connection (&quot;Claude through your signed-in Claude Code&quot;, &quot;your own API key&quot; or &quot;Copilot with VS Code consent&quot;) and judging budget.</li><li><strong>Given</strong> sharing is off (default) <strong>When</strong> the person opens &quot;See exactly what would be sent&quot; <strong>Then</strong> the full message for this week is shown before any opt-in, and nothing is sent until they choose to share.</li></ul>
+<h3>Non-functional requirements (ISO/IEC 25010)</h3>
+<table><thead><tr><th>Quality</th><th>Requirement</th></tr></thead><tbody><tr><td>Performance</td><td>Home interactive ≤ 1 s after launch on the alpha laptop with 30 days of data; every view reads only the local store</td></tr><tr><td>Usability</td><td>Keyboard-first: every screen and action reachable from the keyboard; command palette (Ctrl+K) lists every page and action</td></tr><tr><td>Accessibility</td><td>WCAG 2.2 AA; no meaning in colour alone (rungs carry names, habits carry words)</td></tr><tr><td>Privacy</td><td>No network call from any view except the judge (through the person&#x27;s own Claude Code or key) and update checks</td></tr><tr><td>Reliability</td><td>Core down: AIQ home says so and shows the last stored data, never a blank screen</td></tr><tr><td>Portability</td><td>Windows first; Linux in CI; macOS untested until Phase 2 (as the slice)</td></tr></tbody></table>
+<h3>Applicable governance lenses</h3>
+<p>Privacy (central; inherited from the privacy review), accessibility, performance, observability (local only). Threat model: no new trust boundary; the judge path is already modelled (rung-model TR-1..TR-9). The <code>claude -p</code> change (Q5) needs the judge-path STRIDE rows re-read by the architecture thread. <em>Flagged.</em></p>
+<h2>Part B — UX specification</h2>
+<h3>Personas &amp; jobs</h3>
+<ul><li><strong>Dev, Code a change, rung 2–3:</strong> opens AIQ home after a tip or on Monday. Job: &quot;show me the one</li></ul>
+<p>thing that would let agents finish more of my coding work.&quot;</p>
+<ul><li><strong>PM, Write a spec or doc, rung 1–2:</strong> same surfaces. Job: &quot;show me where drafting with an agent</li></ul>
+<p>still costs me rewrites.&quot;</p>
+<ul><li><strong>Anyone, trust job:</strong> &quot;show me what AIQ has on me, and let me stop or erase it.&quot;</li></ul>
+<h3>Information architecture</h3>
+<p>Seven places, flat (no nesting beyond a detail page):</p>
+<table><thead><tr><th>Nav (key)</th><th>Page</th><th>Answers</th></tr></thead><tbody><tr><td>G H</td><td><strong>Home</strong></td><td>Are agents finishing more? Where next?</td></tr><tr><td>G T</td><td><strong>Tasks</strong> → task type detail</td><td>Where does each recurring task sit, and why?</td></tr><tr><td>G B</td><td><strong>Habits and tips</strong></td><td>Which habits have I adopted? What tips did I get?</td></tr><tr><td>G D</td><td><strong>Your data</strong></td><td>What has AIQ captured? Pause, delete</td></tr><tr><td>G S</td><td><strong>Settings</strong></td><td>Tips, work mix, judge, sharing</td></tr><tr><td>—</td><td><strong>Setup</strong></td><td>First run; re-run from Settings</td></tr><tr><td>Ctrl+K</td><td><strong>Command palette</strong></td><td>Every page and action by name</td></tr></tbody></table>
+<p>Labels for the glossary: <em>Kept task, Kept rate, Task type, Next step, Starter prompt, This doesn&#x27;t fit, Blocked by the environment, Tried, Adopted, Pause AIQ, Delete everything.</em></p>
+<h3>User flows</h3>
+<pre><code class="language-mermaid">flowchart TD
+  start([First launch]) --&gt; priv[Privacy promise] --&gt; tools[Tools found]
+  tools --&gt;|none found| notools[&quot;Say which tools AIQ supports; continue with none&quot;] --&gt; judge
+  tools --&gt; judge{Claude Code signed in?}
+  judge --&gt;|yes| cc[&quot;Test judge call; says it uses your plan; work-account caveat&quot;] --&gt; tips
+  cc --&gt;|test fails| ccerr[&quot;Say what failed; retry or skip&quot;] --&gt; tips
+  judge --&gt;|no| choose{&quot;Sign in to Claude Code / Use an API key / Skip&quot;}
+  choose --&gt;|sign in| ccflow[&quot;Claude Code&#x27;s own sign-in&quot;] --&gt; judge
+  choose --&gt;|skip| tips
+  choose --&gt;|API key| keyfield[&quot;Key field; offers ANTHROPIC_API_KEY if set&quot;]
+  keyfield --&gt;|key| check{Key valid?}
+  check --&gt;|no| keyerr[&quot;Say why; nothing stored&quot;] --&gt; keyfield
+  check --&gt;|yes| tips[Tips a day + starting preset]
+  tips --&gt; lost[&quot;Lost-machine notice, tick I understand&quot;] --&gt; home([Home])</code></pre>
+<pre><code class="language-mermaid">flowchart TD
+  open([Open Home]) --&gt; core{Core reachable?}
+  core --&gt;|no| stale[&quot;Banner: AIQ isn&#x27;t running; show last stored data&quot;] --&gt; body
+  core --&gt;|yes| paused{Paused?}
+  paused --&gt;|yes| pban[&quot;Paused banner + Resume&quot;] --&gt; body
+  paused --&gt;|no| body{10+ judged tasks in 30 days?}
+  body --&gt;|no| first[&quot;First weeks: progress toward 10 per job&quot;]
+  body --&gt;|yes| main[&quot;Kept rate + trend, top 3 opportunities, rungs, habits, recent tips&quot;]
+  main --&gt; queued{Tasks waiting to be judged?}
+  queued --&gt;|yes| qnote[&quot;Say how many; left out of numbers&quot;]
+  main --&gt; opp[Open an opportunity] --&gt; detail[Task type detail]
+  detail --&gt; conf{Confidence ≥ 0.8?}
+  conf --&gt;|no| unsure[&quot;AIQ isn&#x27;t sure yet; no next step&quot;]
+  conf --&gt;|yes| step[&quot;Next step + starter prompt&quot;]
+  step --&gt; copy[Copy starter] --&gt; tool([Back to your tool])
+  step --&gt; fit[&quot;This doesn&#x27;t fit: pick reason&quot;] --&gt; withdrawn[&quot;Guidance withdrawn; Undo&quot;]</code></pre>
+<pre><code class="language-mermaid">flowchart TD
+  data([Your data]) --&gt; act{Action}
+  act --&gt;|Pause| p[&quot;Capture and tips stop everywhere; banner on every page&quot;] --&gt; resume[Resume]
+  act --&gt;|Delete selected| c1[&quot;Confirm names the items&quot;] --&gt; done
+  act --&gt;|Older than date| c2[&quot;Confirm names count and date&quot;] --&gt; done
+  act --&gt;|Everything| c3[&quot;Type forget&quot;] --&gt;|typed| done[&quot;Deleted; evidence links say so&quot;]
+  c3 --&gt;|cancel| data
+  done --&gt; empty{Anything left?}
+  empty --&gt;|no| emptyst[&quot;Empty state: capture still on&quot;]</code></pre>
+<h3>Wireframe-level structure</h3>
+<ul><li><strong>Shell:</strong> left nav (seven places with key hints), status block at its foot (watching which tools,</li></ul>
+<p>tips used today, P to pause), command palette on Ctrl+K.</p>
+<ul><li><strong>Home:</strong> period line → kept-rate card (number, count, 4-week trend) beside the top opportunity →</li></ul>
+<p>&quot;Where agents could do more&quot; (≤ 3 rows) → &quot;How you work with agents&quot; (rung bars, today vs potential, rung names first) → habits and recent tips.</p>
+<ul><li><strong>Tasks:</strong> table of task types: name · job · today → potential · times a week · kept rate; sort and</li></ul>
+<p>job filter; Enter opens detail.</p>
+<ul><li><strong>Task type detail:</strong> next step + starter prompt + This doesn&#x27;t fit → facts the judge used → why</li></ul>
+<p>this rung today → judge source and time.</p>
+<ul><li><strong>Habits and tips, Your data, Settings, Setup:</strong> as round-1 mockup, with the setup judge step per US-H1.</li></ul>
+<h3>UX acceptance criteria</h3>
+<ul><li>Home answers &quot;are agents finishing more?&quot; without scrolling at 1280×800.</li><li>From Home, a next step&#x27;s starter prompt is copied in ≤ 2 actions.</li><li>Pause is reachable in 1 key (P) from every page, and its state is visible on every page.</li><li>Every flow above ends in a shown result, a stated hold, or a stated failure with a way forward.</li><li>No page shows a rung number without its name, or a comparison with other people.</li></ul>
+<h2>Part C — UI specification</h2>
+<p>Produced by <code>/ui-design</code> (2026-11-01): <strong>`DESIGN.md`</strong> (tokens, states, copy, modes) and the mockup <strong>`docs/mockups/aiq-home.html`</strong>; review in <code>docs/reviews/ui-aiq-home.md</code>.</p>
+<ul><li><strong>Archetype:</strong> H1 · Windows Fluent Utility Shell, deviations <code>x-framework: tauri-webview2-react</code>,</li></ul>
+<p><code>Density: Comfortable|Compact</code>, <code>Feedback: Calm</code>, <code>Persistence: LocalOnly</code>. Rationale: the JTBD is &quot;check, then act in my own tool&quot; on a Windows-first desktop utility; reading-first, serial only in setup and confirms.</p>
+<ul><li><strong>UI acceptance criteria:</strong> WCAG 2.2 AA in light, dark and high contrast (0 failures in the</li></ul>
+<p>mockup sweep); targets ≥ 24×24 px; one focal point on Home (the kept rate); every modal traps focus and returns it; every pause, resume and delete outcome announced in a status region; single-key shortcuts can be turned off; no rung number without its name; no score or comparison with others.</p>
+<h2>Flagged risks &amp; residual unknowns</h2>
+<ul><li>Kept rate depends on rung-model facts F2 and F5 meeting their fact bar; until then Home&#x27;s headline</li></ul>
+<p>is <em>Uncertain</em> and must say so. <em>Flagged.</em></p>
+<ul><li><code>claude -p</code> judging uses the person&#x27;s plan limits; the daily judging budget must stop it eating</li></ul>
+<p>their Claude Code allowance. Budget default to be set from dogfood measurement. <em>Flagged.</em></p>
+<ul><li>Whether <code>claude -p</code> judging fits &quot;ordinary, individual usage&quot; in Anthropic&#x27;s terms at a 40-task</li></ul>
+<p>daily budget is a reading of the docs, not a ruling. <em>Flagged.</em></p>
+<ul><li>The 20% threshold in Kept task is a first guess; tunable pack data.</li><li>&quot;Could be&quot; leans on the potential rung, which is a model judgment; tasks below the 0.8</li></ul>
+<p>confidence bar count as &quot;Needs you&quot;, so the figure errs low. <em>Flagged.</em></p>
+<h2>Gate record</h2>
+<p>Author-run adversarial pass, 2026-11-01 (independent review still owed; the author does not clear vetoes):</p>
+<ul><li><strong>Simplifier:</strong> seven places is the floor for the decided scope (Q2 + Q6); the rung bars duplicate</li></ul>
+<p>the Tasks page in summary form and are kept only because Home must explain the rungs (H2). Soft, no veto.</p>
+<ul><li><strong>Test Architect:</strong> every Then above names an observable result; thresholds (10 tasks, 3 rows, 0.8,</li></ul>
+<p>20%, 90 days) are stated. No unverifiable criterion found.</p>
+<ul><li><strong>Data &amp; Persistence:</strong> no new aggregate; kept rate derived from facts, non-additive, grain declared.</li><li><strong>UX Researcher/IA:</strong> flows cover first run, no tools, no judge, bad key, core down, paused,</li></ul>
+<p>queued, low confidence, delete and cancel. Open: Tasks page empty state (covered by US-H2&#x27;s first-weeks rule; to be drawn in /ui-design).</p>
+<ul><li><strong>Verdict:</strong> ready for <code>/ui-design</code>, pending Imran&#x27;s review of this draft.</li></ul></main></body></html>
