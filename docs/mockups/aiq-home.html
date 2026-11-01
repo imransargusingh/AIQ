@@ -142,16 +142,37 @@
   .opp .next{grid-column:1/-1;color:var(--ink-mute)}
   .opp .freq{text-align:right;font:var(--t-caption);color:var(--ink-mute);white-space:nowrap}
   .rungs{display:flex;flex-direction:column;gap:var(--s3)}
-  .rr{display:grid;grid-template-columns:140px minmax(0,1fr) 72px 44px 112px;gap:var(--s4);align-items:center}
-  .rr.hd{font:var(--t-caption);color:var(--ink-mute);white-space:nowrap}
-  .rr.hd span:nth-child(3){grid-column:3/5;text-align:center}
-  .rr svg.sp{width:72px;height:20px;display:block;overflow:visible}
-  .rr .d{text-align:right;font:var(--t-caption);color:var(--ink-mute);font-variant-numeric:tabular-nums}
-  .track{position:relative;height:16px;background:var(--canvas-soft);border-radius:var(--r-sm)}
+  .rr{all:unset;box-sizing:border-box;display:grid;grid-template-columns:16px 132px minmax(0,1fr) 112px;gap:var(--s4);align-items:center;min-height:32px;padding:0 var(--s2);border-radius:var(--r-sm);cursor:pointer}
+  .rr:hover{background:var(--canvas-soft)}
+  .rr:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}
+  .rr .chev{font:var(--t-caption);color:var(--ink-mute);transition:transform var(--fast) var(--ease)}
+  .rr[aria-expanded="true"] .chev{transform:rotate(90deg)}
+  .rr.hd{cursor:default;font:var(--t-caption);color:var(--ink-mute);white-space:nowrap;min-height:0}
+  .rr.hd:hover{background:none}
+  .rx{margin:0 0 var(--s3) calc(16px + var(--s4) + var(--s2));padding:var(--s4) var(--s5);border:1px solid var(--hairline);border-radius:var(--r-md);background:var(--surface);display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:var(--s5)}
+  .rx[hidden]{display:none}
+  .rx li a{display:inline-flex;align-items:center;min-height:24px;color:var(--primary)}
+  [data-viewport="narrow"] .rx{grid-template-columns:1fr}
+  .rx h3{margin:0 0 var(--s2);font:var(--t-caption);color:var(--ink-mute);font-weight:400}
+  .rx ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:var(--s2)}
+  .lc{margin:0;display:grid;grid-template-columns:auto minmax(0,1fr);grid-template-rows:96px auto;column-gap:var(--s3);row-gap:var(--s2)}
+  .lc-y{position:relative;width:32px;font:var(--t-caption);color:var(--ink-mute);font-variant-numeric:tabular-nums;text-align:right}
+  .lc-y span{position:absolute;right:0;transform:translateY(-50%)}
+  .lc-plot{position:relative}
+  .lc-plot svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+  .lc-dot{position:absolute;width:8px;height:8px;transform:translate(-50%,-50%);border-radius:var(--r-pill);background:var(--primary);box-shadow:0 0 0 2px var(--surface)}
+  .lc-val{position:absolute;transform:translate(-50%,calc(-100% - 8px));font:var(--t-caption);color:var(--ink-mute);font-variant-numeric:tabular-nums;white-space:nowrap}
+  .lc-val.now{font-weight:600;color:var(--ink)}
+  .lc-pot{position:absolute;right:0;transform:translateY(calc(-100% - 2px));font:var(--t-caption);color:var(--ink-mute);white-space:nowrap}
+  .lc-x{grid-column:2;position:relative;height:17px;font:var(--t-caption);color:var(--ink-mute)}
+  .lc-x span{position:absolute;transform:translateX(-50%);white-space:nowrap}
+  .mainrung{display:flex;align-items:baseline;gap:var(--s3) var(--s5);flex-wrap:wrap}
+  .mainrung b{font:var(--t-title)}
+  .track{display:block;position:relative;height:16px;background:var(--canvas-soft);border-radius:var(--r-sm)}
   .track .now{position:absolute;inset:0 auto 0 0;border-radius:var(--r-sm)}
   [data-theme="contrast"] .track .now{border:1px solid var(--ink)}
   .track .pot{position:absolute;inset:-3px auto -3px 0;border:1.5px dashed var(--ink-mute);border-radius:var(--r-sm)}
-  .rr.hd span:last-child,.rr .v{text-align:right;font:var(--t-caption);color:var(--ink-mute);font-variant-numeric:tabular-nums}
+  .rr.hd span:last-child,.rr .v{text-align:right;white-space:nowrap;font:var(--t-caption);color:var(--ink-mute);font-variant-numeric:tabular-nums}
   .legend{display:flex;gap:var(--s5);font:var(--t-caption);color:var(--ink-mute);flex-wrap:wrap}
   .legend i{display:inline-block;width:14px;height:10px;border-radius:var(--r-sm);background:var(--rung-3);margin-right:var(--s2);vertical-align:-1px}
   .legend i.p{background:none;border:1.5px dashed var(--ink-mute)}
@@ -286,7 +307,7 @@ const DATA = {
   dev: { kept:58, judged:141, could:37, trend:[33,35,38,41], couldTrend:[30,29,27,26], waiting:12,
     mix:[["Code a change",68],["Write a spec or doc",32]],
     rungs:[[24,14],[35,28],[22,31],[13,19],[6,8]],
-    rungWeeks:[[30,28,26,24],[36,36,35,35],[18,19,21,22],[11,12,12,13],[5,5,6,6]],
+    rungWeeks:[[30,28,26,24],[36,36,35,35],[18,19,21,22],[11,12,12,13],[5,5,6,6]], main:{rung:1, days:23},
     tasks:[
       {id:"tests",name:"Writing unit tests",job:"Code a change",now:1,pot:2,week:23,kept:31,next:"Ask the agent to run the tests and keep fixing until they pass.",
        starter:"Write tests for <function> covering <cases>. Run them with npm test.\nKeep fixing until they all pass, then show me the diff and the test output.",
@@ -305,7 +326,7 @@ const DATA = {
   pm: { kept:19, judged:64, could:22, trend:[22,24,27,30], couldTrend:[36,35,35,34], waiting:5,
     mix:[["Write a spec or doc",71],["Code a change",29]],
     rungs:[[38,24],[34,32],[18,28],[8,12],[2,4]],
-    rungWeeks:[[45,43,40,38],[33,33,34,34],[14,15,17,18],[6,7,7,8],[2,2,2,2]],
+    rungWeeks:[[45,43,40,38],[33,33,34,34],[14,15,17,18],[6,7,7,8],[2,2,2,2]], main:{rung:0, days:38},
     tasks:[
       {id:"status",name:"Writing the weekly status update",job:"Write a spec or doc",now:0,pot:1,week:5,kept:20,next:"Give the agent last week's update, the merged PRs and the three decisions you need, then edit its draft.",
        starter:"Draft this week's status update for <audience>. Use last week's update as the format.\nSources: <links>. Call out the three decisions I need from them.",
@@ -339,10 +360,34 @@ const sk = (w,h) => `<span class="sk" style="width:${w};${h?`height:${h}`:''}"><
 
 const PARTS = [["k","Agents finished","You kept the agent's work with small edits"],["c","Agents could finish","You redid these, but agents can finish this kind of task"],["n","Needs you","Agents can't finish these yet"]];
 const key = () => `<div class="key" aria-hidden="true">${PARTS.map(([c,l,why])=>`<span title="${why}."><i class="k-${c}"></i>${l}</span>`).join("")}</div>`;
-function spark(v){
-  const lo = Math.min(...v), hi = Math.max(...v), mid = (lo+hi)/2, span = Math.max(10, hi-lo);
-  const y = x => 10 - (x-mid)/span*16, xs = i => 4 + i*(64/(v.length-1));
-  return `<svg class="sp" viewBox="0 0 72 20" aria-hidden="true"><polyline points="${v.map((x,i)=>`${xs(i)},${y(x)}`).join(" ")}" fill="none" stroke="var(--ink-mute)" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><circle cx="${xs(v.length-1)}" cy="${y(v[v.length-1])}" r="3" fill="var(--primary)"/></svg>`;
+function rungChart(v, pot){
+  /* One series (share of your tasks on this rung each week) + a dashed reference line for "possible". */
+  const max = Math.max(10, Math.ceil(Math.max(...v, pot)/10)*10), x = i => 6 + i*(88/(v.length-1)), y = t => (1 - t/max)*100, last = v.length-1;
+  return `<figure class="lc" aria-hidden="true">
+    <div class="lc-y">${[0,max/2,max].map(t=>`<span style="top:${y(t)}%">${t}%</span>`).join("")}</div>
+    <div class="lc-plot">
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none">
+        ${[0,max/2,max].map(t=>`<line x1="0" x2="100" y1="${y(t)}" y2="${y(t)}" stroke="var(--hairline)" vector-effect="non-scaling-stroke"/>`).join("")}
+        <line x1="0" x2="100" y1="${y(pot)}" y2="${y(pot)}" stroke="var(--ink-mute)" stroke-dasharray="4 3" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+        <polyline points="${v.map((t,i)=>`${x(i)},${y(t)}`).join(" ")}" fill="none" stroke="var(--primary)" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+      </svg>
+      ${v.map((t,i)=>`<span class="lc-dot" style="left:${x(i)}%;top:${y(t)}%"></span>`).join("")}
+      <span class="lc-val" style="left:${x(0)}%;top:${y(v[0])}%">${v[0]}%</span>
+      <span class="lc-val now" style="left:${x(last)}%;top:${y(v[last])}%">${v[last]}%</span>
+      <span class="lc-pot" style="top:${y(pot)}%">Possible ${pot}%</span>
+    </div>
+    <div class="lc-x">${WEEKS.map((w,i)=>`<span style="left:${x(i)}%">${w}</span>`).join("")}</div>
+  </figure>`;
+}
+function rungPanel(D, i){
+  const [n,p] = D.rungs[i], w = D.rungWeeks[i], d = w[w.length-1]-w[0];
+  const here = D.tasks.filter(t=>t.now===i), arriving = D.tasks.filter(t=>t.pot===i && t.now<i);
+  const li = arr => arr.length ? arr.map(t=>`<li><a href="#detail" data-go="detail">${esc(t.name)}</a> <span class="meta">${t.week} a week</span></li>`).join("") : `<li class="meta">None</li>`;
+  const sum = `${RUNGS[i]}: ${w.map((t,k)=>`week of ${WEEKS[k]} ${t}%`).join(", ")}. Possible ${p}%.`;
+  return `<div class="rx" id="rx${i}" hidden>
+    <div><h3>Your tasks on this rung, each week · ${d===0?"no change":`${chg(d)} points`}</h3>${rungChart(w,p)}<p class="sr">${sum}</p></div>
+    <div class="group" style="gap:var(--s4)"><div><h3>Here today</h3><ul>${li(here)}</ul></div><div><h3>Could move up to here</h3><ul>${li(arriving)}</ul></div></div>
+  </div>`;
 }
 const chg = d => d>0?`↑${d}`:d<0?`↓${-d}`:"0";
 const WEEKS = ["5 Oct","12 Oct","19 Oct","26 Oct"];
@@ -381,6 +426,7 @@ function home(){
   return `<div class="page">${downBanner()}
     ${s==="partial"?`<div class="banner info" role="status"><div class="grow"><b>${D.waiting} tasks are waiting to be judged.</b> They're left out of these numbers until then, and judged as your daily limit allows.</div></div>`:""}
     <h1 class="sr">Home</h1><p class="meta">Last 30 days · 2 Oct to 31 Oct · sample data</p>
+    ${judgeOn()?(()=>{const m=D.main, nx=m.rung+1, w=D.rungWeeks[nx], d=w[w.length-1]-w[0]; return `<section class="mainrung" aria-label="Your main rung"><span class="mute">Your most common rung</span><b>${RUNGS[m.rung]} (${m.rung+1})</b><span class="mute">${D.rungs[m.rung][0]}% of tasks · for ${m.days} days</span>${nx<5?`<span class="meta">Next rung up: ${RUNGS[nx]}, ${D.rungs[nx][0]}% of tasks${d?`, ${chg(d)} in 4 weeks`:""}</span>`:""}</section>`;})():""}
     <div class="top">
       <section class="card" aria-labelledby="kr"><h2 id="kr" class="mute" style="font-weight:400">Tasks agents finished</h2>
         ${judgeOn()?`<div class="hl"><span class="big">${rate}%</span><span class="of">could be <b>${rate+couldPct}%</b></span></div>
@@ -396,8 +442,8 @@ function home(){
     <section class="group" aria-labelledby="opps"><div class="head"><h2 id="opps">Where agents could do more</h2><a href="#tasks" data-go="tasks" class="meta">All tasks</a></div><div class="list">${rows}</div>
       ${fixes.length?`<div class="group" style="gap:var(--s2)"><h3 style="margin:0;font:var(--t-heading)">Repo fixes</h3>${fixes.map(f=>`<div class="fix"><code>${esc(f.repo)}</code><span>${esc(f.blocked)}</span><span class="meta">Holds back: ${esc(f.name)} · ${f.week} a week</span><a href="#detail" data-go="detail">How to fix</a></div>`).join("")}</div>`:""}</section>
     <section class="group" aria-labelledby="rg"><div class="head"><h2 id="rg">How you work with agents</h2><span class="meta">Share of tasks per rung</span></div>
-      ${judgeOn()?`<div class="rungs"><div class="rr hd" aria-hidden="true"><span></span><span></span><span>Last 4 weeks</span><span>Today → could be</span></div>${D.rungs.map(([n,p],i)=>{const w=D.rungWeeks[i], d=w[w.length-1]-w[0]; return `<div class="rr"><span>${RUNGS[i]} (${i+1})</span><div class="track" aria-hidden="true"><span class="pot" style="width:${p/40*100}%"></span><span class="now" style="width:${n/40*100}%;background:var(--rung-${i+1})"></span></div>${spark(w)}<span class="d"><span class="sr">Change over 4 weeks: </span>${chg(d)}<span class="sr"> points</span></span><span class="v">${n}% → ${p}%</span></div>`}).reverse().join("")}</div>
-      <div class="legend"><span><i></i>Today</span><span><i class="p"></i>Where these tasks could be</span></div>`
+      ${judgeOn()?`<div class="rungs"><div class="rr hd" aria-hidden="true"><span></span><span></span><span></span><span>Today → possible</span></div>${D.rungs.map(([n,p],i)=>`<button class="rr" aria-expanded="false" aria-controls="rx${i}"><span class="chev" aria-hidden="true">›</span><span>${RUNGS[i]} (${i+1})</span><span class="track" aria-hidden="true"><span class="pot" style="width:${p/40*100}%"></span><span class="now" style="width:${n/40*100}%;background:var(--rung-${i+1})"></span></span><span class="v"><span class="sr">today </span>${n}% → <span class="sr">possible </span>${p}%</span></button>${rungPanel(D,i)}`).reverse().join("")}</div>
+      <div class="legend"><span><i></i>Your tasks today</span><span><i class="p"></i>Possible if you take the next steps</span><span>Select a rung to see its trend</span></div>`
       :`<div class="empty"><b>Rungs need the rung model.</b><span class="mute">AIQ judges finished tasks with your own Claude Code. Tips work without it.</span><button class="btn" data-go="settings">Connect in Settings</button></div>`}
     </section>
     <div class="two">
@@ -592,6 +638,7 @@ document.addEventListener("click", e => {
   else if (act.startsWith("state:")) set("state", act.slice(6));
   else if (act.startsWith("toast:")) toast(act.slice(6));
 });
+document.addEventListener("click", e => { const r=e.target.closest("button.rr[aria-controls]"); if (r){ const open=r.getAttribute("aria-expanded")!=="true"; r.setAttribute("aria-expanded", open); document.getElementById(r.getAttribute("aria-controls")).hidden=!open; } });
 document.addEventListener("click", e => { const s=e.target.closest(".switch"); if (s){ s.setAttribute("aria-checked", s.getAttribute("aria-checked")!=="true"); if (s.id==="singleKeys"){ singleKeys = s.getAttribute("aria-checked")==="true"; toast(singleKeys?"Single-key shortcuts on.":"Single-key shortcuts off. Ctrl+K still works."); } } const b=e.target.closest(".seg button"); if (b){ b.parentNode.querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed", x===b)); } });
 
 /* keyboard: Ctrl+K palette, G+letter, P pause, Esc back, J/K rows */

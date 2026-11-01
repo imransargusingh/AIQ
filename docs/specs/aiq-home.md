@@ -96,6 +96,9 @@ the sibling specs, plus the person's own controls. Terms it adds to the ubiquito
   whose task type's potential rung is Delegated or higher at judge confidence ≥ 0.8; the rest are
   "Needs you". Non-additive like Kept rate. Home shows it as weekly 100% stacked columns: Agents
   finished / Agents could finish / Needs you. Covers only work done with an AI tool AIQ watches.
+- **Most common rung** (new, projection, *proposed 2026-11-01, Imran to confirm*): the rung holding the
+  largest share of judged tasks in the window, with the number of days it has held that place. Shown at
+  the top of Home with the next rung up and its 4-week change. Task-level, never a grade of the person.
 - **Opportunity row** (projection): one task type whose potential rung is above its current rung, with
   its job, how often it happens and the one next step.
 - **Environment finding** (from `coaching-loop.md`): a blocker outside the person's habits; shown on
