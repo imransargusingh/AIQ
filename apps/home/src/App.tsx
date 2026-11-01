@@ -2,6 +2,7 @@
 // palette (Ctrl+K), G-letter navigation, P to pause, one status region for every announced outcome.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api";
+import { singleFlight } from "./refresh";
 import { toolName } from "./format";
 import type { Snapshot } from "./types";
 import { Dialog, PAGES, Sk, type Ctx, type Page } from "./ui";
@@ -40,15 +41,19 @@ export function App() {
     setSaid("");
     requestAnimationFrame(() => setSaid(m));
   }, []);
-  const refresh = useCallback(() => {
-    api.snapshot().then(
-      (s) => {
-        setSnap(s);
-        setLoadErr(null);
-      },
-      (e) => setLoadErr(String(e?.message ?? e)),
-    );
-  }, []);
+  const refresh = useMemo(
+    () =>
+      singleFlight(() =>
+        api.snapshot().then(
+          (s) => {
+            setSnap(s);
+            setLoadErr(null);
+          },
+          (e) => setLoadErr(String(e?.message ?? e)),
+        ),
+      ),
+    [],
+  );
   const go = useCallback((p: Page) => {
     setPage(p);
     history.replaceState(null, "", `#${p}`);
@@ -76,11 +81,15 @@ export function App() {
 
   useEffect(() => {
     refresh();
-    const t = setInterval(refresh, REFRESH_MS);
+    // No reads while the window is minimised or hidden; catch up as soon as it shows again.
+    const tick = () => document.visibilityState === "visible" && refresh();
+    const t = setInterval(tick, REFRESH_MS);
     window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", tick);
     return () => {
       clearInterval(t);
       window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", tick);
     };
   }, [refresh]);
 
