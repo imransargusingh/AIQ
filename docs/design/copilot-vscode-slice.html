@@ -143,6 +143,16 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <p>ran the status line 16 times: at start-up, around each prompt, and 1 s and 2 s after <code>agentStop</code>. <em>Verified (run).</em> One of two CLI prompts got no <code>agentStop</code> before the next prompt; AIQ then delivers at the next stop. <em>Observed, cause unknown.</em></p>
 <ul><li><strong>P3 — answered:</strong> VS Code agent mode with session target <strong>Copilot</strong> runs <code>~/.copilot/hooks</code></li></ul>
 <p>(<code>userPromptSubmitted</code> and <code>sessionStart</code> together, then <code>agentStop</code>, then <code>sessionEnd</code> reason <code>complete</code>). Payloads match the CLI&#x27;s. Its hook env has <code>COPILOT_CLI_RUN_AS_NODE</code>, <code>COPILOT_MCP_APPS</code>, <code>COPILOT_ENABLE_BUILTIN_GITHUB_MCP</code>, <code>COPILOT_RUNTIME_PROCESS_FILE_LOGGING</code>, and lacks <code>COPILOT_LOADER_PID</code>, <code>COPILOT_HOOK_DIR</code>, <code>COPILOT_CLI_BINARY_VERSION</code>, which CLI hooks carry. AIQ uses <code>COPILOT_CLI_RUN_AS_NODE</code> and not <code>COPILOT_LOADER_PID</code>. <em>Verified (run, one VS Code turn).</em></p>
+<h2>Follow-up: automated sessions ignored live (2026-11-01)</h2>
+<p>Copilot hooks are user-level, so an app&#x27;s pipeline that calls Copilot (Executive_Presence, ~6,000 sessions) would reach AIQ. Live side of the import spec&#x27;s automated rule (<a href="../specs/history-import.md">history import</a>, US-12, H4), decided at a session&#x27;s first prompt:</p>
+<ul><li><strong>NI (Claude Code, in the hook):</strong> <code>CLAUDE_CODE_ENTRYPOINT</code> starting <code>sdk</code> (a <code>claude -p</code> / SDK run)</li></ul>
+<p>records nothing. <code>assume:</code> hooks inherit it like other children of Claude Code; if not, B/T still apply.</p>
+<ul><li><strong>B / T (core, every surface):</strong> 50+ sessions started in one folder within 30 minutes, or the same</li></ul>
+<p>normalized first prompt in 11+ sessions there within 24 hours. The folder is then <strong>set aside</strong> (<code>folder_rule</code>, schema v3, append-only; newest row per folder wins; shared with import).</p>
+<ul><li><strong>F:</strong> later sessions in a set-aside folder are ignored at their first prompt. <strong>H ≥ 2:</strong> a second</li></ul>
+<p>prompt means a person, so AIQ records the session from then on.</p>
+<ul><li>Hooks now send the host&#x27;s <code>cwd</code> in the event (optional <code>cwd</code>, not stored per event).</li><li><code>aiq status</code> names set-aside folders and how many prompts were ignored; <code>aiq include &lt;folder&gt;</code> undoes it.</li><li><code>simplify:</code> sessions before the rule fires in a new folder (≤ 10 for T, ≤ 49 for B) are recorded; they</li></ul>
+<p>have one prompt each, so no tip can come from them. Upgrade trigger: task views or the judge queue read them.</p>
 <h2>Conformance notes</h2>
 <p>LOA F hot path (no model, no network, fail-open). Deviations: <code>seq</code> null for Copilot too; extension uses polling (<code>simplify:</code>); <code>DESIGN.md</code> not applicable (host-themed surfaces).</p>
 <h2>Flagged risks</h2>

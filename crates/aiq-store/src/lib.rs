@@ -9,8 +9,9 @@ use std::path::{Path, PathBuf};
 
 pub const SCHEMA_V1: &str = include_str!("schema_v1.sql");
 pub const SCHEMA_V2: &str = include_str!("schema_v2.sql");
+pub const SCHEMA_V3: &str = include_str!("schema_v3.sql");
 /// Migration N takes the store from `user_version` N to N+1, in one transaction.
-pub const MIGRATIONS: &[&str] = &[SCHEMA_V1, SCHEMA_V2];
+pub const MIGRATIONS: &[&str] = &[SCHEMA_V1, SCHEMA_V2, SCHEMA_V3];
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StoreError {
@@ -355,6 +356,51 @@ impl Store {
                 |r| r.get::<_, i64>(0),
             )
             .map(|n| n as u32)
+            .map_err(err(codes::STORE_OPEN))
+    }
+
+    pub fn insert_folder_rule(
+        &self,
+        folder: &str,
+        action: &str,
+        reason: &str,
+        source: &str,
+        now_ms: i64,
+    ) -> Result<()> {
+        self.conn
+            .execute(
+                "INSERT INTO folder_rule (folder, action, reason, source, utc_ms) VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![folder, action, reason, source, now_ms],
+            )
+            .map(|_| ())
+            .map_err(err(codes::STORE_WRITE))
+    }
+
+    /// Folders set aside now: the newest rule per folder is `set_aside`. (folder, reason, utc_ms), newest first.
+    pub fn set_aside_folders(&self) -> Result<Vec<(String, String, i64)>> {
+        let mut st = self
+            .conn
+            .prepare(
+                "SELECT folder, reason, utc_ms FROM folder_rule r WHERE action = 'set_aside' AND rule_id = \
+                 (SELECT MAX(rule_id) FROM folder_rule WHERE folder = r.folder) ORDER BY rule_id DESC",
+            )
+            .map_err(err(codes::STORE_OPEN))?;
+        let rows = st
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .map_err(err(codes::STORE_OPEN))?
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(err(codes::STORE_OPEN))?;
+        Ok(rows)
+    }
+
+    /// The store already holds events for this session.
+    pub fn session_known(&self, surface: &str, session: &str) -> Result<bool> {
+        self.conn
+            .query_row(
+                "SELECT EXISTS (SELECT 1 FROM surface_session WHERE surface = ?1 AND surface_session_id = ?2)",
+                params![surface, session],
+                |r| r.get(0),
+            )
             .map_err(err(codes::STORE_OPEN))
     }
 
