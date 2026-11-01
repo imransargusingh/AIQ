@@ -90,7 +90,7 @@ have months of AI sessions on disk. Those sessions can fill the history on day o
 
 1. During setup, or later from *Your data > Import history*, AIQ lists the stores it found, with
    session counts and date ranges per tool and per repo. Nothing is read beyond file metadata yet.
-2. The person picks which tools, repos and date range to import, and sees the estimated judging
+2. The person picks which tools, repos and date range to import (default: everything found, Imran 2026-11-01), and sees the estimated judging
    time at their daily budget.
 3. AIQ reads the chosen transcripts on device, groups turns into tasks, classifies each task's job,
    computes log facts, and queues tasks for the judge.
@@ -211,8 +211,7 @@ N/A here; follows `DESIGN.md` and the `aiq-home` spec.
 
 ## Open questions for Imran
 
-1. Default date range for a first import: everything found, or last 90 days?
-2. Should automated runs ever be shown as their own tasks (a Factory-rung view), or only as F9
+1. Should automated runs ever be shown as their own tasks (a Factory-rung view), or only as F9
    evidence?
 
 ## Flagged risks and unknowns
