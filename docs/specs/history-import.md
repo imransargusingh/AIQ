@@ -161,15 +161,35 @@ another person's sessions; recovering transcripts the tool already deleted; any 
   import or live capture sees that CLI's sessions **Then** sessions with AIQ's recorded judge ids are
   ignored.
 
-### Automated rule (first cut, tunable)
+### Automated rule (tested on real sessions, 2026-11-01)
 
-AIQ decides; the person only corrects. A session is **automated** when it has **no human turn after the
-first prompt** and any of: it was started non-interactively (`-p`/prompt flag, where recorded); its first
-prompt follows the same template as 10+ other sessions in the same folder (content compared on device
-only); or 50+ sessions started in the same folder within one hour. Requiring "no human turn" keeps a busy
-hand-run repo from being caught by volume alone, so false alarms (and the need to undo them) should be
-rare. Thresholds to be checked on the Aug–Sep Copilot sessions before they drive anything (**Inferred**,
-not yet measured).
+AIQ decides; the person only corrects. H = human turns in the session. A session is **automated** when
+H ≤ 1 and any of:
+
+- **NI, non-interactive start.** Claude Code: `entrypoint = sdk-cli` on its user records. Copilot CLI
+  records no prompt-mode marker (`session.start` keys checked), so NI is unknown there.
+- **T, template.** Its normalized first prompt (digits, URLs, GUIDs, paths, quoted strings replaced; first
+  200 chars; hashed on device) matches 11+ sessions in the same folder. Empty first prompts are excluded
+  from template groups (they all share one hash).
+- **B, burst.** 50+ sessions started in the same folder within ±30 minutes.
+- **F, folder prior** (added after the test). The folder is over 80% automated by the signals above.
+
+Test on Imran's laptop (counts only; prompts hashed in memory, never printed or stored):
+
+| | Copilot CLI | Claude Code |
+|---|---|---|
+| Sessions | 6,431 | 617 |
+| Automated (NI/T/B) | 5,936 | 590 |
+| Caught by NI / T / B | – / 5,872 / 4,859 | 586 / 590 / 0 |
+| H ≤ 1 with no signal | 330 | 15 |
+
+- **False alarms: none found.** No folder where most sessions have H ≥ 3 had any automated session.
+- **Misses:** Executive_Presence 103 sessions not caught, ~95 of them H ≤ 1 (empty or unique first prompt,
+  outside a burst). Rule F is meant to catch these; not yet re-measured.
+- Claude Code: all 586 `sdk-cli` sessions are automated (Foresight 486, a temp folder 92, Tacit 12). Only
+  9 `cli` and 22 `claude-desktop` sessions remain (**Verified**, counts).
+- H ≤ 1 is common in hand-run Copilot work too (median H = 1 in several hand-run folders), so H alone must
+  never decide; it always needs a second signal.
 
 ### Domain model
 
