@@ -304,6 +304,32 @@ version with a fact floor to 0.80.
   - The F9 reuse counts are simulated, so the rung 5 gain depends on repo metadata existing.
   - Treat it as the hypothesis for the fact check to confirm, not as a result.
 
+### Fact check on real sessions (2026-11-01, Imran's laptop)
+
+Run with `prototypes/phase0-spike/fact_check.py` on sessions already on the device, instead of a
+week of new ones (history-import spec, PR #13). Two changes came from Imran during the run: sample
+only the last 3 days (facts about sessions from weeks ago can't be checked from memory), and let a
+stronger model check the facts so the person sees only what it cannot settle.
+
+- Sessions: Copilot CLI 6,260 (5,871 set aside as automated), Claude Code 649 (618 set aside).
+  24 hand-run sessions in the last 3 days; 6 sampled (5 Copilot, 1 Claude Code); 30 facts, 3 per type.
+- Fact reader: Haiku through the same provider (`copilot -p` / `claude -p`), 9-23 s per task.
+- Grader: Opus through the same provider, given a fuller transcript, 7-48 s per task. It settled
+  all 30 facts; none needed the person.
+
+| Fact | Right | Wrong | Precision |
+|---|---|---|---|
+| job, F1, F3, F7, F8, F4, F12 | 3 each | 0 | 100% |
+| F5 re-prompts added information | 1 | 2 | 33% |
+| F6 output checked before use | 2 | 1 | 67% |
+| F13 whole outcome handed over | 2 | 1 | 67% |
+| All | 26 | 4 | 87% |
+
+Confidence: **Inferred.** The grader is another model, not a person, and 3 items per fact is too few
+for per-fact rates. The grader marking F6 settled every time is suspect, because F6 can depend on
+what the person did outside the session. Next: re-run with more sessions (e.g. 15) to firm up F5,
+F6 and F13, and check whether the fact reader's F5 and F13 definitions need tightening.
+
 ## What would change this verdict
 
 - **Real sessions, checked by facts (the main gate).** Follow the rung-model spec's Q6, not a large
