@@ -253,3 +253,8 @@ nav.side{overflow:auto}
   .btn.pri,.seg button[aria-pressed="true"],.switch[aria-checked="true"]{forced-color-adjust:none;background:Highlight;color:HighlightText;border-color:Highlight}
   .wk-col>i:first-child{forced-color-adjust:none;background:Highlight!important;color:HighlightText}
 }
+
+/* Skip link: hidden until keyboard focus reaches it. */
+.skip { position: absolute; left: 8px; top: -48px; z-index: 50; padding: 8px 12px; background: var(--surface); color: var(--ink); border-radius: 6px; }
+.skip:focus { top: 8px; }
+main:focus { outline: none; }

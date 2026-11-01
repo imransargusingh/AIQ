@@ -120,6 +120,16 @@ export function App() {
 
   return (
     <div className="app">
+      <a
+        className="skip"
+        href="#main"
+        onClick={(e) => {
+          e.preventDefault();
+          document.getElementById("main")?.focus();
+        }}
+      >
+        Skip to content
+      </a>
       <div className="titlebar">
         <b style={{ color: "var(--ink)" }}>AIQ</b>
         {snap?.status.paused && <span className="chip pausedchip">Paused</span>}
@@ -134,6 +144,7 @@ export function App() {
               key={p.id}
               href={`#${p.id}`}
               aria-current={page === p.id ? "page" : undefined}
+              aria-keyshortcuts={singleKeys ? `G ${p.key}` : undefined}
               onClick={(e) => {
                 e.preventDefault();
                 go(p.id);
@@ -158,7 +169,7 @@ export function App() {
             )}
           </div>
         </nav>
-        <main>
+        <main id="main" tabIndex={-1}>
           {loadErr && !snap && (
             <div className="page">
               <div className="banner bad" role="alert">

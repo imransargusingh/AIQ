@@ -119,6 +119,24 @@ await test("Home answers the headline without scrolling at 1280x800", async () =
   await page.context().close();
 });
 
+await test("screen readers hear clean names: nav, rung rows, skip link", async () => {
+  const page = await open("full");
+  // Names come from the accessibility tree, as a screen reader gets them (laptop check 2026-11-01).
+  const nav = await page.getByRole("navigation", { name: "AIQ" }).ariaSnapshot();
+  assert.match(nav, /link "Home"/, nav);
+  assert.equal(await page.getByRole("link", { name: "Home", exact: true }).getAttribute("aria-keyshortcuts"), "G H");
+  for (const name of ["Factory (5), not judged yet", "Assisted (1), not judged yet"]) {
+    assert.equal(await page.getByRole("button", { name, exact: true }).count(), 1, name);
+  }
+  // Focus starts on the page title; the skip link is the first stop of the window chrome, before the nav.
+  assert.equal(await page.evaluate(() => document.querySelector("a[href], button")?.textContent), "Skip to content");
+  await page.getByRole("link", { name: "Skip to content" }).focus();
+  assert.ok((await page.getByRole("link", { name: "Skip to content" }).boundingBox()).y >= 0, "visible when focused");
+  await page.keyboard.press("Enter");
+  assert.equal(await page.evaluate(() => document.activeElement?.tagName), "MAIN");
+  await page.context().close();
+});
+
 await test("keyboard: G-letter navigation, P pause, Ctrl+K palette", async () => {
   const page = await open("full");
   await page.keyboard.press("g");

@@ -144,7 +144,10 @@ export function Home(ctx: Ctx) {
         <div className="rungs">
           {RUNGS.map((_, i) => i).reverse().map((i) => (
             <div key={i}>
-              <button className="rr" aria-expanded={open === i} aria-controls={`rx${i}`} onClick={() => setOpen(open === i ? null : i)}>
+              <button
+                className="rr"
+                aria-label={`${rungLabel(i + 1)}, not judged yet`}
+                aria-expanded={open === i} aria-controls={`rx${i}`} onClick={() => setOpen(open === i ? null : i)}>
                 <span className="chev" aria-hidden="true">›</span>
                 <span>{rungLabel(i + 1)}</span>
                 <span className="track" aria-hidden="true" />
