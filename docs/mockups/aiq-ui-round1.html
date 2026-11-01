@@ -828,7 +828,7 @@ const SCREENS = [
   { id: "copilot-cli", grp: "In your tools", name: "Copilot CLI tip", states: [["tip","Status line: tip"],["idle","After next prompt"],["paused","Paused"],["down","Core not running"],["narrow","Narrow terminal"],["notify","Later: notification"]],
     notes: { what: "Your choice: tips show in Copilot CLI's status line. The desktop notification stays as a later option, here as the last state.",
       react: ["The status line is experimental in Copilot CLI and needs a feature flag on Windows. The laptop check still has to confirm it refreshes each turn.", "The line holds about one short sentence, so it drops \"Why\" and keeps what happened plus the try-this."],
-      q: "Decided (Imran, 2026-11-01): the tip clears on your next prompt, as shown." } },
+      q: "Decided (Imran, 2026-11-01): a setting in AIQ home. Default: the tip clears on your next prompt, as shown. Other choices: 2 prompts or 5 minutes, or until opened." } },
   { id: "cli", grp: "aiq command line", name: "aiq status, show, pause, forget", states: [["status","status"],["first","status: first run"],["down","status: core down"],["show","show"],["pause","pause / resume"],["forget","forget --all"],["later","forget one / older (Phase 6)"]],
     notes: { what: "Plain-text output for the commands in PR #9, using the wording from the design doc.",
       react: ["Stop hook latency in status is there for the dogfood week. It may move behind aiq status --verbose later."],

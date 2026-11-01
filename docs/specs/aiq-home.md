@@ -145,7 +145,7 @@ are counted separately and never guessed.
 - **Given** Pause **When** pressed (P, or the palette) **Then** capture and tips stop on every surface, and every screen shows that AIQ is paused.
 
 **US-H7 — Change how AIQ coaches me, and decide about sharing with full sight of what is sent.**
-- **Given** Settings **When** opened **Then** the person can set tips a day (1, 3, 5), quiet hours, tip types on/off, starting preset, rung model connection ("Claude through your signed-in Claude Code", "your own API key" or "Copilot with VS Code consent") and judging budget.
+- **Given** Settings **When** opened **Then** the person can set tips a day (1, 3, 5), how long a Copilot CLI status-line tip stays (until the next prompt (default, Imran 2026-11-01), 2 prompts or 5 minutes, or until opened), quiet hours, tip types on/off, starting preset, rung model connection ("Claude through your signed-in Claude Code", "your own API key" or "Copilot with VS Code consent") and judging budget.
 - **Given** sharing is off (default) **When** the person opens "See exactly what would be sent" **Then** the full message for this week is shown before any opt-in, and nothing is sent until they choose to share.
 
 ### Non-functional requirements (ISO/IEC 25010)
