@@ -91,12 +91,12 @@ the sibling specs, plus the person's own controls. Terms it adds to the ubiquito
   never stored as its own field (one definition of the quantity).
 - **Kept rate** (new, measure): kept tasks ÷ judged tasks in a window. **Non-additive**: computed from
   the counts, never averaged across weeks or jobs.
-- **Could be** (new, measure, *proposed 2026-11-01, Imran to confirm*): the share of judged tasks
+- **Could be** (new, measure, *accepted by Imran 2026-11-01*): the share of judged tasks
   agents finished plus those agents could finish. "Agents could finish" = a judged task not kept,
   whose task type's potential rung is Delegated or higher at judge confidence ≥ 0.8; the rest are
   "Needs you". Non-additive like Kept rate. Home shows it as weekly 100% stacked columns: Agents
   finished / Agents could finish / Needs you. Covers only work done with an AI tool AIQ watches.
-- **Most common rung** (new, projection, *proposed 2026-11-01, Imran to confirm*): the rung holding the
+- **Most common rung** (new, projection, *accepted by Imran 2026-11-01*): the rung holding the
   largest share of judged tasks in the window, with the number of days it has held that place. Shown at
   the top of Home as a five-step rung scale with that rung marked. Task-level, never a grade of the person.
 - **Opportunity row** (projection): one task type whose potential rung is above its current rung, with
