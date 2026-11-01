@@ -29,7 +29,7 @@ designs with `python3 docs/ai-forward-pack/scripts/docs-graph.py rollup --headin
 | Coaching history | Cards shown, feedback, habit states, rung judgments | Encrypted store, facts | Nowhere | Coaching, progress | Until deleted | store |
 | Repo metadata | Distinct author **count**, CI run counts, workflow file present | Encrypted store | Nowhere | Rung floor facts (F9) | Until deleted | git reader |
 | Settings | Daily cap (default 5), role preset, quiet hours | Encrypted store | Nowhere | Behaviour | Until changed | core |
-| Credentials | Store key, the person's Anthropic API key | OS keychain | API key to Anthropic API only | Encryption; judging | Until removed | core |
+| Credentials | Store key, the person's optional Anthropic API key (Claude Code's own sign-in is never read) | OS keychain | API key to Anthropic API only | Encryption; judging | Until removed | core |
 
 ## 2. Findings (system level, LINDDUN-lite)
 | Category | Finding | Control |

@@ -66,7 +66,8 @@ or manager (social, not technical: AIQ must give them nothing to ask for).
 | TR-4 | B5 | Tampering | Malformed judge output is trusted | Schema-failing responses discarded | Mitigate |
 | TR-5 | B5 | Tampering | Model-written evidence carries HTML, links or commands into a card | Rendered as plain text only | Mitigate |
 | TR-6 | B5 | Elevation | A malicious `claude`/`copilot` on PATH or repo config hijacks judge calls | Judge binary resolved by absolute path at setup; run outside any repo | Mitigate |
-| TR-7 | B5 | Info disclosure | AIQ handles provider credentials | AIQ never reads provider OAuth tokens; the person's Anthropic API key lives only in the OS keychain, is sent only to the Anthropic API, and is never logged or exported | Mitigate |
+| TR-7 | B5 | Info disclosure | AIQ handles provider credentials | AIQ never reads provider OAuth tokens: Claude judging runs the person's own `claude -p`, which holds its sign-in; the optional Anthropic API key lives only in the OS keychain, is sent only to the Anthropic API, and is never logged or exported | Mitigate |
+| TR-10 | B5 | Tampering / elevation | A `claude -p` judge call loads a hostile repo's `CLAUDE.md`, hooks or tools | Empty temp folder, `--setting-sources user`, `disableAllHooks`, `--tools ""`, `AIQ_JUDGE=1` dropped by AIQ's hook client (ADR-0007) | Mitigate |
 | TR-8 | B5 | DoS (cost) | Judging burns the person's quota | Person-set daily judge budget; lazy/batched re-judging; queue when spent | Mitigate |
 | TR-9 | B5 | Repudiation | No record of what was sent where | Per-call send log with version stamps, viewable locally | Mitigate |
 | T-SOC-1 | — | Info disclosure (social) | A manager asks the person to "show their AIQ" | No views built for others; share types are fixed and previewed; nothing to export wholesale | Mitigate (design) |

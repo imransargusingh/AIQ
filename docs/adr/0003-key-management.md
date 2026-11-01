@@ -36,7 +36,7 @@ or a passphrase-protected backup file.
 - The key never leaves the keychain except into core memory; it is never logged, exported or synced.
 - **No recovery in the alpha:** a lost, wiped or re-imaged machine loses the AIQ history. Setup says
   so in plain words.
-- The person's Anthropic API key (ADR-0007) is a separate keychain entry under the same rules.
+- The person's optional Anthropic API key (ADR-0007 fallback) is a separate keychain entry under the same rules. Claude Code's own sign-in is never read by AIQ.
 - Export (ADR-0002) writes plaintext only to a location the person chooses, with a warning.
 
 ## Alternatives considered
