@@ -81,7 +81,7 @@ Run-level results: measured on Imran's Windows laptop, 2026-10-31, Copilot CLI 1
 
 **Result first:** AIQ can observe Copilot CLI and VS Code agent sessions with one user-level
 collector, but Copilot will not show a card. In-the-moment coaching on Copilot needs a surface AIQ
-owns. Two choices are Imran's (below); the rest follows from the evidence.
+owns. Imran chose the status line for Copilot CLI tips (point 4); the budget wording (point 7) is still his call.
 
 1. **One Copilot collector for both surfaces.** A single user-level file, `~/.copilot/hooks/aiq.json`,
    using `exec` + `args` (never a shell field), calls the same compiled `aiq hook copilot <event>`
@@ -95,7 +95,8 @@ owns. Two choices are Imran's (below); the rest follows from the evidence.
 3. **ADR-0005's Copilot render path is wrong and must change.** Rendering via a `progress` line does
    not work. AIQ will **not** use `additionalContext` or exit code 2 to get text in front of the person:
    both act on the agent, and coaching is for the person (ADR-0005 rule 1).
-4. **Where Copilot CLI cards show (Imran's choice):**
+4. **Where Copilot CLI cards show — decided (Imran, 2026-11-01): the status line (a).** A desktop
+   notification (b), or a combination, may be revisited later. Options considered:
    - **a) Copilot CLI's status line (recommended to try first):** a one-line nudge such as
      `AIQ tip: reworded 3× without new details · aiq show`, read from the core. It is persistent, in
      the person's view, and needs no window switch. It is experimental, needs a laptop check, and on
@@ -122,8 +123,9 @@ owns. Two choices are Imran's (below); the rest follows from the evidence.
 
 | Artifact | Change |
 |---|---|
-| ADR-0005 | Rule 5: Copilot CLI renders via the chosen surface, not a progress line; Copilot hooks are sync, so subscribe to the minimum events; exec form on both hosts |
-| Architecture Phase 2 | "Copilot CLI collector (progress line)" becomes "Copilot collector (hooks) + Copilot CLI renderer (choice 4)"; human check and E2E updated to match |
+| ADR-0005 | **Done in this PR:** rule 5 (status line, not a progress line) and rule 5a (minimum events, exec form) |
+| Architecture Phase 2 | **Done in this PR:** one Copilot collector + status-line renderer + VS Code extension |
+| Status-line check | Run on the laptop before Phase 2 design: enable the status line under a temp `COPILOT_HOME`, confirm it refreshes after each turn and can show a one-line tip from a command |
 | Spec NFR | Budget wording (point 7), if Imran agrees |
 | Threat model | Copilot reads repo `.claude/settings.json`; `copilot -p` fires user hooks (AIQ must not ingest its own calls) |
 
