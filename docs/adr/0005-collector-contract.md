@@ -48,7 +48,18 @@ so the host will not protect us; the collector must enforce its own budget.
    `seq`, `kind`, `ts`, payload by kind. At-least-once delivery; the core upserts by `event_id`.
    Content fields are optional and subject to the retention policy (ADR-0002).
 5. **Rendering:** cards come back as `aiq.card.v1`. Claude Code: `systemMessage` from the Stop hook.
-   Copilot CLI: a `progress` line at `agentStop`. VS Code: notification + status bar.
+   Copilot CLI: hooks cannot show the person anything (laptop probe, 2026-10-31), so AIQ renders a
+   one-line tip in **Copilot CLI's status line** (`statusLine` command in `~/.copilot/settings.json`,
+   reading the pending card from the core), with `aiq show` for the full card (Imran, 2026-11-01; a
+   desktop notification, alone or combined, may be revisited later). How long the tip stays before
+   clearing is a person's setting ("Copilot CLI tip stays"). The default is to clear on the next
+   prompt; the other choices are "for 2 prompts or 5 minutes, then a `1 tip waiting` marker" and
+   "stay until opened". The
+   core owns that state, and the status-line command only reads it. VS Code: notification + status
+   bar from the AIQ extension. Never `additionalContext` or exit code 2 to reach the person.
+5a. **Copilot hooks are synchronous,** so the Copilot collector subscribes to the fewest events a
+   detector needs (Phase 2: `userPromptSubmitted`, `agentStop`). Both hosts use exec form
+   (`command`/`exec` + `args`), never a shell.
 6. **Install at user level only:** `~/.claude/settings.json` and `~/.copilot/hooks/`, never a repo's
    `.claude/` or `.github/hooks/`, so teammates never see or run AIQ hooks.
 
@@ -61,7 +72,7 @@ so the host will not protect us; the collector must enforce its own budget.
 ## Consequences
 - **Positive:** AIQ can crash, upgrade or be paused with zero impact on the tools.
 - **Negative:** events can arrive late or (rarely) be lost when the spool is full; Tasks tolerate it.
-- **Follow-ups:** the hook semantics above are verified from docs only; Phase 0 spike must run them.
+- **Follow-ups:** Claude Code and Copilot CLI hook semantics were run on Windows and Linux (Phase 0 probe, design spikes); the Copilot status line and VS Code agent-mode hooks still need a run.
 
 ## Evidence
 Hook docs linked above (read 2026-10-31). Phase 0 hook probe (Claude Code 2.1.316, headless, 3 live
