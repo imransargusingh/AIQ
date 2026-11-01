@@ -32,7 +32,7 @@ those tasks?"*
 | H2 | Order of sources: Copilot CLI first, Claude Code second, VS Code Copilot Chat later | Laptop inventory below: Copilot CLI holds the longest and largest history |
 | H3 | Imported tasks are judged and shown in history, but never raise a coaching card or count against the daily tip cap | Coaching is in-the-moment; a card about a task from August is noise |
 | H4 | Sessions that look automated are not judged as hand-done tasks. They count as reuse evidence (F9) for the workflow they ran | Laptop inventory: ~6,000 Copilot sessions in Aug–Sep in one repo look automated |
-| H5 | Judge for imported Copilot tasks: **open** (decision card in thread, 2026-11-01). Recommended: Claude via `claude -p`, opt-in cross-provider | Rung-model Q2 allows another provider only when the person chooses |
+| H5 | Imported Copilot tasks are judged by **Copilot**, through the person's own signed-in Copilot CLI (`copilot -p`), not VS Code. Same provider that saw the session, so no cross-provider opt-in is needed | Imran, 2026-11-01 (in thread, after the decision card). Laptop probe below |
 
 ## What is on the device (measured 2026-11-01, Imran's laptop)
 
@@ -46,6 +46,37 @@ Counts, dates and folder names only; no content was opened.
 | VS Code stable chat | same, under `Code` | 31 | 2025-09 .. 2026-06 | |
 
 Confidence: **Verified** for one laptop (read-only inventory). Other people's machines: **Inferred**.
+
+## Copilot CLI as judge (probe, 2026-11-01, Imran's laptop)
+
+Copilot CLI 1.0.105 is installed (winget, plus a WindowsApps alias first on PATH and a VS Code shim).
+One test call ran from an empty temp folder:
+
+`copilot -p "<judge prompt>" -s --model <id> --available-tools= --no-custom-instructions --no-ask-user --disable-builtin-mcps --sync-session=off --no-auto-update --disable-client-telemetry --stream off --log-dir <aiq-dir>`
+
+| Check | Result | Confidence |
+|---|---|---|
+| One-shot answer | Exit 0, stdout exactly the answer (`-s` prints the answer only) | Verified |
+| Time | 20.6 s wall for a one-word answer (mostly start-up) | Verified, n=1 |
+| Model choice | `--model` accepts Claude, GPT, Gemini and other ids, and `auto` | Verified (help) |
+| Hooks | None fired (no user-level Copilot hooks installed); there is no flag to turn hooks off, only the `disableAllHooks` setting | Verified on this laptop |
+| Session saved | **Yes.** Each call creates a new `~/.copilot/session-state/<id>` folder and a store row. No flag prevents it | Verified |
+| Plugins and MCP servers | **Still load.** Installed plugins and ~15 user MCP servers started despite the flags; `--disable-builtin-mcps` covers only the built-in two | Verified |
+| Tools off | `--available-tools=` given; an empty tool list not yet confirmed from the log | Unverified |
+
+Design consequences:
+
+- **Judge sessions must never be imported or observed as tasks.** AIQ sets `--session-id` to a UUID it
+  generates, records it, and runs from its own working folder; readers and hooks drop those sessions.
+- **Sealing.** Pass `--disable-mcp-server <name>` for every server in the person's Copilot config, read
+  fresh before each batch, and confirm the tool list is empty from `--log-dir` once per batch; abort the
+  batch if any tool is available. A throwaway `COPILOT_HOME` would seal fully but loses the sign-in and
+  would need a token AIQ holds, which conflicts with "AIQ never reads the token". How to stop plugins
+  from loading is **open** (no flag found).
+- **Cost and speed.** Batch several tasks' facts into one call where the prompt fits, to spread the
+  ~20 s start-up; record `--usage-output-file` per call so judging cost is measured (TR-8).
+- AIQ cleans up its own judge session folders after reading the answer only if the person allows it;
+  default is to leave them.
 
 ## Part A — Functional specification
 
@@ -120,7 +151,10 @@ another person's sessions; recovering transcripts the tool already deleted; any 
   **When** discovery runs **Then** AIQ says older transcripts are being deleted by Claude Code and
   shows how to keep them. AIQ never edits that setting itself.
 - **US-10 Provider rule.** **Given** an imported task from provider P **When** it is queued **Then** it
-  is judged only by P, unless the person has opted in to cross-provider judging (H5).
+  is judged only by P: Copilot tasks through `copilot -p`, Claude Code tasks through `claude -p` (H5).
+- **US-11 Judge sessions excluded.** **Given** AIQ ran a judge call through a CLI **When** discovery,
+  import or live capture sees that CLI's sessions **Then** sessions with AIQ's recorded judge ids are
+  ignored.
 
 ### Automated-session rule (first cut, tunable)
 
@@ -158,7 +192,8 @@ Bounded context: *History import*, upstream of *Task capture*. One new aggregate
 - Transcripts hold more than live capture does (tool output, file contents). Import keeps **only**
   prompts, replies needed by the model facts, and computed facts. Tool output and file contents are
   read to compute facts and then dropped. (**To confirm** in design: which reply text the judge needs.)
-- Judge calls go only to the provider that already saw the session, unless the person opts in (H5).
+- Judge calls go only to the provider that already saw the session (H5). A Copilot judge call must not
+  reach the person's MCP servers (work systems such as ticketing or mail); see sealing above.
 - A work account's transcripts may include work content; the setup caveat from rung-model Q2 is
   shown again before import.
 
@@ -176,7 +211,7 @@ N/A here; follows `DESIGN.md` and the `aiq-home` spec.
 
 ## Open questions for Imran
 
-1. **H5** judge for imported Copilot tasks (decision card open).
+1. How to stop Copilot plugins loading in judge calls (no flag found); or accept them while tools are off.
 2. Default date range for a first import: everything found, or last 90 days?
 3. Should automated runs ever be shown as their own tasks (a Factory-rung view), or only as F9
    evidence?
