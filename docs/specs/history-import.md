@@ -71,8 +71,8 @@ Design consequences:
 - **Sealing.** Pass `--disable-mcp-server <name>` for every server in the person's Copilot config, read
   fresh before each batch, and confirm the tool list is empty from `--log-dir` once per batch; abort the
   batch if any tool is available. A throwaway `COPILOT_HOME` would seal fully but loses the sign-in and
-  would need a token AIQ holds, which conflicts with "AIQ never reads the token". How to stop plugins
-  from loading is **open** (no flag found).
+  would need a token AIQ holds, which conflicts with "AIQ never reads the token". Installed plugins still
+  load; accepted while tools are off and MCP servers are disabled (Imran, 2026-11-01).
 - **Cost and speed.** Batch several tasks' facts into one call where the prompt fits, to spread the
   ~20 s start-up; record `--usage-output-file` per call so judging cost is measured (TR-8).
 - AIQ cleans up its own judge session folders after reading the answer only if the person allows it;
@@ -211,9 +211,8 @@ N/A here; follows `DESIGN.md` and the `aiq-home` spec.
 
 ## Open questions for Imran
 
-1. How to stop Copilot plugins loading in judge calls (no flag found); or accept them while tools are off.
-2. Default date range for a first import: everything found, or last 90 days?
-3. Should automated runs ever be shown as their own tasks (a Factory-rung view), or only as F9
+1. Default date range for a first import: everything found, or last 90 days?
+2. Should automated runs ever be shown as their own tasks (a Factory-rung view), or only as F9
    evidence?
 
 ## Flagged risks and unknowns
