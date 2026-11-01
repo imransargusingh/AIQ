@@ -182,12 +182,25 @@ impl Store {
         Ok(s)
     }
 
-    /// Open an existing store read-only: no migration, no pragmas, never creates the file. For CLI readers
-    /// that must not contend with the core (e.g. `aiq status` while the core starts).
+    /// Open an existing store for reading only (AIQ home, `aiq status`, import counts): never creates the
+    /// file, no migration, no writes.
+    /// `query_only` guards against a write even if a query tried one. WAL lets this read while the core writes.
     pub fn open_read_only(path: &Path) -> Result<Self> {
-        let conn = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
-            .map_err(err(codes::STORE_OPEN))?;
+        use rusqlite::OpenFlags;
+        let flags = OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX | OpenFlags::SQLITE_OPEN_URI;
+        let conn = Connection::open_with_flags(path, flags).map_err(err(codes::STORE_OPEN))?;
+        conn.busy_timeout(std::time::Duration::from_secs(1)).map_err(err(codes::STORE_OPEN))?;
+        conn.execute_batch("PRAGMA query_only = ON;").map_err(err(codes::STORE_OPEN))?;
         Ok(Self { conn, path: path.to_owned() })
+    }
+
+    /// The table exists (a store written by an older AIQ may not have every table yet).
+    pub fn has_table(&self, name: &str) -> Result<bool> {
+        self.conn
+            .query_row("SELECT EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1)", [name], |r| {
+                r.get(0)
+            })
+            .map_err(err(codes::STORE_OPEN))
     }
 
     pub fn path(&self) -> &Path {
@@ -764,8 +777,7 @@ impl Store {
         [self.path.as_path(), wal.as_path()].iter().filter_map(|p| std::fs::metadata(p).ok()).map(|m| m.len()).sum()
     }
 
-    /// Raw connection for tests that must attack the schema directly.
-    #[doc(hidden)]
+    /// Raw connection: read models (AIQ home) and tests that must attack the schema directly.
     pub fn raw(&self) -> &Connection {
         &self.conn
     }

@@ -17,6 +17,8 @@ pub const STORE_WRITE: &str = "AIQ-STORE-WRITE";
 pub const STORE_APPEND_ONLY: &str = "AIQ-STORE-APPEND-ONLY";
 pub const CORE_ALREADY_RUNNING: &str = "AIQ-CORE-ALREADY-RUNNING";
 pub const CORE_START_BACKOFF: &str = "AIQ-CORE-START-BACKOFF";
+/// AIQ home could not read the store (locked past the busy timeout, or unreadable).
+pub const HOME_STORE_READ: &str = "AIQ-HOME-STORE-READ";
 
 /// Every code, for status output and the registry test.
 pub const ALL: &[&str] = &[
@@ -37,6 +39,7 @@ pub const ALL: &[&str] = &[
     STORE_APPEND_ONLY,
     CORE_ALREADY_RUNNING,
     CORE_START_BACKOFF,
+    HOME_STORE_READ,
 ];
 
 #[cfg(test)]

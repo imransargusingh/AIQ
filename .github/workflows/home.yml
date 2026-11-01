@@ -1,0 +1,81 @@
+name: home
+
+# AIQ home (design docs/design/aiq-home-app.md): the read model's fixtures must match what the UI tests load,
+# the UI passes its unit, end-to-end and accessibility checks, and the Windows app builds.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - "apps/home/**"
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/home.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: never
+
+jobs:
+  ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Contract - fixtures written by the Rust read model match the committed ones
+        run: |
+          cargo run -q -p aiq-home --example fixture --locked -- "$RUNNER_TEMP/fixtures"
+          diff -r "$RUNNER_TEMP/fixtures" apps/home/tests/fixtures
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/home/package-lock.json
+      - name: Install
+        working-directory: apps/home
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Types, unit tests, build
+        working-directory: apps/home
+        run: |
+          npm test
+          npm run build
+      - name: End to end, keyboard and accessibility (axe, light, dark, high contrast)
+        working-directory: apps/home
+        run: npm run e2e
+
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/home/src-tauri
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/home/package-lock.json
+      - name: Install
+        working-directory: apps/home
+        run: npm ci
+      - name: Build aiq-home.exe (release, no installer)
+        working-directory: apps/home
+        run: npx tauri build --no-bundle -- --locked
+      - name: Shell unit tests
+        working-directory: apps/home/src-tauri
+        run: cargo test --locked
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aiq-home-windows-x64
+          path: apps/home/src-tauri/target/release/aiq-home.exe
+          retention-days: 14

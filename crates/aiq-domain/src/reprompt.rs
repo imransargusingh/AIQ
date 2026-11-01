@@ -151,7 +151,7 @@ impl Engine {
             .tasks
             .entry(key)
             .and_modify(|t| {
-                if obs.utc_ms - t.last_ms > gap {
+                if starts_new_task(t.last_ms, obs.utc_ms, gap) {
                     *t = TaskState::new(obs.event_id, obs.utc_ms);
                 }
             })
@@ -171,8 +171,7 @@ impl Engine {
 
     /// Task key: the session, or the whole surface when it spans sessions.
     fn key(&self, surface: &str, session: &str) -> (String, String) {
-        let spans = self.params.span_surfaces.iter().any(|s| s == surface);
-        (surface.to_owned(), if spans { String::new() } else { session.to_owned() })
+        task_key(&self.params.span_surfaces, surface, session)
     }
 
     /// Drop Tasks idle for longer than the idle gap; they can never receive another prompt.
@@ -184,6 +183,72 @@ impl Engine {
     pub fn open_tasks(&self) -> usize {
         self.tasks.len()
     }
+}
+
+/// Task key: the session, or the whole surface when the pack says that surface spans sessions.
+pub fn task_key(span_surfaces: &[String], surface: &str, session: &str) -> (String, String) {
+    let spans = span_surfaces.iter().any(|s| s == surface);
+    (surface.to_owned(), if spans { String::new() } else { session.to_owned() })
+}
+
+/// The Task rule's boundary: a prompt more than the idle gap after the Task's last prompt starts a new Task.
+pub fn starts_new_task(last_ms: i64, utc_ms: i64, idle_gap_ms: i64) -> bool {
+    utc_ms - last_ms > idle_gap_ms
+}
+
+/// One prompt for `split_tasks`. Callers pass only prompts the Task rule counts (not empty ones).
+#[derive(Debug, Clone, PartialEq)]
+pub struct TaskPrompt<'a> {
+    pub event_id: &'a str,
+    pub surface: &'a str,
+    pub session: &'a str,
+    pub utc_ms: i64,
+}
+
+/// One Task as read views see it. `task_id` is the event id of its first prompt, as in the Engine.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TaskSpan {
+    pub task_id: String,
+    pub surface: String,
+    /// Session of the first prompt.
+    pub session: String,
+    pub first_ms: i64,
+    pub last_ms: i64,
+    pub prompts: u32,
+}
+
+/// Group prompts into Tasks with the same rule the live detector uses (`task_key`, `starts_new_task`).
+/// Input in event order. Output ordered by first prompt.
+pub fn split_tasks<'a>(
+    prompts: impl IntoIterator<Item = TaskPrompt<'a>>,
+    span_surfaces: &[String],
+    idle_gap_ms: i64,
+) -> Vec<TaskSpan> {
+    let mut open: BTreeMap<(String, String), usize> = BTreeMap::new();
+    let mut out: Vec<TaskSpan> = Vec::new();
+    for p in prompts {
+        let key = task_key(span_surfaces, p.surface, p.session);
+        match open.get(&key) {
+            Some(&i) if !starts_new_task(out[i].last_ms, p.utc_ms, idle_gap_ms) => {
+                let t = &mut out[i];
+                t.last_ms = t.last_ms.max(p.utc_ms);
+                t.prompts += 1;
+            }
+            _ => {
+                open.insert(key, out.len());
+                out.push(TaskSpan {
+                    task_id: p.event_id.to_owned(),
+                    surface: p.surface.to_owned(),
+                    session: p.session.to_owned(),
+                    first_ms: p.utc_ms,
+                    last_ms: p.utc_ms,
+                    prompts: 1,
+                });
+            }
+        }
+    }
+    out.sort_by(|a, b| a.first_ms.cmp(&b.first_ms).then_with(|| a.task_id.cmp(&b.task_id)));
+    out
 }
 
 #[cfg(test)]
@@ -453,5 +518,60 @@ pub(crate) mod tests {
         e.prune(41 * MIN);
         assert_eq!(e.open_tasks(), 1);
         assert_eq!(e.task_id("claude-code", "new"), Some("n"));
+    }
+
+    #[test]
+    fn split_tasks_gap_boundary_and_span_surfaces() {
+        let span = vec!["vscode".to_string()];
+        let p = |id: &'static str, surface: &'static str, session: &'static str, m: i64| TaskPrompt {
+            event_id: id,
+            surface,
+            session,
+            utc_ms: m * MIN,
+        };
+        let tasks = split_tasks(
+            [
+                p("a", "claude-code", "s1", 0),
+                p("b", "claude-code", "s1", 30), // exactly 30 min: same task
+                p("c", "claude-code", "s1", 61), // 31 min after b: new task
+                p("d", "vscode", "v1", 0),
+                p("e", "vscode", "v2", 5),      // other session, spans: same task
+                p("f", "claude-code", "s2", 1), // other session: own task
+            ],
+            &span,
+            30 * MIN,
+        );
+        let ids: Vec<(&str, u32)> = tasks.iter().map(|t| (t.task_id.as_str(), t.prompts)).collect();
+        assert_eq!(ids, vec![("a", 2), ("d", 2), ("f", 1), ("c", 1)]);
+        assert_eq!(tasks[0].last_ms, 30 * MIN);
+    }
+
+    proptest::proptest! {
+        /// Read views and the live detector agree on every prompt's Task.
+        #[test]
+        fn split_tasks_matches_engine_task_ids(gaps in proptest::collection::vec((0i64..90, 0usize..3, 0usize..2), 1..60)) {
+            let mut e = Engine::new(&pack());
+            let mut t = 0i64;
+            let mut obs = Vec::new();
+            for (i, (gap, sess, surf)) in gaps.iter().enumerate() {
+                t += gap * MIN;
+                let surface = ["claude-code", "vscode"][*surf];
+                let session = ["s0", "s1", "s2"][*sess];
+                let id = format!("e{i:04}");
+                e.observe(surface, session, PromptObs { event_id: &id, utc_ms: t, text: "write a parser for the config file" });
+                let expect = e.task_id(surface, session).unwrap().to_owned();
+                obs.push((id, surface, session, t, expect));
+            }
+            let tasks = split_tasks(
+                obs.iter().map(|(id, surface, session, t, _)| TaskPrompt { event_id: id, surface, session, utc_ms: *t }),
+                &params().span_surfaces,
+                e.idle_gap_ms(),
+            );
+            let total: u32 = tasks.iter().map(|t| t.prompts).sum();
+            proptest::prop_assert_eq!(total as usize, obs.len());
+            let starts: std::collections::BTreeSet<String> = obs.iter().map(|o| o.4.clone()).collect();
+            let got: std::collections::BTreeSet<String> = tasks.iter().map(|t| t.task_id.clone()).collect();
+            proptest::prop_assert_eq!(starts, got);
+        }
     }
 }

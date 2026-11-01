@@ -1,0 +1,22 @@
+[package]
+name = "aiq-home"
+description = "AIQ home read model: one snapshot of the person's local store for the desktop app. Reads only."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+aiq-contracts.workspace = true
+aiq-domain.workspace = true
+aiq-store.workspace = true
+aiq-core.workspace = true
+rusqlite.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+aiq-store.workspace = true
+rusqlite.workspace = true

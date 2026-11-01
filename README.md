@@ -27,6 +27,21 @@ cargo test --workspace            # unit, store, spool-replay property and end-t
 CI builds and tests on Linux and Windows and uploads `aiq.exe` as the `aiq-windows-x64` artifact
 (`.github/workflows/rust.yml`).
 
+**AIQ home** (the desktop app, Tauri + React, `apps/home`) needs Node 22 as well:
+
+```
+cd apps/home && npm ci
+npm test && npm run build && npm run e2e   # unit, then UI end-to-end, keyboard and axe checks
+npx tauri build --no-bundle               # src-tauri/target/release/aiq-home(.exe)
+```
+
+CI uploads `aiq-home.exe` as the `aiq-home-windows-x64` artifact (`.github/workflows/home.yml`). The app reads
+your store read-only and sends pause, settings and delete through the running core.
+
+`overrides` in `apps/home/package.json` holds 11 build-tool packages one release back. Some npm mirrors lag
+public npm by a release, and `npm ci` fails if the lockfile names a version the mirror lacks (found 2026-11-01
+on a company npm mirror). Remove an override once that mirror has the newer version.
+
 ## Use
 
 ```
@@ -55,6 +70,8 @@ readable only by you. **Phase 1 stores prompts unencrypted** (encryption deferre
 | `crates/aiq-domain` | Pure logic: Task rule, re-prompt detector, trigger engine, card composer (no I/O) |
 | `crates/aiq-store` | SQLite schema v1: dimensions + append-only facts, migrations |
 | `crates/aiq-core` | Paths, user-only socket / named pipe, spool, single-writer decision loop, bundled pack |
+| `crates/aiq-home` | AIQ home read model: one snapshot of the store (read-only) for the desktop app |
 | `crates/aiq` | The binary: hook client, core, CLI |
+| `apps/home` | AIQ home desktop app: React UI (`src`), Tauri shell (`src-tauri`), UI tests (`tests`) |
 | `contracts/` | JSON Schemas |
 | `docs/` | Specs, architecture, ADRs, designs, Proof Packs |

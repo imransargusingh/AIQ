@@ -1,0 +1,277 @@
+{
+  "schema": "aiq.home.v1",
+  "now_ms": 1793534400000,
+  "offset_min": 0,
+  "status": {
+    "core": false,
+    "paused": false,
+    "store_found": true,
+    "last_event_ms": 1793532600000,
+    "read_ms": 12,
+    "error": null
+  },
+  "home": {
+    "window_days": 30,
+    "tasks_in_window": 7,
+    "judged": 0,
+    "imported_in_window": 1,
+    "weeks": [
+      {
+        "start_ms": 1791115200000,
+        "tasks": 1
+      },
+      {
+        "start_ms": 1791720000000,
+        "tasks": 2
+      },
+      {
+        "start_ms": 1792324800000,
+        "tasks": 2
+      },
+      {
+        "start_ms": 1792929600000,
+        "tasks": 2
+      }
+    ],
+    "by_tool": [
+      [
+        "copilot-cli",
+        4
+      ],
+      [
+        "claude-code",
+        2
+      ],
+      [
+        "vscode",
+        1
+      ]
+    ],
+    "set_aside": [
+      {
+        "folder": "c:\\users\\imran\\source\\repos\\pipeline",
+        "reason": "burst"
+      }
+    ],
+    "tips_today": 1
+  },
+  "tasks": [
+    {
+      "task_id": "019000000016-0000-7000-8000-000000000000",
+      "tool": "copilot-cli",
+      "folder": "c:\\users\\imran\\source\\repos\\foresight",
+      "first_ms": 1793532600000,
+      "last_ms": 1793532600000,
+      "prompts": 1,
+      "origin": "live",
+      "job": null,
+      "rung": null
+    },
+    {
+      "task_id": "019000000001-0000-7000-8000-000000000000",
+      "tool": "claude-code",
+      "folder": "c:\\users\\imran\\source\\repos\\aiq",
+      "first_ms": 1793361600000,
+      "last_ms": 1793362140000,
+      "prompts": 3,
+      "origin": "live",
+      "job": null,
+      "rung": null
+    },
+    {
+      "task_id": "019000000010-0000-7000-8000-000000000000",
+      "tool": "copilot-cli",
+      "folder": "c:\\users\\imran\\source\\repos\\foresight",
+      "first_ms": 1792759560000,
+      "last_ms": 1792759560000,
+      "prompts": 1,
+      "origin": "live",
+      "job": null,
+      "rung": null
+    },
+    {
+      "task_id": "019000000008-0000-7000-8000-000000000000",
+      "tool": "copilot-cli",
+      "folder": "c:\\users\\imran\\source\\repos\\foresight",
+      "first_ms": 1792756800000,
+      "last_ms": 1792756800000,
+      "prompts": 1,
+      "origin": "live",
+      "job": null,
+      "rung": null
+    },
+    {
+      "task_id": "019000000011-0000-7000-8000-000000000000",
+      "tool": "vscode",
+      "folder": null,
+      "first_ms": 1792152000000,
+      "last_ms": 1792152180000,
+      "prompts": 2,
+      "origin": "live",
+      "job": null,
+      "rung": null
+    },
+    {
+      "task_id": "019000000013-0000-7000-8000-000000000000",
+      "tool": "claude-code",
+      "folder": "c:\\users\\imran\\source\\repos\\aiq",
+      "first_ms": 1791806400000,
+      "last_ms": 1791806400000,
+      "prompts": 1,
+      "origin": "live",
+      "job": null,
+      "rung": null
+    },
+    {
+      "task_id": "import:copilot-cli:imp1:0",
+      "tool": "copilot-cli",
+      "folder": "c:\\users\\imran\\source\\repos\\foresight",
+      "first_ms": 1791374400000,
+      "last_ms": 1791374700000,
+      "prompts": 2,
+      "origin": "imported",
+      "job": null,
+      "rung": null
+    }
+  ],
+  "tips": [
+    {
+      "card_id": "019000000018-0000-7000-8000-000000000000",
+      "tool": "copilot-cli",
+      "delivered_ms": 1793533200000,
+      "noticed": "You reworded the same request 3 times in this task.",
+      "why": "Rewording often means the agent is missing context, not words.",
+      "try_this": "Say what is wrong with the last answer and add the one fact it lacked.",
+      "opened": false
+    },
+    {
+      "card_id": "019000000006-0000-7000-8000-000000000000",
+      "tool": "claude-code",
+      "delivered_ms": 1793362320000,
+      "noticed": "You reworded the same request 3 times in this task.",
+      "why": "Rewording often means the agent is missing context, not words.",
+      "try_this": "Say what is wrong with the last answer and add the one fact it lacked.",
+      "opened": true
+    }
+  ],
+  "data": {
+    "events": 13,
+    "prompts": 11,
+    "turn_ends": 2,
+    "imported_sessions": 1,
+    "imported_events": 6,
+    "store_bytes": 139264,
+    "items": [
+      {
+        "event_id": "019000000016-0000-7000-8000-000000000000",
+        "ts_ms": 1793532600000,
+        "tool": "copilot-cli",
+        "kind": "prompt",
+        "text": "draft the release notes",
+        "deleted": false
+      },
+      {
+        "event_id": "019000000004-0000-7000-8000-000000000000",
+        "ts_ms": 1793362320000,
+        "tool": "claude-code",
+        "kind": "stop",
+        "text": null,
+        "deleted": false
+      },
+      {
+        "event_id": "019000000003-0000-7000-8000-000000000000",
+        "ts_ms": 1793362140000,
+        "tool": "claude-code",
+        "kind": "prompt",
+        "text": "please refactor the login handler, typed errors returned",
+        "deleted": false
+      },
+      {
+        "event_id": "019000000002-0000-7000-8000-000000000000",
+        "ts_ms": 1793361840000,
+        "tool": "claude-code",
+        "kind": "prompt",
+        "text": "refactor login handler so it returns typed errors",
+        "deleted": false
+      },
+      {
+        "event_id": "019000000001-0000-7000-8000-000000000000",
+        "ts_ms": 1793361600000,
+        "tool": "claude-code",
+        "kind": "prompt",
+        "text": "refactor the login handler to return typed errors",
+        "deleted": false
+      },
+      {
+        "event_id": "019000000015-0000-7000-8000-000000000000",
+        "ts_ms": 1793275200000,
+        "tool": "claude-code",
+        "kind": "prompt",
+        "text": "summarise record 1",
+        "deleted": false
+      },
+      {
+        "event_id": "019000000010-0000-7000-8000-000000000000",
+        "ts_ms": 1792759560000,
+        "tool": "copilot-cli",
+        "kind": "prompt",
+        "text": "<img src=x onerror=alert(1)> add tests",
+        "deleted": false
+      },
+      {
+        "event_id": "019000000009-0000-7000-8000-000000000000",
+        "ts_ms": 1792756860000,
+        "tool": "copilot-cli",
+        "kind": "stop",
+        "text": null,
+        "deleted": false
+      },
+      {
+        "event_id": "019000000008-0000-7000-8000-000000000000",
+        "ts_ms": 1792756800000,
+        "tool": "copilot-cli",
+        "kind": "prompt",
+        "text": "write a spec for the export button",
+        "deleted": false
+      },
+      {
+        "event_id": "019000000012-0000-7000-8000-000000000000",
+        "ts_ms": 1792152180000,
+        "tool": "vscode",
+        "kind": "prompt",
+        "text": "now fix it",
+        "deleted": false
+      },
+      {
+        "event_id": "019000000011-0000-7000-8000-000000000000",
+        "ts_ms": 1792152000000,
+        "tool": "vscode",
+        "kind": "prompt",
+        "text": "explain this stack trace",
+        "deleted": false
+      },
+      {
+        "event_id": "019000000013-0000-7000-8000-000000000000",
+        "ts_ms": 1791806400000,
+        "tool": "claude-code",
+        "kind": "prompt",
+        "text": null,
+        "deleted": true
+      },
+      {
+        "event_id": "019000000014-0000-7000-8000-000000000000",
+        "ts_ms": 1790078400000,
+        "tool": "claude-code",
+        "kind": "prompt",
+        "text": "old work",
+        "deleted": false
+      }
+    ],
+    "items_capped": false,
+    "location": "C:\\Users\\you\\.aiq"
+  },
+  "settings": {
+    "daily_cap": 3,
+    "copilot_tip_stays": "next-prompt"
+  }
+}

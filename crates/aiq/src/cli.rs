@@ -1,6 +1,6 @@
 //! CLI commands. Output is plain text, no colour, copyable commands (design: UI and interaction design).
 use aiq_contracts::frames::{OkReply, Request, ShowReply, StatusReply};
-use aiq_core::ipc;
+use aiq_core::control::ControlError;
 use aiq_core::paths::Paths;
 use aiq_core::server;
 use std::io::{BufRead, Write};
@@ -26,9 +26,7 @@ pub fn core() -> ExitCode {
 }
 
 fn ask_core(paths: &Paths, req: impl FnOnce(String) -> Request) -> Option<String> {
-    let token = ipc::read_token(paths)?;
-    let frame = serde_json::to_string(&req(token)).ok()?;
-    ipc::request(paths, &frame, true, CLI_TIMEOUT).ok().flatten()
+    aiq_core::control::ask(paths, CLI_TIMEOUT, req)
 }
 
 /// Reach the core, starting it if needed (CLI only; never on the hook path).
@@ -236,22 +234,10 @@ pub fn render_show(r: &ShowReply) -> String {
 
 pub fn pause(on: bool) -> ExitCode {
     let paths = Paths::from_env();
-    let _ = paths.ensure_dirs();
-    let r = if on {
-        aiq_core::paths::write_user_only(&paths.pause_flag(), b"paused\n")
-    } else {
-        match std::fs::remove_file(paths.pause_flag()) {
-            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
-            _ => Ok(()),
-        }
-    };
-    if let Err(e) = r {
+    if let Err(e) = aiq_core::control::set_paused(&paths, on, CLI_TIMEOUT) {
         eprintln!("Could not change the pause setting: {e}");
         return ExitCode::from(1);
     }
-    // Best effort: the core records the change now, or reconciles with the flag file when it next starts.
-    let value = if on { "true" } else { "false" };
-    let _ = ask_core(&paths, |token| Request::Setting { token, key: "paused".into(), value: value.into() });
     println!(
         "{}",
         if on {
@@ -303,18 +289,16 @@ pub fn config_set(name: &str, value: &str) -> ExitCode {
         println!("{NOT_RUNNING}");
         return ExitCode::from(1);
     }
-    let r = ask_core(&paths, |token| Request::Setting { token, key: key.into(), value: value.into() })
-        .and_then(|l| serde_json::from_str::<OkReply>(&l).ok());
-    match r {
-        Some(OkReply { ok: true, .. }) => {
+    match aiq_core::control::set_setting(&paths, key, value, CLI_TIMEOUT) {
+        Ok(()) => {
             println!("{done}");
             ExitCode::SUCCESS
         }
-        Some(OkReply { message, .. }) => {
-            println!("Not changed: {}", message.unwrap_or_default());
+        Err(ControlError::Refused(message)) => {
+            println!("Not changed: {message}");
             ExitCode::from(2)
         }
-        None => {
+        Err(_) => {
             println!("{NOT_RUNNING}");
             ExitCode::from(1)
         }
@@ -338,13 +322,10 @@ pub fn forget_all(yes: bool) -> ExitCode {
         println!("Nothing deleted.");
         return ExitCode::SUCCESS;
     }
-    let via_core =
-        ask_core(&paths, |token| Request::Forget { token }).and_then(|l| serde_json::from_str::<OkReply>(&l).ok());
-    let r = match via_core {
-        Some(OkReply { ok: true, .. }) => Ok(()),
-        Some(OkReply { message, .. }) => Err(message.unwrap_or_default()),
-        None => server::forget_files(&paths).map_err(|e| e.to_string()),
-    };
+    let r = aiq_core::control::forget_all(&paths, CLI_TIMEOUT).map_err(|e| match e {
+        ControlError::Refused(m) | ControlError::Io(m) => m,
+        ControlError::NotRunning => NOT_RUNNING.to_owned(),
+    });
     match r {
         Ok(()) => {
             println!("Deleted. AIQ starts fresh with your next Claude Code prompt.");
