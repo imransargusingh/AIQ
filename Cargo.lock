@@ -78,6 +78,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "aiq-home"
+version = "0.1.0"
+dependencies = [
+ "aiq-contracts",
+ "aiq-core",
+ "aiq-domain",
+ "aiq-store",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "aiq-store"
 version = "0.1.0"
 dependencies = [

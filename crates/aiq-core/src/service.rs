@@ -162,6 +162,8 @@ impl<C: Clock> Service<C> {
                     "truncated": p.truncated,
                     "file_mentions": f.as_ref().map_or(0, |f| f.mentions.len()),
                     "pasted": f.as_ref().is_some_and(|f| f.pasted),
+                    // Read by AIQ home's Tasks page (design aiq-home-app D7). Non-content: the working folder.
+                    "folder": ev.cwd.as_deref().map(folder_key).filter(|k| !k.is_empty()),
                 });
                 (p.prompt_id.as_deref(), p.text.as_deref(), Some(p.chars as i64), meta)
             }

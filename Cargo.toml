@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/aiq-contracts", "crates/aiq-domain", "crates/aiq-store", "crates/aiq-core", "crates/aiq"]
+members = ["crates/aiq-contracts", "crates/aiq-domain", "crates/aiq-store", "crates/aiq-core", "crates/aiq-home", "crates/aiq"]
 exclude = ["prototypes"]
 
 [workspace.package]
@@ -15,6 +15,7 @@ aiq-contracts = { path = "crates/aiq-contracts" }
 aiq-domain = { path = "crates/aiq-domain" }
 aiq-store = { path = "crates/aiq-store" }
 aiq-core = { path = "crates/aiq-core" }
+aiq-home = { path = "crates/aiq-home" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 toml = "0.9"
