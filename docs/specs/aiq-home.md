@@ -35,7 +35,7 @@ view and the opportunity view in AIQ home" out of scope ("own spec"), and `coach
 | Q2 | Which screens ship in the alpha app? | Scope, IA, effort | **Decided (Imran, 2026-11-01): all six.** Setup, Home, Task detail, Habits and tips, Your data, Settings. Sharing shown as off with a preview only |
 | Q3 | Default time window for Home? | Every number on Home | **Decided (Imran, 2026-11-01): last 30 days, with a weekly trend line** |
 | Q4 | Show an estimated time saved per opportunity? | Opportunity rows, trust | **Decided (Imran, 2026-11-01): no.** Show how often the task happens (times per week) instead |
-| Q5 | Ask for the API key during setup, or when the first rung view is ready? | Setup flow, first-run drop-off | Offer it in setup but allow skip; tips work without it; ask again when the first rung view has enough tasks |
+| Q5 | Ask for the API key during setup, or when the first rung view is ready? | Setup flow, first-run drop-off | **Decided (Imran, 2026-11-01): mostly no key at all.** The Claude judge runs through the person's own signed-in Claude Code (`claude -p`); AIQ never reads Claude Code's credentials. Setup detects that Claude Code is signed in. Only if it isn't, setup offers the API-key step (detect `ANTHROPIC_API_KEY` first; skippable; tips work without it). Copilot work is judged through VS Code's language model API. Supersedes the key-only credential rule in ADR-0007 (H11) |
 | Q6 | Is there a full task list, or only the top opportunities? | IA, navigation | A Tasks page listing recurring task groups, sortable by how often and by gap |
 
 ## Part A — Functional specification
@@ -76,7 +76,7 @@ rung is judged (`rung-model.md`); sync across devices; weekly summary emails.
 | H8 | Lost machine means lost history; stated at setup | Imran, 2026-10-31 |
 | H9 | Daily tip limit 1, 3 or 5, default 5, set at setup and in Settings | coaching-loop D3 |
 | H10 | Habit states Not yet / Tried / Adopted (rule D5) | coaching-loop D5 |
-| H11 | Judge uses the person's own Anthropic API key (keychain) or VS Code's language model API; work-account caveat shown at setup | ADR-0007 |
+| H11 | Judge runs under the person's own account: their signed-in Claude Code (`claude -p`), else their own API key; Copilot via VS Code's language model API; work-account caveat shown at setup | ADR-0007, amended by Q5 (Imran, 2026-11-01). Basis: Claude Code legal-and-compliance page allows signing in to unmodified Claude Code with one's own plan |
 | H12 | Keyboard-first UI style | coaching-loop |
 | H13 | AIQ home is a Tauri desktop app with a React UI; no server holds user data | ADR-0004 |
 
