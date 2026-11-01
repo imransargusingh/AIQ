@@ -46,20 +46,24 @@ test("realCore_vscodeAgentTurnReachesExtension", { skip: !bin && "AIQ_BIN not se
   try {
     const ep = await loadEndpoint(bin!);
     for (let i = 0; i < 200 && !(await request(ep, { op: "status" })); i++) await new Promise((r) => setTimeout(r, 25));
-    for (const prompt of [
+    for (const [i, prompt] of [
       "refactor the login handler to return typed errors",
       "refactor login handler so it returns typed errors",
       "login handler refactor: return typed errors please",
       "please refactor the login handler, typed errors returned",
-    ]) hook("userPromptSubmitted", { sessionId: "v1", timestamp: Date.now(), cwd: "/repo", prompt });
-    hook("agentStop", { sessionId: "v1", timestamp: Date.now(), stopReason: "end_turn", transcriptPath: "/t" });
+    ].entries()) {
+      // VS Code agent mode can open a new Copilot session for every turn (probe run 2): one session per prompt.
+      const sessionId = `v${i}`;
+      hook("userPromptSubmitted", { sessionId, timestamp: Date.now(), cwd: "/repo", prompt });
+      hook("agentStop", { sessionId, timestamp: Date.now(), stopReason: "end_turn", transcriptPath: "/t" });
+    }
     let card = null;
     for (let i = 0; i < 200 && !card; i++) {
       card = await coreClient(ep).takeCard();
       if (!card) await new Promise((r) => setTimeout(r, 25));
     }
     assert.ok(card, "the VS Code turn's tip reaches the extension");
-    const line = spawnSync(bin!, ["statusline", "copilot"], { env, input: JSON.stringify({ session_id: "v1" }) });
+    const line = spawnSync(bin!, ["statusline", "copilot"], { env, input: JSON.stringify({ session_id: "v3" }) });
     assert.equal(line.stdout.toString(), "", "and never the Copilot CLI status line");
   } finally {
     core.kill();

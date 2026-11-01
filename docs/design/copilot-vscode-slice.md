@@ -434,6 +434,15 @@ US-12, H4), decided at a session's first prompt:
 - `simplify:` sessions before the rule fires in a new folder (≤ 10 for T, ≤ 49 for B) are recorded; they
   have one prompt each, so no tip can come from them. Upgrade trigger: task views or the judge queue read them.
 
+## Follow-up: reword detector v2 (2026-11-01)
+- **Stemming:** content words lose plural and "-ing"/"-ed" endings before comparison ("errors"/"error",
+  "handled"/"handling"), so inflected rewords clear the 0.6 bar. A word keeps a vowel before "-ing"/"-ed"
+  comes off ("string" stays whole). Paraphrases with different words still miss; that needs the model judge.
+- **VS Code spans sessions:** pack `span_surfaces = ["vscode"]` makes all VS Code sessions one stream for the
+  Task rule (idle gap 30 minutes still splits), because agent mode can open a new Copilot session every turn.
+  The card belongs to the session of the prompt that fired and is delivered after that session's stop.
+- `detector_version = 2` in the pack, so signals record which rule produced them.
+
 ## Conformance notes
 LOA F hot path (no model, no network, fail-open). Deviations: `seq` null for Copilot too; extension
 uses polling (`simplify:`); `DESIGN.md` not applicable (host-themed surfaces).
