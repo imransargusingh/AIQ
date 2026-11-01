@@ -8,6 +8,8 @@ pub const SPOOL_BAD_LINE: &str = "AIQ-SPOOL-BAD-LINE";
 pub const API_AUTH: &str = "AIQ-API-AUTH";
 pub const INGEST_SHAPE: &str = "AIQ-INGEST-SHAPE";
 pub const INGEST_BACKPRESSURE: &str = "AIQ-INGEST-BACKPRESSURE";
+/// A prompt or stop of an automated session (import spec US-12): recorded nothing.
+pub const INGEST_AUTOMATED: &str = "AIQ-INGEST-AUTOMATED";
 pub const DELIVERY_CONFLICT: &str = "AIQ-DELIVERY-CONFLICT";
 pub const STORE_OPEN: &str = "AIQ-STORE-OPEN";
 pub const STORE_MIGRATION: &str = "AIQ-STORE-MIGRATION";
@@ -27,6 +29,7 @@ pub const ALL: &[&str] = &[
     API_AUTH,
     INGEST_SHAPE,
     INGEST_BACKPRESSURE,
+    INGEST_AUTOMATED,
     DELIVERY_CONFLICT,
     STORE_OPEN,
     STORE_MIGRATION,

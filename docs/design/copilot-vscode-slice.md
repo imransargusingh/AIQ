@@ -417,6 +417,23 @@ D6 (Copilot payload goldens from the 2026-10-31 probe + P2 status-line payload; 
   `COPILOT_LOADER_PID`, `COPILOT_HOOK_DIR`, `COPILOT_CLI_BINARY_VERSION`, which CLI hooks carry. AIQ
   uses `COPILOT_CLI_RUN_AS_NODE` and not `COPILOT_LOADER_PID`. *Verified (run, one VS Code turn).*
 
+## Follow-up: automated sessions ignored live (2026-11-01)
+Copilot hooks are user-level, so an app's pipeline that calls Copilot (Executive_Presence, ~6,000
+sessions) would reach AIQ. Live side of the import spec's automated rule ([history import](../specs/history-import.md),
+US-12, H4), decided at a session's first prompt:
+
+- **NI (Claude Code, in the hook):** `CLAUDE_CODE_ENTRYPOINT` starting `sdk` (a `claude -p` / SDK run)
+  records nothing. `assume:` hooks inherit it like other children of Claude Code; if not, B/T still apply.
+- **B / T (core, every surface):** 50+ sessions started in one folder within 30 minutes, or the same
+  normalized first prompt in 11+ sessions there within 24 hours. The folder is then **set aside**
+  (`folder_rule`, schema v3, append-only; newest row per folder wins; shared with import).
+- **F:** later sessions in a set-aside folder are ignored at their first prompt. **H ≥ 2:** a second
+  prompt means a person, so AIQ records the session from then on.
+- Hooks now send the host's `cwd` in the event (optional `cwd`, not stored per event).
+- `aiq status` names set-aside folders and how many prompts were ignored; `aiq include <folder>` undoes it.
+- `simplify:` sessions before the rule fires in a new folder (≤ 10 for T, ≤ 49 for B) are recorded; they
+  have one prompt each, so no tip can come from them. Upgrade trigger: task views or the judge queue read them.
+
 ## Conformance notes
 LOA F hot path (no model, no network, fail-open). Deviations: `seq` null for Copilot too; extension
 uses polling (`simplify:`); `DESIGN.md` not applicable (host-themed surfaces).

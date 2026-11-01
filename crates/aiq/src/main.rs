@@ -30,7 +30,7 @@ Usage:
   aiq config set copilot-tip-stays <next-prompt|two-prompts-or-5-min|until-opened>
                                       How long a tip stays in Copilot CLI's status line
   aiq import [--dry-run]              Add your past Claude Code and Copilot CLI sessions to AIQ
-  aiq import --include <folder>       Import a folder whose sessions were set aside as automated
+  aiq include <folder>                Watch a folder AIQ set aside as automated (an app or script's runs)
   aiq forget --imported [--yes]       Delete only what aiq import added
   aiq forget --all [--yes]            Delete everything AIQ stored on this machine
   aiq core                            Run the background core in this terminal
@@ -54,6 +54,7 @@ fn main() -> ExitCode {
         ["pause", ..] => cli::pause(true),
         ["resume", ..] => cli::pause(false),
         ["config", "set", name, value, ..] => cli::config_set(name, value),
+        ["include", folder, ..] => cli::include_folder(folder),
         ["statusline", "copilot", ..] => statusline::run(),
         ["endpoint", ..] => {
             println!("{}", aiq_core::paths::Paths::from_env().endpoint_json());

@@ -5,13 +5,15 @@
 use aiq_contracts::codes;
 use aiq_domain::clock::{Now, local_day};
 use rusqlite::{Connection, OptionalExtension, params};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 pub const SCHEMA_V1: &str = include_str!("schema_v1.sql");
 pub const SCHEMA_V2: &str = include_str!("schema_v2.sql");
 pub const SCHEMA_V3: &str = include_str!("schema_v3.sql");
+pub const SCHEMA_V4: &str = include_str!("schema_v4.sql");
 /// Migration N takes the store from `user_version` N to N+1, in one transaction.
-pub const MIGRATIONS: &[&str] = &[SCHEMA_V1, SCHEMA_V2, SCHEMA_V3];
+pub const MIGRATIONS: &[&str] = &[SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4];
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StoreError {
@@ -67,10 +69,28 @@ pub struct ImportedSession {
     pub folder: String,
     pub started_utc_ms: Option<i64>,
     pub human_turns: u32,
+    pub non_interactive: Option<bool>,
+    /// Stable hash of the normalised first prompt (the automated rule's template signal).
+    pub template_key: Option<i64>,
     /// `imported`, `automated` or `error`.
     pub outcome: String,
     pub why: String,
     pub events: Vec<ImportedEvent>,
+}
+
+/// What an earlier run stored about one source session: enough to re-apply the automated rule
+/// without re-reading the file.
+#[derive(Debug, Clone, PartialEq)]
+pub struct KnownImport {
+    pub tool: String,
+    pub source_session_id: String,
+    pub source_mtime_ms: i64,
+    pub folder: String,
+    pub started_utc_ms: Option<i64>,
+    pub human_turns: u32,
+    pub non_interactive: Option<bool>,
+    pub template_key: Option<i64>,
+    pub outcome: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -400,6 +420,64 @@ impl Store {
             .map_err(err(codes::STORE_OPEN))
     }
 
+    pub fn insert_folder_rule(
+        &self,
+        folder: &str,
+        action: &str,
+        reason: &str,
+        source: &str,
+        now_ms: i64,
+    ) -> Result<()> {
+        self.conn
+            .execute(
+                "INSERT INTO folder_rule (folder, action, reason, source, utc_ms) VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![folder, action, reason, source, now_ms],
+            )
+            .map(|_| ())
+            .map_err(err(codes::STORE_WRITE))
+    }
+
+    /// Folders set aside now: the newest rule per folder is `set_aside`. (folder, reason, utc_ms), newest first.
+    pub fn set_aside_folders(&self) -> Result<Vec<(String, String, i64)>> {
+        let mut st = self
+            .conn
+            .prepare(
+                "SELECT folder, reason, utc_ms FROM folder_rule r WHERE action = 'set_aside' AND rule_id = \
+                 (SELECT MAX(rule_id) FROM folder_rule WHERE folder = r.folder) ORDER BY rule_id DESC",
+            )
+            .map_err(err(codes::STORE_OPEN))?;
+        let rows = st
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .map_err(err(codes::STORE_OPEN))?
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(err(codes::STORE_OPEN))?;
+        Ok(rows)
+    }
+
+    /// Every folder's current rule: the newest action per folder (`set_aside` or `include`).
+    pub fn folder_rules_now(&self) -> Result<HashMap<String, String>> {
+        let mut st = self
+            .conn
+            .prepare(
+                "SELECT folder, action FROM folder_rule r WHERE rule_id = \
+                 (SELECT MAX(rule_id) FROM folder_rule WHERE folder = r.folder)",
+            )
+            .map_err(err(codes::STORE_OPEN))?;
+        let rows = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?))).map_err(err(codes::STORE_OPEN))?;
+        rows.collect::<std::result::Result<_, _>>().map_err(err(codes::STORE_OPEN))
+    }
+
+    /// The store already holds events for this session.
+    pub fn session_known(&self, surface: &str, session: &str) -> Result<bool> {
+        self.conn
+            .query_row(
+                "SELECT EXISTS (SELECT 1 FROM surface_session WHERE surface = ?1 AND surface_session_id = ?2)",
+                params![surface, session],
+                |r| r.get(0),
+            )
+            .map_err(err(codes::STORE_OPEN))
+    }
+
     pub fn insert_open(&self, card_id: &str, surface: &str, now_ms: i64) -> Result<()> {
         self.conn
             .execute(
@@ -558,16 +636,32 @@ impl Store {
         rows.collect::<std::result::Result<_, _>>().map_err(err(codes::STORE_OPEN))
     }
 
-    /// Source mtime of a session as last imported, or None if never read.
-    pub fn import_mtime(&self, tool: &str, source_session_id: &str) -> Result<Option<i64>> {
-        self.conn
-            .query_row(
-                "SELECT source_mtime_ms FROM import_session WHERE tool = ?1 AND source_session_id = ?2",
-                params![tool, source_session_id],
-                |r| r.get(0),
+    /// Every source session an earlier run stored.
+    pub fn known_imports(&self) -> Result<Vec<KnownImport>> {
+        let mut st = self
+            .conn
+            .prepare(
+                "SELECT tool, source_session_id, source_mtime_ms, folder, started_utc_ms, human_turns, non_interactive,
+                        template_key, outcome
+                 FROM import_session",
             )
-            .optional()
-            .map_err(err(codes::STORE_OPEN))
+            .map_err(err(codes::STORE_OPEN))?;
+        let rows = st
+            .query_map([], |r| {
+                Ok(KnownImport {
+                    tool: r.get(0)?,
+                    source_session_id: r.get(1)?,
+                    source_mtime_ms: r.get(2)?,
+                    folder: r.get(3)?,
+                    started_utc_ms: r.get(4)?,
+                    human_turns: r.get(5)?,
+                    non_interactive: r.get(6)?,
+                    template_key: r.get(7)?,
+                    outcome: r.get(8)?,
+                })
+            })
+            .map_err(err(codes::STORE_OPEN))?;
+        rows.collect::<std::result::Result<_, _>>().map_err(err(codes::STORE_OPEN))
     }
 
     /// Write one source session and its events, replacing what an earlier run stored for it.
@@ -580,8 +674,8 @@ impl Store {
         .map_err(err(codes::STORE_WRITE))?;
         tx.execute(
             "INSERT INTO import_session (tool, source_session_id, source_mtime_ms, run_id, folder, started_utc_ms,
-                                         human_turns, outcome, why)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                                         human_turns, non_interactive, template_key, outcome, why)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             params![
                 s.tool,
                 s.source_session_id,
@@ -590,6 +684,8 @@ impl Store {
                 s.folder,
                 s.started_utc_ms,
                 s.human_turns,
+                s.non_interactive,
+                s.template_key,
                 s.outcome,
                 s.why
             ],
@@ -644,14 +740,6 @@ impl Store {
             .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get::<_, i64>(2)? as u64)))
             .map_err(err(codes::STORE_OPEN))?;
         rows.collect::<std::result::Result<_, _>>().map_err(err(codes::STORE_OPEN))
-    }
-
-    /// Folders whose sessions were set aside as automated, with counts, largest first.
-    pub fn set_aside_folders(&self) -> Result<Vec<(String, u64)>> {
-        self.pairs(
-            "SELECT folder, count(*) AS n FROM import_session WHERE outcome = 'automated'
-             GROUP BY folder ORDER BY n DESC, folder",
-        )
     }
 
     pub fn last_import_ms(&self) -> Result<Option<i64>> {

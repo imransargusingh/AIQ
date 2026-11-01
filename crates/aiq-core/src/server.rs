@@ -77,6 +77,10 @@ pub enum Cmd {
         value: String,
         reply: mpsc::Sender<Result<(), String>>,
     },
+    IncludeFolder {
+        folder: String,
+        reply: mpsc::Sender<Result<(), String>>,
+    },
     DrainSpool,
     Shutdown {
         reply: mpsc::Sender<()>,
@@ -195,6 +199,14 @@ fn writer_loop(mut svc: Service<SystemClock>, rx: Receiver<Cmd>, paths: &Paths, 
             Cmd::Setting { key, value, reply } => {
                 let _ = reply.send(svc.set(&key, &value));
             }
+            Cmd::IncludeFolder { folder, reply } => {
+                let r = match svc.include_folder(&folder) {
+                    Ok(true) => Ok(()),
+                    Ok(false) => Err("that folder is not set aside".into()),
+                    Err(e) => Err(e.code.into()),
+                };
+                let _ = reply.send(r);
+            }
             Cmd::DrainSpool => {
                 drain_spool(paths, &mut svc, counters);
                 svc.prune();
@@ -307,6 +319,11 @@ pub fn dispatch(req: Request, tx: &SyncSender<Cmd>, counters: &Counters, receive
         }
         Request::Setting { key, value, .. } => {
             let r = ask(tx, |reply| Cmd::Setting { key, value, reply })
+                .unwrap_or_else(|| Err("core did not answer".into()));
+            Dispatch::Reply(to_line(&OkReply { ok: r.is_ok(), message: r.err() }))
+        }
+        Request::IncludeFolder { folder, .. } => {
+            let r = ask(tx, |reply| Cmd::IncludeFolder { folder, reply })
                 .unwrap_or_else(|| Err("core did not answer".into()));
             Dispatch::Reply(to_line(&OkReply { ok: r.is_ok(), message: r.err() }))
         }

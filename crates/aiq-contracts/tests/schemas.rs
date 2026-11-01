@@ -18,6 +18,7 @@ fn ev(body: EventBody) -> EventV1 {
         seq: None,
         ts: "2026-10-31T12:00:00Z".into(),
         collector_version: "0.1.0".into(),
+        cwd: None,
         body,
     }
 }

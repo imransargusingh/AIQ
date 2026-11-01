@@ -3,26 +3,23 @@
 //! Reads the transcripts the tools already keep on this machine, read-only:
 //!   Claude Code   `~/.claude/projects/<folder>/<session>.jsonl` (or `$CLAUDE_CONFIG_DIR`)
 //!   Copilot CLI   `~/.copilot/session-state/<session>/events.jsonl` (or `$COPILOT_HOME`)
-//! Automated sessions are set aside by the spec's rule (H4, no question asked). Everything else is
-//! stored in the import tables, which the live coaching loop never reads, so imports raise no cards (US-5).
+//! Automated sessions are set aside by the spec's rule (H4, no question asked). Folders where a burst or a
+//! repeated first prompt shows an app at work get the same `folder_rule` row the live hooks write, so live
+//! capture ignores them too (US-12), and `aiq include` undoes both. Everything else is stored in the import
+//! tables, which the live coaching loop never reads, so imports raise no cards (US-5).
 //! Judging imported tasks waits for the rung judge; nothing here calls a model or the network.
+use aiq_contracts::pack::AutomatedParams;
 use aiq_core::paths::Paths;
-use aiq_store::{ImportRunCounts, ImportedEvent, ImportedSession, Store};
+use aiq_domain::automated::{folder_key, template_of};
+use aiq_store::{ImportRunCounts, ImportedEvent, ImportedSession, KnownImport, Store};
 use serde_json::Value;
-use std::collections::hash_map::DefaultHasher;
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::hash::{Hash, Hasher};
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 pub const CLAUDE: &str = "claude-code";
 pub const COPILOT: &str = "copilot-cli";
-/// Template rule: a first prompt shared by this many sessions in one folder (spec: 11+).
-const TEMPLATE_MIN: usize = 11;
-/// Burst rule: this many sessions started in one folder within ±30 minutes.
-const BURST_MIN: usize = 50;
-const BURST_WINDOW_MS: i64 = 30 * 60 * 1000;
 /// Folder prior: a folder over this share automated takes its remaining one-prompt sessions too.
 const FOLDER_PRIOR: f64 = 0.8;
 const MAX_TEXT: usize = 64 * 1024;
@@ -47,6 +44,39 @@ impl Parsed {
     }
     fn first_prompt(&self) -> Option<&str> {
         self.events.iter().find(|e| e.kind == "prompt").and_then(|e| e.text.as_deref())
+    }
+    pub fn rule_input(&self, p: &AutomatedParams) -> RuleInput {
+        RuleInput {
+            folder: folder_key(&self.folder),
+            started_ms: self.started_ms,
+            human_turns: self.human_turns(),
+            non_interactive: self.non_interactive,
+            template: self.first_prompt().and_then(|t| template_hash(t, p)),
+        }
+    }
+}
+
+/// What the automated rule reads about one session. Stored with each imported session, so a re-run applies
+/// the rule to unchanged sessions without re-reading their files.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct RuleInput {
+    /// `automated::folder_key`: Windows paths compare case-insensitively.
+    pub folder: String,
+    pub started_ms: Option<i64>,
+    pub human_turns: u32,
+    pub non_interactive: Option<bool>,
+    pub template: Option<u64>,
+}
+
+impl From<&KnownImport> for RuleInput {
+    fn from(k: &KnownImport) -> Self {
+        RuleInput {
+            folder: folder_key(&k.folder),
+            started_ms: k.started_utc_ms,
+            human_turns: k.human_turns,
+            non_interactive: k.non_interactive,
+            template: k.template_key.map(|v| v as u64),
+        }
     }
 }
 
@@ -293,54 +323,26 @@ pub fn read(s: &Source) -> std::io::Result<Parsed> {
 
 // ------------------------------------------------------------------ automated rule
 
-/// Normalise a first prompt so runs of one template match: lower case, URLs, paths, GUIDs and numbers
-/// replaced, first 200 chars. None for an empty prompt (empty prompts never form a template group).
-pub fn template_key(prompt: &str) -> Option<u64> {
-    let toks: Vec<String> = prompt
-        .split_whitespace()
-        .map(|t| {
-            let t = t.to_lowercase();
-            if t.starts_with("http://") || t.starts_with("https://") {
-                "<url>".into()
-            } else if t.contains('/') || t.contains('\\') {
-                "<path>".into()
-            } else if t.len() >= 32 && t.chars().filter(|c| *c == '-').count() == 4 {
-                "<guid>".into()
-            } else {
-                let mut o = String::with_capacity(t.len());
-                for c in t.chars() {
-                    if c.is_ascii_digit() {
-                        if !o.ends_with('0') {
-                            o.push('0');
-                        }
-                    } else {
-                        o.push(c);
-                    }
-                }
-                o
-            }
-        })
-        .collect();
-    let s: String = toks.join(" ").chars().take(200).collect();
-    if s.is_empty() {
-        return None;
-    }
-    let mut h = DefaultHasher::new();
-    s.hash(&mut h);
-    Some(h.finish())
+/// A stable hash of the live side's template normalisation (`automated::template_of`). Stable across builds
+/// (FNV-1a, not std's `DefaultHasher`), because it is stored and compared with later runs' hashes.
+pub fn template_hash(prompt: &str, p: &AutomatedParams) -> Option<u64> {
+    let t = template_of(prompt, p.template_chars)?;
+    Some(t.bytes().fold(0xcbf2_9ce4_8422_2325_u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3)))
 }
 
-/// The spec's automated rule. Returns, per session index, the signals that set it aside (empty = kept).
-/// A session is automated when it has at most one human prompt AND a second signal:
-/// NI non-interactive start, T shared template (11+ in the folder), B burst (50+ in ±30 min in the folder),
-/// F folder prior (folder over 80% automated). `include` folders are never set aside ("Include them").
-pub fn automated(sessions: &[Parsed], include: &HashSet<String>) -> Vec<Vec<&'static str>> {
-    let keys: Vec<Option<u64>> = sessions.iter().map(|s| s.first_prompt().and_then(template_key)).collect();
+/// The spec's automated rule, over a whole history at once. Returns, per session, the signals that set it
+/// aside (empty = kept). A session is automated when it has at most one human prompt AND a second signal:
+/// NI non-interactive start, T shared first-prompt template (`template_sessions`+ in the folder),
+/// B burst (`burst_sessions`+ started in the folder within ±`burst_min` minutes),
+/// F folder prior (folder over 80% automated). Folders in `include` are never set aside ("Include them").
+/// The live side (`automated::Guard`) uses the same thresholds; T there counts within `template_window_h`
+/// because live it sees only recent sessions, while import sees the folder's whole history (the tested rule).
+pub fn automated(sessions: &[RuleInput], include: &HashSet<String>, p: &AutomatedParams) -> Vec<Vec<&'static str>> {
     let mut groups: HashMap<(&str, u64), usize> = HashMap::new();
     let mut starts: HashMap<&str, Vec<i64>> = HashMap::new();
-    for (s, k) in sessions.iter().zip(&keys) {
-        if let Some(k) = k {
-            *groups.entry((s.folder.as_str(), *k)).or_default() += 1;
+    for s in sessions {
+        if let Some(k) = s.template {
+            *groups.entry((s.folder.as_str(), k)).or_default() += 1;
         }
         if let Some(t) = s.started_ms {
             starts.entry(s.folder.as_str()).or_default().push(t);
@@ -349,24 +351,24 @@ pub fn automated(sessions: &[Parsed], include: &HashSet<String>) -> Vec<Vec<&'st
     for v in starts.values_mut() {
         v.sort_unstable();
     }
+    let window = i64::from(p.burst_min) * 60_000;
     let mut why: Vec<Vec<&'static str>> = sessions
         .iter()
-        .zip(&keys)
-        .map(|(s, k)| {
-            if s.human_turns() > 1 || include.contains(&s.folder.to_lowercase()) {
+        .map(|s| {
+            if s.human_turns > 1 || include.contains(&s.folder) {
                 return vec![];
             }
             let mut w = vec![];
             if s.non_interactive == Some(true) {
                 w.push("NI");
             }
-            if k.is_some_and(|k| groups[&(s.folder.as_str(), k)] >= TEMPLATE_MIN) {
+            if s.template.is_some_and(|k| groups[&(s.folder.as_str(), k)] >= p.template_sessions as usize) {
                 w.push("T");
             }
             if let (Some(t), Some(v)) = (s.started_ms, starts.get(s.folder.as_str())) {
-                let lo = v.partition_point(|x| *x < t - BURST_WINDOW_MS);
-                let hi = v.partition_point(|x| *x <= t + BURST_WINDOW_MS);
-                if hi - lo >= BURST_MIN {
+                let lo = v.partition_point(|x| *x < t - window);
+                let hi = v.partition_point(|x| *x <= t + window);
+                if hi - lo >= p.burst_sessions as usize {
                     w.push("B");
                 }
             }
@@ -379,14 +381,10 @@ pub fn automated(sessions: &[Parsed], include: &HashSet<String>) -> Vec<Vec<&'st
         e.0 += 1;
         e.1 += usize::from(!w.is_empty());
     }
-    for (i, s) in sessions.iter().enumerate() {
+    for (s, w) in sessions.iter().zip(why.iter_mut()) {
         let (n, a) = per_folder[s.folder.as_str()];
-        if why[i].is_empty()
-            && s.human_turns() <= 1
-            && !include.contains(&s.folder.to_lowercase())
-            && a as f64 / n as f64 > FOLDER_PRIOR
-        {
-            why[i].push("F");
+        if w.is_empty() && s.human_turns <= 1 && !include.contains(&s.folder) && a as f64 / n as f64 > FOLDER_PRIOR {
+            w.push("F");
         }
     }
     why
@@ -394,12 +392,22 @@ pub fn automated(sessions: &[Parsed], include: &HashSet<String>) -> Vec<Vec<&'st
 
 // ------------------------------------------------------------------ run
 
+/// Folders whose sessions this run set aside: (sessions set aside, reason the folder rule records).
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct SetAside {
+    pub sessions: u64,
+    /// `template` or `burst` when the folder shows an app at work (it gets a `folder_rule`, and
+    /// `aiq include` applies); None when only single sessions were automated (e.g. `claude -p` runs).
+    pub folder_reason: Option<&'static str>,
+}
+
 #[derive(Debug, Default)]
 pub struct Report {
     pub counts: ImportRunCounts,
     /// Per tool: (found, imported, automated, unchanged, errors).
     pub by_tool: BTreeMap<&'static str, [u64; 5]>,
-    pub set_aside: BTreeMap<String, u64>,
+    /// Keyed by folder key. Only sessions this run stored as automated.
+    pub set_aside: BTreeMap<String, SetAside>,
 }
 
 /// Session ids AIQ's own judge started (`~/.aiq/judge-sessions.txt`, US-11); never imported.
@@ -409,77 +417,101 @@ fn judge_ids(paths: &Paths) -> HashSet<String> {
         .unwrap_or_default()
 }
 
-pub fn include_folders(store: &Store) -> HashSet<String> {
-    store
-        .setting("import.include_folders")
-        .ok()
-        .flatten()
-        .and_then(|v| serde_json::from_str::<Vec<String>>(&v).ok())
-        .unwrap_or_default()
-        .into_iter()
-        .map(|f| f.to_lowercase())
-        .collect()
-}
-
-/// Read every source, apply the rule over all of them (the rule needs folder-wide counts), and write the
-/// sessions that are new or changed since the last run. `dry_run` writes nothing.
+/// Read the sources that are new or changed, apply the rule over all sessions (it needs folder-wide counts),
+/// and write the new or changed ones. A folder the person included (`aiq include`) is never set aside, and
+/// its sessions an earlier run set aside are read again and imported. `dry_run` writes nothing.
 pub fn run(
     store: &mut Store,
     sources: &[Source],
     skip_ids: &HashSet<String>,
-    include: &HashSet<String>,
+    p: &AutomatedParams,
     dry_run: bool,
     started_ms: i64,
 ) -> aiq_store::Result<Report> {
     let mut rep = Report::default();
-    let mut parsed = Vec::with_capacity(sources.len());
+    let rules = store.folder_rules_now()?;
+    let include: HashSet<String> = rules.iter().filter(|(_, a)| *a == "include").map(|(f, _)| f.clone()).collect();
+    let known: HashMap<(String, String), KnownImport> =
+        store.known_imports()?.into_iter().map(|k| ((k.tool.clone(), k.source_session_id.clone()), k)).collect();
+    // (tool, the file read this run or None when unchanged since the last run, rule input)
+    let mut rows: Vec<(&'static str, Option<Parsed>, RuleInput)> = Vec::with_capacity(sources.len());
     let mut failed = Vec::new();
     for s in sources.iter().filter(|s| !skip_ids.contains(&s.id)) {
-        let t = rep.by_tool.entry(s.tool).or_default();
-        t[0] += 1;
-        match read(s) {
-            Ok(p) => parsed.push(p),
-            Err(_) => failed.push(s),
+        rep.by_tool.entry(s.tool).or_default()[0] += 1;
+        match known.get(&(s.tool.to_owned(), s.id.clone())) {
+            Some(k)
+                if k.source_mtime_ms == s.mtime_ms
+                    && !(k.outcome == "automated" && include.contains(&folder_key(&k.folder))) =>
+            {
+                rows.push((s.tool, None, RuleInput::from(k)));
+            }
+            _ => match read(s) {
+                Ok(parsed) => {
+                    let input = parsed.rule_input(p);
+                    rows.push((s.tool, Some(parsed), input));
+                }
+                Err(_) => failed.push(s.tool),
+            },
         }
     }
-    let why = automated(&parsed, include);
-    let run_id = uuid::Uuid::now_v7().to_string();
-    for (p, w) in parsed.iter().zip(why) {
-        let t = rep.by_tool.entry(p.tool).or_default();
-        let auto = !w.is_empty();
-        if auto {
-            *rep.set_aside.entry(p.folder.clone()).or_default() += 1;
+    let inputs: Vec<RuleInput> = rows.iter().map(|r| r.2.clone()).collect();
+    let why = automated(&inputs, &include, p);
+    // Folders where a burst or a template fired get the live side's folder rule (template wins, as live).
+    let mut folder_reason: HashMap<&str, &'static str> = HashMap::new();
+    for (i, w) in inputs.iter().zip(&why) {
+        let r = if w.contains(&"T") {
+            "template"
+        } else if w.contains(&"B") {
+            "burst"
+        } else {
+            continue;
+        };
+        let e = folder_reason.entry(i.folder.as_str()).or_insert(r);
+        if r == "template" {
+            *e = r;
         }
-        if store.import_mtime(p.tool, &p.id)? == Some(p.mtime_ms) && !include.contains(&p.folder.to_lowercase()) {
+    }
+    let run_id = uuid::Uuid::now_v7().to_string();
+    for ((tool, parsed, input), w) in rows.iter().zip(&why) {
+        let t = rep.by_tool.entry(tool).or_default();
+        let Some(parsed) = parsed else {
             t[3] += 1;
             continue;
-        }
-        if p.human_turns() == 0 {
+        };
+        if input.human_turns == 0 {
             t[3] += 1; // nothing typed: nothing to import (e.g. an empty or aborted session)
             continue;
         }
+        let auto = !w.is_empty();
         t[if auto { 2 } else { 1 }] += 1;
+        if auto {
+            let e = rep.set_aside.entry(input.folder.clone()).or_default();
+            e.sessions += 1;
+            e.folder_reason = folder_reason.get(input.folder.as_str()).copied();
+        }
         if dry_run {
             continue;
         }
         store.put_import_session(
             &run_id,
             &ImportedSession {
-                tool: p.tool.to_owned(),
-                source_session_id: p.id.clone(),
-                source_mtime_ms: p.mtime_ms,
-                folder: p.folder.clone(),
-                started_utc_ms: p.started_ms,
-                human_turns: p.human_turns(),
+                tool: (*tool).to_owned(),
+                source_session_id: parsed.id.clone(),
+                source_mtime_ms: parsed.mtime_ms,
+                folder: parsed.folder.clone(),
+                started_utc_ms: parsed.started_ms,
+                human_turns: input.human_turns,
+                non_interactive: input.non_interactive,
+                template_key: input.template.map(|v| v as i64),
                 outcome: if auto { "automated" } else { "imported" }.into(),
                 why: w.join(","),
                 // Set-aside sessions keep no content: only the fact that they were seen.
-                events: if auto { vec![] } else { p.events.clone() },
+                events: if auto { vec![] } else { parsed.events.clone() },
             },
         )?;
     }
-    for s in failed {
-        rep.by_tool.entry(s.tool).or_default()[4] += 1;
+    for tool in failed {
+        rep.by_tool.entry(tool).or_default()[4] += 1;
     }
     for t in rep.by_tool.values() {
         rep.counts.found += t[0];
@@ -489,6 +521,12 @@ pub fn run(
         rep.counts.errors += t[4];
     }
     if !dry_run {
+        // A folder with no rule yet gets one; a person's `include` or an existing set-aside is left alone.
+        for (folder, reason) in &folder_reason {
+            if !rules.contains_key(*folder) {
+                store.insert_folder_rule(folder, "set_aside", reason, "import", now_ms())?;
+            }
+        }
         store.insert_import_run(&run_id, started_ms, now_ms(), &rep.counts)?;
     }
     Ok(rep)
@@ -516,10 +554,18 @@ pub fn render(rep: &Report, dry_run: bool) -> String {
         out += "No Claude Code or Copilot CLI sessions found on this machine.\n";
     }
     let mut aside: Vec<_> = rep.set_aside.iter().collect();
-    aside.sort_by(|a, b| b.1.cmp(a.1).then(a.0.cmp(b.0)));
-    for (folder, n) in aside.iter().take(10) {
-        out +=
-            &format!("{folder}: {n} automated sessions set aside. Include them: aiq import --include \"{folder}\"\n");
+    aside.sort_by(|a, b| b.1.sessions.cmp(&a.1.sessions).then(a.0.cmp(b.0)));
+    for (folder, s) in aside.iter().take(10) {
+        out += &match s.folder_reason {
+            Some(_) => format!(
+                "{folder}: {} automated sessions set aside; AIQ ignores this folder's app runs from now on. \
+                 If that is your own work: aiq include \"{folder}\", then aiq import\n",
+                s.sessions
+            ),
+            None => {
+                format!("{folder}: {} sessions started by a script (one prompt, no one typing) set aside\n", s.sessions)
+            }
+        };
     }
     out += "Imported sessions show in your history; they never raise tips. Remove them with: aiq forget --imported\n";
     out
@@ -544,7 +590,7 @@ fn open_store(paths: &Paths) -> Result<Store, ExitCode> {
     })
 }
 
-/// `aiq import [--dry-run] [--include <folder>]`
+/// `aiq import [--dry-run]`
 pub fn cli(args: &[&str]) -> ExitCode {
     let paths = Paths::from_env();
     let mut store = match open_store(&paths) {
@@ -552,27 +598,15 @@ pub fn cli(args: &[&str]) -> ExitCode {
         Err(c) => return c,
     };
     let dry_run = args.contains(&"--dry-run");
-    if let Some(i) = args.iter().position(|a| *a == "--include") {
-        let Some(folder) = args.get(i + 1) else {
-            eprintln!("Usage: aiq import --include <folder>");
-            return ExitCode::from(2);
-        };
-        let mut v: Vec<String> = include_folders(&store).into_iter().collect();
-        if !v.contains(&folder.to_lowercase()) {
-            v.push(folder.to_lowercase());
-        }
-        v.sort();
-        if let Err(e) =
-            store.set_setting("import.include_folders", &serde_json::to_string(&v).unwrap_or_default(), now_ms())
-        {
-            eprintln!("Could not save the setting ({}).", e.code);
+    let params = match aiq_domain::PackSource::load(&aiq_core::pack::BundledPack) {
+        Ok(pack) => pack.automated,
+        Err(e) => {
+            eprintln!("Could not load AIQ's rules: {e}");
             return ExitCode::from(1);
         }
-        println!("{folder}: its sessions will be imported as your own work.");
-    }
+    };
     let sources = discover(&tool_home("CLAUDE_CONFIG_DIR", ".claude"), &tool_home("COPILOT_HOME", ".copilot"));
-    let include = include_folders(&store);
-    match run(&mut store, &sources, &judge_ids(&paths), &include, dry_run, now_ms()) {
+    match run(&mut store, &sources, &judge_ids(&paths), &params, dry_run, now_ms()) {
         Ok(rep) => {
             print!("{}", render(&rep, dry_run));
             ExitCode::SUCCESS
@@ -721,6 +755,12 @@ mod tests {
         }
     }
 
+    fn rule(v: &[Parsed], include: &[&str]) -> Vec<Vec<&'static str>> {
+        let p = AutomatedParams::default();
+        let inputs: Vec<RuleInput> = v.iter().map(|s| s.rule_input(&p)).collect();
+        automated(&inputs, &include.iter().map(|f| folder_key(f)).collect(), &p)
+    }
+
     #[test]
     fn rule_sets_aside_templates_bursts_and_sdk_runs_but_never_multi_turn_work() {
         let hour = 3_600_000;
@@ -741,13 +781,12 @@ mod tests {
         v.push(sess("work", &["Extract record 1 from https://x/1"], 0, Some(true))); // NI
         v.push(sess("work", &["fix the build", "now run tests"], 0, Some(true))); // two prompts: kept
         v.push(sess("work", &["a one-off question"], 0, None)); // kept
-        let why = automated(&v, &HashSet::new());
+        let why = rule(&v, &[]);
         assert!(why[..11].iter().all(|w| w.contains(&"T")));
         assert!(why[11..61].iter().all(|w| w.contains(&"B")));
         assert_eq!(why[61], vec!["NI"]);
         assert!(why[62].is_empty() && why[63].is_empty());
-        let inc: HashSet<String> = ["pipe".to_string()].into();
-        assert!(automated(&v, &inc)[..11].iter().all(Vec::is_empty));
+        assert!(rule(&v, &["pipe"])[..11].iter().all(Vec::is_empty));
     }
 
     #[test]
@@ -755,10 +794,37 @@ mod tests {
         let day = 24 * 3_600_000;
         let mut v: Vec<Parsed> = (0..11).map(|i| sess("p", &["run the nightly extract"], i * day, None)).collect();
         v.push(sess("p", &["something unique"], 40 * day, None));
-        let why = automated(&v, &HashSet::new());
-        assert_eq!(why[11], vec!["F"]);
-        assert_eq!(template_key("   "), None);
-        assert_eq!(template_key("Item 12 at C:\\x\\y"), template_key("item 7 at /tmp/z"));
+        assert_eq!(rule(&v, &[])[11], vec!["F"]);
+        let p = AutomatedParams::default();
+        assert_eq!(template_hash("   ", &p), None);
+        assert_eq!(template_hash("Item 12 at C:\\x\\y", &p), template_hash("item 7 at /tmp/z", &p));
+        // Stored hashes must stay comparable across builds: pin one value.
+        assert_eq!(template_hash("hello", &p), Some(0xa430_d846_80aa_bd0b));
+    }
+
+    #[test]
+    fn windows_folders_differing_only_in_case_are_one_folder() {
+        let day = 24 * 3_600_000;
+        let v: Vec<Parsed> = (0..11)
+            .map(|i| {
+                let f = if i % 2 == 0 { "C:\\Repos\\Foresight" } else { "c:\\repos\\foresight\\" };
+                sess(f, &["run the nightly extract"], i * day, None)
+            })
+            .collect();
+        assert!(rule(&v, &[]).iter().all(|w| w == &vec!["T"]));
+    }
+
+    #[test]
+    fn stored_rule_input_matches_the_file_read() {
+        let d = tempfile::tempdir().unwrap();
+        let (claude, copilot) = (d.path().join("claude"), d.path().join("copilot"));
+        claude_session(&claude, "C--repos-a", "sdk", "sdk-cli", &["Headless call 42"]);
+        let mut store = Store::open(&d.path().join("aiq.db")).unwrap();
+        let src = discover(&claude, &copilot);
+        let p = AutomatedParams::default();
+        run(&mut store, &src, &HashSet::new(), &p, false, 1).unwrap();
+        let k = &store.known_imports().unwrap()[0];
+        assert_eq!(RuleInput::from(k), read(&src[0]).unwrap().rule_input(&p));
     }
 
     #[test]
@@ -771,9 +837,12 @@ mod tests {
         let mut store = Store::open(&d.path().join("aiq.db")).unwrap();
         let src = discover(&claude, &copilot);
         let skip: HashSet<String> = ["judge".to_string()].into();
-        let rep = run(&mut store, &src, &skip, &HashSet::new(), false, 1).unwrap();
+        let p = AutomatedParams::default();
+        let rep = run(&mut store, &src, &skip, &p, false, 1).unwrap();
         assert_eq!(rep.by_tool[CLAUDE], [2, 1, 1, 0, 0]);
         assert!(!rep.by_tool.contains_key(COPILOT));
+        assert_eq!(rep.set_aside[&folder_key("C:\\repos\\a")], SetAside { sessions: 1, folder_reason: None });
+        assert!(store.set_aside_folders().unwrap().is_empty(), "a lone claude -p run sets no folder rule");
         let n: i64 = store
             .raw()
             .query_row("SELECT count(*) FROM import_event WHERE source_session_id = 'sdk'", [], |r| r.get(0))
@@ -782,13 +851,46 @@ mod tests {
         let live: i64 = store.raw().query_row("SELECT count(*) FROM event", [], |r| r.get(0)).unwrap();
         assert_eq!(live, 0);
         assert!(store.prompts_for_rebuild(0).unwrap().is_empty(), "imports never reach the detector");
-        let again = run(&mut store, &src, &skip, &HashSet::new(), false, 2).unwrap();
+        let again = run(&mut store, &src, &skip, &p, false, 2).unwrap();
         assert_eq!(again.by_tool[CLAUDE], [2, 0, 0, 2, 0]);
-        let dry = run(&mut store, &src, &skip, &HashSet::new(), true, 3).unwrap();
+        assert!(again.set_aside.is_empty(), "a re-run lists only what it set aside");
+        let dry = run(&mut store, &src, &skip, &p, true, 3).unwrap();
         assert_eq!(dry.counts.imported, 0);
         assert_eq!(store.import_counts().unwrap().len(), 2);
         assert_eq!(store.forget_imported().unwrap(), 2);
         assert!(store.import_counts().unwrap().is_empty());
         assert!(render(&rep, false).contains("1 imported, 1 set aside"));
+    }
+
+    #[test]
+    fn template_folder_gets_the_live_folder_rule_and_include_brings_its_sessions_in() {
+        let d = tempfile::tempdir().unwrap();
+        let (claude, copilot) = (d.path().join("claude"), d.path().join("copilot"));
+        for i in 0..11 {
+            let start = format!("2026-09-{:02}T10:00:00Z", i + 1);
+            copilot_session(
+                &copilot,
+                &format!("ep{i}"),
+                "C:\\Users\\X\\EP",
+                &start,
+                &[&format!("collect profile {i}")],
+            );
+        }
+        let mut store = Store::open(&d.path().join("aiq.db")).unwrap();
+        let src = discover(&claude, &copilot);
+        let p = AutomatedParams::default();
+        let dry = run(&mut store, &src, &HashSet::new(), &p, true, 1).unwrap();
+        assert!(store.set_aside_folders().unwrap().is_empty(), "a dry run writes no folder rule");
+        assert!(render(&dry, true).contains("aiq include \"c:\\users\\x\\ep\""));
+        let rep = run(&mut store, &src, &HashSet::new(), &p, false, 2).unwrap();
+        assert_eq!(rep.by_tool[COPILOT], [11, 0, 11, 0, 0]);
+        let rules = store.set_aside_folders().unwrap();
+        assert_eq!((rules[0].0.as_str(), rules[0].1.as_str()), ("c:\\users\\x\\ep", "template"));
+        run(&mut store, &src, &HashSet::new(), &p, false, 3).unwrap();
+        assert_eq!(store.set_aside_folders().unwrap().len(), 1, "no duplicate rule on a re-run");
+        store.insert_folder_rule("c:\\users\\x\\ep", "include", "person", "person", 4).unwrap();
+        let inc = run(&mut store, &src, &HashSet::new(), &p, false, 5).unwrap();
+        assert_eq!(inc.by_tool[COPILOT], [11, 11, 0, 0, 0]);
+        assert!(store.set_aside_folders().unwrap().is_empty(), "the person's include stands");
     }
 }

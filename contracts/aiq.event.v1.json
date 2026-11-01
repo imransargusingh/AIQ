@@ -13,6 +13,7 @@
     "seq": { "type": ["integer", "null"] },
     "ts": { "type": "string", "format": "date-time" },
     "collector_version": { "type": "string" },
+    "cwd": { "type": "string", "description": "Host working folder; optional. Used for the automated-session rule, not stored per event." },
     "kind": { "enum": ["prompt", "stop"] },
     "payload": { "type": "object" }
   },

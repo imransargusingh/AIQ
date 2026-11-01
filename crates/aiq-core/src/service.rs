@@ -8,6 +8,7 @@ use aiq_contracts::codes;
 use aiq_contracts::event::{EventBody, EventV1, MAX_SESSION_ID};
 use aiq_contracts::frames::{EvidencePrompt, ShowReply, StatusReply};
 use aiq_contracts::pack::PackV1;
+use aiq_domain::automated::{Guard, Verdict, folder_key};
 use aiq_domain::card::compose;
 use aiq_domain::clock::{Clock, deliveries_counted_today};
 use aiq_domain::job::{AlwaysUnclassified, JobClassifier};
@@ -31,6 +32,7 @@ pub struct Service<C: Clock> {
     clock: C,
     classifier: Box<dyn JobClassifier + Send>,
     counters: Arc<Counters>,
+    guard: Guard,
 }
 
 /// What the Copilot CLI status line shows.
@@ -48,8 +50,15 @@ fn new_id() -> String {
 impl<C: Clock> Service<C> {
     /// Build the service and rebuild the detector working set from stored prompts.
     pub fn new(store: Store, pack: PackV1, clock: C, counters: Arc<Counters>) -> Result<Self, StoreError> {
-        let mut s =
-            Self { engine: Engine::new(&pack), store, pack, clock, classifier: Box::new(AlwaysUnclassified), counters };
+        let mut s = Self {
+            engine: Engine::new(&pack),
+            store,
+            pack,
+            clock,
+            classifier: Box::new(AlwaysUnclassified),
+            counters,
+            guard: Guard::new(),
+        };
         s.rebuild()?;
         Ok(s)
     }
@@ -134,6 +143,10 @@ impl<C: Clock> Service<C> {
             self.counters.inc(codes::INGEST_SHAPE);
             return Ok(());
         }
+        if self.automated(ev)? {
+            self.counters.inc(codes::INGEST_AUTOMATED);
+            return Ok(()); // an app or script drove this session: record nothing (import spec US-12)
+        }
         let now = self.clock.now().utc_ms;
         let ts = parse_rfc3339_ms(&ev.ts).unwrap_or(now);
         let (prompt_id, text, chars, meta) = match &ev.body {
@@ -191,6 +204,51 @@ impl<C: Clock> Service<C> {
             self.on_signal(&ev.surface, &ev.surface_session_id, &sig, trace_id)?;
         }
         Ok(())
+    }
+
+    /// The automated-session rule, live side. True: record nothing for this event.
+    fn automated(&mut self, ev: &EventV1) -> Result<bool, StoreError> {
+        let (surface, session) = (ev.surface.as_str(), ev.surface_session_id.as_str());
+        let EventBody::Prompt(p) = &ev.body else { return Ok(self.guard.is_ignored(surface, session)) };
+        if !self.guard.is_ignored(surface, session) && self.store.session_known(surface, session)? {
+            return Ok(false); // not a first prompt, and not a session being ignored
+        }
+        let set_aside = match ev.cwd.as_deref().map(folder_key) {
+            Some(k) if !k.is_empty() => self.store.set_aside_folders()?.iter().any(|(f, _, _)| *f == k),
+            _ => false,
+        };
+        let now = self.clock.now().utc_ms;
+        let verdict = self.guard.on_prompt(
+            &self.pack.automated,
+            surface,
+            session,
+            ev.cwd.as_deref(),
+            p.text.as_deref(),
+            false,
+            set_aside,
+            now,
+        );
+        let Verdict::Ignore { reason, new_folder } = verdict else { return Ok(false) };
+        if let Some(folder) = new_folder {
+            self.store.insert_folder_rule(&folder, "set_aside", reason.as_str(), "live", now)?;
+            info!(aiq.reason = reason.as_str(), "folder set aside: automated sessions");
+        }
+        Ok(true)
+    }
+
+    /// Folders whose sessions AIQ ignores now, newest first: (folder, reason).
+    pub fn set_aside_folders(&self) -> Vec<(String, String)> {
+        self.store.set_aside_folders().unwrap_or_default().into_iter().map(|(f, r, _)| (f, r)).collect()
+    }
+
+    /// "Include them": the person says a set-aside folder is their own work. Returns false if it was not set aside.
+    pub fn include_folder(&mut self, folder: &str) -> Result<bool, StoreError> {
+        let k = folder_key(folder);
+        if !self.store.set_aside_folders()?.iter().any(|(f, _, _)| *f == k) {
+            return Ok(false);
+        }
+        self.store.insert_folder_rule(&k, "include", "person", "person", self.clock.now().utc_ms)?;
+        Ok(true)
     }
 
     fn on_signal(
@@ -436,6 +494,7 @@ impl<C: Clock> Service<C> {
             decisions: self.store.decisions().unwrap_or_default(),
             store_bytes: self.store.size_bytes(),
             core_counters: self.counters.snapshot(),
+            automated_folders: self.set_aside_folders(),
         }
     }
 
