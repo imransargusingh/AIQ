@@ -106,7 +106,7 @@ flowchart LR
   STORE -. key .- KEY
   HOME <--> API
   PK -- "HTTPS pull, verify signature" --> BE
-  RNG -- "judge call: own Anthropic API key / Copilot via vscode.lm" --> PROV["Person's AI provider\n(already saw the Task)"]
+  RNG -- "judge call: own claude -p (or own API key) / Copilot via vscode.lm" --> PROV["Person's AI provider\n(already saw the Task)"]
   PK --> DET
 ```
 
@@ -153,7 +153,7 @@ B2 pack content → core; B3 core → backend; B4 store at rest; B5 core → the
 | [0004](adr/0004-core-language.md) | Rust core, hook client and Tauri shell; TypeScript extension and UI | Accepted (Imran) |
 | [0005](adr/0005-collector-contract.md) | Collectors are fail-open, fire-and-forget, schema-versioned pipes | Proposed |
 | [0006](adr/0006-packs-as-signed-data.md) | Packs are signed data; code only in a WASM sandbox; caps and thresholds live in packs | Proposed |
-| [0007](adr/0007-rung-judge-via-own-account.md) | Rung judge runs through the person's own account (own Anthropic API key for Claude; Copilot via VS Code's model API); no on-device judge in alpha | Accepted (Imran) |
+| [0007](adr/0007-rung-judge-via-own-account.md) | Rung judge runs through the person's own account (the person's own `claude -p` for Claude, API key as fallback; Copilot via VS Code's model API); no on-device judge in alpha | Accepted (Imran) |
 
 ## Delivery phasing (vertical slices)
 | Phase | End-to-end capability | Real | Mocked (seam = contract) | Human validation | Test validation | Unblocks |
@@ -182,6 +182,7 @@ B2 pack content → core; B3 core → backend; B4 store at rest; B5 core → the
   install at user level only (`~/.copilot/hooks/`), and Claude Code hooks in user settings, never in
   a repo.
 - GitHub Copilot terms for the judge path: no blocker found; confirm against current product terms before alpha (ADR-0007).
+- Anthropic terms for `claude -p` judging: the terms page supports an end user using the unmodified binary on their own subscription but bars developers routing requests through plan credentials on users' behalf. Independent review or Anthropic confirmation owed before AIQ is given to others; fallback is the API key (ADR-0007).
 - Session-store formats are undocumented and can change. Owned by the Phase 0 spike thread.
 - Task grouping and Job classification accuracy unproven (spec risks).
 
@@ -195,7 +196,7 @@ B2 pack content → core; B3 core → backend; B4 store at rest; B5 core → the
 ## Gate record
 `GATE define-architecture · 2026-10-31 · Enterprise, Distributed Systems, Security & Identity, Data & Persistence, SRE, Patterns, Simplifier (all seats played by Claude in one session; not independent) · verdict: pass with conditions`
 - **Distributed Systems (hard):** at-least-once events need idempotent ingest (event_id upsert) and ordering by session seq; spool replay must not double-count budget. Resolved in cross-cutting concerns. Condition: property test for spool replay in Phase 1.
-- **Security & Identity (hard):** local API must reject other OS users and other processes without the per-boot token; pack keys pinned; Anthropic API key only in keychain. Resolved (threat model T-B1-*, T-B2-*, TR-7). Condition: Windows named-pipe ACL and Linux keyring fallback must be spiked before Phase 1 ships. Not cleared by the author for production; recorded.
+- **Security & Identity (hard):** local API must reject other OS users and other processes without the per-boot token; pack keys pinned; AIQ never reads Claude Code's sign-in; the optional Anthropic API key only in keychain. Resolved (threat model T-B1-*, T-B2-*, TR-7). Condition: Windows named-pipe ACL and Linux keyring fallback must be spiked before Phase 1 ships. Not cleared by the author for production; recorded.
 - **Data & Persistence:** grain declared per fact table in ADR-0002 (one row = one event / one signal / one card decision / one judgment version). Unlimited retention accepted by the owner; size budget needed. Condition: size-per-year estimate in /design-slice.
 - **SRE:** the 3 a.m. story is local: health page + capture log + per-component counters; no remote telemetry by design, so field debugging relies on the person sharing a help packet. Accepted.
 - **Enterprise / Patterns:** F + G + A composition is coherent; no model on the hot path (C9). Resolved.
