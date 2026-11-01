@@ -1,0 +1,61 @@
+name: rust
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - "crates/**"
+      - "contracts/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rustfmt.toml"
+      - ".github/workflows/rust.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: never
+  RUSTFLAGS: -D warnings
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked
+      - name: Test (unit, store, spool replay property, end to end through the binary)
+        run: cargo test --workspace --locked -- --nocapture --test-threads 4
+
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked
+      - name: Test (release build, so hook timings resemble what ships)
+        env:
+          AIQ_E2E_BUDGET_MS: "200"
+        run: cargo test --workspace --locked --release -- --nocapture --test-threads 4
+      - name: Build aiq.exe
+        run: cargo build -p aiq --release --locked
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aiq-windows-x64
+          path: target/release/aiq.exe
+          retention-days: 14

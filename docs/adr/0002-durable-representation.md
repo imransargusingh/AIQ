@@ -8,7 +8,9 @@ phase: "0-1"
 tags: [architecture, data, privacy]
 links:
   - { to: aiq-architecture, rel: refines }
-review-suggested: { by: design-claude-code-skeleton, on: 2026-10-31, reason: "Phase 1 design derives budget counters from card_delivery facts instead of persisting counters; reword 'Budget counters are persisted'." }
+review-suggested:
+  - { by: design-claude-code-skeleton, on: 2026-10-31, reason: "Phase 1 design derives budget counters from card_delivery facts instead of persisting counters; reword 'Budget counters are persisted'." }
+  - { by: note-20261031-encryption-deferred, on: 2026-10-31, reason: "Imran deferred encryption at rest: Phase 1 store is plain SQLite in a user-only file (no SQLCipher). Reword title and decision, or record the deferral." }
 review-by: 2027-04-29
 summary: >-
   AIQ stores everything in one SQLCipher-encrypted SQLite file per OS user: entities as dimensions,
@@ -19,6 +21,7 @@ summary: >-
 # ADR-0002: Append-only facts and dimensions in an encrypted local SQLite store
 
 - **Status:** Proposed (retention decided by Imran 2026-10-31)
+- **Note (2026-10-31):** encryption at rest is deferred for Phase 1 (Imran); the store ships as plain SQLite in a user-only file. See [note-20261031-encryption-deferred](../notes/note-20261031-encryption-deferred.md).
 - **Date:** 2026-10-31
 - **Deciders:** Imran (owner); drafted with Claude via /define-architecture
 
