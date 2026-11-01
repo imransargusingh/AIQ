@@ -14,7 +14,8 @@ review-by: 2027-01-31
 summary: >-
   Evidence for the first end-to-end slice: the `aiq` binary (hook client, core, CLI) turns three rewordings
   of one request in Claude Code into one card at the next Stop, holds a second card in the same session,
-  and fails open within budget when the core is down. Linux measured; Windows CI and the laptop run pending.
+  and fails open within budget when the core is down. Linux and Windows CI green; observed end to end on
+  Imran's Windows laptop in real Claude Code on 2026-11-01.
 ---
 
 # Proof Pack: Phase 1 walking skeleton on Claude Code
@@ -23,9 +24,13 @@ summary: >-
 - **Spec / design:** [coaching-loop](../specs/coaching-loop.md) · [claude-code-skeleton](../design/claude-code-skeleton.md)
 - **Tier:** T2 (new trust boundaries, persistence, concurrency)
 - **Author / date:** Claude via `/implement`, owner Imran, 2026-10-31
-- **Run of record:** Linux container, Rust 1.97.0, `cargo test --workspace` = **134 passed, 0 failed**
-  (run 3× for the suite, 8× for the e2e file after one flake was fixed; see DC-002). Windows: clippy
-  clean via a cross-target check; build, tests and the timing run on Windows are **not yet observed**.
+- **Run of record:** Linux container, Rust 1.97.0, `cargo test --workspace` = **141 passed, 0 failed**
+  (after the laptop-check fixes, 2026-11-01). Windows CI (`cargo test --release`) green on every push since
+  `4d4b2c2`.
+- **Windows laptop (Imran, 2026-11-01, Claude Code 2.1.316 in Windows Terminal):** `cargo build --release`
+  1 m 43 s; `cargo test --workspace --release` 131 of 132 (the whole-process 50 ms p95 timing test failed,
+  see C3); `aiq install claude-code` from his own PowerShell (backup kept, exec form); real prompts gave a
+  card on screen. See "Laptop check" below.
 
 ## Claims & evidence
 
@@ -40,9 +45,14 @@ summary: >-
 - **Red observed before green:** yes for the detector: `observe_cue_only_run_scores_half` failed on the first
   implementation (a repeated "try again" counted as similar), fixed by keeping cue-only prompts out of the
   request window (DC-001). Mutation testing (below) shows the detector tests fail when the logic is wrong.
-- **Confidence:** Verified (Linux).
+- **Laptop:** four read-only rewords ("which models are installed on this laptop?" …) in a terminal
+  `claude` session gave the card under the 4th reply (screenshot, 8:47 PM); store, screen and `aiq show`
+  agree on the card id; the card does not quote the prompts.
+- **Confidence:** Verified (Linux, Windows laptop).
 - **Residual risk:** detector thresholds (0.6 / 4 words / 3 / 0.75) are uncalibrated pack data (design
-  `assume:`); real-data week decides.
+  `assume:`); real-data week decides. **Observed on real use: the word-overlap check misses natural
+  paraphrases** (Imran's first four paraphrases peaked at 0.40) and word forms ("install" vs "installed").
+  Recorded in the design's laptop findings; not fixed in this slice.
 
 ### C2. A second qualifying run in the same session is held, also across a core restart
 - **Evidence:** same e2e test: second run's Stop prints nothing; `aiq status` shows `1 shown (ok)` and
@@ -51,8 +61,13 @@ summary: >-
   proves the unique index rejects a second delivery even without the decision loop.
   `e2e_concurrent_stops_deliver_once`: 8 parallel Stop hooks → at most one card, and never a second later.
 - **Red observed:** not separately (tests written with the code); mutation run kills every `trigger.rs` mutant.
+- **Laptop:** the real Windows `aiq.exe` (dadb74d), fed Claude Code hook payloads for one session id in an
+  isolated AIQ home: models loop → card; shells loop → nothing printed; `aiq status`: "Signals: 2. Cards:
+  1 hold (session_budget), 1 shown (ok)". Not watched in the Claude Code UI (a held card prints nothing).
+  In real use a second card in a *new* `claude` session showed, as designed.
 - **Confidence:** Verified.
-- **Residual risk:** none known for one machine. Cross-surface sessions are Phase 2.
+- **Residual risk:** none known for one machine. Cross-surface sessions are Phase 2. Repeating the same
+  reworded question after a card never fires again in that session (one signal per loop, by design).
 
 ### C3. The hook fails open within budget and never changes Claude Code's behaviour
 - **Evidence:** `e2e_core_down_stop_exits_zero_within_50ms_p95_and_spools` (50 Stop runs, core down: exit 0,
@@ -66,11 +81,16 @@ summary: >-
   print; the timing assertion fails above 50 ms p95.
 - **Red observed:** the random-bytes test went red (broken pipe) when stdin was larger than the 256 KB cap;
   fixed by draining the rest of stdin (DC-002).
-- **Confidence:** Verified on Linux. **Windows: Inferred** from spike S3a (26–34 ms p95, core up) until the
-  laptop run; the shipped exe is larger than the spike's (4.2 MB on Linux release) and process start is most
-  of the Windows cost.
-- **Residual risk:** Windows Defender scanning of a larger exe; the Windows CI job widens the budget to 200 ms
-  (shared runners), so the laptop run is the Windows measurement of record.
+- **Laptop (measurement of record for Windows):** whole process, direct exec, release build. Stop core
+  down: p50 27.5 / p95 70.5 ms (n=50); Stop core up: p50 27.8 / p95 66.8 ms (n=50); UserPromptSubmit
+  core up: p50 27.5 / p95 65.2 ms (n=20). In-process: Stop p95 3.1 ms, UserPromptSubmit p95 1.4 ms. All
+  exit 0. Install self-test on a never-run exe: 344 ms.
+- **Confidence:** Verified on Linux. **Windows: the 50 ms p95 whole-process budget is not met** (p50 is);
+  nearly all of the time is process start, outside AIQ's code (Inferred: likely security scanning; not
+  measured). The budget is with Imran (decision card).
+- **Residual risk:** one UserPromptSubmit run recorded 4.4 s in-process on the laptop (async hook, so the
+  prompt was not delayed; 5 s timeout). Cause not yet confirmed; suspected the cold core start just after a
+  rebuild.
 
 ### C4. At-least-once delivery with idempotent ingest (architecture gate: spool-replay property test)
 - **Evidence:** `spool_replay_any_interleaving_duplication_truncation_same_result` (proptest, 48 cases):
@@ -79,7 +99,8 @@ summary: >-
   `e2e_core_down_prompt_starts_core_once_core_survives_and_drains_spool`: a prompt hook with the core down
   starts a detached core, which survives the hook and drains the spool.
 - **Oracle:** compares full outcomes, not just "no panic"; drain sorts by `event_id` and de-duplicates.
-- **Confidence:** Verified (Linux). Windows detached start: Inferred from S3b.
+- **Confidence:** Verified (Linux and Windows laptop: 50 core-down Stops spooled and drained once the core
+  started; a hook started the detached core on real prompts).
 - **Residual risk:** a spool over 1 MB drops oldest lines (`Spool_OverLimit` → `append_over_limit_drops_oldest_keeps_newest`).
 
 ### C5. Nothing is captured or shown while paused; the person can delete everything
@@ -111,8 +132,9 @@ summary: >-
   (other hooks kept, exec form with absolute `command` + `args`, never writes the working directory),
   `e2e_install_invalid_json_refused_untouched`, `e2e_uninstall_after_user_edit_strips_only_aiq`,
   `e2e_copilot_shaped_payload_dropped_and_counted`.
-- **Confidence:** Verified on Linux. Windows pipe DACL: Verified for the same user by spike S1; the code path
-  (`ipc::listen`, SDDL `D:P(A;;GA;;;<sid>)`) compiles for Windows but has **not run** yet.
+- **Confidence:** Verified on Linux. Windows: the pipe code ran on the laptop and in Windows CI
+  (`e2e_wrong_token_frame_closed_nothing_stored` passes there); the laptop also showed the token check
+  refusing hooks from a second AIQ home (DC-007), which is now explained by `aiq status`.
 - **Residual risk:** no peer-uid check on the Unix socket (0700 dir + token instead). Cross-account denial on
   Windows is inferred from the DACL.
 
@@ -122,6 +144,19 @@ summary: >-
   as JSON with `trace_id` (`e2e_logs_never_contain_prompt_text` asserts both).
 - **Confidence:** Verified.
 - **Gap:** the hook log records in-process time; whole-process time comes from the e2e test and the laptop run.
+
+## Laptop check (2026-11-01): what it found
+
+| Finding | Outcome |
+|---|---|
+| Claude desktop app (MSIX) redirects `%LOCALAPPDATA%`, splitting AIQ into two homes and tokens | Fixed: Windows home `%USERPROFILE%\.aiq` (DC-007) |
+| Reinstall from a moved binary left stale hooks on uninstall | Fixed (DC-006) |
+| Install diff showed a line that only gained a comma; self-test over budget read as a pass | Fixed |
+| Card too easy to miss (Claude Code draws hook text dim) | "AIQ tip:" in bold yellow; Claude Code renders it (screenshot); `NO_COLOR` gives plain text |
+| Word-overlap detector misses paraphrases and word forms | Open finding (design) |
+| The agent sometimes gives the same nudge itself | Open finding (design) |
+| Prompts queued while Claude is busy count as rewords | Open question for the spec |
+| Whole-process hook p95 65–70 ms vs 50 ms budget | With Imran (decision card) |
 
 ## Mutation testing
 `cargo mutants -p aiq-domain`: first run 141 mutants, **21 missed** (getters, `FakeClock`, window bound,
@@ -169,6 +204,10 @@ spool sort/dedup, core-side `wait_ms`, hook timing log, frames schema / peer-uid
 
 ## Gate record
 `GATE implement · 2026-10-31 · Rust Developer ⇄ Test Architect (author: Claude, one session; not independent) · verdict: pass on Linux, Windows pending`
+
+`GATE implement (Windows) · 2026-11-01 · same seats · verdict: pass with one open budget` — end to end on the
+laptop in real Claude Code; hold verified with the real Windows binary; whole-process p95 over 50 ms pending
+Imran's budget decision.
 - **Test Architect (hard):** triggered directives D0–D4, D6, D7 applied; D7's `TestKey` is moot (no key);
   D3 enforced by `domain_dependencies_only_contracts`. Open: disk-full test, Windows run. Not cleared by the
   author for Windows.
@@ -179,5 +218,5 @@ spool sort/dedup, core-side `wait_ms`, hook timing log, frames schema / peer-uid
 | | |
 |---|---|
 | **Completed** | `aiq` binary: hook client, core, CLI (install, uninstall, status, show, pause, resume, config, forget); store v1; re-prompt detector; trigger engine; spool; CI workflow |
-| **Remaining** | Windows CI green; laptop dogfood (install, real Claude Code reword ×3, `aiq status`, Stop p95 ≤ 50 ms); disk-full test; Phases 2–6 |
-| **Best next action** | Run CI, then the Windows human check on Imran's laptop with the CI-built `aiq.exe` |
+| **Remaining** | Hook speed budget (Imran's decision); confirm the 4.4 s UserPromptSubmit outlier's cause; disk-full test; detector paraphrase gap; Phases 2–6 |
+| **Best next action** | Imran picks the speed budget; then merge |
