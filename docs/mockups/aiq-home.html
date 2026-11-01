@@ -166,8 +166,14 @@
   .lc-pot{position:absolute;right:0;transform:translateY(calc(-100% - 2px));font:var(--t-caption);color:var(--ink-mute);white-space:nowrap}
   .lc-x{grid-column:2;position:relative;height:17px;font:var(--t-caption);color:var(--ink-mute)}
   .lc-x span{position:absolute;transform:translateX(-50%);white-space:nowrap}
-  .mainrung{display:flex;align-items:baseline;gap:var(--s3) var(--s5);flex-wrap:wrap}
-  .mainrung b{font:var(--t-title)}
+  .mainrung{display:grid;grid-template-columns:auto minmax(0,1fr);gap:var(--s5);align-items:center}
+  [data-viewport="narrow"] .mainrung{grid-template-columns:1fr;gap:var(--s3)}
+  .mainrung .lbl{display:flex;flex-direction:column;gap:var(--s1)}
+  .scale{display:grid;grid-template-columns:repeat(5,1fr);gap:2px}
+  .scale>span{display:flex;flex-direction:column;gap:var(--s2);font:var(--t-caption);color:var(--ink-mute);text-align:center}
+  .scale>span::before{content:"";display:block;height:8px;border-radius:var(--r-sm);background:var(--canvas-soft);border:1px solid var(--hairline)}
+  .scale>span.on{color:var(--ink);font-weight:600}
+  .scale>span.on::before{height:12px;margin-top:-2px;background:var(--primary);border-color:var(--primary)}
   .track{display:block;position:relative;height:16px;background:var(--canvas-soft);border-radius:var(--r-sm)}
   .track .now{position:absolute;inset:0 auto 0 0;border-radius:var(--r-sm)}
   [data-theme="contrast"] .track .now{border:1px solid var(--ink)}
@@ -426,7 +432,9 @@ function home(){
   return `<div class="page">${downBanner()}
     ${s==="partial"?`<div class="banner info" role="status"><div class="grow"><b>${D.waiting} tasks are waiting to be judged.</b> They're left out of these numbers until then, and judged as your daily limit allows.</div></div>`:""}
     <h1 class="sr">Home</h1><p class="meta">Last 30 days · 2 Oct to 31 Oct · sample data</p>
-    ${judgeOn()?(()=>{const m=D.main, nx=m.rung+1, w=D.rungWeeks[nx], d=w[w.length-1]-w[0]; return `<section class="mainrung" aria-label="Your main rung"><span class="mute">Your most common rung</span><b>${RUNGS[m.rung]} (${m.rung+1})</b><span class="mute">${D.rungs[m.rung][0]}% of tasks · for ${m.days} days</span>${nx<5?`<span class="meta">Next rung up: ${RUNGS[nx]}, ${D.rungs[nx][0]}% of tasks${d?`, ${chg(d)} in 4 weeks`:""}</span>`:""}</section>`;})():""}
+    ${judgeOn()?`<section class="mainrung" role="img" aria-label="Your most common rung: ${RUNGS[D.main.rung]}, rung ${D.main.rung+1} of 5, for ${D.main.days} days">
+      <div class="lbl" aria-hidden="true"><span class="mute">Your most common rung</span><span class="meta">for ${D.main.days} days</span></div>
+      <div class="scale" aria-hidden="true">${RUNGS.map((r,i)=>`<span class="${i===D.main.rung?"on":""}">${r} (${i+1})</span>`).join("")}</div></section>`:""}
     <div class="top">
       <section class="card" aria-labelledby="kr"><h2 id="kr" class="mute" style="font-weight:400">Tasks agents finished</h2>
         ${judgeOn()?`<div class="hl"><span class="big">${rate}%</span><span class="of">could be <b>${rate+couldPct}%</b></span></div>
