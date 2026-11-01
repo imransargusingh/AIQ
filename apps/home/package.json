@@ -26,5 +26,18 @@
     "typescript": "5.9.3",
     "vite": "7.3.7",
     "vitest": "3.2.7"
+  },
+  "overrides": {
+    "rollup": "4.65.0",
+    "@babel/parser": "7.29.11",
+    "@babel/generator": "7.29.8",
+    "@babel/traverse": "7.29.10",
+    "@types/estree": "1.0.9",
+    "browserslist": "4.29.4",
+    "baseline-browser-mapping": "2.11.33",
+    "caniuse-lite": "1.0.30001819",
+    "electron-to-chromium": "1.5.464",
+    "node-releases": "2.0.60",
+    "postcss": "8.5.31"
   }
 }

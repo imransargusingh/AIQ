@@ -38,6 +38,10 @@ npx tauri build --no-bundle               # src-tauri/target/release/aiq-home(.e
 CI uploads `aiq-home.exe` as the `aiq-home-windows-x64` artifact (`.github/workflows/home.yml`). The app reads
 your store read-only and sends pause, settings and delete through the running core.
 
+`overrides` in `apps/home/package.json` holds 11 build-tool packages one release back. Some npm mirrors lag
+public npm by a release, and `npm ci` fails if the lockfile names a version the mirror lacks (found 2026-11-01
+on a company npm mirror). Remove an override once that mirror has the newer version.
+
 ## Use
 
 ```
