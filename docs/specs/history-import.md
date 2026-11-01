@@ -31,7 +31,7 @@ those tasks?"*
 | H1 | Import reads only stores already on the device. Nothing is uploaded, and no new provider sees any content | Privacy rule (only the person can access their data), applied here |
 | H2 | Order of sources: Copilot CLI first, Claude Code second, VS Code Copilot Chat later | Laptop inventory below: Copilot CLI holds the longest and largest history |
 | H3 | Imported tasks are judged and shown in history, but never raise a coaching card or count against the daily tip cap | Coaching is in-the-moment; a card about a task from August is noise |
-| H4 | High-volume sessions are not judged as hand-done tasks. AIQ flags them per folder and the person sorts each folder: **app pipeline** (an app that calls AI at run time; excluded from AIQ entirely, import and live capture), **my workflow** (a reusable workflow of theirs; counts as F9 reuse evidence) or **not automated** (the flag was wrong; imported like any other folder) | Imran, 2026-11-01: the ~6,000 Executive_Presence sessions are a data-collection pipeline that uses AI, not AI-assisted work |
+| H4 | **No triage by default.** AIQ detects automated sessions itself and sets them aside: never judged, never in the task history or rung views, never coached. The person sees one line per set-aside folder and can undo it in one click. Reuse evidence (F9) comes from the repo (versioned workflow files, runs by CI or others), so set-aside sessions are not needed for it | Imran, 2026-11-01: Executive_Presence's ~6,000 sessions are an app's data-collection pipeline; Imran rejected per-folder sorting as too much manual work for users |
 | H5 | Imported Copilot tasks are judged by **Copilot**, through the person's own signed-in Copilot CLI (`copilot -p`), not VS Code. Same provider that saw the session, so no cross-provider opt-in is needed | Imran, 2026-11-01 (in thread, after the decision card). Laptop probe below |
 
 ## What is on the device (measured 2026-11-01, Imran's laptop)
@@ -138,16 +138,14 @@ another person's sessions; recovering transcripts the tool already deleted; any 
   spent **Then** judging stops for the day, and live tasks are always judged before imported ones.
 - **US-5 No cards.** **Given** an imported task is judged **Then** no coaching card is shown and the
   daily tip cap is unchanged.
-- **US-6 Automated runs.** **Given** a folder whose sessions meet the high-volume rule (below) **When**
-  discovery runs **Then** AIQ shows it as flagged, with session count and date range, and asks the person
-  to sort it: app pipeline, my workflow, or not automated. Until sorted, its sessions are not imported.
-  **App pipeline:** nothing is imported or judged and no fact is counted. **My workflow:** each session
-  adds one run to the F9 count for that workflow and is not judged as a task. **Not automated:** the flag was a false alarm (for example a busy repo where the person really ran
-  hundreds of sessions by hand); imported
-  like any other session. The choice is per folder, changeable, and listed in *Your data*.
-- **US-12 Pipelines ignored live.** **Given** a folder is sorted as app pipeline **When** a live hook
-  fires for a session in that folder **Then** AIQ records nothing and never shows a tip. (Copilot hooks
-  are user-level, so a pipeline's own CLI runs would otherwise reach AIQ.)
+- **US-6 Automated sessions set aside.** **Given** sessions that meet the automated rule (below) **When**
+  import runs **Then** they are set aside with no question asked: not judged, not shown as tasks, no
+  fact counted. Discovery and *Your data* show one line per folder ("Executive_Presence: 5,946 automated
+  sessions set aside · Include them"). **Include them** imports that folder's sessions as normal tasks;
+  the choice can be reversed.
+- **US-12 Automated sessions ignored live.** **Given** a live hook fires for a session that meets the
+  automated rule, or in a folder whose sessions are set aside **Then** AIQ records nothing and never
+  shows a tip. (Copilot hooks are user-level, so a pipeline's own CLI runs would otherwise reach AIQ.)
 - **US-7 Idempotent.** **Given** a session was imported before **When** import runs again **Then**
   it is skipped (keyed by tool + session id + last-modified time); a session that grew since is
   re-read.
@@ -163,14 +161,15 @@ another person's sessions; recovering transcripts the tool already deleted; any 
   import or live capture sees that CLI's sessions **Then** sessions with AIQ's recorded judge ids are
   ignored.
 
-### High-volume rule (first cut, tunable)
+### Automated rule (first cut, tunable)
 
-This rule only **flags** a folder for the person to sort; it never decides on its own, because a script
-that calls AI (an app pipeline) and a person's reused workflow look alike in the logs. A folder is
-flagged when any of its sessions meets one of these: it was started non-interactively (`-p`/prompt flag or no
-TTY, where recorded); it has exactly one user turn and the same first prompt as 10+ other sessions in
-the same repo; or 50+ sessions started in the same repo within one hour. Thresholds to be checked on
-the Aug–Sep Copilot sessions before they drive anything (**Inferred**, not yet measured).
+AIQ decides; the person only corrects. A session is **automated** when it has **no human turn after the
+first prompt** and any of: it was started non-interactively (`-p`/prompt flag, where recorded); its first
+prompt follows the same template as 10+ other sessions in the same folder (content compared on device
+only); or 50+ sessions started in the same folder within one hour. Requiring "no human turn" keeps a busy
+hand-run repo from being caught by volume alone, so false alarms (and the need to undo them) should be
+rare. Thresholds to be checked on the Aug–Sep Copilot sessions before they drive anything (**Inferred**,
+not yet measured).
 
 ### Domain model
 
@@ -220,9 +219,7 @@ N/A here; follows `DESIGN.md` and the `aiq-home` spec.
 
 ## Open questions for Imran
 
-1. For folders sorted as **my workflow**: show each workflow as one entry (run count, judged once,
-   placed by the F9 floor), or count runs as F9 evidence only? (App pipelines such as
-   Executive_Presence are excluded either way.)
+None open.
 
 ## Flagged risks and unknowns
 
