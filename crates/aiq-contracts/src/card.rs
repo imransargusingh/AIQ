@@ -27,9 +27,17 @@ pub fn render_claude_code(card: &CardV1) -> String {
     )
 }
 
+/// Bold yellow (basic 16-colour, so it also works in Claude Code's "ANSI colors only" themes), then
+/// bold off and default colour. Claude Code draws hook messages dim; this makes the card's label stand out.
+const TIP_LABEL_ON: &str = "\u{1b}[1;33m";
+const TIP_LABEL_OFF: &str = "\u{1b}[22;39m";
+
 /// The only stdout a Claude Code hook may produce: `{"systemMessage": "<text>"}`.
+/// assume: Claude Code passes ANSI colour codes in `systemMessage` through to the terminal. Confirm on
+/// the laptop screenshot; if it shows raw "[1;33m", drop the codes (the plain text is unchanged).
 pub fn claude_code_system_message(card: &CardV1) -> String {
-    serde_json::json!({ "systemMessage": render_claude_code(card) }).to_string()
+    let text = render_claude_code(card).replacen("AIQ tip:", &format!("{TIP_LABEL_ON}AIQ tip:{TIP_LABEL_OFF}"), 1);
+    serde_json::json!({ "systemMessage": text }).to_string()
 }
 
 #[cfg(test)]
@@ -67,5 +75,14 @@ mod tests {
         let o = v.as_object().unwrap();
         assert_eq!(o.len(), 1);
         assert!(o["systemMessage"].is_string());
+    }
+
+    #[test]
+    fn system_message_colours_only_the_label() {
+        let v: serde_json::Value = serde_json::from_str(&claude_code_system_message(&card())).unwrap();
+        let t = v["systemMessage"].as_str().unwrap();
+        assert!(t.starts_with("\u{1b}[1;33mAIQ tip:\u{1b}[22;39m you've reworded"), "{t}");
+        assert_eq!(t.matches('\u{1b}').count(), 2, "no other escape codes");
+        assert_eq!(t.replace(TIP_LABEL_ON, "").replace(TIP_LABEL_OFF, ""), render_claude_code(&card()));
     }
 }

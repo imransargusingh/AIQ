@@ -124,7 +124,12 @@ fn e2e_reword_three_times_one_card_second_run_held() {
     assert_hook_stdout_contract(&o);
     let msg: Value = serde_json::from_slice(&o.stdout).expect("a card at this Stop");
     let text = msg["systemMessage"].as_str().unwrap();
-    assert!(text.starts_with("AIQ tip: you've reworded this request 3 times without adding new details."), "{text}");
+    assert!(
+        text.starts_with(
+            "\u{1b}[1;33mAIQ tip:\u{1b}[22;39m you've reworded this request 3 times without adding new details."
+        ),
+        "{text}"
+    );
     assert!(text.contains("Try this: ") && text.contains("aiq pause"));
     for t in [BASE, R1, R2, R3] {
         assert!(!text.contains(t), "the card never quotes prompt text");
