@@ -10,6 +10,7 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - "rustfmt.toml"
+      - "extensions/**"
       - ".github/workflows/rust.yml"
   workflow_dispatch:
 
@@ -36,6 +37,22 @@ jobs:
         run: cargo clippy --workspace --all-targets --locked
       - name: Test (unit, store, spool replay property, end to end through the binary)
         run: cargo test --workspace --locked -- --nocapture --test-threads 4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: VS Code extension (types, unit tests, round trip with the real core)
+        working-directory: extensions/vscode
+        env:
+          AIQ_BIN: ${{ github.workspace }}/target/debug/aiq
+        run: |
+          npm ci
+          npm test
+          npm run package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aiq-vscode-extension
+          path: extensions/vscode/aiq.vsix
+          retention-days: 14
 
   windows:
     runs-on: windows-latest

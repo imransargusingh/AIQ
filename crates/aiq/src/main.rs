@@ -21,6 +21,7 @@ Usage:
   aiq status                          What AIQ is doing, cards today, store size, hook times
   aiq show <card-id>                  A card, why it showed, and the prompts it counted
   aiq pause | aiq resume              Stop or restart capture and tips
+  aiq endpoint                        Where the core listens (used by the VS Code extension)
   aiq install copilot [--yes]         Add AIQ's hooks and status line to Copilot (~/.copilot)
   aiq uninstall copilot [--yes]       Remove only AIQ's Copilot hooks and status line
   aiq config set daily-cap <n>        Most tips per day, all tools together (0-50, default 5)
@@ -49,6 +50,10 @@ fn main() -> ExitCode {
         ["resume", ..] => cli::pause(false),
         ["config", "set", name, value, ..] => cli::config_set(name, value),
         ["statusline", "copilot", ..] => statusline::run(),
+        ["endpoint", ..] => {
+            println!("{}", aiq_core::paths::Paths::from_env().endpoint_json());
+            ExitCode::SUCCESS
+        }
         ["forget", "--all", ..] | ["forget", _, "--all", ..] => cli::forget_all(yes),
         ["version" | "--version" | "-V", ..] => {
             println!("aiq {}", env!("CARGO_PKG_VERSION"));

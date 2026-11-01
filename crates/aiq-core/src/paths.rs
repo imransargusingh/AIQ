@@ -103,6 +103,21 @@ impl Paths {
         format!("aiq-core-{clean}-{:016x}", fnv1a(self.runtime.to_string_lossy().to_lowercase().as_bytes()))
     }
 
+    /// How another program on this machine reaches the core (the VS Code extension reads this once, so the
+    /// socket path and pipe name are defined only here). `pipe` is a Windows pipe path for Node's `net`.
+    pub fn endpoint_json(&self) -> String {
+        #[cfg(windows)]
+        let (key, addr) = ("pipe", windows_pipe_path(&self.pipe_name()));
+        #[cfg(not(windows))]
+        let (key, addr) = ("socket", self.socket().to_string_lossy().into_owned());
+        serde_json::json!({
+            key: addr,
+            "token": self.token(),
+            "paused_flag": self.pause_flag(),
+        })
+        .to_string()
+    }
+
     /// Create the data and runtime directories, owner-only.
     pub fn ensure_dirs(&self) -> std::io::Result<()> {
         for d in [&self.data, &self.runtime] {
@@ -115,6 +130,11 @@ impl Paths {
         }
         Ok(())
     }
+}
+
+/// Node's `net.connect` path for a named pipe: `\\.\pipe\<name>`.
+pub fn windows_pipe_path(name: &str) -> String {
+    format!(r"\\.\pipe\{name}")
 }
 
 #[cfg(windows)]
@@ -165,6 +185,20 @@ pub fn write_user_only(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn windows_pipe_path_is_nodes_pipe_form() {
+        assert_eq!(windows_pipe_path("aiq-core-u-1"), r"\\.\pipe\aiq-core-u-1");
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn endpoint_json_names_socket_token_and_pause_flag() {
+        let v: serde_json::Value = serde_json::from_str(&Paths::at(Path::new("/h")).endpoint_json()).unwrap();
+        assert_eq!(v["socket"], "/h/core.sock");
+        assert_eq!(v["token"], "/h/token");
+        assert_eq!(v["paused_flag"], "/h/paused");
+    }
 
     /// DC-007: the Windows home must not sit under AppData, which packaged apps redirect.
     #[test]
