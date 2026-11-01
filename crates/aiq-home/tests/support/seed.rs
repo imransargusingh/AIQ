@@ -13,16 +13,6 @@ pub const AIQ: &str = r"c:\users\imran\source\repos\aiq";
 pub const FORESIGHT: &str = r"c:\users\imran\source\repos\foresight";
 pub const PIPELINE: &str = r"c:\users\imran\source\repos\pipeline";
 
-/// PR #15's import tables, as that PR defines them (schema v4). Read defensively by aiq-home.
-pub const IMPORT_DDL: &str = "
-CREATE TABLE import_session (
-  tool TEXT NOT NULL, source_session_id TEXT NOT NULL, source_mtime_ms INTEGER NOT NULL, run_id TEXT NOT NULL,
-  folder TEXT NOT NULL, started_utc_ms INTEGER, human_turns INTEGER NOT NULL, non_interactive INTEGER,
-  template_key INTEGER, outcome TEXT NOT NULL, why TEXT NOT NULL, PRIMARY KEY (tool, source_session_id));
-CREATE TABLE import_event (
-  tool TEXT NOT NULL, source_session_id TEXT NOT NULL, seq INTEGER NOT NULL, kind TEXT NOT NULL,
-  ts_utc_ms INTEGER, text TEXT, actions TEXT, PRIMARY KEY (tool, source_session_id, seq));";
-
 pub struct Seed {
     pub store: Store,
     n: u32,
@@ -41,7 +31,8 @@ impl Seed {
 
     pub fn prompt(&mut self, surface: &str, session: &str, at: i64, folder: Option<&str>, text: &str) -> String {
         let id = self.id();
-        let meta = serde_json::json!({ "hook_event": "UserPromptSubmit", "has_text": true, "folder": folder }).to_string();
+        let meta =
+            serde_json::json!({ "hook_event": "UserPromptSubmit", "has_text": true, "folder": folder }).to_string();
         self.store
             .insert_event(
                 &NewEvent {
@@ -155,10 +146,6 @@ impl Seed {
         self.store.set_setting(key, value, at).unwrap();
     }
 
-    pub fn import_tables(&mut self) {
-        self.store.raw().execute_batch(IMPORT_DDL).unwrap();
-    }
-
     pub fn imported_session(&mut self, tool: &str, sid: &str, folder: &str, outcome: &str, prompts: &[(i64, &str)]) {
         self.store
             .raw()
@@ -187,13 +174,27 @@ impl Seed {
 }
 
 /// The standard seeded store. Returns the card id of the delivered tip.
+/// Imported sessions use the schema v4 tables (`aiq import`, PR #15).
 pub fn standard(paths: &Paths, with_import: bool) -> String {
     let mut s = Seed::new(paths);
     let now = NOW;
     // Claude Code, one task of three prompts two days ago, in the aiq repo. A tip fired on it.
-    let a = s.prompt("claude-code", "cc1", now - 2 * DAY, Some(AIQ), "refactor the login handler to return typed errors");
-    let b = s.prompt("claude-code", "cc1", now - 2 * DAY + 4 * MIN, Some(AIQ), "refactor login handler so it returns typed errors");
-    let c = s.prompt("claude-code", "cc1", now - 2 * DAY + 9 * MIN, Some(AIQ), "please refactor the login handler, typed errors returned");
+    let a =
+        s.prompt("claude-code", "cc1", now - 2 * DAY, Some(AIQ), "refactor the login handler to return typed errors");
+    let b = s.prompt(
+        "claude-code",
+        "cc1",
+        now - 2 * DAY + 4 * MIN,
+        Some(AIQ),
+        "refactor login handler so it returns typed errors",
+    );
+    let c = s.prompt(
+        "claude-code",
+        "cc1",
+        now - 2 * DAY + 9 * MIN,
+        Some(AIQ),
+        "please refactor the login handler, typed errors returned",
+    );
     s.stop("claude-code", "cc1", now - 2 * DAY + 12 * MIN);
     s.tip("claude-code", "cc1", now - 2 * DAY + 12 * MIN, vec![a, b, c], true);
     // Copilot CLI, two tasks in one session nine days ago (a 45 minute gap splits them).
@@ -216,9 +217,20 @@ pub fn standard(paths: &Paths, with_import: bool) -> String {
     s.tip("copilot-cli", "cp2", now - 20 * MIN, vec![e], false);
     s.setting("daily_cap", "3", now - 5 * DAY);
     if with_import {
-        s.import_tables();
-        s.imported_session("copilot-cli", "imp1", r"C:\Users\Imran\source\repos\Foresight", "imported", &[(now - 25 * DAY, "plan the migration"), (now - 25 * DAY + 5 * MIN, "go")]);
-        s.imported_session("copilot-cli", "imp2", r"C:\x\Executive_Presence", "automated", &[(now - 25 * DAY, "collect data")]);
+        s.imported_session(
+            "copilot-cli",
+            "imp1",
+            r"C:\Users\Imran\source\repos\Foresight",
+            "imported",
+            &[(now - 25 * DAY, "plan the migration"), (now - 25 * DAY + 5 * MIN, "go")],
+        );
+        s.imported_session(
+            "copilot-cli",
+            "imp2",
+            r"C:\x\Executive_Presence",
+            "automated",
+            &[(now - 25 * DAY, "collect data")],
+        );
     }
     String::new()
 }

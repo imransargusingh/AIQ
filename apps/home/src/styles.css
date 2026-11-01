@@ -40,7 +40,7 @@
   --rung-1:#000000; --rung-2:#000000; --rung-3:#000000; --rung-4:#000000; --rung-5:#000000;
   color-scheme:dark;
 }
-@media (forced-colors:active),(prefers-contrast:more){:root:not([data-theme]){
+@media (prefers-contrast:more){:root:not([data-theme]){
   --primary:#ffd400; --on-primary:#000000; --canvas:#000000; --canvas-soft:#000000; --surface:#000000;
   --ink:#ffffff; --ink-mute:#e8e8e8; --hairline:#ffffff; --success:#7ee2a8; --warning:#ffd166; --danger:#ffb4ab;
   --focus-ring:#ffd400;
@@ -243,3 +243,13 @@ nav.side{overflow:auto}
 .tablewrap td.wrap{white-space:normal;word-break:break-word;font:var(--t-mono);max-width:560px}
 .btnlink{all:unset;cursor:pointer;color:var(--primary);font:var(--t-caption);display:inline-flex;align-items:center;min-height:24px}
 .btnlink:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}
+
+/* Windows high contrast (forced colours): use the person's own system colours, never fixed hex values,
+   so every HC theme (dark or light) works. Meaning never rests on colour (rung names, words). */
+@media (forced-colors:active){
+  :root{--primary:LinkText;--on-primary:Canvas;--canvas:Canvas;--canvas-soft:Canvas;--surface:Canvas;--ink:CanvasText;
+    --ink-mute:CanvasText;--hairline:CanvasText;--success:CanvasText;--warning:CanvasText;--danger:CanvasText;
+    --focus-ring:Highlight;--rung-1:Canvas;--rung-2:Canvas;--rung-3:Canvas;--rung-4:Canvas;--rung-5:Canvas}
+  .btn.pri,.seg button[aria-pressed="true"],.switch[aria-checked="true"]{forced-color-adjust:none;background:Highlight;color:HighlightText;border-color:Highlight}
+  .wk-col>i:first-child{forced-color-adjust:none;background:Highlight!important;color:HighlightText}
+}

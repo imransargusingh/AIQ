@@ -241,6 +241,26 @@ the `aiq-home` spec once this spec is accepted.
 
 N/A here; follows `DESIGN.md` and the `aiq-home` spec.
 
+## Implementation status
+
+Slice 1 (`aiq import`, 2026-11-01): discovery of Claude Code and Copilot CLI transcripts; the automated
+rule (NI, T, B, F) over the whole history, with the live side's folder key (Windows paths compare
+case-insensitively), template normalisation and thresholds (pack `[automated]`); imported sessions stored
+in their own tables (schema v4), which the live loop never reads, so no cards (US-5); set-aside sessions
+keep no content; unchanged sessions are not re-read on a re-run, because the rule's inputs are stored with
+each session (US-7); `aiq forget --imported` (US-8); judge session ids in `~/.aiq/judge-sessions.txt`
+skipped (US-11); `aiq status` line; `--dry-run`.
+Shared with live capture (US-12, PR #17): a folder where the import finds a burst or a repeated first
+prompt gets the same `folder_rule` row the live hooks write (source `import`), so live capture ignores
+that app's runs too. "Include them" is `aiq include <folder>` for both; the next `aiq import` then
+imports the folder's sessions. Sessions set aside only because they were non-interactive starts
+(`claude -p`) or by the folder prior set no folder rule, so a person's own work in that folder stays
+watched live.
+Laptop run (2026-11-01, slice-1 build before this change, **Verified**, counts only): 650 Claude Code
+and 6,520 Copilot CLI sessions found, 333 imported, 6,495 set aside; 17-21 s per run; store 4.45 MB.
+Not yet: grouping into tasks, job classification and judging (waits for the rung judge), the
+`cleanupPeriodDays` warning (US-9), VS Code chat.
+
 ## Open questions for Imran
 
 None open.

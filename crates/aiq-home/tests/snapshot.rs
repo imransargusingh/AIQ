@@ -41,7 +41,14 @@ fn tasks_follow_the_task_rule_window_and_set_aside() {
     let shape: Vec<(&str, u32)> = s.tasks.iter().map(|t| (t.tool.as_str(), t.prompts)).collect();
     assert_eq!(
         shape,
-        vec![("copilot-cli", 1), ("claude-code", 3), ("copilot-cli", 1), ("copilot-cli", 1), ("vscode", 2), ("claude-code", 1)]
+        vec![
+            ("copilot-cli", 1),
+            ("claude-code", 3),
+            ("copilot-cli", 1),
+            ("copilot-cli", 1),
+            ("vscode", 2),
+            ("claude-code", 1)
+        ]
     );
     assert_eq!(s.home.tasks_in_window, 6);
     assert!(s.tasks.iter().all(|t| t.rung.is_none() && t.job.is_none() && t.origin == "live"));
@@ -82,7 +89,7 @@ fn tips_settings_and_data() {
 }
 
 #[test]
-fn imported_tasks_when_tables_exist() {
+fn imported_tasks_are_tasks_and_automated_ones_are_not() {
     let d = tempfile::tempdir().unwrap();
     let p = Paths::at(d.path());
     standard(&p, true);

@@ -181,14 +181,7 @@ fn empty(paths: &Paths, pack: &PackV1, now: Now) -> Snapshot {
         schema: SCHEMA,
         now_ms: now.utc_ms,
         offset_min: now.offset_min,
-        status: Status {
-            core: false,
-            paused: false,
-            store_found: false,
-            last_event_ms: None,
-            read_ms: 0,
-            error: None,
-        },
+        status: Status { core: false, paused: false, store_found: false, last_event_ms: None, read_ms: 0, error: None },
         home: Home {
             window_days: WINDOW_DAYS,
             tasks_in_window: 0,
@@ -252,8 +245,11 @@ fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()>
     }
 
     // Set-aside folders: never shown as tasks (import spec H4).
-    let set_aside: Vec<(String, String, i64)> =
-        if store.has_table("folder_rule").map_err(|e| e.to_string())? { store.set_aside_folders().map_err(|e| e.to_string())? } else { vec![] };
+    let set_aside: Vec<(String, String, i64)> = if store.has_table("folder_rule").map_err(|e| e.to_string())? {
+        store.set_aside_folders().map_err(|e| e.to_string())?
+    } else {
+        vec![]
+    };
     s.home.set_aside = set_aside.iter().map(|(f, r, _)| SetAside { folder: f.clone(), reason: r.clone() }).collect();
     let aside: BTreeSet<&str> = set_aside.iter().map(|(f, _, _)| f.as_str()).collect();
 
@@ -266,7 +262,8 @@ fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()>
              WHERE e.kind = 'prompt' AND e.ts_utc_ms >= ?1 AND (t.text IS NULL OR trim(t.text) != '')
              ORDER BY e.ts_utc_ms, e.event_id",
         ))?;
-        let it = q(st.query_map([window_start - gap], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))))?;
+        let it =
+            q(st.query_map([window_start - gap], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))))?;
         for row in it {
             rows.push(q(row)?);
         }
@@ -286,8 +283,10 @@ fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()>
         })
         .collect();
 
-    // Imported tasks (history import, PR #15), when this store has its tables.
-    if store.has_table("import_session").map_err(|e| e.to_string())? && store.has_table("import_event").map_err(|e| e.to_string())? {
+    // Imported tasks (`aiq import`, schema v4). A store from before v4 has no import tables.
+    if store.has_table("import_session").map_err(|e| e.to_string())?
+        && store.has_table("import_event").map_err(|e| e.to_string())?
+    {
         let mut st = q(c.prepare(
             "SELECT s.tool, s.source_session_id, s.folder, e.seq, e.ts_utc_ms
              FROM import_event e JOIN import_session s ON s.tool = e.tool AND s.source_session_id = e.source_session_id
@@ -296,7 +295,13 @@ fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()>
              ORDER BY e.ts_utc_ms, s.source_session_id, e.seq",
         ))?;
         let it = q(st.query_map([window_start - gap], |r| {
-            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, i64>(3)?, r.get::<_, i64>(4)?))
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, i64>(3)?,
+                r.get::<_, i64>(4)?,
+            ))
         }))?;
         let mut imp: Vec<(String, String, String, String, i64)> = Vec::new();
         for r in it {
@@ -307,7 +312,12 @@ fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()>
             imp.iter().map(|(id, _, _, f, _)| (id.as_str(), f.as_str())).collect();
         // Imported sessions never span: each source session is its own stream.
         let spans = split_tasks(
-            imp.iter().map(|(id, tool, sid, _, ts)| TaskPrompt { event_id: id, surface: tool, session: sid, utc_ms: *ts }),
+            imp.iter().map(|(id, tool, sid, _, ts)| TaskPrompt {
+                event_id: id,
+                surface: tool,
+                session: sid,
+                utc_ms: *ts,
+            }),
             &[],
             gap,
         );
@@ -348,7 +358,13 @@ fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()>
         );
         let mut st = q(c.prepare(&sql))?;
         let it = q(st.query_map([now.utc_ms - TIP_DAYS * DAY_MS], |r| {
-            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, i64>(2)?, r.get::<_, Option<String>>(3)?, r.get::<_, bool>(4)?))
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, i64>(2)?,
+                r.get::<_, Option<String>>(3)?,
+                r.get::<_, bool>(4)?,
+            ))
         }))?;
         for r in it {
             let (card_id, tool, at, json, opened) = q(r)?;
@@ -399,10 +415,13 @@ fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()>
     }
     if store.has_table("import_session").map_err(|e| e.to_string())? {
         s.data.imported_sessions =
-            q(c.query_row("SELECT count(*) FROM import_session WHERE outcome = 'imported'", [], |r| r.get::<_, i64>(0)))? as u64;
+            q(c.query_row("SELECT count(*) FROM import_session WHERE outcome = 'imported'", [], |r| {
+                r.get::<_, i64>(0)
+            }))? as u64;
     }
     if store.has_table("import_event").map_err(|e| e.to_string())? {
-        s.data.imported_events = q(c.query_row("SELECT count(*) FROM import_event", [], |r| r.get::<_, i64>(0)))? as u64;
+        s.data.imported_events =
+            q(c.query_row("SELECT count(*) FROM import_event", [], |r| r.get::<_, i64>(0)))? as u64;
     }
     Ok(())
 }

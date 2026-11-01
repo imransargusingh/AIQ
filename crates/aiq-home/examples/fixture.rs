@@ -1,5 +1,6 @@
 //! Write the UI test fixtures from a seeded store: the contract test between this crate and the React
 //! types (design aiq-home-app, Test plan: Contract). `cargo run -p aiq-home --example fixture -- <dir>`
+//! With `AIQ_SEED_DIR=<dir>` it writes only the seeded store, for running the app against it.
 #[path = "../tests/support/seed.rs"]
 mod seed;
 
@@ -9,6 +10,11 @@ use aiq_domain::PackSource;
 use aiq_domain::clock::Now;
 
 fn main() {
+    // AIQ_SEED_DIR=<dir>: only seed a real store there (for running the desktop app against it), then stop.
+    if let Some(dir) = std::env::var_os("AIQ_SEED_DIR") {
+        seed::standard(&Paths::at(std::path::Path::new(&dir)), true);
+        return;
+    }
     let out = std::path::PathBuf::from(std::env::args().nth(1).expect("usage: fixture <out dir>"));
     std::fs::create_dir_all(&out).unwrap();
     let pack = BundledPack.load().unwrap();

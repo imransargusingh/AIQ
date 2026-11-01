@@ -70,7 +70,7 @@ Quoted from the spec and architecture:
 | D5 | Rung rows with no judged tasks | The five rows stay, each explaining what the rung means (from `rung-model.md`) and showing "Not judged yet". Rows expand to the meaning | Home must explain the rungs (spec H2); empty bars would teach nothing |
 | D6 | How the app reads data | **Directly from the store file, read-only**, for every view. Writes go through the core's local API | One read path that also works when the core is down (spec NFR); the core stays the only writer |
 | D7 | Folder per live task | The core adds `folder` (the normalised working folder) to each prompt's `payload_meta` from now on. Older live tasks show "—" | The Tasks page needs "where"; the field is non-content metadata the person already owns. Task types later group by it |
-| D8 | Imported tasks (`aiq import`, PR #15) | Shown when the import tables exist, marked "Imported" | Reads `import_session` / `import_event` as PR #15 defines them; absent tables mean none |
+| D8 | Imported tasks (`aiq import`, PR #15, merged 2026-11-01) | Shown, marked "Imported"; automated imported sessions never | Reads `import_session` / `import_event` (schema v4); a store from before v4 has none |
 | D9 | Theme | Follows Windows: light, dark (`prefers-color-scheme`), high contrast (`forced-colors`) | DESIGN.md modes; no setting needed |
 | D10 | Packaging | A separate `aiq-home.exe` (Tauri, WebView2), built in CI. No installer in this slice | Smallest thing Imran can run; installer when AIQ goes to others |
 
@@ -149,7 +149,7 @@ rows. No backfill (a backfill would guess).
 | Contract | Source | Confidence |
 |---|---|---|
 | Store schema v1–v3 | `crates/aiq-store/src/schema_v*.sql` | Verified (read) |
-| Import schema v4 | PR #15 `schema_v4.sql` | Verified by reading the PR; unmerged, so read defensively |
+| Import schema v4 | `crates/aiq-store/src/schema_v4.sql` (PR #15, merged) | Verified (read; seeded in the tests through the real migration) |
 | Local API frames `Setting`, `Forget`, `Status` | `aiq-contracts::frames` | Verified (read; used by `aiq` CLI) |
 | Pause flag file | `aiq-core::paths::pause_flag`, as `cli::pause` | Verified (read) |
 | Tauri 2 commands, capabilities, CSP | Tauri 2.12 docs; built in CI | Verified by building (see Test plan) |
@@ -256,7 +256,6 @@ once). No remote telemetry (architecture).
 ## Flagged risks
 
 - Live tasks before this change have no folder. *Accepted* (no backfill).
-- PR #15's import schema may still change before merge; the reader checks table and column presence. *Flagged*, thread told.
 - The Task rule (one session, idle gap 30 min) is the Phase 1 rule; grouping accuracy on real data is unproven (architecture risk). *Inherited.*
 - The keyboard and screen-reader check in the real WebView2 is a laptop check; CI runs axe in Chromium, which is close but not the same engine build. *Flagged.*
 
