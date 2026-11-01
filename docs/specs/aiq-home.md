@@ -14,13 +14,13 @@ summary: >-
   What AIQ home, the private desktop app, must let a person do: set AIQ up, see how much of their
   work agents now finish, find the recurring tasks where agents could do more and the one next step
   for each, follow their habits, and see, pause and delete everything AIQ has captured. Parts A and B
-  complete; Part C is produced by /ui-design.
+  complete; Part C points to DESIGN.md and the reviewed mockup.
 ---
 
 # Spec: AIQ home (desktop app views)
 
 Produced with AI-Forward `/specify` (v2026.10.19.4) as the UX layer `/ui-design` needs before it can
-design AIQ home. **Status: draft for Imran's review. Q1–Q6 decided.** Starting point: round-1 mockups
+design AIQ home. **Status: draft for Imran's review. Q1–Q6 decided; Part C produced by /ui-design.** Starting point: round-1 mockups
 (`docs/mockups/aiq-ui-round1.html`, https://claude.ai/artifact/SAhC7cYJCHDqmVvGmWKwwH).
 
 This spec fills the gap both sibling specs leave open: `rung-model.md` puts "the rung distribution
@@ -103,9 +103,9 @@ are counted separately and never guessed.
 
 **US-H1 — Set up in a few minutes, knowing what AIQ will and won't do.**
 - **Given** a first run **When** setup opens **Then** it shows, in order: the privacy promise, the tools AIQ found, the judge connection, the tip limit and starting preset, and the lost-machine notice; each step can go back.
-- **Given** Claude Code is installed and signed in **When** setup reaches the judge step **Then** it says AIQ will judge through the person's own Claude Code, shows the work-account caveat and asks for a yes; **no API-key field is shown**.
-- **Given** Claude Code is not signed in and `ANTHROPIC_API_KEY` is set **When** setup reaches the judge step **Then** it offers to use that key, and never uses it without a yes.
-- **Given** neither is available **When** setup reaches the judge step **Then** it offers an API-key field that can be skipped, and says tips work without it.
+- **Given** Claude Code is installed and signed in **When** setup reaches the judge step **Then** it asks for nothing extra: it runs one test judge call and says, in plain words, that judge calls use the person's Claude Code plan usage; AIQ never reads or stores the sign-in (rung-model, PR #11).
+- **Given** Claude Code is not installed or not signed in **When** setup reaches the judge step **Then** it offers three choices: "Sign in to Claude Code" (Claude Code's own flow, never an AIQ login), "Use an API key instead" (kept only in the OS keychain; offers `ANTHROPIC_API_KEY` if set, never used without a yes), or "Skip for now" (tips work without it).
+- **Given** any judge choice **When** shown **Then** the work-account caveat is on the same step (admin policies, logging and retention apply), and setup copy never claims Anthropic approves the arrangement.
 - **Given** an API key Anthropic rejects **When** checked **Then** setup says it is not valid and how to fix it, and stores nothing.
 - **Given** the lost-machine notice **When** the person has not ticked "I understand" **Then** "Start AIQ" is disabled.
 
@@ -137,7 +137,7 @@ are counted separately and never guessed.
 - **Given** Pause **When** pressed (P, or the palette) **Then** capture and tips stop on every surface, and every screen shows that AIQ is paused.
 
 **US-H7 — Change how AIQ coaches me, and decide about sharing with full sight of what is sent.**
-- **Given** Settings **When** opened **Then** the person can set tips a day (1, 3, 5), quiet hours, tip types on/off, starting preset, judge connection and judging budget.
+- **Given** Settings **When** opened **Then** the person can set tips a day (1, 3, 5), quiet hours, tip types on/off, starting preset, rung model connection ("Claude through your signed-in Claude Code", "your own API key" or "Copilot with VS Code consent") and judging budget.
 - **Given** sharing is off (default) **When** the person opens "See exactly what would be sent" **Then** the full message for this week is shown before any opt-in, and nothing is sent until they choose to share.
 
 ### Non-functional requirements (ISO/IEC 25010)
@@ -187,11 +187,12 @@ flowchart TD
   start([First launch]) --> priv[Privacy promise] --> tools[Tools found]
   tools -->|none found| notools["Say which tools AIQ supports; continue with none"] --> judge
   tools --> judge{Claude Code signed in?}
-  judge -->|yes| cc["Judge via your Claude Code + work-account caveat"] --> tips
-  judge -->|no| env{ANTHROPIC_API_KEY set?}
-  env -->|yes| usekey["Offer to use it"] --> tips
-  env -->|no| keyfield["Optional key field"]
-  keyfield -->|skip| tips
+  judge -->|yes| cc["Test judge call; says it uses your plan; work-account caveat"] --> tips
+  cc -->|test fails| ccerr["Say what failed; retry or skip"] --> tips
+  judge -->|no| choose{"Sign in to Claude Code / Use an API key / Skip"}
+  choose -->|sign in| ccflow["Claude Code's own sign-in"] --> judge
+  choose -->|skip| tips
+  choose -->|API key| keyfield["Key field; offers ANTHROPIC_API_KEY if set"]
   keyfield -->|key| check{Key valid?}
   check -->|no| keyerr["Say why; nothing stored"] --> keyfield
   check -->|yes| tips[Tips a day + starting preset]
@@ -249,10 +250,17 @@ flowchart TD
 - No page shows a rung number without its name, or a comparison with other people.
 
 ## Part C — UI specification
-Produced by `/ui-design` (next), with `DESIGN.md`. Starting archetype, to be confirmed there:
-**B1 · Keyboard-Velocity GUI** for the shell and tables (as the coaching-loop spec chose for the
-card), with a summary-first Home; the JTBD is "check, then act in my own tool", which is
-operational (B-series), not a gamified loop (A4).
+Produced by `/ui-design` (2026-11-01): **`DESIGN.md`** (tokens, states, copy, modes) and the mockup
+**`docs/mockups/aiq-home.html`**; review in `docs/reviews/ui-aiq-home.md`.
+
+- **Archetype:** H1 · Windows Fluent Utility Shell, deviations `x-framework: tauri-webview2-react`,
+  `Density: Comfortable|Compact`, `Feedback: Calm`, `Persistence: LocalOnly`. Rationale: the JTBD is
+  "check, then act in my own tool" on a Windows-first desktop utility; reading-first, serial only in
+  setup and confirms.
+- **UI acceptance criteria:** WCAG 2.2 AA in light, dark and high contrast (0 failures in the
+  mockup sweep); targets ≥ 24×24 px; one focal point on Home (the kept rate); every modal traps focus
+  and returns it; every pause, resume and delete outcome announced in a status region; single-key
+  shortcuts can be turned off; no rung number without its name; no score or comparison with others.
 
 ## Flagged risks & residual unknowns
 - Kept rate depends on rung-model facts F2 and F5 meeting their fact bar; until then Home's headline

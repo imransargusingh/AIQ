@@ -1,0 +1,613 @@
+<!doctype html>
+<html lang="en" data-theme="light" data-density="comfortable" data-state="default" data-persona="dev" data-viewport="desktop" data-judge="on" data-page="home">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AIQ — AIQ home mockup</title>
+<!--
+  HIGH-FIDELITY MOCKUP + REVIEW HARNESS (from templates/mockup-harness.template.html), produced by /ui-design.
+  Spec: docs/specs/aiq-home.md (Parts A+B). Tokens: DESIGN.md. Self-contained: no CDN, no fonts, no network.
+  Everything inside <main> is the design under review; <header class="harness"> and the audit are review chrome.
+-->
+<style>
+  /* ---- TOKENS (mirror DESIGN.md) ---- */
+  :root{
+    --primary:#0b6b6b; --on-primary:#ffffff; --canvas:#f3f4f4; --canvas-soft:#eaeeee; --surface:#ffffff;
+    --ink:#1a1c1d; --ink-mute:#596164; --hairline:#d6dcdd; --success:#1e7a45; --warning:#8a5600; --danger:#b42318;
+    --focus-ring:#0b6b6b; --scrim:#0a1414;
+    --rung-1:#c4e6e3; --rung-2:#86c9c4; --rung-3:#3f9f99; --rung-4:#17706b; --rung-5:#0b3f3d;
+    --f-text:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;
+    --f-display:"Segoe UI Variable Display","Segoe UI",system-ui,sans-serif;
+    --f-mono:"Cascadia Mono",Consolas,ui-monospace,monospace;
+    --t-display:600 44px/1.05 var(--f-display); --t-title:600 24px/1.25 var(--f-display);
+    --t-heading:600 16px/1.35 var(--f-text); --t-body:400 14px/1.5 var(--f-text);
+    --t-caption:400 12px/1.4 var(--f-text); --t-mono:400 13px/1.5 var(--f-mono);
+    --s1:2px; --s2:4px; --s3:8px; --s4:12px; --s5:16px; --s6:24px; --s7:32px; --s8:48px;
+    --row:12px;
+    --r-sm:4px; --r-md:8px; --r-pill:9999px;
+    --overlay:0 8px 28px rgba(10,20,20,.18);
+    --fast:100ms; --base:160ms; --ease:cubic-bezier(.2,0,0,1);
+    color-scheme:light;
+  }
+  [data-theme="dark"]{
+    --primary:#5cc8c2; --on-primary:#0b1d1d; --canvas:#1b1d1e; --canvas-soft:#2d3234; --surface:#24282a;
+    --ink:#eceeee; --ink-mute:#a3abae; --hairline:#3a4143; --success:#6fd39a; --warning:#f0b860; --danger:#ff9a8f;
+    --focus-ring:#5cc8c2;
+    --rung-1:#1d4a48; --rung-2:#2b6f6b; --rung-3:#3f9f99; --rung-4:#79cdc7; --rung-5:#c4ece9;
+    --overlay:0 8px 28px rgba(0,0,0,.5); color-scheme:dark;
+  }
+  [data-theme="contrast"]{
+    --primary:#ffd400; --on-primary:#000000; --canvas:#000000; --canvas-soft:#000000; --surface:#000000;
+    --ink:#ffffff; --ink-mute:#e8e8e8; --hairline:#ffffff; --success:#7ee2a8; --warning:#ffd166; --danger:#ffb4ab;
+    --focus-ring:#ffd400;
+    --rung-1:#000000; --rung-2:#000000; --rung-3:#000000; --rung-4:#000000; --rung-5:#000000;
+    color-scheme:dark;
+  }
+  [data-density="compact"]{ --row:8px; }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--canvas);color:var(--ink);font:var(--t-body)}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+  [data-motion="reduced"] *{animation:none!important;transition:none!important}
+
+  /* ---- REVIEW HARNESS (chrome — never ships) ---- */
+  .harness{position:sticky;top:0;z-index:99;display:flex;flex-wrap:wrap;gap:.45rem .9rem;align-items:center;
+    padding:.55rem .9rem;background:#101418;color:#e9edf2;border-bottom:2px solid #2b323c;font:400 12px/1.4 system-ui,sans-serif}
+  .harness strong{letter-spacing:.04em;text-transform:uppercase;color:#9fb0c4}
+  .harness label{display:flex;gap:.35rem;align-items:center;color:#c7d2df}
+  .harness select{background:#1b222b;color:#e9edf2;border:1px solid #333c48;border-radius:6px;padding:.2rem .4rem;font:inherit}
+  .harness .spacer{flex:1}
+  .harness .verdict{font-family:ui-monospace,monospace}
+  .harness .pass{color:#5fd08a}.harness .fail{color:#ff8a80}
+  .harness [hidden]{display:none}
+  .frame{margin:var(--s6) auto;padding:0 var(--s5)}
+  [data-viewport="narrow"] .frame{max-width:860px}
+  [data-viewport="desktop"] .frame{max-width:1240px}
+  [data-viewport="wide"] .frame{max-width:1600px}
+
+  /* ---- DESIGN REGION ---- */
+  :focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}
+  .win{background:var(--canvas);border:1px solid var(--hairline);border-radius:var(--r-md);overflow:hidden;box-shadow:var(--overlay)}
+  .titlebar{display:flex;align-items:center;gap:var(--s3);min-height:36px;padding:var(--s2) var(--s4);font:var(--t-caption);color:var(--ink-mute);border-bottom:1px solid var(--hairline)}
+  .titlebar .pausedchip{color:var(--warning);border-color:var(--warning)}
+  .titlebar .search{margin-left:auto;display:flex;gap:var(--s3);align-items:center;border:1px solid var(--hairline);background:var(--surface);
+    border-radius:var(--r-sm);padding:0 var(--s3);min-height:26px;min-width:240px;color:var(--ink-mute);cursor:pointer;font:var(--t-caption);text-align:left}
+  .shell{display:grid;grid-template-columns:216px minmax(0,1fr);min-height:640px}
+  nav.side{padding:var(--s4) var(--s3);display:flex;flex-direction:column;gap:var(--s1);border-right:1px solid var(--hairline)}
+  nav.side a{display:flex;align-items:center;justify-content:space-between;gap:var(--s3);min-height:32px;padding:0 var(--s4);border-radius:var(--r-sm);
+    color:var(--ink-mute);text-decoration:none;position:relative;transition:background var(--fast) var(--ease)}
+  nav.side a:hover{background:var(--canvas-soft);color:var(--ink)}
+  nav.side a[aria-current="page"]{background:var(--surface);color:var(--primary);font-weight:600}
+  nav.side a[aria-current="page"]::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:var(--r-sm);background:var(--primary)}
+  nav.side .k{font:var(--t-caption);color:var(--ink-mute);font-weight:400}
+  nav.side .foot{margin-top:auto;padding:var(--s4);border-top:1px solid var(--hairline);display:flex;flex-direction:column;gap:var(--s2);font:var(--t-caption);color:var(--ink-mute)}
+  .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--success);margin-right:var(--s3)}
+  .dot.paused{background:var(--warning)}
+  main{min-width:0}
+  .page{padding:var(--s6) var(--s7) var(--s8);display:flex;flex-direction:column;gap:var(--s7);max-width:1000px}
+  .page.wide{max-width:none}
+  h1{font:var(--t-title);margin:0;text-wrap:balance}
+  h2{font:var(--t-heading);margin:0}
+  p{margin:0}
+  .meta{font:var(--t-caption);color:var(--ink-mute)}
+  .mute{color:var(--ink-mute)}
+  .group{display:flex;flex-direction:column;gap:var(--s3)}
+  .head{display:flex;justify-content:space-between;align-items:baseline;gap:var(--s4);flex-wrap:wrap}
+  .top{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:var(--s5)}
+  .card{background:var(--surface);border:1px solid var(--hairline);border-radius:var(--r-md);padding:var(--s5) var(--s6);display:flex;flex-direction:column;gap:var(--s3)}
+  .big{font:var(--t-display);font-variant-numeric:tabular-nums;letter-spacing:-.5px}
+  .num{font-variant-numeric:tabular-nums}
+  svg.trend{width:100%;height:56px;display:block}
+  .btn{display:inline-flex;align-items:center;gap:var(--s3);min-height:32px;padding:0 var(--s5);border-radius:var(--r-sm);border:1px solid var(--hairline);
+    background:var(--surface);color:var(--ink);font:600 14px/1 var(--f-text);cursor:pointer;transition:background var(--fast) var(--ease),filter var(--fast) var(--ease)}
+  .btn:hover{background:var(--canvas-soft)}
+  .btn.pri{background:var(--primary);border-color:var(--primary);color:var(--on-primary);min-height:36px}
+  .btn.pri:hover{filter:brightness(1.06)}
+  .btn.danger{color:var(--danger)}
+  .btn[disabled]{opacity:.45;cursor:not-allowed}
+  .btn kbd{color:inherit;border-color:currentColor}
+  kbd{font:var(--t-caption);border:1px solid var(--ink-mute);border-radius:var(--r-sm);padding:0 var(--s2);color:var(--ink-mute)}
+  .row{display:flex;gap:var(--s3);align-items:center;flex-wrap:wrap}
+  .chip{display:inline-flex;align-items:center;gap:var(--s2);font:var(--t-caption);padding:var(--s1) var(--s3);border:1px solid var(--hairline);border-radius:var(--r-pill);color:var(--ink-mute);white-space:nowrap;background:var(--surface)}
+  .chip i{width:10px;height:10px;border-radius:var(--r-sm);display:inline-block;border:1px solid var(--hairline)}
+  .chip.ok{color:var(--success);border-color:var(--success)}
+  .chip.warn{color:var(--warning);border-color:var(--warning)}
+  .chip.tried{color:var(--primary);border-color:var(--primary)}
+  .list{display:flex;flex-direction:column}
+  .opp{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--s2) var(--s5);padding:var(--s4) var(--s3);border-top:1px solid var(--hairline);text-decoration:none;color:inherit;border-radius:var(--r-sm);transition:background var(--fast) var(--ease)}
+  .opp:first-child{border-top:0}
+  .opp:hover{background:var(--canvas-soft)}
+  .opp .name{font-weight:600;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+  .opp .next{grid-column:1/-1;color:var(--ink-mute)}
+  .opp .freq{text-align:right;font:var(--t-caption);color:var(--ink-mute);white-space:nowrap}
+  .rungs{display:flex;flex-direction:column;gap:var(--s3)}
+  .rr{display:grid;grid-template-columns:140px minmax(0,1fr) 92px;gap:var(--s4);align-items:center}
+  .track{position:relative;height:16px;background:var(--canvas-soft);border-radius:var(--r-sm)}
+  .track .now{position:absolute;inset:0 auto 0 0;border-radius:var(--r-sm)}
+  [data-theme="contrast"] .track .now{border:1px solid var(--ink)}
+  .track .pot{position:absolute;inset:-3px auto -3px 0;border:1.5px dashed var(--ink-mute);border-radius:var(--r-sm)}
+  .rr .v{text-align:right;font:var(--t-caption);color:var(--ink-mute);font-variant-numeric:tabular-nums}
+  .legend{display:flex;gap:var(--s5);font:var(--t-caption);color:var(--ink-mute);flex-wrap:wrap}
+  .legend i{display:inline-block;width:14px;height:10px;border-radius:var(--r-sm);background:var(--rung-3);margin-right:var(--s2);vertical-align:-1px}
+  .legend i.p{background:none;border:1.5px dashed var(--ink-mute)}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:var(--s5)}
+  .kv{display:flex;justify-content:space-between;gap:var(--s4);padding:var(--s3) 0;border-top:1px solid var(--hairline)}
+  .kv:first-child{border-top:0}
+  .banner{display:flex;gap:var(--s4);align-items:center;flex-wrap:wrap;padding:var(--s4) var(--s5);border-radius:var(--r-md);
+    border:1px solid color-mix(in srgb,var(--warning) 45%,transparent);background:color-mix(in srgb,var(--warning) 9%,var(--surface))}
+  .banner.info{border-color:color-mix(in srgb,var(--primary) 40%,transparent);background:color-mix(in srgb,var(--primary) 7%,var(--surface))}
+  .banner.bad{border-color:color-mix(in srgb,var(--danger) 45%,transparent);background:color-mix(in srgb,var(--danger) 8%,var(--surface))}
+  .banner .grow{flex:1 1 280px}
+  table{width:100%;border-collapse:collapse}
+  th{text-align:left;font:600 12px/1.4 var(--f-text);color:var(--ink-mute);padding:var(--s3);border-bottom:1px solid var(--hairline);white-space:nowrap}
+  th button{all:unset;cursor:pointer;display:inline-flex;gap:var(--s2);min-height:24px;align-items:center}
+  td{padding:var(--row) var(--s3);border-bottom:1px solid var(--hairline);vertical-align:top}
+  td.r,th.r{text-align:right}
+  tbody tr{cursor:default}
+  tbody tr:hover td{background:var(--canvas-soft)}
+  tbody tr[aria-selected="true"] td{background:color-mix(in srgb,var(--primary) 9%,var(--surface))}
+  tbody tr[aria-selected="true"] td:first-child{box-shadow:inset 3px 0 var(--primary)}
+  .selmark{display:inline-block;width:16px;color:var(--primary);font-weight:700}
+  tbody tr:focus-visible{outline:2px solid var(--focus-ring);outline-offset:-2px}
+  td.clip{max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:var(--t-mono)}
+  .tablewrap{background:var(--surface);border:1px solid var(--hairline);border-radius:var(--r-md);overflow-x:auto}
+  .starter{font:var(--t-mono);background:var(--canvas-soft);border-radius:var(--r-sm);padding:var(--s4);white-space:pre-wrap}
+  .opt{display:flex;gap:var(--s3);align-items:flex-start;min-height:36px;padding:var(--s3) var(--s4);border:1px solid var(--hairline);border-radius:var(--r-sm);cursor:pointer;background:var(--surface)}
+  .opt:has(input:checked){border-color:var(--primary)}
+  .opt input{margin-top:3px;accent-color:var(--primary)}
+  .field{display:flex;flex-direction:column;gap:var(--s2);max-width:460px}
+  .field label{font-weight:600}
+  .input{min-height:32px;padding:0 var(--s4);border:1px solid var(--ink-mute);border-radius:var(--r-sm);background:var(--surface);color:var(--ink);font:var(--t-body)}
+  .input.err{border-color:var(--danger)}
+  .errtext{color:var(--danger);font:var(--t-caption)}
+  .switch{width:40px;height:24px;border-radius:var(--r-pill);border:1px solid var(--ink-mute);background:var(--surface);position:relative;cursor:pointer;flex:none}
+  .switch::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:var(--ink-mute);transition:left var(--fast) var(--ease)}
+  .switch[aria-checked="true"]{background:var(--primary);border-color:var(--primary)}
+  .switch[aria-checked="true"]::after{left:19px;background:var(--on-primary)}
+  .seg{display:inline-flex;border:1px solid var(--ink-mute);border-radius:var(--r-sm);overflow:hidden}
+  .seg button{all:unset;min-height:30px;min-width:36px;text-align:center;cursor:pointer;padding:0 var(--s3)}
+  .seg button[aria-pressed="true"]{background:var(--primary);color:var(--on-primary)}
+  .seg button:focus-visible{outline:2px solid var(--focus-ring);outline-offset:-2px}
+  .mix{display:flex;height:12px;border-radius:var(--r-sm);overflow:hidden;gap:2px}
+  .payload{font:var(--t-mono);background:var(--canvas-soft);border-radius:var(--r-sm);padding:var(--s4);white-space:pre;overflow-x:auto}
+  .steps{list-style:none;margin:0;display:flex;flex-direction:column;gap:var(--s1);padding:var(--s4) var(--s3);border-right:1px solid var(--hairline)}
+  .steps li{display:flex;gap:var(--s3);align-items:center;min-height:32px;padding:0 var(--s4);border-radius:var(--r-sm);color:var(--ink-mute)}
+  .steps li b{width:20px;height:20px;border-radius:50%;border:1px solid var(--ink-mute);display:grid;place-items:center;font:var(--t-caption)}
+  .steps li.on{background:var(--surface);color:var(--ink);font-weight:600}
+  .steps li.on b{border-color:var(--primary);color:var(--primary)}
+  .steps li.done b{background:var(--primary);border-color:var(--primary);color:var(--on-primary)}
+  .empty{display:flex;flex-direction:column;gap:var(--s3);align-items:flex-start;padding:var(--s6);border:1px dashed var(--ink-mute);border-radius:var(--r-md)}
+  .meter{height:6px;background:var(--canvas-soft);border-radius:var(--r-sm);overflow:hidden}
+  .meter i{display:block;height:100%;background:var(--primary)}
+  .sk{display:block;background:linear-gradient(90deg,var(--canvas-soft),var(--hairline),var(--canvas-soft));background-size:200% 100%;animation:sh 1.2s infinite;border-radius:var(--r-sm);height:14px}
+  @keyframes sh{to{background-position:-200% 0}}
+  dialog{border:0;padding:0;background:transparent;color:var(--ink);max-width:min(560px,calc(100% - 32px))}
+  dialog::backdrop{background:color-mix(in srgb,var(--scrim) 35%,transparent)}
+  .dialog{background:var(--surface);border:1px solid var(--hairline);border-radius:var(--r-md);box-shadow:var(--overlay);padding:var(--s6);max-width:460px;display:flex;flex-direction:column;gap:var(--s4)}
+  .relative{position:relative}
+  .toast{position:fixed;right:var(--s6);bottom:var(--s6);background:var(--ink);color:var(--surface);border-radius:var(--r-md);padding:var(--s4) var(--s5);box-shadow:var(--overlay)}
+  dialog.pal-dlg{margin-top:14vh;width:min(560px,calc(100% - 32px))}
+  .pal{width:100%;background:var(--surface);color:var(--ink);border:1px solid var(--hairline);border-radius:var(--r-md);box-shadow:var(--overlay);overflow:hidden}
+  .pal input{width:100%;border:0;border-bottom:1px solid var(--hairline);background:transparent;color:var(--ink);padding:var(--s5);font:var(--t-heading);outline:none}
+  .pal ul{list-style:none;margin:0;padding:var(--s3);max-height:320px;overflow:auto}
+  .pal li{display:flex;justify-content:space-between;min-height:32px;align-items:center;padding:0 var(--s4);border-radius:var(--r-sm);cursor:pointer}
+  .pal li.act{background:color-mix(in srgb,var(--primary) 12%,var(--surface));box-shadow:inset 3px 0 var(--primary)}
+  @media (max-width:900px){ .shell{grid-template-columns:150px minmax(0,1fr)} nav.side .k,nav.side .foot{display:none} .top,.two{grid-template-columns:1fr} .page{padding:var(--s5)} }
+  [data-viewport="narrow"] .shell{grid-template-columns:150px minmax(0,1fr)}
+  [data-viewport="narrow"] nav.side .k,[data-viewport="narrow"] nav.side .foot{display:none}
+  [data-viewport="narrow"] .top,[data-viewport="narrow"] .two{grid-template-columns:1fr}
+  [data-viewport="narrow"] .page{padding:var(--s5)}
+  a.meta,.meta a{display:inline-flex;align-items:center;min-height:24px;color:var(--primary)}
+  .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+
+  .audit{max-width:1240px;margin:var(--s7) auto;padding:var(--s5);font:400 12px/1.4 system-ui,sans-serif;border-top:1px dashed var(--hairline);color:var(--ink)}
+  .audit table td,.audit table th{padding:4px 8px}
+  .audit .pass{color:var(--success)} .audit .fail{color:var(--danger)}
+</style>
+</head>
+<body>
+
+<header class="harness" role="region" aria-label="Review harness">
+  <strong>Review</strong>
+  <label>Page <select id="h-page">
+    <option value="home">Home</option><option value="tasks">Tasks</option><option value="detail">Task type detail</option>
+    <option value="habits">Habits and tips</option><option value="data">Your data</option><option value="settings">Settings</option><option value="setup">Setup</option></select></label>
+  <label id="l-state">State <select id="h-state">
+    <option value="default">default</option><option value="loading">loading</option><option value="empty">empty / first-run</option>
+    <option value="error">error (AIQ not running)</option><option value="partial">partial</option><option value="overflow">overflow</option><option value="success">success</option></select></label>
+  <label id="l-step" hidden>Step <select id="h-step">
+    <option value="privacy">1 Privacy</option><option value="tools">2 Tools</option><option value="tools-none">2 Tools: none found</option><option value="judge-in">3 Judge: Claude Code signed in</option>
+    <option value="judge-test">3 Judge: test call failed</option><option value="judge-out">3 Judge: not signed in</option><option value="judge-key">3 Judge: API key (invalid)</option>
+    <option value="tips">4 Tips</option><option value="history">5 History notice</option></select></label>
+  <label>Persona <select id="h-persona"><option value="dev">Developer (mostly coding)</option><option value="pm">PM (mostly specs and docs)</option></select></label>
+  <label>Judge <select id="h-judge"><option value="on">connected</option><option value="off">not connected</option></select></label>
+  <label>Theme <select id="h-theme"><option>light</option><option>dark</option><option value="contrast">high-contrast</option></select></label>
+  <label>Density <select id="h-density"><option>comfortable</option><option>compact</option></select></label>
+  <label>Viewport <select id="h-viewport"><option value="narrow">narrow (860)</option><option value="desktop" selected>desktop (1240)</option><option value="wide">wide</option></select></label>
+  <label><input type="checkbox" id="h-motion"> Reduced motion</label>
+  <span class="spacer"></span>
+  <span class="verdict" id="h-verdict">audit —</span>
+</header>
+
+<div class="frame">
+  <div class="win" id="win">
+    <div class="titlebar"><span>AIQ</span><span id="tbStatus"></span><button class="search" id="openPal" type="button" aria-haspopup="dialog">Search or run a command <kbd>Ctrl K</kbd></button></div>
+    <div class="shell">
+      <nav class="side" aria-label="AIQ" id="nav"></nav>
+      <main id="app" tabindex="-1"></main>
+    </div>
+  </div>
+</div>
+
+<dialog class="pal-dlg" id="pal" aria-label="Command palette"><div class="pal"><input id="palIn" placeholder="Type a page or action" aria-label="Command" role="combobox" aria-expanded="true" aria-controls="palList" aria-autocomplete="list"><ul id="palList" role="listbox" aria-label="Commands"></ul></div></dialog>
+<dialog id="del" aria-labelledby="dt"><div class="dialog" id="delBody"></div></dialog>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<section class="audit" aria-label="Mechanical audit">
+  <table><thead><tr><th>Pairing (token on token)</th><th>Contrast</th><th>WCAG AA</th></tr></thead><tbody id="audit-rows"></tbody></table>
+  <p id="audit-targets"></p>
+  <p>Computed live from the rendered tokens. AA: 4.5:1 text, 3:1 large text and UI boundaries. Targets: WCAG 2.2 2.5.8 minimum 24×24 CSS px (DESIGN.md §12).</p>
+</section>
+
+<script>
+const root = document.documentElement, $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const RUNGS = ["Assisted","Directed","Delegated","Orchestrated","Factory"];
+const chipR = i => `<span class="chip"><i style="background:var(--rung-${i+1})"></i>${RUNGS[i]} (${i+1})</span>`;
+let paused = false, singleKeys = true, selCount = 1, invoker = null;
+
+/* ---- sample data (marked as sample in the page) ---- */
+const DATA = {
+  dev: { kept:58, judged:141, trend:[33,35,38,41], waiting:12,
+    mix:[["Code a change",68],["Write a spec or doc",32]],
+    rungs:[[24,14],[35,28],[22,31],[13,19],[6,8]],
+    tasks:[
+      {id:"tests",name:"Writing unit tests",job:"Code a change",now:1,pot:2,week:23,kept:31,next:"Ask the agent to run the tests and keep fixing until they pass.",
+       starter:"Write tests for <function> covering <cases>. Run them with npm test.\nKeep fixing until they all pass, then show me the diff and the test output.",
+       facts:[["The agent made the edits","yes, 58 of 61","ok"],["Who ran the tests","you, 49 of 61",""],["Your share of the final change","about 30%",""],["Agent instructions file in the repo","yes","ok"]],
+       why:"You steer the agent through each step and check its work by hand. At Delegated the agent does the whole task, checks it, and hands you a result to review."},
+      {id:"lint",name:"Fixing lint and build errors",job:"Code a change",now:0,pot:0,week:17,kept:22,blocked:"this repo has no agent instructions file, so agents guess the build steps"},
+      {id:"review",name:"Reviewing pull requests",job:"Code a change",now:1,pot:2,week:12,kept:48,next:"Give the agent the PR and your review checklist, and ask for findings with file and line."},
+      {id:"notes",name:"Turning meeting notes into status updates",job:"Write a spec or doc",now:0,pot:1,week:6,kept:17,next:"Start from a saved prompt that names the audience and the three decisions you need."},
+      {id:"scaffold",name:"Scaffolding a service from a spec",job:"Code a change",now:2,pot:2,week:3,kept:67},
+      {id:"deps",name:"Upgrading dependencies",job:"Code a change",now:3,pot:3,week:2,kept:80}
+    ],
+    habits:[["Give the agent the failing output","Code a change","Adopted",9,12],["Start a fresh session for a new task","Any job","Adopted",11,15],["Say what was wrong before asking again","Any job","Tried",3,8],["Ask the agent to run the tests itself","Code a change","Tried",2,7],["Check drafted claims against a source","Write a spec or doc","Not yet",0,4]],
+    tips:[["Today 22:31","Reworded 3 times without new details","Claude Code","No answer"],["Tue 15:02","Accepted a drafted spec with no sources checked","VS Code","Helpful"],["Mon 10:47","Same task, a fresh session would help","Claude Code","Snoozed 7 days"]],
+    events:[["22:31","Claude Code","Tip shown","Reworded 3 times without new details"],["22:31","Claude Code","Prompt","the date parser test is still failing, fix it"],["22:30","Claude Code","Turn ended","1 test failed"],["22:28","Claude Code","Prompt","please fix the date parser test, it still fails"],["22:25","Claude Code","Prompt","fix the failing date parser test"],["21:58","Copilot CLI","Prompt","summarise the open PRs for the weekly update"]],
+    store:"2,184 events · 3.1 MB · since 24 Oct" },
+  pm: { kept:19, judged:64, trend:[22,24,27,30], waiting:5,
+    mix:[["Write a spec or doc",71],["Code a change",29]],
+    rungs:[[38,24],[34,32],[18,28],[8,12],[2,4]],
+    tasks:[
+      {id:"status",name:"Writing the weekly status update",job:"Write a spec or doc",now:0,pot:1,week:5,kept:20,next:"Give the agent last week's update, the merged PRs and the three decisions you need, then edit its draft.",
+       starter:"Draft this week's status update for <audience>. Use last week's update as the format.\nSources: <links>. Call out the three decisions I need from them.",
+       facts:[["The agent drafted the text","yes, 9 of 10","ok"],["Your share of the final text","about 70%",""],["Sources given to the agent","1 of 10 tasks",""],["Template or saved prompt used","no",""]],
+       why:"You ask for a draft and rewrite most of it. At Directed you give the agent the sources and structure up front, and edit rather than rewrite."},
+      {id:"ac",name:"Writing acceptance criteria",job:"Write a spec or doc",now:1,pot:2,week:4,kept:36,next:"Hand the agent the user story and ask for Given/When/Then cases, including the error paths."},
+      {id:"triage",name:"Triaging the backlog",job:"Write a spec or doc",now:1,pot:1,week:3,kept:40},
+      {id:"spec",name:"Drafting a one-page spec",job:"Write a spec or doc",now:1,pot:2,week:2,kept:25,next:"Give the agent the problem, the users and the non-goals first, then ask it to check its claims against your sources."}
+    ],
+    habits:[["Give the agent your sources first","Write a spec or doc","Tried",2,6],["Check drafted claims against a source","Write a spec or doc","Not yet",0,5],["Start a fresh session for a new task","Any job","Adopted",8,11]],
+    tips:[["Today 09:12","Accepted a drafted spec with no sources checked","VS Code","No answer"],["Thu 16:40","Rewrote most of the agent's draft","Copilot CLI","Helpful"]],
+    events:[["09:12","VS Code","Tip shown","Accepted a drafted spec with no sources checked"],["09:10","VS Code","Prompt","write a one-page spec for offline judging"],["08:55","Copilot CLI","Prompt","summarise the open PRs for the weekly update"]],
+    store:"612 events · 0.9 MB · since 24 Oct" }
+};
+const LONG = {name:"Reconciling the quarterly vendor invoice exports against the finance team's SharePoint tracker and flagging mismatches", week:1284};
+
+const PAGES = [["home","Home","H"],["tasks","Tasks","T"],["habits","Habits and tips","B"],["data","Your data","D"],["settings","Settings","S"]];
+
+function d(){ return DATA[root.dataset.persona]; }
+function st(){ return root.dataset.state; }
+function judgeOn(){ return root.dataset.judge === "on"; }
+
+function navHTML(){
+  const p = root.dataset.page === "detail" ? "tasks" : root.dataset.page;
+  return PAGES.map(([id,n,k]) => `<a href="#${id}" data-go="${id}" aria-label="${n}" ${p===id?'aria-current="page"':''}><span class="lbl">${n}</span><span class="k" aria-hidden="true"><kbd>G</kbd> <kbd>${k}</kbd></span></a>`).join("")
+    + `<div class="foot"><span><span class="dot ${paused?'paused':''}"></span>${paused?'Paused':'Watching Claude Code, Copilot CLI'}</span><span>1 of 5 tips today</span><span><kbd>P</kbd> ${paused?'resume':'pause'}</span></div>`;
+}
+const shellPaused = () => paused ? `<div class="banner" role="status"><div class="grow"><b>AIQ is paused.</b> Nothing is captured and no tips show.</div><button class="btn" data-act="pause">Resume <kbd>P</kbd></button></div>` : "";
+const downBanner = () => st()==="error" && root.dataset.page!=="data" && root.dataset.page!=="detail" ? `<div class="banner bad" role="alert"><div class="grow"><b>AIQ isn't running, so this shows what was stored at 22:40.</b> It starts with your next prompt in Claude Code.</div><button class="btn" data-act="toast:Starting AIQ…">Start AIQ now</button></div>` : "";
+const sk = (w,h) => `<span class="sk" style="width:${w};${h?`height:${h}`:''}"></span>`;
+
+function trend(v){
+  const max=50, pts=v.map((x,i)=>[i*100, 56-(x/max)*48]);
+  const line = pts.map(p=>p.join(",")).join(" L");
+  return `<svg class="trend" viewBox="-4 0 308 60" preserveAspectRatio="none" role="img" aria-label="Weekly kept rate: ${v.join("%, ")}%">
+    <line x1="0" x2="300" y1="56" y2="56" stroke="var(--hairline)"/>
+    <path d="M${line} L300,56 L0,56 Z" fill="color-mix(in srgb,var(--primary) 12%,transparent)"/>
+    <path d="M${line}" fill="none" stroke="var(--primary)" stroke-width="2" vector-effect="non-scaling-stroke"/>
+    <circle cx="300" cy="${pts[3][1]}" r="3.5" fill="var(--primary)"/></svg>`;
+}
+
+/* ---------------- pages ---------------- */
+function home(){
+  const D=d(), s=st();
+  if (s==="loading") return `<div class="page" aria-busy="true"><div>${sk("200px","12px")}</div>
+    <div class="top"><div class="card">${sk("60%")}${sk("140px","44px")}${sk("100%","48px")}</div><div class="card">${sk("40%")}${sk("70%","18px")}${sk("90%")}${sk("120px","36px")}</div></div>
+    <div class="group">${sk("220px","18px")}${[1,2,3].map(()=>`<div class="opp">${sk("50%")}${sk("60px")}${sk("80%")}</div>`).join("")}</div></div>`;
+  if (s==="empty") return `<div class="page"><header class="group"><h1>AIQ is watching quietly</h1><p class="mute">Keep working as usual. Patterns show after about 10 tasks of the same kind. Tips can start sooner.</p></header>
+    <div class="card" style="max-width:520px">${D.mix.map(([j],i)=>{const n=i?1:4;return `<div class="head"><span>${j}</span><span class="meta num">${n} of 10 tasks</span></div><div class="meter" role="progressbar" aria-label="${j}" aria-valuenow="${n}" aria-valuemax="10"><i style="width:${n*10}%"></i></div>`}).join("")}
+    <p class="meta">Watching Claude Code and Copilot CLI. <a href="#data" data-go="data">See what AIQ has captured</a></p></div></div>`;
+  const over = s==="overflow", ranked = D.tasks.filter(t=>t.next), fixes = D.tasks.filter(t=>t.blocked), tasks = ranked.slice(1,3);
+  const t0 = ranked[0], kept = over?"1,284":D.kept, judged = over?"3,109":D.judged, rate = over?41:Math.round(D.kept/D.judged*100);
+  const rows = tasks.map((t,i)=>{
+    const name = t.name, wk = t.week;
+    const move = t.blocked ? `<span class="chip warn">Blocked by the repo</span>` : (judgeOn()? `${chipR(t.now)} <span aria-label="could move to">→</span> ${chipR(t.pot)}` : `<span class="chip">Waiting for the rung model</span>`);
+    const next = t.blocked ? `Blocked by the repo: ${t.blocked}. That's a repo fix, not a habit.` : (judgeOn()? `Next step: ${t.next}` : "Connect the rung model in Settings to see a next step.");
+    return `<a class="opp" href="#detail" data-go="detail"><div class="group" style="gap:var(--s2)"><span class="name">${esc(name)}</span><span class="row">${`<span class="chip">${t.job}</span>`} ${move}</span></div><span class="freq num">${wk} a week</span><span class="next">${esc(next)}</span></a>`;
+  }).join("");
+  return `<div class="page">${downBanner()}
+    ${s==="partial"?`<div class="banner info" role="status"><div class="grow"><b>${D.waiting} tasks are waiting to be judged.</b> They're left out of these numbers until then, and judged as your daily limit allows.</div></div>`:""}
+    <h1 class="sr">Home</h1><p class="meta">Last 30 days · 2 Oct to 31 Oct · sample data</p>
+    <div class="top">
+      <section class="card" aria-labelledby="kr"><h2 id="kr" class="mute" style="font-weight:400">Tasks agents finished without you redoing them</h2>
+        ${judgeOn()?`<div class="big">${rate}%</div>${trend(D.trend)}
+        <p class="meta">${kept} of ${judged} tasks: you kept the agent's work with small edits and no correcting re-prompt. Up from ${D.trend[0]}% four weeks ago.</p>`
+        :`<p class="mute">This number needs the rung model to read your finished tasks. Tips work without it.</p><div class="row"><button class="btn" data-go="settings">Connect in Settings</button></div>`}</section>
+      <section class="card" aria-labelledby="nx"><h2 id="nx" class="mute" style="font-weight:400">Your best next step</h2>
+        <p style="font:var(--t-heading)">${esc(over?LONG.name:t0.name)}</p>
+        <p class="mute">${judgeOn()?esc(t0.next):"Connect the rung model to get a next step for this task."}</p>
+        <div class="row" style="margin-top:auto"><button class="btn pri" data-go="${judgeOn()?"detail":"settings"}">${judgeOn()?"See the next step":"Connect the rung model"}</button></div></section>
+    </div>
+    <section class="group" aria-labelledby="opps"><div class="head"><h2 id="opps">Where agents could do more</h2><a href="#tasks" data-go="tasks" class="meta">All tasks</a></div><div class="list">${rows}</div>
+      ${fixes.length?`<div class="group" style="gap:var(--s2)"><h3 class="meta" style="margin:0">Repo fixes (not habits)</h3>${fixes.map(f=>`<p><span class="chip warn">Blocked by the repo</span> ${esc(f.name)}: ${esc(f.blocked)}.</p>`).join("")}</div>`:""}</section>
+    <section class="group" aria-labelledby="rg"><div class="head"><h2 id="rg">How you work with agents</h2><span class="meta">Share of tasks per rung · today and where they could be</span></div>
+      ${judgeOn()?`<div class="rungs">${D.rungs.map(([n,p],i)=>`<div class="rr"><span>${RUNGS[i]} (${i+1})</span><div class="track" aria-hidden="true"><span class="pot" style="width:${p/40*100}%"></span><span class="now" style="width:${n/40*100}%;background:var(--rung-${i+1})"></span></div><span class="v">${n}% → ${p}%</span></div>`).reverse().join("")}</div>
+      <div class="legend"><span><i></i>Today</span><span><i class="p"></i>Where these tasks could be</span></div>`
+      :`<div class="empty"><b>Rungs need the rung model.</b><span class="mute">AIQ judges finished tasks with your own Claude Code. Tips work without it.</span><button class="btn" data-go="settings">Connect in Settings</button></div>`}
+    </section>
+    <div class="two">
+      <section class="group" aria-labelledby="hb"><div class="head"><h2 id="hb">Habits</h2><a href="#habits" data-go="habits" class="meta">All habits and tips</a></div>${D.habits.slice(0,3).map(h=>`<div class="row">${habitChip(h[2])} ${esc(h[0])}</div>`).join("")}</section>
+      <section class="group" aria-labelledby="rt"><h2 id="rt">Recent tips</h2>${D.tips.slice(0,3).map(t=>`<div class="head"><span>${esc(t[1])}</span><span class="meta">${t[0]} · ${t[2]}</span></div>`).join("")}</section>
+    </div>
+    ${s==="success"?"":""}</div>`;
+}
+const habitChip = s => s==="Adopted"?`<span class="chip ok">Adopted</span>`:s==="Tried"?`<span class="chip tried">Tried</span>`:`<span class="chip">Not yet</span>`;
+
+function tasks(){
+  const D=d(), s=st();
+  let body;
+  if (s==="loading") body = `<tbody>${[1,2,3,4].map(()=>`<tr><td>${sk("70%")}</td><td>${sk("80px")}</td><td>${sk("140px")}</td><td>${sk("40px")}</td><td>${sk("40px")}</td><td>${sk("40px")}</td></tr>`).join("")}</tbody>`;
+  else if (s==="empty") return `<div class="page"><header class="group"><h1>Tasks</h1></header><div class="empty"><b>No recurring tasks yet.</b><span class="mute">A task shows here once you've done the same kind of work a few times with an agent.</span></div></div>`;
+  else {
+    const list = s==="overflow" ? [{...D.tasks[0],name:LONG.name,week:LONG.week}, ...D.tasks.slice(1)] : D.tasks;
+    body = `<tbody>${list.map((t,i)=>{
+      const rung = t.blocked?`<span class="chip warn">Blocked by the repo</span>`: !judgeOn()||(s==="partial"&&i===2)?`<span class="meta">Waiting to be judged</span>`: t.pot>t.now?`${RUNGS[t.now]} → <b>${RUNGS[t.pot]}</b>`:`${RUNGS[t.now]} <span class="meta">(right rung)</span>`;
+      return `<tr tabindex="0" data-go="detail"><td style="max-width:420px">${esc(t.name)}</td><td class="mute">${t.job}</td><td>${rung}</td><td class="r num">${t.week.toLocaleString()}</td><td class="r num">${t.blocked?"—":t.pot-t.now}</td><td class="r num">${t.kept}%</td></tr>`;}).join("")}</tbody>`;
+  }
+  return `<div class="page wide">${downBanner()}<header class="head"><h1>Tasks</h1><div class="row"><span class="meta">Job</span><div class="seg" role="group" aria-label="Job"><button aria-pressed="true">All</button><button aria-pressed="false">Code a change</button><button aria-pressed="false">Write a spec or doc</button></div></div></header>
+    <div class="tablewrap"><table aria-label="Recurring tasks, last 30 days"><thead><tr><th>Task</th><th>Job</th><th>Today → could be</th><th class="r" aria-sort="descending"><button>Times a week ↓</button></th><th class="r" aria-sort="none"><button>Rungs to gain</button></th><th class="r" aria-sort="none"><button>Kept</button></th></tr></thead>${body}</table></div>
+    <p class="meta"><kbd>J</kbd> <kbd>K</kbd> move · <kbd>Enter</kbd> open · Kept = finished without you redoing it</p></div>`;
+}
+
+function detail(){
+  const D=d(), s=st(), t=D.tasks[0];
+  if (s==="loading") return `<div class="page" aria-busy="true">${sk("80px")}${sk("50%","24px")}<div class="card">${sk("30%")}${sk("80%","18px")}${sk("100%","60px")}</div></div>`;
+  const name = s==="overflow"?LONG.name:t.name;
+  let step;
+  if (!judgeOn()) step = `<div class="empty"><b>Connect the rung model to get a next step.</b><span class="mute">AIQ judges finished tasks with your own Claude Code, using your plan's usage.</span><button class="btn pri" data-go="settings">Connect in Settings</button></div>`;
+  else if (s==="empty") step = `<section class="card"><span class="meta">Next step</span><h2>AIQ isn't sure enough to suggest a next step yet.</h2><p class="mute">These tasks vary a lot. AIQ will suggest one once it has seen a few more that look alike.</p></section>`;
+  else if (s==="partial") step = `<section class="card" aria-labelledby="fit"><h2 id="fit">What doesn't fit?</h2><p class="meta">This tunes your tips. It doesn't change how the task is judged.</p>
+    ${["The evidence is wrong","The step doesn't fit how I work","Something outside my control blocks it","Something else"].map((r,i)=>`<label class="opt"><input type="radio" name="why" ${i?'':'checked'}> ${r}</label>`).join("")}
+    <div class="field"><label for="why-more">What's wrong? (optional, stays on this computer)</label><input id="why-more" class="input"></div>
+    <div class="row"><button class="btn pri" data-act="sent">Save</button><button class="btn" data-act="state:default">Cancel <kbd>Esc</kbd></button></div></section>`;
+  else step = `${s==="success"?`<div class="banner info" role="status"><div class="grow"><b>Thanks.</b> AIQ won't suggest this step for this task.</div><button class="btn" data-act="state:default">Undo</button></div>`:""}
+    <section class="card" aria-labelledby="ns"><span class="meta">Next step</span><h2 id="ns" style="font:600 20px/1.3 var(--f-display)">${esc(t.next)}</h2>
+    <p class="mute">${esc(t.why)}</p><div class="starter" aria-label="Starter prompt">${esc(t.starter)}</div>
+    <div class="row"><button class="btn pri" id="copyBtn" data-act="toast:Starter prompt copied. Nothing was sent.">Copy starter prompt <kbd>C</kbd></button><button class="btn" id="fitBtn" data-act="state:partial">This doesn't fit <kbd>F</kbd></button><span class="meta">Confidence: high</span></div></section>`;
+  return `<div class="page">${downBanner()}<header class="group"><a href="#tasks" data-go="tasks" class="meta">← Tasks <kbd>Esc</kbd></a><h1>${esc(name)}</h1>
+    <div class="row"><span class="chip">${t.job}</span><span class="meta">${s==="overflow"?"1,284":t.week} a week · ${t.kept}% kept · seen in Claude Code and Copilot CLI</span></div></header>
+    ${step}
+    ${judgeOn()?`<div class="two"><section class="card" aria-labelledby="fs"><h2 id="fs">What AIQ saw</h2><div>${t.facts.map(f=>`<div class="kv"><span>${f[0]}</span><span class="${f[2]==='ok'?'chip ok':'num'}">${f[1]}</span></div>`).join("")}</div>${s==="error"?`<p class="meta">The prompts behind this were deleted on 31 Oct. The facts above were read before that.</p>`:`<a href="#data" data-go="data" class="meta">See the prompts behind this</a>`}</section>
+    <section class="card" aria-labelledby="wr"><h2 id="wr">Where this task sits</h2><div class="row">${chipR(t.now)} → ${chipR(t.pot)}</div><p class="mute">${esc(t.why)}</p><p class="meta">Judged by your Claude Code · 61 tasks · last judged 22:40</p></section></div>`:""}
+  </div>`;
+}
+
+function habits(){
+  const D=d(), s=st();
+  if (s==="empty") return `<div class="page"><header><h1>Habits and tips</h1></header><div class="empty"><b>No habits tracked yet.</b><span class="mute">A habit shows here after AIQ gives you a tip and sees the kind of task it fits.</span></div></div>`;
+  const rows = s==="loading" ? [1,2,3].map(()=>`<tr><td>${sk("60%")}</td><td>${sk("80px")}</td><td>${sk("60px")}</td><td>${sk("60px")}</td></tr>`).join("")
+    : D.habits.map(h=>`<tr><td>${esc(s==="overflow"&&h===D.habits[0]?"Give the agent the failing output, the expected result and the exact command you ran before asking it to try again":h[0])}</td><td class="mute">${h[1]}</td><td>${habitChip(h[2])}</td><td class="r num">${h[3]} of ${h[4]} tasks</td></tr>`).join("");
+  return `<div class="page wide">${downBanner()}<header class="group"><h1>Habits and tips</h1><p class="mute">A habit counts as adopted when you do it in more than half of the tasks where it fits, over 14 days.</p></header>
+    ${s==="success"?`<div class="banner info" role="status"><div class="grow"><b>New: you've adopted "Give the agent the failing output".</b> Seen in 9 of your last 12 coding tasks.</div></div>`:""}
+    ${s==="partial"?`<div class="banner info" role="status"><div class="grow">"Say what was wrong before asking again" moved back to Tried. You did it in 2 of 6 tasks this fortnight.</div></div>`:""}
+    <div class="tablewrap"><table aria-label="Habits"><thead><tr><th>Habit</th><th>Job</th><th>Status</th><th class="r">Last 14 days</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <section class="group" aria-labelledby="th"><div class="head"><h2 id="th">Tip history</h2><span class="meta">Last 90 days</span></div><div class="tablewrap"><table aria-label="Tip history"><thead><tr><th>When</th><th>Tip</th><th>Where</th><th>Your answer</th></tr></thead><tbody>
+    ${D.tips.map(t=>`<tr><td class="num mute">${t[0]}</td><td>${esc(t[1])}</td><td class="mute">${t[2]}</td><td>${t[3]}</td></tr>`).join("")}
+    <tr><td class="num mute">12 Oct</td><td>Long session on a new task</td><td class="mute">Claude Code</td><td><span class="row">Turned off <button class="btn" data-act="toast:Tip type turned back on.">Turn back on</button></span></td></tr></tbody></table></div>
+    <p class="meta"><a href="#settings" data-go="settings">Manage tip types in Settings</a></p></section></div>`;
+}
+
+function data(){
+  const D=d(), s=st();
+  if (s==="error") return `<div class="page"><header><h1>Your data</h1></header><div class="banner bad" role="alert"><div class="grow"><b>AIQ can't open its data right now.</b> The store file is locked by another program. Close other AIQ windows, then try again. Nothing was changed. <span class="meta">(AIQ-STORE-LOCKED)</span></div><button class="btn" data-act="state:default">Try again</button></div></div>`;
+  if (s==="success") return `<div class="page"><header><h1>Your data</h1></header><p class="sr" role="status">Deleted.</p><div class="empty"><h2 id="emptyH" tabindex="-1">AIQ has no stored history.</h2><span class="mute">Deleted at 22:52. Capture is still on, so new activity will show here.</span><button class="btn" data-act="pause">Pause AIQ <kbd>P</kbd></button></div></div>`;
+  const ev = s==="overflow" ? [["22:31","Claude Code","Prompt","refactor the invoice reconciliation module so that every vendor export (CSV, XLSX and the legacy fixed-width format) is parsed by one adapter, keep the public API, and add tests for the three formats including the 2019 edge cases"], ...D.events] : D.events;
+  const rows = s==="loading" ? [1,2,3,4].map(()=>`<tr><td>${sk("40px")}</td><td>${sk("80px")}</td><td>${sk("60px")}</td><td>${sk("70%")}</td></tr>`).join("")
+    : ev.map((e,i)=>`<tr tabindex="0" aria-selected="${i===1&&selCount?'true':'false'}"><td class="num mute"><span class="selmark" aria-hidden="true">${i===1&&selCount?'✓':''}</span>${e[0]}</td><td>${e[1]}</td><td>${e[2]}</td><td class="clip" title="${esc(e[3])}">${esc(e[3])}</td></tr>`).join("");
+  return `<div class="page wide"><header class="group"><h1>Your data</h1><p class="mute">Everything AIQ captured, stored only on this computer in a file only your account can read. It stays until you delete it.</p></header>
+    <div class="row"><button class="btn" data-act="pause">${paused?"Resume":"Pause AIQ"} <kbd>P</kbd></button><button class="btn" data-act="dlg:selected" ${selCount?'':'disabled'}>Delete selected (${selCount}) <kbd>Del</kbd></button><button class="btn" data-act="dlg:older">Delete older than…</button><button class="btn danger" data-act="dlg:all">Delete everything</button><span class="meta" style="margin-left:auto">${D.store}</span></div>
+    <div class="tablewrap"><table aria-label="Captured events, newest first"><thead><tr><th>Time</th><th>Tool</th><th>What</th><th>Content</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <p class="meta"><kbd>J</kbd> <kbd>K</kbd> move · <kbd>X</kbd> select · <kbd>Del</kbd> delete selected</p>
+</div>`;
+}
+
+function settings(){
+  const D=d(), s=st(), j=judgeOn() && s!=="partial";
+  return `<div class="page">${downBanner()}<header><h1>Settings</h1></header>
+    <div class="two">
+      <section class="card" aria-labelledby="st1"><h2 id="st1">Tips</h2>
+        <div class="kv"><span>Tips a day</span><div class="seg" role="group" aria-label="Tips a day"><button aria-pressed="false">1</button><button aria-pressed="false">3</button><button aria-pressed="true">5</button></div></div>
+        <div class="kv"><span>Quiet hours<br><span class="meta">No tips and no capture</span></span><span class="row"><input class="input" type="time" value="18:00" aria-label="Quiet hours start"> to <input class="input" type="time" value="08:00" aria-label="Quiet hours end"></span></div>
+        <div class="kv"><span id="sw1">Reworded without new details</span><button class="switch" role="switch" aria-checked="true" aria-labelledby="sw1"></button></div>
+        <div class="kv"><span id="sw2">Accepted a draft with no sources checked</span><button class="switch" role="switch" aria-checked="true" aria-labelledby="sw2"></button></div>
+        <div class="kv"><span id="sw3">Long session on a new task</span><button class="switch" role="switch" aria-checked="false" aria-labelledby="sw3"></button></div>
+        <div class="kv"><span id="sw4">Single-key shortcuts<br><span class="meta">P, G then a letter, J and K. Ctrl+K always works.</span></span><button class="switch" id="singleKeys" role="switch" aria-checked="${singleKeys}" aria-labelledby="sw4"></button></div>
+      </section>
+      <section class="card" aria-labelledby="st2"><h2 id="st2">Your work mix</h2><p class="meta">What AIQ has seen in 4 weeks. Tips follow this, not your job title.</p>
+        <div class="mix" role="img" aria-label="${D.mix.map(m=>m[0]+' '+m[1]+' percent').join(', ')}">${D.mix.map((m,i)=>`<span style="width:${m[1]}%;background:var(--${i?'hairline':'ink-mute'})"></span>`).join("")}</div>
+        <div class="head meta">${D.mix.map(m=>`<span>${m[0]} ${m[1]}%</span>`).join("")}</div>
+        <div class="kv"><label for="preset">Starting preset</label><select id="preset" class="input"><option>${root.dataset.persona==="pm"?"Program manager":"Developer"}</option><option>${root.dataset.persona==="pm"?"Developer":"Program manager"}</option></select></div>
+      </section>
+    </div>
+    <section class="card" aria-labelledby="st3"><h2 id="st3">Rung model</h2>
+      ${j?`<div class="kv"><span>Claude</span><span class="row"><span class="chip ok">Through your signed-in Claude Code</span><button class="btn">Use an API key instead</button></span></div><div class="kv"><span>Copilot</span><span class="chip ok">Copilot with VS Code consent</span></div>
+        <div class="kv"><label for="lim">Daily judging limit<br><span class="meta">Each check uses your Claude Code plan usage</span></label><select id="lim" class="input"><option>40 tasks</option><option>20 tasks</option><option>10 tasks</option></select></div>
+        <p class="meta">On a work account, your organisation's policies apply to these calls, including logging and retention. AIQ never reads or stores your sign-in.</p>`
+      :`<div class="banner"><div class="grow"><b>Claude Code isn't signed in, so tasks aren't being judged.</b> Tips still work.</div></div><div class="row"><button class="btn pri">Sign in to Claude Code</button><button class="btn">Use an API key instead</button></div><p class="meta">Signing in happens in Claude Code. AIQ never sees your password or sign-in.</p>`}
+    </section>
+    <section class="card" aria-labelledby="st4"><div class="head"><h2 id="st4">Sharing</h2><span class="chip">${s==="success"?"Previewing":"Off · nothing leaves this computer"}</span></div>
+      <p class="mute">You can add your numbers to an anonymous total that helps improve tips. Only rung counts are sent, never prompts, code, task names or anything that identifies you, and only when enough people take part.</p>
+      ${s==="success"?`<p class="meta">This is the whole message, for this week:</p><div class="payload">{\n  "week": "2026-W44",\n  "job": "code-a-change",\n  "tasks_by_rung": [12, 21, 13, 8, 4],\n  "tips_helpful": 3, "tips_not_helpful": 1\n}</div><div class="row"><button class="btn pri">Share weekly totals</button><button class="btn" data-act="state:default">Keep sharing off</button></div>`
+      :`<div class="row"><button class="btn" data-act="state:success">See exactly what would be sent</button></div>`}
+    </section></div>`;
+}
+
+function setup(){
+  const step = $("#h-step").value, order=["privacy","tools","judge","tips","history"], cur = step.startsWith("judge")?"judge":step.startsWith("tools")?"tools":step, idx = order.indexOf(cur);
+  const names = {privacy:"Privacy",tools:"Tools",judge:"Rung model",tips:"Tips",history:"Your history"};
+  const steps = order.map((o,i)=>`<li class="${i<idx?'done':i===idx?'on':''}" ${i===idx?'aria-current="step"':''}><b aria-hidden="true">${i<idx?'✓':i+1}</b>${names[o]}${i<idx?'<span class="sr"> (done)</span>':''}</li>`).join("");
+  const caveat = `<p class="meta">On a work account, your organisation's policies apply to these calls, including logging and retention.</p>`;
+  const nav = (label="Continue", back=true) => `<div class="row"><button class="btn pri">${label}</button>${back?'<button class="btn">Back</button>':''}</div>`;
+  const B = {
+    privacy:`<header class="group"><h1>Your coach, on your computer only</h1><p class="mute">AIQ watches how you work with AI agents and suggests one small change at a time, so agents finish more of your work with less redoing.</p></header>
+      <div class="group"><div class="kv"><b>Only you see it</b><span class="mute">No manager or team view exists.</span></div><div class="kv"><b>About the task, not you</b><span class="mute">Tips are about the work, never a score of you.</span></div><div class="kv"><b>You control the data</b><span class="mute">Pause any time; delete one item, older items, or everything.</span></div></div>${nav("Continue",false)}`,
+    "tools-none":`<header class="group"><h1>Tools AIQ will watch</h1><p class="mute">AIQ didn't find Claude Code, GitHub Copilot CLI or VS Code on this computer.</p></header>
+      <div class="empty"><b>Install one of these, then check again.</b><span class="mute">AIQ coaches inside the tools you already use. You can finish setup now and add a tool later from Settings.</span><div class="row"><button class="btn pri">Check again</button><button class="btn">Continue without tools</button></div></div>`,
+    tools:`<header class="group"><h1>Tools AIQ will watch</h1><p class="mute">AIQ reads your prompts and when each turn ends. If AIQ stops, your tools work as before.</p></header>
+      <label class="opt"><input type="checkbox" checked> <span><b>Claude Code</b> · found<br><span class="meta">Adds two hooks to your Claude Code settings. AIQ shows the change and backs up the file first.</span></span></label>
+      <label class="opt"><input type="checkbox" checked> <span><b>GitHub Copilot CLI</b> · found<br><span class="meta">Tips show in Copilot CLI's status line.</span></span></label>
+      <label class="opt"><input type="checkbox"> <span><b>VS Code</b> · extension not installed<br><span class="meta">Shows tips beside Copilot chat.</span></span></label>${nav("Review the changes")}`,
+    "judge-in":`<header class="group"><h1>How AIQ judges your tasks</h1><p class="mute">AIQ will judge finished tasks with your Claude Code. Each check uses your Claude Code plan usage, up to 40 tasks a day. AIQ never reads or stores your sign-in.</p></header>
+      <div class="banner info" role="status"><div class="grow"><b>Test check passed.</b> Your Claude Code answered in 4 s.</div></div>${caveat}
+      <div class="field"><label for="budget">Daily judging limit</label><select id="budget" class="input"><option>40 tasks a day</option><option>20 tasks a day</option><option>10 tasks a day</option></select></div>${nav()}`,
+    "judge-test":`<header class="group"><h1>How AIQ judges your tasks</h1><p class="mute">AIQ will judge finished tasks with your Claude Code, using your plan usage.</p></header>
+      <div class="banner bad" role="alert"><div class="grow"><b>The test check didn't finish.</b> Claude Code said you've reached your plan's usage limit. AIQ will try again after it resets, or you can skip for now.</div></div>${caveat}
+      <div class="row"><button class="btn pri">Try again</button><button class="btn">Skip for now</button><button class="btn">Back</button></div>`,
+    "judge-out":`<header class="group"><h1>How AIQ judges your tasks</h1><p class="mute">Claude Code isn't signed in on this computer. Pick how AIQ should judge finished tasks. Tips work either way.</p></header>
+      <label class="opt"><input type="radio" name="j" checked> <span><b>Sign in to Claude Code</b><br><span class="meta">Opens Claude Code's own sign-in. AIQ never sees it.</span></span></label>
+      <label class="opt"><input type="radio" name="j"> <span><b>Use an API key instead</b><br><span class="meta">Kept only in Windows Credential Manager.</span></span></label>
+      <label class="opt"><input type="radio" name="j"> <span><b>Skip for now</b><br><span class="meta">Rung views wait until you connect.</span></span></label>${caveat}${nav()}`,
+    "judge-key":`<header class="group"><h1>Use an API key</h1><p class="mute">AIQ found a key in ANTHROPIC_API_KEY. Use it, or paste another.</p></header>
+      <div class="field"><label for="key">Anthropic API key</label><input id="key" class="input err" type="password" value="sk-ant-api03-xxxxxxxx" aria-invalid="true" aria-describedby="keyerr">
+      <span class="errtext" id="keyerr">Anthropic says this key isn't valid. Check you copied all of it, or make a new one in the Anthropic Console. Nothing was stored.</span></div>${caveat}
+      <div class="row"><button class="btn pri">Check key</button><button class="btn">Back</button></div>`,
+    tips:`<header class="group"><h1>How many tips a day?</h1><p class="mute">At most one per session, shown when the agent pauses. Change it any time in Settings.</p></header>
+      <div class="row" role="radiogroup" aria-label="Tips a day"><label class="opt"><input type="radio" name="cap"> 1 a day</label><label class="opt"><input type="radio" name="cap"> 3 a day</label><label class="opt"><input type="radio" name="cap" checked> 5 a day (default)</label></div>
+      <div class="field"><label for="pre">Start with tips for</label><select id="pre" class="input"><option>Coding work (developer preset)</option><option>Specs and docs (PM preset)</option><option>Both equally</option></select><span class="meta">This only sets where AIQ starts. It adjusts to the work it sees.</span></div>${nav()}`,
+    history:`<header class="group"><h1>One thing to know before you start</h1><p class="mute">Your history lives only on this computer. AIQ keeps no copy and has no backup in this version.</p></header>
+      <p>If you lose this computer or reinstall Windows, your AIQ history is gone. Your tools and your work aren't affected.</p>
+      <label class="opt" style="max-width:300px"><input type="checkbox" id="ack"> I understand</label><div class="row"><button class="btn pri" id="start" disabled>Start AIQ</button><button class="btn">Back</button></div>`
+  };
+  return `<div class="shell" style="min-height:0;grid-template-columns:200px minmax(0,1fr)"><ol class="steps" aria-label="Setup steps">${steps}</ol><div class="page" style="gap:var(--s5)">${B[step]}</div></div>`;
+}
+
+const RENDER = {home,tasks,detail,habits,data,settings,setup};
+function render(){
+  const p = root.dataset.page;
+  $("#l-step").hidden = p!=="setup"; $("#l-state").hidden = p==="setup";
+  $("#nav").style.display = p==="setup" ? "none" : "";
+  $(".shell").style.gridTemplateColumns = p==="setup" ? "minmax(0,1fr)" : "";
+  $("#nav").innerHTML = navHTML();
+  $("#tbStatus").innerHTML = paused ? `<span class="chip pausedchip">AIQ paused</span>` : "";
+  $("#app").innerHTML = (p!=="setup"?shellPaused():"") + RENDER[p]();
+  const ack = $("#ack"); if (ack) ack.onchange = () => $("#start").disabled = !ack.checked;
+  audit();
+}
+function set(k,v){ root.dataset[k]=v; const el=$("#h-"+k); if (el) el.value=v; render(); }
+function go(p){ if (p==="detail"||PAGES.some(x=>x[0]===p)||p==="setup"){ set("page",p); $("#app").focus(); } }
+function togglePause(){ paused=!paused; render(); toast(paused?"AIQ is paused. Nothing is captured and no tips show.":"AIQ is on again."); }
+function openDel(kind, from){
+  const D=d(); invoker = from || document.activeElement;
+  const C = { all:["Delete everything AIQ stored?",`This deletes ${D.store.split(" · ")[0]}, ${D.tips.length} tips and their evidence. It can't be undone. Your tools and your work aren't affected.`,true,"Delete everything"],
+    selected:["Delete 1 selected item?","This deletes the prompt \"the date parser test is still failing, fix it\" from 22:31. A tip that used it will say its evidence was deleted.",false,"Delete 1 item"],
+    older:["Delete items older than a date?","",false,"Delete"] }[kind];
+  $("#delBody").innerHTML = `<h2 id="dt">${C[0]}</h2>${C[1]?`<p>${esc(C[1])}</p>`:""}
+    ${kind==="older"?`<div class="field"><label for="olderDate">Delete everything before</label><input id="olderDate" class="input" type="date" value="2026-10-28" aria-describedby="olderCount"><span class="meta" id="olderCount" aria-live="polite"></span></div>`:""}
+    ${C[2]?`<div class="field"><label for="typeit">Type forget to confirm</label><input id="typeit" class="input" autocomplete="off"></div>`:""}
+    <div class="row"><button class="btn danger" id="doDelete" ${C[2]?"disabled":""}>${C[3]}</button><button class="btn" id="cancelDel">Cancel</button></div>`;
+  const dlg=$("#del"); dlg.showModal(); $("#cancelDel").focus();
+  const od=$("#olderDate"); if (od){ const upd=()=>{ const dt=new Date(od.value+"T00:00"); const span=(dt-new Date("2026-10-24T00:00"))/864e5; const ev=isNaN(span)?0:Math.round(2184*Math.min(8,Math.max(0,span))/8); const label=isNaN(dt)?"that date":dt.toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"}); $("#olderCount").textContent=`${ev.toLocaleString()} events are older than ${label}. Sample estimate.`; $("#doDelete").textContent=`Delete ${ev.toLocaleString()} events`; $("#doDelete").disabled=!ev; }; od.oninput=upd; upd(); }
+  const ti=$("#typeit"); if (ti) ti.oninput = () => $("#doDelete").disabled = ti.value.trim() !== "forget";
+  $("#cancelDel").onclick = () => dlg.close();
+  $("#doDelete").onclick = () => { dlg.close("done"); if (kind==="all"){ set("state","success"); setTimeout(()=>$("#emptyH")&&$("#emptyH").focus()); toast("Deleted. AIQ has no stored history."); } else { if (kind==="selected") selCount=0; render(); toast(kind==="selected"?"Deleted 1 item.":"Deleted. "+$("#olderCount").textContent.split(" are")[0]+" are gone."); } };
+}
+function toast(m){ const t=$("#toast"); t.hidden=false; t.textContent=""; setTimeout(()=>t.textContent=m,30); clearTimeout(toast.h); toast.h=setTimeout(()=>t.hidden=true,3500); }
+$("#del").addEventListener("close", () => { if ($("#del").returnValue!=="done" && invoker && invoker.isConnected) invoker.focus(); else if ($("#del").returnValue!=="done") $("#app").focus(); $("#del").returnValue=""; });
+
+["page","state","persona","judge","theme","density","viewport"].forEach(k => $("#h-"+k).addEventListener("change", e => { selCount=1; set(k, e.target.value); }));
+$("#h-step").addEventListener("change", render);
+$("#h-motion").addEventListener("change", e => root.dataset.motion = e.target.checked ? "reduced" : "full");
+document.addEventListener("click", e => {
+  const g = e.target.closest("[data-go]"); if (g){ e.preventDefault(); go(g.dataset.go); return; }
+  const a = e.target.closest("[data-act]"); if (!a) return;
+  const act = a.dataset.act;
+  if (act==="pause") togglePause();
+  else if (act.startsWith("dlg:")) openDel(act.slice(4), a);
+  else if (act==="sent") set("state","success");
+  else if (act.startsWith("state:")) set("state", act.slice(6));
+  else if (act.startsWith("toast:")) toast(act.slice(6));
+});
+document.addEventListener("click", e => { const s=e.target.closest(".switch"); if (s){ s.setAttribute("aria-checked", s.getAttribute("aria-checked")!=="true"); if (s.id==="singleKeys"){ singleKeys = s.getAttribute("aria-checked")==="true"; toast(singleKeys?"Single-key shortcuts on.":"Single-key shortcuts off. Ctrl+K still works."); } } const b=e.target.closest(".seg button"); if (b){ b.parentNode.querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed", x===b)); } });
+
+/* keyboard: Ctrl+K palette, G+letter, P pause, Esc back, J/K rows */
+const CMDS = [...PAGES.map(([id,n,k])=>({n:`Go to ${n}`,k:`G ${k}`,run:()=>go(id)})),
+  {n:"Pause or resume AIQ",k:"P",run:()=>togglePause()},
+  {n:"Delete everything AIQ stored",k:"",run:()=>{go("data");openDel("all",$("#app"));}},
+  {n:"Preview what sharing would send",k:"",run:()=>{go("settings");set("state","success");}},
+  {n:"Open the best next step",k:"",run:()=>go("detail")},
+  {n:"Run setup again",k:"",run:()=>go("setup")}];
+let pi=0, items=CMDS;
+function drawPal(){ const q=$("#palIn").value.toLowerCase(); items=CMDS.filter(c=>c.n.toLowerCase().includes(q)); pi=Math.min(pi,Math.max(0,items.length-1));
+  $("#palList").innerHTML = items.map((c,i)=>`<li role="option" id="opt${i}" aria-selected="${i===pi}" class="${i===pi?'act':''}" data-i="${i}"><span>${c.n}</span><span class="meta">${c.k}</span></li>`).join("") || `<li class="meta" role="option" aria-disabled="true">No command matches.</li>`;
+  if (items.length) $("#palIn").setAttribute("aria-activedescendant", `opt${pi}`); else $("#palIn").removeAttribute("aria-activedescendant"); }
+let palFrom=null;
+function openPal(){ palFrom=document.activeElement; $("#pal").showModal(); $("#palIn").value=""; pi=0; drawPal(); $("#palIn").focus(); }
+function closePal(){ $("#pal").close(); }
+$("#pal").addEventListener("close", () => { if (palFrom && palFrom.isConnected && !$("#del").open) palFrom.focus(); });
+$("#openPal").addEventListener("click", openPal);
+$("#palIn").addEventListener("input", ()=>{pi=0;drawPal();});
+$("#palList").addEventListener("click", e => { const li=e.target.closest("li[data-i]"); if (li){ closePal(); items[+li.dataset.i].run(); } });
+$("#pal").addEventListener("click", e => { if (e.target.id==="pal") closePal(); });
+let gWait=false;
+document.addEventListener("keydown", e => {
+  const open = $("#pal").open;
+  if ((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==="k"){ e.preventDefault(); open?closePal():openPal(); return; }
+  if ($("#del").open) return;
+  if (open){ if (e.key==="Escape"){ e.preventDefault(); closePal(); } else if (e.key==="ArrowDown"){pi=Math.min(pi+1,items.length-1);drawPal();e.preventDefault();} else if (e.key==="ArrowUp"){pi=Math.max(pi-1,0);drawPal();e.preventDefault();} else if (e.key==="Enter"&&items[pi]){closePal();items[pi].run();} return; }
+  if (e.key==="Escape"){ if (root.dataset.page==="detail") go("tasks"); return; }
+  if (e.target.matches("input,select,textarea") || e.target.closest(".harness")) return;
+  if (!singleKeys) return;
+  if (gWait){ gWait=false; const p=PAGES.find(x=>x[2]===e.key.toUpperCase()); if (p) go(p[0]); return; }
+  if (e.key==="g"||e.key==="G"){ gWait=true; setTimeout(()=>gWait=false,900); return; }
+  if (e.key==="p"||e.key==="P"){ togglePause(); return; }
+  const pg=root.dataset.page;
+  if (pg==="detail" && (e.key==="c"||e.key==="C") && $("#copyBtn")){ $("#copyBtn").click(); return; }
+  if (pg==="detail" && (e.key==="f"||e.key==="F") && $("#fitBtn")){ $("#fitBtn").click(); return; }
+  if (pg==="data" && (e.key==="x"||e.key==="X") && e.target.closest("tr")){ const tr=e.target.closest("tr"), on=tr.getAttribute("aria-selected")!=="true"; tr.setAttribute("aria-selected",on); tr.querySelector(".selmark").textContent=on?"✓":""; selCount=document.querySelectorAll('#app tbody tr[aria-selected="true"]').length; return; }
+  if (pg==="data" && e.key==="Delete" && selCount){ openDel("selected"); return; }
+  if (e.key==="Enter" && e.target.closest("tr[data-go]")) go("detail");
+  if (e.key==="j"||e.key==="k"){ const rows=[...document.querySelectorAll("#app tbody tr[tabindex]")]; if (!rows.length) return; const i=rows.indexOf(document.activeElement); const n=rows[Math.max(0,Math.min(rows.length-1, i+(e.key==="j"?1:-1)))]; n.focus(); }
+});
+
+/* ---- contrast + target audit (from the template) ---- */
+const AUDIT=[['--ink','--canvas','body text on canvas','text'],['--ink','--surface','body text on surface','text'],['--ink-mute','--surface','captions on surface','text'],['--ink-mute','--canvas','captions on canvas','text'],['--ink-mute','--canvas-soft','captions on soft fill','text'],['--on-primary','--primary','primary button label','text'],['--primary','--surface','links, selected nav','text'],['--success','--surface','Adopted chip','text'],['--warning','--surface','Blocked / paused text','text'],['--danger','--surface','error and delete text','text'],['--focus-ring','--surface','focus ring','ui'],['--ink-mute','--surface','input and switch boundary','ui'],['--hairline','--surface','dividers','decorative']];
+const TH={text:4.5,ui:3,decorative:3};
+const srgb=c=>{c/=255;return c<=.03928?c/12.92:Math.pow((c+.055)/1.055,2.4)}, lum=([r,g,b])=>.2126*srgb(r)+.7152*srgb(g)+.0722*srgb(b);
+function parse(v){const p=document.createElement('span');p.style.color=v.trim();document.body.appendChild(p);const m=getComputedStyle(p).color.match(/\d+(\.\d+)?/g);p.remove();return m?m.slice(0,3).map(Number):null;}
+function audit(){
+  const box=$("#app").getBoundingClientRect(), v=$("#h-verdict");
+  if(!box.width||!box.height){$("#audit-rows").innerHTML='';v.textContent='audit: page not rendered';v.className='verdict fail';return;}
+  const cs=getComputedStyle(root), rows=[];
+  for(const [fg,bg,label,kind] of AUDIT){const a=parse(cs.getPropertyValue(fg)),b=parse(cs.getPropertyValue(bg));if(!a||!b)continue;const l1=lum(a),l2=lum(b),r=(Math.max(l1,l2)+.05)/(Math.min(l1,l2)+.05);rows.push({label,fg,bg,kind,r,need:TH[kind],req:kind!=='decorative',pass:r>=TH[kind]});}
+  $("#audit-rows").innerHTML=rows.map(r=>`<tr><td>${r.label} (${r.fg} on ${r.bg} · ${r.kind})</td><td>${r.r.toFixed(2)}:1</td><td class="${r.req?(r.pass?'pass':'fail'):''}">${r.req?(r.pass?'PASS':'FAIL')+` (needs ${r.need}:1)`:'not required (decorative)'}</td></tr>`).join('');
+  const fails=rows.filter(r=>r.req&&!r.pass).length;
+  const small=[...document.querySelectorAll('#win button, #win a, #win input, #win select, #win [role=button]')].filter(el=>{const r=el.getBoundingClientRect();return r.width&&(r.height<24||r.width<24)&&el.type!=='radio'&&el.type!=='checkbox';});
+  $("#audit-targets").textContent=small.length?`${small.length} interactive target(s) under 24×24 CSS px.`:'All interactive targets meet 24×24 CSS px.';
+  v.textContent=`audit: ${fails} contrast fail · ${small.length} small target`; v.className='verdict '+(fails||small.length?'fail':'pass');
+}
+const initial = location.hash.slice(1); if (RENDER[initial]) root.dataset.page = initial, $("#h-page").value = initial;
+render();
+</script>
+</body>
+</html>
