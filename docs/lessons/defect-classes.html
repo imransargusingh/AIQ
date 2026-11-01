@@ -69,4 +69,15 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <ul><li><strong>Sweep:</strong> the only other restore point is the spool drain, which renames the file aside and never</li></ul>
 <p>restores it. No other instance.</p>
 <ul><li><strong>Control:</strong> reinstall over an untouched install keeps the first record&#x27;s backup; uninstall never</li></ul>
-<p>restores a backup that still holds AIQ entries and strips instead. Tests: <code>e2e_reinstall_from_moved_binary_then_uninstall_restores_original</code> and <code>e2e_reinstall_after_edit_then_uninstall_strips_all_aiq</code> (both red without the fix).</p></main></body></html>
+<p>restores a backup that still holds AIQ entries and strips instead. Tests: <code>e2e_reinstall_from_moved_binary_then_uninstall_restores_original</code> and <code>e2e_reinstall_after_edit_then_uninstall_strips_all_aiq</code> (both red without the fix).</p>
+<h3>DC-007 — A per-user path that the OS silently virtualizes for some callers</h3>
+<ul><li><strong>Signature:</strong> AIQ&#x27;s Windows home was <code>%LOCALAPPDATA%\AIQ</code>. Hooks started by the Claude desktop app</li></ul>
+<p>(a packaged MSIX app) had those writes redirected to a private copy; hooks started from a terminal used the real folder. Same path string, so the same pipe name, but two tokens: terminal hooks were refused with <code>AIQ-API-AUTH</code> and their events spooled where no core drained them.</p>
+<ul><li><strong>Why it survives:</strong> every test sets <code>AIQ_HOME</code>, and CI never runs a hook from inside a packaged app.</li></ul>
+<p>The path looks identical from both sides; only the file contents differ.</p>
+<ul><li><strong>Instances:</strong> 2026-11-01, Imran&#x27;s laptop: core started from the desktop app&#x27;s Code session; terminal</li></ul>
+<p><code>claude</code> test produced 8 refused connections and no card. Same root cause hid a copied <code>aiq.exe</code> earlier.</p>
+<ul><li><strong>Sweep:</strong> every default path AIQ derives (<code>Paths::from_env</code>, install&#x27;s backup and record, the copy of</li></ul>
+<p>the binary). Settings live in <code>%USERPROFILE%\.claude</code>, which is not redirected. No other AppData use.</p>
+<ul><li><strong>Control:</strong> the Windows default is <code>%USERPROFILE%\.aiq</code> via <code>windows_home</code>; unit test</li></ul>
+<p><code>windows_home_is_in_the_profile_not_appdata</code> and Windows-only <code>windows_default_paths_use_the_profile_home</code>. <code>aiq status</code> names the home and explains an <code>AIQ-API-AUTH</code> count, so a split is visible, not silent.</p></main></body></html>

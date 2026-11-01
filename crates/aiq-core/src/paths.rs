@@ -1,7 +1,10 @@
 //! Where AIQ keeps its files. All of them are readable only by the OS user.
 //!
-//! Windows: `%LOCALAPPDATA%\AIQ` (per-user; its inherited ACL grants only the user, SYSTEM and
-//! Administrators — Inferred from the Windows default profile ACL, checked on the dogfood laptop).
+//! Windows: `%USERPROFILE%\.aiq`, beside Claude Code's own `%USERPROFILE%\.claude` (per-user; the
+//! profile's inherited ACL grants only the user, SYSTEM and Administrators). Not `%LOCALAPPDATA%`:
+//! packaged (MSIX) apps such as the Claude desktop app get their AppData writes redirected to a
+//! private copy, so hooks started there and hooks started from a terminal would split into two
+//! homes with two tokens (DC-007, found on the dogfood laptop 2026-11-01).
 //! Linux/macOS: data in `$XDG_DATA_HOME/aiq` (default `~/.local/share/aiq`), runtime files (socket,
 //! token) in `$XDG_RUNTIME_DIR/aiq` when set, otherwise the data dir. Directories are 0700.
 //! `AIQ_HOME` overrides both (tests, portable runs).
@@ -13,6 +16,11 @@ pub struct Paths {
     pub runtime: PathBuf,
 }
 
+/// The Windows default home: outside AppData so packaged and unpackaged processes share it (DC-007).
+pub fn windows_home(profile: Option<PathBuf>) -> PathBuf {
+    profile.unwrap_or_else(std::env::temp_dir).join(".aiq")
+}
+
 impl Paths {
     pub fn from_env() -> Self {
         if let Some(h) = std::env::var_os("AIQ_HOME").filter(|v| !v.is_empty()) {
@@ -21,8 +29,7 @@ impl Paths {
         }
         #[cfg(windows)]
         {
-            let base = std::env::var_os("LOCALAPPDATA").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
-            let p = base.join("AIQ");
+            let p = windows_home(std::env::var_os("USERPROFILE").filter(|v| !v.is_empty()).map(PathBuf::from));
             Self { data: p.clone(), runtime: p }
         }
         #[cfg(not(windows))]
@@ -153,4 +160,27 @@ pub fn write_user_only(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
         f.sync_all()?;
     }
     std::fs::rename(&tmp, path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// DC-007: the Windows home must not sit under AppData, which packaged apps redirect.
+    #[test]
+    fn windows_home_is_in_the_profile_not_appdata() {
+        let h = windows_home(Some(PathBuf::from(r"C:\Users\someone")));
+        assert_eq!(h, PathBuf::from(r"C:\Users\someone").join(".aiq"));
+        assert!(!h.to_string_lossy().to_lowercase().contains("appdata"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_default_paths_use_the_profile_home() {
+        if std::env::var_os("AIQ_HOME").is_none() {
+            let p = Paths::from_env();
+            assert!(!p.data.to_string_lossy().to_lowercase().contains("appdata"), "{}", p.data.display());
+            assert!(p.data.ends_with(".aiq"));
+        }
+    }
 }

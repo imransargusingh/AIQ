@@ -1,7 +1,7 @@
 //! AIQ local store: one SQLite file per OS user (ADR-0002 shape: dimensions + append-only facts).
 //!
 //! Deviation (Imran, 2026-10-31): encryption is deferred. The file is plain SQLite, readable only by the
-//! OS user (0600 on Unix; inherited user-only ACL under %LOCALAPPDATA% on Windows). ADR-0002/0003 flagged.
+//! OS user (0600 on Unix; inherited user-only ACL under %USERPROFILE%\.aiq on Windows). ADR-0002/0003 flagged.
 use aiq_contracts::codes;
 use aiq_domain::clock::{Now, local_day};
 use rusqlite::{Connection, OptionalExtension, params};

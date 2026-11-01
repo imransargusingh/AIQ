@@ -41,7 +41,7 @@ aiq uninstall claude-code   # removes only AIQ's two hook entries
 
 The hooks call `aiq` directly (no shell). The background core starts on your next prompt.
 
-**Where data lives:** `%LOCALAPPDATA%\AIQ` on Windows; `~/.local/share/aiq` on Linux and macOS. Files are
+**Where data lives:** `%USERPROFILE%\.aiq` on Windows (not AppData: the Claude desktop app is a packaged app whose AppData writes go to a private copy); `~/.local/share/aiq` on Linux and macOS. Files are
 readable only by you. **Phase 1 stores prompts unencrypted** (encryption deferred; see
 `docs/notes/note-20261031-encryption-deferred.md`). Logs never contain prompt text.
 

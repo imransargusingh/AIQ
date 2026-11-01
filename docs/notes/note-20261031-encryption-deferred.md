@@ -28,7 +28,7 @@ summary: >-
 ## The call
 The Phase 1 store is `aiq.db`, a plain SQLite file (rusqlite `bundled`), not SQLCipher. There is no store
 key and no OS-keychain entry. Protection at rest is the OS user boundary: the data directory is `0700` and
-every file AIQ creates is `0600` on Linux/macOS; on Windows the files live under `%LOCALAPPDATA%\AIQ` and
+every file AIQ creates is `0600` on Linux/macOS; on Windows the files live under `%USERPROFILE%\.aiq` (moved from `%LOCALAPPDATA%\AIQ` on 2026-11-01, DC-007) and
 inherit its per-user ACL. This also removes spike S3c (SQLCipher's vendored OpenSSL needs a native Perl on
 Windows) from the critical path.
 

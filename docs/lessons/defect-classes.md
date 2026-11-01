@@ -88,3 +88,18 @@ summary: >-
   restores a backup that still holds AIQ entries and strips instead. Tests:
   `e2e_reinstall_from_moved_binary_then_uninstall_restores_original` and
   `e2e_reinstall_after_edit_then_uninstall_strips_all_aiq` (both red without the fix).
+
+### DC-007 — A per-user path that the OS silently virtualizes for some callers
+- **Signature:** AIQ's Windows home was `%LOCALAPPDATA%\AIQ`. Hooks started by the Claude desktop app
+  (a packaged MSIX app) had those writes redirected to a private copy; hooks started from a terminal used
+  the real folder. Same path string, so the same pipe name, but two tokens: terminal hooks were refused
+  with `AIQ-API-AUTH` and their events spooled where no core drained them.
+- **Why it survives:** every test sets `AIQ_HOME`, and CI never runs a hook from inside a packaged app.
+  The path looks identical from both sides; only the file contents differ.
+- **Instances:** 2026-11-01, Imran's laptop: core started from the desktop app's Code session; terminal
+  `claude` test produced 8 refused connections and no card. Same root cause hid a copied `aiq.exe` earlier.
+- **Sweep:** every default path AIQ derives (`Paths::from_env`, install's backup and record, the copy of
+  the binary). Settings live in `%USERPROFILE%\.claude`, which is not redirected. No other AppData use.
+- **Control:** the Windows default is `%USERPROFILE%\.aiq` via `windows_home`; unit test
+  `windows_home_is_in_the_profile_not_appdata` and Windows-only `windows_default_paths_use_the_profile_home`.
+  `aiq status` names the home and explains an `AIQ-API-AUTH` count, so a split is visible, not silent.

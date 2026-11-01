@@ -517,7 +517,7 @@ crate (paths from `HOME` / `LOCALAPPDATA` / `XDG_*`, a few owned lines).
 | B1 | E: frame triggers code execution | prevent | Frames are data parsed by serde into typed structs; no eval, no paths from frames are opened | Fuzz frames |
 | B2 Claude Code → hook stdin | T: hostile prompt text (e.g. control characters) echoed into the card | mitigate | The card never echoes prompt text; `aiq show` strips terminal control sequences before printing | `Show_PromptWithAnsiEscapes_PrintsSanitised` |
 | B2 | E: AIQ alters the agent's behaviour | prevent | Hook never writes `additionalContext`, `decision` or `continue`; output only `systemMessage` on Stop | Contract test: hook stdout is empty or exactly `{"systemMessage": string}` |
-| B3 store at rest | I: stolen disk or backup reads prompts | accept (was mitigate) | **Encryption deferred by Imran, 2026-10-31** ([note](../notes/note-20261031-encryption-deferred.md)): plain SQLite in a 0700 directory, files 0600 (Windows: per-user `%LOCALAPPDATA%` ACL). Residual: anyone with the disk, a backup or admin rights reads prompts | `store_file_is_owner_only`, `spool_file_is_owner_only` (file modes) |
+| B3 store at rest | I: stolen disk or backup reads prompts | accept (was mitigate) | **Encryption deferred by Imran, 2026-10-31** ([note](../notes/note-20261031-encryption-deferred.md)): plain SQLite in a 0700 directory, files 0600 (Windows: per-user `%USERPROFILE%\.aiq` ACL). Residual: anyone with the disk, a backup or admin rights reads prompts | `store_file_is_owner_only`, `spool_file_is_owner_only` (file modes) |
 | B3 | I: spool holds plain text while the core is down | mitigate + accept | Spool is user-only, ≤ 1 MB, removed on drain. Residual: plain text on disk briefly (the store is also plain text now; see row above) | File-mode test; spool empty after drain |
 | B4 settings file (`~/.claude/settings.json`) | T: install corrupts the person's settings | mitigate | Parse, merge only AIQ entries, write to a temp file and rename, keep a backup, refuse on invalid JSON | Golden tests on settings files with other hooks; invalid JSON untouched |
 | B4 | R: person cannot tell what AIQ changed | mitigate | `install` shows the diff and asks; `uninstall` restores only AIQ entries | Round-trip test install → uninstall → byte-identical file |
@@ -649,6 +649,23 @@ Where the build differs from the text above:
   binary); peer-uid check on the Unix socket (0700 directory + token instead); graceful SIGTERM drain
   (the store is transactional; unflushed frames are lost as already accepted); install self-test uses
   `stop_hook_active: true` so it stores one Stop event for a synthetic session and never takes a card.
+
+### Findings from the Windows laptop check (2026-11-01)
+
+- **Windows home moved to `%USERPROFILE%\.aiq` (DC-007).** The Claude desktop app is a packaged (MSIX)
+  app, so writes under `%LOCALAPPDATA%` from hooks it starts land in a private redirected copy. Hooks
+  from a terminal used the real folder: two homes, two tokens, one shared pipe name, so terminal hooks
+  were refused (`AIQ-API-AUTH`) and spooled where no core drained them. The profile root is not
+  redirected and sits beside Claude Code's own `.claude`, which already holds the same prompts. `aiq
+  status` now explains an `AIQ-API-AUTH` count in words.
+- **Reinstall from a moved binary left stale hooks on uninstall (DC-006).** Fixed; see the register.
+- **The reword detector misses natural paraphrases (open, not fixed in this slice).** Imran's first real
+  run, four ways of asking "which models can I use in Claude Code?", peaked at 0.40 key-word overlap
+  against the 0.6 bar, and even a hand-written close rewording set did not trigger. Only near-verbatim
+  rewording fires. The Phase 0 thresholds were tuned on synthetic data. Upgrade trigger: the real-data
+  week; likely fix is semantic similarity or the planned model judge, not more word rules.
+- **Whole-process hook time on the laptop:** p50 about 27 ms, p95 65 to 70 ms; in-process p95 3.1 ms.
+  The 50 ms p95 whole-process bar does not hold there; the budget is with Imran.
 
 ## Gate record
 `GATE design · 2026-10-31 · Patterns Expert ⇄ Simplifier, Test Architect, Security & Identity, Distributed Systems, Data & Persistence, SRE, Privacy, UX & Accessibility (all seats played by Claude in one session; not independent) · verdict: pass with conditions`

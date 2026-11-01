@@ -83,6 +83,14 @@ pub fn status() -> ExitCode {
             if !s.core_counters.is_empty() {
                 let c: Vec<String> = s.core_counters.iter().map(|(k, n)| format!("{k} {n}")).collect();
                 out += &format!("Core errors: {}\n", c.join(", "));
+                if s.core_counters.iter().any(|(k, _)| k == aiq_contracts::codes::API_AUTH) {
+                    out += &format!(
+                        "Some hooks could not talk to AIQ: their key did not match the running core's. \
+                         This happens when two AIQ homes exist, for example one under the Claude desktop \
+                         app's private AppData. This AIQ's home: {}\n",
+                        paths.data.display()
+                    );
+                }
             }
         }
         None => {

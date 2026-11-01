@@ -27,7 +27,7 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <p>encryption - we can revisit later whether we even require it&quot;)</p>
 <ul><li><strong>Made during:</strong> <code>/implement</code> of <code>design-claude-code-skeleton</code></li></ul>
 <h2>The call</h2>
-<p>The Phase 1 store is <code>aiq.db</code>, a plain SQLite file (rusqlite <code>bundled</code>), not SQLCipher. There is no store key and no OS-keychain entry. Protection at rest is the OS user boundary: the data directory is <code>0700</code> and every file AIQ creates is <code>0600</code> on Linux/macOS; on Windows the files live under <code>%LOCALAPPDATA%\AIQ</code> and inherit its per-user ACL. This also removes spike S3c (SQLCipher&#x27;s vendored OpenSSL needs a native Perl on Windows) from the critical path.</p>
+<p>The Phase 1 store is <code>aiq.db</code>, a plain SQLite file (rusqlite <code>bundled</code>), not SQLCipher. There is no store key and no OS-keychain entry. Protection at rest is the OS user boundary: the data directory is <code>0700</code> and every file AIQ creates is <code>0600</code> on Linux/macOS; on Windows the files live under <code>%USERPROFILE%\.aiq</code> (moved from <code>%LOCALAPPDATA%\AIQ</code> on 2026-11-01, DC-007) and inherit its per-user ACL. This also removes spike S3c (SQLCipher&#x27;s vendored OpenSSL needs a native Perl on Windows) from the critical path.</p>
 <h2>Alternatives dismissed</h2>
 <ul><li><strong>Build SQLCipher anyway</strong> (CI Windows runner has Perl; laptop needs Strawberry Perl). Dismissed by the</li></ul>
 <p>owner: the cost (build friction, key management, keychain prompts) is not yet justified.</p>
