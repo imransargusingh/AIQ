@@ -1,6 +1,8 @@
-//! `aiq hook claude-code <event>`: the hot path. Guarantees (design: Exposed contract 1):
-//! always exits 0; stdout is empty, or exactly one `{"systemMessage": …}` on Stop; never writes
-//! `additionalContext`, `decision` or `continue`; never opens the store or loads the pack.
+//! `aiq hook claude-code <event>` and `aiq hook copilot <event>`: the hot path. Guarantees (Phase 1
+//! design: Exposed contract 1; Phase 2 design: Exposed contract 1): always exits 0; never opens the store
+//! or loads the pack. Claude Code: stdout is empty, or exactly one `{"systemMessage": …}` on Stop; never
+//! `additionalContext`, `decision` or `continue`. Copilot: stdout and stderr are always empty (Copilot
+//! shows the person nothing, and its hooks block the agent, so both events are plain ingests).
 use aiq_contracts::card::claude_code_system_message;
 use aiq_contracts::codes;
 use aiq_contracts::event::{EventBody, EventV1, MAX_PROMPT_BYTES, PromptPayload, SCHEMA, StopPayload, cap_text};
@@ -14,6 +16,9 @@ use std::process::ExitCode;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 pub const MAX_STDIN: u64 = 256 * 1024;
+/// Set by AIQ on processes it starts itself (the Phase 5 judge's `copilot -p` / `claude -p`), whose hooks
+/// would otherwise feed AIQ its own calls (surface spike: `copilot -p` fires the person's hooks).
+pub const INTERNAL_ENV: &str = "AIQ_INTERNAL";
 /// Bytes past the cap that are read and thrown away (bounded, so a runaway writer cannot hold the hook).
 pub const MAX_DRAIN: u64 = 16 * 1024 * 1024;
 /// Connect + write budget (ADR-0005).
@@ -28,10 +33,13 @@ pub fn run(host: &str, event: &str) -> ExitCode {
     let start = Instant::now();
     std::panic::set_hook(Box::new(|_| {})); // a panic must never print into Claude Code
     let paths = Paths::from_env();
-    let outcome = std::panic::catch_unwind(|| inner(&paths, host, event)).unwrap_or("panic");
+    let (outcome, host_ms) = std::panic::catch_unwind(|| inner(&paths, host, event)).unwrap_or(("panic", None));
+    // Copilot's own start-up (its event timestamp to this process running) is measured and shown in
+    // `aiq status`, not counted against AIQ's budget (Imran, 2026-11-01).
+    let host = host_ms.map_or(String::new(), |ms| format!(" host_ms={ms}"));
     let _ = bounded_append(
         &paths.hook_timings(),
-        &format!("{event} {} {outcome}", start.elapsed().as_micros()),
+        &format!("{event} {} {outcome}{host}", start.elapsed().as_micros()),
         SMALL_LOG_MAX,
     );
     ExitCode::SUCCESS
@@ -41,14 +49,29 @@ fn count(paths: &Paths, code: &str) {
     let _ = bounded_append(&paths.hook_errors(), code, SMALL_LOG_MAX);
 }
 
-/// Returns a short outcome label for the timing log.
-fn inner(paths: &Paths, host: &str, event: &str) -> &'static str {
+/// Milliseconds from the host's event `timestamp` (Copilot: epoch ms) to now; None if absent or implausible.
+pub fn host_start_ms(v: &Value, now_ms: i64) -> Option<i64> {
+    let ts = v.get("timestamp")?.as_i64()?;
+    Some(now_ms - ts).filter(|d| (0..60_000).contains(d))
+}
+
+/// Returns a short outcome label for the timing log, and the host's start-up time when known.
+fn inner(paths: &Paths, host: &str, event: &str) -> (&'static str, Option<i64>) {
+    let mut host_ms = None;
+    let outcome = inner_outcome(paths, host, event, &mut host_ms);
+    (outcome, host_ms)
+}
+
+fn inner_outcome(paths: &Paths, host: &str, event: &str, host_ms: &mut Option<i64>) -> &'static str {
     let mut buf = Vec::new();
     let mut stdin = std::io::stdin().lock();
     let _ = (&mut stdin).take(MAX_STDIN).read_to_end(&mut buf);
     // Discard the rest instead of closing early, so the host never sees a broken pipe while writing.
     let _ = std::io::copy(&mut stdin.take(MAX_DRAIN), &mut std::io::sink());
-    if host != "claude-code" {
+    if std::env::var_os(INTERNAL_ENV).is_some_and(|v| !v.is_empty()) {
+        return "internal";
+    }
+    if host != "claude-code" && host != "copilot" {
         return "unknown-host";
     }
     let v: Value = match serde_json::from_slice(&buf) {
@@ -58,7 +81,12 @@ fn inner(paths: &Paths, host: &str, event: &str) -> &'static str {
             return "parse";
         }
     };
-    let Some(ev) = to_event(&v, event) else {
+    if host == "copilot" {
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);
+        *host_ms = host_start_ms(&v, now);
+    }
+    let parsed = if host == "copilot" { to_copilot_event(&v, event) } else { to_event(&v, event) };
+    let Some(ev) = parsed else {
         count(paths, codes::HOOK_FOREIGN_HOST);
         return "foreign";
     };
@@ -68,6 +96,20 @@ fn inner(paths: &Paths, host: &str, event: &str) -> &'static str {
     let trace_id = uuid::Uuid::new_v4().simple().to_string();
     let token = ipc::read_token(paths).unwrap_or_default();
     match &ev.body {
+        // Copilot: both events are ingests (nothing to show at agentStop; the status line renders).
+        EventBody::Prompt(_) | EventBody::Stop(_) if host == "copilot" => {
+            let frame = Request::Ingest { token, trace_id: Some(trace_id.clone()), event: ev.clone() };
+            match ipc::request(paths, &serde_json::to_string(&frame).unwrap_or_default(), false, SEND_BUDGET) {
+                Ok(_) => "sent",
+                Err(_) => {
+                    spool_frame(paths, &trace_id, &ev);
+                    if matches!(ev.body, EventBody::Prompt(_)) {
+                        maybe_start_core(paths);
+                    }
+                    "spooled"
+                }
+            }
+        }
         EventBody::Prompt(_) => {
             let frame = Request::Ingest { token, trace_id: Some(trace_id.clone()), event: ev.clone() };
             match ipc::request(paths, &serde_json::to_string(&frame).unwrap_or_default(), false, SEND_BUDGET) {
@@ -123,20 +165,7 @@ pub fn to_event(v: &Value, event: &str) -> Option<EventV1> {
     let s = |k: &str| v.get(k).and_then(Value::as_str).map(str::to_owned);
     let body = match event {
         "UserPromptSubmit" => {
-            let raw = v.get("prompt").and_then(Value::as_str);
-            let (text, truncated) = match raw {
-                Some(t) => {
-                    let (c, cut) = cap_text(t, MAX_PROMPT_BYTES);
-                    (Some(c), cut)
-                }
-                None => (None, false),
-            };
-            EventBody::Prompt(PromptPayload {
-                text,
-                chars: raw.map_or(0, |t| t.chars().count() as u64),
-                prompt_id: s("prompt_id"),
-                truncated,
-            })
+            EventBody::Prompt(prompt_payload(v.get("prompt").and_then(Value::as_str), s("prompt_id")))
         }
         "Stop" => EventBody::Stop(StopPayload {
             stop_hook_active: v.get("stop_hook_active").and_then(Value::as_bool).unwrap_or(false),
@@ -144,17 +173,51 @@ pub fn to_event(v: &Value, event: &str) -> Option<EventV1> {
         }),
         _ => return None,
     };
+    Some(new_event("claude-code", session, body))
+}
+
+/// Surface of a Copilot hook. Copilot CLI and VS Code agent mode share `~/.copilot/hooks`; whether a hook
+/// can tell them apart is laptop probe P3. Until then every Copilot event is `copilot-cli`.
+pub const COPILOT_SURFACE: &str = "copilot-cli";
+
+/// Build `aiq.event.v1` from a Copilot payload: camelCase `sessionId`, no event name (it comes from argv),
+/// and none of Claude Code's snake_case fields (a Claude-shaped payload here is a foreign host).
+pub fn to_copilot_event(v: &Value, event: &str) -> Option<EventV1> {
+    if v.get("session_id").is_some() || v.get("hook_event_name").is_some() {
+        return None;
+    }
+    let session = v.get("sessionId")?.as_str().filter(|s| !s.is_empty())?;
+    let body = match event {
+        "userPromptSubmitted" => EventBody::Prompt(prompt_payload(v.get("prompt").and_then(Value::as_str), None)),
+        "agentStop" => EventBody::Stop(StopPayload { stop_hook_active: false, prompt_id: None }),
+        _ => return None,
+    };
+    Some(new_event(COPILOT_SURFACE, session, body))
+}
+
+fn prompt_payload(raw: Option<&str>, prompt_id: Option<String>) -> PromptPayload {
+    let (text, truncated) = match raw {
+        Some(t) => {
+            let (c, cut) = cap_text(t, MAX_PROMPT_BYTES);
+            (Some(c), cut)
+        }
+        None => (None, false),
+    };
+    PromptPayload { text, chars: raw.map_or(0, |t| t.chars().count() as u64), prompt_id, truncated }
+}
+
+fn new_event(surface: &str, session: &str, body: EventBody) -> EventV1 {
     let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);
-    Some(EventV1 {
+    EventV1 {
         schema: SCHEMA.into(),
         event_id: uuid::Uuid::now_v7().to_string(),
-        surface: "claude-code".into(),
+        surface: surface.into(),
         surface_session_id: session.to_owned(),
         seq: None,
         ts: aiq_core::sysclock::format_rfc3339_ms(now),
         collector_version: env!("CARGO_PKG_VERSION").into(),
         body,
-    })
+    }
 }
 
 fn spool_frame(paths: &Paths, trace_id: &str, ev: &EventV1) {
@@ -170,7 +233,7 @@ fn spool_frame(paths: &Paths, trace_id: &str, ev: &EventV1) {
 }
 
 /// no-color.org: any non-empty `NO_COLOR` turns colour off. Claude Code passes its environment to hooks.
-fn color_allowed() -> bool {
+pub fn color_allowed() -> bool {
     std::env::var_os("NO_COLOR").is_none_or(|v| v.is_empty())
 }
 
@@ -205,6 +268,43 @@ mod tests {
                 truncated: false
             })
         );
+    }
+
+    #[test]
+    fn host_start_ms_plausible_only() {
+        assert_eq!(host_start_ms(&json!({"timestamp": 1_000}), 1_150), Some(150));
+        assert_eq!(host_start_ms(&json!({"timestamp": 2_000}), 1_000), None);
+        assert_eq!(host_start_ms(&json!({"timestamp": "x"}), 1_000), None);
+        assert_eq!(host_start_ms(&json!({}), 1_000), None);
+    }
+
+    #[test]
+    fn to_copilot_event_prompt_and_stop() {
+        let v = json!({"sessionId":"c1","timestamp":1793500000000_i64,"cwd":"/x","prompt":"fix it"});
+        let e = to_copilot_event(&v, "userPromptSubmitted").unwrap();
+        assert_eq!((e.surface.as_str(), e.surface_session_id.as_str()), ("copilot-cli", "c1"));
+        assert!(
+            matches!(&e.body, EventBody::Prompt(p) if p.text.as_deref() == Some("fix it") && p.prompt_id.is_none())
+        );
+        let v = json!({"sessionId":"c1","timestamp":1,"stopReason":"end_turn","transcriptPath":"/t"});
+        let e = to_copilot_event(&v, "agentStop").unwrap();
+        assert_eq!(e.body, EventBody::Stop(StopPayload { stop_hook_active: false, prompt_id: None }));
+    }
+
+    #[test]
+    fn to_copilot_event_claude_shaped_or_unknown_dropped() {
+        let claude = json!({"session_id":"s","hook_event_name":"UserPromptSubmit","prompt":"x"});
+        assert!(to_copilot_event(&claude, "userPromptSubmitted").is_none());
+        assert!(to_copilot_event(&json!({"sessionId":"s","session_id":"s"}), "agentStop").is_none());
+        assert!(to_copilot_event(&json!({"sessionId":""}), "agentStop").is_none());
+        assert!(to_copilot_event(&json!({"sessionId":"s"}), "preToolUse").is_none());
+    }
+
+    #[test]
+    fn to_copilot_event_oversized_prompt_truncates() {
+        let v = json!({"sessionId":"s","prompt":"x".repeat(MAX_PROMPT_BYTES + 10)});
+        let EventBody::Prompt(p) = to_copilot_event(&v, "userPromptSubmitted").unwrap().body else { panic!() };
+        assert!(p.truncated && p.text.unwrap().len() == MAX_PROMPT_BYTES);
     }
 
     #[test]

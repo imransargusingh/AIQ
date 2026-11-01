@@ -406,7 +406,7 @@ fn e2e_install_uninstall_round_trip_byte_identical() {
         String::from_utf8_lossy(&e.run(&["install", "claude-code", "--yes"], b"").stdout)
             .contains("Already installed.")
     );
-    assert!(e.status().contains("Hooks: installed"));
+    assert!(e.status().contains("Claude Code: installed"));
     assert!(e.run(&["uninstall", "claude-code", "--yes"], b"").status.success());
     assert_eq!(std::fs::read_to_string(settings(&e)).unwrap(), ODD_SETTINGS);
     assert!(!e.dir.path().join(".claude").exists(), "never writes to the working directory");

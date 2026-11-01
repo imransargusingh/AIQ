@@ -2,7 +2,7 @@
 # Every number here is uncalibrated pack data; the real-data week tunes it (design: assume: lines).
 schema = "aiq.pack.v1"
 pack_id = "aiq.core"
-version = "bundled-1"
+version = "bundled-2"
 idle_gap_min = 30
 
 [reprompt]
@@ -31,10 +31,11 @@ cues = [
 ]
 
 [trigger]
-rule_id = "in_moment.v1"
+rule_id = "in_moment.v2"
 in_moment_threshold = 0.75
 ready_expiry_min = 30
 default_daily_cap = 5
+quiet_min = 30
 
 [[tips]]
 tip_id = "reprompt.add-what-changed"

@@ -65,7 +65,7 @@ pub fn status() -> ExitCode {
             if s.paused {
                 out += "AIQ is paused. Nothing is captured and no tips show. Resume with: aiq resume\n";
             } else if events == 0 {
-                out += "No activity yet. Use Claude Code as usual; AIQ watches quietly.\n";
+                out += "No activity yet. Use Claude Code or Copilot as usual; AIQ watches quietly.\n";
             } else {
                 out += "AIQ is running.\n";
             }
@@ -101,7 +101,8 @@ pub fn status() -> ExitCode {
             }
         }
     }
-    out += &format!("Hooks: {}\n", crate::install::status_line());
+    out += &format!("Claude Code: {}\n", crate::install::status_line());
+    out += &format!("Copilot: {}\n", crate::install_copilot::status_line());
     let spooled = std::fs::read_to_string(paths.spool()).map(|s| s.lines().count()).unwrap_or(0);
     if spooled > 0 {
         out += &format!("Queued while the core was down: {spooled} events\n");
@@ -127,20 +128,39 @@ fn human_bytes(b: u64) -> String {
 fn hook_time_lines(paths: &Paths) -> String {
     let text = std::fs::read_to_string(paths.hook_timings()).unwrap_or_default();
     let mut by: std::collections::BTreeMap<&str, Vec<u64>> = Default::default();
+    let mut host: Vec<u64> = Vec::new();
     for l in text.lines() {
         let mut it = l.split_whitespace();
         if let (Some(ev), Some(us)) = (it.next(), it.next().and_then(|u| u.parse::<u64>().ok())) {
             by.entry(ev).or_default().push(us);
         }
+        if let Some(ms) =
+            l.split_whitespace().find_map(|w| w.strip_prefix("host_ms=")).and_then(|m| m.parse::<u64>().ok())
+        {
+            host.push(ms * 1000);
+        }
     }
-    by.into_iter()
+    fn pct(v: &mut [u64]) -> (f64, f64) {
+        v.sort_unstable();
+        let p = |q: f64| v[((v.len() as f64 * q).ceil() as usize).saturating_sub(1).min(v.len() - 1)] as f64 / 1000.0;
+        (p(0.5), p(0.95))
+    }
+    let mut out: String = by
+        .into_iter()
         .map(|(ev, mut v)| {
-            v.sort_unstable();
-            let p =
-                |q: f64| v[((v.len() as f64 * q).ceil() as usize).saturating_sub(1).min(v.len() - 1)] as f64 / 1000.0;
-            format!("Hook time in-process, {ev}: p50 {:.1} ms, p95 {:.1} ms ({} runs)\n", p(0.5), p(0.95), v.len())
+            let (p50, p95) = pct(&mut v);
+            format!("Hook time in-process, {ev}: p50 {p50:.1} ms, p95 {p95:.1} ms ({} runs)\n", v.len())
         })
-        .collect()
+        .collect();
+    if !host.is_empty() {
+        let (p50, p95) = pct(&mut host);
+        out += &format!(
+            "Copilot's own start-up before AIQ's hook runs: p50 {p50:.0} ms, p95 {p95:.0} ms ({} runs; not counted \
+             against AIQ's budget)\n",
+            host.len()
+        );
+    }
+    out
 }
 
 fn hook_error_counts(paths: &Paths) -> Vec<String> {
@@ -163,8 +183,9 @@ pub fn show(card_id: &str) -> ExitCode {
         println!("AIQ can't open its data right now. Run `aiq status`.");
         return ExitCode::from(1);
     }
-    let Some(r) = ask_core(&paths, |token| Request::Show { token, card_id: card_id.to_owned() })
-        .and_then(|l| serde_json::from_str::<ShowReply>(&l).ok())
+    let Some(r) =
+        ask_core(&paths, |token| Request::Show { token, card_id: card_id.to_owned(), opened_on: Some("cli".into()) })
+            .and_then(|l| serde_json::from_str::<ShowReply>(&l).ok())
     else {
         println!("AIQ can't open its data right now. Run `aiq status`.");
         return ExitCode::from(1);
@@ -220,17 +241,26 @@ pub fn pause(on: bool) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-pub fn set_daily_cap(n: &str) -> ExitCode {
+/// `aiq config set <name> <value>`: `daily-cap` or `copilot-tip-stays`.
+pub fn config_set(name: &str, value: &str) -> ExitCode {
+    let (key, done) = match name {
+        "daily-cap" => ("daily_cap", format!("Daily tip limit set to {value}.")),
+        "copilot-tip-stays" => ("copilot_tip_stays", format!("Copilot CLI tip stays: {value}.")),
+        _ => {
+            println!("Unknown setting {name}. Settings: daily-cap, copilot-tip-stays.");
+            return ExitCode::from(2);
+        }
+    };
     let paths = Paths::from_env();
     if !ensure_core(&paths) {
         println!("{NOT_RUNNING}");
         return ExitCode::from(1);
     }
-    let r = ask_core(&paths, |token| Request::Setting { token, key: "daily_cap".into(), value: n.into() })
+    let r = ask_core(&paths, |token| Request::Setting { token, key: key.into(), value: value.into() })
         .and_then(|l| serde_json::from_str::<OkReply>(&l).ok());
     match r {
         Some(OkReply { ok: true, .. }) => {
-            println!("Daily tip limit set to {n}.");
+            println!("{done}");
             ExitCode::SUCCESS
         }
         Some(OkReply { message, .. }) => {

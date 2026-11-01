@@ -9,12 +9,46 @@ pub const MAX_FRAME_BYTES: usize = 256 * 1024;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum Request {
-    Ingest { token: String, trace_id: Option<String>, event: EventV1 },
-    TakeCard { token: String, trace_id: Option<String>, event: EventV1, wait_ms: u64 },
-    Status { token: String },
-    Show { token: String, card_id: String },
-    Setting { token: String, key: String, value: String },
-    Forget { token: String },
+    Ingest {
+        token: String,
+        trace_id: Option<String>,
+        event: EventV1,
+    },
+    TakeCard {
+        token: String,
+        trace_id: Option<String>,
+        event: EventV1,
+        wait_ms: u64,
+    },
+    Status {
+        token: String,
+    },
+    /// `opened_on`: where the person opened it (`cli`, `vscode`); recorded as a `card_open` fact.
+    Show {
+        token: String,
+        card_id: String,
+        #[serde(default)]
+        opened_on: Option<String>,
+    },
+    /// Copilot CLI status line. `session` is None when the status line sends no session id.
+    TipLine {
+        token: String,
+        surface: String,
+        session: Option<String>,
+    },
+    /// A renderer that cannot name its session (VS Code extension): any show-ready card whose turn ended.
+    TakeCardAny {
+        token: String,
+        surface: String,
+    },
+    Setting {
+        token: String,
+        key: String,
+        value: String,
+    },
+    Forget {
+        token: String,
+    },
 }
 
 impl Request {
@@ -24,6 +58,8 @@ impl Request {
             | Request::TakeCard { token, .. }
             | Request::Status { token }
             | Request::Show { token, .. }
+            | Request::TipLine { token, .. }
+            | Request::TakeCardAny { token, .. }
             | Request::Setting { token, .. }
             | Request::Forget { token } => token,
         }
@@ -40,6 +76,13 @@ pub struct SpoolLine {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TakeCardReply {
     pub card: Option<CardV1>,
+}
+
+/// Status-line reply: the full card, or only the id of a card that is waiting to be opened, or neither.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct TipLineReply {
+    pub card: Option<CardV1>,
+    pub waiting_card_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]

@@ -8,8 +8,9 @@ use rusqlite::{Connection, OptionalExtension, params};
 use std::path::{Path, PathBuf};
 
 pub const SCHEMA_V1: &str = include_str!("schema_v1.sql");
+pub const SCHEMA_V2: &str = include_str!("schema_v2.sql");
 /// Migration N takes the store from `user_version` N to N+1, in one transaction.
-pub const MIGRATIONS: &[&str] = &[SCHEMA_V1];
+pub const MIGRATIONS: &[&str] = &[SCHEMA_V1, SCHEMA_V2];
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StoreError {
@@ -290,6 +291,86 @@ impl Store {
                 params![surface, session],
                 |r| r.get(0),
             )
+            .map_err(err(codes::STORE_OPEN))
+    }
+
+    /// Time of the last delivery on any surface (the person-wide quiet period reads it).
+    pub fn last_delivery_ms(&self) -> Result<Option<i64>> {
+        self.conn
+            .query_row("SELECT max(delivered_utc_ms) FROM card_delivery", [], |r| r.get(0))
+            .map_err(err(codes::STORE_OPEN))
+    }
+
+    /// The session's latest event kind (`prompt` / `stop`), by event time then arrival.
+    pub fn last_event_kind(&self, surface: &str, session: &str) -> Result<Option<String>> {
+        self.conn
+            .query_row(
+                "SELECT kind FROM event WHERE surface = ?1 AND surface_session_id = ?2
+                 ORDER BY ts_utc_ms DESC, event_id DESC LIMIT 1",
+                params![surface, session],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(err(codes::STORE_OPEN))
+    }
+
+    /// The newest session of a surface that has an event (used when a renderer cannot name its session).
+    pub fn latest_session(&self, surface: &str) -> Result<Option<String>> {
+        self.conn
+            .query_row(
+                "SELECT surface_session_id FROM event WHERE surface = ?1 ORDER BY ts_utc_ms DESC, event_id DESC LIMIT 1",
+                [surface],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(err(codes::STORE_OPEN))
+    }
+
+    /// Show-ready cards of a surface, oldest first.
+    pub fn ready_cards_on(&self, surface: &str) -> Result<Vec<ReadyCard>> {
+        self.ready_rows("AND d.surface = ?1", &[&surface])
+    }
+
+    /// The card delivered in this session, if any: (card_id, card_json, delivered_utc_ms).
+    pub fn delivered_card(&self, surface: &str, session: &str) -> Result<Option<(String, String, i64)>> {
+        self.conn
+            .query_row(
+                "SELECT v.card_id, d.card_json, v.delivered_utc_ms FROM card_delivery v
+                 JOIN card_decision d ON d.card_id = v.card_id AND d.outcome = 'show_ready'
+                 WHERE v.surface = ?1 AND v.surface_session_id = ?2 LIMIT 1",
+                params![surface, session],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .optional()
+            .map_err(err(codes::STORE_OPEN))
+    }
+
+    /// Prompts in the session with an event time after `after_ms`.
+    pub fn prompts_after(&self, surface: &str, session: &str, after_ms: i64) -> Result<u32> {
+        self.conn
+            .query_row(
+                "SELECT count(*) FROM event WHERE surface = ?1 AND surface_session_id = ?2 AND kind = 'prompt'
+                 AND ts_utc_ms > ?3",
+                params![surface, session, after_ms],
+                |r| r.get::<_, i64>(0),
+            )
+            .map(|n| n as u32)
+            .map_err(err(codes::STORE_OPEN))
+    }
+
+    pub fn insert_open(&self, card_id: &str, surface: &str, now_ms: i64) -> Result<()> {
+        self.conn
+            .execute(
+                "INSERT INTO card_open (card_id, surface, utc_ms) VALUES (?1, ?2, ?3)",
+                params![card_id, surface, now_ms],
+            )
+            .map(|_| ())
+            .map_err(err(codes::STORE_WRITE))
+    }
+
+    pub fn opened(&self, card_id: &str) -> Result<bool> {
+        self.conn
+            .query_row("SELECT EXISTS (SELECT 1 FROM card_open WHERE card_id = ?1)", [card_id], |r| r.get(0))
             .map_err(err(codes::STORE_OPEN))
     }
 

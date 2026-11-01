@@ -13,13 +13,15 @@ use aiq_domain::clock::{Clock, deliveries_counted_today};
 use aiq_domain::job::{AlwaysUnclassified, JobClassifier};
 use aiq_domain::reprompt::{Engine, PromptObs, SignalDraft};
 use aiq_domain::text::features;
-use aiq_domain::trigger::{DecideInput, Outcome, Reason, decide, may_deliver};
+use aiq_domain::tipline::{TipLine, TipStays, tip_line_state};
+use aiq_domain::trigger::{DecideInput, Outcome, Reason, decide, in_quiet_period, may_deliver};
 use aiq_store::{NewDecision, NewEvent, NewSignal, Store, StoreError};
 use std::sync::Arc;
 use tracing::{info, info_span, warn};
 
 pub const SETTING_PAUSED: &str = "paused";
 pub const SETTING_DAILY_CAP: &str = "daily_cap";
+pub const SETTING_COPILOT_TIP_STAYS: &str = "copilot_tip_stays";
 pub const MAX_DAILY_CAP: u32 = 50;
 
 pub struct Service<C: Clock> {
@@ -29,6 +31,14 @@ pub struct Service<C: Clock> {
     clock: C,
     classifier: Box<dyn JobClassifier + Send>,
     counters: Arc<Counters>,
+}
+
+/// What the Copilot CLI status line shows.
+#[derive(Debug, Clone, PartialEq)]
+pub enum TipLineOut {
+    Full(CardV1),
+    /// The "1 tip waiting" marker, with the card id for `aiq show`.
+    Waiting(String),
 }
 
 fn new_id() -> String {
@@ -84,6 +94,19 @@ impl<C: Clock> Service<C> {
             .flatten()
             .and_then(|v| v.parse().ok())
             .unwrap_or(self.pack.trigger.default_daily_cap)
+    }
+
+    pub fn copilot_tip_stays(&self) -> TipStays {
+        self.store
+            .setting(SETTING_COPILOT_TIP_STAYS)
+            .ok()
+            .flatten()
+            .and_then(|v| TipStays::parse(&v))
+            .unwrap_or(TipStays::NextPrompt)
+    }
+
+    fn quiet(&self) -> Result<bool, StoreError> {
+        Ok(in_quiet_period(self.store.last_delivery_ms()?, self.clock.now().utc_ms, self.pack.trigger.quiet_min))
     }
 
     fn counted_today(&self) -> Result<u32, StoreError> {
@@ -205,6 +228,7 @@ impl<C: Clock> Service<C> {
             score: sig.score,
             threshold: self.pack.trigger.in_moment_threshold,
             delivered_in_session: self.store.delivered_in_session(surface, session)?,
+            in_quiet_period: self.quiet()?,
             ready_in_session: self.store.ready_card(surface, session)?.is_some(),
             deliveries_counted_today: self.counted_today()?,
             daily_cap: self.daily_cap(),
@@ -290,23 +314,106 @@ impl<C: Clock> Service<C> {
             return Ok(None); // this turn's prompt has not arrived yet: the card waits for the next Stop
         }
         let Some(ready) = self.store.ready_card(surface, session)? else { return Ok(None) };
+        self.deliver(&ready.card_id, &ready.card_json, surface, session)
+    }
+
+    /// Re-check the budget (pause, session, quiet period, daily cap) and record the hand-over in the
+    /// single writer, so no two renderers on any surface can deliver past the budget.
+    fn deliver(
+        &mut self,
+        card_id: &str,
+        card_json: &str,
+        surface: &str,
+        session: &str,
+    ) -> Result<Option<CardV1>, StoreError> {
         let ok = may_deliver(
             self.paused(),
             self.store.delivered_in_session(surface, session)?,
+            self.quiet()?,
             self.counted_today()?,
             self.daily_cap(),
         );
         if !ok {
             return Ok(None);
         }
-        self.store.insert_delivery(&ready.card_id, surface, session, self.clock.now())?;
-        info!(aiq.outcome = "delivered", "card delivered");
-        Ok(serde_json::from_str(&ready.card_json).ok())
+        self.store.insert_delivery(card_id, surface, session, self.clock.now())?;
+        info!(aiq.outcome = "delivered", aiq.surface = surface, "card delivered");
+        Ok(serde_json::from_str(card_json).ok())
+    }
+
+    /// Copilot CLI status line: the tip line for a session, or None. Delivers a show-ready card only after
+    /// the session's turn has ended (its last event is a stop). With no session id (the status line may
+    /// not send one), the surface's newest session is used. Lifetime is derived from facts every call.
+    pub fn tip_line(&mut self, surface: &str, session: Option<&str>) -> Option<TipLineOut> {
+        let _s = info_span!("core.tip_line", aiq.surface = surface).entered();
+        match self.tip_line_inner(surface, session) {
+            Ok(t) => t,
+            Err(e) => {
+                self.fail(e);
+                None
+            }
+        }
+    }
+
+    fn tip_line_inner(&mut self, surface: &str, session: Option<&str>) -> Result<Option<TipLineOut>, StoreError> {
+        if self.paused() {
+            return Ok(None);
+        }
+        let session = match session {
+            Some(s) if !s.is_empty() && s.len() <= MAX_SESSION_ID => s.to_owned(),
+            _ => match self.store.latest_session(surface)? {
+                Some(s) => s,
+                None => return Ok(None),
+            },
+        };
+        self.expire_stale()?;
+        if let Some((card_id, json, at)) = self.store.delivered_card(surface, &session)? {
+            let now = self.clock.now().utc_ms;
+            let after = self.store.prompts_after(surface, &session, at)?;
+            let opened = self.store.opened(&card_id)?;
+            let card: Option<CardV1> = serde_json::from_str(&json).ok();
+            return Ok(match (tip_line_state(self.copilot_tip_stays(), at, after, opened, now), card) {
+                (TipLine::Full, Some(c)) => Some(TipLineOut::Full(c)),
+                (TipLine::Waiting, _) => Some(TipLineOut::Waiting(card_id)),
+                _ => None,
+            });
+        }
+        if self.store.last_event_kind(surface, &session)?.as_deref() != Some("stop") {
+            return Ok(None); // mid-turn: a card never shows while the agent works
+        }
+        let Some(ready) = self.store.ready_card(surface, &session)? else { return Ok(None) };
+        Ok(self.deliver(&ready.card_id, &ready.card_json, surface, &session)?.map(TipLineOut::Full))
+    }
+
+    /// A renderer that cannot name its session (the VS Code extension): deliver the oldest show-ready
+    /// card of the surface whose session's turn has ended.
+    pub fn take_card_any(&mut self, surface: &str) -> Option<CardV1> {
+        let _s = info_span!("core.take_card_any", aiq.surface = surface).entered();
+        let r = (|| -> Result<Option<CardV1>, StoreError> {
+            self.expire_stale()?;
+            for c in self.store.ready_cards_on(surface)? {
+                if self.store.last_event_kind(surface, &c.session)?.as_deref() == Some("stop") {
+                    return self.deliver(&c.card_id, &c.card_json, surface, &c.session);
+                }
+            }
+            Ok(None)
+        })();
+        r.unwrap_or_else(|e| {
+            self.fail(e);
+            None
+        })
     }
 
     pub fn set(&mut self, key: &str, value: &str) -> Result<(), String> {
         let v = match key {
             SETTING_PAUSED if value == "true" || value == "false" => value.to_owned(),
+            SETTING_COPILOT_TIP_STAYS => match TipStays::parse(value) {
+                Some(v) => v.as_str().to_owned(),
+                None => {
+                    let all: Vec<_> = TipStays::ALL.iter().map(|v| v.as_str()).collect();
+                    return Err(format!("copilot-tip-stays must be one of: {}", all.join(", ")));
+                }
+            },
             SETTING_DAILY_CAP => match value.parse::<u32>() {
                 Ok(n) if n <= MAX_DAILY_CAP => n.to_string(),
                 _ => return Err(format!("daily-cap must be a whole number from 0 to {MAX_DAILY_CAP}")),
@@ -332,19 +439,25 @@ impl<C: Clock> Service<C> {
         }
     }
 
-    pub fn show(&self, card_id: &str) -> ShowReply {
+    /// Show a card's details and record that the person opened it (`opened_on`: cli / vscode).
+    pub fn show(&mut self, card_id: &str, opened_on: &str) -> ShowReply {
         match self.store.card(card_id) {
-            Ok(Some(r)) => ShowReply {
-                card: serde_json::from_str(&r.card_json).ok(),
-                outcome: Some(r.outcome),
-                reason_code: Some(r.reason_code),
-                delivered: r.delivered,
-                evidence: r
-                    .evidence
-                    .into_iter()
-                    .map(|(ts, text)| EvidencePrompt { ts: format_rfc3339_ms(ts), text })
-                    .collect(),
-            },
+            Ok(Some(r)) => {
+                if let Err(e) = self.store.insert_open(card_id, opened_on, self.clock.now().utc_ms) {
+                    self.fail(e);
+                }
+                ShowReply {
+                    card: serde_json::from_str(&r.card_json).ok(),
+                    outcome: Some(r.outcome),
+                    reason_code: Some(r.reason_code),
+                    delivered: r.delivered,
+                    evidence: r
+                        .evidence
+                        .into_iter()
+                        .map(|(ts, text)| EvidencePrompt { ts: format_rfc3339_ms(ts), text })
+                        .collect(),
+                }
+            }
             _ => ShowReply { card: None, outcome: None, reason_code: None, delivered: false, evidence: vec![] },
         }
     }
