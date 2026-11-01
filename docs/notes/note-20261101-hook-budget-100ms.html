@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Note 20261101 Hook Budget 100Ms</title><style>
+:root { color-scheme: light dark; --bg:#f7f5ef; --panel:#fff; --text:#20201d;
+  --muted:#66645f; --line:#d9d5ca; --accent:#3157a4; --code:#f0eee7; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#171816; --panel:#20221f; --text:#f2f1eb; --muted:#b8b6ae;
+    --line:#3d403a; --accent:#8fb0ff; --code:#292c27; }
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text);
+  font:16px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif; }
+main { width:min(920px,calc(100% - 32px)); margin:32px auto; padding:40px;
+  background:var(--panel); border:1px solid var(--line); border-radius:12px; }
+h1,h2,h3,h4,h5,h6 { line-height:1.2; margin:1.5em 0 .55em; }
+h1 { margin-top:0; font-size:2.2rem; } h2 { border-bottom:1px solid var(--line); padding-bottom:.3em; }
+a { color:var(--accent); } code { background:var(--code); padding:.12em .35em; border-radius:4px; }
+pre { overflow:auto; padding:16px; background:var(--code); border-radius:8px; }
+pre code { padding:0; } blockquote { margin:1em 0; padding:.2em 1em; color:var(--muted);
+  border-left:4px solid var(--line); }
+table { width:100%; border-collapse:collapse; margin:1em 0; display:block; overflow:auto; }
+th,td { padding:.55em .75em; border:1px solid var(--line); text-align:left; vertical-align:top; }
+th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); }
+.source { color:var(--muted); font-size:.9rem; margin-bottom:2rem; }
+@media (max-width:640px) { main { width:100%; margin:0; padding:24px 18px; border:0; border-radius:0; } }
+</style></head><body><main><div class="source">Rendered from note-20261101-hook-budget-100ms.md</div><h1>The Claude Code Stop hook budget is 100 ms p95 for the whole process</h1>
+<ul><li><strong>Kind:</strong> decision</li><li><strong>Confidence:</strong> Verified (Imran&#x27;s choice on the decision card in the project thread, 2026-11-01 04:12 UTC:</li></ul>
+<p>&quot;Raise to 100 ms at p95&quot;)</p>
+<ul><li><strong>Made during:</strong> the Windows laptop check of <code>/implement</code> for <code>design-claude-code-skeleton</code> (PR #9)</li></ul>
+<h2>The call</h2>
+<p>AIQ&#x27;s Stop hook runs synchronously at the end of every Claude Code turn. Its budget is now <strong>100 ms p95 for the whole process</strong> (start to exit), up from 50 ms. The e2e test <code>e2e_core_down_stop_exits_zero_within_budget_p95_and_spools</code> defaults to 100 ms; the shared Windows CI runner keeps its wider 200 ms. <code>aiq install</code>&#x27;s self-test reports against 100 ms.</p>
+<h2>Why</h2>
+<p>On Imran&#x27;s laptop (Windows, release build, direct exec, 50 runs each) the whole process measured p50 27.5 ms and p95 66.8-70.5 ms; the hook&#x27;s in-process work measured p95 3.1 ms. The gap is Windows process start (Inferred: likely security scanning; not measured). AIQ cannot shrink that part, and a 70 ms pause after a reply that took seconds is not noticeable.</p>
+<h2>Options weighed</h2>
+<ul><li>Typical (p50) under 50 ms plus in-process p95 under 10 ms. Recommended by Claude; not chosen.</li><li>Keep 50 ms p95 and investigate process start before merging. Not chosen.</li><li><strong>100 ms p95. Chosen.</strong> Trade-off: less sensitive to a real slowdown in AIQ&#x27;s own code than an</li></ul>
+<p>in-process bar would be.</p>
+<h2>What it changes</h2>
+<ul><li>The design&#x27;s Stop budget and the Proof Pack&#x27;s C3 oracle.</li><li>ADR-0005, the architecture and the coaching-loop spec state &quot;50 ms p95 added to any hook&quot; as a</li></ul>
+<p>collector-wide NFR. They are flagged review-suggested, not rewritten: this decision covers the Claude Code Stop hook measured here; other collectors keep 50 ms until measured.</p></main></body></html>

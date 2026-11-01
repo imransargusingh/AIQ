@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Claude Code Skeleton</title><style>
+:root { color-scheme: light dark; --bg:#f7f5ef; --panel:#fff; --text:#20201d;
+  --muted:#66645f; --line:#d9d5ca; --accent:#3157a4; --code:#f0eee7; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#171816; --panel:#20221f; --text:#f2f1eb; --muted:#b8b6ae;
+    --line:#3d403a; --accent:#8fb0ff; --code:#292c27; }
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text);
+  font:16px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif; }
+main { width:min(920px,calc(100% - 32px)); margin:32px auto; padding:40px;
+  background:var(--panel); border:1px solid var(--line); border-radius:12px; }
+h1,h2,h3,h4,h5,h6 { line-height:1.2; margin:1.5em 0 .55em; }
+h1 { margin-top:0; font-size:2.2rem; } h2 { border-bottom:1px solid var(--line); padding-bottom:.3em; }
+a { color:var(--accent); } code { background:var(--code); padding:.12em .35em; border-radius:4px; }
+pre { overflow:auto; padding:16px; background:var(--code); border-radius:8px; }
+pre code { padding:0; } blockquote { margin:1em 0; padding:.2em 1em; color:var(--muted);
+  border-left:4px solid var(--line); }
+table { width:100%; border-collapse:collapse; margin:1em 0; display:block; overflow:auto; }
+th,td { padding:.55em .75em; border:1px solid var(--line); text-align:left; vertical-align:top; }
+th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); }
+.source { color:var(--muted); font-size:.9rem; margin-bottom:2rem; }
+@media (max-width:640px) { main { width:100%; margin:0; padding:24px 18px; border:0; border-radius:0; } }
+</style></head><body><main><div class="source">Rendered from claude-code-skeleton.md</div><h1>Proof Pack: Phase 1 walking skeleton on Claude Code</h1>
+<ul><li><strong>Change:</strong> branch <code>claude/project-thread-j3myua</code> (this PR)</li><li><strong>Spec / design:</strong> <a href="../specs/coaching-loop.md">coaching-loop</a> · <a href="../design/claude-code-skeleton.md">claude-code-skeleton</a></li><li><strong>Tier:</strong> T2 (new trust boundaries, persistence, concurrency)</li><li><strong>Author / date:</strong> Claude via <code>/implement</code>, owner Imran, 2026-10-31</li><li><strong>Run of record:</strong> Linux container, Rust 1.97.0, <code>cargo test --workspace</code> = <strong>141 passed, 0 failed</strong></li></ul>
+<p>(after the laptop-check fixes, 2026-11-01). Windows CI (<code>cargo test --release</code>) green on every push since <code>4d4b2c2</code>.</p>
+<ul><li><strong>Windows laptop (Imran, 2026-11-01, Claude Code 2.1.316 in Windows Terminal):</strong> <code>cargo build --release</code></li></ul>
+<p>1 m 43 s; <code>cargo test --workspace --release</code> 131 of 132 (the whole-process timing test failed against the then 50 ms budget, see C3); <code>aiq install claude-code</code> from his own PowerShell (backup kept, exec form); real prompts gave a card on screen. See &quot;Laptop check&quot; below.</p>
+<h2>Claims &amp; evidence</h2>
+<h3>C1. Rewording a request three times gives one card at the next Stop; the card never quotes the prompt</h3>
+<ul><li><strong>Evidence:</strong> <code>e2e_reword_three_times_one_card_second_run_held</code> drives the real binary with Claude Code</li></ul>
+<p>payloads (4 prompts, then Stop) against a real core; Stop prints exactly one <code>{&quot;systemMessage&quot;: &quot;AIQ tip: you&#x27;ve reworded this request 3 times without adding new details.\n…&quot;}</code>. Manual smoke run printed the same line (Linux, debug build).</p>
+<ul><li><strong>Oracle:</strong> asserts the card&#x27;s first line, <code>Try this:</code>, <code>aiq pause</code>, and that none of the four prompt</li></ul>
+<p>texts appear in it. Domain tests pin the threshold: <code>observe_two_reprompts_no_signal</code> (2 → none), <code>observe_three_reprompts_one_signal_with_evidence</code> (3 → one signal, evidence = 4 event ids).</p>
+<ul><li><strong>Red observed before green:</strong> yes for the detector: <code>observe_cue_only_run_scores_half</code> failed on the first</li></ul>
+<p>implementation (a repeated &quot;try again&quot; counted as similar), fixed by keeping cue-only prompts out of the request window (DC-001). Mutation testing (below) shows the detector tests fail when the logic is wrong.</p>
+<ul><li><strong>Laptop:</strong> four read-only rewords (&quot;which models are installed on this laptop?&quot; …) in a terminal</li></ul>
+<p><code>claude</code> session gave the card under the 4th reply (screenshot, 8:47 PM); store, screen and <code>aiq show</code> agree on the card id; the card does not quote the prompts.</p>
+<ul><li><strong>Confidence:</strong> Verified (Linux, Windows laptop).</li><li><strong>Residual risk:</strong> detector thresholds (0.6 / 4 words / 3 / 0.75) are uncalibrated pack data (design</li></ul>
+<p><code>assume:</code>); real-data week decides. <strong>Observed on real use: the word-overlap check misses natural paraphrases</strong> (Imran&#x27;s first four paraphrases peaked at 0.40) and word forms (&quot;install&quot; vs &quot;installed&quot;). Recorded in the design&#x27;s laptop findings; not fixed in this slice.</p>
+<h3>C2. A second qualifying run in the same session is held, also across a core restart</h3>
+<ul><li><strong>Evidence:</strong> same e2e test: second run&#x27;s Stop prints nothing; <code>aiq status</code> shows <code>1 shown (ok)</code> and</li></ul>
+<p><code>1 hold (session_budget)</code>. <code>restart_mid_session_budget_survives</code>, <code>second_ready_card_before_stop_held_one_at_a_time</code>.</p>
+<ul><li><strong>Oracle:</strong> budget is derived from <code>card_delivery</code> rows, and <code>second_delivery_same_session_conflicts_even_bypassing_loop</code></li></ul>
+<p>proves the unique index rejects a second delivery even without the decision loop. <code>e2e_concurrent_stops_deliver_once</code>: 8 parallel Stop hooks → at most one card, and never a second later.</p>
+<ul><li><strong>Red observed:</strong> not separately (tests written with the code); mutation run kills every <code>trigger.rs</code> mutant.</li><li><strong>Laptop:</strong> the real Windows <code>aiq.exe</code> (dadb74d), fed Claude Code hook payloads for one session id in an</li></ul>
+<p>isolated AIQ home: models loop → card; shells loop → nothing printed; <code>aiq status</code>: &quot;Signals: 2. Cards: 1 hold (session_budget), 1 shown (ok)&quot;. Not watched in the Claude Code UI (a held card prints nothing). In real use a second card in a <em>new</em> <code>claude</code> session showed, as designed.</p>
+<ul><li><strong>Confidence:</strong> Verified.</li><li><strong>Residual risk:</strong> none known for one machine. Cross-surface sessions are Phase 2. Repeating the same</li></ul>
+<p>reworded question after a card never fires again in that session (one signal per loop, by design).</p>
+<h3>C3. The hook fails open within budget and never changes Claude Code&#x27;s behaviour</h3>
+<ul><li><strong>Evidence:</strong> <code>e2e_core_down_stop_exits_zero_within_budget_p95_and_spools</code> (50 Stop runs, core down: exit 0,</li></ul>
+<p>no output, 50 spool lines, no token in the spool). Release build, Linux, whole process, 50 runs each: <strong>core down p50 2.2 / p95 3.0 ms; core up p50 2.8 / p95 3.8 ms</strong> (budget 100 ms; was 50 ms). <code>e2e_random_bytes_never_print_always_exit_zero</code> (0 B to 300 KB of random bytes, both events: exit 0, empty stdout and stderr). Every Stop output is checked by <code>assert_hook_stdout_contract</code> (empty, or one line that is an object with exactly the <code>systemMessage</code> key). <code>UserPromptSubmit</code> output is asserted empty on every call in the e2e suite.</p>
+<ul><li><strong>Oracle:</strong> the stdout contract would fail on any <code>additionalContext</code>, <code>decision</code>, <code>continue</code> or stray</li></ul>
+<p>print; the timing assertion fails above 100 ms p95.</p>
+<ul><li><strong>Red observed:</strong> the random-bytes test went red (broken pipe) when stdin was larger than the 256 KB cap;</li></ul>
+<p>fixed by draining the rest of stdin (DC-002).</p>
+<ul><li><strong>Laptop (measurement of record for Windows):</strong> whole process, direct exec, release build. Stop core</li></ul>
+<p>down: p50 27.5 / p95 70.5 ms (n=50); Stop core up: p50 27.8 / p95 66.8 ms (n=50); UserPromptSubmit core up: p50 27.5 / p95 65.2 ms (n=20). In-process: Stop p95 3.1 ms, UserPromptSubmit p95 1.4 ms. All exit 0. Install self-test on a never-run exe: 344 ms.</p>
+<ul><li><strong>Confidence:</strong> Verified on Linux. <strong>Windows: meets the 100 ms p95 budget</strong> (Imran raised it from 50 ms</li></ul>
+<p>on 2026-11-01, <a href="../notes/note-20261101-hook-budget-100ms.md">note</a>); nearly all of the time is process start, outside AIQ&#x27;s code (Inferred: likely security scanning; not measured).</p>
+<ul><li><strong>Residual risk:</strong> one UserPromptSubmit run recorded 4.4 s in-process on the laptop (async hook, so the</li></ul>
+<p>prompt was not delayed; 5 s timeout). Cause not yet confirmed; suspected the cold core start just after a rebuild.</p>
+<h3>C4. At-least-once delivery with idempotent ingest (architecture gate: spool-replay property test)</h3>
+<ul><li><strong>Evidence:</strong> <code>spool_replay_any_interleaving_duplication_truncation_same_result</code> (proptest, 48 cases):</li></ul>
+<p>any shuffle, duplication and partial-line corruption of the spool gives the same event rows, signal count and decisions as one clean delivery. <code>spool_replayed_twice_one_row_one_signal</code>, <code>insert_event_replay_stores_one_row</code>. <code>e2e_core_down_prompt_starts_core_once_core_survives_and_drains_spool</code>: a prompt hook with the core down starts a detached core, which survives the hook and drains the spool.</p>
+<ul><li><strong>Oracle:</strong> compares full outcomes, not just &quot;no panic&quot;; drain sorts by <code>event_id</code> and de-duplicates.</li><li><strong>Confidence:</strong> Verified (Linux and Windows laptop: 50 core-down Stops spooled and drained once the core</li></ul>
+<p>started; a hook started the detached core on real prompts).</p>
+<ul><li><strong>Residual risk:</strong> a spool over 1 MB drops oldest lines (<code>Spool_OverLimit</code> → <code>append_over_limit_drops_oldest_keeps_newest</code>).</li></ul>
+<h3>C5. Nothing is captured or shown while paused; the person can delete everything</h3>
+<ul><li><strong>Evidence:</strong> <code>e2e_paused_nothing_captured_no_card</code>, <code>paused_nothing_captured</code> (service),</li></ul>
+<p><code>e2e_forget_all_deletes_store_and_spool</code>, <code>e2e_forget_all_needs_confirmation</code>.</p>
+<ul><li><strong>Oracle:</strong> asserts zero stored events while paused and that the store and spool files are gone.</li><li><strong>Confidence:</strong> Verified.</li></ul>
+<h3>C6. The store keeps history as append-only facts and derives current state</h3>
+<ul><li><strong>Evidence:</strong> <code>fact_tables_reject_update_and_delete</code> (6 tables × update/delete → <code>AIQ-STORE-APPEND-ONLY</code>),</li></ul>
+<p><code>content_allows_delete_forbids_update</code>, <code>failing_migration_leaves_version_and_data_unchanged</code>, <code>rebuild_equals_live_working_set</code>, <code>rebuild_after_signal_does_not_fire_again</code>, <code>ready_card_expires_after_30_minutes</code>.</p>
+<ul><li><strong>Confidence:</strong> Verified.</li></ul>
+<h3>C7. The daily cap holds for any clock or time-zone movement</h3>
+<ul><li><strong>Evidence:</strong> <code>cap_never_exceeded_for_any_clock_moves</code> (proptest over random clock jumps and offsets</li></ul>
+<p>−12 h…+14 h), <code>timezone_move_back_does_not_reopen_used_day</code>, <code>daily_cap_reached_holds_then_resets_next_local_day</code>, <code>daily_cap_zero_never_shows</code>.</p>
+<ul><li><strong>Red observed:</strong> the first rule considered (count deliveries on an &quot;effective day&quot;) was shown wrong by</li></ul>
+<p>reasoning before code (unbounded deliveries while the clock is behind); the property test encodes the invariant that rule breaks (DC-003).</p>
+<ul><li><strong>Confidence:</strong> Verified.</li></ul>
+<h3>C8. Local boundaries are guarded (STRIDE B1, B2, B4, B5)</h3>
+<ul><li><strong>Evidence:</strong> <code>e2e_wrong_token_frame_closed_nothing_stored</code>, <code>authorize_wrong_or_missing_token_counted_no_request</code>,</li></ul>
+<p><code>channel_full_drops_ingest_answers_take_card_null</code>, <code>read_line_capped_rejects_over_long_frame</code>, <code>store_file_is_owner_only</code>, <code>spool_file_is_owner_only</code>, <code>render_show_prompt_with_ansi_prints_sanitised</code>, <code>e2e_logs_never_contain_prompt_text</code> (canary), <code>e2e_install_uninstall_round_trip_byte_identical</code> (other hooks kept, exec form with absolute <code>command</code> + <code>args</code>, never writes the working directory), <code>e2e_install_invalid_json_refused_untouched</code>, <code>e2e_uninstall_after_user_edit_strips_only_aiq</code>, <code>e2e_copilot_shaped_payload_dropped_and_counted</code>.</p>
+<ul><li><strong>Confidence:</strong> Verified on Linux. Windows: the pipe code ran on the laptop and in Windows CI</li></ul>
+<p>(<code>e2e_wrong_token_frame_closed_nothing_stored</code> passes there); the laptop also showed the token check refusing hooks from a second AIQ home (DC-007), which is now explained by <code>aiq status</code>.</p>
+<ul><li><strong>Residual risk:</strong> no peer-uid check on the Unix socket (0700 dir + token instead). Cross-account denial on</li></ul>
+<p>Windows is inferred from the DACL.</p>
+<h3>C9. Behaviour is measurable by default</h3>
+<ul><li><strong>Evidence:</strong> <code>aiq status</code> shows tips today vs cap, events by kind, signals, cards by state and reason, store</li></ul>
+<p>size, hook p50/p95 per event (in-process), spool backlog, hook and core error counters. Decisions are logged as JSON with <code>trace_id</code> (<code>e2e_logs_never_contain_prompt_text</code> asserts both).</p>
+<ul><li><strong>Confidence:</strong> Verified.</li><li><strong>Gap:</strong> the hook log records in-process time; whole-process time comes from the e2e test and the laptop run.</li></ul>
+<h2>Laptop check (2026-11-01): what it found</h2>
+<table><thead><tr><th>Finding</th><th>Outcome</th></tr></thead><tbody><tr><td>Claude desktop app (MSIX) redirects <code>%LOCALAPPDATA%</code>, splitting AIQ into two homes and tokens</td><td>Fixed: Windows home <code>%USERPROFILE%\.aiq</code> (DC-007)</td></tr><tr><td>Reinstall from a moved binary left stale hooks on uninstall</td><td>Fixed (DC-006)</td></tr><tr><td>Install diff showed a line that only gained a comma; self-test over budget read as a pass</td><td>Fixed</td></tr><tr><td>Card too easy to miss (Claude Code draws hook text dim)</td><td>Whole card yellow at normal intensity, label bold; <code>NO_COLOR</code> gives plain text. Label colour seen on screen (screenshot); full-card colour not yet seen (Imran: not needed now)</td></tr><tr><td>Word-overlap detector misses paraphrases and word forms</td><td>Open finding (design)</td></tr><tr><td>The agent sometimes gives the same nudge itself</td><td>Open finding (design)</td></tr><tr><td>Prompts queued while Claude is busy count as rewords</td><td>Open question for the spec</td></tr><tr><td>Whole-process hook p95 65–70 ms vs 50 ms budget</td><td>Imran raised the budget to 100 ms p95</td></tr></tbody></table>
+<h2>Mutation testing</h2>
+<p><code>cargo mutants -p aiq-domain</code>: first run 141 mutants, <strong>21 missed</strong> (getters, <code>FakeClock</code>, window bound, idle-gap subtraction masked by small test timestamps, open-task count, bare <code>@</code>/<code>/</code>, reason strings). Six tests added. Second run: <strong>133 caught, 7 unviable, 1 timeout (an infinite-loop mutant, counted as caught), 0 missed.</strong> Not run on store/core/bin (integration-heavy; their failure paths are covered by the tests named above).</p>
+<h2>Test coverage of the boundary set (design D1)</h2>
+<table><thead><tr><th>Boundary</th><th>Test</th></tr></thead><tbody><tr><td>2 vs 3 re-prompts</td><td><code>observe_two_reprompts_no_signal</code>, <code>observe_three_reprompts_one_signal_with_evidence</code></td></tr><tr><td>Jaccard 0.59 / 0.60</td><td><code>observe_jaccard_boundary_060_counts_059_does_not</code></td></tr><tr><td>4 vs 5 new words</td><td><code>observe_four_new_words_still_reprompt_five_is_new_info</code></td></tr><tr><td>New file mention / pasted block reset</td><td><code>observe_new_file_mention_resets</code>, <code>observe_pasted_block_resets</code>, <code>observe_known_file_mention_is_not_new</code></td></tr><tr><td>Cue-only run</td><td><code>observe_cue_only_run_scores_half</code>, <code>observe_mixed_similar_and_cue_score</code></td></tr><tr><td>Empty prompt</td><td><code>observe_empty_prompt_ignored</code></td></tr><tr><td>10,000 prompts in one Task</td><td><code>observe_ten_thousand_prompts_one_task_bounded</code></td></tr><tr><td>Every trigger-table row, cap 0, midnight</td><td><code>decide_*</code> (9 tests), <code>daily_cap_*</code>, <code>cap_never_exceeded_for_any_clock_moves</code></td></tr><tr><td>Malformed / hostile stdin and frames</td><td><code>e2e_random_bytes_*</code>, <code>authorize_*</code>, <code>read_line_capped_*</code></td></tr><tr><td>Oversized prompt</td><td><code>to_event_oversized_prompt_truncates_to_64kb</code></td></tr><tr><td>Payload drift (missing <code>prompt</code>)</td><td><code>to_event_missing_prompt_keeps_event_without_text</code>, <code>ingest_missing_prompt_text_counted_no_detection</code></td></tr><tr><td>Concurrency</td><td><code>e2e_concurrent_stops_deliver_once</code>, single writer + unique index</td></tr></tbody></table>
+<p><strong>Not covered (flagged):</strong> disk-full integration test (design listed it; not built); a second OS user attempting to connect (no second account in CI); golden payloads recorded from the Windows laptop (payload shapes in the tests follow spike S4&#x27;s recorded key lists, written by hand).</p>
+<h2>Change surfaces (E7) and writer / compute reader per field (E8)</h2>
+<table><thead><tr><th>Surface</th><th>Done</th><th>Writer → compute reader</th></tr></thead><tbody><tr><td>Store</td><td><code>schema_v1.sql</code></td><td><code>event</code>, <code>content</code> → core ingest → detector rebuild, <code>aiq show</code></td></tr><tr><td>Domain</td><td><code>aiq-domain</code></td><td><code>signal</code> → detector → trigger engine, <code>aiq show</code>, <code>aiq status</code></td></tr><tr><td>Service</td><td><code>aiq-core::service</code></td><td><code>card_decision</code> → trigger engine / expiry → take-card, <code>aiq show</code>, <code>aiq status</code></td></tr><tr><td>Wire</td><td><code>aiq.event.v1</code>, frames, <code>aiq.card.v1</code>, <code>{&quot;systemMessage&quot;}</code></td><td><code>card_delivery</code> → take-card → budget, <code>aiq status</code></td></tr><tr><td>Client type</td><td><code>aiq-contracts</code> (one crate, both ends)</td><td><code>setting_change</code> → <code>aiq pause/resume/config</code> → trigger engine, ingest</td></tr><tr><td>UI</td><td>card text; <code>aiq status</code> / <code>show</code></td><td><code>payload_meta</code> → ingest → <strong>no compute reader yet</strong> beyond being stored (Flagged: <code>aiq status</code> reads counters, not meta)</td></tr></tbody></table>
+<h2>Deviations</h2>
+<p>Listed in the design under &quot;Implementation notes (2026-10-31)&quot;: encryption deferred (owner decision), Task derived once in the domain (no SQL view), <code>decision_id</code> key, cue-only window rule, cap rule, spool sort/dedup, core-side <code>wait_ms</code>, hook timing log, frames schema / peer-uid / SIGTERM drain not built.</p>
+<h2>Gate record</h2>
+<p><code>GATE implement · 2026-10-31 · Rust Developer ⇄ Test Architect (author: Claude, one session; not independent) · verdict: pass on Linux, Windows pending</code></p>
+<p><code>GATE implement (Windows) · 2026-11-01 · same seats · verdict: pass with one open budget</code> — end to end on the laptop in real Claude Code; hold verified with the real Windows binary; whole-process p95 within the 100 ms budget Imran set on 2026-11-01.</p>
+<ul><li><strong>Test Architect (hard):</strong> triggered directives D0–D4, D6, D7 applied; D7&#x27;s <code>TestKey</code> is moot (no key);</li></ul>
+<p>D3 enforced by <code>domain_dependencies_only_contracts</code>. Open: disk-full test, Windows run. Not cleared by the author for Windows.</p>
+<ul><li><strong>SRE:</strong> stable codes for every failure path; status answers how long / how often / how big / did it fail.</li><li><strong>Security &amp; Identity:</strong> boundaries B1–B5 have negative tests on Linux; Windows pipe code unexecuted.</li><li><strong>Privacy:</strong> encryption at rest deferred and recorded as an accepted risk (owner).</li></ul>
+<table><thead><tr><th></th><th></th></tr></thead><tbody><tr><td><strong>Completed</strong></td><td><code>aiq</code> binary: hook client, core, CLI (install, uninstall, status, show, pause, resume, config, forget); store v1; re-prompt detector; trigger engine; spool; CI workflow</td></tr><tr><td><strong>Remaining</strong></td><td>Confirm the 4.4 s UserPromptSubmit outlier&#x27;s cause; disk-full test; detector paraphrase gap; Phases 2–6</td></tr><tr><td><strong>Best next action</strong></td><td>Merge (Imran&#x27;s call)</td></tr></tbody></table></main></body></html>

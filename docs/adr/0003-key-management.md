@@ -8,6 +8,8 @@ phase: "0-1"
 tags: [architecture, security, privacy]
 links:
   - { to: aiq-architecture, rel: refines }
+review-suggested:
+  - { by: note-20261031-encryption-deferred, on: 2026-10-31, reason: "Imran deferred encryption at rest; Phase 1 has no store key and no keychain entry. Decide whether this ADR is deferred or superseded." }
 review-by: 2027-04-29
 summary: >-
   The store's encryption key is generated on first run and kept only in the OS keychain under the
@@ -18,6 +20,7 @@ summary: >-
 # ADR-0003: Store key lives only in the OS keychain; no recovery in the alpha
 
 - **Status:** Accepted (Imran, 2026-10-31, decision card)
+- **Note (2026-10-31):** not exercised in Phase 1: encryption at rest is deferred (Imran), so there is no key to store. See [note-20261031-encryption-deferred](../notes/note-20261031-encryption-deferred.md).
 - **Date:** 2026-10-31
 - **Deciders:** Imran
 
