@@ -130,7 +130,7 @@ fn e2e_reword_three_times_one_card_second_run_held() {
     let text = msg["systemMessage"].as_str().unwrap();
     assert!(
         text.starts_with(
-            "\u{1b}[1;33mAIQ tip:\u{1b}[22;39m you've reworded this request 3 times without adding new details."
+            "\u{1b}[22;33m\u{1b}[1mAIQ tip:\u{1b}[22m you've reworded this request 3 times without adding new details."
         ),
         "{text}"
     );

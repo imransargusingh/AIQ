@@ -27,18 +27,30 @@ pub fn render_claude_code(card: &CardV1) -> String {
     )
 }
 
-/// Bold yellow (basic 16-colour, so it also works in Claude Code's "ANSI colors only" themes), then
-/// bold off and default colour. Claude Code draws hook messages dim; this makes the card's label stand out.
-const TIP_LABEL_ON: &str = "\u{1b}[1;33m";
-const TIP_LABEL_OFF: &str = "\u{1b}[22;39m";
+/// Claude Code draws hook messages dim, which made the card easy to miss (Imran, laptop check). Each line is
+/// yellow at normal intensity (`22` cancels the dim), and the "AIQ tip:" label is bold. Basic 16-colour
+/// codes, so Claude Code's "ANSI colors only" themes work too. Codes are per line because the terminal UI
+/// lays each line out separately.
+const LINE_ON: &str = "\u{1b}[22;33m";
+const LINE_OFF: &str = "\u{1b}[39m";
+const BOLD_ON: &str = "\u{1b}[1m";
+const BOLD_OFF: &str = "\u{1b}[22m";
 
 /// The only stdout a Claude Code hook may produce: `{"systemMessage": "<text>"}`.
 /// Confirmed on the Windows laptop 2026-11-01: Claude Code renders the codes. `color: false` (the
 /// person set `NO_COLOR`, see no-color.org) sends plain text.
 pub fn claude_code_system_message(card: &CardV1, color: bool) -> String {
     let plain = render_claude_code(card);
-    let text =
-        if color { plain.replacen("AIQ tip:", &format!("{TIP_LABEL_ON}AIQ tip:{TIP_LABEL_OFF}"), 1) } else { plain };
+    let text = if color {
+        plain
+            .replacen("AIQ tip:", &format!("{BOLD_ON}AIQ tip:{BOLD_OFF}"), 1)
+            .lines()
+            .map(|l| format!("{LINE_ON}{l}{LINE_OFF}"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    } else {
+        plain
+    };
     serde_json::json!({ "systemMessage": text }).to_string()
 }
 
@@ -79,13 +91,32 @@ mod tests {
         assert!(o["systemMessage"].is_string());
     }
 
+    fn strip_sgr(t: &str) -> String {
+        let mut out = String::new();
+        let mut it = t.chars().peekable();
+        while let Some(c) = it.next() {
+            if c == '\u{1b}' {
+                for d in it.by_ref() {
+                    if d == 'm' {
+                        break;
+                    }
+                }
+            } else {
+                out.push(c);
+            }
+        }
+        out
+    }
+
     #[test]
-    fn system_message_colours_only_the_label() {
+    fn system_message_colours_every_line_and_bolds_the_label() {
         let v: serde_json::Value = serde_json::from_str(&claude_code_system_message(&card(), true)).unwrap();
         let t = v["systemMessage"].as_str().unwrap();
-        assert!(t.starts_with("\u{1b}[1;33mAIQ tip:\u{1b}[22;39m you've reworded"), "{t}");
-        assert_eq!(t.matches('\u{1b}').count(), 2, "no other escape codes");
-        assert_eq!(t.replace(TIP_LABEL_ON, "").replace(TIP_LABEL_OFF, ""), render_claude_code(&card()));
+        assert!(t.starts_with("\u{1b}[22;33m\u{1b}[1mAIQ tip:\u{1b}[22m you've reworded"), "{t}");
+        for l in t.lines() {
+            assert!(l.starts_with(LINE_ON) && l.ends_with(LINE_OFF), "{l:?}");
+        }
+        assert_eq!(strip_sgr(t), render_claude_code(&card()), "same words as the plain card");
     }
 
     #[test]
