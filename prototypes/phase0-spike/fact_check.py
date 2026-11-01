@@ -204,7 +204,7 @@ def copilot_cli(model):
         with tempfile.TemporaryDirectory() as cwd:
             try:
                 p = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
-                                   timeout=300, cwd=cwd)
+                                   timeout=300, cwd=cwd, stdin=subprocess.DEVNULL)
                 out = p.stdout
             except (OSError, subprocess.TimeoutExpired) as exc:
                 meta["error"] = type(exc).__name__
@@ -298,9 +298,11 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 @media (max-width:600px){.fact{grid-template-columns:1fr}.opts label{margin:0 12px 0 0}}
 </style></head><body>
 <h1>AIQ fact check</h1>
-<p class="muted">This page lives only on your computer. For each statement, mark whether it is right about that task.
-Your answers save in this browser as you go. When done, press <b>Save answers</b>: it downloads <code>answers.json</code>,
-which holds only item numbers and yes/no, no prompt text. Put it in __OUT__.</p>
+<p>Each line below is something AIQ concluded about one of your recent AI sessions. A stronger model already
+checked everything it could from the session log; these are the few it could not settle, because the answer
+depends on what you did outside the session. Pick <b>Right</b> if the line is true, <b>Wrong</b> if it is not,
+or <b>Can't tell</b> if you don't remember. Then press <b>Save answers</b>. Claude picks up the file.</p>
+<p class="muted">This page is only on your computer. The saved file holds item numbers and your picks, no prompt text.</p>
 __TASKS__
 <div class="bar"><button id="save" type="button">Save answers</button><span id="count" class="muted"></span></div>
 <script>
@@ -361,8 +363,10 @@ def cmd_sample(a):
     pick = sample_sessions(sessions, a.sessions, a.seed, since)
     calls = {"copilot": None if a.no_model else copilot_cli(a.copilot_model),
              "claude": None if a.no_model else llm.claude_cli(a.claude_model)}
-    tasks_html, items_out, model_meta = [], [], []
+    tasks_html, items_out, model_meta, task_refs = [], [], [], []
     for i, s in enumerate(pick, 1):
+        task_refs.append({"task": i, "tool": s["tool"], "id": s["id"], "path": s["path"], "folder": s["folder"],
+                          "start": str(s["start"])})
         lf = log_facts(s["turns"], {})
         mf, meta = (None, {"error": "model off"})
         if calls[s["tool"]]:
@@ -386,7 +390,7 @@ def cmd_sample(a):
             it["id"] = "t{0}f{1}".format(i, k)
             it["task"] = i
             it["tool"] = s["tool"]
-            items_out.append({x: it[x] for x in ("id", "task", "tool", "type", "value", "confidence")})
+            items_out.append({x: it[x] for x in ("id", "task", "tool", "type", "value", "confidence", "statement")})
         tasks_html.append(render_task(i, s, chosen))
     run = dt.datetime.now().strftime("%Y%m%d-%H%M")
     page = (PAGE.replace("__TASKS__", "\n".join(tasks_html)).replace("__RUN__", run)
@@ -403,16 +407,110 @@ def cmd_sample(a):
                "items_by_type": dict(collections.Counter(x["type"] for x in items_out)),
                "model_calls": model_meta}
     with open(os.path.join(a.out, "items.json"), "w", encoding="utf-8") as fh:
-        json.dump({"run": run, "items": items_out, "summary": summary}, fh, indent=1)
+        json.dump({"run": run, "items": items_out, "tasks": task_refs, "summary": summary}, fh, indent=1)
     print(json.dumps(summary, indent=1))
     print("review page: " + os.path.join(a.out, "review.html"))
+
+
+GRADER_SYSTEM = """You audit statements that an automated fact reader made about ONE task a person did with an
+AI coding agent. You get the task's full transcript: the person's prompts, the agent's tool calls and
+replies. For each statement give a verdict:
+  right        the transcript shows the statement is true
+  wrong        the transcript shows the statement is false
+  needs_human  the answer depends on something the transcript cannot show (for example whether the
+               person read the diff in their editor or tested the result themselves outside the session)
+Use needs_human only when the transcript truly cannot settle it; do not use it to avoid a hard call.
+Meanings: job = code_change (change, fix, refactor, test or migrate code/config), write_doc (spec, design
+note, README, docs), other (questions, research, analysis, troubleshooting). "Checks" = tests, build, lint
+or other automated verification. "Sub-agent" = a delegated agent/task tool call. "Goal, context and
+constraints" = the request said what outcome is wanted, the relevant background, and limits or rules.
+"Step by step" = one small instruction per prompt, steering each result. "Whole outcome with done
+criteria" = the full result was handed over with what finished looks like.
+Give each verdict a reason of at most 15 words. Never quote the transcript."""
+
+GRADER_SCHEMA = {"type": "object", "properties": {"verdicts": {"type": "array", "items": {
+    "type": "object", "properties": {"id": {"type": "string"},
+                                     "verdict": {"type": "string", "enum": ["right", "wrong", "needs_human"]},
+                                     "reason": {"type": "string"}},
+    "required": ["id", "verdict", "reason"]}}}, "required": ["verdicts"]}
+
+
+def transcript(turns, cap=18000):
+    """Fuller than the fact reader's excerpt: every prompt, tool call and reply, cut to fit `cap`
+    (the Windows command line limits a `copilot -p` prompt to ~32k characters)."""
+    for plen, alen in ((3000, 600), (1200, 300), (500, 150)):
+        out = []
+        for k, t in enumerate(turns, 1):
+            out.append("PROMPT {0}: {1}".format(k, t["prompt"][:plen]))
+            for x in t["tools"]:
+                arg = x.get("command") or x.get("path") or ""
+                out.append("  TOOL {0} {1}".format(x["tool"], arg[:160]))
+            for sa in t["subagents"]:
+                out.append("  SUB-AGENT {0}: {1}".format(sa["name"], sa["prompt"][:200]))
+            if t.get("assistant"):
+                out.append("  AGENT SAID: " + " / ".join(t["assistant"])[:alen])
+        text = "\n".join(out)
+        if len(text) <= cap:
+            return text
+    return text[:cap] + "\n[transcript cut]"
+
+
+def cmd_verify(a):
+    t0 = time.time()
+    with open(os.path.join(a.out, "items.json"), encoding="utf-8") as fh:
+        data = json.load(fh)
+    calls = {"copilot": copilot_cli(a.copilot_model), "claude": llm.claude_cli(a.claude_model)}
+    verdicts, meta_out = {}, []
+    for ref in data["tasks"]:
+        items = [x for x in data["items"] if x["task"] == ref["task"]]
+        turns = load({"tool": ref["tool"], "id": ref["id"], "path": ref["path"]})
+        prompt = ("Transcript:\n" + transcript(turns) + "\n\nStatements:\n"
+                  + "\n".join("{0}: {1}".format(x["id"], x["statement"]) for x in items))
+        try:
+            out, meta = calls[ref["tool"]](GRADER_SYSTEM, prompt, GRADER_SCHEMA)
+        except (OSError, subprocess.SubprocessError) as exc:
+            out, meta = None, {"error": type(exc).__name__}
+        got = {v.get("id"): v for v in (out or {}).get("verdicts", []) if isinstance(v, dict)}
+        for x in items:
+            v = got.get(x["id"]) or {"verdict": "needs_human", "reason": "grader gave no verdict"}
+            verdicts[x["id"]] = {"verdict": v.get("verdict"), "reason": v.get("reason", "")}
+        meta_out.append({"task": ref["task"], "tool": ref["tool"], "latency_ms": meta.get("latency_ms"),
+                         "error": meta.get("error") or (None if out else "no verdicts returned")})
+    with open(os.path.join(a.out, "verdicts.json"), "w", encoding="utf-8") as fh:
+        json.dump({"run": data["run"], "verdicts": verdicts}, fh, indent=1)
+    human = [x for x in data["items"] if verdicts[x["id"]]["verdict"] == "needs_human"]
+    pages = []
+    for ref in data["tasks"]:
+        mine = [x for x in human if x["task"] == ref["task"]]
+        if mine:
+            sess = {"tool": ref["tool"], "id": ref["id"], "path": ref["path"], "folder": ref["folder"],
+                    "start": ref["start"], "turns": load(ref)}
+            sess["h"] = len(sess["turns"])
+            pages.append(render_task(ref["task"], sess, mine))
+    with open(os.path.join(a.out, "human.html"), "w", encoding="utf-8") as fh:
+        fh.write(PAGE.replace("__TASKS__", "\n".join(pages) or "<p>Nothing needs you.</p>")
+                 .replace("__RUN__", data["run"] + "-h").replace("__OUT__", html.escape(a.out)))
+    counts = collections.defaultdict(collections.Counter)
+    for x in data["items"]:
+        counts[x["type"]][verdicts[x["id"]]["verdict"]] += 1
+    print(json.dumps({"wall_s": round(time.time() - t0, 1), "grader_calls": meta_out,
+                      "by_type": {k: dict(v) for k, v in counts.items()}, "needs_human": len(human)}, indent=1))
+    print("questions for the person: " + os.path.join(a.out, "human.html"))
 
 
 def cmd_score(a):
     with open(os.path.join(a.out, "items.json"), encoding="utf-8") as fh:
         items = json.load(fh)["items"]
-    with open(a.answers or os.path.join(a.out, "answers.json"), encoding="utf-8") as fh:
-        ans = json.load(fh)["answers"]
+    ans = {}
+    vpath = os.path.join(a.out, "verdicts.json")
+    if os.path.isfile(vpath):  # grader verdicts first; the person's answers override
+        with open(vpath, encoding="utf-8") as fh:
+            m = {"right": "yes", "wrong": "no", "needs_human": "unmarked"}
+            ans = {k: m.get(v["verdict"], "unmarked") for k, v in json.load(fh)["verdicts"].items()}
+    apath = a.answers or os.path.join(a.out, "answers.json")
+    if os.path.isfile(apath):
+        with open(apath, encoding="utf-8") as fh:
+            ans.update(json.load(fh)["answers"])
     rows = collections.defaultdict(collections.Counter)
     for it in items:
         rows[it["type"]][ans.get(it["id"], "unmarked")] += 1
@@ -445,11 +543,15 @@ def main(argv=None):
     s.add_argument("--claude-model", default="claude-haiku-5-5")
     s.add_argument("--no-model", action="store_true")
     s.add_argument("--out", default=default_out)
+    v = sub.add_parser("verify", help="grade each fact against the full transcript with a stronger model")
+    v.add_argument("--copilot-model", default="claude-opus-5.5")
+    v.add_argument("--claude-model", default="claude-opus-5-5")
+    v.add_argument("--out", default=default_out)
     c = sub.add_parser("score")
     c.add_argument("--out", default=default_out)
     c.add_argument("--answers")
     a = p.parse_args(argv)
-    (cmd_sample if a.cmd == "sample" else cmd_score)(a)
+    {"sample": cmd_sample, "verify": cmd_verify, "score": cmd_score}[a.cmd](a)
 
 
 if __name__ == "__main__":
