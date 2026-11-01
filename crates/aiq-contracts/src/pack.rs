@@ -12,7 +12,27 @@ pub struct PackV1 {
     pub idle_gap_min: u32,
     pub reprompt: RepromptParams,
     pub trigger: TriggerParams,
+    #[serde(default)]
+    pub automated: AutomatedParams,
     pub tips: Vec<Tip>,
+}
+
+/// The import spec's automated-session rule, live side (docs/specs/history-import.md, US-12). Defaults are
+/// the spec's tested values.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AutomatedParams {
+    pub burst_sessions: u32,
+    pub burst_min: u32,
+    pub template_sessions: u32,
+    pub template_window_h: u32,
+    pub template_chars: usize,
+}
+
+impl Default for AutomatedParams {
+    fn default() -> Self {
+        Self { burst_sessions: 50, burst_min: 30, template_sessions: 11, template_window_h: 24, template_chars: 200 }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

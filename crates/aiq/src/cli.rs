@@ -80,8 +80,27 @@ pub fn status() -> ExitCode {
                 if dec.is_empty() { "none".into() } else { dec.join(", ") }
             );
             out += &format!("Store size: {}\n", human_bytes(s.store_bytes));
-            if !s.core_counters.is_empty() {
-                let c: Vec<String> = s.core_counters.iter().map(|(k, n)| format!("{k} {n}")).collect();
+            let ignored = s.core_counters.iter().find(|(k, _)| k == aiq_contracts::codes::INGEST_AUTOMATED);
+            for (folder, reason) in &s.automated_folders {
+                let why = if reason == "burst" {
+                    "many sessions started at once"
+                } else {
+                    "the same first prompt over and over"
+                };
+                out += &format!(
+                    "Automated sessions ignored in {folder} ({why}). If that is your own work: aiq include \"{folder}\"\n"
+                );
+            }
+            if let Some((_, n)) = ignored {
+                out += &format!("Automated prompts ignored since the core started: {n}\n");
+            }
+            if s.core_counters.iter().any(|(k, _)| k != aiq_contracts::codes::INGEST_AUTOMATED) {
+                let c: Vec<String> = s
+                    .core_counters
+                    .iter()
+                    .filter(|(k, _)| k != aiq_contracts::codes::INGEST_AUTOMATED)
+                    .map(|(k, n)| format!("{k} {n}"))
+                    .collect();
                 out += &format!("Core errors: {}\n", c.join(", "));
                 if s.core_counters.iter().any(|(k, _)| k == aiq_contracts::codes::API_AUTH) {
                     out += &format!(
@@ -239,6 +258,31 @@ pub fn pause(on: bool) -> ExitCode {
         }
     );
     ExitCode::SUCCESS
+}
+
+/// `aiq include <folder>`: undo AIQ's automated-session call for a folder ("Include them").
+pub fn include_folder(folder: &str) -> ExitCode {
+    let paths = Paths::from_env();
+    if !ensure_core(&paths) {
+        println!("{NOT_RUNNING}");
+        return ExitCode::from(1);
+    }
+    let r = ask_core(&paths, |token| Request::IncludeFolder { token, folder: folder.into() })
+        .and_then(|l| serde_json::from_str::<OkReply>(&l).ok());
+    match r {
+        Some(OkReply { ok: true, .. }) => {
+            println!("AIQ will watch sessions in {folder} again.");
+            ExitCode::SUCCESS
+        }
+        Some(OkReply { message, .. }) => {
+            println!("Not changed: {}", message.unwrap_or_default());
+            ExitCode::from(2)
+        }
+        None => {
+            println!("{NOT_RUNNING}");
+            ExitCode::from(1)
+        }
+    }
 }
 
 /// `aiq config set <name> <value>`: `daily-cap` or `copilot-tip-stays`.

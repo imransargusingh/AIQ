@@ -214,6 +214,7 @@ pub(crate) mod tests {
                 default_daily_cap: 5,
                 quiet_min: 30,
             },
+            automated: Default::default(),
             tips: vec![Tip {
                 tip_id: "t".into(),
                 opportunity_id: "reprompt".into(),

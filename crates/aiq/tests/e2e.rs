@@ -34,6 +34,7 @@ impl Env {
             .env("AIQ_HOME", self.home())
             .env("CLAUDE_CONFIG_DIR", self.claude())
             .env_remove("NO_COLOR")
+            .env_remove("CLAUDE_CODE_ENTRYPOINT") // tests may run inside Claude Code; set per test
             .current_dir(self.dir.path());
         c
     }
@@ -150,6 +151,28 @@ fn e2e_reword_three_times_one_card_second_run_held() {
     let id = text.rsplit("aiq show ").next().unwrap().split_whitespace().next().unwrap();
     let show = String::from_utf8(e.run(&["show", id], b"").stdout).unwrap();
     assert!(show.contains(BASE) && show.contains(R3) && show.contains("Status: shown"), "{show}");
+}
+
+#[test]
+fn e2e_headless_claude_runs_record_nothing() {
+    // Import spec rule NI / US-12: `claude -p` (entrypoint sdk-cli) is a program, not a person.
+    let mut e = Env::new();
+    e.start_core();
+    for (i, t) in ["summarize the repo", "summarize the repo again"].iter().enumerate() {
+        let p = json!({"session_id": "bot", "hook_event_name": "UserPromptSubmit", "prompt": t, "prompt_id": format!("b{i}"), "cwd": "/repo"});
+        let mut c = e.cmd(&["hook", "claude-code", "UserPromptSubmit"]);
+        c.env("CLAUDE_CODE_ENTRYPOINT", "sdk-cli").stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+        let mut ch = c.spawn().unwrap();
+        ch.stdin.take().unwrap().write_all(p.to_string().as_bytes()).unwrap();
+        let o = ch.wait_with_output().unwrap();
+        assert!(o.status.success() && o.stdout.is_empty() && o.stderr.is_empty());
+    }
+    e.prompt("me", "a prompt of my own", "m1");
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !e.status().contains("1 prompt") && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert!(e.status().contains("Events stored: 1 prompt"), "{}", e.status());
 }
 
 #[test]
