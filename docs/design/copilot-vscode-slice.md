@@ -387,6 +387,18 @@ D6 (Copilot payload goldens from the 2026-10-31 probe + P2 status-line payload; 
 | P3 | Do user-level hooks fire in VS Code agent mode, and can the hook tell VS Code from the CLI? | VS Code observation in Phase 2 |
 | P4 | Same session id in hooks and status line? | Per-session tips |
 
+**Run 1 (Imran's laptop, 2026-11-01 ~17:10, Copilot CLI 1.0.105; `prototypes/phase2-probe/results/laptop-probe-run1.json`):**
+- **P2 — answered:** the status-line command gets JSON on stdin with top-level `session_id`, plus `cwd`,
+  `workspace.current_dir`, `model`, `context_window`, `cost`, `version`, `transcript_path`. AIQ reads
+  `session_id` (already supported). *Verified (run).*
+- **P4 — answered:** the status line's `session_id` equals the hooks' `sessionId`. *Verified (run).*
+- **P1 — partly:** Copilot ran the status-line command (4 runs at start-up, 0.5–2 s apart) with
+  `experimental` + the `STATUS_LINE` flag set. No prompts were sent in that run, so refresh after a turn
+  is not yet observed. *Open.*
+- **P3 — not answered:** no hook ran from VS Code. Hook processes started by Copilot CLI carry
+  `COPILOT_CLI`, `COPILOT_HOOK_DIR`, `COPILOT_LOADER_PID`, `COPILOT_PROJECT_DIR`; no `VSCODE_*`. *Open:
+  which VS Code session target was used.*
+
 ## Conformance notes
 LOA F hot path (no model, no network, fail-open). Deviations: `seq` null for Copilot too; extension
 uses polling (`simplify:`); `DESIGN.md` not applicable (host-themed surfaces).
