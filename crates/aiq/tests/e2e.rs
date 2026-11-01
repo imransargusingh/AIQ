@@ -30,7 +30,11 @@ impl Env {
     }
     fn cmd(&self, args: &[&str]) -> Command {
         let mut c = Command::new(BIN);
-        c.args(args).env("AIQ_HOME", self.home()).env("CLAUDE_CONFIG_DIR", self.claude()).current_dir(self.dir.path());
+        c.args(args)
+            .env("AIQ_HOME", self.home())
+            .env("CLAUDE_CONFIG_DIR", self.claude())
+            .env_remove("NO_COLOR")
+            .current_dir(self.dir.path());
         c
     }
     fn run(&self, args: &[&str], stdin: &[u8]) -> Output {
@@ -348,6 +352,27 @@ fn e2e_config_daily_cap_validates() {
     let bad = e.run(&["config", "set", "daily-cap", "lots"], b"");
     assert!(!bad.status.success());
     assert!(String::from_utf8_lossy(&bad.stdout).contains("Not changed"));
+}
+
+#[test]
+fn e2e_no_color_card_is_plain_text() {
+    let mut e = Env::new();
+    e.start_core();
+    let pid = e.reprompt_run("s1", 0);
+    let p = json!({"session_id": "s1", "hook_event_name": "Stop", "stop_hook_active": false, "prompt_id": pid});
+    let mut ch = e
+        .cmd(&["hook", "claude-code", "Stop"])
+        .env("NO_COLOR", "1")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    ch.stdin.take().unwrap().write_all(p.to_string().as_bytes()).unwrap();
+    let o = ch.wait_with_output().unwrap();
+    let msg: Value = serde_json::from_slice(&o.stdout).expect("a card at this Stop");
+    let text = msg["systemMessage"].as_str().unwrap();
+    assert!(text.starts_with("AIQ tip: you've reworded"), "{text}");
+    assert!(!text.contains('\u{1b}'), "NO_COLOR means no escape codes");
 }
 
 // ---- install / uninstall (STRIDE B4) ----

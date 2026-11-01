@@ -91,7 +91,7 @@ fn inner(paths: &Paths, host: &str, event: &str) -> &'static str {
                 Ok(Some(line)) => match serde_json::from_str::<TakeCardReply>(&line) {
                     Ok(TakeCardReply { card: Some(card) }) => {
                         let mut out = std::io::stdout().lock();
-                        let _ = writeln!(out, "{}", claude_code_system_message(&card));
+                        let _ = writeln!(out, "{}", claude_code_system_message(&card, color_allowed()));
                         let _ = out.flush();
                         "card"
                     }
@@ -167,6 +167,11 @@ fn spool_frame(paths: &Paths, trace_id: &str, ev: &EventV1) {
         Ok(n) => (0..n).for_each(|_| count(paths, codes::SPOOL_DROPPED)),
         Err(_) => count(paths, codes::STORE_WRITE),
     }
+}
+
+/// no-color.org: any non-empty `NO_COLOR` turns colour off. Claude Code passes its environment to hooks.
+fn color_allowed() -> bool {
+    std::env::var_os("NO_COLOR").is_none_or(|v| v.is_empty())
 }
 
 /// At most one start attempt per 10 s, guarded by a timestamp in a lock file.
