@@ -387,6 +387,7 @@ await test("setup: first run walks five steps with Back; Start only after I unde
   let t = await page.locator("main").innerText();
   assert.match(t, /Claude Code · connected\n/);
   assert.ok(t.includes("To undo, run aiq uninstall copilot."));
+  assert.deepEqual(await page.getByRole("list", { name: "Files AIQ changed" }).locator("li").allInnerTexts(), ["C:\\Users\\you\\.copilot\\hooks\\aiq.json"]);
   assert.ok(!t.includes("aiq uninstall claude-code"), "only the tool connected just now shows the undo");
   assert.equal(await page.getByRole("button", { name: /^Connect/ }).count(), 0);
   await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Connected GitHub Copilot.");

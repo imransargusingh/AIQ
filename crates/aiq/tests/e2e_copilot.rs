@@ -346,6 +346,13 @@ fn e2e_install_with_no_tool_connects_every_tool_found_and_names_the_undo() {
     let s: Value = serde_json::from_str(&std::fs::read_to_string(claude.join("settings.json")).unwrap()).unwrap();
     assert!(aiq_core::tools::claude_has_aiq(&s));
     assert!(out.contains("Undo: aiq uninstall claude-code") && out.contains("Undo: aiq uninstall copilot"), "{out}");
+    // Copilot's experimental mode was off, so connect-all wrote only AIQ's own hook file there.
+    assert!(!e.copilot().join("settings.json").exists(), "Copilot settings untouched");
+    assert!(!e.copilot().join("aiq-statusline.cmd").exists());
+    assert!(out.contains("To add the status line, run: aiq install copilot"), "{out}");
+    let changed: Vec<&str> = out.lines().filter_map(|l| l.strip_prefix("Changed: ")).collect();
+    let want = [claude.join("settings.json"), e.copilot().join("hooks").join("aiq.json")];
+    assert_eq!(changed, want.iter().map(|p| p.to_str().unwrap()).collect::<Vec<_>>(), "{out}");
 
     // Run again: nothing left to connect.
     let again = String::from_utf8_lossy(&e.run(&["install", "--yes"], b"").stdout).to_string();
@@ -354,4 +361,24 @@ fn e2e_install_with_no_tool_connects_every_tool_found_and_names_the_undo() {
         "{again}"
     );
     assert!(!again.contains("Undo:"), "{again}");
+}
+
+#[test]
+fn e2e_install_with_no_tool_adds_the_status_line_only_when_experimental_is_already_on() {
+    let e = Env::new();
+    std::fs::create_dir_all(e.copilot()).unwrap();
+    let original = json!({"experimental": true, "feature_flags": {"enabled": ["OTHER"]}});
+    std::fs::write(e.copilot().join("settings.json"), original.to_string()).unwrap();
+    let o = e.run(&["install", "--yes"], b"");
+    let out = String::from_utf8_lossy(&o.stdout).to_string();
+    assert!(o.status.success(), "{out}");
+    let s: Value = serde_json::from_str(&std::fs::read_to_string(e.copilot().join("settings.json")).unwrap()).unwrap();
+    assert!(s["statusLine"]["command"].as_str().unwrap().contains("statusline"));
+    assert_eq!(s["feature_flags"]["enabled"], json!(["OTHER", "STATUS_LINE"]), "existing flags kept, one added");
+    assert_eq!(s["experimental"], true);
+    assert!(out.lines().any(|l| l == format!("Changed: {}", e.copilot().join("settings.json").display())), "{out}");
+    assert!(e.run(&["uninstall", "copilot", "--yes"], b"").status.success());
+    let after: Value =
+        serde_json::from_str(&std::fs::read_to_string(e.copilot().join("settings.json")).unwrap()).unwrap();
+    assert_eq!(after, original, "uninstall puts back exactly what was there");
 }

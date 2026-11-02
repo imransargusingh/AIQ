@@ -22,6 +22,7 @@ export function Setup(ctx: Ctx & { rerun: boolean; finish: (s: Snapshot) => void
   // Tools AIQ connected in this setup, so their row can say how to undo it.
   const [connected, setConnected] = useState<string[]>([]);
   const [connecting, setConnecting] = useState(false);
+  const [changed, setChanged] = useState<string[]>([]);
   const tried = useRef(false);
   const waiting = snap.setup.tools.filter((t) => t.present && !t.hooked);
 
@@ -32,11 +33,12 @@ export function Setup(ctx: Ctx & { rerun: boolean; finish: (s: Snapshot) => void
     setConnecting(true);
     try {
       const r = await api.connectTools();
+      setChanged((c) => [...c, ...r.changed]);
       if (r.ok) {
         setConnected((c) => [...c, ...names]);
         setMsg(null);
         announce(`Connected ${names.map((n) => TOOL[n].name).join(" and ")}.`);
-      } else setMsg(r.message);
+      } else setMsg(r.message ?? "AIQ couldn't connect your tools.");
     } catch (e) {
       setMsg(String((e as Error)?.message ?? e));
     }
@@ -154,7 +156,7 @@ export function Setup(ctx: Ctx & { rerun: boolean; finish: (s: Snapshot) => void
                           {connected.includes(t.tool) && (
                             <>
                               {" "}
-                              AIQ backed up the file it changed. To undo, run <code>aiq uninstall {t.tool}</code>.
+                              To undo, run <code>aiq uninstall {t.tool}</code>.
                             </>
                           )}
                         </>
@@ -174,6 +176,18 @@ export function Setup(ctx: Ctx & { rerun: boolean; finish: (s: Snapshot) => void
                 </div>
               ))}
             </div>
+            {changed.length > 0 && (
+              <div className="group">
+                <p className="meta">AIQ changed these files (a settings file AIQ edits gets a backup beside it first):</p>
+                <ul className="meta" aria-label="Files AIQ changed">
+                  {changed.map((p) => (
+                    <li key={p}>
+                      <code>{p}</code>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {waiting.length > 0 && !connecting && (
               <div className="row">
                 <button className="btn" onClick={connect}>
