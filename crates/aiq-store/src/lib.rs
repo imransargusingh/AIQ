@@ -14,8 +14,9 @@ pub const SCHEMA_V3: &str = include_str!("schema_v3.sql");
 pub const SCHEMA_V4: &str = include_str!("schema_v4.sql");
 pub const SCHEMA_V5: &str = include_str!("schema_v5.sql");
 pub const SCHEMA_V6: &str = include_str!("schema_v6.sql");
+pub const SCHEMA_V7: &str = include_str!("schema_v7.sql");
 /// Migration N takes the store from `user_version` N to N+1, in one transaction.
-pub const MIGRATIONS: &[&str] = &[SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6];
+pub const MIGRATIONS: &[&str] = &[SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6, SCHEMA_V7];
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StoreError {
@@ -221,6 +222,35 @@ pub struct JudgmentRow {
     /// Schema v6: the task type within the job; None when judged before v6 (or job unclassified).
     pub task_type: Option<String>,
     pub task_type_confidence: Option<f64>,
+}
+
+/// One `aiq judge --check` run (schema v7 `judge_check_run`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct CheckRunRow {
+    pub run_id: String,
+    pub seed: u64,
+    pub requested: u32,
+    /// Judgment ids, in check order.
+    pub sample: Vec<String>,
+    pub started_utc_ms: i64,
+    pub check_version: String,
+}
+
+/// One second reading of one judgment (schema v7 `judge_check`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct CheckRow {
+    pub check_id: String,
+    pub run_id: String,
+    pub judgment_id: String,
+    pub task_id: String,
+    pub grader_provider: String,
+    pub grader_model: Option<String>,
+    pub outcome: String,
+    /// `aiq.check.v1` JSON when outcome is ok.
+    pub answer: Option<String>,
+    pub latency_ms: i64,
+    pub cost_usd: Option<f64>,
+    pub checked_utc_ms: i64,
 }
 
 /// One live task's type guess (schema v6 `type_guess`).
@@ -1223,10 +1253,132 @@ impl Store {
         rows.collect::<rusqlite::Result<Vec<_>>>().map_err(err(codes::STORE_OPEN))
     }
 
+    // ------------------------------------------------------------ accuracy check (schema v7)
+
+    pub fn insert_check_run(&self, r: &CheckRunRow) -> Result<()> {
+        self.conn
+            .execute(
+                "INSERT INTO judge_check_run (run_id, seed, requested, sample, started_utc_ms, check_version)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![
+                    r.run_id,
+                    r.seed as i64,
+                    r.requested,
+                    serde_json::to_string(&r.sample).expect("strings serialize"),
+                    r.started_utc_ms,
+                    r.check_version
+                ],
+            )
+            .map(|_| ())
+            .map_err(err(codes::STORE_WRITE))
+    }
+
+    pub fn insert_check(&self, c: &CheckRow) -> Result<()> {
+        self.conn
+            .execute(
+                "INSERT INTO judge_check (check_id, run_id, judgment_id, task_id, grader_provider, grader_model, outcome,
+                   answer, latency_ms, cost_usd, checked_utc_ms) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                params![
+                    c.check_id,
+                    c.run_id,
+                    c.judgment_id,
+                    c.task_id,
+                    c.grader_provider,
+                    c.grader_model,
+                    c.outcome,
+                    c.answer,
+                    c.latency_ms,
+                    c.cost_usd,
+                    c.checked_utc_ms
+                ],
+            )
+            .map(|_| ())
+            .map_err(err(codes::STORE_WRITE))
+    }
+
+    /// The newest check run, if any. None before v7.
+    pub fn latest_check_run(&self) -> Result<Option<CheckRunRow>> {
+        if !self.has_table("judge_check_run")? {
+            return Ok(None);
+        }
+        self.conn
+            .query_row(
+                "SELECT run_id, seed, requested, sample, started_utc_ms, check_version FROM judge_check_run
+                 ORDER BY started_utc_ms DESC, rowid DESC LIMIT 1",
+                [],
+                |r| {
+                    let sample: String = r.get(3)?;
+                    Ok(CheckRunRow {
+                        run_id: r.get(0)?,
+                        seed: r.get::<_, i64>(1)? as u64,
+                        requested: r.get(2)?,
+                        sample: serde_json::from_str(&sample).unwrap_or_default(),
+                        started_utc_ms: r.get(4)?,
+                        check_version: r.get(5)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(err(codes::STORE_OPEN))
+    }
+
+    /// Every check of one run, in check order.
+    pub fn checks_of_run(&self, run_id: &str) -> Result<Vec<CheckRow>> {
+        if !self.has_table("judge_check")? {
+            return Ok(vec![]);
+        }
+        let mut st = self
+            .conn
+            .prepare(
+                "SELECT check_id, run_id, judgment_id, task_id, grader_provider, grader_model, outcome, answer,
+                   latency_ms, cost_usd, checked_utc_ms FROM judge_check WHERE run_id = ?1 ORDER BY checked_utc_ms, rowid",
+            )
+            .map_err(err(codes::STORE_OPEN))?;
+        let rows = st
+            .query_map([run_id], |r| {
+                Ok(CheckRow {
+                    check_id: r.get(0)?,
+                    run_id: r.get(1)?,
+                    judgment_id: r.get(2)?,
+                    task_id: r.get(3)?,
+                    grader_provider: r.get(4)?,
+                    grader_model: r.get(5)?,
+                    outcome: r.get(6)?,
+                    answer: r.get(7)?,
+                    latency_ms: r.get(8)?,
+                    cost_usd: r.get(9)?,
+                    checked_utc_ms: r.get(10)?,
+                })
+            })
+            .map_err(err(codes::STORE_OPEN))?;
+        rows.collect::<rusqlite::Result<_>>().map_err(err(codes::STORE_OPEN))
+    }
+
+    /// One judgment by id (any version, not only the current one).
+    pub fn judgment(&self, judgment_id: &str) -> Result<Option<JudgmentRow>> {
+        let typed =
+            if self.has_column("judgment", "task_type")? { "task_type, task_type_confidence" } else { "NULL, NULL" };
+        self.conn
+            .query_row(
+                &format!("SELECT {JUDGMENT_COLS}, {typed} FROM judgment WHERE judgment_id = ?1"),
+                [judgment_id],
+                judgment_from,
+            )
+            .optional()
+            .map_err(err(codes::STORE_OPEN))
+    }
+
     /// Delete everything history import stored (US-8), including imported tasks' judgments and judge calls.
     /// Live capture is untouched.
     pub fn forget_imported(&mut self) -> Result<u64> {
         let tx = self.conn.transaction().map_err(err(codes::STORE_WRITE))?;
+        if tx
+            .query_row("SELECT count(*) FROM sqlite_master WHERE name = 'judge_check'", [], |r| r.get::<_, i64>(0))
+            .map_err(err(codes::STORE_WRITE))?
+            > 0
+        {
+            tx.execute("DELETE FROM judge_check WHERE task_id LIKE 'import:%'", []).map_err(err(codes::STORE_WRITE))?;
+        }
         tx.execute("DELETE FROM judgment WHERE origin = 'imported'", []).map_err(err(codes::STORE_WRITE))?;
         tx.execute("DELETE FROM judge_call WHERE task_id LIKE 'import:%'", []).map_err(err(codes::STORE_WRITE))?;
         tx.execute("DELETE FROM import_event", []).map_err(err(codes::STORE_WRITE))?;

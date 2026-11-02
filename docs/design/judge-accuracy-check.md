@@ -2,7 +2,7 @@
 id: design-judge-accuracy-check
 title: "Design: accuracy check of the rung judge on the person's own tasks"
 type: design
-status: draft
+status: accepted
 owner: "Imran"
 phase: "5"
 tags: [design, rung-model, judge, accuracy, eval, instrumentation, copilot-cli]
@@ -170,10 +170,40 @@ SRE (all seats played by Claude in one session; not independent) · verdict: pas
 - Data & Persistence: grain declared; agreement derived, not stored. Pass.
 - Security: no new boundary; fuller excerpt to the same provider accepted.
 
+## Implementation record (`/implement`, 2026-11-02)
+
+Built on branch `claude/project-thread-wjefak-check`. What landed, by surface:
+
+| Surface | Change |
+|---|---|
+| Contracts | `aiq_contracts::check`: `aiq.check.v1` schema; each fact typed boolean-or-null; strict parse (every key required, so a missing fact never reads as "can't settle"; job, task type and rung validated) |
+| Domain | `aiq_domain::check`: seeded splitmix64 sample, stratified by job (floor 5); `Count` with 90% Wilson interval; `agreement()` for A1–A5 and per-kind counts. `rung::check_system()` builds the blind grader prompt from the judge's own rubric minus its answer; excerpt caps 5,000 per prompt, 40,000 total |
+| Store | Schema v7: `judge_check_run`, `judge_check`, update-refusing triggers. `forget_imported` removes checks of imported tasks; `forget --all` deletes the whole store file, so check rows go with it |
+| Runner | `aiq judge --check [--sample n] [--dry-run]`, `aiq judge --check-report`. Uses the sealed runners and the judge lock; a tool-connected, malformed or failed call is stored as not checked |
+| Settings | `check-claude-model` (default `opus`), `check-copilot-model` (default: the judge's model) |
+
+Tests: contracts 3, domain 5 + grader-prompt test, store v7 round trip and append-only, runner 3 (blindness:
+the grader's system prompt and message are searched for the judge's answer text; malformed answer counts as
+not checked; report before any run). `cargo test --workspace`, fmt and clippy green (measured, this branch).
+
+### Deviations from the design (recorded, not silent)
+
+- **K5:** check calls do **not** count against the daily judge budget. The check is one command the person
+  runs, `--dry-run` shows the count and cost first, and counting it would starve background judging that day.
+- **K3:** Copilot grader uses the judge's model unless `check-copilot-model` is set. The report says when grader
+  and judge are the same model, and that agreement then reads high.
+- **N2 (repeat stability):** deferred. It needs a second judge run on the sample; add it once the first
+  numbers show whether it matters.
+- **K6b (pause a kind under 8 of 10) and the Home "Judge check" card:** deferred until the first real run.
+  The bar is a guess; pausing coaching on an unmeasured bar would be acting on a guess. The CLI report already
+  lists kinds under 8 of 10 with at least 5 checked.
+- **Delete-one:** check rows hold ids, the grader's job, type, rung and true/false/null facts, never task text,
+  so deleting one prompt's text needs no change here.
+
 ## Status and next action
 
 | | |
 |---|---|
-| **Completed** | Design for the accuracy check |
-| **Remaining** | Build; one laptop run; feed numbers into the next slice |
-| **Best next action** | `/implement` this design (cloud), then the laptop run through the thread that has the laptop |
+| **Completed** | Design; build of `aiq judge --check` and its report |
+| **Remaining** | One laptop run; record numbers in the rung-judge design's eval section; then K6b and the Home card |
+| **Best next action** | Upgrade the laptop, run `aiq judge --check --dry-run`, then `aiq judge --check` |

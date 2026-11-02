@@ -367,10 +367,13 @@ pub fn config_set(name: &str, value: &str) -> ExitCode {
         "judge-copilot-model" => ("judge_copilot_model", format!("Copilot judge model: {value}.")),
         "judge-copilot-sessions" => ("judge_copilot_sessions", format!("Copilot judge sessions: {value}.")),
         "next-rung-tips" => ("next_rung_tips", format!("Next-step tips: {value}.")),
+        "check-claude-model" => ("check_claude_model", format!("Accuracy check, Claude model: {value}.")),
+        "check-copilot-model" => ("check_copilot_model", format!("Accuracy check, Copilot model: {value}.")),
         _ => {
             println!(
                 "Unknown setting {name}. Settings: daily-cap, copilot-tip-stays, judge, judge-daily-tasks, \
-                 judge-claude-model, judge-copilot-model, judge-copilot-sessions, next-rung-tips."
+                 judge-claude-model, judge-copilot-model, judge-copilot-sessions, next-rung-tips, check-claude-model, \
+                 check-copilot-model."
             );
             return ExitCode::from(2);
         }

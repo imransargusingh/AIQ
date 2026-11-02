@@ -72,9 +72,9 @@ fn decide(s: &Store, did: &str, cid: &str, outcome: &str, reason: &str, at: i64)
 }
 
 #[test]
-fn open_creates_latest_schema_version_6() {
+fn open_creates_latest_schema_version() {
     let (_d, s) = open();
-    assert_eq!(s.user_version().unwrap(), 6);
+    assert_eq!(s.user_version().unwrap(), MIGRATIONS.len() as i64);
 }
 
 #[test]
@@ -87,7 +87,7 @@ fn v1_store_migrates_to_latest_keeping_data() {
         assert_eq!(s.user_version().unwrap(), 1);
     }
     let s = Store::open(&p).unwrap();
-    assert_eq!(s.user_version().unwrap(), 6);
+    assert_eq!(s.user_version().unwrap(), MIGRATIONS.len() as i64);
     assert_eq!(s.events_by_kind().unwrap(), vec![("prompt".to_string(), 1)]);
     assert!(s.import_counts().unwrap().is_empty());
     s.insert_open("c1", "cli", 5).unwrap();
@@ -405,7 +405,7 @@ fn v5_store_migrates_to_v6_and_old_judgments_have_no_type() {
         assert_eq!(ro.current_judgments().unwrap()["t0"].task_type, None);
     }
     let s = Store::open(&p).unwrap();
-    assert_eq!(s.user_version().unwrap(), 6);
+    assert_eq!(s.user_version().unwrap(), MIGRATIONS.len() as i64);
     let j = &s.current_judgments().unwrap()["t0"];
     assert_eq!((j.task_type.as_deref(), j.judge_version.as_str()), (None, "j1"));
     let mut typed = judgment("j1", "t1", "live", 2, 3);
@@ -479,4 +479,48 @@ fn first_prompt_of_live_and_imported_tasks() {
     assert_eq!(text.as_deref(), Some("write tests for the parser"));
     assert_eq!(s.task_first_prompt("nope").unwrap(), None);
     assert_eq!(s.task_first_prompt("import:bad").unwrap(), None);
+}
+
+#[test]
+fn v7_check_rows_round_trip_are_append_only_and_imported_ones_go_with_forget_imported() {
+    let (_d, mut s) = open();
+    s.insert_judgment(&judgment("j1", "t1", "live", 2, 3)).unwrap();
+    s.insert_judgment(&judgment("j2", "import:x", "imported", 1, 3)).unwrap();
+    assert_eq!(s.judgment("j1").unwrap().unwrap().task_id, "t1");
+    assert!(s.judgment("nope").unwrap().is_none());
+    assert!(s.latest_check_run().unwrap().is_none());
+    let run = CheckRunRow {
+        run_id: "r1".into(),
+        seed: u64::MAX - 3,
+        requested: 30,
+        sample: vec!["j1".into(), "j2".into()],
+        started_utc_ms: 10,
+        check_version: "c1".into(),
+    };
+    s.insert_check_run(&run).unwrap();
+    assert_eq!(s.latest_check_run().unwrap().unwrap(), run, "seed survives as u64");
+    for (id, j, t) in [("c1", "j1", "t1"), ("c2", "j2", "import:x")] {
+        s.insert_check(&CheckRow {
+            check_id: id.into(),
+            run_id: "r1".into(),
+            judgment_id: j.into(),
+            task_id: t.into(),
+            grader_provider: "copilot-cli".into(),
+            grader_model: None,
+            outcome: "ok".into(),
+            answer: Some("{}".into()),
+            latency_ms: 5,
+            cost_usd: None,
+            checked_utc_ms: 11,
+        })
+        .unwrap();
+    }
+    assert_eq!(s.checks_of_run("r1").unwrap().len(), 2);
+    for sql in ["UPDATE judge_check SET outcome = 'x'", "UPDATE judge_check_run SET seed = 1"] {
+        let e = s.raw().execute(sql, []).unwrap_err().to_string();
+        assert!(e.contains("AIQ-STORE-APPEND-ONLY"), "{e}");
+    }
+    s.forget_imported().unwrap();
+    let left: Vec<String> = s.checks_of_run("r1").unwrap().into_iter().map(|c| c.task_id).collect();
+    assert_eq!(left, vec!["t1".to_string()]);
 }
