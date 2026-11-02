@@ -1,7 +1,8 @@
-// Tasks (spec US-H3 Tasks page). Until the job classifier and the rung judge exist, this lists tasks (the
-// Task rule: one session, split at 30 idle minutes), not task types, each "Not judged yet" (design G3).
+// Tasks (spec US-H3 Tasks page). Lists tasks (the Task rule: one session, split at 30 idle minutes), each
+// with its judged job and rung, or "Not judged yet" (design rung-judge). States other than a plain judgment
+// carry a text label (Uncertain, Right rung, Capped by a blocker), never colour alone.
 import { useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { NOT_CLASSIFIED, folderName, jobOf, jobOptions, plural, rungLabel, sortTasks, toolName, when, type Dir, type SortKey } from "../format";
+import { folderName, jobOf, jobOptions, plural, rungLabel, sortTasks, stateLabel, toolName, when, type Dir, type SortKey } from "../format";
 import { Banners, Chip, Title, type Ctx } from "../ui";
 
 const COLS: { key: SortKey; label: string; right?: boolean }[] = [
@@ -40,7 +41,8 @@ export function Tasks(ctx: Ctx) {
         <div className="group">
           <Title>Tasks</Title>
           <p className="mute">
-            {plural(snap.home.tasks_in_window, "task")} in the last {snap.home.window_days} days. AIQ doesn't classify or judge tasks yet, so each one shows as not judged.
+            {plural(snap.home.tasks_in_window, "task")} in the last {snap.home.window_days} days, {snap.home.judged} judged.
+            {snap.home.judged < snap.home.tasks_in_window && " AIQ judges finished tasks through your own Claude Code or Copilot CLI, within a daily limit."}
           </p>
         </div>
         {snap.tasks.length > 0 && (
@@ -94,8 +96,17 @@ export function Tasks(ctx: Ctx) {
                   </td>
                   <td className="r num">{t.prompts}</td>
                   <td title={t.folder ?? "Not recorded for tasks before this version"}>{folderName(t.folder)}</td>
-                  <td className="mute">{t.job ?? NOT_CLASSIFIED}</td>
-                  <td className="mute">{t.rung ? rungLabel(t.rung) : "Not judged yet"}</td>
+                  <td className={t.job ? undefined : "mute"}>{jobOf(t)}</td>
+                  <td className={t.judgment ? undefined : "mute"}>
+                    {t.judgment ? (
+                      <>
+                        {rungLabel(t.judgment.current)}
+                        {stateLabel(t.judgment.state) && <> <Chip>{stateLabel(t.judgment.state)}</Chip></>}
+                      </>
+                    ) : (
+                      "Not judged yet"
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

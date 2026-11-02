@@ -96,13 +96,16 @@ await test("forced colours (Windows high contrast) has no axe violations", async
   await page.context().close();
 });
 
-await test("Home is honest without a judge and shows measured counts", async () => {
+await test("Home shows judged rungs and next steps, and only measured counts", async () => {
   const page = await open("full");
   const t = await page.locator("main").innerText();
   assert.match(t, /Tasks agents finished\s+Not judged yet/);
   assert.match(t, /7 tasks in the last 30 days · 1 imported task/);
-  assert.doesNotMatch(t, /\d+%/, "no percentages without judged tasks");
-  assert.match(t, /Your most common rung\s+Not judged yet/);
+  assert.doesNotMatch(t, /\d+%/, "no percentages: kept rate is not judged yet");
+  assert.match(t, /Your most common rung\s+Directed \(2\)\s+3 tasks judged in 30 days/);
+  assert.match(t, /\(1 uncertain not counted\)/);
+  assert.match(t, /Next steps[\s\S]*Hand the agent the whole change with the tests it must pass/);
+  assert.match(t, /Directed \(2\) → Delegated \(3\)/);
   for (const r of ["Assisted (1)", "Directed (2)", "Delegated (3)", "Orchestrated (4)", "Factory (5)"]) assert.ok(t.includes(r), r);
   assert.equal(await page.locator(".wk-col").count(), 4);
   // Rung rows expand to say what the rung means.
@@ -126,7 +129,7 @@ await test("screen readers hear clean names: nav, rung rows, skip link", async (
   const nav = await page.getByRole("navigation", { name: "AIQ" }).ariaSnapshot();
   assert.match(nav, /link "Home"/, nav);
   assert.equal(await page.getByRole("link", { name: "Home", exact: true }).getAttribute("aria-keyshortcuts"), "G H");
-  for (const name of ["Factory (5), not judged yet", "Assisted (1), not judged yet"]) {
+  for (const name of ["Factory (5), 0 tasks", "Directed (2), 1 task"]) {
     assert.equal(await page.getByRole("button", { name, exact: true }).count(), 1, name);
   }
   // Focus starts on the page title; the skip link is the first stop of the window chrome, before the nav.
@@ -193,6 +196,8 @@ await test("Tasks: sort, J/K, imported and not-judged labels; prompt markup is t
   const t = await page.locator("tbody").innerText();
   assert.ok(t.includes("Imported"));
   assert.ok(t.includes("Not judged yet") && t.includes("Not classified yet"));
+  assert.ok(t.includes("Uncertain"), "an Uncertain judgment says so");
+  assert.ok(t.includes("Code a change") && t.includes("Write a spec or doc"), "judged jobs in words");
   await page.locator("a[href='#data']").click();
   assert.equal(await page.locator("main img").count(), 0, "a prompt containing <img> renders as text");
   assert.ok((await page.locator("main").innerText()).includes("<img src=x onerror=alert(1)> add tests"));

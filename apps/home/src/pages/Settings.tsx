@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { api } from "../api";
 import type { Settings as S } from "../types";
+import { plural } from "../format";
 import { Banners, Title, type Ctx } from "../ui";
 
 const STAYS: { v: S["copilot_tip_stays"]; label: string; note?: string }[] = [
@@ -81,8 +82,25 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
       </section>
 
       <section className="card" aria-labelledby="st3">
-        <h2 id="st3">Rung model</h2>
-        <p className="mute">Not available yet. Judging tasks through your own signed-in Claude Code comes in a later version. Tips work without it.</p>
+        <div className="head">
+          <h2 id="st3">Rung model</h2>
+          <span className="chip">{snap.settings.judge === "auto" ? "Judging in the background" : "Off"}</span>
+        </div>
+        <p className="mute">
+          AIQ judges each finished task through the tool that already saw it, with your own sign-in: Claude Code tasks through your
+          Claude Code, Copilot and VS Code tasks through your Copilot CLI. It sends the task's prompts and a summary of what the agent
+          did, never your own edits. Judge calls use your plan's usage, and a work account's policies and logging apply.
+        </p>
+        <p>
+          Up to {plural(snap.settings.judge_daily_tasks, "task")} a day, two calls each. Today: {plural(snap.home.judge_today.tasks, "task")},{" "}
+          {plural(snap.home.judge_today.calls, "call")}
+          {snap.home.judge_today.failed_calls > 0 && <>, {snap.home.judge_today.failed_calls} failed</>}
+          {snap.home.judge_today.cost_usd !== null && <>, ${snap.home.judge_today.cost_usd.toFixed(2)} reported by Claude Code</>}.
+        </p>
+        <p className="meta">
+          Change it in a terminal: <code>aiq config set judge {snap.settings.judge === "auto" ? "off" : "auto"}</code> ·{" "}
+          <code>aiq config set judge-daily-tasks 20</code> · see what would be sent: <code>aiq judge --dry-run</code>
+        </p>
       </section>
 
       <section className="card" aria-labelledby="st4">

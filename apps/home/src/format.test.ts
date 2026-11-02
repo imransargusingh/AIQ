@@ -1,12 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { bytes, folderName, jobOptions, plural, rungLabel, sentence, sortTasks, topPlaces, when } from "./format";
+import { bytes, folderName, jobName, jobOf, jobOptions, plural, rungLabel, sentence, sortTasks, stateLabel, topPlaces, when } from "./format";
 import type { TaskRow } from "./types";
 
 const t = (over: Partial<TaskRow>): TaskRow => ({
-  task_id: "x", tool: "claude-code", folder: null, first_ms: 0, last_ms: 0, prompts: 1, origin: "live", job: null, rung: null, ...over,
+  task_id: "x", tool: "claude-code", folder: null, first_ms: 0, last_ms: 0, prompts: 1, origin: "live", job: null, rung: null, judgment: null, ...over,
 });
 
 describe("format", () => {
+  it("names jobs and judgment states in words", () => {
+    expect(jobName("code_change")).toBe("Code a change");
+    expect(jobName("unclassified")).toBe("Unclassified");
+    expect(jobOf(t({}))).toBe("Not classified yet");
+    expect(jobOf(t({ job: "write_doc" }))).toBe("Write a spec or doc");
+    expect(stateLabel("uncertain")).toBe("Uncertain");
+    expect(stateLabel("blocked")).toBe("Capped by a blocker");
+    expect(stateLabel("judged")).toBe("");
+  });
+
   it("names rungs first, numbers second", () => {
     expect(rungLabel(2)).toBe("Directed (2)");
     expect(rungLabel(5)).toBe("Factory (5)");

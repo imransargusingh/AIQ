@@ -259,8 +259,31 @@ Settings shows judged today, calls today, cost today where known.
 | Command line | Claude and Copilot argument lists contain every sealing flag |
 | Store | v5 migration from v4; append-only triggers; latest judgment per task |
 | Home | Snapshot exposes judgments; UI e2e renders judged, uncertain, blocked, right-rung and failed rows; model text shown literally; axe clean |
-| Eval (measured) | `cargo run -p aiq --example judge_eval` over the 20 held-out known-rung tasks through real `claude -p`: exact and within-one rate, job accuracy, cost, latency |
+| Eval (measured) | `AIQ_JUDGE_EVAL=prototypes/phase0-spike/data/heldout_scenarios.json cargo test -p aiq --bin aiq judge_eval -- --ignored --nocapture` (optional `AIQ_JUDGE_EVAL_CACHE=<file>` replays saved answers) over the 20 held-out known-rung tasks through real `claude -p`: exact and within-one rate, job accuracy, cost, latency |
 | Laptop | Imran runs `aiq judge` on his real store; Home shows judgments |
+
+## Eval result (measured 2026-11-02)
+
+Two runs over the 20 held-out tasks, `claude -p --model sonnet`, two calls per task, in this cloud
+container (Claude Code 2.1.316). Measured, not modelled; 20 synthetic tasks is a small sample.
+
+| Run | Exact rung | Within one | Job right | Cost | Call latency p50 / p95 |
+|---|---|---|---|---|---|
+| 1 | 9 / 20 | 15 / 20 | 18 / 20 | $0.59 | 6.5 s / 11.7 s |
+| 2 | 10 / 20 | 15 / 20 | 18 / 20 | $0.72 | 6.7 s / 12.2 s |
+
+Run 2 in detail (answers cached; per-task rows printed by the eval):
+- **Confident judgments are mostly right.** 9 tasks came out not-Uncertain: 7 exact, 8 within one. The
+  miss beyond one is h16 (Factory, unreachable in slice 1 by J5).
+- **Uncertain is too common: 11 of 20.** 5 are job "other", Uncertain by design (no pack). The other 6
+  are all fact F6 (*output checked before use*): both runs answer *true* at confidence 0.4–0.55, below
+  the 0.6 fact bar, so the gate is Unknown and the rung steps down to Assisted. The held-out tasks rarely
+  show the person's review in words, so this may be the data, not the judge.
+- **Model alone vs the rule:** the model's own rung was exact on 13 of 20; the rule lowers Uncertain
+  tasks. That costs nothing users see (Uncertain tasks are not counted on a rung and never coached),
+  but the Tasks page shows the lowered rung beside the Uncertain label.
+- Not changed in this slice: tuning F6 (prompt wording, or a log floor when the agent ran the tests)
+  against 20 synthetic tasks would fit the test set. Measure on Imran's real Copilot tasks first.
 
 ## Conformance notes
 
@@ -292,6 +315,6 @@ Settings shows judged today, calls today, cost today where known.
 
 | | |
 |---|---|
-| **Completed** | Design |
-| **Remaining** | Build, tests, eval, laptop run |
-| **Best next action** | `/implement` this design |
+| **Completed** | Design; build (contracts, domain, store v5, runner, AIQ home views); tests; held-out eval (above) |
+| **Remaining** | Laptop run: Copilot path first (prompt on stdin, sealing, MCP canary, session deletion), then Claude; F6 coverage on real tasks; secrets redaction of the envelope once PR #22 lands |
+| **Best next action** | Laptop check on Imran's real store |

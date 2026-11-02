@@ -1462,9 +1462,12 @@ mod tests {
 /// Measured accuracy on the Phase 0 held-out tasks (each written at a known rung), through the real
 /// `claude -p` on this machine. Costs real usage, so it runs only on request:
 /// `AIQ_JUDGE_EVAL=prototypes/phase0-spike/data/heldout_scenarios.json cargo test -p aiq --bin aiq judge_eval -- --ignored --nocapture`
+/// `AIQ_JUDGE_EVAL_CACHE=<file>` saves the model's answers on the first run and replays them after, so a
+/// change to placement is measured on the same answers at no cost.
 #[cfg(test)]
 mod eval {
     use super::*;
+    use std::collections::BTreeMap;
 
     fn turns(steps: &[Value]) -> Vec<Turn> {
         let mut out: Vec<Turn> = Vec::new();
@@ -1505,23 +1508,32 @@ mod eval {
         let cases: Vec<Value> = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
         let p = ClaudeCli { exe: find_exe("claude"), model, scratch: std::env::temp_dir() };
         let schema = response_schema();
+        let cache_path = std::env::var("AIQ_JUDGE_EVAL_CACHE").ok();
+        let mut cache: BTreeMap<String, Vec<Value>> = cache_path
+            .as_ref()
+            .and_then(|f| std::fs::read_to_string(f).ok())
+            .map(|s| serde_json::from_str(&s).unwrap())
+            .unwrap_or_default();
         let (mut exact, mut within, mut job_ok, mut n, mut cost, mut ms) = (0, 0, 0, 0, 0.0, Vec::new());
         let mut rows = Vec::new();
         for c in &cases {
             let t = turns(c["steps"].as_array().unwrap());
             let log = rung::log_facts(&t, true);
             let user = rung::envelope("claude-code", &t, &log, &format!("AIQ-QUOTE-{}", uuid::Uuid::new_v4().simple()));
-            let mut runs = Vec::new();
-            for _ in 0..2 {
-                let r = p.call(&CallReq { system: rung::SYSTEM, user: &user, schema: &schema, session_id: "" });
-                cost += r.cost_usd.unwrap_or(0.0);
-                ms.push(r.latency_ms);
-                if let Outcome::Ok(v) = r.outcome
-                    && let Ok(x) = parse_response(v)
-                {
-                    runs.push(x);
+            let id = c["id"].as_str().unwrap().to_owned();
+            let answers = cache.entry(id).or_insert_with(|| {
+                let mut got = Vec::new();
+                for _ in 0..2 {
+                    let r = p.call(&CallReq { system: rung::SYSTEM, user: &user, schema: &schema, session_id: "" });
+                    cost += r.cost_usd.unwrap_or(0.0);
+                    ms.push(r.latency_ms);
+                    if let Outcome::Ok(v) = r.outcome {
+                        got.push(v);
+                    }
                 }
-            }
+                got
+            });
+            let runs: Vec<Response> = answers.iter().filter_map(|v| parse_response(v.clone()).ok()).collect();
             if runs.is_empty() {
                 rows.push(format!("{} no answer", c["id"]));
                 continue;
@@ -1544,15 +1556,20 @@ mod eval {
                 want_job,
                 runs[0].job
             ));
+            rows.extend(pl.notes.iter().map(|n| format!("    {n}")));
+        }
+        if let Some(f) = &cache_path {
+            std::fs::write(f, serde_json::to_string(&cache).unwrap()).unwrap();
         }
         ms.sort();
+        let pct = |q: usize| ms.get((ms.len().max(1) - 1) * q / 100).map_or("replayed".to_owned(), |m| m.to_string());
         for r in &rows {
             println!("{r}");
         }
         println!(
             "EVAL n={n} exact={exact} within_one={within} job={job_ok} cost_usd={cost:.3} call_ms_p50={} p95={}",
-            ms[ms.len() / 2],
-            ms[(ms.len() * 95 / 100).min(ms.len() - 1)]
+            pct(50),
+            pct(95)
         );
     }
 }
