@@ -92,11 +92,16 @@ pub fn status() -> ExitCode {
             if let Some((_, n)) = ignored {
                 out += &format!("Automated prompts ignored since the core started: {n}\n");
             }
-            if s.core_counters.iter().any(|(k, _)| k != aiq_contracts::codes::INGEST_AUTOMATED) {
+            if let Some((_, n)) = s.core_counters.iter().find(|(k, _)| k == aiq_contracts::codes::INGEST_SECRET_REMOVED)
+            {
+                out += &format!("Secrets removed from prompts before storing, since the core started: {n}\n");
+            }
+            let not_errors = [aiq_contracts::codes::INGEST_AUTOMATED, aiq_contracts::codes::INGEST_SECRET_REMOVED];
+            if s.core_counters.iter().any(|(k, _)| !not_errors.contains(&k.as_str())) {
                 let c: Vec<String> = s
                     .core_counters
                     .iter()
-                    .filter(|(k, _)| k != aiq_contracts::codes::INGEST_AUTOMATED)
+                    .filter(|(k, _)| !not_errors.contains(&k.as_str()))
                     .map(|(k, n)| format!("{k} {n}"))
                     .collect();
                 out += &format!("Core errors: {}\n", c.join(", "));

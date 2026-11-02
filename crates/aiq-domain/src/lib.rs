@@ -5,6 +5,7 @@ pub mod card;
 pub mod clock;
 pub mod job;
 pub mod reprompt;
+pub mod secrets;
 pub mod text;
 pub mod tipline;
 pub mod trigger;

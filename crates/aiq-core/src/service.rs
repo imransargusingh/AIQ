@@ -149,12 +149,19 @@ impl<C: Clock> Service<C> {
         }
         let now = self.clock.now().utc_ms;
         let ts = parse_rfc3339_ms(&ev.ts).unwrap_or(now);
+        // Security review S2: the hook already removed secrets; this pass covers spool lines written by an
+        // older hook and any other client. Markers from either pass are counted, so status shows both.
+        let clean = match &ev.body {
+            EventBody::Prompt(p) => p.text.as_deref().map(|t| aiq_domain::secrets::redact(t).0),
+            EventBody::Stop(_) => None,
+        };
+        let removed = clean.as_deref().map_or(0, |t| t.matches(aiq_domain::secrets::MARKER).count());
         let (prompt_id, text, chars, meta) = match &ev.body {
             EventBody::Prompt(p) => {
                 if p.text.is_none() {
                     self.counters.inc(codes::INGEST_SHAPE);
                 }
-                let f = p.text.as_deref().map(|t| features(t, &self.pack.reprompt));
+                let f = clean.as_deref().map(|t| features(t, &self.pack.reprompt));
                 let meta = serde_json::json!({
                     "hook_event": "UserPromptSubmit",
                     "chars": p.chars,
@@ -164,8 +171,9 @@ impl<C: Clock> Service<C> {
                     "pasted": f.as_ref().is_some_and(|f| f.pasted),
                     // Read by AIQ home's Tasks page (design aiq-home-app D7). Non-content: the working folder.
                     "folder": ev.cwd.as_deref().map(folder_key).filter(|k| !k.is_empty()),
+                    "secrets_removed": removed,
                 });
-                (p.prompt_id.as_deref(), p.text.as_deref(), Some(p.chars as i64), meta)
+                (p.prompt_id.as_deref(), clean.as_deref(), Some(p.chars as i64), meta)
             }
             EventBody::Stop(s) => (
                 s.prompt_id.as_deref(),
@@ -193,6 +201,7 @@ impl<C: Clock> Service<C> {
         if !inserted {
             return Ok(()); // replay: idempotent, no second signal
         }
+        (0..removed).for_each(|_| self.counters.inc(codes::INGEST_SECRET_REMOVED));
         let Some(text) = text else { return Ok(()) };
         let sig = {
             let _d = info_span!("core.detect", trace_id = trace_id.unwrap_or("")).entered();

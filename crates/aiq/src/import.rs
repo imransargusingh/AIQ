@@ -86,9 +86,11 @@ fn ts_ms(v: &Value) -> Option<i64> {
     v.as_str().and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok()).map(|d| d.timestamp_millis())
 }
 
-fn cap(s: &str, max: usize) -> String {
+/// Imported text (a prompt or a command) as stored: secrets removed (security review S2), then cut to `max` bytes.
+fn clean_text(raw: &str, max: usize) -> String {
+    let s = aiq_domain::secrets::redact(raw).0;
     if s.len() <= max {
-        return s.to_owned();
+        return s;
     }
     let mut i = max;
     while !s.is_char_boundary(i) {
@@ -119,7 +121,7 @@ impl Actions {
         if let Some(c) = args.get("command").and_then(Value::as_str)
             && self.commands.len() < 30
         {
-            self.commands.push(cap(c, MAX_CMD));
+            self.commands.push(clean_text(c, MAX_CMD));
         }
         if matches!(name, "Task" | "Agent") {
             self.subagents += 1;
@@ -181,7 +183,7 @@ pub fn read_claude(path: &Path, id: &str, mtime_ms: i64, folder_slug: &str) -> s
                     p.events.push(ImportedEvent {
                         kind: "prompt".into(),
                         ts_utc_ms: ts,
-                        text: Some(cap(text, MAX_TEXT)),
+                        text: Some(clean_text(text, MAX_TEXT)),
                         actions: None,
                     });
                     open = true;
@@ -237,7 +239,7 @@ pub fn read_copilot(path: &Path, id: &str, mtime_ms: i64) -> std::io::Result<Par
                 p.events.push(ImportedEvent {
                     kind: "prompt".into(),
                     ts_utc_ms: ts,
-                    text: Some(cap(d["content"].as_str().unwrap_or(""), MAX_TEXT)),
+                    text: Some(clean_text(d["content"].as_str().unwrap_or(""), MAX_TEXT)),
                     actions: None,
                 });
                 open = true;
@@ -719,6 +721,19 @@ mod tests {
         assert_eq!(a["tools"]["Edit"], 1);
         assert_eq!(a["files"][0], "src/a.rs");
         assert_eq!(a["commands"][0], "cargo test");
+    }
+
+    #[test]
+    fn imported_prompts_lose_their_secrets() {
+        let key = "sk-ant-api03-AbCdEfGhIjKlMnOpQrStUvWxYz0123456789";
+        let d = tempfile::tempdir().unwrap();
+        claude_session(d.path(), "C--repos-a", "s1", "cli", &[&format!("call it with {key}")]);
+        copilot_session(d.path(), "c1", "C:\\repos\\b", "2026-09-01T10:00:00Z", &[&format!("password={key}")]);
+        for src in discover(d.path(), d.path()) {
+            let p = read(&src).unwrap();
+            let text = p.events[0].text.as_deref().unwrap();
+            assert!(!text.contains(key) && text.contains(aiq_domain::secrets::MARKER), "{text}");
+        }
     }
 
     #[test]

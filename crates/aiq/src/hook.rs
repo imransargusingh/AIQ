@@ -230,10 +230,12 @@ pub fn to_copilot_event(v: &Value, event: &str, surface: &str) -> Option<EventV1
     Some(new_event(surface, session, cwd_of(v), body))
 }
 
+/// Secrets are removed here, before the frame is sent or spooled (security review S2); the core removes
+/// them again on ingest for anything that reaches it another way.
 fn prompt_payload(raw: Option<&str>, prompt_id: Option<String>) -> PromptPayload {
     let (text, truncated) = match raw {
         Some(t) => {
-            let (c, cut) = cap_text(t, MAX_PROMPT_BYTES);
+            let (c, cut) = cap_text(&aiq_domain::secrets::redact(t).0, MAX_PROMPT_BYTES);
             (Some(c), cut)
         }
         None => (None, false),
@@ -411,6 +413,19 @@ mod tests {
         assert!(p.truncated);
         assert!(p.text.unwrap().len() <= MAX_PROMPT_BYTES);
         assert_eq!(p.chars, 40_000);
+    }
+
+    #[test]
+    fn prompts_lose_their_secrets_before_send_or_spool() {
+        let key = "ghp_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789";
+        let v = json!({"session_id":"s","hook_event_name":"UserPromptSubmit","prompt":format!("push with {key}")});
+        let e = to_event(&v, "UserPromptSubmit").unwrap();
+        let wire = serde_json::to_string(&e).unwrap();
+        assert!(!wire.contains(key) && wire.contains(aiq_domain::secrets::MARKER), "{wire}");
+        let v = json!({"sessionId":"c","prompt":format!("use {key}")});
+        let wire =
+            serde_json::to_string(&to_copilot_event(&v, "userPromptSubmitted", COPILOT_CLI_SURFACE).unwrap()).unwrap();
+        assert!(!wire.contains(key), "{wire}");
     }
 
     #[test]

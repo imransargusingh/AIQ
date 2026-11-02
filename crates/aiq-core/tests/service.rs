@@ -769,3 +769,18 @@ fn include_folder_undoes_set_aside() {
     h.cp_in("/ep", "s1", "hello there", MIN);
     assert_eq!(h.prompts(), 1);
 }
+
+/// Security review S2: a secret that reaches the core (an older hook's spool line, another client) is
+/// removed before the store sees it, and counted for `aiq status`.
+#[test]
+fn ingest_removes_secrets_before_storing_and_counts_them() {
+    let mut h = H::new();
+    let key = "ghp_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789";
+    h.send("s", &format!("push with {key} and password=Tr0ub4dor"));
+    h.send("s", "an ordinary prompt");
+    let rows = Store::open(&h.path).unwrap().prompts_for_rebuild(0).unwrap();
+    assert_eq!(rows.len(), 2);
+    assert!(rows.iter().all(|r| !r.text.contains(key) && !r.text.contains("Tr0ub4dor")), "{rows:?}");
+    let counted = h.svc().status().core_counters.into_iter().find(|(k, _)| k == codes::INGEST_SECRET_REMOVED);
+    assert_eq!(counted, Some((codes::INGEST_SECRET_REMOVED.to_owned(), 2)));
+}
