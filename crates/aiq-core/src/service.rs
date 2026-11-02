@@ -38,6 +38,8 @@ pub struct Service<C: Clock> {
     /// Folder keys where a claude.ai Projects / Remote Control session was set aside (rule RC), so
     /// "Include them" can be offered there although no folder rule exists. In memory; bounded.
     projects_folders: std::collections::HashSet<String>,
+    /// Rule RC result per Claude Code session, read once from its transcript head (bounded).
+    rc_checked: std::collections::HashMap<String, bool>,
     /// Coaching inputs derived from the store (design coaching-from-rungs); rebuilt when stale.
     coach: Option<coaching::Cache>,
     /// AIQ-COACH-GUESS-LOW is logged once per core run.
@@ -86,6 +88,7 @@ impl<C: Clock> Service<C> {
             counters,
             guard: Guard::new(),
             projects_folders: Default::default(),
+            rc_checked: Default::default(),
             coach: None,
             guess_low_logged: false,
         };
@@ -404,10 +407,28 @@ impl<C: Clock> Service<C> {
         Ok(())
     }
 
+    /// Rule RC from the transcript the prompt names: read its head once per session, then remember. A
+    /// session whose prompt carried no transcript (older hooks set `projects` themselves) is never read.
+    fn projects_session(&mut self, ev: &EventV1) -> bool {
+        let key = format!("{}/{}", ev.surface, ev.surface_session_id);
+        if let Some(v) = self.rc_checked.get(&key) {
+            return *v;
+        }
+        let Some(t) = ev.transcript.as_deref() else { return false };
+        let started = std::time::Instant::now();
+        let v = crate::projects::scan(std::path::Path::new(t), crate::projects::HEAD_BYTES);
+        info!(ms = started.elapsed().as_millis() as u64, projects = v, "rc.check");
+        if self.rc_checked.len() >= 4096 {
+            self.rc_checked.clear();
+        }
+        self.rc_checked.insert(key, v);
+        v
+    }
+
     /// The automated-session rule, live side. True: record nothing for this event.
     fn automated(&mut self, ev: &EventV1) -> Result<bool, StoreError> {
         let (surface, session) = (ev.surface.as_str(), ev.surface_session_id.as_str());
-        if ev.projects {
+        if ev.projects || self.projects_session(ev) {
             // Rule RC: Claude's own Projects / Remote Control session, every event, unless included.
             let k = ev.cwd.as_deref().map(folder_key).unwrap_or_default();
             if self.store.folder_rules_now()?.get(&k).map(String::as_str) != Some("include") {

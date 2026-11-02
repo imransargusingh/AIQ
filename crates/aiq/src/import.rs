@@ -162,7 +162,7 @@ pub fn read_claude(path: &Path, id: &str, mtime_ms: i64, folder_slug: &str) -> s
         if r.get("isSidechain").and_then(Value::as_bool) == Some(true) {
             continue;
         }
-        p.projects |= crate::projects::is_marker(&r);
+        p.projects |= aiq_core::projects::is_marker(&r);
         if let Some(cwd) = r.get("cwd").and_then(Value::as_str)
             && p.folder == folder_slug
         {

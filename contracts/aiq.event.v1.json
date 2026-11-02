@@ -15,6 +15,7 @@
     "collector_version": { "type": "string" },
     "cwd": { "type": "string", "description": "Host working folder; optional. Used for the automated-session rule, not stored per event." },
     "projects": { "type": "boolean", "description": "Claude Code session driven through claude.ai Projects / Remote Control; optional, default false. Set aside unless the folder is included." },
+    "transcript": { "type": "string", "maxLength": 4096, "description": "Claude Code prompts: the session's transcript file. The core reads its head once per session for the Projects check; not stored." },
     "kind": { "enum": ["prompt", "stop"] },
     "payload": { "type": "object" }
   },

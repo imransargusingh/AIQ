@@ -83,6 +83,7 @@ impl H {
             collector_version: "test".into(),
             cwd: None,
             projects: false,
+            transcript: None,
             body,
         }
     }

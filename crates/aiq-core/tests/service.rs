@@ -186,6 +186,7 @@ fn ev_on(surface: &str, id: &str, session: &str, ms: i64, body: EventBody) -> Ev
         collector_version: "test".into(),
         cwd: None,
         projects: false,
+        transcript: None,
         body,
     }
 }
@@ -860,4 +861,34 @@ fn projects_sessions_record_nothing_until_the_folder_is_included() {
     assert!(h.svc().status().automated_folders.is_empty());
     rc(&mut h, "rc2", "relay brief two");
     assert_eq!(h.prompts(), 2, "included: Projects sessions are recorded");
+}
+
+// Rule RC, read by the core: the hook sends only the transcript path (opening it cost ~0.4 s of every
+// Claude Code hook on the laptop). The core reads the head once per session and remembers the answer.
+#[test]
+fn the_core_reads_a_prompts_transcript_once_per_session_for_rule_rc() {
+    let d = tempfile::tempdir().unwrap();
+    let marked = d.path().join("rc.jsonl");
+    std::fs::write(
+        &marked,
+        "{\"type\":\"user\",\"isMeta\":true,\"turnOrigin\":\"system\",\"entrypoint\":\"claude-desktop\"}\n",
+    )
+    .unwrap();
+    let plain = d.path().join("cli.jsonl");
+    std::fs::write(&plain, "{\"type\":\"user\",\"turnOrigin\":\"human\",\"entrypoint\":\"cli\"}\n").unwrap();
+    let mut h = H::new();
+    let send = |h: &mut H, session: &str, t: &std::path::Path| {
+        let mut e = h.prompt(session, "do the thing");
+        e.cwd = Some("C:\\Repos\\AIQ".into());
+        e.transcript = Some(t.to_string_lossy().into_owned());
+        h.svc().ingest(&e, None);
+    };
+    send(&mut h, "rc1", &marked);
+    send(&mut h, "cli1", &plain);
+    assert_eq!(h.prompts(), 1, "the Projects session is set aside, the terminal one recorded");
+    // The answer is remembered: a changed file is not read again for the same session.
+    std::fs::write(&plain, "{\"type\":\"user\",\"turnOrigin\":\"peer\"}\n").unwrap();
+    send(&mut h, "cli1", &plain);
+    assert_eq!(h.prompts(), 2);
+    assert_eq!(h.svc().status().automated_folders, vec![("c:\\repos\\aiq".to_string(), "projects".to_string())]);
 }

@@ -6,6 +6,7 @@ pub mod ipc;
 pub mod logging;
 pub mod pack;
 pub mod paths;
+pub mod projects;
 pub mod server;
 pub mod service;
 pub mod spool;
