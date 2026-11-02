@@ -49,7 +49,7 @@ They also need to trust AIQ: see what it captured, pause it, and delete it.
 
 ### Target users & personas
 Developers and PMs first (shared surfaces); data scientists and other knowledge workers later.
-Coaching follows the job being done (Code a change; Write a spec or doc), never the job title.
+Coaching follows the job being done (Code a change; Write a spec or doc; Ask or research), never the job title.
 Roles are presets only (coaching-loop D7).
 
 ### Core scenario

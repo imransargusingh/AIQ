@@ -45,12 +45,12 @@ pub struct Response {
     pub blockers: Vec<String>,
 }
 
-pub const JOBS: [&str; 3] = ["code_change", "write_doc", "other"];
+pub const JOBS: [&str; 4] = ["code_change", "write_doc", "ask_research", "other"];
 
 /// The fixed task types per pack job (design coaching-from-rungs, "Pack data"): (job, id, label). The judge
 /// answers one id; `other` within a job when unsure. Part of the answer contract, so the strict parse can
 /// reject anything else.
-pub const TASK_TYPES: [(&str, &str, &str); 18] = [
+pub const TASK_TYPES: [(&str, &str, &str); 26] = [
     ("code_change", "fix_bug", "Fixing a bug or failing test"),
     ("code_change", "feature", "Adding a feature"),
     ("code_change", "tests", "Writing tests"),
@@ -69,6 +69,15 @@ pub const TASK_TYPES: [(&str, &str, &str); 18] = [
     ("write_doc", "howto", "Writing a README or how-to"),
     ("write_doc", "notes", "Turning notes into a summary"),
     ("write_doc", "other", "Other writing"),
+    // Ask or research (Imran 2026-11-02, card: 9 of his first 10 real tasks were questions or research).
+    ("ask_research", "how_to", "Asking how to do something"),
+    ("ask_research", "explain", "Understanding how something works"),
+    ("ask_research", "troubleshoot", "Finding the cause of a problem"),
+    ("ask_research", "compare", "Comparing options"),
+    ("ask_research", "find", "Finding facts in files or data"),
+    ("ask_research", "research", "Researching a topic"),
+    ("ask_research", "analyse", "Analysing data"),
+    ("ask_research", "other", "Other questions"),
 ];
 
 /// Every task-type id the answer may carry (the union over jobs, `other` once).

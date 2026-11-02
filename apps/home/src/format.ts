@@ -12,7 +12,7 @@ export const RUNGS: { name: string; means: string }[] = [
 /** Rung names first, numbers second (spec H4): "Directed (2)". */
 export const rungLabel = (rung: number) => `${RUNGS[rung - 1].name} (${rung})`;
 
-const JOBS: Record<string, string> = { code_change: "Code a change", write_doc: "Write a spec or doc", unclassified: "Unclassified" };
+const JOBS: Record<string, string> = { code_change: "Code a change", write_doc: "Write a spec or doc", ask_research: "Ask or research", unclassified: "Unclassified" };
 /** The job a task was judged to be. */
 export const jobName = (j: string | null) => (j ? JOBS[j] ?? j : "Not judged yet");
 

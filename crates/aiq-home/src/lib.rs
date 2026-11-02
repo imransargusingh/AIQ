@@ -218,7 +218,7 @@ pub struct TaskRow {
     pub prompts: u32,
     /// live or imported
     pub origin: &'static str,
-    /// The judged job (code_change, write_doc, unclassified); None until judged.
+    /// The judged job (code_change, write_doc, ask_research, unclassified); None until judged.
     pub job: Option<String>,
     /// Current rung 1..=5; None until judged.
     pub rung: Option<u8>,

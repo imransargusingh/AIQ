@@ -323,6 +323,30 @@ state none). Both are prompt or rubric work for the next slice.
 - **UX & Accessibility:** every judgment state has a text label; the detail row is keyboard-operable. Pass.
 - Independent review recommended before Accepted.
 
+## Ask or research pack (judge j3, 2026-11-02)
+
+Imran chose on a card to coach questions and research too: 9 of his first 10 real judged tasks were
+questions or research, which no pack covered, so they were Uncertain and never coached (measured on his
+laptop, 2026-11-02).
+
+- **Job `ask_research`:** the result is an answer for the person, not a change to their files. Task types:
+  how_to, explain, troubleshoot, compare, find, research, analyse, other. `code_change/explain` stays for
+  exploring code as a step in a change.
+- **Rung rules.** Directed and Factory are unchanged. Two facts stand in where a code fact cannot apply:
+  - Delegated needs **F14**, "the agent looked things up itself", in place of F1 (agent edits). It is a
+    log fact: any tool use, command or sub-agent in the task's actions.
+  - Orchestrated needs F7 and **F15**, "at least one sub-agent ran" (log), in place of F8 and F3. A
+    research task has no tests for the agent to run.
+- **Tips:** four new pack moves, `check_answer` (step 1, F6), `whole_question` (step 2, F13),
+  `let_agent_look` (step 2, F14) and `split_question` (step 3, F15). The `any` moves (brief, new_info,
+  written_brief, split_and_check) apply too.
+- **Re-judging:** `JUDGE_VERSION` is j3. A j2 judgment stays current unless its job was unclassified, so
+  only the tasks no pack covered are judged again. This avoids re-spending the daily budget on tasks
+  whose job did not change.
+- **Not measured yet:** how often the judge picks `ask_research` correctly, and the rung rules on real
+  research tasks. The 20-task eval set has no ask_research tasks. The next laptop run re-judges Imran's 9
+  uncertain tasks, and that is the first real check.
+
 ## Status and next action
 
 | | |

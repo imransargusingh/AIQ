@@ -2,7 +2,7 @@
 # Every number here is uncalibrated pack data; the real-data week tunes it (design: assume: lines).
 schema = "aiq.pack.v1"
 pack_id = "aiq.core"
-version = "bundled-5"
+version = "bundled-6"
 idle_gap_min = 30
 
 [reprompt]
@@ -156,6 +156,41 @@ why = "when the agent makes the edits, you review one result instead of steering
 try_this = "let the agent edit the files, and review the diff when it's done."
 starter = "Make the change in <files> yourself. When you're done, show me the diff and what you checked."
 
+# Ask or research (Imran 2026-11-02). Its rungs read F14 (the agent looked it up itself) instead of F1, and
+# F15 (sub-agents) instead of F8 and F3.
+[[moves]]
+move_id = "check_answer"
+step = 1
+facts = ["F6"]
+job = "ask_research"
+habit = "Check the answer before acting on it"
+noticed = "this looks like {type}. Last times, the answer was used without a check."
+why = "an answer can sound sure and still be wrong; one check against a source catches most of it."
+try_this = "ask where the answer comes from, and check one source or run before you act on it."
+starter = "Answer <question>. Show the source, file or command each point comes from, and say how sure you are."
+
+[[moves]]
+move_id = "whole_question"
+step = 2
+facts = ["F13"]
+job = "ask_research"
+habit = "Ask the whole question and say what a good answer covers"
+noticed = "this looks like {type}. Last times, you asked it a piece at a time."
+why = "the whole question and what a good answer covers lets the agent dig in and report back once."
+try_this = "say what you need to decide and what a good answer must cover, then let the agent find it."
+starter = "I need to decide <decision>. Find out <question>. A good answer covers <points>, with sources."
+
+[[moves]]
+move_id = "let_agent_look"
+step = 2
+facts = ["F14"]
+job = "ask_research"
+habit = "Let the agent look it up itself"
+noticed = "this looks like {type}. Last times, you pasted the material in yourself."
+why = "an agent that reads the files, logs or docs itself often finds what a pasted excerpt leaves out."
+try_this = "point the agent at where to look instead of pasting the material in."
+starter = "Look in <files, logs or docs> to answer <question>. Tell me what you read and what you found."
+
 [[moves]]
 move_id = "written_brief"
 step = 3
@@ -188,3 +223,14 @@ noticed = "this looks like {type}. A check between steps would let agents run it
 why = "an automated check between steps catches a bad step before the next one builds on it."
 try_this = "split the work into steps for sub-agents, with a test or check the agent runs between them."
 starter = "Split <the task> into steps. Give each step to a sub-agent, and run <check> after each before going on."
+
+[[moves]]
+move_id = "split_question"
+step = 3
+facts = ["F15"]
+job = "ask_research"
+habit = "Split a big question across sub-agents"
+noticed = "this looks like {type}. Sub-agents could look into each part at once."
+why = "sub-agents can each look into one part, and you get one combined answer back."
+try_this = "ask the agent to split the question and send a sub-agent to each part."
+starter = "Split <question> into parts. Send a sub-agent to each, then combine what they found into one answer with sources."
