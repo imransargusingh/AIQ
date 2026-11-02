@@ -70,6 +70,9 @@ pub struct Marks {
     pub read_us: Option<u128>,
     /// Payload read to frame ready: parse, secret removal, the transcript check.
     pub prep_us: Option<u128>,
+    /// The working folder's tag (`automated::folder_tag`), so `aiq status` can leave out runs from folders
+    /// AIQ sets aside as automated or as its own checks. Never the path itself.
+    pub dir: Option<String>,
 }
 
 /// `<event> <total us> <outcome>` stays first, so older readers keep working; then `key=value` fields.
@@ -84,6 +87,9 @@ pub fn timing_line(event: &str, total_us: u128, outcome: &str, m: &Marks, at_uni
     }
     if let Some(us) = m.prep_us {
         l += &format!(" prep_us={us}");
+    }
+    if let Some(d) = &m.dir {
+        l += &format!(" dir={d}");
     }
     l += &format!(" at={at_unix_s} v={}", env!("CARGO_PKG_VERSION"));
     l
@@ -137,6 +143,7 @@ fn inner_outcome(paths: &Paths, host: &str, event: &str, start: Instant, marks: 
         count(paths, codes::HOOK_FOREIGN_HOST);
         return "foreign";
     };
+    marks.dir = ev.cwd.as_deref().and_then(aiq_domain::automated::folder_tag);
     if paths.pause_flag().exists() {
         return "paused"; // nothing captured while paused
     }
@@ -340,9 +347,11 @@ mod tests {
 
     #[test]
     fn timing_line_keeps_the_old_head_and_adds_phases_time_and_build() {
-        let m = Marks { host_ms: Some(40), read_us: Some(1200), prep_us: Some(300) };
+        let m = Marks { host_ms: Some(40), read_us: Some(1200), prep_us: Some(300), dir: Some("0a1b2c3d".into()) };
         let l = timing_line("UserPromptSubmit", 2000, "sent", &m, 1_762_000_000);
-        assert!(l.starts_with("UserPromptSubmit 2000 sent host_ms=40 read_us=1200 prep_us=300 at=1762000000 v="));
+        assert!(l.starts_with(
+            "UserPromptSubmit 2000 sent host_ms=40 read_us=1200 prep_us=300 dir=0a1b2c3d at=1762000000 v="
+        ));
         let bare = timing_line("Stop", 9, "paused", &Marks::default(), 5);
         assert_eq!(bare, format!("Stop 9 paused at=5 v={}", env!("CARGO_PKG_VERSION")));
     }

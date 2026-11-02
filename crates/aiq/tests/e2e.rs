@@ -167,12 +167,20 @@ fn e2e_headless_claude_runs_record_nothing() {
         let o = ch.wait_with_output().unwrap();
         assert!(o.status.success() && o.stdout.is_empty() && o.stderr.is_empty());
     }
+    // AIQ's own check folder (rule AIQ): stored nowhere, and its hook run is left out of the hook times too.
+    let p = json!({"session_id": "probe", "hook_event_name": "UserPromptSubmit", "prompt": "run: echo aiq-probe",
+                   "prompt_id": "c1", "cwd": "/tmp/aiq-e2e-check", "transcript_path": "/t.jsonl"});
+    e.run(&["hook", "claude-code", "UserPromptSubmit"], p.to_string().as_bytes());
     e.prompt("me", "a prompt of my own", "m1");
     let deadline = Instant::now() + Duration::from_secs(10);
-    while !e.status().contains("1 prompt") && Instant::now() < deadline {
+    while !e.status().contains("leave out 3 runs") && Instant::now() < deadline {
         std::thread::sleep(Duration::from_millis(20));
     }
-    assert!(e.status().contains("Events stored: 1 prompt"), "{}", e.status());
+    let st = e.status();
+    assert!(st.contains("Events stored: 1 prompt"), "{st}");
+    // Only the person's own run counts against AIQ's hook budget; the three set-aside runs are named.
+    assert!(st.contains("Hook time in-process, UserPromptSubmit: p50") && st.contains("(1 runs)"), "{st}");
+    assert!(st.contains("Hook times leave out 3 runs from sessions AIQ sets aside"), "{st}");
 }
 
 #[test]
