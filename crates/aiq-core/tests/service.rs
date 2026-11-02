@@ -822,6 +822,21 @@ fn forget_item_frame_reaches_the_writer() {
     assert!(matches!(&out, Dispatch::Reply(l) if l.contains("\"ok\":true")), "{out:?}");
 }
 
+/// Security review S2: a secret that reaches the core (an older hook's spool line, another client) is
+/// removed before the store sees it, and counted for `aiq status`.
+#[test]
+fn ingest_removes_secrets_before_storing_and_counts_them() {
+    let mut h = H::new();
+    let key = "ghp_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789";
+    h.send("s", &format!("push with {key} and password=Tr0ub4dor"));
+    h.send("s", "an ordinary prompt");
+    let rows = Store::open(&h.path).unwrap().prompts_for_rebuild(0).unwrap();
+    assert_eq!(rows.len(), 2);
+    assert!(rows.iter().all(|r| !r.text.contains(key) && !r.text.contains("Tr0ub4dor")), "{rows:?}");
+    let counted = h.svc().status().core_counters.into_iter().find(|(k, _)| k == codes::INGEST_SECRET_REMOVED);
+    assert_eq!(counted, Some((codes::INGEST_SECRET_REMOVED.to_owned(), 2)));
+}
+
 // Rule RC: a claude.ai Projects / Remote Control session is Claude's own work, set aside from its first
 // prompt whatever its prompt count; `aiq include` brings the folder's Projects sessions back.
 #[test]

@@ -214,11 +214,15 @@ pub fn install(yes: bool) -> ExitCode {
     if v != before {
         println!("\nAIQ will change {}:\n", sp.display());
         print!("{}", line_diff(&orig.as_deref().map_or_else(String::new, |_| pretty(&before)), &pretty(&v)));
-        if rec != FeatureRecord::default() {
+        if rec.experimental_before.is_some() {
+            // Security review S11: the switch is global, so say what it really does.
             println!(
-                "\n(Copilot shows a status line only with `experimental` on and the STATUS_LINE flag; uninstall \
-                      turns off only what AIQ turned on.)"
+                "\nNote: Copilot shows a status line only in its `experimental` mode. Turning it on switches on \
+                 ALL of Copilot's experimental features in every Copilot session, not only AIQ's status line. \
+                 `aiq uninstall copilot` turns it back off."
             );
+        } else if rec != FeatureRecord::default() {
+            println!("\n(Copilot shows a status line only with the STATUS_LINE flag; uninstall turns it off again.)");
         }
     }
     if let Some(cmd) = &foreign_sl {
