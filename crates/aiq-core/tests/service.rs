@@ -892,3 +892,26 @@ fn the_core_reads_a_prompts_transcript_once_per_session_for_rule_rc() {
     assert_eq!(h.prompts(), 2);
     assert_eq!(h.svc().status().automated_folders, vec![("c:\\repos\\aiq".to_string(), "projects".to_string())]);
 }
+
+// Rule AIQ: sessions in AIQ's own check and probe folders (`<temp>\aiq-*`) are tests of AIQ, set aside
+// every prompt; the folder is listed in status and `aiq include` brings it back.
+#[test]
+fn aiq_check_folder_sessions_record_nothing_until_included() {
+    let mut h = H::new();
+    let check = r"C:\Users\p\AppData\Local\Temp\aiq-copilot-probe-3glkf9fj\run0";
+    let send_in = |h: &mut H, session: &str, text: &str, cwd: &str| {
+        let mut e = h.prompt(session, text);
+        e.cwd = Some(cwd.into());
+        h.svc().ingest(&e, None);
+    };
+    for t in ["run: echo aiq-probe, then say done", "a second prompt in the same test session"] {
+        send_in(&mut h, "probe1", t, check);
+    }
+    send_in(&mut h, "mine", "fix the build", r"C:\Users\p\source\repos\AIQ");
+    assert_eq!(h.prompts(), 1, "only the real work is recorded");
+    let st = h.svc().status();
+    assert_eq!(st.automated_folders, vec![(check.to_lowercase(), "aiq-check".to_string())]);
+    assert!(h.svc().include_folder(check).unwrap());
+    send_in(&mut h, "probe2", "now counted", check);
+    assert_eq!(h.prompts(), 2, "included: recorded");
+}

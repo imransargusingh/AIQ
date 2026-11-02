@@ -128,3 +128,16 @@ summary: >-
 - **Control:** `judge_view` maps the stored value. Domain test
   `no_job_agrees_with_other_and_records_what_the_grader_picked` and the `judge_view` asserts in `only_unclassified_judgments_of_the_last_version_are_judged_again` cover it, and the report prints what the
   second reader said for no-job tasks.
+
+### DC-010 — An `Option` serialised to JSON loses the difference between "absent" and "null"
+- **Signature:** `FeatureRecord.experimental_before` is `Some(Null)` for "the key was absent" and `None` for
+  "AIQ did not change it". serde writes both as `null` and reads `null` back as `None`, so after a Copilot
+  install on settings without `experimental`, uninstall left `experimental: true` switched on.
+- **Why it survives:** the in-memory round-trip test passes; only the path through the record file loses it,
+  and the e2e tests started from settings that already had `experimental`.
+- **Instances:** 2026-11-02, `aiq install|uninstall copilot` (found in PR #26, carried to current main).
+- **Sweep:** other `Option<Value>` / `Option<Option<_>>` fields written to disk: none (`grep Option<Value>`
+  in `crates/`: only this one).
+- **Control:** the record file now carries `experimental_absent`; unit test
+  `feature_record_keeps_absent_through_its_file`. Records written before the fix read as before, so they
+  never remove a setting AIQ did not add. Rung: automated control.

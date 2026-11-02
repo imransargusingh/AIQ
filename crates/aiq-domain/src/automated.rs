@@ -63,6 +63,19 @@ pub fn folder_key(cwd: &str) -> String {
     k
 }
 
+/// Rule AIQ: a folder AIQ's own checks and probes run in, `<temp>\aiq-*` (or below it), e.g.
+/// `%TEMP%\aiq-phase2-check` or `%TEMP%\aiq-copilot-probe-3glkf9fj\run0`. Those sessions are tests of AIQ, not
+/// the person's work, and carry no other marker (Copilot CLI 1.0.104 `session.start` has none; the probes
+/// were run by hand or by Remote Control, not by AIQ, so `AIQ_INTERNAL` was not set). Measured: 8 of the
+/// imported Copilot sessions on Imran's laptop (2026-11-02), all in such folders.
+/// assume: nobody does their own work in a temp folder whose name starts with `aiq-`. If false: those
+/// sessions are set aside, and `aiq include <folder>` brings them back.
+pub fn is_aiq_check_folder(cwd: &str) -> bool {
+    let k = folder_key(cwd).to_lowercase();
+    let parts: Vec<&str> = k.split(['\\', '/']).collect();
+    parts.windows(2).any(|w| matches!(w[0], "temp" | "tmp") && w[1].starts_with("aiq-"))
+}
+
 /// The import spec's template normalization: URLs, GUIDs, paths, quoted strings and digit runs replaced,
 /// whitespace collapsed, lowercase, first 200 chars. None for an empty prompt (empty prompts never group).
 pub fn template_of(prompt: &str, max_chars: usize) -> Option<String> {
@@ -222,6 +235,28 @@ mod tests {
         assert_eq!(folder_key(r"C:\"), r"c:\");
         assert_eq!(folder_key("/home/x/Repo/"), "/home/x/Repo");
         assert_eq!(folder_key("  "), "");
+    }
+
+    #[test]
+    fn aiq_check_folders_are_temp_aiq_dash_only() {
+        for yes in [
+            r"C:\Users\imrans\AppData\Local\Temp\aiq-phase2-check",
+            r"c:\users\imrans\appdata\local\temp\aiq-copilot-probe-3glkf9fj\run0",
+            r"C:\Users\imrans\AppData\Local\Temp\aiq-copilot-judge-probe\",
+            "/tmp/aiq-judge-check/src",
+        ] {
+            assert!(is_aiq_check_folder(yes), "{yes}");
+        }
+        for no in [
+            r"C:\Users\imrans\source\repos\AIQ",
+            r"C:\Users\imrans\source\repos\aiq-tools",
+            r"C:\Users\imrans\AppData\Local\Temp\other\aiq-x",
+            r"C:\Users\imrans\AppData\Local\Temp\myaiq-x",
+            "/home/x/tmpaiq-y",
+            "",
+        ] {
+            assert!(!is_aiq_check_folder(no), "{no}");
+        }
     }
 
     #[test]
