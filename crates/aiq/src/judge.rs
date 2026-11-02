@@ -55,6 +55,14 @@ impl Outcome {
             Outcome::Missing => ("missing", Some(codes::JUDGE_MISSING)),
         }
     }
+
+    /// Why a call failed, for judge.log (local, owner-only, bounded); never stored in the database.
+    fn detail(&self) -> &str {
+        match self {
+            Outcome::Schema(d) | Outcome::Error(d) | Outcome::NotSignedIn(d) => d,
+            _ => "",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -128,14 +136,16 @@ fn run_child(mut cmd: Command, stdin: &str, timeout: Duration) -> std::io::Resul
     let mut so = child.stdout.take().expect("piped");
     let mut se = child.stderr.take().expect("piped");
     let out = std::thread::spawn(move || {
-        let mut s = String::new();
-        let _ = so.read_to_string(&mut s);
-        s
+        // Bytes, then lossy: one non-UTF-8 byte must not empty the whole answer.
+        let mut b = Vec::new();
+        let _ = so.read_to_end(&mut b);
+        String::from_utf8_lossy(&b).into_owned()
     });
     let err = std::thread::spawn(move || {
-        let mut s = String::new();
-        let _ = se.read_to_string(&mut s);
-        s
+        // Bytes, then lossy: one non-UTF-8 byte must not empty the whole answer.
+        let mut b = Vec::new();
+        let _ = se.read_to_end(&mut b);
+        String::from_utf8_lossy(&b).into_owned()
     });
     let mut timed_out = false;
     let status = loop {
@@ -263,26 +273,28 @@ impl Provider for ClaudeCli {
     }
 }
 
-/// The person's own Copilot CLI, sealed as far as its flags allow (import spec H5, probe 2026-11-01).
+/// The person's own Copilot CLI, sealed by running it with its own empty home (laptop probe 2026-11-02).
+/// With `COPILOT_HOME` pointing at a fresh AIQ-owned folder, Copilot still signs in (the token lives in the
+/// OS credential store) but loads none of the person's plugins, plugin MCP servers, agents, skills or MCP
+/// config; `--disable-mcp-server` per name had missed a plugin's server. The judge's session, session
+/// database and logs land in that folder too, never in `~/.copilot`, and AIQ deletes the folder after
+/// reading the answer unless the person keeps judge sessions (Imran, 2026-11-02: delete by default).
 pub struct CopilotCli {
     pub exe: Option<PathBuf>,
     pub model: Option<String>,
-    /// AIQ's own working folder for Copilot judge calls (never a repo).
+    /// AIQ's own working folder for Copilot judge calls (never a repo). Each call gets `copilot-<id>` in it.
     pub work: PathBuf,
-    /// The person's MCP server names, each turned off for the call.
-    pub mcp_servers: Vec<String>,
-    /// Copilot's home; AIQ deletes its own call's session folder there after reading the answer, unless
-    /// the person chose to keep judge sessions (Imran, 2026-11-02: delete by default).
-    pub home: PathBuf,
     pub keep_sessions: bool,
 }
 
 impl CopilotCli {
+    /// The sealed home for one call.
+    pub fn call_home(&self, session_id: &str) -> PathBuf {
+        self.work.join(format!("copilot-{session_id}"))
+    }
+
     /// The prompt goes on stdin, never on the command line, where other local users could read it and
-    /// Windows caps the length (review S6). Copilot's help: prompt mode takes "-p, or piped stdin".
-    /// assume: with no `-p`, piped stdin runs one prompt and exits, like `-p` (a no-sign-in run here exited
-    /// in prompt mode rather than opening the TUI). Confirm: the laptop run answers. If false: an error per
-    /// call, tasks stay queued, nothing is sent elsewhere.
+    /// Windows caps the length (review S6). Verified on the laptop: piped stdin runs one prompt and exits.
     pub fn args(&self, session_id: &str, usage_file: &Path) -> Vec<String> {
         let mut a: Vec<String> = vec![
             "-s".into(),
@@ -298,15 +310,13 @@ impl CopilotCli {
             "--no-color".into(),
             "--stream".into(),
             "off".into(),
+            "--output-format".into(),
+            "json".into(),
             "--log-dir".into(),
-            self.work.join("logs").display().to_string(),
+            self.call_home(session_id).join("logs").display().to_string(),
             "--usage-output-file".into(),
             usage_file.display().to_string(),
         ];
-        for s in &self.mcp_servers {
-            a.push("--disable-mcp-server".into());
-            a.push(s.clone());
-        }
         if let Some(m) = &self.model {
             a.push("--model".into());
             a.push(m.clone());
@@ -315,18 +325,43 @@ impl CopilotCli {
     }
 }
 
-/// MCP server names in the person's Copilot config (`mcp-config.json` `mcpServers`), read fresh per run.
-/// assume: this is where Copilot CLI keeps user MCP servers. If false: servers still start, with tools off.
-pub fn copilot_mcp_servers(copilot_home: &Path) -> Vec<String> {
-    let Ok(t) = std::fs::read_to_string(copilot_home.join("mcp-config.json")) else { return vec![] };
-    let v: Value = serde_json::from_str(&t).unwrap_or_default();
-    v["mcpServers"].as_object().map(|m| m.keys().cloned().collect()).unwrap_or_default()
+/// Read Copilot's JSON-lines output: the final answer's text, or why the call can't be used. A call where any
+/// MCP server connected or the model asked for a tool is refused, so a seal that silently fails is a failed
+/// call, never a judgment.
+pub fn copilot_answer(stdout: &str) -> Result<String, Outcome> {
+    let mut answer: Option<(bool, String)> = None;
+    for line in stdout.lines() {
+        let Ok(v) = serde_json::from_str::<Value>(line.trim()) else { continue };
+        let ty = v["type"].as_str().unwrap_or("");
+        if ty.starts_with("session.mcp_server") {
+            let connected = line.contains("\"connected\"");
+            let tools = v["data"]["toolCount"].as_u64().unwrap_or(0) > 0;
+            if connected || tools {
+                return Err(Outcome::Error(format!("not sealed: an MCP server was loaded ({})", short(line))));
+            }
+        }
+        if ty == "assistant.message" {
+            if v["data"]["toolRequests"].as_array().is_some_and(|t| !t.is_empty()) {
+                return Err(Outcome::Error("not sealed: the model asked for a tool".into()));
+            }
+            let fin = v["data"]["phase"].as_str() == Some("final_answer");
+            if let Some(c) = v["data"]["content"].as_str()
+                && (fin || answer.as_ref().is_none_or(|(f, _)| !f))
+            {
+                answer = Some((fin, c.to_owned()));
+            }
+        }
+    }
+    answer.map(|(_, c)| c).ok_or_else(|| {
+        Outcome::Schema(format!("no answer in Copilot's output ({} bytes): {}", stdout.len(), short(stdout)))
+    })
 }
 
 impl Provider for CopilotCli {
     fn call(&self, req: &CallReq<'_>) -> CallResult {
         let Some(exe) = &self.exe else { return CallResult::failed(Outcome::Missing, 0) };
-        if let Err(e) = std::fs::create_dir_all(self.work.join("logs")) {
+        let home = self.call_home(req.session_id);
+        if let Err(e) = std::fs::create_dir_all(&home) {
             return CallResult::failed(Outcome::Error(format!("work folder: {e}")), 0);
         }
         let usage = self.work.join(format!("usage-{}.json", req.session_id));
@@ -335,17 +370,18 @@ impl Provider for CopilotCli {
             req.system, req.user, req.schema
         );
         let mut c = Command::new(exe);
-        c.args(self.args(req.session_id, &usage)).current_dir(&self.work);
-        let run = match run_child(c, &prompt, CALL_TIMEOUT) {
-            Ok(r) => r,
-            Err(e) => return CallResult::failed(Outcome::Error(e.to_string()), 0),
-        };
+        c.args(self.args(req.session_id, &usage)).env("COPILOT_HOME", &home).current_dir(&home);
+        let run = run_child(c, &prompt, CALL_TIMEOUT);
         let u: Value =
             std::fs::read_to_string(&usage).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
         let _ = std::fs::remove_file(&usage);
-        if !self.keep_sessions && uuid::Uuid::parse_str(req.session_id).is_ok() {
-            let _ = std::fs::remove_dir_all(self.home.join("session-state").join(req.session_id));
+        if !self.keep_sessions {
+            let _ = std::fs::remove_dir_all(&home);
         }
+        let run = match run {
+            Ok(r) => r,
+            Err(e) => return CallResult::failed(Outcome::Error(e.to_string()), 0),
+        };
         let model = u["modelMetrics"].as_object().and_then(|m| m.keys().next().cloned()).or_else(|| self.model.clone());
         let mut res = CallResult {
             outcome: Outcome::Error(String::new()),
@@ -362,9 +398,12 @@ impl Provider for CopilotCli {
             let text = format!("{} {}", run.stderr, run.stdout);
             if signed_out(&text) { Outcome::NotSignedIn(short(&text)) } else { Outcome::Error(short(&text)) }
         } else {
-            match extract_object(&run.stdout) {
-                Some(v) => Outcome::Ok(v),
-                None => Outcome::Schema("no JSON object in the answer".into()),
+            match copilot_answer(&run.stdout) {
+                Ok(text) => match extract_object(&text) {
+                    Some(v) => Outcome::Ok(v),
+                    None => Outcome::Schema(format!("answer is not one JSON object: {}", short(&text))),
+                },
+                Err(o) => o,
             }
         };
         res
@@ -417,6 +456,7 @@ pub fn queue<'a>(
     calls: &[CallOutcome],
     now_ms: i64,
     idle_gap_ms: i64,
+    only: Option<&str>,
 ) -> Vec<&'a TaskRow> {
     let mut fails: HashMap<&str, (usize, i64)> = HashMap::new();
     for c in calls.iter().filter(|c| c.outcome != "ok") {
@@ -430,7 +470,7 @@ pub fn queue<'a>(
     let mut q: Vec<(bool, &TaskRow)> = tasks
         .iter()
         .filter(|t| t.last_ms + idle_gap_ms < now_ms)
-        .filter(|t| provider_for(&t.tool).is_some())
+        .filter(|t| provider_for(&t.tool).is_some_and(|p| only.is_none_or(|o| o == p)))
         .filter(|t| judged.get(&t.task_id).is_none_or(|j| !current_version(j)))
         .filter(|t| match fails.get(t.task_id.as_str()) {
             None => true,
@@ -748,7 +788,7 @@ pub fn run(r: &Run<'_>) -> Result<Report, String> {
     let tasks = aiq_home::tasks(r.store, &pack, 0)?;
     let judged = r.store.current_judgments().map_err(|e| e.to_string())?;
     let calls = r.store.judge_calls_since(r.now.utc_ms - 7 * DAY_MS).map_err(|e| e.to_string())?;
-    let q = queue(&tasks, &judged, &calls, r.now.utc_ms, gap);
+    let q = queue(&tasks, &judged, &calls, r.now.utc_ms, gap, r.only);
     let used = tasks_today(&calls, r.now.local_midnight_utc_ms()) as u32;
     let mut rep = Report { budget_left: set.daily_tasks.saturating_sub(used), ..Default::default() };
     let mut allowed = rep.budget_left.min(r.max.unwrap_or(u32::MAX));
@@ -756,9 +796,6 @@ pub fn run(r: &Run<'_>) -> Result<Report, String> {
     let mut judged_now = judged.clone();
     for t in &q {
         let Some(name) = provider_for(&t.tool) else { continue };
-        if r.only.is_some_and(|o| o != name) {
-            continue;
-        }
         if allowed == 0 {
             rep.waiting += 1;
             continue;
@@ -792,7 +829,10 @@ pub fn run(r: &Run<'_>) -> Result<Report, String> {
                 "failed {} {} {:?}",
                 t.task_id,
                 name,
-                results.iter().map(|c| c.outcome.label().0).collect::<Vec<_>>()
+                results
+                    .iter()
+                    .map(|c| format!("{} {}", c.outcome.label().0, c.outcome.detail()).trim().to_owned())
+                    .collect::<Vec<_>>()
             ),
         };
         let _ = bounded_append(&r.paths.data.join("judge.log"), &line, LOG_MAX);
@@ -873,6 +913,14 @@ pub fn forget_judge_sessions(paths: &Paths, homes: &Homes) -> usize {
             n += 1;
         }
     }
+    // Judge calls since the sealed-home change keep their sessions in AIQ's own folder; kept ones go too.
+    if let Ok(rd) = std::fs::read_dir(paths.data.join("judge-work")) {
+        for e in rd.flatten() {
+            if e.file_name().to_string_lossy().starts_with("copilot-") && std::fs::remove_dir_all(e.path()).is_ok() {
+                n += 1;
+            }
+        }
+    }
     let _ = std::fs::remove_file(paths.data.join("judge-sessions.txt"));
     n
 }
@@ -910,8 +958,9 @@ const DISCLOSURE: &str = "AIQ judges each task you finish with AI: the rung it w
 What is sent: the task's prompts and a summary of what the agent did (tools, files, commands). Never your
 own edits or diffs. Where: only to the tool that already saw the task, through your own sign-in:
   Claude Code tasks → your Claude Code (`claude -p`, no tools, no hooks, no saved session)
-  Copilot tasks     → your Copilot CLI (`copilot -p`, no tools, MCP servers off; AIQ deletes the
-                      session it creates unless you keep them: aiq config set judge-copilot-sessions keep)
+  Copilot tasks     → your Copilot CLI (no tools, none of your plugins or MCP servers; it runs in AIQ's
+                      own folder, which AIQ deletes after each call unless you keep them:
+                      aiq config set judge-copilot-sessions keep)
 Judge calls use your plan's usage (two calls per task). A work account's admin policies, logging and
 retention apply to them. AIQ never reads or stores your sign-in.";
 
@@ -921,15 +970,13 @@ fn now() -> Now {
     Now { utc_ms: utc, offset_min: offset }
 }
 
-fn providers(paths: &Paths, homes: &Homes, set: &Settings) -> (ClaudeCli, CopilotCli) {
+fn providers(paths: &Paths, set: &Settings) -> (ClaudeCli, CopilotCli) {
     (
         ClaudeCli { exe: find_exe("claude"), model: set.claude_model.clone(), scratch: std::env::temp_dir() },
         CopilotCli {
             exe: find_exe("copilot"),
             model: set.copilot_model.clone(),
             work: paths.data.join("judge-work"),
-            mcp_servers: copilot_mcp_servers(&homes.copilot),
-            home: homes.copilot.clone(),
             keep_sessions: set.keep_copilot_sessions,
         },
     )
@@ -963,7 +1010,7 @@ pub fn cli(args: &[&str]) -> ExitCode {
     let homes = Homes::from_env();
     let n = now();
     if dry {
-        return dry_run(&store, &homes, n);
+        return dry_run(&store, &homes, n, only);
     }
     let Some(_lock) = Lock::take(lock_path(&paths)) else {
         if !auto {
@@ -979,7 +1026,7 @@ pub fn cli(args: &[&str]) -> ExitCode {
             set.daily_tasks
         );
     }
-    let (claude, copilot) = providers(&paths, &homes, &set);
+    let (claude, copilot) = providers(&paths, &set);
     let rep = run(&Run {
         store: &store,
         paths: &paths,
@@ -1042,7 +1089,7 @@ pub fn render(rep: &Report, daily: u32) -> String {
     o
 }
 
-fn dry_run(store: &Store, homes: &Homes, n: Now) -> ExitCode {
+fn dry_run(store: &Store, homes: &Homes, n: Now, only: Option<&str>) -> ExitCode {
     let pack = match aiq_core::pack::parse(aiq_core::pack::BUNDLED_TOML) {
         Ok(p) => p,
         Err(e) => {
@@ -1054,7 +1101,7 @@ fn dry_run(store: &Store, homes: &Homes, n: Now) -> ExitCode {
     let tasks = aiq_home::tasks(store, &pack, 0).unwrap_or_default();
     let judged = store.current_judgments().unwrap_or_default();
     let calls = store.judge_calls_since(n.utc_ms - 7 * DAY_MS).unwrap_or_default();
-    let q = queue(&tasks, &judged, &calls, n.utc_ms, pack.idle_gap_min as i64 * 60_000);
+    let q = queue(&tasks, &judged, &calls, n.utc_ms, pack.idle_gap_min as i64 * 60_000, only);
     let used = tasks_today(&calls, n.local_midnight_utc_ms()) as u32;
     println!("{DISCLOSURE}\n");
     println!(
@@ -1369,13 +1416,13 @@ mod tests {
             cost_usd: None,
         };
         let calls: Vec<CallOutcome> = (0..6).map(|i| fail(NOW - DAY_MS * 3 + i)).collect();
-        let q = queue(&tasks, &HashMap::new(), &calls, NOW, 30 * MIN);
+        let q = queue(&tasks, &HashMap::new(), &calls, NOW, 30 * MIN, None);
         let ids: Vec<&str> = q.iter().map(|t| t.task_id.as_str()).collect();
         assert_eq!(ids, vec!["new", "old"], "open is not closed; gone gave up after 6 failed calls");
         let one = vec![fail(NOW - 30 * MIN)];
-        let q = queue(&tasks, &HashMap::new(), &one, NOW, 30 * MIN);
+        let q = queue(&tasks, &HashMap::new(), &one, NOW, 30 * MIN, None);
         assert!(!q.iter().any(|t| t.task_id == "gone"), "within the first hour's back-off");
-        let q = queue(&tasks, &HashMap::new(), &one, NOW + 31 * MIN, 30 * MIN);
+        let q = queue(&tasks, &HashMap::new(), &one, NOW + 31 * MIN, 30 * MIN, None);
         assert!(q.iter().any(|t| t.task_id == "gone"));
     }
 
@@ -1401,50 +1448,69 @@ mod tests {
     }
 
     #[test]
-    fn copilot_call_is_sealed_and_turns_off_every_mcp_server() {
+    fn copilot_call_is_sealed_by_its_own_home() {
         let d = TempDir::new().unwrap();
-        std::fs::write(d.path().join("mcp-config.json"), r#"{"mcpServers":{"github":{},"playwright":{}}}"#).unwrap();
-        let servers = copilot_mcp_servers(d.path());
-        let c = CopilotCli {
-            exe: None,
-            model: None,
-            work: d.path().join("work"),
-            mcp_servers: servers,
-            home: d.path().to_owned(),
-            keep_sessions: false,
-        };
-        let a = c.args("0cb916db-26aa-40f2-86b5-1ba81b225fd2", Path::new("u.json"));
+        let c = CopilotCli { exe: None, model: None, work: d.path().join("work"), keep_sessions: false };
+        let id = "0cb916db-26aa-40f2-86b5-1ba81b225fd2";
+        let a = c.args(id, Path::new("u.json"));
         assert!(!a.contains(&"-p".to_string()), "the prompt never goes on the command line (S6)");
         let has = |pair: &[&str]| a.windows(pair.len()).any(|w| w.iter().zip(pair).all(|(x, y)| x == y));
         assert!(has(&["--available-tools="]));
         assert!(has(&["--no-custom-instructions"]));
         assert!(has(&["--disable-builtin-mcps"]));
-        assert!(has(&["--disable-mcp-server", "github"]) && has(&["--disable-mcp-server", "playwright"]));
-        assert!(has(&["--session-id", "0cb916db-26aa-40f2-86b5-1ba81b225fd2"]));
+        assert!(has(&["--output-format", "json"]));
+        assert!(has(&["--session-id", id]));
         assert!(has(&["--no-ask-user"]) && has(&["--sync-session=off"]) && has(&["--no-auto-update"]));
+        let logs = c.call_home(id).join("logs").display().to_string();
+        assert!(has(&["--log-dir", logs.as_str()]), "Copilot's logs stay in the call's own folder");
         assert!(!a.iter().any(|x| x.contains("allow-all")));
         assert!(!a.contains(&"--model".to_string()), "the person's default model unless set");
     }
 
+    fn line(ty: &str, data: Value) -> String {
+        json!({ "type": ty, "data": data }).to_string()
+    }
+
     #[test]
-    fn copilot_gets_the_prompt_on_stdin_with_aiq_internal_and_its_session_is_deleted_by_default() {
+    fn copilot_output_gives_the_final_answer_or_refuses_an_unsealed_call() {
+        let ans = r#"{"a":1}"#;
+        let ok = [
+            line("session.mcp_servers_loaded", json!({"servers": [{"name": "ado", "status": "disabled"}]})),
+            line("assistant.message", json!({"content": "thinking", "phase": "commentary", "toolRequests": []})),
+            line("assistant.message", json!({"content": ans, "phase": "final_answer", "toolRequests": []})),
+            "not json".into(),
+            line("result", json!({"exitCode": 0})),
+        ]
+        .join("\n");
+        assert_eq!(copilot_answer(&ok).unwrap(), ans);
+        let mcp = format!(
+            "{}\n{}",
+            line("session.mcp_servers_loaded", json!({"servers": [{"name": "workiq", "status": "connected"}]})),
+            line("assistant.message", json!({"content": ans, "phase": "final_answer"}))
+        );
+        assert!(matches!(copilot_answer(&mcp), Err(Outcome::Error(e)) if e.contains("not sealed")));
+        let tools = line("session.mcp_server_tools_loaded", json!({"name": "x", "toolCount": 12}));
+        assert!(matches!(copilot_answer(&tools), Err(Outcome::Error(_))));
+        let asked = line("assistant.message", json!({"content": ans, "toolRequests": [{"name": "bash"}]}));
+        assert!(matches!(copilot_answer(&asked), Err(Outcome::Error(e)) if e.contains("tool")));
+        assert!(matches!(copilot_answer(ans), Err(Outcome::Schema(_))), "plain text is not Copilot's JSON output");
+    }
+
+    #[test]
+    fn copilot_gets_the_prompt_on_stdin_and_a_sealed_home_that_is_deleted_by_default() {
         let d = TempDir::new().unwrap();
-        // A stand-in `copilot` that answers with JSON and leaves a session folder, as the real one does.
         let id = "0cb916db-26aa-40f2-86b5-1ba81b225fd2";
-        let sess = d.path().join("session-state").join(id);
         let mk = |keep: bool| CopilotCli {
             exe: Some(fake_copilot(d.path())),
             model: None,
             work: d.path().join("work"),
-            mcp_servers: vec![],
-            home: d.path().to_owned(),
             keep_sessions: keep,
         };
         for keep in [false, true] {
-            std::fs::create_dir_all(&sess).unwrap();
-            let r = mk(keep).call(&CallReq { system: "s", user: "u", schema: &json!({}), session_id: id });
+            let c = mk(keep);
+            let r = c.call(&CallReq { system: "s", user: "u", schema: &json!({}), session_id: id });
             assert!(matches!(r.outcome, Outcome::Ok(_)), "{:?}", r.outcome);
-            assert_eq!(sess.exists(), keep);
+            assert_eq!(c.call_home(id).exists(), keep);
         }
     }
 
@@ -1452,10 +1518,15 @@ mod tests {
     fn fake_copilot(dir: &Path) -> PathBuf {
         use std::os::unix::fs::PermissionsExt;
         let p = dir.join("copilot");
-        // Answers only when the prompt arrives on stdin and AIQ_INTERNAL=1 is set (S3, S6).
+        // Answers only when the prompt arrives on stdin, AIQ_INTERNAL=1 is set (S3, S6) and COPILOT_HOME is
+        // the call's own existing folder; writes a session there as the real one does.
         std::fs::write(
             &p,
-            "#!/bin/sh\nread -r first\n[ -n \"$first\" ] && [ \"$AIQ_INTERNAL\" = 1 ] && echo '{\"ok\": true}' || echo nope\n",
+            "#!/bin/sh\nread -r first\n[ -n \"$first\" ] && [ \"$AIQ_INTERNAL\" = 1 ] && [ -d \"$COPILOT_HOME\" ] \
+             && case \"$COPILOT_HOME\" in */work/copilot-*) true;; *) false;; esac \
+             && mkdir -p \"$COPILOT_HOME/session-state/x\" \
+             && echo '{\"type\":\"assistant.message\",\"data\":{\"content\":\"{\\\"ok\\\": true}\",\"phase\":\"final_answer\",\"toolRequests\":[]}}' \
+             || echo nope\n",
         )
         .unwrap();
         std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
@@ -1465,7 +1536,11 @@ mod tests {
     #[cfg(windows)]
     fn fake_copilot(dir: &Path) -> PathBuf {
         let p = dir.join("copilot.cmd");
-        std::fs::write(&p, "@if \"%AIQ_INTERNAL%\"==\"1\" (echo {\"ok\": true}) else (echo nope)\r\n").unwrap();
+        std::fs::write(
+            &p,
+            "@if \"%AIQ_INTERNAL%\"==\"1\" if exist \"%COPILOT_HOME%\" (echo {\"type\":\"assistant.message\",\"data\":{\"content\":\"{\\\"ok\\\": true}\",\"phase\":\"final_answer\",\"toolRequests\":[]}}) else (echo nope)\r\n",
+        )
+        .unwrap();
         p
     }
 
@@ -1474,12 +1549,14 @@ mod tests {
         let e = env();
         let id = "0cb916db-26aa-40f2-86b5-1ba81b225fd2";
         record_judge_session(&e.paths, id).unwrap();
+        let kept = e.paths.data.join("judge-work").join(format!("copilot-{id}"));
+        std::fs::create_dir_all(&kept).unwrap();
         let mine = e.homes.copilot.join("session-state").join(id);
         let theirs = e.homes.copilot.join("session-state").join("1cb916db-26aa-40f2-86b5-1ba81b225fd2");
         std::fs::create_dir_all(&mine).unwrap();
         std::fs::create_dir_all(&theirs).unwrap();
-        assert_eq!(forget_judge_sessions(&e.paths, &e.homes), 1);
-        assert!(!mine.exists() && theirs.exists());
+        assert_eq!(forget_judge_sessions(&e.paths, &e.homes), 2);
+        assert!(!mine.exists() && theirs.exists() && !kept.exists());
         assert!(import::judge_ids(&e.paths).is_empty());
     }
 

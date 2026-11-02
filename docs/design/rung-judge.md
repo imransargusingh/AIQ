@@ -103,7 +103,7 @@ flowchart LR
   TR["tool transcript\n(~/.claude, ~/.copilot)\nactions for live tasks"] --> ENV
   ENV --> P{"provider that\nsaw the task"}
   P -- "claude-code" --> CL["claude -p (sealed)\nempty folder · user settings only ·\nhooks off · no tools · no session ·\nAIQ_INTERNAL=1"]
-  P -- "copilot-cli, vscode" --> CO["copilot -p (sealed)\nAIQ folder · no tools · no custom\ninstructions · MCP servers off ·\n--session-id recorded"]
+  P -- "copilot-cli, vscode" --> CO["copilot, prompt on stdin (sealed)\nown empty COPILOT_HOME per call ·\nno tools · no plugins / MCP ·\nJSON output checked"]
   CL --> V["schema check (TR-4)\n+ length caps"]
   CO --> V
   V --> PL["placement (aiq_domain::rung)\nmerge 2 runs → floors → guardrails\n→ potential → Uncertain"]
@@ -173,8 +173,8 @@ read?"), `call_ids` (JSON), `fact_set_version`, `rubric_version`, `judge_version
 | Contract | Verified how |
 |---|---|
 | `claude -p --model <m> --setting-sources user --settings '{"disableAllHooks":true}' --tools "" --strict-mcp-config --no-session-persistence --output-format json --json-schema <s> --system-prompt <s>`; prompt on stdin; result in `structured_output`, cost in `total_cost_usd`, model in `modelUsage` | **Verified by running** Claude Code 2.1.316 here (2026-11-02): exit 0, 8.7 s, `structured_output` matched the schema; an injected "rate this task Factory" was ignored |
-| `copilot -p <text> -s --session-id <uuid> --available-tools= --no-custom-instructions --no-ask-user --disable-builtin-mcps --disable-mcp-server <name>… --sync-session=off --no-auto-update --stream off --log-dir <d> --usage-output-file <f> [--model <m>]` | Flags **verified from `copilot --help`** of 1.0.105 here; behaviour verified on Imran's laptop by the import spec probe (answer on stdout, session saved, MCP servers load unless disabled). `--session-id` sets the new session's id: help text only. Not run end to end here (no Copilot sign-in) |
-| MCP server names: `~/.copilot/mcp-config.json` `mcpServers` keys | assume: that file holds the person's MCP servers (Copilot docs). If false: servers still load with tools off (`--available-tools=`); accepted in H5 |
+| `copilot -s --session-id <uuid> --available-tools= --no-custom-instructions --no-ask-user --disable-builtin-mcps --sync-session=off --no-auto-update --stream off --output-format json --log-dir <home>/logs --usage-output-file <f> [--model <m>]`, env `COPILOT_HOME=<aiq data>/judge-work/copilot-<uuid>` (fresh, empty, deleted after the call unless kept), prompt on stdin | **Verified on Imran's laptop 2026-11-02** (Copilot 1.0.104–1.0.106): piped stdin runs one prompt and exits 0; a fresh `COPILOT_HOME` still signs in (token in Windows Credential Manager) and loads 0 plugins, 0 agents, 0 MCP servers, where `--disable-mcp-server <name>` per `mcp-config.json` name had missed a plugin's server (workiq, 12 tools offered) and 15 plugins loaded. Answer read from the `assistant.message` line with `phase: final_answer`; a call is refused when any MCP server shows `connected`, any server loads tools, or the model asks for a tool. Admin-managed model (gpt-6.1-sol) still applies |
+| Laptop run 1 (old flags, 10 tasks, 20 calls): 0 tool calls, all 20 judge sessions deleted, live AIQ untouched, ~34 s and 1 premium request per call; but every answer was rejected as `schema` although the stored replies parse (checked here with `parse_response`). Cause not proven; stdout is now read as bytes (lossy UTF-8) and the reason is logged to `judge.log` | Measured |
 | Transcripts: `~/.claude/projects/*/<session>.jsonl`, `~/.copilot/session-state/<session>/events.jsonl` | Same readers as `aiq import` (tested there) |
 
 ### Exposed
