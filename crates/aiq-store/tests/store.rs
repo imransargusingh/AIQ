@@ -72,9 +72,9 @@ fn decide(s: &Store, did: &str, cid: &str, outcome: &str, reason: &str, at: i64)
 }
 
 #[test]
-fn open_creates_latest_schema_version_5() {
+fn open_creates_latest_schema_version_6() {
     let (_d, s) = open();
-    assert_eq!(s.user_version().unwrap(), 5);
+    assert_eq!(s.user_version().unwrap(), 6);
 }
 
 #[test]
@@ -87,7 +87,7 @@ fn v1_store_migrates_to_latest_keeping_data() {
         assert_eq!(s.user_version().unwrap(), 1);
     }
     let s = Store::open(&p).unwrap();
-    assert_eq!(s.user_version().unwrap(), 5);
+    assert_eq!(s.user_version().unwrap(), 6);
     assert_eq!(s.events_by_kind().unwrap(), vec![("prompt".to_string(), 1)]);
     assert!(s.import_counts().unwrap().is_empty());
     s.insert_open("c1", "cli", 5).unwrap();
@@ -316,6 +316,8 @@ fn judgment(id: &str, task: &str, origin: &str, at: i64, rung: u8) -> JudgmentRo
         fact_set_version: "fs1".into(),
         rubric_version: "r1".into(),
         judge_version: "j1".into(),
+        task_type: None,
+        task_type_confidence: None,
     }
 }
 
@@ -374,4 +376,107 @@ fn judge_calls_are_read_back_by_time_and_forget_imported_takes_imported_judgment
     let cur = s.current_judgments().unwrap();
     assert_eq!(cur.keys().collect::<Vec<_>>(), vec!["e1"]);
     assert_eq!(s.judge_calls_since(0).unwrap().len(), 1);
+}
+
+// ------------------------------------------------------------ schema v6 (coaching from rung results)
+
+#[test]
+fn v5_store_migrates_to_v6_and_old_judgments_have_no_type() {
+    let d = TempDir::new().unwrap();
+    let p = d.path().join("aiq.db");
+    {
+        let s = Store::open_with(&p, &aiq_store::MIGRATIONS[..5]).unwrap();
+        assert_eq!(s.user_version().unwrap(), 5);
+        // A v5 row: written without the v6 columns.
+        s.raw()
+            .execute(
+                "INSERT INTO judgment (judgment_id, task_id, origin, provider, judged_utc_ms, job, job_confidence,
+                   model_rung, current_rung, current_confidence, potential_rung, potential_confidence, ceiling_rung,
+                   state, coachable, facts, evidence, gap, blockers, placement, read, call_ids, fact_set_version,
+                   rubric_version, judge_version)
+                 VALUES ('j0','t0','live','claude-code',1,'code_change',0.9,2,2,0.8,3,0.9,5,'judged',1,'{}','[\"x\"]','',
+                   '[]','[]','{}','[]','fs1','r1','j1')",
+                [],
+            )
+            .unwrap();
+        // Read-only before migrating (AIQ home on an older store): the type reads as unknown.
+        drop(s);
+        let ro = Store::open_read_only(&p).unwrap();
+        assert_eq!(ro.current_judgments().unwrap()["t0"].task_type, None);
+    }
+    let s = Store::open(&p).unwrap();
+    assert_eq!(s.user_version().unwrap(), 6);
+    let j = &s.current_judgments().unwrap()["t0"];
+    assert_eq!((j.task_type.as_deref(), j.judge_version.as_str()), (None, "j1"));
+    let mut typed = judgment("j1", "t1", "live", 2, 3);
+    typed.task_type = Some("tests".into());
+    typed.task_type_confidence = Some(0.9);
+    s.insert_judgment(&typed).unwrap();
+    assert_eq!(s.current_judgments().unwrap()["t1"].task_type.as_deref(), Some("tests"));
+}
+
+#[test]
+fn coaching_facts_are_append_only_and_read_back_in_order() {
+    let (_d, s) = open();
+    s.insert_type_guess(&aiq_store::TypeGuessRow {
+        guess_id: "g1".into(),
+        task_id: "e9".into(),
+        surface: "copilot-cli".into(),
+        job: "code_change".into(),
+        task_type: "tests".into(),
+        similarity: 0.5,
+        neighbours: vec!["a".into(), "b".into()],
+        utc_ms: 10,
+    })
+    .unwrap();
+    for (i, a) in ["not_helpful", "off", "on"].iter().enumerate() {
+        s.insert_tip_feedback(&aiq_store::TipFeedbackRow {
+            card_id: Some("c1".into()),
+            tip_id: "next_rung.agent_checks".into(),
+            answer: (*a).into(),
+            surface: "cli".into(),
+            utc_ms: 20 + i as i64,
+        })
+        .unwrap();
+    }
+    s.insert_guidance_flag(&aiq_store::GuidanceFlagRow {
+        job: "code_change".into(),
+        task_type: "tests".into(),
+        move_id: "agent_checks".into(),
+        action: "flag".into(),
+        reason: Some("not_useful".into()),
+        note: None,
+        utc_ms: 30,
+    })
+    .unwrap();
+    assert_eq!(s.type_guesses().unwrap()[0].neighbours, vec!["a".to_string(), "b".to_string()]);
+    let fb: Vec<String> = s.tip_feedback_all().unwrap().into_iter().map(|f| f.answer).collect();
+    assert_eq!(fb, vec!["not_helpful", "off", "on"]);
+    assert_eq!(s.guidance_flags_all().unwrap()[0].move_id, "agent_checks");
+    for t in ["type_guess", "tip_feedback", "guidance_flag"] {
+        let e = s.raw().execute(&format!("UPDATE {t} SET utc_ms = 0"), []).unwrap_err();
+        assert!(e.to_string().contains("AIQ-STORE-APPEND-ONLY"), "{t}: {e}");
+    }
+    assert!(
+        s.insert_tip_feedback(&aiq_store::TipFeedbackRow {
+            card_id: None,
+            tip_id: "x".into(),
+            answer: "love_it".into(),
+            surface: "cli".into(),
+            utc_ms: 1,
+        })
+        .is_err(),
+        "answer is a closed set"
+    );
+    assert_ne!(s.coach_fingerprint().unwrap(), (0, 0, 0));
+}
+
+#[test]
+fn first_prompt_of_live_and_imported_tasks() {
+    let (_d, mut s) = open();
+    s.insert_event(&ev("e1", "s", Some("write tests for the parser")), 1).unwrap();
+    let (_, text) = s.task_first_prompt("e1").unwrap().unwrap();
+    assert_eq!(text.as_deref(), Some("write tests for the parser"));
+    assert_eq!(s.task_first_prompt("nope").unwrap(), None);
+    assert_eq!(s.task_first_prompt("import:bad").unwrap(), None);
 }

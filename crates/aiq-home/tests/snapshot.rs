@@ -60,8 +60,9 @@ fn tasks_follow_the_task_rule_window_and_set_aside() {
     assert_eq!((s.home.judged, s.home.uncertain), (2, 1));
     assert_eq!(s.home.rungs, [0, 1, 0, 0, 0], "Uncertain judgments are not counted on a rung");
     assert_eq!(s.home.most_common_rung, Some(2));
-    assert_eq!(s.home.next_steps.len(), 1);
-    assert_eq!((s.home.next_steps[0].current, s.home.next_steps[0].potential), (2, 3));
+    // Next steps are per kind of task now (coaching): two judged tasks of unknown kind make no row.
+    assert!(s.coaching.opportunities.is_empty());
+    assert_eq!(s.coaching.untyped, 1, "the non-Uncertain judged task has no kind yet (j1)");
     let j = s.tasks[1].judgment.as_ref().unwrap();
     assert_eq!(j.evidence[1], "You checked the diff before keeping it <b>bold</b>.", "kept as text");
     assert_eq!((j.read_prompts, j.read_actions), (3, true));
@@ -230,4 +231,80 @@ fn setup_done_follows_the_flag() {
     let s = snap(&p);
     assert!(s.setup.done);
     assert_eq!(s.setup.tools.iter().map(|t| t.tool).collect::<Vec<_>>(), vec!["claude-code", "copilot"]);
+}
+
+/// A coaching judgment: Delegated, the person ran the checks (the kind coaches the step-3 moves).
+
+#[test]
+fn coaching_split_kinds_habits_and_settings_derive_from_judgments() {
+    let d = tempfile::TempDir::new().unwrap();
+    let paths = Paths::at(d.path());
+    let mut sd = Seed::new(&paths);
+    let mut ids = vec![];
+    // Eleven tasks two hours apart, so each prompt is its own task.
+    for i in 0..11 {
+        ids.push(sd.prompt(
+            "copilot-cli",
+            &format!("s{i}"),
+            NOW - (i + 1) * 2 * 60 * MIN,
+            Some(AIQ),
+            "write unit tests for the parser",
+        ));
+    }
+    for (i, id) in ids.iter().enumerate() {
+        let row = match i {
+            0..=5 => coach_row(id, "code_change", "tests", 3, "judged", 0), // finished
+            6 => coach_row(id, "code_change", "tests", 3, "judged", 1), // corrected: could finish (tests coaches 3 → 4)
+            7 | 8 => coach_row(id, "code_change", "fix_bug", 1, "right_rung", 0), // needs you
+            9 => coach_row(id, "code_change", "fix_bug", 1, "right_rung", 0),
+            _ => coach_row(id, "code_change", "tests", 3, "uncertain", 0), // left out
+        };
+        sd.store.insert_judgment(&row).unwrap();
+    }
+    sd.store
+        .insert_guidance_flag(&aiq_store::GuidanceFlagRow {
+            job: "code_change".into(),
+            task_type: "fix_bug".into(),
+            move_id: "brief".into(),
+            action: "flag".into(),
+            reason: Some("other".into()),
+            note: None,
+            utc_ms: NOW - MIN,
+        })
+        .unwrap();
+    sd.store
+        .insert_tip_feedback(&aiq_store::TipFeedbackRow {
+            card_id: None,
+            tip_id: "next_rung.agent_checks".into(),
+            answer: "off".into(),
+            surface: "cli".into(),
+            utc_ms: NOW - MIN,
+        })
+        .unwrap();
+    drop(sd);
+    let s = snap(&paths);
+    let c = &s.coaching;
+    assert_eq!((c.split.tasks, c.split.finished, c.split.could, c.split.needs, c.split.uncertain), (10, 6, 1, 3, 1));
+    assert_eq!(c.split.finished + c.split.could + c.split.needs, c.split.tasks);
+    assert!(c.rule.contains("Delegated or higher") && c.rule.contains("no re-prompt correcting"));
+    let tests = c.kinds.iter().find(|k| k.task_type == "tests").unwrap();
+    assert_eq!(
+        (tests.state, tests.today, tests.potential, tests.tasks, tests.uncertain),
+        ("coach", Some(3), Some(4), 8, 1)
+    );
+    assert_eq!(tests.label, "Writing tests");
+    assert_eq!(tests.next.as_ref().unwrap().move_id, "written_brief");
+    assert_eq!(tests.last_gap.as_deref(), Some("Give the agent <b>a brief</b>."), "judge text kept as plain text");
+    let fix = c.kinds.iter().find(|k| k.task_type == "fix_bug").unwrap();
+    assert_eq!(fix.state, "right_rung");
+    assert_eq!(c.opportunities.len(), 1);
+    assert_eq!(c.opportunities[0].task_type, "tests");
+    assert!(c.habits.iter().any(|h| h.move_id == "agent_checks" && h.state == "not_yet" && h.eligible == 10));
+    assert!(c.habits.iter().any(|h| h.move_id == "brief" && h.state == "adopted"));
+    assert_eq!(s.settings.next_rung_tips, "auto");
+    assert!(s.settings.next_rung_on && !s.settings.guess_auto_off);
+    assert_eq!(s.settings.tips_off, vec!["next_rung.agent_checks".to_string()]);
+    let j = s.tasks.iter().find(|t| t.task_id == ids[0]).unwrap().judgment.as_ref().unwrap();
+    assert_eq!(j.task_type_label, Some("Writing tests"));
+    assert_eq!(c.weeks.iter().map(|w| w.tasks).sum::<u32>(), 10);
 }

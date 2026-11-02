@@ -5,7 +5,7 @@ import * as fs from "node:fs";
 import * as net from "node:net";
 import * as os from "node:os";
 import * as path from "node:path";
-import { Card, CoreClient, DOWN_POLL_MS, POLL_MS, coreClient, detailsText, executableCandidates, notificationText, pollOnce, request, statusText } from "../core";
+import { Card, CoreClient, DOWN_POLL_MS, FEEDBACK_BUTTONS, POLL_MS, coreClient, detailsText, executableCandidates, notificationText, pollOnce, request, statusText } from "../core";
 
 const card: Card = {
   schema: "aiq.card.v1",
@@ -28,6 +28,7 @@ function fake(o: { paused?: boolean; take?: Card | null | undefined }): CoreClie
       return o.take;
     },
     show: async () => null,
+    feedback: async () => true,
   };
   return c;
 }
@@ -118,4 +119,23 @@ test("request_realSocket_sendsTokenAndParsesReply_wrongTokenGetsNull", async () 
   } finally {
     server.close();
   }
+});
+
+test("detailsText_nextRung_starterAndKindsNeverPromptText", () => {
+  const c: Card = { ...card, opportunity_id: "next_rung", tip_id: "next_rung.agent_checks", starter: "Run <command>." };
+  const d = detailsText({
+    card: c,
+    outcome: "show_ready",
+    reason_code: "ok",
+    delivered: true,
+    evidence: [],
+    leaned_on: [{ ts: "2026-11-01T10:00:00Z", tool: "copilot-cli", task_type: "Writing tests" }],
+  });
+  assert.ok(d.includes("Run <command>."));
+  assert.ok(d.includes("copilot-cli  Writing tests"));
+  assert.ok(!d.includes("prompts it counted"));
+});
+
+test("feedbackButtons_matchTheCoreAnswers", () => {
+  assert.deepEqual(FEEDBACK_BUTTONS.map(([, a]) => a), ["helpful", "not_helpful", "snooze", "off"]);
 });

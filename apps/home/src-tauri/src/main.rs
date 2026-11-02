@@ -84,7 +84,7 @@ async fn pause(on: bool) -> Result<Snapshot, String> {
 
 /// Only the settings AIQ home shows can be changed from it; the core validates the value.
 fn allowed_setting(key: &str) -> bool {
-    matches!(key, "daily_cap" | "copilot_tip_stays")
+    matches!(key, "daily_cap" | "copilot_tip_stays" | "next_rung_tips")
 }
 
 #[tauri::command]
@@ -159,6 +159,42 @@ async fn forget_item(event_id: String) -> Result<Outcome, String> {
     .await
 }
 
+/// "This doesn't fit" (action `flag` with a reason) or its undo, for one kind of task's next step
+/// (design coaching-from-rungs D8). Through the core when it runs, else directly in the store.
+#[tauri::command]
+async fn guidance_flag(job: String, task_type: String, move_id: String, action: String, reason: Option<String>) -> Result<Outcome, String> {
+    blocking(move || {
+        let t = Instant::now();
+        let paths = Paths::from_env();
+        let r = control::guidance_flag(&paths, &job, &task_type, &move_id, &action, reason.as_deref(), None, CORE_TIMEOUT)
+            .map_err(|e| match e {
+                ControlError::NotRunning => NOT_RUNNING.to_owned(),
+                ControlError::Refused(m) => format!("Not changed: {m}"),
+                ControlError::Io(m) => m,
+            });
+        log(&paths, "guidance_flag", t, &format!("action={action} {}", if r.is_ok() { "ok" } else { "refused" }));
+        Outcome::from(r)
+    })
+    .await
+}
+
+/// "Turn back on" for a tip the person turned off.
+#[tauri::command]
+async fn tip_on(tip_id: String) -> Result<Outcome, String> {
+    blocking(move || {
+        let t = Instant::now();
+        let paths = Paths::from_env();
+        let r = control::tip_feedback(&paths, None, Some(&tip_id), "on", "home", CORE_TIMEOUT).map_err(|e| match e {
+            ControlError::NotRunning => NOT_RUNNING.to_owned(),
+            ControlError::Refused(m) => format!("Not changed: {m}"),
+            ControlError::Io(m) => m,
+        });
+        log(&paths, "tip_on", t, if r.is_ok() { "ok" } else { "refused" });
+        Outcome::from(r)
+    })
+    .await
+}
+
 /// First-run setup finished: AIQ home opens on Home from now on.
 #[tauri::command]
 async fn finish_setup() -> Result<Snapshot, String> {
@@ -175,7 +211,17 @@ async fn finish_setup() -> Result<Snapshot, String> {
 
 fn main() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![snapshot, pause, set_setting, forget_all, task, forget_item, finish_setup])
+        .invoke_handler(tauri::generate_handler![
+            snapshot,
+            pause,
+            set_setting,
+            forget_all,
+            task,
+            forget_item,
+            finish_setup,
+            guidance_flag,
+            tip_on
+        ])
         .run(tauri::generate_context!())
         .expect("AIQ home could not start its window");
 }
@@ -188,6 +234,7 @@ mod tests {
     fn only_shown_settings_can_change() {
         assert!(allowed_setting("daily_cap"));
         assert!(allowed_setting("copilot_tip_stays"));
+        assert!(allowed_setting("next_rung_tips"));
         assert!(!allowed_setting("paused"));
         assert!(!allowed_setting("anything"));
     }

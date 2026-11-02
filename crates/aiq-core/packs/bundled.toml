@@ -2,7 +2,7 @@
 # Every number here is uncalibrated pack data; the real-data week tunes it (design: assume: lines).
 schema = "aiq.pack.v1"
 pack_id = "aiq.core"
-version = "bundled-4"
+version = "bundled-5"
 idle_gap_min = 30
 
 [reprompt]
@@ -54,3 +54,137 @@ opportunity_id = "reprompt"
 noticed = "you've reworded this request {count} times without adding new details."
 why = "rewording alone rarely changes the result; the agent needs something new to go on."
 try_this = "say what was wrong with the last answer, and add one example, file or constraint."
+
+# Coaching from rung results (docs/design/coaching-from-rungs.md). Spec values are marked; every other
+# number is a first guess until measured on real use (match_threshold: set from `aiq coach check-guess`).
+[coach]
+window_days = 30          # Home's window (spec Q3)
+recurring_min = 3         # D3; same as the habit minimum
+type_majority = 0.5       # D3: more than half
+match_threshold = 0.45    # guess
+match_agree = 2           # guess
+match_top = 3             # guess
+guess_check_min = 10      # D10
+guess_precision = 0.8     # D10; mirrors the 0.8 coaching bar
+move_cooldown_h = 72      # D12
+split_min = 10            # aiq-home US-H2 (spec)
+week_min = 3              # guess
+kept_rule = "delegated_no_correction"   # Imran 2026-11-02 (Q-A), until F2 exists
+snooze_days = 7           # coaching-loop US-4 (spec)
+not_helpful_days = 30     # coaching-loop US-4 (spec)
+habit_days = 14           # coaching-loop D5 (spec)
+habit_min = 3             # coaching-loop D5 (spec)
+
+# Moves, in pack order (ties between moves go to the earlier one). Text is pack-written: a card never
+# carries model text, a rung name or a number (coaching-loop Part C).
+[[moves]]
+move_id = "brief"
+step = 1
+facts = ["F4"]
+job = "any"
+# F4 read right only 10 of 15 in the real-data fact check (PR #27, measured): coach its "no" only when sure.
+min_confidence = 0.8
+habit = "Give the agent the goal, context and limits up front"
+noticed = "this looks like {type}. Last times, the request had no goal or limits."
+why = "a request with the goal, the context and the limits lets the agent get it right the first time."
+try_this = "start with what done looks like, what it touches, and what it must not change."
+starter = "Goal: <what done looks like>. Context: <files, background>. Limits: <what not to change>. Then: <the task>."
+
+[[moves]]
+move_id = "new_info"
+step = 1
+facts = ["F5"]
+job = "any"
+habit = "Say what was wrong before asking again"
+noticed = "this looks like {type}. Last times, rewording alone cost extra rounds."
+why = "rewording alone rarely changes the result; the agent needs something new to go on."
+try_this = "when an answer misses, say what was wrong and add one example, file or constraint."
+starter = "That missed because <what was wrong>. Here is <an example, file or constraint>. Try again with that."
+
+[[moves]]
+move_id = "check_code"
+step = 1
+facts = ["F6"]
+job = "code_change"
+habit = "Check the diff or run the tests before using the result"
+noticed = "this looks like {type}. Last times, the result was used without a check."
+why = "a quick look at the diff or a test run catches most agent mistakes before they cost you."
+try_this = "read the diff or run the tests before you use the change."
+starter = "Show me the diff, then run <test command> and tell me what passed and failed."
+
+[[moves]]
+move_id = "check_sources"
+step = 1
+facts = ["F6"]
+job = "write_doc"
+habit = "Check drafted claims against a source"
+noticed = "this looks like {type}. Last times, the draft's claims went unchecked."
+why = "drafted claims can sound right and be wrong; a source check keeps the doc true."
+try_this = "ask the agent to list each claim with its source, then spot-check them."
+starter = "List every factual claim in the draft with the source it came from. Mark any claim without a source."
+
+[[moves]]
+move_id = "hand_over"
+step = 2
+facts = ["F13"]
+job = "code_change"
+habit = "Hand over the whole task with a done test"
+noticed = "this looks like {type}. Last times, you handed it over a step at a time."
+why = "an agent with the whole task and a done test can plan the steps itself."
+try_this = "give the whole outcome and how you'll know it's done, then review the result."
+starter = "<The whole change>. Done means <test or check that passes>. Make all the edits, then show me the diff."
+
+[[moves]]
+move_id = "hand_over_doc"
+step = 2
+facts = ["F13"]
+job = "write_doc"
+habit = "Ask for the whole draft with what done means"
+noticed = "this looks like {type}. Last times, you asked for it a section at a time."
+why = "asking for the whole draft with what done means lets the agent keep it consistent."
+try_this = "ask for the complete draft and say what a finished one must contain."
+starter = "Write the whole <doc>. Done means it covers <sections> for <reader>. Then list what you were unsure of."
+
+[[moves]]
+move_id = "let_agent_edit"
+step = 2
+facts = ["F1", "F12"]
+job = "code_change"
+habit = "Let the agent make the edits"
+noticed = "this looks like {type}. Last times, you made most edits yourself."
+why = "when the agent makes the edits, you review one result instead of steering each step."
+try_this = "let the agent edit the files, and review the diff when it's done."
+starter = "Make the change in <files> yourself. When you're done, show me the diff and what you checked."
+
+[[moves]]
+move_id = "written_brief"
+step = 3
+facts = ["F7"]
+job = "any"
+habit = "Give the agent a written brief or instructions file"
+noticed = "this looks like {type}. A written brief would let the agent plan it alone."
+why = "a written brief or instructions file carries the context every time, so the agent can plan alone."
+try_this = "save the goal, rules and checks for this kind of task in a file and point the agent at it."
+starter = "Read <brief or instructions file>. Plan the steps, do them, and check each one against the brief."
+
+[[moves]]
+move_id = "agent_checks"
+step = 3
+facts = ["F3"]
+job = "code_change"
+habit = "Ask the agent to run the tests itself"
+noticed = "this looks like {type}. Last times, you ran the checks yourself."
+why = "an agent that runs the checks can fix what fails before it hands back."
+try_this = "ask the agent to run the tests and keep fixing until they pass."
+starter = "<The task>. Run the tests with <command>. Keep fixing until they all pass, then show me the diff and the test output."
+
+[[moves]]
+move_id = "split_and_check"
+step = 3
+facts = ["F8"]
+job = "any"
+habit = "Split the work with an automated check between steps"
+noticed = "this looks like {type}. A check between steps would let agents run it alone."
+why = "an automated check between steps catches a bad step before the next one builds on it."
+try_this = "split the work into steps for sub-agents, with a test or check the agent runs between them."
+starter = "Split <the task> into steps. Give each step to a sub-agent, and run <check> after each before going on."

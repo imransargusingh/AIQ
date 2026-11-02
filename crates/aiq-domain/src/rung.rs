@@ -8,11 +8,14 @@ use aiq_contracts::judge::{ActionSummary, Fact, Response};
 /// Stamped on every judgment. Bump on any change to the fact set, the rules below, or the prompt.
 pub const FACT_SET_VERSION: &str = "fs1";
 pub const RUBRIC_VERSION: &str = "r1";
-pub const JUDGE_VERSION: &str = "j1";
+/// j2: the answer names a task type (design coaching-from-rungs D1); j1 judgments are re-judged lazily.
+pub const JUDGE_VERSION: &str = "j2";
 /// A model fact below this confidence counts as unknown (D10: the spike's correct facts sat at 0.5–0.6).
 pub const FACT_THRESHOLD: f64 = 0.6;
 /// Job below this confidence is Unclassified (spike: 100% precision at 0.7).
 pub const JOB_THRESHOLD: f64 = 0.7;
+/// Task type below this confidence, or runs that disagree, is `other` within the job (same bar as the job).
+pub const TASK_TYPE_THRESHOLD: f64 = 0.7;
 /// Potential confidence needed before a gap may be coached (US-6).
 pub const COACH_THRESHOLD: f64 = 0.8;
 /// Tasks judged per day unless the person sets another number (D5; a guess to tune, TR-8).
@@ -322,6 +325,12 @@ JOB (what the task is for, never the person's title):
 - other: questions and learning, research, data analysis, status updates, environment troubleshooting, reviewing someone else's work.
 job_confidence: your probability (0-1) that the job is right.
 
+TASK TYPE (the kind of task within its job; use other when none fits or you are unsure):
+- code_change: fix_bug (fixing a bug or failing test), feature (adding a feature), tests (writing tests), refactor (refactoring or cleaning up), build_fix (fixing lint and build errors), deps (upgrading dependencies), review (reviewing code or a pull request), explain (explaining or exploring code), scaffold (setting up or scaffolding), other.
+- write_doc: spec (a spec or PRD), design_note (a design note), status (a status update), criteria (acceptance criteria), research (summarising research), howto (a README or how-to), notes (turning notes into a summary), other.
+- job other: answer other.
+task_type_confidence: your probability (0-1) that the task type is right.
+
 FACTS (value and confidence 0-1; when the task does not show it, give your best reading with low confidence):
 f4 the request stated a goal, context and constraints (not a short ad hoc ask).
 f5 every re-prompt added new information (true if there were no re-prompts).
@@ -599,6 +608,99 @@ pub fn gate(f: &Facts, rung: u8) -> Gate {
     }
 }
 
+/// Every need of `rung`'s guardrail that is not met, in guardrail order (design coaching-from-rungs: the
+/// move is derived from these). `gate()` stops at the first; this lists them all.
+pub fn missing(f: &Facts, rung: u8) -> Vec<Gate> {
+    let mut out = Vec::new();
+    let mut push = |g: Option<Gate>| out.extend(g);
+    match rung {
+        2 => {
+            if f.reprompts >= 2 && f.f5.no() {
+                push(Some(Gate::Fails("F5")));
+            }
+            push(need(&f.f4));
+            push(need(&f.f6));
+        }
+        3 => {
+            if f.f12.yes() {
+                push(Some(Gate::Fails("F12")));
+            }
+            if f.f2_person_share.is_some_and(|s| s >= 50) {
+                push(Some(Gate::Fails("F2")));
+            }
+            push(need(&f.f1));
+            push(need(&f.f13));
+            push(need(&f.f6));
+        }
+        4 => {
+            out.extend(missing(f, 3));
+            out.extend(need(&f.f7));
+            out.extend(need(&f.f8));
+            out.extend(checks_by_agent(f));
+        }
+        5 => {
+            out.extend(need(&f.f9));
+            out.extend(checks_by_agent(f));
+        }
+        _ => {}
+    }
+    out
+}
+
+/// Rebuild the merged facts from a stored judgment's `facts` JSON (the shape `aiq judge` writes), so the
+/// coaching rules read a stored judgment with the same guardrails that placed it. `reprompts` comes from the
+/// judgment's `read` record. Missing facts are unknown.
+pub fn facts_from_json(json: &str, reprompts: u32) -> Facts {
+    let v = aiq_contracts::judge::parse_stored_facts(json);
+    let m = |id: &'static str| match v.get(id) {
+        Some(e) => Merged {
+            id,
+            value: e.value,
+            confidence: e.confidence,
+            source: if e.log { Source::Log } else { Source::Model },
+            disputed: e.disputed,
+        },
+        None => Merged { id, value: None, confidence: 0.0, source: Source::Model, disputed: false },
+    };
+    let f3 = match v.get("F3").and_then(|e| e.checker.as_deref()) {
+        Some("agent") => Some(Checker::Agent),
+        Some("person") => Some(Checker::Person),
+        Some("nobody") => Some(Checker::Nobody),
+        _ => None,
+    };
+    let f7 = m("F7");
+    Facts {
+        f1: m("F1"),
+        f3,
+        f4: m("F4"),
+        f5: m("F5"),
+        f6: m("F6"),
+        f7_log: if f7.source == Source::Log { f7 } else { Merged::log("F7", None) },
+        f7,
+        f8: m("F8"),
+        f9: m("F9"),
+        f12: m("F12"),
+        f13: m("F13"),
+        fit: m("fit"),
+        f2_person_share: None,
+        reprompts,
+    }
+}
+
+/// Re-prompts that corrected the agent: a prompt after the first that opens with one of the correction cues
+/// (the re-prompt detector's pack `cues`, so one definition). The interim "finished" rule reads this (Imran,
+/// 2026-11-02 Q-A: judged Delegated or higher with no correcting re-prompt).
+pub fn corrections(turns: &[Turn], p: &aiq_contracts::pack::RepromptParams) -> u32 {
+    turns
+        .iter()
+        .skip(1)
+        .filter(|t| {
+            let f = crate::text::features(&t.prompt, p);
+            p.cues.iter().any(|c| f.normalized.starts_with(c.as_str()))
+        })
+        .count() as u32
+}
+
 /// Floor (Q9): log- and repo-verifiable facts only. Factory needs F9 (unknown in slice 1, J5).
 pub fn floor(f: &Facts) -> u8 {
     let agent = f.f3 == Some(Checker::Agent);
@@ -642,6 +744,9 @@ pub struct Placement {
     /// code_change, write_doc, or unclassified.
     pub job: String,
     pub job_confidence: f64,
+    /// Task type id within the job (`other` when unsure); None when the job is unclassified.
+    pub task_type: Option<String>,
+    pub task_type_confidence: f64,
     pub state: State,
     pub uncertain: bool,
     pub coachable: bool,
@@ -670,6 +775,16 @@ pub fn place(runs: &[Response], log: &LogFacts, same_job_recent: u32) -> (Facts,
         uncertain = true;
         "unclassified".to_owned()
     };
+
+    // Task type (design coaching-from-rungs D1): runs agree, confident, and on the job's list; else `other`.
+    let type0 = &runs[0].task_type;
+    let type_conf = runs.iter().map(|r| r.task_type_confidence).fold(1.0_f64, f64::min);
+    let task_type = (job != "unclassified").then(|| {
+        let ok = runs.iter().all(|r| &r.task_type == type0)
+            && type_conf >= TASK_TYPE_THRESHOLD
+            && aiq_contracts::judge::task_type_label(&job, type0).is_some();
+        if ok { type0.clone() } else { "other".to_owned() }
+    });
 
     let model_rung = runs.iter().map(|r| r.current_rung).min().unwrap_or(1);
     let fl = floor(&facts);
@@ -737,6 +852,8 @@ pub fn place(runs: &[Response], log: &LogFacts, same_job_recent: u32) -> (Facts,
             ceiling,
             job,
             job_confidence: job_conf,
+            task_type,
+            task_type_confidence: type_conf,
             state,
             uncertain,
             coachable,
@@ -765,6 +882,8 @@ mod tests {
         Response {
             job: "code_change".into(),
             job_confidence: 0.9,
+            task_type: "fix_bug".into(),
+            task_type_confidence: 0.9,
             f4_goal_context_constraints: yes(0.9),
             f5_reprompts_added_information: yes(0.9),
             f6_output_checked: yes(0.9),
@@ -1044,6 +1163,94 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn task_type_needs_agreement_confidence_and_the_jobs_list() {
+        let l = log_facts(&turns(&["a"], None), false);
+        let r = run(2);
+        let (_, p) = place(&[r.clone(), r.clone()], &l, 0);
+        assert_eq!(p.task_type.as_deref(), Some("fix_bug"));
+        let mut b = r.clone();
+        b.task_type = "tests".into();
+        let (_, p) = place(&[r.clone(), b], &l, 0);
+        assert_eq!(p.task_type.as_deref(), Some("other"), "runs disagree");
+        let mut lc = r.clone();
+        lc.task_type_confidence = 0.6;
+        let (_, p) = place(&[lc.clone(), lc], &l, 0);
+        assert_eq!(p.task_type.as_deref(), Some("other"), "below 0.7");
+        let mut wrong = r.clone();
+        wrong.task_type = "spec".into();
+        let (_, p) = place(&[wrong.clone(), wrong], &l, 0);
+        assert_eq!(p.task_type.as_deref(), Some("other"), "spec is not a code_change type");
+        let mut un = r.clone();
+        un.job = "other".into();
+        let (_, p) = place(&[un.clone(), un], &l, 0);
+        assert_eq!(p.task_type, None, "unclassified has no type");
+    }
+
+    #[test]
+    fn missing_lists_every_unmet_need_and_gate_agrees_on_the_first() {
+        let mut r = run(2);
+        r.f13_whole_outcome_handed_over = no(0.9);
+        r.f12_step_by_step = yes(0.9);
+        let l = log_facts(&turns(&["x"], acts(&[("Read", 1)], &[], &[], 0)), true);
+        let f = merge_facts(&[r.clone(), r], &l);
+        let m = missing(&f, 3);
+        assert_eq!(m, vec![Gate::Fails("F12"), Gate::Fails("F1"), Gate::Fails("F13")]);
+        assert_eq!(gate(&f, 3), m[0]);
+        assert!(missing(&f, 2).is_empty(), "Directed holds");
+        assert_eq!(gate(&f, 2), Gate::Holds);
+        let m4 = missing(&f, 4);
+        assert!(m4.contains(&Gate::Fails("F7")) && m4.contains(&Gate::Fails("F3")));
+    }
+
+    #[test]
+    fn facts_round_trip_through_the_stored_json() {
+        let r = run(3);
+        let f = merge_facts(&[r.clone(), r], &agent_edit_log());
+        let mut parts: Vec<String> = f
+            .all()
+            .iter()
+            .map(|m| {
+                let v = m.value.map_or("null".to_owned(), |b| b.to_string());
+                let src = if m.source == Source::Log { "log" } else { "model" };
+                format!(
+                    r#""{}":{{"value":{v},"confidence":{},"source":"{src}","disputed":{}}}"#,
+                    m.id, m.confidence, m.disputed
+                )
+            })
+            .collect();
+        parts.push(r#""F3":{"value":"agent","source":"log"}"#.into());
+        let back = facts_from_json(&format!("{{{}}}", parts.join(",")), f.reprompts);
+        for rung in 2..=5 {
+            assert_eq!(missing(&back, rung), missing(&f, rung), "rung {rung}");
+        }
+        let empty = facts_from_json("{}", 0);
+        assert_eq!(missing(&empty, 2), vec![Gate::Unknown("F4"), Gate::Unknown("F6")]);
+    }
+
+    #[test]
+    fn corrections_count_cue_led_reprompts_only() {
+        let p = aiq_contracts::pack::RepromptParams {
+            detector_id: "r".into(),
+            detector_version: 1,
+            opportunity_id: "r".into(),
+            core_opportunity: true,
+            similarity: 0.6,
+            max_new_words: 4,
+            threshold: 3,
+            window: 8,
+            min_word_len: 3,
+            stop_words: vec![],
+            cues: vec!["try again".into(), "that's wrong".into(), "not working".into()],
+            span_surfaces: vec![],
+        };
+        let t = turns(
+            &["Try again please", "add a test for the parser", "That's wrong, the cap is 5", "not working"],
+            None,
+        );
+        assert_eq!(corrections(&t, &p), 2, "the first prompt never counts");
     }
 
     #[test]

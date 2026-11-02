@@ -1,17 +1,19 @@
 //! The single writer / decision loop's logic: ingest, detect, decide, take-card, expire.
 //! Owned by exactly one thread, so the Coaching-session invariant is a sequential check; the unique
 //! delivery index in the store backs it up.
+use crate::coaching;
 use crate::counters::Counters;
 use crate::sysclock::{format_rfc3339_ms, parse_rfc3339_ms};
 use aiq_contracts::card::CardV1;
 use aiq_contracts::codes;
 use aiq_contracts::event::{EventBody, EventV1, MAX_SESSION_ID};
-use aiq_contracts::frames::{EvidencePrompt, ShowReply, StatusReply};
+use aiq_contracts::frames::{CoachStatus, EvidencePrompt, LeanedOn, ShowReply, StatusReply};
 use aiq_contracts::pack::PackV1;
 use aiq_domain::automated::{Guard, Verdict, folder_key};
-use aiq_domain::card::compose;
+use aiq_domain::card::{compose, compose_move};
 use aiq_domain::clock::{Clock, deliveries_counted_today};
-use aiq_domain::job::{AlwaysUnclassified, JobClassifier};
+use aiq_domain::coach::{self, HabitState, TipPref};
+use aiq_domain::job::{AlwaysUnclassified, Job, JobClassifier};
 use aiq_domain::reprompt::{Engine, PromptObs, SignalDraft};
 use aiq_domain::text::features;
 use aiq_domain::tipline::{TipLine, TipStays, tip_line_state};
@@ -36,10 +38,32 @@ pub struct Service<C: Clock> {
     /// Folder keys where a claude.ai Projects / Remote Control session was set aside (rule RC), so
     /// "Include them" can be offered there although no folder rule exists. In memory; bounded.
     projects_folders: std::collections::HashSet<String>,
+    /// Coaching inputs derived from the store (design coaching-from-rungs); rebuilt when stale.
+    coach: Option<coaching::Cache>,
+    /// AIQ-COACH-GUESS-LOW is logged once per core run.
+    guess_low_logged: bool,
+}
+
+/// One signal to decide on: the detector's fields and the card it would show.
+struct Pending<'a> {
+    task_id: &'a str,
+    detector_id: &'a str,
+    detector_version: u32,
+    opportunity_id: &'a str,
+    reprompt_count: u32,
+    score: f64,
+    evidence: &'a [String],
+    job: Job,
+    core_opportunity: bool,
+    threshold: f64,
+    suppressed: Option<Reason>,
+    card: CardV1,
 }
 
 /// What the Copilot CLI status line shows.
 #[derive(Debug, Clone, PartialEq)]
+// One value per status-line call, never stored in bulk: the size difference does not matter.
+#[allow(clippy::large_enum_variant)]
 pub enum TipLineOut {
     Full(CardV1),
     /// The "1 tip waiting" marker, with the card id for `aiq show`.
@@ -62,6 +86,8 @@ impl<C: Clock> Service<C> {
             counters,
             guard: Guard::new(),
             projects_folders: Default::default(),
+            coach: None,
+            guess_low_logged: false,
         };
         s.rebuild()?;
         Ok(s)
@@ -215,9 +241,166 @@ impl<C: Clock> Service<C> {
                 PromptObs { event_id: &ev.event_id, utc_ms: ts, text },
             )
         };
+        let new_task = self.engine.task_id(&ev.surface, &ev.surface_session_id) == Some(ev.event_id.as_str());
         if let Some(sig) = sig {
             self.on_signal(&ev.surface, &ev.surface_session_id, &sig, trace_id)?;
         }
+        if new_task {
+            // A live first prompt of a new task (only live events reach here: imports never raise a card, D11).
+            self.next_rung(&ev.surface, &ev.surface_session_id, &ev.event_id, text, trace_id)?;
+        }
+        Ok(())
+    }
+
+    /// The coaching cache, rebuilt when the store's coaching facts changed or it is an hour old.
+    pub fn coach_cache(&mut self) -> Result<&coaching::Cache, StoreError> {
+        let now = self.clock.now();
+        if self.coach.as_ref().is_none_or(|c| c.stale(&self.store, now.utc_ms)) {
+            let c = coaching::Cache::build(&self.store, &self.pack, now)?;
+            info!(
+                coach.cache_ms = c.build_ms,
+                coach.tasks = c.tasks.len(),
+                coach.neighbours = c.neighbours.len(),
+                "coach.cache"
+            );
+            self.coach = Some(c);
+        }
+        Ok(self.coach.as_ref().expect("built above"))
+    }
+
+    /// Next-rung tip (design coaching-from-rungs D4–D12): guess the new task's type from the person's own
+    /// judged tasks; if that type coaches a move, decide on a card through the existing trigger engine.
+    fn next_rung(
+        &mut self,
+        surface: &str,
+        session: &str,
+        task_id: &str,
+        text: &str,
+        trace_id: Option<&str>,
+    ) -> Result<(), StoreError> {
+        let started = std::time::Instant::now();
+        let mode = coaching::mode(&self.store);
+        if mode == "off" || self.paused() {
+            return Ok(());
+        }
+        let pack = self.pack.clone();
+        self.coach_cache()?;
+        // Taken out and put back so the decision can use `self` without copying thousands of neighbours.
+        let cache = self.coach.take().expect("built above");
+        let r = self.next_rung_with(&cache, &pack, &mode, surface, session, task_id, text, trace_id, started);
+        self.coach = Some(cache);
+        r
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn next_rung_with(
+        &mut self,
+        cache: &coaching::Cache,
+        pack: &aiq_contracts::pack::PackV1,
+        mode: &str,
+        surface: &str,
+        session: &str,
+        task_id: &str,
+        text: &str,
+        trace_id: Option<&str>,
+        started: std::time::Instant,
+    ) -> Result<(), StoreError> {
+        if !cache.tips_on(mode, pack) {
+            if !self.guess_low_logged {
+                self.guess_low_logged = true;
+                self.counters.inc(codes::COACH_GUESS_LOW);
+                warn!(
+                    error.code = codes::COACH_GUESS_LOW,
+                    checked = cache.check.checked,
+                    right = cache.check.right,
+                    "next-rung tips turned off by AIQ's self-check"
+                );
+            }
+            return Ok(());
+        }
+        let words = features(text, &pack.reprompt).words;
+        let Some(g) = coach::guess_type(&words, &cache.neighbours, &pack.coach) else {
+            info!(
+                ms = started.elapsed().as_millis() as u64,
+                neighbours = cache.neighbours.len(),
+                coach.outcome = "no_guess",
+                "coach.guess"
+            );
+            return Ok(());
+        };
+        let now = self.clock.now();
+        self.store.insert_type_guess(&aiq_store::TypeGuessRow {
+            guess_id: new_id(),
+            task_id: task_id.to_owned(),
+            surface: surface.to_owned(),
+            job: g.job.clone(),
+            task_type: g.task_type.clone(),
+            similarity: g.similarity,
+            neighbours: g.neighbours.clone(),
+            utc_ms: now.utc_ms,
+        })?;
+        let row = cache
+            .rows
+            .iter()
+            .find(|r| r.job == g.job && r.task_type == g.task_type && r.state == coach::RowState::Coach);
+        let Some((row, m)) = row.and_then(|r| {
+            let id = r.move_id.as_deref()?;
+            pack.moves.iter().find(|m| m.move_id == id).map(|m| (r, m))
+        }) else {
+            info!(
+                ms = started.elapsed().as_millis() as u64,
+                similarity = g.similarity,
+                coach.outcome = "not_coachable",
+                "coach.guess"
+            );
+            return Ok(());
+        };
+        let tip = coach::tip_id(&m.move_id);
+        let cooldown_ms = pack.coach.move_cooldown_h as i64 * 3_600_000;
+        let suppressed = match coach::tip_pref(&cache.feedback, &tip, now.utc_ms, &pack.coach) {
+            TipPref::Off => Some(Reason::TipOff),
+            TipPref::Snoozed(_) => Some(Reason::Snoozed),
+            TipPref::Shown => {
+                if self.store.deliveries_of_tip(&tip)?.first().is_some_and(|t| now.utc_ms - t < cooldown_ms) {
+                    Some(Reason::Cooldown)
+                } else if cache
+                    .habits
+                    .iter()
+                    .any(|h| h.job == row.job && h.move_id == m.move_id && h.state == HabitState::Adopted)
+                {
+                    Some(Reason::HabitAdopted)
+                } else {
+                    None
+                }
+            }
+        };
+        let card = compose_move(m, &row.job, &row.task_type, &new_id(), &pack.version);
+        let (job, threshold) = (row.job.clone(), pack.coach.match_threshold);
+        self.decide_and_record(
+            surface,
+            session,
+            Pending {
+                task_id,
+                detector_id: coach::DETECTOR,
+                detector_version: coach::DETECTOR_VERSION,
+                opportunity_id: coach::OPPORTUNITY,
+                reprompt_count: 0,
+                score: g.similarity,
+                evidence: &g.neighbours,
+                job: Job::Named(job),
+                core_opportunity: false,
+                threshold,
+                suppressed,
+                card,
+            },
+            trace_id,
+        )?;
+        info!(
+            ms = started.elapsed().as_millis() as u64,
+            similarity = g.similarity,
+            coach.outcome = "decided",
+            "coach.guess"
+        );
         Ok(())
     }
 
@@ -283,47 +466,82 @@ impl<C: Clock> Service<C> {
         sig: &SignalDraft,
         trace_id: Option<&str>,
     ) -> Result<(), StoreError> {
-        let _d = info_span!("core.decide", trace_id = trace_id.unwrap_or("")).entered();
-        let now = self.clock.now();
-        self.expire_stale()?;
-        let r = &self.pack.reprompt;
-        let signal_id = new_id();
-        self.store.insert_signal(
-            &NewSignal {
-                signal_id: &signal_id,
+        let r = self.pack.reprompt.clone();
+        let tip = self.pack.tips.iter().find(|t| t.opportunity_id == r.opportunity_id).expect("pack validated").clone();
+        let feedback = coaching::feedback(&self.store)?;
+        let suppressed = match coach::tip_pref(&feedback, &tip.tip_id, self.clock.now().utc_ms, &self.pack.coach) {
+            TipPref::Off => Some(Reason::TipOff),
+            TipPref::Snoozed(_) => Some(Reason::Snoozed),
+            TipPref::Shown => None,
+        };
+        let card = compose(&tip, sig.reprompt_count, &new_id(), &self.pack.version);
+        self.decide_and_record(
+            surface,
+            session,
+            Pending {
                 task_id: &sig.task_id,
-                surface,
-                session,
                 detector_id: &r.detector_id,
                 detector_version: r.detector_version,
-                pack_version: &self.pack.version,
                 opportunity_id: &r.opportunity_id,
                 reprompt_count: sig.reprompt_count,
                 score: sig.score,
                 evidence: &sig.evidence,
+                job: self.classifier.classify(&sig.task_id),
+                core_opportunity: r.core_opportunity,
+                threshold: self.pack.trigger.in_moment_threshold,
+                suppressed,
+                card,
+            },
+            trace_id,
+        )
+    }
+
+    /// Record the signal, decide with the trigger engine, record the decision with its card.
+    fn decide_and_record(
+        &mut self,
+        surface: &str,
+        session: &str,
+        p: Pending<'_>,
+        trace_id: Option<&str>,
+    ) -> Result<(), StoreError> {
+        let _d = info_span!("core.decide", trace_id = trace_id.unwrap_or("")).entered();
+        let now = self.clock.now();
+        self.expire_stale()?;
+        let signal_id = new_id();
+        self.store.insert_signal(
+            &NewSignal {
+                signal_id: &signal_id,
+                task_id: p.task_id,
+                surface,
+                session,
+                detector_id: p.detector_id,
+                detector_version: p.detector_version,
+                pack_version: &self.pack.version,
+                opportunity_id: p.opportunity_id,
+                reprompt_count: p.reprompt_count,
+                score: p.score,
+                evidence: p.evidence,
             },
             now.utc_ms,
         )?;
         let input = DecideInput {
             paused: self.paused(),
-            job: self.classifier.classify(&sig.task_id),
-            core_opportunity: r.core_opportunity,
-            score: sig.score,
-            threshold: self.pack.trigger.in_moment_threshold,
+            job: p.job,
+            core_opportunity: p.core_opportunity,
+            score: p.score,
+            threshold: p.threshold,
             delivered_in_session: self.store.delivered_in_session(surface, session)?,
             in_quiet_period: self.quiet()?,
             ready_in_session: self.store.ready_card(surface, session)?.is_some(),
             deliveries_counted_today: self.counted_today()?,
             daily_cap: self.daily_cap(),
+            suppressed: p.suppressed,
         };
         let (outcome, reason) = decide(&input);
-        let card_id = new_id();
-        let tip = self.pack.tips.iter().find(|t| t.opportunity_id == r.opportunity_id).expect("pack validated");
-        let card = compose(tip, sig.reprompt_count, &card_id, &self.pack.version);
         self.store.insert_decision(
             &NewDecision {
                 decision_id: &new_id(),
-                card_id: &card_id,
+                card_id: &p.card.card_id,
                 signal_id: &signal_id,
                 surface,
                 session,
@@ -331,14 +549,15 @@ impl<C: Clock> Service<C> {
                 reason_code: reason.as_str(),
                 rule_id: &self.pack.trigger.rule_id,
                 pack_version: &self.pack.version,
-                card_json: &serde_json::to_string(&card).expect("card serializes"),
+                card_json: &serde_json::to_string(&p.card).expect("card serializes"),
             },
             now.utc_ms,
         )?;
         info!(
             aiq.outcome = outcome.as_str(),
             aiq.reason = reason.as_str(),
-            aiq.reprompt_count = sig.reprompt_count,
+            aiq.opportunity = p.opportunity_id,
+            aiq.reprompt_count = p.reprompt_count,
             "card decision"
         );
         Ok(())
@@ -501,7 +720,7 @@ impl<C: Clock> Service<C> {
                 Ok(n) if n <= MAX_DAILY_CAP => n.to_string(),
                 _ => return Err(format!("daily-cap must be a whole number from 0 to {MAX_DAILY_CAP}")),
             },
-            _ => match aiq_domain::rung::validate_setting(key, value) {
+            _ => match aiq_domain::rung::validate_setting(key, value).or_else(|| coach::validate_setting(key, value)) {
                 Some(v) => v?,
                 None => return Err(format!("unknown setting {key}")),
             },
@@ -529,7 +748,10 @@ impl<C: Clock> Service<C> {
         }
     }
 
-    pub fn status(&self) -> StatusReply {
+    pub fn status(&mut self) -> StatusReply {
+        if let Err(e) = self.coach_cache() {
+            self.fail(e);
+        }
         StatusReply {
             paused: self.paused(),
             daily_cap: self.daily_cap(),
@@ -551,7 +773,44 @@ impl<C: Clock> Service<C> {
                 );
                 f
             },
+            coach: self.coach.as_ref().map(|c| {
+                let mode = coaching::mode(&self.store);
+                CoachStatus {
+                    tips_on: c.tips_on(&mode, &self.pack),
+                    mode,
+                    checked: c.check.checked,
+                    right: c.check.right,
+                    coached_types: c.rows.iter().filter(|r| r.state == coach::RowState::Coach).count() as u32,
+                    other_pct: c.other_share.map(|x| (x * 100.0).round() as u32),
+                    cache_ms: c.build_ms,
+                }
+            }),
         }
+    }
+
+    /// The person's answer to a tip, from any surface.
+    pub fn tip_feedback(
+        &mut self,
+        card_id: Option<&str>,
+        tip_id: Option<&str>,
+        answer: &str,
+        surface: &str,
+    ) -> Result<(), String> {
+        coaching::record_feedback(&self.store, card_id, tip_id, answer, surface, self.clock.now().utc_ms).map(|_| ())
+    }
+
+    /// "This doesn't fit" or its undo.
+    pub fn guidance_flag(
+        &mut self,
+        job: &str,
+        task_type: &str,
+        move_id: &str,
+        action: &str,
+        reason: Option<&str>,
+        note: Option<&str>,
+    ) -> Result<(), String> {
+        let now = self.clock.now().utc_ms;
+        coaching::record_flag(&self.store, &self.pack, job, task_type, move_id, action, reason, note, now)
     }
 
     /// Show a card's details and record that the person opened it (`opened_on`: cli / vscode).
@@ -561,7 +820,26 @@ impl<C: Clock> Service<C> {
                 if let Err(e) = self.store.insert_open(card_id, opened_on, self.clock.now().utc_ms) {
                     self.fail(e);
                 }
+                let leaned_on = if r.detector_id == coach::DETECTOR {
+                    let tasks = self.coach_cache().map(|c| c.tasks.clone()).unwrap_or_default();
+                    r.evidence_ids
+                        .iter()
+                        .filter_map(|id| tasks.iter().find(|t| &t.task_id == id))
+                        .map(|t| LeanedOn {
+                            ts: format_rfc3339_ms(t.first_ms),
+                            tool: t.tool.clone(),
+                            task_type: t
+                                .kind()
+                                .and_then(|(j, ty)| aiq_contracts::judge::task_type_label(j, ty))
+                                .unwrap_or("Other")
+                                .to_owned(),
+                        })
+                        .collect()
+                } else {
+                    vec![]
+                };
                 ShowReply {
+                    leaned_on,
                     card: serde_json::from_str(&r.card_json).ok(),
                     outcome: Some(r.outcome),
                     reason_code: Some(r.reason_code),
@@ -573,7 +851,14 @@ impl<C: Clock> Service<C> {
                         .collect(),
                 }
             }
-            _ => ShowReply { card: None, outcome: None, reason_code: None, delivered: false, evidence: vec![] },
+            _ => ShowReply {
+                card: None,
+                outcome: None,
+                reason_code: None,
+                delivered: false,
+                evidence: vec![],
+                leaned_on: vec![],
+            },
         }
     }
 

@@ -299,6 +299,8 @@ pub(crate) mod tests {
                 why: "w".into(),
                 try_this: "t".into(),
             }],
+            coach: Default::default(),
+            moves: vec![],
         }
     }
 

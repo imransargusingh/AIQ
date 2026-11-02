@@ -97,6 +97,25 @@ pub fn status() -> ExitCode {
                     "Automated sessions ignored in {folder} ({why}). If that is your own work: aiq include \"{folder}\"\n"
                 );
             }
+            if let Some(c) = &s.coach {
+                let state = match (c.mode.as_str(), c.tips_on) {
+                    ("off", _) => "off (you turned them off)".to_owned(),
+                    (_, false) => format!(
+                        "off: AIQ guessed the kind of task right {} of {} times, so it stopped them. \
+                         Turn back on: aiq config set next-rung-tips on",
+                        c.right, c.checked
+                    ),
+                    _ => "on".to_owned(),
+                };
+                out += &format!("Next-step tips: {state}\n");
+                out += &format!(
+                    "Kind-of-task guesses checked: right {} of {}. Kinds of task with a next step: {}\n",
+                    c.right, c.checked, c.coached_types
+                );
+                if let Some(o) = c.other_pct {
+                    out += &format!("Judged tasks typed \"other\": {o}%\n");
+                }
+            }
             if let Some((_, n)) = ignored {
                 out += &format!("Automated prompts ignored since the core started: {n}\n");
             }
@@ -233,6 +252,24 @@ pub fn render_show(r: &ShowReply) -> String {
     let status =
         if r.delivered { "shown".to_string() } else { r.outcome.clone().unwrap_or_default().replace('_', "-") };
     out += &format!("Status: {status} (reason: {})\n", r.reason_code.clone().unwrap_or_default());
+    if c.opportunity_id == aiq_domain::coach::OPPORTUNITY {
+        // Next-rung tip: a starter to copy, and the kinds of task it leaned on (never their text).
+        if let Some(st) = &c.starter {
+            out += &format!("\nStarter prompt (copy and fill in; AIQ never sends it):\n  {st}\n");
+        }
+        out += "\nAIQ guessed the kind of task from these earlier tasks of yours:\n";
+        if r.leaned_on.is_empty() {
+            out += "  (none left: they were deleted)\n";
+        }
+        for (i, l) in r.leaned_on.iter().enumerate() {
+            out += &format!("  {}. {}  {}  {}\n", i + 1, l.ts, l.tool, l.task_type);
+        }
+        out += &format!(
+            "\nWas this useful?  aiq helpful {id} · aiq not {id} · aiq snooze {id} · aiq off {id}\n",
+            id = c.card_id
+        );
+        return out;
+    }
     if r.evidence.iter().all(|e| e.text.is_none()) {
         out += "The evidence for this card was deleted.\n";
         return out;
@@ -297,10 +334,11 @@ pub fn config_set(name: &str, value: &str) -> ExitCode {
         "judge-claude-model" => ("judge_claude_model", format!("Claude judge model: {value}.")),
         "judge-copilot-model" => ("judge_copilot_model", format!("Copilot judge model: {value}.")),
         "judge-copilot-sessions" => ("judge_copilot_sessions", format!("Copilot judge sessions: {value}.")),
+        "next-rung-tips" => ("next_rung_tips", format!("Next-step tips: {value}.")),
         _ => {
             println!(
                 "Unknown setting {name}. Settings: daily-cap, copilot-tip-stays, judge, judge-daily-tasks, \
-                 judge-claude-model, judge-copilot-model, judge-copilot-sessions."
+                 judge-claude-model, judge-copilot-model, judge-copilot-sessions, next-rung-tips."
             );
             return ExitCode::from(2);
         }
@@ -321,6 +359,76 @@ pub fn config_set(name: &str, value: &str) -> ExitCode {
         }
         Err(_) => {
             println!("{NOT_RUNNING}");
+            ExitCode::from(1)
+        }
+    }
+}
+
+/// `aiq helpful|not|snooze|off <card>` and `aiq on <tip>`: the person's answer to a tip (coaching D8).
+pub fn tip_feedback(verb: &str, id: &str) -> ExitCode {
+    let (answer, done) = match verb {
+        "helpful" => ("helpful", "Thanks: AIQ noted this tip helped."),
+        "not" => ("not_helpful", "Noted. Two of these in 30 days and AIQ shows this tip last."),
+        "snooze" => ("snooze", "Snoozed for 7 days on every tool."),
+        "off" => ("off", "AIQ won't show this tip again on any tool. Turn it back on: aiq on <tip>"),
+        "on" => ("on", "AIQ may show this tip again."),
+        _ => return ExitCode::from(2),
+    };
+    let paths = Paths::from_env();
+    let (card, tip) = if verb == "on" { (None, Some(id)) } else { (Some(id), None) };
+    match aiq_core::control::tip_feedback(&paths, card, tip, answer, "cli", CLI_TIMEOUT) {
+        Ok(()) => {
+            println!("{done}");
+            ExitCode::SUCCESS
+        }
+        Err(ControlError::Refused(m)) => {
+            println!("Not changed: {m}");
+            ExitCode::from(2)
+        }
+        Err(e) => {
+            println!("Not changed: {e:?}");
+            ExitCode::from(1)
+        }
+    }
+}
+
+/// `aiq flag <job>/<type> <move> <reason> [note]` and `aiq unflag <job>/<type> <move>` ("This doesn't fit").
+pub fn flag(args: &[&str], undo: bool) -> ExitCode {
+    let usage = "Usage: aiq flag <job>/<type> <move> <evidence_wrong|not_useful|blocked|other> [note]\n       aiq unflag <job>/<type> <move>";
+    let (Some(kind), Some(move_id)) = (args.first(), args.get(1)) else {
+        println!("{usage}");
+        return ExitCode::from(2);
+    };
+    let Some((job, ty)) = kind.split_once('/') else {
+        println!("{usage}");
+        return ExitCode::from(2);
+    };
+    let reason = if undo { None } else { args.get(2).copied() };
+    if !undo && reason.is_none() {
+        println!("{usage}");
+        return ExitCode::from(2);
+    }
+    let note = (!undo && args.len() > 3).then(|| args[3..].join(" "));
+    let paths = Paths::from_env();
+    let action = if undo { "undo" } else { "flag" };
+    match aiq_core::control::guidance_flag(&paths, job, ty, move_id, action, reason, note.as_deref(), CLI_TIMEOUT) {
+        Ok(()) => {
+            println!(
+                "{}",
+                if undo {
+                    "Undone: AIQ may suggest this again for this kind of task."
+                } else {
+                    "Noted. AIQ won't suggest this for this kind of task again. Your rung is unchanged. Undo: aiq unflag"
+                }
+            );
+            ExitCode::SUCCESS
+        }
+        Err(ControlError::Refused(m)) => {
+            println!("Not changed: {m}");
+            ExitCode::from(2)
+        }
+        Err(e) => {
+            println!("Not changed: {e:?}");
             ExitCode::from(1)
         }
     }
@@ -375,7 +483,14 @@ mod tests {
 
     #[test]
     fn render_show_unknown_and_deleted_states() {
-        let none = ShowReply { card: None, outcome: None, reason_code: None, delivered: false, evidence: vec![] };
+        let none = ShowReply {
+            card: None,
+            outcome: None,
+            reason_code: None,
+            delivered: false,
+            evidence: vec![],
+            leaned_on: vec![],
+        };
         assert_eq!(render_show(&none), "No card with that id.\n");
     }
 
@@ -391,6 +506,7 @@ mod tests {
             try_this: "x".into(),
             evidence_ref: "aiq show c".into(),
             pack_version: "p".into(),
+            starter: None,
         };
         let r = ShowReply {
             card: Some(card.clone()),
@@ -398,10 +514,28 @@ mod tests {
             reason_code: Some("ok".into()),
             delivered: true,
             evidence: vec![EvidencePrompt { ts: "t".into(), text: Some("\u{1b}]0;pwned\u{7}hi".into()) }],
+            leaned_on: vec![],
         };
         let out = render_show(&r);
         assert!(!out.contains('\u{1b}') && !out.contains('\u{7}'));
         assert!(out.contains("Status: shown"));
+        // A next-rung card prints the starter and the kinds of task leaned on, never prompt text.
+        let mut nc = card.clone();
+        nc.opportunity_id = "next_rung".into();
+        nc.starter = Some("Write tests for <function>.".into());
+        let nr = ShowReply {
+            card: Some(nc),
+            evidence: vec![],
+            leaned_on: vec![aiq_contracts::frames::LeanedOn {
+                ts: "2026-11-01T10:00:00Z".into(),
+                tool: "copilot-cli".into(),
+                task_type: "Writing tests".into(),
+            }],
+            ..r.clone()
+        };
+        let out = render_show(&nr);
+        assert!(out.contains("Write tests for <function>.") && out.contains("copilot-cli  Writing tests"));
+        assert!(out.contains("aiq helpful c") && !out.contains("pwned"));
         let gone = ShowReply { evidence: vec![EvidencePrompt { ts: "t".into(), text: None }], ..r };
         assert!(render_show(&gone).contains("The evidence for this card was deleted."));
     }

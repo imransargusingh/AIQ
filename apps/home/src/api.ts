@@ -1,6 +1,10 @@
-// The bridge to the Tauri shell (apps/home/src-tauri). Seven commands; nothing else leaves the page.
+// The bridge to the Tauri shell (apps/home/src-tauri). Nine commands; nothing else leaves the page.
 // Outside Tauri (the UI tests) a fixture stands in, set on window by the test before the page loads.
 import type { Outcome, Snapshot, TaskDetail } from "./types";
+
+export type SettingKey = "daily_cap" | "copilot_tip_stays" | "next_rung_tips";
+/** The reasons the core accepts (crates/aiq-core/src/coaching.rs FLAG_REASONS). */
+export type FlagReason = "evidence_wrong" | "not_useful" | "blocked" | "other";
 
 declare global {
   interface Window {
@@ -37,6 +41,10 @@ function fixture<T>(cmd: string, args: Record<string, unknown>): Promise<T> {
       else {
         if (args.key === "daily_cap") s.settings.daily_cap = Number(args.value);
         if (args.key === "copilot_tip_stays") s.settings.copilot_tip_stays = args.value as Snapshot["settings"]["copilot_tip_stays"];
+        if (args.key === "next_rung_tips") {
+          s.settings.next_rung_tips = args.value as Snapshot["settings"]["next_rung_tips"];
+          s.settings.next_rung_on = args.value === "on" || (args.value === "auto" && !s.settings.guess_auto_off);
+        }
         out = { ok: true };
       }
       break;
@@ -65,6 +73,21 @@ function fixture<T>(cmd: string, args: Record<string, unknown>): Promise<T> {
       }
       break;
     }
+    case "guidance_flag": {
+      // Written to the store even while the core is down (control falls back to a direct write).
+      const k = s.coaching.kinds.find((x) => x.job === args.job && x.task_type === args.taskType);
+      if (!k || !k.next || k.next.move_id !== args.moveId) out = { ok: false, message: "Not changed: no such next step." };
+      else {
+        k.state = args.action === "flag" ? "flagged" : "coach";
+        s.coaching.opportunities = s.coaching.kinds.filter((x) => x.state === "coach").slice(0, 3);
+        out = { ok: true };
+      }
+      break;
+    }
+    case "tip_on":
+      s.settings.tips_off = s.settings.tips_off.filter((t) => t !== args.tipId);
+      out = { ok: true };
+      break;
     case "finish_setup":
       s.setup.done = true;
       out = s;
@@ -78,9 +101,14 @@ function fixture<T>(cmd: string, args: Record<string, unknown>): Promise<T> {
 export const api = {
   snapshot: () => invoke<Snapshot>("snapshot"),
   pause: (on: boolean) => invoke<Snapshot>("pause", { on }),
-  setSetting: (key: "daily_cap" | "copilot_tip_stays", value: string) => invoke<Outcome>("set_setting", { key, value }),
+  setSetting: (key: SettingKey, value: string) => invoke<Outcome>("set_setting", { key, value }),
   forgetAll: (confirm: string) => invoke<Outcome>("forget_all", { confirm }),
   task: (taskId: string) => invoke<TaskDetail | null>("task", { taskId }),
   forgetItem: (eventId: string) => invoke<Outcome>("forget_item", { eventId }),
   finishSetup: () => invoke<Snapshot>("finish_setup"),
+  /** "This doesn't fit" (flag, with a reason) or its undo, for one kind of task's next step. */
+  guidanceFlag: (job: string, taskType: string, moveId: string, action: "flag" | "undo", reason: FlagReason | null) =>
+    invoke<Outcome>("guidance_flag", { job, taskType, moveId, action, reason }),
+  /** Turn a tip back on after "Don't show this again". */
+  tipOn: (tipId: string) => invoke<Outcome>("tip_on", { tipId }),
 };

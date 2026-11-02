@@ -273,3 +273,10 @@ tbody tr:has(a){cursor:pointer}
 .setup .opt code{font:var(--t-mono);background:var(--canvas-soft);border-radius:var(--r-sm);padding:0 var(--s2)}
 @media (max-width:760px){.setup{grid-template-columns:minmax(0,1fr)}.setup .steps{border-right:0;border-bottom:1px solid var(--hairline)}}
 .backlink{align-self:flex-start;display:inline-flex;gap:var(--s3);align-items:center;min-height:24px;color:var(--ink-mute)}
+/* Coaching from rung results: kinds of task as buttons, the split bar, the starter prompt. */
+button.opp{width:100%;background:none;border:0;text-align:left;font:inherit;color:inherit;cursor:pointer}
+li+li>.kindrow{border-top:1px solid var(--hairline)}
+.kindrow:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}
+.splitbar{display:flex;height:12px;border-radius:var(--r-pill);overflow:hidden;background:var(--canvas-soft);border:1px solid var(--hairline)}
+.splitbar i{display:block}
+.starter{font:var(--t-mono);white-space:pre-wrap;background:var(--canvas-soft);border:1px solid var(--hairline);border-radius:var(--r-sm);padding:var(--s3) var(--s4);margin:0}

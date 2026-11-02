@@ -1,8 +1,10 @@
-// Home (spec US-H2, US-H3; mockup "home"). The rung, the rung shares and the next steps come from the rung
-// judge (design rung-judge); Uncertain judgments are shown on Tasks but never counted on a rung here. Until a
-// task is judged it says so; nothing is guessed. Model-written text renders as plain text only (TR-5).
+// Home (spec US-H2, US-H3; mockup "home"). The rung, the rung shares, the split and the kinds of task with a
+// next step come from the rung judge (design rung-judge, coaching-from-rungs D9); Uncertain judgments are shown
+// on Tasks but never counted on a rung or in the split here. Until a task is judged it says so; nothing is
+// guessed. Model-written text renders as plain text only (TR-5).
 import { useState } from "react";
-import { RUNGS, day, folderName, jobName, plural, rungLabel, sentence, toolName, topPlaces, when } from "../format";
+import { KindList, judgedBy, pct } from "../coach";
+import { RUNGS, day, folderName, plural, rungLabel, sentence, toolName, topPlaces, when } from "../format";
 import { Banners, Title, type Ctx } from "../ui";
 
 export function Home(ctx: Ctx) {
@@ -34,6 +36,12 @@ export function Home(ctx: Ctx) {
   const mc = h.most_common_rung;
   const onRung = h.rungs.reduce((a, b) => a + b, 0);
   const rungMax = Math.max(1, ...h.rungs);
+  const c = snap.coaching;
+  const sp = c.split;
+  const ready = sp.tasks >= c.split_min;
+  const f = pct(sp.finished, sp.tasks);
+  const fc = pct(sp.finished + sp.could, sp.tasks);
+  const by = judgedBy(snap.tasks);
   return (
     <div className="page">
       <Banners {...ctx} />
@@ -64,45 +72,93 @@ export function Home(ctx: Ctx) {
       <div className="top">
         <section className="card" aria-labelledby="kr">
           <h2 id="kr" className="mute" style={{ fontWeight: 400 }}>Tasks agents finished</h2>
-          <div className="hl">
-            <span style={{ font: "var(--t-title)" }}>Not judged yet</span>
-          </div>
-          <p className="mute">
-            {h.judged > 0
-              ? `AIQ judged ${h.judged} of ${h.tasks_in_window} tasks. Which ones agents finished, and which they could, comes in a later version.`
-              : snap.settings.judge === "auto"
-                ? "AIQ judges your finished tasks in the background, through your own Claude Code or Copilot CLI."
-                : "AIQ hasn't judged any tasks yet. Run aiq judge once to start; it shows what it sends first."}
-          </p>
+          {ready ? (
+            <>
+              <div className="hl" role="img" aria-label={`Agents finished ${f}%, could be ${fc}%`}>
+                <span style={{ font: "var(--t-display)" }} aria-hidden="true">{f}%</span>
+                <span className="of" aria-hidden="true">
+                  could be <b>{fc}%</b>
+                </span>
+              </div>
+              <div className="splitbar" aria-hidden="true">
+                <i style={{ width: `${f}%`, background: "var(--primary)" }} />
+                <i style={{ width: `${fc - f}%`, background: "color-mix(in srgb,var(--primary) 35%,var(--surface))" }} />
+              </div>
+              <p className="meta">
+                Of {plural(sp.tasks, "judged task")}: {sp.finished} finished by agents, {sp.could} could be, {sp.needs} need you.
+                {sp.uncertain > 0 && <> {plural(sp.uncertain, "task")} AIQ isn't sure about {sp.uncertain === 1 ? "is" : "are"} left out.</>}
+              </p>
+              <p className="mute">{c.rule}</p>
+            </>
+          ) : (
+            <>
+              <div className="hl">
+                <span style={{ font: "var(--t-title)" }}>{h.judged > 0 ? "Not enough judged tasks yet" : "Not judged yet"}</span>
+              </div>
+              <p className="mute">
+                {h.judged > 0
+                  ? `${sp.tasks} of ${c.split_min} judged tasks needed to show what agents finished${sp.uncertain > 0 ? ` (${sp.uncertain} AIQ isn't sure about don't count)` : ""}.`
+                  : snap.settings.judge === "auto"
+                    ? "AIQ judges your finished tasks in the background, through your own Claude Code or Copilot CLI."
+                    : "AIQ hasn't judged any tasks yet. Run aiq judge once to start; it shows what it sends first."}
+              </p>
+              {h.judged > 0 && (
+                <progress max={c.split_min} value={Math.min(sp.tasks, c.split_min)} aria-label={`${sp.tasks} of ${c.split_min} judged tasks`} />
+              )}
+            </>
+          )}
           <p className="meta">
+            {by && <>{by} · </>}
             {plural(h.tasks_in_window, "task")} in the last {h.window_days} days
             {h.imported_in_window > 0 && <> · {plural(h.imported_in_window, "imported task")}</>} ·{" "}
             <button className="btnlink" onClick={() => go("tasks")}>See which</button>
           </p>
-          <figure className="wk" role="group" aria-label="Tasks each week, last 4 weeks">
+          <figure className="wk" role="group" aria-label={ready ? "Tasks and tasks agents finished each week, last 4 weeks" : "Tasks each week, last 4 weeks"}>
             <div className="wk-y" aria-hidden="true">
               {[0, max].map((t, i) => (
                 <span key={i} style={{ top: `${i === 0 ? 100 : 0}%` }}>{t}</span>
               ))}
             </div>
             <div className="wk-plot">
-              {h.weeks.map((w) => (
-                <div
-                  key={w.start_ms}
-                  className="wk-col"
-                  tabIndex={0}
-                  role="img"
-                  aria-label={`Week of ${day(w.start_ms, snap.offset_min)}: ${plural(w.tasks, "task")}`}
-                >
-                  <i style={{ flex: `${w.tasks} 1 0`, background: "var(--primary)", minHeight: w.tasks ? 18 : 0 }}>{w.tasks || ""}</i>
-                  <i style={{ flex: `${max - w.tasks} 1 0` }} />
-                  <span className="tip" aria-hidden="true">
-                    <b>Week of {day(w.start_ms, snap.offset_min)}</b>
-                    <br />
-                    {plural(w.tasks, "task")}
-                  </span>
-                </div>
-              ))}
+              {h.weeks.map((w, n) => {
+                const ws = c.weeks[n];
+                const fin = ready && ws && ws.start_ms === w.start_ms ? ws.finished : 0;
+                const few = ready && ws && ws.tasks < c.week_min;
+                const say = ready && ws ? (few ? "too few judged tasks to say" : `${ws.finished} of ${ws.tasks} judged finished by agents`) : null;
+                return (
+                  <div
+                    key={w.start_ms}
+                    className="wk-col"
+                    tabIndex={0}
+                    role="img"
+                    aria-label={`Week of ${day(w.start_ms, snap.offset_min)}: ${plural(w.tasks, "task")}${say ? `, ${say}` : ""}`}
+                  >
+                    {fin > 0 && !few && <i style={{ flex: `${fin} 1 0`, background: "var(--primary)", minHeight: 18 }}>{fin}</i>}
+                    <i
+                      style={{
+                        flex: `${w.tasks - (few ? 0 : fin)} 1 0`,
+                        background: ready ? "color-mix(in srgb,var(--primary) 35%,var(--surface))" : "var(--primary)",
+                        minHeight: w.tasks - (few ? 0 : fin) ? 18 : 0,
+                        color: ready ? "var(--ink)" : undefined,
+                      }}
+                    >
+                      {w.tasks - (few ? 0 : fin) || ""}
+                    </i>
+                    <i style={{ flex: `${max - w.tasks} 1 0` }} />
+                    <span className="tip" aria-hidden="true">
+                      <b>Week of {day(w.start_ms, snap.offset_min)}</b>
+                      <br />
+                      {plural(w.tasks, "task")}
+                      {say && (
+                        <>
+                          <br />
+                          {sentence(say)}
+                        </>
+                      )}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
             <div className="wk-x" aria-hidden="true">
               {h.weeks.map((w) => (
@@ -133,31 +189,24 @@ export function Home(ctx: Ctx) {
 
       <section className="group" aria-labelledby="ns">
         <div className="head">
-          <h2 id="ns">Next steps</h2>
-          <span className="meta">From tasks AIQ is confident about. One step up at a time.</span>
+          <h2 id="ns">Where agents could do more</h2>
+          <span className="meta">Kinds of task you repeat, with one next step each. Most often first.</span>
         </div>
-        {h.next_steps.length === 0 ? (
+        {c.opportunities.length === 0 ? (
           <p className="mute">
             {h.judged === 0
               ? "Next steps show here once tasks are judged."
-              : "No next step yet: your judged tasks are at their right rung, uncertain, or capped by something outside your control."}
+              : c.kinds.length === 0
+                ? "Next steps show once AIQ knows the kind of each task. Tasks judged before this version don't have one yet."
+                : "No next step yet: your kinds of task are at their right rung, too few to say, or capped by something outside your control."}
           </p>
         ) : (
-          <div className="list">
-            {h.next_steps.map((n) => (
-              <div className="opp" key={n.task_id}>
-                <div className="group" style={{ gap: "var(--s2)" }}>
-                  <span className="name">{n.gap}</span>
-                  <span className="row">
-                    <span className="chip">{jobName(n.job)}</span>
-                    <span className="chip">
-                      {rungLabel(n.current)} → {rungLabel(n.potential)}
-                    </span>
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
+          <KindList label="Kinds of task with a next step" rows={c.opportunities} open={(k) => ctx.openKind(k.job, k.task_type)} />
+        )}
+        {c.kinds.length > 0 && (
+          <p className="meta">
+            <button className="btnlink" onClick={() => go("tasks")}>All kinds of task</button>
+          </p>
         )}
       </section>
 

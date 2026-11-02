@@ -30,6 +30,14 @@ pub enum Reason {
     Expired,
     /// A card was delivered on any surface within the quiet period (Phase 2: budget per person).
     QuietPeriod,
+    /// The person said "Don't show this again" for this tip (coaching-loop US-4).
+    TipOff,
+    /// The person snoozed this tip.
+    Snoozed,
+    /// The same tip showed within its cooldown (coaching-from-rungs D12).
+    Cooldown,
+    /// The tip's habit is Adopted: no point coaching it (D12).
+    HabitAdopted,
 }
 
 impl Reason {
@@ -44,6 +52,10 @@ impl Reason {
             Reason::Ok => "ok",
             Reason::Expired => "expired",
             Reason::QuietPeriod => "quiet_period",
+            Reason::TipOff => "tip_off",
+            Reason::Snoozed => "snoozed",
+            Reason::Cooldown => "cooldown",
+            Reason::HabitAdopted => "habit_adopted",
         }
     }
 }
@@ -61,6 +73,8 @@ pub struct DecideInput {
     pub ready_in_session: bool,
     pub deliveries_counted_today: u32,
     pub daily_cap: u32,
+    /// The person's own answers or the tip's cooldown rule this tip out (a drop, checked right after pause).
+    pub suppressed: Option<Reason>,
 }
 
 /// Is `now` inside the person-wide quiet period that follows the last delivery on any surface?
@@ -72,6 +86,8 @@ pub fn in_quiet_period(last_delivery_utc_ms: Option<i64>, now_utc_ms: i64, quiet
 pub fn decide(i: &DecideInput) -> (Outcome, Reason) {
     if i.paused {
         (Outcome::Drop, Reason::Paused)
+    } else if let Some(r) = i.suppressed {
+        (Outcome::Drop, r)
     } else if !opportunity_allowed(&i.job, i.core_opportunity) {
         (Outcome::Drop, Reason::JobMismatch)
     } else if i.score < i.threshold {
@@ -116,7 +132,17 @@ mod tests {
             ready_in_session: false,
             deliveries_counted_today: 0,
             daily_cap: 5,
+            suppressed: None,
         }
+    }
+
+    #[test]
+    fn suppressed_tips_drop_after_pause_and_before_everything_else() {
+        let mut i = ok();
+        i.suppressed = Some(Reason::TipOff);
+        assert_eq!(decide(&i), (Outcome::Drop, Reason::TipOff));
+        i.paused = true;
+        assert_eq!(decide(&i), (Outcome::Drop, Reason::Paused));
     }
 
     #[test]

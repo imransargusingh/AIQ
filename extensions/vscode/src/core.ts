@@ -26,6 +26,15 @@ export interface Card {
   try_this: string;
   evidence_ref: string;
   pack_version: string;
+  /** Next-rung tips: a starter prompt to copy (never sent). */
+  starter?: string;
+}
+
+/** A judged task a next-rung guess leaned on: time, tool and kind, never its text. */
+export interface LeanedOn {
+  ts: string;
+  tool: string;
+  task_type: string;
 }
 
 export interface EvidencePrompt {
@@ -39,7 +48,16 @@ export interface ShowReply {
   reason_code: string | null;
   delivered: boolean;
   evidence: EvidencePrompt[];
+  leaned_on?: LeanedOn[];
 }
+
+/** The person's answers to a tip (coaching-from-rungs D8), as the notification's buttons name them. */
+export const FEEDBACK_BUTTONS: [string, string][] = [
+  ["Helpful", "helpful"],
+  ["Not helpful", "not_helpful"],
+  ["Snooze 7 days", "snooze"],
+  ["Don't show again", "off"],
+];
 
 export const SURFACE = "vscode";
 export const FRAME_TIMEOUT_MS = 500;
@@ -120,6 +138,8 @@ export function request<T>(ep: Endpoint, frame: Record<string, unknown>, timeout
 export interface CoreClient {
   takeCard(): Promise<Card | null | undefined>; // undefined: core not reachable
   show(cardId: string): Promise<ShowReply | null>;
+  /** Record an answer; false when the core refused or is not reachable ("AIQ isn't running"). */
+  feedback(cardId: string, answer: string): Promise<boolean>;
   paused(): boolean;
 }
 
@@ -130,6 +150,10 @@ export function coreClient(ep: Endpoint): CoreClient {
       return r === null ? undefined : r.card;
     },
     show: (cardId) => request<ShowReply>(ep, { op: "show", card_id: cardId, opened_on: SURFACE }),
+    async feedback(cardId, answer) {
+      const r = await request<{ ok: boolean }>(ep, { op: "tip_feedback", card_id: cardId, answer, surface: SURFACE });
+      return r?.ok === true;
+    },
     paused: () => fs.existsSync(ep.paused_flag),
   };
 }
@@ -147,6 +171,16 @@ export function detailsText(r: ShowReply): string {
   if (!r.card) return "No card with that id.\n";
   const c = r.card;
   let out = `AIQ tip: ${plain(c.noticed)}\nWhy: ${plain(c.why)}\nTry this: ${plain(c.try_this)}\n\n`;
+  if (c.opportunity_id === "next_rung") {
+    if (c.starter) out += `Starter prompt (copy and fill in; AIQ never sends it):\n  ${plain(c.starter)}\n\n`;
+    out += "AIQ guessed the kind of task from these earlier tasks of yours:\n";
+    const l = r.leaned_on ?? [];
+    if (l.length === 0) out += "  (none left: they were deleted)\n";
+    l.forEach((x, i) => {
+      out += `  ${i + 1}. ${x.ts}  ${plain(x.tool)}  ${plain(x.task_type)}\n`;
+    });
+    return out + "\nTurn off tips for now: AIQ: Pause\n";
+  }
   const texts = r.evidence.map((e) => e.text);
   if (texts.every((t) => t === null)) return out + "The evidence for this card was deleted.\n";
   out += "The prompts it counted:\n";

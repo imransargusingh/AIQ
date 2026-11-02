@@ -13,6 +13,7 @@ import { Data } from "./pages/Data";
 import { Settings } from "./pages/Settings";
 import { Task } from "./pages/Task";
 import { Setup } from "./pages/Setup";
+import { Kind } from "./pages/Kind";
 
 const REFRESH_MS = 15_000;
 const KEYS_PREF = "aiq.singleKeys";
@@ -27,12 +28,14 @@ function readPref(): boolean {
 
 interface Route {
   page: Page;
+  /** The task id (page task), or "job/type" (page kind). */
   task: string | null;
 }
 
 function hashRoute(): Route {
   const h = location.hash.slice(1);
   if (h.startsWith("task/")) return { page: "task", task: decodeURIComponent(h.slice(5)) };
+  if (h.startsWith("kind/")) return { page: "kind", task: h.slice(5).split("/").map(decodeURIComponent).join("/") };
   if (h === "setup") return { page: "setup", task: null };
   return { page: PAGES.some((p) => p.id === h) ? (h as Page) : "home", task: null };
 }
@@ -71,6 +74,10 @@ export function App() {
   const openTask = useCallback((id: string) => {
     setRoute({ page: "task", task: id });
     history.replaceState(null, "", `#task/${encodeURIComponent(id)}`);
+  }, []);
+  const openKind = useCallback((job: string, type: string) => {
+    setRoute({ page: "kind", task: `${job}/${type}` });
+    history.replaceState(null, "", `#kind/${encodeURIComponent(job)}/${encodeURIComponent(type)}`);
   }, []);
   const togglePause = useCallback(() => {
     if (!snap) return;
@@ -142,7 +149,7 @@ export function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [singleKeys, palette, go, togglePause, inSetup]);
 
-  const ctx: Ctx | null = snap && { snap, go, openTask, announce, togglePause, refresh };
+  const ctx: Ctx | null = snap && { snap, go, openTask, openKind, announce, togglePause, refresh };
   const watching = snap?.home.by_tool.map(([t]) => toolName(t)) ?? [];
 
   if (ctx && inSetup) {
@@ -193,7 +200,7 @@ export function App() {
             <a
               key={p.id}
               href={`#${p.id}`}
-              aria-current={page === p.id || (page === "task" && p.id === "tasks") ? "page" : undefined}
+              aria-current={page === p.id || ((page === "task" || page === "kind") && p.id === "tasks") ? "page" : undefined}
               aria-keyshortcuts={singleKeys ? `G ${p.key}` : undefined}
               onClick={(e) => {
                 e.preventDefault();
@@ -251,6 +258,7 @@ export function App() {
           {ctx && page === "data" && <Data key="data" {...ctx} />}
           {ctx && page === "settings" && <Settings key="settings" {...ctx} singleKeys={singleKeys} setSingleKeys={setSingleKeys} />}
           {ctx && page === "task" && route.task && <Task key={`task-${route.task}`} {...ctx} taskId={route.task} />}
+          {ctx && page === "kind" && route.task && <Kind key={`kind-${route.task}`} {...ctx} kindId={route.task} />}
         </main>
       </div>
       <p className="sr" role="status" aria-live="polite">{said}</p>

@@ -18,6 +18,8 @@
       "current_confidence": 0.85,
       "potential_confidence": 0.85,
       "job": "code_change",
+      "task_type": null,
+      "task_type_label": null,
       "coachable": true,
       "evidence": [
         "You gave the agent the goal and the error type to use.",

@@ -97,6 +97,77 @@ pub fn finish_setup(paths: &Paths) -> std::io::Result<()> {
     crate::paths::write_user_only(&paths.setup_flag(), b"done\n")
 }
 
+/// Record the person's answer to a tip (coaching-from-rungs D8): through the core when it runs, else
+/// directly in the store, as nobody else writes while the core is down.
+pub fn tip_feedback(
+    paths: &Paths,
+    card_id: Option<&str>,
+    tip_id: Option<&str>,
+    answer: &str,
+    surface: &str,
+    timeout: Duration,
+) -> Result<(), ControlError> {
+    let req = |token| Request::TipFeedback {
+        token,
+        card_id: card_id.map(str::to_owned),
+        tip_id: tip_id.map(str::to_owned),
+        answer: answer.into(),
+        surface: surface.into(),
+    };
+    match ok_reply(ask(paths, timeout, req)) {
+        Err(ControlError::NotRunning) => {
+            let store = direct_store(paths)?;
+            crate::coaching::record_feedback(&store, card_id, tip_id, answer, surface, now_ms())
+                .map(|_| ())
+                .map_err(ControlError::Refused)
+        }
+        other => other,
+    }
+}
+
+/// "This doesn't fit" (`flag`) or its undo, through the core when it runs, else directly in the store.
+#[allow(clippy::too_many_arguments)]
+pub fn guidance_flag(
+    paths: &Paths,
+    job: &str,
+    task_type: &str,
+    move_id: &str,
+    action: &str,
+    reason: Option<&str>,
+    note: Option<&str>,
+    timeout: Duration,
+) -> Result<(), ControlError> {
+    let req = |token| Request::GuidanceFlag {
+        token,
+        job: job.into(),
+        task_type: task_type.into(),
+        move_id: move_id.into(),
+        action: action.into(),
+        reason: reason.map(str::to_owned),
+        note: note.map(str::to_owned),
+    };
+    match ok_reply(ask(paths, timeout, req)) {
+        Err(ControlError::NotRunning) => {
+            let store = direct_store(paths)?;
+            let pack = crate::pack::parse(crate::pack::BUNDLED_TOML).map_err(ControlError::Io)?;
+            crate::coaching::record_flag(&store, &pack, job, task_type, move_id, action, reason, note, now_ms())
+                .map_err(ControlError::Refused)
+        }
+        other => other,
+    }
+}
+
+fn direct_store(paths: &Paths) -> Result<aiq_store::Store, ControlError> {
+    if !paths.db().exists() {
+        return Err(ControlError::Refused("AIQ has no data yet".into()));
+    }
+    aiq_store::Store::open(&paths.db()).map_err(|e| ControlError::Io(e.to_string()))
+}
+
+fn now_ms() -> i64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

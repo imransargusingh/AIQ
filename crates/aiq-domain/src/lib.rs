@@ -3,6 +3,7 @@
 pub mod automated;
 pub mod card;
 pub mod clock;
+pub mod coach;
 pub mod job;
 pub mod reprompt;
 pub mod rung;

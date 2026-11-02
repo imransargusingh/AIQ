@@ -3,6 +3,7 @@
 // carry a text label (Uncertain, Right rung, Capped by a blocker), never colour alone.
 import { useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { folderName, jobOf, jobOptions, plural, rungLabel, sortTasks, stateLabel, toolName, when, type Dir, type SortKey } from "../format";
+import { KindList } from "../coach";
 import { Banners, Chip, Title, type Ctx } from "../ui";
 
 const COLS: { key: SortKey; label: string; right?: boolean }[] = [
@@ -69,6 +70,18 @@ export function Tasks(ctx: Ctx) {
           </div>
         )}
       </header>
+      {snap.coaching.kinds.length > 0 && (
+        <section className="group" aria-labelledby="kinds">
+          <div className="head">
+            <h2 id="kinds">Kinds of task</h2>
+            <span className="meta">
+              The kind of each task is the judge's estimate. Most tasks first.
+              {snap.coaching.untyped > 0 && ` ${plural(snap.coaching.untyped, "task")} judged before kinds existed ${snap.coaching.untyped === 1 ? "isn't" : "aren't"} grouped.`}
+            </span>
+          </div>
+          <KindList label="Kinds of task" rows={snap.coaching.kinds} open={(k) => ctx.openKind(k.job, k.task_type)} />
+        </section>
+      )}
       {snap.tasks.length === 0 ? (
         <div className="empty">
           <b>No tasks yet.</b>
@@ -88,7 +101,7 @@ export function Tasks(ctx: Ctx) {
                   </th>
                 ))}
                 <th>Folder</th>
-                <th>Job</th>
+                <th>Job and kind</th>
                 <th>Rung</th>
               </tr>
             </thead>
@@ -113,7 +126,10 @@ export function Tasks(ctx: Ctx) {
                   </td>
                   <td className="r num">{t.prompts}</td>
                   <td title={t.folder ?? "Not recorded for tasks before this version"}>{folderName(t.folder)}</td>
-                  <td className={t.job ? undefined : "mute"}>{jobOf(t)}</td>
+                  <td className={t.job ? undefined : "mute"}>
+                    {jobOf(t)}
+                    {t.judgment?.task_type_label && <span className="meta"> · {t.judgment.task_type_label}</span>}
+                  </td>
                   <td className={t.judgment ? undefined : "mute"}>
                     {t.judgment ? (
                       <>

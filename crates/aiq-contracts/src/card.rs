@@ -16,6 +16,10 @@ pub struct CardV1 {
     /// The evidence link: `aiq show <card_id>`.
     pub evidence_ref: String,
     pub pack_version: String,
+    /// Next-rung tips: a starter prompt with `<placeholders>` that `aiq show` prints for the person to copy
+    /// (never sent). Absent on other cards.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub starter: Option<String>,
 }
 
 /// Claude Code renderer: the text that follows Claude Code's own "Stop says: " prefix.
@@ -87,6 +91,7 @@ mod tests {
             try_this: "t".into(),
             evidence_ref: "aiq show 01J".into(),
             pack_version: "bundled-1".into(),
+            starter: None,
         }
     }
 

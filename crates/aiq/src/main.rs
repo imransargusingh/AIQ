@@ -33,6 +33,12 @@ Usage:
                                       How long a tip stays in Copilot CLI's status line
   aiq import [--dry-run]              Add your past Claude Code and Copilot CLI sessions to AIQ
   aiq include <folder>                Watch a folder AIQ set aside as automated (an app or script's runs)
+  aiq helpful|not|snooze|off <card-id>  Tell AIQ what you thought of a tip (snooze: 7 days; off: never again)
+  aiq on <tip-id>                     Let AIQ show a tip you turned off
+  aiq flag <job>/<type> <move> <reason> [note]  This doesn't fit: stop a next step for one kind of task
+  aiq unflag <job>/<type> <move>      Undo a flag
+  aiq config set next-rung-tips <auto|on|off>  Next-step tips for kinds of task you repeat (auto: AIQ
+                                      turns them off itself if it guesses the kind of task wrong)
   aiq judge [--max <n>] [--only claude-code|copilot-cli] [--dry-run]
                                       Judge your finished tasks through your own Claude Code / Copilot CLI
                                       (--dry-run shows what would be sent, sends nothing)
@@ -63,6 +69,9 @@ fn main() -> ExitCode {
         ["resume", ..] => cli::pause(false),
         ["config", "set", name, value, ..] => cli::config_set(name, value),
         ["include", folder, ..] => cli::include_folder(folder),
+        [verb @ ("helpful" | "not" | "snooze" | "off" | "on"), id, ..] => cli::tip_feedback(verb, id),
+        ["flag", rest @ ..] => cli::flag(rest, false),
+        ["unflag", rest @ ..] => cli::flag(rest, true),
         ["statusline", "copilot", ..] => statusline::run(),
         ["endpoint", ..] => {
             println!("{}", aiq_core::paths::Paths::from_env().endpoint_json());

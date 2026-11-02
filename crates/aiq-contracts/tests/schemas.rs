@@ -71,8 +71,28 @@ fn card_schema_accepts_card_and_rejects_multiline_noticed() {
         try_this: "t".into(),
         evidence_ref: "aiq show c1".into(),
         pack_version: "1".into(),
+        starter: None,
     };
     assert!(s.is_valid(&serde_json::to_value(&c).unwrap()));
+    c.starter = Some("Write tests for <function>.".into());
+    assert!(s.is_valid(&serde_json::to_value(&c).unwrap()), "next-rung starter");
+    c.starter = None;
     c.noticed = "a\nb".into();
     assert!(!s.is_valid(&serde_json::to_value(&c).unwrap()));
+}
+
+#[test]
+fn coaching_frames_parse_the_shapes_the_vs_code_extension_and_cli_send() {
+    use aiq_contracts::frames::Request;
+    let r: Request = serde_json::from_str(
+        r#"{"op":"tip_feedback","token":"t","card_id":"c1","answer":"snooze","surface":"vscode"}"#,
+    )
+    .unwrap();
+    assert!(matches!(r, Request::TipFeedback { ref card_id, tip_id: None, .. } if card_id.as_deref() == Some("c1")));
+    assert_eq!(r.token(), "t");
+    let f: Request = serde_json::from_str(
+        r#"{"op":"guidance_flag","token":"t","job":"code_change","task_type":"tests","move_id":"agent_checks","action":"undo"}"#,
+    )
+    .unwrap();
+    assert!(matches!(f, Request::GuidanceFlag { reason: None, note: None, .. }));
 }

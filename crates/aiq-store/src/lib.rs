@@ -13,8 +13,9 @@ pub const SCHEMA_V2: &str = include_str!("schema_v2.sql");
 pub const SCHEMA_V3: &str = include_str!("schema_v3.sql");
 pub const SCHEMA_V4: &str = include_str!("schema_v4.sql");
 pub const SCHEMA_V5: &str = include_str!("schema_v5.sql");
+pub const SCHEMA_V6: &str = include_str!("schema_v6.sql");
 /// Migration N takes the store from `user_version` N to N+1, in one transaction.
-pub const MIGRATIONS: &[&str] = &[SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5];
+pub const MIGRATIONS: &[&str] = &[SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6];
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StoreError {
@@ -160,7 +161,12 @@ pub struct CardRecord {
     pub outcome: String,
     pub reason_code: String,
     pub delivered: bool,
-    /// (event ts, text or None when the content row was deleted), in evidence order.
+    /// The signal's detector (`reprompt`, `task_type`).
+    pub detector_id: String,
+    /// The signal's evidence ids as stored (event ids, or judged task ids for `task_type`).
+    pub evidence_ids: Vec<String>,
+    /// (event ts, text or None when the content row was deleted), in evidence order. Empty for `task_type`
+    /// signals: their evidence is other tasks, whose text a card never shows (design coaching-from-rungs B-J).
     pub evidence: Vec<(i64, Option<String>)>,
 }
 
@@ -212,6 +218,45 @@ pub struct JudgmentRow {
     pub fact_set_version: String,
     pub rubric_version: String,
     pub judge_version: String,
+    /// Schema v6: the task type within the job; None when judged before v6 (or job unclassified).
+    pub task_type: Option<String>,
+    pub task_type_confidence: Option<f64>,
+}
+
+/// One live task's type guess (schema v6 `type_guess`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypeGuessRow {
+    pub guess_id: String,
+    pub task_id: String,
+    pub surface: String,
+    pub job: String,
+    pub task_type: String,
+    pub similarity: f64,
+    /// Judged task ids the guess leaned on (never text).
+    pub neighbours: Vec<String>,
+    pub utc_ms: i64,
+}
+
+/// One answer to a tip (schema v6 `tip_feedback`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct TipFeedbackRow {
+    pub card_id: Option<String>,
+    pub tip_id: String,
+    pub answer: String,
+    pub surface: String,
+    pub utc_ms: i64,
+}
+
+/// One "This doesn't fit" flag or undo (schema v6 `guidance_flag`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct GuidanceFlagRow {
+    pub job: String,
+    pub task_type: String,
+    pub move_id: String,
+    pub action: String,
+    pub reason: Option<String>,
+    pub note: Option<String>,
+    pub utc_ms: i64,
 }
 
 /// A judge call as the queue needs it: when, and whether it worked.
@@ -256,6 +301,8 @@ fn judgment_from(r: &rusqlite::Row<'_>) -> rusqlite::Result<JudgmentRow> {
         fact_set_version: r.get(23)?,
         rubric_version: r.get(24)?,
         judge_version: r.get(25)?,
+        task_type: r.get(26)?,
+        task_type_confidence: r.get(27)?,
     })
 }
 
@@ -301,8 +348,201 @@ impl Store {
             .map_err(err(codes::STORE_OPEN))
     }
 
+    /// The table has the column (a store an older AIQ wrote may lack later columns).
+    pub fn has_column(&self, table: &str, column: &str) -> Result<bool> {
+        self.conn
+            .query_row(
+                "SELECT EXISTS (SELECT 1 FROM pragma_table_info(?1) WHERE name = ?2)",
+                params![table, column],
+                |r| r.get(0),
+            )
+            .map_err(err(codes::STORE_OPEN))
+    }
+
     pub fn path(&self) -> &Path {
         &self.path
+    }
+
+    // ------------------------------------------------------------ coaching facts (schema v6)
+
+    pub fn insert_type_guess(&self, g: &TypeGuessRow) -> Result<()> {
+        self.conn
+            .execute(
+                "INSERT INTO type_guess (guess_id, task_id, surface, job, task_type, similarity, neighbours, utc_ms)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                params![
+                    g.guess_id,
+                    g.task_id,
+                    g.surface,
+                    g.job,
+                    g.task_type,
+                    g.similarity,
+                    serde_json::to_string(&g.neighbours).expect("strings serialize"),
+                    g.utc_ms
+                ],
+            )
+            .map(|_| ())
+            .map_err(err(codes::STORE_WRITE))
+    }
+
+    /// Every type guess, oldest first. Empty before v6.
+    pub fn type_guesses(&self) -> Result<Vec<TypeGuessRow>> {
+        if !self.has_table("type_guess")? {
+            return Ok(vec![]);
+        }
+        let mut st = self
+            .conn
+            .prepare(
+                "SELECT guess_id, task_id, surface, job, task_type, similarity, neighbours, utc_ms FROM type_guess
+                 ORDER BY utc_ms, rowid",
+            )
+            .map_err(err(codes::STORE_OPEN))?;
+        let rows = st
+            .query_map([], |r| {
+                let n: String = r.get(6)?;
+                Ok(TypeGuessRow {
+                    guess_id: r.get(0)?,
+                    task_id: r.get(1)?,
+                    surface: r.get(2)?,
+                    job: r.get(3)?,
+                    task_type: r.get(4)?,
+                    similarity: r.get(5)?,
+                    neighbours: serde_json::from_str(&n).unwrap_or_default(),
+                    utc_ms: r.get(7)?,
+                })
+            })
+            .map_err(err(codes::STORE_OPEN))?;
+        rows.collect::<rusqlite::Result<_>>().map_err(err(codes::STORE_OPEN))
+    }
+
+    pub fn insert_tip_feedback(&self, f: &TipFeedbackRow) -> Result<()> {
+        self.conn
+            .execute(
+                "INSERT INTO tip_feedback (card_id, tip_id, answer, surface, utc_ms) VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![f.card_id, f.tip_id, f.answer, f.surface, f.utc_ms],
+            )
+            .map(|_| ())
+            .map_err(err(codes::STORE_WRITE))
+    }
+
+    /// Every tip answer, oldest first. Empty before v6.
+    pub fn tip_feedback_all(&self) -> Result<Vec<TipFeedbackRow>> {
+        if !self.has_table("tip_feedback")? {
+            return Ok(vec![]);
+        }
+        let mut st = self
+            .conn
+            .prepare("SELECT card_id, tip_id, answer, surface, utc_ms FROM tip_feedback ORDER BY utc_ms, feedback_id")
+            .map_err(err(codes::STORE_OPEN))?;
+        let rows = st
+            .query_map([], |r| {
+                Ok(TipFeedbackRow {
+                    card_id: r.get(0)?,
+                    tip_id: r.get(1)?,
+                    answer: r.get(2)?,
+                    surface: r.get(3)?,
+                    utc_ms: r.get(4)?,
+                })
+            })
+            .map_err(err(codes::STORE_OPEN))?;
+        rows.collect::<rusqlite::Result<_>>().map_err(err(codes::STORE_OPEN))
+    }
+
+    pub fn insert_guidance_flag(&self, f: &GuidanceFlagRow) -> Result<()> {
+        self.conn
+            .execute(
+                "INSERT INTO guidance_flag (job, task_type, move, action, reason, note, utc_ms)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![f.job, f.task_type, f.move_id, f.action, f.reason, f.note, f.utc_ms],
+            )
+            .map(|_| ())
+            .map_err(err(codes::STORE_WRITE))
+    }
+
+    /// Every flag and undo, oldest first. Empty before v6.
+    pub fn guidance_flags_all(&self) -> Result<Vec<GuidanceFlagRow>> {
+        if !self.has_table("guidance_flag")? {
+            return Ok(vec![]);
+        }
+        let mut st = self
+            .conn
+            .prepare(
+                "SELECT job, task_type, move, action, reason, note, utc_ms FROM guidance_flag ORDER BY utc_ms, flag_id",
+            )
+            .map_err(err(codes::STORE_OPEN))?;
+        let rows = st
+            .query_map([], |r| {
+                Ok(GuidanceFlagRow {
+                    job: r.get(0)?,
+                    task_type: r.get(1)?,
+                    move_id: r.get(2)?,
+                    action: r.get(3)?,
+                    reason: r.get(4)?,
+                    note: r.get(5)?,
+                    utc_ms: r.get(6)?,
+                })
+            })
+            .map_err(err(codes::STORE_OPEN))?;
+        rows.collect::<rusqlite::Result<_>>().map_err(err(codes::STORE_OPEN))
+    }
+
+    /// A task's first prompt: (time, text). Live task ids are the first prompt's event id; imported ids are
+    /// `import:<tool>:<session>:<seq>`. Text is None when deleted. None when the task is unknown.
+    pub fn task_first_prompt(&self, task_id: &str) -> Result<Option<(i64, Option<String>)>> {
+        if let Some(rest) = task_id.strip_prefix("import:") {
+            let mut parts = rest.rsplitn(2, ':');
+            let (Some(seq), Some(head)) = (parts.next().and_then(|s| s.parse::<i64>().ok()), parts.next()) else {
+                return Ok(None);
+            };
+            let Some((tool, sid)) = head.split_once(':') else { return Ok(None) };
+            return self
+                .conn
+                .query_row(
+                    "SELECT ts_utc_ms, text FROM import_event WHERE tool = ?1 AND source_session_id = ?2 AND seq = ?3",
+                    params![tool, sid, seq],
+                    |r| Ok((r.get::<_, Option<i64>>(0)?.unwrap_or(0), r.get(1)?)),
+                )
+                .optional()
+                .map_err(err(codes::STORE_OPEN));
+        }
+        self.conn
+            .query_row(
+                "SELECT e.ts_utc_ms, c.text FROM event e LEFT JOIN content c ON c.event_id = e.event_id
+                 WHERE e.event_id = ?1",
+                [task_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()
+            .map_err(err(codes::STORE_OPEN))
+    }
+
+    /// Delivery times of cards carrying `tip_id`, newest first (the per-move cooldown reads the first).
+    pub fn deliveries_of_tip(&self, tip_id: &str) -> Result<Vec<i64>> {
+        let mut st = self
+            .conn
+            .prepare(
+                "SELECT v.delivered_utc_ms FROM card_delivery v
+                 JOIN card_decision d ON d.card_id = v.card_id AND d.outcome = 'show_ready'
+                 WHERE json_extract(d.card_json, '$.tip_id') = ?1 ORDER BY v.delivered_utc_ms DESC",
+            )
+            .map_err(err(codes::STORE_OPEN))?;
+        let rows = st.query_map([tip_id], |r| r.get(0)).map_err(err(codes::STORE_OPEN))?;
+        rows.collect::<rusqlite::Result<_>>().map_err(err(codes::STORE_OPEN))
+    }
+
+    /// A cheap fingerprint of everything the coaching cache is derived from: when it changes, rebuild.
+    pub fn coach_fingerprint(&self) -> Result<(i64, i64, i64)> {
+        if !self.has_table("guidance_flag")? {
+            return Ok((0, 0, 0));
+        }
+        self.conn
+            .query_row(
+                "SELECT (SELECT coalesce(max(rowid), 0) FROM judgment), (SELECT coalesce(max(flag_id), 0) FROM guidance_flag),
+                        (SELECT coalesce(max(feedback_id), 0) FROM tip_feedback)",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .map_err(err(codes::STORE_OPEN))
     }
 
     pub fn user_version(&self) -> Result<i64> {
@@ -688,13 +928,15 @@ impl Store {
             .conn
             .query_row("SELECT EXISTS (SELECT 1 FROM card_delivery WHERE card_id = ?1)", [card_id], |r| r.get(0))
             .map_err(err(codes::STORE_OPEN))?;
-        let evidence_json: String = self
+        let (evidence_json, detector_id): (String, String) = self
             .conn
-            .query_row("SELECT evidence FROM signal WHERE signal_id = ?1", [&signal_id], |r| r.get(0))
+            .query_row("SELECT evidence, detector_id FROM signal WHERE signal_id = ?1", [&signal_id], |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })
             .map_err(err(codes::STORE_OPEN))?;
         let ids: Vec<String> = serde_json::from_str(&evidence_json).unwrap_or_default();
         let mut evidence = Vec::with_capacity(ids.len());
-        for id in ids {
+        for id in ids.iter().filter(|_| detector_id == "reprompt") {
             let row: Option<(i64, Option<String>)> = self
                 .conn
                 .query_row(
@@ -709,7 +951,7 @@ impl Store {
                 evidence.push(r);
             }
         }
-        Ok(Some(CardRecord { card_json, outcome, reason_code, delivered, evidence }))
+        Ok(Some(CardRecord { card_json, outcome, reason_code, delivered, detector_id, evidence_ids: ids, evidence }))
     }
 
     pub fn events_by_kind(&self) -> Result<Vec<(String, u64)>> {
@@ -891,8 +1133,9 @@ impl Store {
         self.conn
             .execute(
                 &format!(
-                    "INSERT INTO judgment ({JUDGMENT_COLS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
-                     ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26)"
+                    "INSERT INTO judgment ({JUDGMENT_COLS}, task_type, task_type_confidence) VALUES (?1, ?2, ?3, ?4,
+                     ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24,
+                     ?25, ?26, ?27, ?28)"
                 ),
                 params![
                     j.judgment_id,
@@ -920,7 +1163,9 @@ impl Store {
                     j.call_ids,
                     j.fact_set_version,
                     j.rubric_version,
-                    j.judge_version
+                    j.judge_version,
+                    j.task_type,
+                    j.task_type_confidence
                 ],
             )
             .map(|_| ())
@@ -933,10 +1178,13 @@ impl Store {
         if !self.has_table("judgment")? {
             return Ok(HashMap::new());
         }
+        // A store from before v6 (read by AIQ home without migrating) has no task-type columns: type unknown.
+        let typed =
+            if self.has_column("judgment", "task_type")? { "task_type, task_type_confidence" } else { "NULL, NULL" };
         let mut st = self
             .conn
             .prepare(&format!(
-                "SELECT {JUDGMENT_COLS} FROM judgment j
+                "SELECT {JUDGMENT_COLS}, {typed} FROM judgment j
                  WHERE j.rowid = (SELECT x.rowid FROM judgment x WHERE x.task_id = j.task_id
                                   ORDER BY x.judged_utc_ms DESC, x.rowid DESC LIMIT 1)"
             ))

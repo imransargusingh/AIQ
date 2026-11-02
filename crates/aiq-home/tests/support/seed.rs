@@ -199,6 +199,8 @@ impl Seed {
                 fact_set_version: "fs1".into(),
                 rubric_version: "r1".into(),
                 judge_version: "j1".into(),
+                task_type: None,
+                task_type_confidence: None,
             })
             .unwrap();
     }
@@ -333,4 +335,97 @@ pub fn standard(paths: &Paths, with_import: bool) -> String {
         );
     }
     String::new()
+}
+
+/// A v6 judgment with a kind of task, for the coaching read-outs. Code tasks hand over the whole change
+/// (F13 yes) and lack a written brief (F7 no); doc tasks do not hand over yet (F13 no).
+pub fn coach_row(
+    task_id: &str,
+    job: &str,
+    task_type: &str,
+    current: u8,
+    state: &str,
+    corrections: u32,
+) -> aiq_store::JudgmentRow {
+    let f13 = job == "code_change";
+    let facts = format!(
+        r#"{{"F1":{{"value":true,"confidence":1.0,"source":"log","disputed":false}},
+      "F4":{{"value":true,"confidence":0.9,"source":"model","disputed":false}},
+      "F6":{{"value":true,"confidence":0.9,"source":"model","disputed":false}},
+      "F7":{{"value":false,"confidence":0.9,"source":"model","disputed":false}},
+      "F8":{{"value":false,"confidence":1.0,"source":"log","disputed":false}},
+      "F12":{{"value":false,"confidence":0.9,"source":"model","disputed":false}},
+      "F13":{{"value":{f13},"confidence":0.9,"source":"model","disputed":false}},
+      "F3":{{"value":"person","source":"log"}}}}"#
+    );
+    aiq_store::JudgmentRow {
+        judgment_id: format!("j-{task_id}"),
+        task_id: task_id.into(),
+        origin: "live".into(),
+        provider: "copilot-cli".into(),
+        model: None,
+        judged_utc_ms: NOW - MIN,
+        job: job.into(),
+        job_confidence: 0.9,
+        model_rung: current,
+        current_rung: current,
+        current_confidence: 0.85,
+        potential_rung: if state == "judged" { current + 1 } else { current },
+        potential_confidence: 0.85,
+        ceiling_rung: 5,
+        state: state.into(),
+        coachable: state == "judged",
+        facts,
+        evidence: r#"["The agent wrote the tests."]"#.into(),
+        gap: "Give the agent <b>a brief</b>.".into(),
+        blockers: "[]".into(),
+        placement: "[]".into(),
+        read: format!(r#"{{"prompts":2,"reprompts":1,"corrections":{corrections}}}"#),
+        call_ids: "[]".into(),
+        fact_set_version: "fs1".into(),
+        rubric_version: "r1".into(),
+        judge_version: "j2".into(),
+        task_type: Some(task_type.into()),
+        task_type_confidence: Some(0.9),
+    }
+}
+
+/// The coaching fixture: sixteen typed tasks over three weeks. Writing tests and Writing a spec each have
+/// a next step, fixing bugs is at the right rung, refactoring has too few tasks, one task is Uncertain.
+/// One tip is turned off, so Settings lists it.
+pub fn coaching(paths: &Paths) {
+    let mut s = Seed::new(paths);
+    let kinds: [(&str, &str, u8, &str, u32, &str); 16] = [
+        ("code_change", "tests", 3, "judged", 0, "write unit tests for the parser"),
+        ("code_change", "tests", 3, "judged", 0, "add tests for the date helpers"),
+        ("code_change", "tests", 3, "judged", 0, "cover the import path with tests"),
+        ("code_change", "tests", 3, "judged", 0, "write tests for the settings page"),
+        ("code_change", "tests", 3, "judged", 1, "tests for the hook timeout"),
+        ("code_change", "tests", 3, "judged", 0, "add unit tests for the store"),
+        ("code_change", "tests", 3, "uncertain", 0, "test this"),
+        ("write_doc", "spec", 2, "judged", 0, "draft the spec for the export page"),
+        ("write_doc", "spec", 2, "judged", 1, "write the PRD for sharing"),
+        ("write_doc", "spec", 2, "judged", 0, "spec the onboarding flow"),
+        ("write_doc", "spec", 2, "judged", 0, "write a spec for tip history"),
+        ("code_change", "fix_bug", 1, "right_rung", 0, "why does login fail on Safari"),
+        ("code_change", "fix_bug", 1, "right_rung", 0, "the parser test fails, fix it"),
+        ("code_change", "fix_bug", 1, "right_rung", 0, "fix the crash on empty input"),
+        ("code_change", "refactor", 2, "judged", 0, "clean up the CLI module"),
+        ("code_change", "refactor", 2, "judged", 0, "split the service file"),
+    ];
+    for (i, (job, ty, cur, state, corr, text)) in kinds.iter().enumerate() {
+        let at = NOW - (i as i64 + 1) * 31 * 60 * MIN; // about 1.3 days apart, oldest about three weeks ago
+        let id = s.prompt("copilot-cli", &format!("k{i}"), at, Some(AIQ), text);
+        s.stop("copilot-cli", &format!("k{i}"), at + 3 * MIN);
+        s.store.insert_judgment(&coach_row(&id, job, ty, *cur, state, *corr)).unwrap();
+    }
+    s.store
+        .insert_tip_feedback(&aiq_store::TipFeedbackRow {
+            card_id: None,
+            tip_id: "next_rung.agent_checks".into(),
+            answer: "off".into(),
+            surface: "cli".into(),
+            utc_ms: NOW - DAY,
+        })
+        .unwrap();
 }
