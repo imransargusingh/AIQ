@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>0008 Coaching Derived From Judgments</title><style>
+:root { color-scheme: light dark; --bg:#f7f5ef; --panel:#fff; --text:#20201d;
+  --muted:#66645f; --line:#d9d5ca; --accent:#3157a4; --code:#f0eee7; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#171816; --panel:#20221f; --text:#f2f1eb; --muted:#b8b6ae;
+    --line:#3d403a; --accent:#8fb0ff; --code:#292c27; }
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text);
+  font:16px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif; }
+main { width:min(920px,calc(100% - 32px)); margin:32px auto; padding:40px;
+  background:var(--panel); border:1px solid var(--line); border-radius:12px; }
+h1,h2,h3,h4,h5,h6 { line-height:1.2; margin:1.5em 0 .55em; }
+h1 { margin-top:0; font-size:2.2rem; } h2 { border-bottom:1px solid var(--line); padding-bottom:.3em; }
+a { color:var(--accent); } code { background:var(--code); padding:.12em .35em; border-radius:4px; }
+pre { overflow:auto; padding:16px; background:var(--code); border-radius:8px; }
+pre code { padding:0; } blockquote { margin:1em 0; padding:.2em 1em; color:var(--muted);
+  border-left:4px solid var(--line); }
+table { width:100%; border-collapse:collapse; margin:1em 0; display:block; overflow:auto; }
+th,td { padding:.55em .75em; border:1px solid var(--line); text-align:left; vertical-align:top; }
+th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); }
+.source { color:var(--muted); font-size:.9rem; margin-bottom:2rem; }
+@media (max-width:640px) { main { width:100%; margin:0; padding:24px 18px; border:0; border-radius:0; } }
+</style></head><body><main><div class="source">Rendered from 0008-coaching-derived-from-judgments.md</div><h1>ADR-0008: Coaching is derived from judgments; only feedback and guesses are stored</h1>
+<h2>Context</h2>
+<p>The rung judge (PR #24) stores one append-only <code>judgment</code> row per judgment version of a task, with its facts. Coaching needs four more things: a recurring <strong>task type</strong> to count and rank, the <strong>move</strong> that gets a type to its next rung, Home&#x27;s <strong>finished / could finish / needs you</strong> split, and <strong>habit</strong> states (Not yet, Tried, Adopted, with lapse). ADR-0002 sets the house rule: dimensions plus append-only facts, derive what can be derived. Re-judgments, rubric updates and the person&#x27;s deletions all change the judgments a habit or a row rests on.</p>
+<h2>Decision</h2>
+<ol><li><strong>Task type is a categorical fact on the judgment</strong>, chosen by the judge from a fixed per-job list</li></ol>
+<p>in the pack (<code>judgment.task_type</code>, schema v6, expand only). Not free text, not clustered on device.</p>
+<ol><li><strong>Moves, task-type rows, the split, habit observations and habit states are derived</strong> on read by</li></ol>
+<p><code>aiq_domain::coach</code>, a pure module. The core (in-the-moment tips) and AIQ home (views) call the same functions, so a tip and a page can never disagree about a move.</p>
+<ol><li><strong>Habit state is replayed</strong>, not stored: observations in day order through the D5 rule. A milestone</li></ol>
+<p>card is idempotent by a derived id in the existing <code>card_delivery</code>.</p>
+<ol><li><strong>New stored facts are only what can&#x27;t be derived:</strong> <code>tip_feedback</code> (the person&#x27;s answers),</li></ol>
+<p><code>guidance_flag</code> (&quot;This doesn&#x27;t fit&quot; and undo) and <code>type_guess</code> (the core&#x27;s guess at a live task&#x27;s type, needed to measure the guess later). All append-only, all covered by <code>forget</code>.</p>
+<h2>Consequences</h2>
+<ul><li>A re-judgment, a pack update or a deletion changes every number and habit at once, with no stale</li></ul>
+<p>state to repair and no backfill.</p>
+<ul><li>Replay cost grows with history. <code>simplify:</code> the replay reads 30 days of judgments for rows and the</li></ul>
+<p>split and all judgments for habits; upgrade to a per-day checkpoint when a snapshot&#x27;s replay passes 50 ms (measured in <code>home.log</code>).</p>
+<ul><li>A habit can change state without the person doing anything new (a re-judgment). Accepted: the judgment</li></ul>
+<p>is the record; the Habits page shows &quot;seen in N of M tasks&quot;, so the cause is visible.</p>
+<ul><li>Changing the task-type list is a pack change; judgments keep the type they were given, and types</li></ul>
+<p>dropped from the list show as <code>other</code> until re-judged.</p>
+<h2>Alternatives considered</h2>
+<ul><li><strong>Store habit state as a fact table</strong> (one row per transition). Rejected: transitions would go stale on</li></ul>
+<p>re-judgment and need a repair job; two definitions of one quantity (DM7).</p>
+<ul><li><strong>Cluster first prompts on device into task types.</strong> Rejected: names would drift, rows would split and</li></ul>
+<p>merge week to week, and nothing could be labelled for the eval.</p>
+<ul><li><strong>Use the judge&#x27;s free-text gap as the tip.</strong> Rejected: model text on a card is an injection path</li></ul>
+<p>(TR-5), and free text has no identity to count as a habit.</p></main></body></html>

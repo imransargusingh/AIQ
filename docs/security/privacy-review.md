@@ -7,6 +7,7 @@ owner: "Imran"
 phase: "0-1"
 tags: [privacy, linddun]
 links:
+  - { to: design-coaching-from-rungs, rel: documents }
   - { to: aiq-architecture, rel: documents }
   - { to: design-claude-code-skeleton, rel: documents }
 review-by: 2027-01-29
@@ -45,8 +46,12 @@ designs with `python3 docs/ai-forward-pack/scripts/docs-graph.py rollup --headin
 ### 2a. Component privacy register (generated)
 *Generated with `docs-graph.py rollup` from component designs; do not edit by hand.*
 
-| source | Data flow / category | LINDDUN finding | Disposition | Control / rationale | Retention and rights path |
-|---|---|---|---|---|---|
+| source | Threat | Disposition |
+|---|---|---|
+| [design-aiq-home-app](../design/aiq-home-app.md) | Disclosure | The app shows the person's own prompts only on Your data, on their own machine; nothing is sent |
+| [design-aiq-home-app](../design/aiq-home-app.md) | Linkability | No identifiers leave the machine |
+| [design-aiq-home-app](../design/aiq-home-app.md) | Unawareness | Your data says where the data lives and that it stays until deleted |
+| [design-aiq-home-app](../design/aiq-home-app.md) | Non-compliance | Delete everything removes store, spool and content (existing `forget`) |
 | [design-claude-code-skeleton](../design/claude-code-skeleton.md) | Prompt text (may hold code, customer data, secrets) → store | D: disclosure on a shared or lost machine | mitigate + accept | User-only files; no network. Encryption at rest deferred (Imran, 2026-10-31) | Kept until the person deletes it (ADR-0002); `aiq forget --all` deletes the store and spool. Delete-one and older-than arrive in Phase 6 |
 | [design-claude-code-skeleton](../design/claude-code-skeleton.md) | Prompt text → card | D: card text visible on screen-share | mitigate | Card never quotes prompt text; only counts | n/a |
 | [design-claude-code-skeleton](../design/claude-code-skeleton.md) | Coaching history (how someone works) | L/I: could profile the person if shared | mitigate | Nothing leaves the device; no sync, no telemetry in Phase 1 (US-6) | Same as above |
@@ -54,8 +59,14 @@ designs with `python3 docs/ai-forward-pack/scripts/docs-graph.py rollup --headin
 | [design-claude-code-skeleton](../design/claude-code-skeleton.md) | Installed hooks | U: person unaware AIQ is installed | mitigate | Explicit `install` with diff and consent; card shows how to pause | `aiq uninstall` |
 | [design-claude-code-skeleton](../design/claude-code-skeleton.md) | Tool calls and outputs | D: code and file contents | prevent (not captured) | Phase 1 subscribes only to UserPromptSubmit and Stop | n/a |
 | [design-claude-code-skeleton](../design/claude-code-skeleton.md) | Logs | D: prompt text in logs | prevent | O11 log scan test | Logs rotate at 5 MB × 3 files, local only |
+| [design-coaching-from-rungs](../design/coaching-from-rungs.md) | Linkability / Identifiability | Habits and task types reveal working patterns | **Mitigate**: user-only store; no team view (never); no aggregate in this slice |
+| [design-coaching-from-rungs](../design/coaching-from-rungs.md) | Non-repudiation | Feedback rows prove what the person said | **Accept**: private to them; deletable with `forget` |
+| [design-coaching-from-rungs](../design/coaching-from-rungs.md) | Detectability | A tip on screen shows a colleague looking over the shoulder that AIQ runs | **Accept**: same as Phase 2; Pause is one action |
+| [design-coaching-from-rungs](../design/coaching-from-rungs.md) | Disclosure | Tip text visible in a shared terminal recording | **Mitigate**: no prompt text, no rung, no score in tips (Part C rules) |
+| [design-coaching-from-rungs](../design/coaching-from-rungs.md) | Unawareness | The person doesn't know imports feed habits | **Mitigate**: Habits page footnote "Includes tasks AIQ imported from your history" when any are |
+| [design-coaching-from-rungs](../design/coaching-from-rungs.md) | Non-compliance (retention, rights) | New tables must be covered by delete and export | **Mitigate**: `forget --all`, `forget --imported` (imported judgments' observations disappear with them) and export cover all three |
 
-<!-- rolled up from 1 artifact(s) by docs-graph.py rollup on 2026-10-31 -->
+<!-- rolled up from 3 artifact(s) by docs-graph.py rollup on 2026-11-02 -->
 
 
 ## 3. Data-subject rights paths

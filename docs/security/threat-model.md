@@ -7,6 +7,7 @@ owner: "Imran"
 phase: "0-1"
 tags: [security, stride]
 links:
+  - { to: design-coaching-from-rungs, rel: documents }
   - { to: aiq-architecture, rel: documents }
   - { to: design-claude-code-skeleton, rel: documents }
 review-by: 2027-01-29
@@ -80,8 +81,13 @@ or manager (social, not technical: AIQ must give them nothing to ask for).
 ### 2a. Component threat register (generated)
 *Generated with `docs-graph.py rollup` from component designs; do not edit by hand.*
 
-| source | Trust boundary | STRIDE threat | Disposition | Control / rationale | Negative test |
-|---|---|---|---|---|---|
+| source | Boundary | Threat | Disposition |
+|---|---|---|---|
+| [design-aiq-home-app](../design/aiq-home-app.md) | WebView → Tauri commands | **E**: injected script calls commands | Strict CSP (`default-src 'self'`), no remote content, no `dangerouslySetInnerHTML`; capability file allows only the four commands; no fs/shell plugins |
+| [design-aiq-home-app](../design/aiq-home-app.md) | WebView → network | **I**: prompts leak out | CSP `connect-src ipc: http://ipc.localhost` only; no update checker in this slice |
+| [design-aiq-home-app](../design/aiq-home-app.md) | App → store | **T**: app corrupts store | Read-only open + `query_only`; writes only via core |
+| [design-aiq-home-app](../design/aiq-home-app.md) | App → core | **S**: spoofed core | Same named-pipe + per-boot token as the CLI |
+| [design-aiq-home-app](../design/aiq-home-app.md) | Delete everything | **R/T**: accidental delete | Typed `forget`, checked in the command too, not only in the UI |
 | [design-claude-code-skeleton](../design/claude-code-skeleton.md) | B1 hook client → core (local socket / pipe) | S: another local process or OS user sends frames | mitigate | Socket in a user-only directory (0700) / pipe with a DACL for the current user only; per-boot token in a user-only file; core checks the peer's user id where the OS gives it | Frame without token → closed, nothing stored; another OS user cannot connect (Linux CI with a second user; Windows via spike S1) |
 | [design-claude-code-skeleton](../design/claude-code-skeleton.md) | B1 | T: tampered frames inject fake prompts to trigger cards | accept | Needs the same OS user and the token; such a process can already read everything the person can. Residual: none beyond existing user compromise | — |
 | [design-claude-code-skeleton](../design/claude-code-skeleton.md) | B1 | I: another process reads frames or the token | mitigate | User-only permissions on socket dir, token file, spool and pause file | Permission tests on created files (mode 0600 / DACL) |
@@ -95,8 +101,20 @@ or manager (social, not technical: AIQ must give them nothing to ask for).
 | [design-claude-code-skeleton](../design/claude-code-skeleton.md) | B4 | R: person cannot tell what AIQ changed | mitigate | `install` shows the diff and asks; `uninstall` restores only AIQ entries | Round-trip test install → uninstall → byte-identical file |
 | [design-claude-code-skeleton](../design/claude-code-skeleton.md) | B4 | E: repo-level hooks run AIQ for teammates | prevent | AIQ never writes to a repo's `.claude/` (ADR-0005) | Test: install never touches the working directory |
 | [design-claude-code-skeleton](../design/claude-code-skeleton.md) | B5 local logs | I: prompts leak into logs | prevent | Logs carry ids, counts and codes only; never prompt text (O11) | Log scan test with a canary prompt string |
+| [design-coaching-from-rungs](../design/coaching-from-rungs.md) | B-J | **Tampering:** injected content steers the task type or facts to fake a move or a habit | **Mitigate**: type is an enum from the pack (strict parse rejects others); moves come from guardrails over two merged runs; tips carry pack text only, so injection cannot write a card | `judge_v2_rejects_unknown_task_type`; `card_text_never_contains_model_text` |
+| [design-coaching-from-rungs](../design/coaching-from-rungs.md) | B-J | **Info disclosure:** a tip quotes another task's prompt | **Prevent**: cards and `aiq show` evidence list time, tool and type only; `type_guess.neighbours` stores ids, not text | `show_evidence_has_no_prompt_text` |
+| [design-coaching-from-rungs](../design/coaching-from-rungs.md) | B-H | **Spoofing/Tampering:** forged first prompt frames raise tips | **Accept** (existing accepted risk: software running as the user can forge frames); worst case is a tip | — |
+| [design-coaching-from-rungs](../design/coaching-from-rungs.md) | B-U | **Repudiation:** "I never turned that tip off" | **Mitigate**: `tip_feedback` and `guidance_flag` rows carry time and surface; Settings lists them | Store test |
+| [design-coaching-from-rungs](../design/coaching-from-rungs.md) | B-U | **Elevation:** a flag or feedback changes a rung | **Prevent**: no write path touches `judgment`; tested by an attempted update (append-only trigger) | `flag_never_changes_rung` |
+| [design-coaching-from-rungs](../design/coaching-from-rungs.md) | All | **Denial of service:** flood of first prompts | **Mitigate**: guess runs only on a task start (idle gap), at most one card per session, daily cap | Existing budget tests |
+| [design-copilot-vscode-slice](../design/copilot-vscode-slice.md) | B1 hook / status line / extension → core | S: another user's process | mitigate | Phase 1 pipe DACL + token; extension reads the same user-only token file | frame without token closed |
+| [design-copilot-vscode-slice](../design/copilot-vscode-slice.md) | B2 Copilot → hook stdin | T: hostile prompt text echoed into the status line | mitigate | Tip line never echoes prompt text; control characters stripped from any text printed | `tip_line_never_contains_prompt_text` |
+| [design-copilot-vscode-slice](../design/copilot-vscode-slice.md) | B2 | E: AIQ alters the agent | prevent | Copilot hook prints nothing, always exits 0 | stdout/stderr empty contract test |
+| [design-copilot-vscode-slice](../design/copilot-vscode-slice.md) | B4 `~/.copilot/settings.json` | T/R: install corrupts config or hides changes | mitigate | Diff + consent + backup + rename; uninstall removes only AIQ's entries | round-trip install → uninstall byte-identical |
+| [design-copilot-vscode-slice](../design/copilot-vscode-slice.md) | B4 | E: teammates run AIQ | prevent | Never writes `.github/hooks/` or a repo's settings | test install never touches cwd |
+| [design-copilot-vscode-slice](../design/copilot-vscode-slice.md) | B6 extension | E: extension runs commands from frames | prevent | Extension only renders card fields as text; no command URIs from core data | unit test: markdown/command links in card text shown literally |
 
-<!-- rolled up from 1 artifact(s) by docs-graph.py rollup on 2026-10-31 -->
+<!-- rolled up from 4 artifact(s) by docs-graph.py rollup on 2026-11-02 -->
 
 
 ## 3. Accepted-risk register
