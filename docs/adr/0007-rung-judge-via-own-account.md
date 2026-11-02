@@ -40,7 +40,7 @@ person's own AI account.
       folder; `--setting-sources user`, so no project `CLAUDE.md` or project hooks load;
       `--settings '{"disableAllHooks": true}'` (a control run without it fired the hook; with it, the
       hook did not fire); `--tools ""` (no tools); `--no-session-persistence`; `--output-format json`
-      with `--json-schema` (returned `structured_output`); a fixed `--model`. The env var `AIQ_JUDGE=1`
+      with `--json-schema` (returned `structured_output`); a fixed `--model`. The env var `AIQ_INTERNAL=1`
       makes AIQ's own hook client drop anything it sees from the call, as a second guard.
       `--bare` is not used, because it never reads the subscription sign-in.
     - **Fallback, off by default:** the person's own Anthropic API key in the OS keychain, called
@@ -88,6 +88,13 @@ person's own AI account.
     - **Owner ruling (Imran, 2026-11-01):** use the person's own `claude -p`. Imran's position: AIQ is
       first-party to the person who builds and installs it, runs only on their machine, and works only
       for them. The API key stays as an opt-in fallback.
+    - **Independent review done 2026-11-01** ([rung-judge review](../security/rung-judge-review.md), not legal
+      advice): Imran's own use is consistent with the terms as read; for other people the reviewer recommends
+      the API-key default (finding T2, High), because the page says developers using the Agent SDK "should use
+      API key authentication" and `claude -p` is the Agent SDK via the CLI. **Owner decision (Imran,
+      2026-11-02): keep the subscription default for all users; closed.** It applies to Claude Code tasks
+      only; Copilot / VS Code tasks are judged through `copilot -p` and target users are mostly on Copilot.
+      The review also notes Copilot judging now uses `copilot -p` (history-import H5), not `vscode.lm` (T5).
     - **Open, owed before AIQ is given to anyone else:** the independent review should check this
       reading, or Anthropic should confirm it (the page's contact link). If the reading fails, flip
       the default to the API-key fallback. That is a settings change, not a redesign.

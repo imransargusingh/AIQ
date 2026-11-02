@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>History Import</title><style>
+:root { color-scheme: light dark; --bg:#f7f5ef; --panel:#fff; --text:#20201d;
+  --muted:#66645f; --line:#d9d5ca; --accent:#3157a4; --code:#f0eee7; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#171816; --panel:#20221f; --text:#f2f1eb; --muted:#b8b6ae;
+    --line:#3d403a; --accent:#8fb0ff; --code:#292c27; }
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text);
+  font:16px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif; }
+main { width:min(920px,calc(100% - 32px)); margin:32px auto; padding:40px;
+  background:var(--panel); border:1px solid var(--line); border-radius:12px; }
+h1,h2,h3,h4,h5,h6 { line-height:1.2; margin:1.5em 0 .55em; }
+h1 { margin-top:0; font-size:2.2rem; } h2 { border-bottom:1px solid var(--line); padding-bottom:.3em; }
+a { color:var(--accent); } code { background:var(--code); padding:.12em .35em; border-radius:4px; }
+pre { overflow:auto; padding:16px; background:var(--code); border-radius:8px; }
+pre code { padding:0; } blockquote { margin:1em 0; padding:.2em 1em; color:var(--muted);
+  border-left:4px solid var(--line); }
+table { width:100%; border-collapse:collapse; margin:1em 0; display:block; overflow:auto; }
+th,td { padding:.55em .75em; border:1px solid var(--line); text-align:left; vertical-align:top; }
+th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); }
+.source { color:var(--muted); font-size:.9rem; margin-bottom:2rem; }
+@media (max-width:640px) { main { width:100%; margin:0; padding:24px 18px; border:0; border-radius:0; } }
+</style></head><body><main><div class="source">Rendered from history-import.md</div><h1>Spec: History import (seed AIQ from past AI sessions)</h1>
+<p>Produced with AI-Forward <code>/specify</code> (Functional layer complete; UX outline; UI deferred to the <code>aiq-home</code> spec). Requested by Imran, 2026-11-01: <em>&quot;Is there a way to seed AIQ with data from sessions over the past few months (sessions that existed before a given repo was set up with AIQ) to classify those tasks?&quot;</em></p>
+<h2>Decisions so far</h2>
+<table><thead><tr><th>#</th><th>Decision</th><th>Source</th></tr></thead><tbody><tr><td>H1</td><td>Import reads only stores already on the device. Nothing is uploaded, and no new provider sees any content</td><td>Privacy rule (only the person can access their data), applied here</td></tr><tr><td>H2</td><td>Order of sources: Copilot CLI first, Claude Code second, VS Code Copilot Chat later</td><td>Laptop inventory below: Copilot CLI holds the longest and largest history</td></tr><tr><td>H3</td><td>Imported tasks are judged and shown in history, but never raise a coaching card or count against the daily tip cap</td><td>Coaching is in-the-moment; a card about a task from August is noise</td></tr><tr><td>H4</td><td><strong>No triage by default.</strong> AIQ detects automated sessions itself and sets them aside: never judged, never in the task history or rung views, never coached. The person sees one line per set-aside folder and can undo it in one click. Reuse evidence (F9) comes from the repo (versioned workflow files, runs by CI or others), so set-aside sessions are not needed for it</td><td>Imran, 2026-11-01: Executive_Presence&#x27;s ~6,000 sessions are an app&#x27;s data-collection pipeline; Imran rejected per-folder sorting as too much manual work for users</td></tr><tr><td>H5</td><td>Imported Copilot tasks are judged by <strong>Copilot</strong>, through the person&#x27;s own signed-in Copilot CLI (<code>copilot -p</code>), not VS Code. Same provider that saw the session, so no cross-provider opt-in is needed</td><td>Imran, 2026-11-01 (in thread, after the decision card). Laptop probe below</td></tr></tbody></table>
+<h2>What is on the device (measured 2026-11-01, Imran&#x27;s laptop)</h2>
+<p>Counts, dates and folder names only; no content was opened.</p>
+<table><thead><tr><th>Source</th><th>Store</th><th>Sessions</th><th>Range</th><th>Notes</th></tr></thead><tbody><tr><td>Copilot CLI</td><td><code>~/.copilot/session-state/&lt;id&gt;/events.jsonl</code> + <code>~/.copilot/session-store.db</code></td><td>~6,500</td><td>2026-02-19 .. 11-01</td><td>~6,000 in Aug–Sep in Executive_Presence (an app pipeline that calls Copilot, per Imran); ~500 others across ~15 repos. <code>repository</code> column null for most rows, <code>cwd</code> set</td></tr><tr><td>Claude Code</td><td><code>~/.claude/projects/&lt;slug&gt;/*.jsonl</code></td><td>592</td><td>2026-10-15 .. 11-01</td><td><code>cleanupPeriodDays</code> unset, so the 30-day default deletes older transcripts</td></tr><tr><td>VS Code Insiders chat</td><td><code>%APPDATA%\Code - Insiders\User\workspaceStorage\&lt;hash&gt;\chatSessions\*.json</code></td><td>272</td><td>2026-02-23 .. 10-29</td><td>Workspace path in <code>workspace.json</code></td></tr><tr><td>VS Code stable chat</td><td>same, under <code>Code</code></td><td>31</td><td>2025-09 .. 2026-06</td><td></td></tr></tbody></table>
+<p>Confidence: <strong>Verified</strong> for one laptop (read-only inventory). Other people&#x27;s machines: <strong>Inferred</strong>.</p>
+<h2>Copilot CLI as judge (probe, 2026-11-01, Imran&#x27;s laptop)</h2>
+<p>Copilot CLI 1.0.105 is installed (winget, plus a WindowsApps alias first on PATH and a VS Code shim). One test call ran from an empty temp folder:</p>
+<p><code>copilot -p &quot;&lt;judge prompt&gt;&quot; -s --model &lt;id&gt; --available-tools= --no-custom-instructions --no-ask-user --disable-builtin-mcps --sync-session=off --no-auto-update --disable-client-telemetry --stream off --log-dir &lt;aiq-dir&gt;</code></p>
+<table><thead><tr><th>Check</th><th>Result</th><th>Confidence</th></tr></thead><tbody><tr><td>One-shot answer</td><td>Exit 0, stdout exactly the answer (<code>-s</code> prints the answer only)</td><td>Verified</td></tr><tr><td>Time</td><td>20.6 s wall for a one-word answer (mostly start-up)</td><td>Verified, n=1</td></tr><tr><td>Model choice</td><td><code>--model</code> accepts Claude, GPT, Gemini and other ids, and <code>auto</code></td><td>Verified (help)</td></tr><tr><td>Hooks</td><td>None fired (no user-level Copilot hooks installed); there is no flag to turn hooks off, only the <code>disableAllHooks</code> setting</td><td>Verified on this laptop</td></tr><tr><td>Session saved</td><td><strong>Yes.</strong> Each call creates a new <code>~/.copilot/session-state/&lt;id&gt;</code> folder and a store row. No flag prevents it</td><td>Verified</td></tr><tr><td>Plugins and MCP servers</td><td><strong>Still load.</strong> Installed plugins and ~15 user MCP servers started despite the flags; <code>--disable-builtin-mcps</code> covers only the built-in two</td><td>Verified</td></tr><tr><td>Tools off</td><td><code>--available-tools=</code> given; an empty tool list not yet confirmed from the log</td><td>Unverified</td></tr></tbody></table>
+<p>Design consequences:</p>
+<ul><li><strong>Judge sessions must never be imported or observed as tasks.</strong> AIQ sets <code>--session-id</code> to a UUID it</li></ul>
+<p>generates, records it, and runs from its own working folder; readers and hooks drop those sessions.</p>
+<ul><li><strong>Sealing.</strong> Pass <code>--disable-mcp-server &lt;name&gt;</code> for every server in the person&#x27;s Copilot config, read</li></ul>
+<p>fresh before each batch, and confirm the tool list is empty from <code>--log-dir</code> once per batch; abort the batch if any tool is available. A throwaway <code>COPILOT_HOME</code> would seal fully but loses the sign-in and would need a token AIQ holds, which conflicts with &quot;AIQ never reads the token&quot;. Installed plugins still load; accepted while tools are off and MCP servers are disabled (Imran, 2026-11-01).</p>
+<ul><li><strong>Cost and speed.</strong> Batch several tasks&#x27; facts into one call where the prompt fits, to spread the</li></ul>
+<p>~20 s start-up; record <code>--usage-output-file</code> per call so judging cost is measured (TR-8).</p>
+<ul><li>AIQ deletes its own judge session folders (by recorded id) after reading the answer, by default;</li></ul>
+<p>a setting keeps them. <code>aiq forget</code> deletes any left over (Imran, 2026-11-02; rung-judge review S1).</p>
+<h2>Part A — Functional specification</h2>
+<h3>Problem</h3>
+<p>AIQ only sees work from the moment its hooks are installed. A new user starts with an empty history, so the rung distribution and &quot;opportunity to move up&quot; views are blank for weeks. Most people already have months of AI sessions on disk. Those sessions can fill the history on day one.</p>
+<h3>Core scenario</h3>
+<ol><li>During setup, or later from <em>Your data &gt; Import history</em>, AIQ lists the stores it found, with</li></ol>
+<p>session counts and date ranges per tool and per repo. Nothing is read beyond file metadata yet.</p>
+<ol><li>The person picks which tools, repos and date range to import (default: everything found, Imran 2026-11-01), and sees the estimated judging</li></ol>
+<p>time at their daily budget.</p>
+<ol><li>AIQ reads the chosen transcripts on device, groups turns into tasks, classifies each task&#x27;s job,</li></ol>
+<p>computes log facts, and queues tasks for the judge.</p>
+<ol><li>The judge works through the queue within the daily budget. Tasks appear in history marked</li></ol>
+<p><strong>Imported</strong> as they are judged.</p>
+<ol><li>The person can delete one imported task, all imported tasks from a source, or all imported tasks.</li></ol>
+<h3>What import can and cannot recover</h3>
+<table><thead><tr><th>Rung fact</th><th>From a past transcript</th><th>Note</th></tr></thead><tbody><tr><td>F1 agent made the edits</td><td>Yes</td><td>Edit/write tool calls</td></tr><tr><td>F2 share written by the person</td><td><strong>Approximate</strong></td><td>No post-turn git diff was taken. Estimate from git commits in the session window, else Unknown</td></tr><tr><td>F3 who ran checks</td><td>Yes</td><td>Shell tool calls running tests, build, lint</td></tr><tr><td>F4, F5, F12, F13 (model facts)</td><td>Yes</td><td>From prompts and replies, as live</td></tr><tr><td>F6 output reviewed</td><td>Partly</td><td>Log part yes; editor diff views not recorded</td></tr><tr><td>F7 spec or instructions given</td><td>Yes</td><td>Files read or attached; instruction files in repo at that commit</td></tr><tr><td>F8 sub-agents with checks</td><td>Yes</td><td>Sub-agent records (Claude Code <code>subagents/</code>, Copilot events)</td></tr><tr><td>F9 reused workflow, runs by others</td><td>Yes</td><td>Git history is retroactive; automated sessions add run counts</td></tr><tr><td>F10 agents and permissions available</td><td>Partly</td><td>Settings now, not as they were then</td></tr><tr><td>F11 similar tasks in last 30 days</td><td>Yes</td><td>Computed across imported + live tasks</td></tr><tr><td>Hook timing, tip shown, &quot;This doesn&#x27;t fit&quot;</td><td><strong>No</strong></td><td>Did not exist before AIQ</td></tr></tbody></table>
+<h3>In scope / out of scope</h3>
+<p>In scope: Copilot CLI and Claude Code readers; discovery with counts; grouping, job classification, log facts and judge queue (reusing the live pipeline); automated-session detection; delete by source; re-import that skips sessions already imported.</p>
+<p>Out of scope: Claude.ai web chats and M365 Copilot (not on disk); VS Code chat (later, H2); reading another person&#x27;s sessions; recovering transcripts the tool already deleted; any upload.</p>
+<h3>User stories and acceptance criteria</h3>
+<ul><li><strong>US-1 Discover.</strong> <strong>Given</strong> AIQ is installed <strong>When</strong> the person opens Import history <strong>Then</strong> AIQ</li></ul>
+<p>shows each tool with session count, date range and size per repo, having read only file metadata and database row counts.</p>
+<ul><li><strong>US-2 Choose.</strong> <strong>Given</strong> the discovery list <strong>When</strong> the person picks tools, repos and a date</li></ul>
+<p>range <strong>Then</strong> AIQ shows the number of sessions, the number left after automated sessions are set aside, and the estimated days to judge at the current daily budget.</p>
+<ul><li><strong>US-3 Import.</strong> <strong>Given</strong> a confirmed selection <strong>When</strong> import runs <strong>Then</strong> transcripts are read</li></ul>
+<p>on device, tasks are grouped and classified, log facts are computed, and tasks are queued for the judge. The source transcript files are never modified.</p>
+<ul><li><strong>US-4 Judge within budget.</strong> <strong>Given</strong> queued imported tasks <strong>When</strong> the daily judge budget is</li></ul>
+<p>spent <strong>Then</strong> judging stops for the day, and live tasks are always judged before imported ones.</p>
+<ul><li><strong>US-5 No cards.</strong> <strong>Given</strong> an imported task is judged <strong>Then</strong> no coaching card is shown and the</li></ul>
+<p>daily tip cap is unchanged.</p>
+<ul><li><strong>US-6 Automated sessions set aside.</strong> <strong>Given</strong> sessions that meet the automated rule (below) <strong>When</strong></li></ul>
+<p>import runs <strong>Then</strong> they are set aside with no question asked: not judged, not shown as tasks, no fact counted. Discovery and <em>Your data</em> show one line per folder (&quot;Executive_Presence: 5,946 automated sessions set aside · Include them&quot;). <strong>Include them</strong> imports that folder&#x27;s sessions as normal tasks; the choice can be reversed.</p>
+<ul><li><strong>US-12 Automated sessions ignored live.</strong> <strong>Given</strong> a live hook fires for a session that meets the</li></ul>
+<p>automated rule, or in a folder whose sessions are set aside <strong>Then</strong> AIQ records nothing and never shows a tip. (Copilot hooks are user-level, so a pipeline&#x27;s own CLI runs would otherwise reach AIQ.)</p>
+<ul><li><strong>US-7 Idempotent.</strong> <strong>Given</strong> a session was imported before <strong>When</strong> import runs again <strong>Then</strong></li></ul>
+<p>it is skipped (keyed by tool + session id + last-modified time); a session that grew since is re-read.</p>
+<ul><li><strong>US-8 Delete.</strong> <strong>Given</strong> imported tasks <strong>When</strong> the person deletes one, a source, or all imported</li></ul>
+<p><strong>Then</strong> the tasks, facts, judgments and any stored prompt text are removed from AIQ&#x27;s store; the tool&#x27;s own transcripts are untouched.</p>
+<ul><li><strong>US-9 Lost history warning.</strong> <strong>Given</strong> Claude Code&#x27;s <code>cleanupPeriodDays</code> is unset or under 90</li></ul>
+<p><strong>When</strong> discovery runs <strong>Then</strong> AIQ says older transcripts are being deleted by Claude Code and shows how to keep them. AIQ never edits that setting itself.</p>
+<ul><li><strong>US-10 Provider rule.</strong> <strong>Given</strong> an imported task from provider P <strong>When</strong> it is queued <strong>Then</strong> it</li></ul>
+<p>is judged only by P: Copilot tasks through <code>copilot -p</code>, Claude Code tasks through <code>claude -p</code> (H5).</p>
+<ul><li><strong>US-11 Judge sessions excluded.</strong> <strong>Given</strong> AIQ ran a judge call through a CLI <strong>When</strong> discovery,</li></ul>
+<p>import or live capture sees that CLI&#x27;s sessions <strong>Then</strong> sessions with AIQ&#x27;s recorded judge ids are ignored.</p>
+<h3>Automated rule (tested on real sessions, 2026-11-01)</h3>
+<p>AIQ decides; the person only corrects. H = human turns in the session. A session is <strong>automated</strong> when H ≤ 1 and any of:</p>
+<ul><li><strong>NI, non-interactive start.</strong> Claude Code: <code>entrypoint = sdk-cli</code> on its user records. Copilot CLI</li></ul>
+<p>records no prompt-mode marker (<code>session.start</code> keys checked), so NI is unknown there.</p>
+<ul><li><strong>T, template.</strong> Its normalized first prompt (digits, URLs, GUIDs, paths, quoted strings replaced; first</li></ul>
+<p>200 chars; hashed on device) matches 11+ sessions in the same folder. Empty first prompts are excluded from template groups (they all share one hash).</p>
+<ul><li><strong>B, burst.</strong> 50+ sessions started in the same folder within ±30 minutes.</li><li><strong>F, folder prior</strong> (added after the test). The folder is over 80% automated by the signals above.</li></ul>
+<p>Test on Imran&#x27;s laptop (counts only; prompts hashed in memory, never printed or stored):</p>
+<table><thead><tr><th></th><th>Copilot CLI</th><th>Claude Code</th></tr></thead><tbody><tr><td>Sessions</td><td>6,431</td><td>617</td></tr><tr><td>Automated (NI/T/B)</td><td>5,936</td><td>590</td></tr><tr><td>Caught by NI / T / B</td><td>– / 5,872 / 4,859</td><td>586 / 590 / 0</td></tr><tr><td>H ≤ 1 with no signal</td><td>330</td><td>15</td></tr></tbody></table>
+<ul><li><strong>False alarms: none found.</strong> No folder where most sessions have H ≥ 3 had any automated session.</li><li><strong>Misses:</strong> Executive_Presence 103 sessions not caught, ~95 of them H ≤ 1 (empty or unique first prompt,</li></ul>
+<p>outside a burst). Rule F is meant to catch these; not yet re-measured.</p>
+<ul><li>Claude Code: all 586 <code>sdk-cli</code> sessions are automated (Foresight 486, a temp folder 92, Tacit 12). Only</li></ul>
+<p>9 <code>cli</code> and 22 <code>claude-desktop</code> sessions remain (<strong>Verified</strong>, counts).</p>
+<ul><li>The Foresight Claude Code sessions (489, one prompt each, all hours, one <code>autoresearch/*</code> branch) were</li></ul>
+<p>started by <strong>Tacit</strong>, a tool of Imran&#x27;s that a Copilot hook in that repo triggers and that runs <code>claude</code> headless (Imran confirmed as likely, 2026-11-01). Other AI tools calling a CLI in the background is a real pattern; the rule set them aside correctly.</p>
+<ul><li>H ≤ 1 is common in hand-run Copilot work too (median H = 1 in several hand-run folders), so H alone must</li></ul>
+<p>never decide; it always needs a second signal.</p>
+<h3>Domain model</h3>
+<p>Bounded context: <em>History import</em>, upstream of <em>Task capture</em>. One new aggregate:</p>
+<ul><li><strong>ImportRun</strong> (entity): id, started, selection (tools, repos, range), counts found / imported /</li></ul>
+<p>set aside / failed. Invariant: a session belongs to at most one ImportRun.</p>
+<ul><li><strong>ImportedSession</strong> (append-only fact; grain: one row per tool session read): tool, session id,</li></ul>
+<p>source path, last-modified, repo, ImportRun id, outcome (task / automated / skipped / error).</p>
+<ul><li>Tasks created by import are ordinary Tasks with <code>origin = imported</code> (Type-1 attribute, never</li></ul>
+<p>changes). Everything downstream (job, facts, judgment) is shared with live tasks; nothing is duplicated.</p>
+<h3>Non-functional requirements</h3>
+<table><thead><tr><th>Quality</th><th>Requirement</th></tr></thead><tbody><tr><td>Performance</td><td>Import runs in the background core at low priority and never adds latency to a live hook. Discovery under 10 s for 10,000 sessions (metadata only)</td></tr><tr><td>Resource use</td><td>Read transcripts as streams; never load a whole multi-GB store into memory; skip non-transcript files in Copilot session folders (the measured folder is 334 GB, mostly build trees)</td></tr><tr><td>Reliability</td><td>A malformed file is logged as <code>error</code> for that session and import continues</td></tr><tr><td>Cost</td><td>Judging uses the existing daily budget (rung-model TR-8); imported tasks never exceed it</td></tr><tr><td>Measurability</td><td>Emit per run: sessions found, imported, automated, errors, read time, and queue depth; judge calls per day split live vs imported</td></tr></tbody></table>
+<h3>Privacy and threats</h3>
+<ul><li>Same rules as live capture: data stays on device; raw prompts kept until the person deletes them;</li></ul>
+<p>only the person sees it.</p>
+<ul><li>Transcripts hold more than live capture does (tool output, file contents). Import keeps <strong>only</strong></li></ul>
+<p>prompts, replies needed by the model facts, and computed facts. Tool output and file contents are read to compute facts and then dropped. (<strong>To confirm</strong> in design: which reply text the judge needs.)</p>
+<ul><li>Judge calls go only to the provider that already saw the session (H5). A Copilot judge call must not</li></ul>
+<p>reach the person&#x27;s MCP servers (work systems such as ticketing or mail); see sealing above.</p>
+<ul><li>A work account&#x27;s transcripts may include work content; the setup caveat from rung-model Q2 is</li></ul>
+<p>shown again before import.</p>
+<h2>Part B — UX outline</h2>
+<p>Entry points: setup (step &quot;Start with your past work?&quot;, skippable) and <em>Your data &gt; Import history</em>. Flow: discover → choose → confirm (counts, set-aside automated sessions, estimated days) → progress (queue depth, judged so far) → history with an <strong>Imported</strong> filter. Failure paths: no stores found; store unreadable (permissions); budget spent (shows when judging resumes). Detailed screens go into the <code>aiq-home</code> spec once this spec is accepted.</p>
+<h2>Part C — UI</h2>
+<p>N/A here; follows <code>DESIGN.md</code> and the <code>aiq-home</code> spec.</p>
+<h2>Open questions for Imran</h2>
+<p>None open.</p>
+<h2>Flagged risks and unknowns</h2>
+<ul><li>Copilot CLI and VS Code transcript formats are undocumented and change between versions. Readers</li></ul>
+<p>must fail per session, not per run. AI-Forward&#x27;s <code>session-profile.py</code> already parses both CLI formats and is the starting point (<strong>Verified</strong> it reads them; field coverage for facts <strong>Inferred</strong>).</p>
+<ul><li>F2 on imported tasks is weaker than live; imported rungs should carry lower confidence where F2</li></ul>
+<p>decides a guardrail.</p>
+<ul><li>Most history may be on other machines; import is per device.</li></ul></main></body></html>

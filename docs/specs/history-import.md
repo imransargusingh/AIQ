@@ -75,8 +75,8 @@ Design consequences:
   load; accepted while tools are off and MCP servers are disabled (Imran, 2026-11-01).
 - **Cost and speed.** Batch several tasks' facts into one call where the prompt fits, to spread the
   ~20 s start-up; record `--usage-output-file` per call so judging cost is measured (TR-8).
-- AIQ cleans up its own judge session folders after reading the answer only if the person allows it;
-  default is to leave them.
+- AIQ deletes its own judge session folders (by recorded id) after reading the answer, by default;
+  a setting keeps them. `aiq forget` deletes any left over (Imran, 2026-11-02; rung-judge review S1).
 
 ## Part A — Functional specification
 

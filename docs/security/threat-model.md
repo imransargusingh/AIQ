@@ -67,9 +67,13 @@ or manager (social, not technical: AIQ must give them nothing to ask for).
 | TR-5 | B5 | Tampering | Model-written evidence carries HTML, links or commands into a card | Rendered as plain text only | Mitigate |
 | TR-6 | B5 | Elevation | A malicious `claude`/`copilot` on PATH or repo config hijacks judge calls | Judge binary resolved by absolute path at setup; run outside any repo | Mitigate |
 | TR-7 | B5 | Info disclosure | AIQ handles provider credentials | AIQ never reads provider OAuth tokens: Claude judging runs the person's own `claude -p`, which holds its sign-in; the optional Anthropic API key lives only in the OS keychain, is sent only to the Anthropic API, and is never logged or exported | Mitigate |
-| TR-10 | B5 | Tampering / elevation | A `claude -p` judge call loads a hostile repo's `CLAUDE.md`, hooks or tools | Empty temp folder, `--setting-sources user`, `disableAllHooks`, `--tools ""`, `AIQ_JUDGE=1` dropped by AIQ's hook client (ADR-0007) | Mitigate |
+| TR-10 | B5 | Tampering / elevation | A `claude -p` judge call loads a hostile repo's `CLAUDE.md`, hooks or tools | Empty temp folder, `--setting-sources user`, `disableAllHooks`, `--tools ""`, `AIQ_INTERNAL=1` dropped by AIQ's hook client (ADR-0007) | Mitigate |
 | TR-8 | B5 | DoS (cost) | Judging burns the person's quota | Person-set daily judge budget; lazy/batched re-judging; queue when spent | Mitigate |
 | TR-9 | B5 | Repudiation | No record of what was sent where | Per-call send log with version stamps, viewable locally | Mitigate |
+| TR-11 | B5 | Info disclosure | Each `copilot -p` judge call saves a session folder with task content, outside AIQ's store and `aiq forget` | Delete AIQ's own judge sessions by recorded id after reading the answer; `aiq forget` removes leftovers ([review](rung-judge-review.md) S1) | Mitigate (Imran, 2026-11-02: delete by default) |
+| TR-12 | B1/B4/B5 | Info disclosure | Secrets pasted into prompts are stored, spooled and re-sent to the judge | Redact well-known secret shapes at ingest; canary golden set ([review](rung-judge-review.md) S2) | Mitigate (to build) |
+| TR-13 | B5 | Info disclosure | `copilot -p` carries the judge prompt on the command line, readable by other local users on Linux/macOS | Stdin or file input if Copilot supports it; else Windows-only, capped, fail closed ([review](rung-judge-review.md) S6) | Mitigate (to build) |
+| T-B1-5 | B1 | Spoofing | On Windows another OS user creates the pipe name first; hooks send prompts and the token to it | Hook client checks the pipe server's user SID before writing ([review](rung-judge-review.md) S7) | Mitigate (to build) |
 | T-SOC-1 | — | Info disclosure (social) | A manager asks the person to "show their AIQ" | No views built for others; share types are fixed and previewed; nothing to export wholesale | Mitigate (design) |
 | T-REPO-1 | — | Info disclosure | AIQ hooks in a repo config are seen or run by teammates | Install at user level only (ADR-0005) | Mitigate |
 
@@ -104,12 +108,14 @@ or manager (social, not technical: AIQ must give them nothing to ask for).
 | Phase 1 B1-T: forged frames from the same OS user (design-claude-code-skeleton) | Imran, 2026-10-31 | Needs the same user and the per-boot token; that process can already read everything | None beyond existing user compromise | If frames ever carry other people's data |
 | Phase 1 B3-I: plain-text spool while the core is down (design-claude-code-skeleton) | Imran, 2026-10-31 | Encrypting it needs the store key on the hook's hot path (ADR-0005) | Up to 1 MB of recent prompts in a user-only file until the core drains it | If a spike shows keychain reads fit the hook budget |
 | Phase 1 B3-I: store not encrypted at rest (design-claude-code-skeleton; supersedes T-B4-1's SQLCipher control for now) | Imran, 2026-10-31 | Encryption deferred; revisit whether AIQ needs it at all ([note](../notes/note-20261031-encryption-deferred.md)) | Anyone with the disk, an unencrypted backup or admin rights can read stored prompts; exposure grows until the person runs `aiq forget --all` | Before any alpha user other than Imran installs AIQ, or a managed-device requirement names encryption at rest |
+| Rung-judge review T2: Claude subscription (`claude -p`) as judge default for other users | Imran, 2026-11-02 | AIQ runs the person's unmodified Claude Code on their own sign-in and never handles a token; applies to Claude Code tasks only, and target users are mostly on Copilot | Anthropic may read background judge calls as a developer routing requests through plan credentials and act on the user's account ([review](rung-judge-review.md) T2) | Anthropic's legal page or Consumer Terms change |
 
 ## 4. Cross-cutting controls
 OS user isolation and keychain; SQLCipher; Ed25519 pack signing with pinned keys; WASM sandbox;
 signed app updates; user-level-only hook install.
 
 ## 5. Gaps and flagged unknowns
+- Independent judge review (2026-11-01): [rung-judge-review.md](rung-judge-review.md) — terms findings T1–T5, security S1–S13.
 - The judge path (B5) gets its full threat review in the rung-model thread (docs/specs/rung-model.md); rows TR-1 to TR-9 come from that review; the T-B5 rows are the system-level cross-check.
 - No component designs yet; every boundary needs its own STRIDE-lite in `/design-slice`.
 - Windows named-pipe ACL and macOS keychain prompts need a spike.
