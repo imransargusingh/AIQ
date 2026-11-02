@@ -29,7 +29,8 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <ul><li><strong>Only you see your data.</strong> AIQ has no server, no account and no manager or team view.</li><li><strong>Your prompts stay on your computer.</strong> AIQ keeps them in a folder only your Windows account can read.</li><li><strong>Two things go out, both through tools you already use:</strong></li></ul>
 <ol><li>If you turn on judging, AIQ asks <strong>your own</strong> Copilot or Claude Code to judge your finished tasks.</li></ol>
 <p>That uses your plan, and your employer&#x27;s rules for that account apply.</p>
-<ol><li>Once a day AIQ asks GitHub whether a newer AIQ is out. It sends nothing about you.</li></ol>
+<ol><li>Once a day AIQ asks GitHub whether a newer AIQ is out. It sends nothing about you, and you can</li></ol>
+<p>turn it off.</p>
 <ul><li><strong>You are in control.</strong> Pause, export, delete or uninstall at any time. Uninstalling keeps your data</li></ul>
 <p>until you delete it.</p>
 <h2>What AIQ keeps on your computer</h2>
@@ -78,9 +79,12 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <p>sends no data about you. GitHub sees your network address and that a copy of AIQ checked, as with any web request.</p>
 <ul><li>A download is installed only if its SHA-256 checksum matches the list published with the same</li></ul>
 <p>release. It is installed when AIQ is idle and AIQ home is closed, and the previous version is kept.</p>
-<ul><li>In Settings choose <strong>Update automatically</strong> (the default) or <strong>Tell me first</strong></li></ul>
-<p>(<code>aiq config set update ask</code>). <strong>Go back to the previous version</strong> undoes an update, and AIQ will not reinstall that release by itself.</p>
-<ul><li>In this version there is no setting that stops the daily check itself.</li></ul>
+<ul><li>In Settings choose <strong>Update automatically</strong> (the default), <strong>Tell me first</strong></li></ul>
+<p>(<code>aiq config set update ask</code>) or <strong>Don&#x27;t check for updates</strong> (<code>aiq config set update off</code>). With checks off, AIQ makes no network call of its own; <strong>Check for updates now</strong> in Settings, or <code>aiq update --now</code>, checks once when you ask.</p>
+<ul><li><strong>Go back to the previous version</strong> undoes an update, and AIQ will not reinstall that release by</li></ul>
+<p>itself.</p>
+<ul><li>To see which version you have: AIQ home shows it at the bottom of the side panel and in Settings,</li></ul>
+<p>under Updates. In a terminal, run <code>aiq version</code> or <code>aiq update</code>.</p>
 <h3>3. Nothing else</h3>
 <ul><li><strong>No telemetry.</strong> AIQ sends no usage statistics, crash reports or analytics to anyone.</li><li>AIQ home makes no network calls.</li><li>Two files are made only when you ask, and stay on your computer until you choose to send them:</li></ul>
 <p><code>aiq export</code> (all your data, prompts included) and <code>aiq status --report</code> (a help file with counts, timings and error codes; no prompt text, and folders shown as <code>folder-1</code>, <code>folder-2</code>).</p>
@@ -92,7 +96,7 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <ul><li><strong>Planned:</strong> opt-in, combined statistics across many users, so the team can see whether coaching</li></ul>
 <p>works. They are not built. If they come, they will be off unless you turn them on, will contain no prompt text, and can be turned off again.</p>
 <h2>Your controls</h2>
-<table><thead><tr><th>You want to</th><th>Do this</th></tr></thead><tbody><tr><td>Stop AIQ for a while</td><td><code>aiq pause</code>, then <code>aiq resume</code> (also in AIQ home)</td></tr><tr><td>See what AIQ has</td><td>AIQ home, <strong>Your data</strong>; <code>aiq show &lt;card-id&gt;</code> for one tip</td></tr><tr><td>Get a copy of everything</td><td><code>aiq export</code></td></tr><tr><td>Delete one prompt</td><td>AIQ home, <strong>Your data</strong></td></tr><tr><td>Delete only imported history</td><td><code>aiq forget --imported</code></td></tr><tr><td>Delete everything</td><td><code>aiq forget --all</code></td></tr><tr><td>Stop judging</td><td><code>aiq config set judge off</code></td></tr><tr><td>Judge fewer tasks a day</td><td><code>aiq config set judge-daily-tasks &lt;n&gt;</code></td></tr><tr><td>Fewer tips</td><td><code>aiq config set daily-cap &lt;n&gt;</code> (default 5 a day), or turn one tip off</td></tr><tr><td>Be asked before updates</td><td><code>aiq config set update ask</code></td></tr><tr><td>Remove AIQ from your tools</td><td><code>aiq uninstall --all</code>. Your data stays; run <code>aiq forget --all</code> to delete it too</td></tr></tbody></table>
+<table><thead><tr><th>You want to</th><th>Do this</th></tr></thead><tbody><tr><td>Stop AIQ for a while</td><td><code>aiq pause</code>, then <code>aiq resume</code> (also in AIQ home)</td></tr><tr><td>See what AIQ has</td><td>AIQ home, <strong>Your data</strong>; <code>aiq show &lt;card-id&gt;</code> for one tip</td></tr><tr><td>Get a copy of everything</td><td><code>aiq export</code></td></tr><tr><td>Delete one prompt</td><td>AIQ home, <strong>Your data</strong></td></tr><tr><td>Delete only imported history</td><td><code>aiq forget --imported</code></td></tr><tr><td>Delete everything</td><td><code>aiq forget --all</code></td></tr><tr><td>Stop judging</td><td><code>aiq config set judge off</code></td></tr><tr><td>Judge fewer tasks a day</td><td><code>aiq config set judge-daily-tasks &lt;n&gt;</code></td></tr><tr><td>Fewer tips</td><td><code>aiq config set daily-cap &lt;n&gt;</code> (default 5 a day), or turn one tip off</td></tr><tr><td>Be asked before updates</td><td><code>aiq config set update ask</code></td></tr><tr><td>Stop the daily update check</td><td>Settings, <strong>Don&#x27;t check for updates</strong>, or <code>aiq config set update off</code></td></tr><tr><td>Remove AIQ from your tools</td><td><code>aiq uninstall --all</code>. Your data stays; run <code>aiq forget --all</code> to delete it too</td></tr></tbody></table>
 <p>When AIQ connects to a tool, it adds its own hook file or hook entries, backs up any settings file it edits, and lists every file it changed. <code>aiq uninstall --all</code> takes out the hooks, the PATH entry and the Start menu shortcut it added.</p>
 <h2>Terms of the private alpha</h2>
 <ul><li><strong>Invitation only.</strong> The alpha is a test with a small group of people. AIQ is free during it.</li><li><strong>It is early software.</strong> It may be wrong, slow or broken, and it may change or stop without</li></ul>
@@ -103,6 +107,9 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <p>as your use of them. Your plan&#x27;s limits, your provider&#x27;s terms and your employer&#x27;s policies apply.</p>
 <ul><li><strong>This page can change.</strong> Its history is kept in the AIQ repository. If a change affects what AIQ</li></ul>
 <p>keeps or sends, the alpha group will be told before the version that makes it.</p>
-<ul><li><strong>Questions or problems:</strong> contact the person who invited you to the alpha.</li></ul>
+<ul><li><strong>Questions or problems:</strong> contact imrans.</li><li><strong>The code is open.</strong> Everything AIQ does is in its public repository,</li></ul>
+<p>&lt;https://github.com/imransargusingh/AIQ&gt;. You can read how it works, check any statement on this page against the code, open an issue, or propose a change.</p>
+<ul><li><strong>License:</strong> not chosen yet. It will be added to the repository and this page before AIQ goes</li></ul>
+<p>beyond the private alpha.</p>
 <hr>
 <p><em>Where each statement comes from:</em> <code>docs/adr/0007-rung-judge-via-own-account.md</code> (judge), <code>docs/design/auto-update.md</code> (updates), <code>docs/design/private-alpha.md</code> (install, export, uninstall, help report), <code>docs/notes/note-20261031-encryption-deferred.md</code> (no encryption), <code>docs/security/privacy-review.md</code>, and the code on main (<code>crates/aiq/src/judge.rs</code>, <code>main.rs</code>, <code>crates/aiq-domain/src/secrets.rs</code>, <code>packaging/windows/</code>). Checked 2026-11-02 against main <code>6f89c0f</code>.</p></main></body></html>
