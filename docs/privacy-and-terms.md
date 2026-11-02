@@ -33,7 +33,8 @@ do about it. Anything marked **Planned** is not in this version.
 - **Only you see your data.** AIQ has no server, no account and no manager or team view.
 - **Your prompts stay on your computer.** AIQ keeps them in a folder only your Windows account can read.
 - **Two things go out, both through tools you already use:**
-  1. If you turn on judging, AIQ asks **your own** Copilot or Claude Code to judge your finished tasks.
+  1. While judging is on (installing AIQ turns it on; one switch turns it off), AIQ asks **your own**
+     Copilot or Claude Code to judge your finished tasks.
      That uses your plan, and your employer's rules for that account apply.
   2. Once a day AIQ asks GitHub whether a newer AIQ is out. It sends nothing about you, and you can
      turn it off.
@@ -74,14 +75,16 @@ When you use a connected tool, AIQ records:
 
 ## What leaves your computer
 
-### 1. Judge calls (only after you turn judging on)
+### 1. Judge calls (only while judging is on)
 
 AIQ places each finished task on a ladder (Assisted, Directed, Delegated, Orchestrated, Factory) and
 suggests a next step. To do that, it asks an AI model to read the task.
 
-- **Off until you start it.** Judging starts the first time you run `aiq judge`. That command first
-  shows what it sends, then judges in the background from then on. `aiq judge --dry-run` shows what
-  would be sent and sends nothing. Turn it off any time: `aiq config set judge off`.
+- **On from install, easy to turn off.** When installing AIQ connects your tools (`install.ps1` or AIQ
+  home's first-run setup), it turns judging on and prints what is sent, where, the daily cap and how to
+  undo it. Turn it off any time: the switch in AIQ home **Settings > Rung model**, or
+  `aiq config set judge off`. If you turned it off, installing again keeps it off. `aiq judge --dry-run`
+  shows what would be sent and sends nothing.
 - **What is sent:** the task's prompts (with secrets removed) and the summary of what the agent did
   (tools, files, commands). Never your own edits or diffs.
 - **Where it goes:** only to the tool that already saw the task, through your own sign-in.
@@ -146,7 +149,7 @@ suggests a next step. To do that, it asks an AI model to read the task.
 | Delete one prompt | AIQ home, **Your data** |
 | Delete only imported history | `aiq forget --imported` |
 | Delete everything | `aiq forget --all` |
-| Stop judging | `aiq config set judge off` |
+| Stop judging | AIQ home **Settings > Rung model**, or `aiq config set judge off` |
 | Judge fewer tasks a day | `aiq config set judge-daily-tasks <n>` |
 | Fewer tips | `aiq config set daily-cap <n>` (default 5 a day), or turn one tip off |
 | Be asked before updates | `aiq config set update ask` |

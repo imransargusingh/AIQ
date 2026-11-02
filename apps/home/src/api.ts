@@ -2,7 +2,7 @@
 // Outside Tauri (the UI tests) a fixture stands in, set on window by the test before the page loads.
 import type { Outcome, Snapshot, TaskDetail } from "./types";
 
-export type SettingKey = "daily_cap" | "copilot_tip_stays" | "next_rung_tips" | "judge_daily_tasks" | "update" | `keep_on.${string}`;
+export type SettingKey = "daily_cap" | "copilot_tip_stays" | "next_rung_tips" | "judge" | "judge_daily_tasks" | "update" | `keep_on.${string}`;
 /** The reasons the core accepts (crates/aiq-core/src/coaching.rs FLAG_REASONS). */
 export type FlagReason = "evidence_wrong" | "not_useful" | "blocked" | "other";
 
@@ -40,6 +40,7 @@ function fixture<T>(cmd: string, args: Record<string, unknown>): Promise<T> {
       if (!s.status.core) out = { ok: false, message: "AIQ isn't running, so settings can't change right now. It starts with your next prompt in Claude Code or Copilot." };
       else {
         if (args.key === "daily_cap") s.settings.daily_cap = Number(args.value);
+        if (args.key === "judge") s.settings.judge = args.value as Snapshot["settings"]["judge"];
         if (args.key === "judge_daily_tasks") s.settings.judge_daily_tasks = Number(args.value);
         if (args.key === "update") s.update.mode = args.value as Snapshot["update"]["mode"];
         if (args.key === "copilot_tip_stays") s.settings.copilot_tip_stays = args.value as Snapshot["settings"]["copilot_tip_stays"];
@@ -106,6 +107,8 @@ function fixture<T>(cmd: string, args: Record<string, unknown>): Promise<T> {
         break;
       }
       for (const t of s.setup.tools) if (t.present) t.hooked = true;
+      // aiq install turns background judging on when it was never set (the fixtures' "off" stands for unset here).
+      s.settings.judge = "auto";
       out = { ok: true, changed: ["C:\\Users\\you\\.copilot\\hooks\\aiq.json"] };
       break;
     case "run_update":

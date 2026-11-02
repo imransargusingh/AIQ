@@ -84,7 +84,7 @@ async fn pause(on: bool) -> Result<Snapshot, String> {
 
 /// Only the settings AIQ home shows can be changed from it; the core validates the value.
 fn allowed_setting(key: &str) -> bool {
-    matches!(key, "daily_cap" | "copilot_tip_stays" | "next_rung_tips" | "judge_daily_tasks" | "update")
+    matches!(key, "daily_cap" | "copilot_tip_stays" | "next_rung_tips" | "judge" | "judge_daily_tasks" | "update")
         || key.starts_with("keep_on.")
 }
 

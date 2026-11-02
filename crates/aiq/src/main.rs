@@ -58,7 +58,7 @@ Usage:
   aiq judge --check-report            The latest check's numbers again, and what AIQ measured itself
   aiq judge --survey-other [--sample <n>] [--dry-run]
                                       What kind of work your tasks with no job are (counts and generic labels only)
-  aiq config set judge <auto|off>     Judge new tasks in the background (on after your first aiq judge)
+  aiq config set judge <auto|off>     Judge new tasks in the background (aiq install turns it on)
   aiq config set judge-daily-tasks <n>  Most tasks judged per day (0-500, default 50)
   aiq config set judge-copilot-sessions <delete|keep>  Delete AIQ's own Copilot judge sessions (default)
   aiq export [<folder>]               Copy everything AIQ stored to plain JSON files you can read

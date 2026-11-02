@@ -361,7 +361,7 @@ pub struct Item {
 pub struct Settings {
     pub daily_cap: u32,
     pub copilot_tip_stays: &'static str,
-    /// auto (judge new tasks in the background) or off. "off" until the person first runs `aiq judge`.
+    /// auto (judge new tasks in the background) or off. "off" until `aiq install` connects a tool or the person first runs `aiq judge`.
     pub judge: String,
     pub judge_daily_tasks: u32,
     /// auto, on or off.

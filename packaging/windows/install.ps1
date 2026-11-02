@@ -8,7 +8,8 @@
 #   2. adds that folder to your user PATH (not the machine PATH)
 #   3. adds an "AIQ" Start menu shortcut for AIQ home
 #   4. records 2 and 3 in %USERPROFILE%\.aiq\windows-install.json, so `aiq uninstall --all` can put them back
-#   5. runs `aiq install --yes`: connects every AI tool it finds (Copilot, Claude Code) and lists each file changed
+#   5. runs `aiq install --yes`: connects every AI tool it finds (Copilot, Claude Code), lists each file changed,
+#      and turns background judging on unless the person turned it off (undo: aiq config set judge off)
 #   6. starts `aiq import` in the background and opens AIQ home
 # Undo: aiq uninstall --all (your data stays; aiq forget --all deletes it).
 [CmdletBinding()]
