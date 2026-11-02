@@ -1,0 +1,113 @@
+name: release
+
+# Private-alpha design A1: one Windows zip (aiq.exe, aiq-home.exe, install.ps1, README.txt) plus SHA256SUMS.
+# A version tag v* builds it, smoke-tests install.ps1 on the runner, and attaches both files to a DRAFT
+# GitHub release: nothing is public until a person presses Publish. workflow_dispatch builds and tests the
+# zip as a workflow artifact only, with no release at all.
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - "packaging/**"
+      - ".github/workflows/release.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: never
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            .
+            apps/home/src-tauri
+      - name: Version (a tag must match the Cargo version)
+        id: version
+        shell: pwsh
+        run: |
+          $v = (Select-String -Path Cargo.toml -Pattern '^version = "(.+)"').Matches[0].Groups[1].Value
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "v$v") {
+            Write-Error "Tag $env:GITHUB_REF_NAME does not match Cargo version $v"
+            exit 1
+          }
+          "version=$v" >> $env:GITHUB_OUTPUT
+      - name: Build aiq.exe
+        run: cargo build -p aiq --release --locked
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/home/package-lock.json
+      - name: Build aiq-home.exe
+        working-directory: apps/home
+        run: |
+          npm ci
+          npx tauri build --no-bundle -- --locked
+      - name: Zip and checksum
+        shell: pwsh
+        run: |
+          $v = '${{ steps.version.outputs.version }}'
+          $stage = Join-Path $env:RUNNER_TEMP "aiq-$v-windows-x64"
+          New-Item -ItemType Directory -Force $stage | Out-Null
+          Copy-Item target/release/aiq.exe, apps/home/src-tauri/target/release/aiq-home.exe, packaging/windows/install.ps1, packaging/windows/README.txt $stage
+          New-Item -ItemType Directory -Force dist | Out-Null
+          $zip = "dist/aiq-$v-windows-x64.zip"
+          Compress-Archive -Path "$stage/*" -DestinationPath $zip
+          $h = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          "$h  aiq-$v-windows-x64.zip" | Set-Content -Encoding ascii dist/SHA256SUMS
+          Get-Content dist/SHA256SUMS
+      - name: Smoke test - install.ps1 from the zip on this runner, then uninstall
+        shell: pwsh
+        run: |
+          $v = '${{ steps.version.outputs.version }}'
+          $un = Join-Path $env:RUNNER_TEMP 'unzipped'
+          Expand-Archive "dist/aiq-$v-windows-x64.zip" $un
+          New-Item -ItemType Directory -Force (Join-Path $env:USERPROFILE '.copilot') | Out-Null
+          powershell -ExecutionPolicy Bypass -File (Join-Path $un 'install.ps1') -NoLaunch -AllowElevated
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $bin = Join-Path $env:USERPROFILE '.aiq\bin'
+          foreach ($f in 'aiq.exe', 'aiq-home.exe') { if (-not (Test-Path (Join-Path $bin $f))) { Write-Error "missing $f"; exit 1 } }
+          if (-not ([Environment]::GetEnvironmentVariable('Path', 'User') -split ';' -contains $bin)) { Write-Error 'user PATH not set'; exit 1 }
+          if (-not (Test-Path (Join-Path ([Environment]::GetFolderPath('Programs')) 'AIQ.lnk'))) { Write-Error 'no shortcut'; exit 1 }
+          if (-not (Test-Path (Join-Path $env:USERPROFILE '.copilot\hooks\aiq.json'))) { Write-Error 'Copilot not connected'; exit 1 }
+          & (Join-Path $bin 'aiq.exe') version
+          & (Join-Path $bin 'aiq.exe') uninstall copilot --yes
+          if (Test-Path (Join-Path $env:USERPROFILE '.copilot\hooks\aiq.json')) { Write-Error 'Copilot hook left behind'; exit 1 }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aiq-release-windows-x64
+          path: dist/
+          retention-days: 14
+
+  draft-release:
+    if: github.ref_type == 'tag'
+    needs: windows
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: aiq-release-windows-x64
+          path: dist
+      - name: Check the checksum, then attach both files to a draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd dist && sha256sum -c SHA256SUMS && cd ..
+          gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --draft \
+            --title "AIQ ${{ needs.windows.outputs.version }}" \
+            --notes "Private alpha build. Unzip, then run install.ps1 (see README.txt). Check the zip against SHA256SUMS."
