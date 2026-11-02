@@ -31,11 +31,11 @@ spec; did not write them) · **Requested by:** Imran · **Not legal advice.**
 | # | Finding | Severity | Recommendation | Changes a product decision? |
 |---|---|---|---|---|
 | T1 | Imran's own use of `claude -p` on his own Claude plan | Low | Keep. Keep the daily judge budget small | No |
-| T2 | Giving AIQ to others with Claude **subscription** sign-in as the judge default | **High** | Before AIQ goes to anyone else, default Claude judging to the person's own API key (or their cloud-provider credentials). Keep subscription sign-in only if Anthropic confirms it in writing | **Yes: Imran decides** |
+| T2 | Giving AIQ to others with Claude **subscription** sign-in as the judge default | **High** | Before AIQ goes to anyone else, default Claude judging to the person's own API key (or their cloud-provider credentials). Keep subscription sign-in only if Anthropic confirms it in writing | **Decided (Imran, 2026-11-02): keep the subscription default for all users; closed** |
 | T3 | Imran's own use of `copilot -p` | Low | Keep | No |
 | T4 | Giving AIQ to others with `copilot -p` | Low | Keep; setup says work-account (org) policy and audit apply; stop if the org turns the CLI off | No |
 | T5 | ADR-0007 still says Copilot judging uses `vscode.lm`; H5 chose `copilot -p` | Low | Amend ADR-0007 to record H5 | No (records H5) |
-| S1 | Judge-session copies of task content in `~/.copilot/session-state` survive `aiq forget` | **Medium** | AIQ deletes its own judge session folders after reading the answer, by default, with a setting to keep them | **Yes: Imran decides** (history-import spec says "only if the person allows") |
+| S1 | Judge-session copies of task content in `~/.copilot/session-state` survive `aiq forget` | **Medium** | AIQ deletes its own judge session folders after reading the answer, by default, with a setting to keep them | **Decided (Imran, 2026-11-02): delete by default** |
 | S2 | No secret redaction anywhere: pasted keys and tokens go into the store, the spool and every judge call | **Medium** | Redact well-known secret shapes at ingest, before store, spool or judge | No (new control) |
 | S3 | Judge env-var name differs: docs say `AIQ_JUDGE=1`, code checks `AIQ_INTERNAL` | **Medium** | One name (`AIQ_INTERNAL`, already in code and tests); fix the spec, ADR and threat model; Phase 5 test that every judge spawn sets it | No |
 | S4 | The Claude judge call is not fully sealed: user plugins, MCP servers, user `CLAUDE.md` and auto memory still load | **Medium** | Add `--strict-mcp-config --mcp-config '{"mcpServers":{}}'`; check the `system/init` event per release; prepare for `--bare` becoming the `-p` default | No |
@@ -49,8 +49,8 @@ spec; did not write them) · **Requested by:** Imran · **Not legal advice.**
 | S12 | Hooks and status line point at a test build under `%TEMP%` on Imran's laptop | Low | Move to a permanent install path (already on the open list) | No |
 | S13 | Phase 0 fact-check left judge sessions and outputs on the laptop | Low | Delete the listed judge sessions and `~/.aiq/fact-check` when no longer needed | No |
 
-**Nothing critical.** Nothing here blocks Imran's own use today. Two items need Imran's decision
-(T2, S1). The rest are fixes for the Phase 5 judge build, or doc corrections.
+**Nothing critical.** Nothing here blocks Imran's own use today. Imran decided the two open items on
+2026-11-02 (T2: keep subscription; S1: delete by default; see T2 and S1 below). The rest are fixes for the Phase 5 judge build, or doc corrections.
 
 ## 2. What was read, and what is inferred
 
@@ -120,6 +120,13 @@ and offer subscription sign-in only if Anthropic confirms it in writing (the pag
 https://www.anthropic.com/contact-sales for questions on permitted authentication). ADR-0007 already
 says this is a settings change, not a redesign. Imran's own use can stay on his subscription.
 
+**Owner decision (Imran, 2026-11-02):** keep the person's own Claude subscription (`claude -p`) as the
+Claude judge default for all users; the matter is closed. Scope, as Imran stated: this applies only to
+tasks seen by **Claude Code**. Tasks from Copilot CLI and VS Code are judged by Copilot through the
+person's own `copilot -p` (history-import H5) and are not affected. AIQ's target users will almost
+exclusively use Copilot, so few judge calls go through this path. The API-key fallback stays opt-in.
+The finding is recorded as an accepted risk in the threat model.
+
 ### T3. GitHub Copilot, Imran's own use — Low
 **What the terms say (read):**
 - Programmatic mode is for "scripts, CI/CD pipelines, and automation workflows" (Copilot CLI docs).
@@ -165,8 +172,8 @@ gone, but it is still there. That breaks the privacy rule "raw prompts stay on d
 deletes them" in spirit: they cannot delete them from AIQ.
 **Recommendation:** delete AIQ's own judge session folders (by the recorded id) as soon as the answer is
 read, by default, with a setting to keep them for debugging. `aiq forget` must also delete any that are
-left. This matches Imran's preference for AIQ deciding by itself with an easy override. **Imran decides**
-(it changes the history-import wording). Claude judge calls already use `--no-session-persistence`.
+left. **Decided (Imran, 2026-11-02): delete by default**, with a setting to keep them; the history-import spec
+is updated to match. Claude judge calls already use `--no-session-persistence`.
 
 ### S2. No secret redaction — Medium
 **Evidence (read):** no redaction code in `crates/` or the specs; prompts are stored as typed (up to 64 KB),
@@ -297,7 +304,8 @@ the fact-check data is no longer needed (Claude can do it through folder access 
 - Doc corrections for S3: `AIQ_JUDGE=1` → `AIQ_INTERNAL=1` in ADR-0007, rung-model US-5 / TR-10, and the
   threat model.
 - Pointer notes in ADR-0007 and the threat model to this review; threat-model rows for S1, S2, S6, S7.
-- No product decision changed. T2 and S1 wait for Imran.
+- Imran's decisions (2026-11-02): T2 keep the Claude subscription default (Claude Code tasks only; closed);
+  S1 delete judge sessions by default. Recorded here, in ADR-0007, the threat model and history-import.
 
 ## 6. What would change these conclusions
 - Anthropic confirms (or rejects) in writing that a locally installed tool may drive the person's own

@@ -91,7 +91,9 @@ person's own AI account.
     - **Independent review done 2026-11-01** ([rung-judge review](../security/rung-judge-review.md), not legal
       advice): Imran's own use is consistent with the terms as read; for other people the reviewer recommends
       the API-key default (finding T2, High), because the page says developers using the Agent SDK "should use
-      API key authentication" and `claude -p` is the Agent SDK via the CLI. Decision pending with Imran.
+      API key authentication" and `claude -p` is the Agent SDK via the CLI. **Owner decision (Imran,
+      2026-11-02): keep the subscription default for all users; closed.** It applies to Claude Code tasks
+      only; Copilot / VS Code tasks are judged through `copilot -p` and target users are mostly on Copilot.
       The review also notes Copilot judging now uses `copilot -p` (history-import H5), not `vscode.lm` (T5).
     - **Open, owed before AIQ is given to anyone else:** the independent review should check this
       reading, or Anthropic should confirm it (the page's contact link). If the reading fails, flip
