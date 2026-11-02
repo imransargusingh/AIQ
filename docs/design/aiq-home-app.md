@@ -276,3 +276,4 @@ once). No remote telemetry (architecture).
 | **Completed** | Design |
 | **Remaining** | Build, tests, CI Windows build, laptop check |
 | **Best next action** | `/implement` this design |
+| **Follow-up** | Task detail, setup and delete one item (D1's deferred screens): `docs/design/aiq-home-deferred-pages.md` |

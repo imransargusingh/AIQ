@@ -17,6 +17,8 @@ if (shots) mkdirSync(shots, { recursive: true });
 
 const types = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css" };
 const server = createServer((req, res) => {
+  // Some Chromium builds ask for a favicon the app doesn't have; the Tauri window never does.
+  if (req.url === "/favicon.ico") return res.writeHead(204).end();
   const p = join(dist, decodeURIComponent(new URL(req.url, "http://x").pathname).replace(/^\/$/, "/index.html"));
   if (!p.startsWith(dist) || !existsSync(p)) return res.writeHead(404).end();
   res.writeHead(200, { "content-type": types[extname(p)] ?? "application/octet-stream" }).end(readFileSync(p));
@@ -43,10 +45,11 @@ async function open(fixture, { theme, hash = "", width = 1280, height = 800, for
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
   const snapshot = JSON.parse(readFileSync(join(fixtures, `${fixture}.json`), "utf8"));
+  const task = JSON.parse(readFileSync(join(fixtures, "task.json"), "utf8"));
   if (edit) edit(snapshot);
-  await page.addInitScript((s) => {
-    window.__AIQ_FIXTURE__ = { snapshot: s, calls: [] };
-  }, snapshot);
+  await page.addInitScript(([s, t]) => {
+    window.__AIQ_FIXTURE__ = { snapshot: s, task: t, calls: [] };
+  }, [snapshot, task]);
   await page.goto(base + hash);
   if (theme) await page.evaluate((t) => (document.documentElement.dataset.theme = t), theme);
   await page.waitForSelector("main h1");
@@ -69,11 +72,14 @@ const pages = [
 ];
 
 await test("contract: fixtures are aiq.home.v1 snapshots from the Rust read model", async () => {
-  for (const f of ["full", "down", "paused", "empty"]) {
+  for (const f of ["full", "down", "paused", "empty", "first-run"]) {
     const s = JSON.parse(readFileSync(join(fixtures, `${f}.json`), "utf8"));
     assert.equal(s.schema, "aiq.home.v1");
-    for (const k of ["status", "home", "tasks", "tips", "data", "settings"]) assert.ok(k in s, `${f}: ${k}`);
+    for (const k of ["status", "home", "tasks", "tips", "data", "settings", "setup"]) assert.ok(k in s, `${f}: ${k}`);
+    assert.equal(s.setup.done, f !== "first-run", f);
   }
+  const t = JSON.parse(readFileSync(join(fixtures, "task.json"), "utf8"));
+  for (const k of ["task", "prompts", "read_ms"]) assert.ok(k in t, `task: ${k}`);
 });
 
 for (const theme of ["light", "dark", "contrast"]) {
@@ -288,6 +294,176 @@ await test("narrow window (720x520) has no horizontal page scroll", async () => 
     assert.ok(over <= 0, `${id} overflows by ${over}px`);
     await page.context().close();
   }
+});
+
+// ---- Deferred pages (design aiq-home-deferred-pages) ----
+
+const TASK_TITLE = "refactor the login handler to return typed errors";
+
+await test("task detail: Enter on a Tasks row opens it; prompts in order; honest judge places; back", async () => {
+  const page = await open("full", { hash: "#tasks" });
+  await page.locator("tbody tr").first().focus();
+  await page.keyboard.press("j");
+  await page.keyboard.press("Enter");
+  await page.waitForFunction((t) => document.querySelector("main h1")?.textContent === t, TASK_TITLE);
+  assert.equal(await page.evaluate(() => document.activeElement?.tagName), "H1", "focus moves to the title");
+  assert.ok(page.url().endsWith("#task/019000000001-0000-7000-8000-000000000000"), page.url());
+  const t = await page.locator("main").innerText();
+  assert.match(t, /Claude Code · started 2 days ago|Claude Code · started/);
+  assert.match(t, /3 prompts/);
+  assert.ok(t.includes("No next step yet: AIQ doesn't judge tasks yet."));
+  assert.match(t, /Rung: Not judged yet\s+Job: Not classified yet/);
+  const items = page.locator("ol.prompts li");
+  assert.equal(await items.count(), 3);
+  assert.ok((await items.nth(2).innerText()).includes("please refactor the login handler, typed errors returned"));
+  assert.equal(await page.locator("nav a[aria-current=page]").innerText().then((x) => x.split("\n")[0]), "Tasks");
+  assert.deepEqual(page.errors, []);
+  await page.keyboard.press("Escape");
+  assert.equal(await page.locator("main h1").textContent(), "Tasks", "Esc goes back");
+  // A click on a row opens it too, and the link goes back.
+  await page.locator("tbody tr").nth(1).click();
+  await page.waitForFunction((t) => document.querySelector("main h1")?.textContent === t, TASK_TITLE);
+  await page.getByRole("link", { name: "← Tasks" }).click();
+  assert.equal(await page.locator("main h1").textContent(), "Tasks");
+  await page.context().close();
+});
+
+for (const theme of ["light", "dark", "contrast"]) {
+  await test(`task detail has no axe violations (${theme})`, async () => {
+    const page = await open("full", { theme: theme === "light" ? undefined : theme, hash: "#task/019000000001-0000-7000-8000-000000000000" });
+    await page.waitForSelector("ol.prompts");
+    assert.deepEqual(await axe(page), []);
+    if (shots) await page.screenshot({ path: join(shots, `task-${theme}.png`), fullPage: true });
+    await page.context().close();
+  });
+}
+
+await test("task detail: a task no longer listed says so, with a way back", async () => {
+  const page = await open("full", { hash: "#task/nope" });
+  await page.waitForSelector("text=This task isn't listed any more.");
+  assert.deepEqual(await axe(page), []);
+  await page.getByRole("link", { name: "← Tasks" }).click();
+  assert.equal(await page.locator("main h1").textContent(), "Tasks");
+  await page.context().close();
+});
+
+await test("setup: first run walks five steps with Back; Start only after I understand; then Home", async () => {
+  const page = await open("first-run");
+  const h1 = () => page.locator("main h1").textContent();
+  const current = () => page.locator(".steps li[aria-current=step]").innerText();
+  assert.equal(await h1(), "Your coach, on your computer only");
+  assert.equal(await page.locator("nav").count(), 0, "no nav during first-run setup");
+  assert.match(await current(), /Privacy/);
+  assert.ok((await page.locator("main").innerText()).includes("No manager or team view exists."));
+  assert.deepEqual(await axe(page), []);
+  const cont = page.getByRole("button", { name: "Continue" });
+  await cont.click();
+  assert.equal(await h1(), "Tools AIQ will watch");
+  assert.equal(await page.evaluate(() => document.activeElement?.tagName), "H1", "focus moves to the step's heading");
+  assert.match(await page.locator(".steps li.done").innerText(), /Privacy\s*\(done\)/);
+  let t = await page.locator("main").innerText();
+  assert.match(t, /Claude Code · connected/);
+  assert.match(t, /GitHub Copilot · found, not connected yet/);
+  assert.ok(t.includes("aiq install copilot"));
+  assert.deepEqual(await axe(page), []);
+  await page.getByRole("button", { name: "Back" }).click();
+  assert.equal(await h1(), "Your coach, on your computer only");
+  await cont.click();
+  await cont.click();
+  assert.equal(await h1(), "How AIQ will judge your tasks");
+  t = await page.locator("main").innerText();
+  assert.ok(t.includes("Nothing to connect yet."));
+  assert.ok(t.includes("AIQ never reads or stores your sign-in."));
+  assert.ok(t.includes("On a work account, your organisation's policies apply"));
+  await cont.click();
+  assert.equal(await h1(), "How many tips a day?");
+  await page.getByRole("button", { name: "3", exact: true }).click();
+  await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Tips a day set to 3.");
+  assert.deepEqual(await axe(page), []);
+  await cont.click();
+  assert.equal(await h1(), "One thing to know before you start");
+  const start = page.getByRole("button", { name: "Start AIQ" });
+  assert.equal(await start.isDisabled(), true);
+  await page.getByLabel("I understand").check();
+  assert.equal(await start.isDisabled(), false);
+  assert.deepEqual(await axe(page), []);
+  if (shots) await page.screenshot({ path: join(shots, "setup-last.png"), fullPage: true });
+  await start.click();
+  // The empty store's Home is its teaching state.
+  await page.waitForFunction(() => document.querySelector("main h1")?.textContent === "AIQ is watching quietly");
+  await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Setup done. AIQ is watching.");
+  assert.equal(await page.locator("nav").count(), 1);
+  const calls = await page.evaluate(() => window.__AIQ_FIXTURE__.calls.map((c) => c.cmd).filter((c) => c !== "snapshot"));
+  assert.deepEqual(calls, ["set_setting", "finish_setup"]);
+  await page.context().close();
+});
+
+for (const theme of ["dark", "contrast"]) {
+  await test(`setup has no axe violations (${theme})`, async () => {
+    const page = await open("first-run", { theme });
+    for (let i = 0; i < 5; i++) {
+      assert.deepEqual(await axe(page), [], `step ${i + 1}`);
+      if (i < 4) await page.getByRole("button", { name: "Continue" }).click();
+    }
+    await page.context().close();
+  });
+}
+
+await test("setup: core down keeps the default tips a day and says so; keys don't leave setup", async () => {
+  const page = await open("first-run", { edit: (s) => (s.status.core = false) });
+  await page.keyboard.press("g");
+  await page.keyboard.press("d");
+  await page.keyboard.press("Control+k");
+  assert.equal(await page.locator("main h1").textContent(), "Your coach, on your computer only");
+  assert.equal(await page.locator("dialog[open]").count(), 0);
+  for (let i = 0; i < 3; i++) await page.getByRole("button", { name: "Continue" }).click();
+  assert.ok((await page.locator("main").innerText()).includes("AIQ isn't running yet, so this stays at 5 for now."));
+  assert.equal(await page.getByRole("button", { name: "5 (default)", exact: true }).isDisabled(), true);
+  assert.deepEqual(await axe(page), []);
+  await page.context().close();
+});
+
+await test("setup: Run setup again from Settings, and Close returns", async () => {
+  const page = await open("full", { hash: "#settings" });
+  await page.getByRole("button", { name: "Run setup again" }).click();
+  assert.equal(await page.locator("main h1").textContent(), "Your coach, on your computer only");
+  await page.getByRole("button", { name: "Close" }).click();
+  assert.equal(await page.locator("main h1").textContent(), "Settings");
+  await page.context().close();
+});
+
+await test("narrow window (720x520): setup and task detail have no horizontal page scroll", async () => {
+  for (const [f, hash] of [["first-run", ""], ["full", "#task/019000000001-0000-7000-8000-000000000000"]]) {
+    const page = await open(f, { hash, width: 720, height: 520 });
+    const over = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    assert.ok(over <= 0, `${f} overflows by ${over}px`);
+    await page.context().close();
+  }
+});
+
+await test("delete one prompt: names it, focus on Cancel, deleted text everywhere, focus kept on the table", async () => {
+  const page = await open("full", { hash: "#data" });
+  const firstDelete = page.locator("tbody").getByRole("button", { name: /^Delete prompt from/ }).first();
+  const label = await firstDelete.getAttribute("aria-label");
+  await firstDelete.click();
+  await page.waitForSelector("dialog[open]");
+  assert.equal(await page.evaluate(() => document.activeElement?.textContent), "Cancel");
+  const dlg = await page.locator("dialog[open]").innerText();
+  assert.ok(dlg.includes("draft the release notes"), dlg);
+  assert.ok(dlg.includes("It keeps only that a prompt was sent"));
+  assert.deepEqual(await axe(page), []);
+  await page.keyboard.press("Escape");
+  assert.equal(await page.locator("dialog[open]").count(), 0);
+  assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), label, "focus returns to Delete");
+  await firstDelete.click();
+  await page.locator("dialog").getByRole("button", { name: "Delete prompt" }).click();
+  await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent?.startsWith("Prompt deleted."));
+  assert.equal(await page.locator("dialog[open]").count(), 0);
+  assert.ok(!(await page.locator("tbody").innerText()).includes("draft the release notes"));
+  await page.waitForFunction(() => document.activeElement?.tagName === "TABLE");
+  const calls = await page.evaluate(() => window.__AIQ_FIXTURE__.calls.filter((c) => c.cmd === "forget_item").map((c) => Object.keys(c.args)));
+  assert.deepEqual(calls, [["eventId"]]);
+  await page.context().close();
 });
 
 await browser.close();

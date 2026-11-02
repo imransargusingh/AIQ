@@ -1,4 +1,5 @@
-//! AIQ home desktop shell (design `docs/design/aiq-home-app.md`). Four commands, each a thin call:
+//! AIQ home desktop shell (designs `docs/design/aiq-home-app.md`, `aiq-home-deferred-pages.md`). Seven
+//! commands, each a thin call:
 //! reads go to the `aiq-home` read model (read-only store), changes go through `aiq_core::control` to the
 //! core, the only writer. Each command's time and outcome is logged locally to `<data>/home.log`.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
@@ -126,9 +127,55 @@ async fn forget_all(confirm: String) -> Result<Outcome, String> {
     .await
 }
 
+/// One task with its prompts' text, for the task detail page. None when it is no longer listed.
+#[tauri::command]
+async fn task(task_id: String) -> Result<Option<aiq_home::TaskDetail>, String> {
+    blocking(move || {
+        let t = Instant::now();
+        let paths = Paths::from_env();
+        let pack = BundledPack.load().expect("bundled pack is validated at build time by aiq-core's tests");
+        let d = aiq_home::task_detail(&paths, &pack, aiq_core::sysclock::SystemClock.now(), &task_id);
+        log(&paths, "task", t, if d.is_some() { "ok" } else { "not_found" });
+        d
+    })
+    .await
+}
+
+/// Delete one prompt's text (design aiq-home-deferred-pages E1–E3). The log names the outcome only, never
+/// the id's text.
+#[tauri::command]
+async fn forget_item(event_id: String) -> Result<Outcome, String> {
+    blocking(move || {
+        let t = Instant::now();
+        let paths = Paths::from_env();
+        let r = control::forget_item(&paths, &event_id, CORE_TIMEOUT).map_err(|e| match e {
+            ControlError::NotRunning => NOT_RUNNING.to_owned(),
+            ControlError::Refused(m) => format!("Not deleted: {m}."),
+            ControlError::Io(m) => format!("Could not delete it: {m}"),
+        });
+        log(&paths, "forget_item", t, if r.is_ok() { "ok" } else { "refused" });
+        Outcome::from(r)
+    })
+    .await
+}
+
+/// First-run setup finished: AIQ home opens on Home from now on.
+#[tauri::command]
+async fn finish_setup() -> Result<Snapshot, String> {
+    blocking(|| {
+        let t = Instant::now();
+        let paths = Paths::from_env();
+        let r = control::finish_setup(&paths);
+        log(&paths, "finish_setup", t, if r.is_ok() { "ok" } else { "error" });
+        r.map_err(|e| format!("Could not save that setup is done: {e}"))?;
+        Ok(read(&paths))
+    })
+    .await?
+}
+
 fn main() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![snapshot, pause, set_setting, forget_all])
+        .invoke_handler(tauri::generate_handler![snapshot, pause, set_setting, forget_all, task, forget_item, finish_setup])
         .run(tauri::generate_context!())
         .expect("AIQ home could not start its window");
 }

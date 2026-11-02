@@ -1,11 +1,11 @@
-// The bridge to the Tauri shell (apps/home/src-tauri). Four commands; nothing else leaves the page.
+// The bridge to the Tauri shell (apps/home/src-tauri). Seven commands; nothing else leaves the page.
 // Outside Tauri (the UI tests) a fixture stands in, set on window by the test before the page loads.
-import type { Outcome, Snapshot } from "./types";
+import type { Outcome, Snapshot, TaskDetail } from "./types";
 
 declare global {
   interface Window {
     __TAURI_INTERNALS__?: unknown;
-    __AIQ_FIXTURE__?: { snapshot: Snapshot; calls: { cmd: string; args: unknown }[] };
+    __AIQ_FIXTURE__?: { snapshot: Snapshot; task?: TaskDetail; calls: { cmd: string; args: unknown }[] };
   }
 }
 
@@ -51,6 +51,24 @@ function fixture<T>(cmd: string, args: Record<string, unknown>): Promise<T> {
         out = { ok: true };
       }
       break;
+    case "task":
+      out = f.task && f.task.task.task_id === args.taskId ? f.task : null;
+      break;
+    case "forget_item": {
+      const item = s.data.items.find((i) => i.event_id === args.eventId && i.text != null);
+      if (!item) out = { ok: false, message: "Not deleted: that item has no stored text to delete." };
+      else {
+        item.text = null;
+        item.deleted = true;
+        for (const p of f.task?.prompts ?? []) if (p.event_id === args.eventId) [p.text, p.deleted] = [null, true];
+        out = { ok: true };
+      }
+      break;
+    }
+    case "finish_setup":
+      s.setup.done = true;
+      out = s;
+      break;
     default:
       return Promise.reject(new Error(`unknown command ${cmd}`));
   }
@@ -62,4 +80,7 @@ export const api = {
   pause: (on: boolean) => invoke<Snapshot>("pause", { on }),
   setSetting: (key: "daily_cap" | "copilot_tip_stays", value: string) => invoke<Outcome>("set_setting", { key, value }),
   forgetAll: (confirm: string) => invoke<Outcome>("forget_all", { confirm }),
+  task: (taskId: string) => invoke<TaskDetail | null>("task", { taskId }),
+  forgetItem: (eventId: string) => invoke<Outcome>("forget_item", { eventId }),
+  finishSetup: () => invoke<Snapshot>("finish_setup"),
 };

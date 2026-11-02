@@ -215,6 +215,8 @@ pub struct TaskSpan {
     pub first_ms: i64,
     pub last_ms: i64,
     pub prompts: u32,
+    /// Event ids of the Task's prompts, with their times, in order (the rung judge reads these prompts).
+    pub members: Vec<(String, i64)>,
 }
 
 /// Group prompts into Tasks with the same rule the live detector uses (`task_key`, `starts_new_task`).
@@ -233,6 +235,7 @@ pub fn split_tasks<'a>(
                 let t = &mut out[i];
                 t.last_ms = t.last_ms.max(p.utc_ms);
                 t.prompts += 1;
+                t.members.push((p.event_id.to_owned(), p.utc_ms));
             }
             _ => {
                 open.insert(key, out.len());
@@ -243,6 +246,7 @@ pub fn split_tasks<'a>(
                     first_ms: p.utc_ms,
                     last_ms: p.utc_ms,
                     prompts: 1,
+                    members: vec![(p.event_id.to_owned(), p.utc_ms)],
                 });
             }
         }
@@ -543,6 +547,8 @@ pub(crate) mod tests {
         );
         let ids: Vec<(&str, u32)> = tasks.iter().map(|t| (t.task_id.as_str(), t.prompts)).collect();
         assert_eq!(ids, vec![("a", 2), ("d", 2), ("f", 1), ("c", 1)]);
+        let members: Vec<&str> = tasks[1].members.iter().map(|(id, _)| id.as_str()).collect();
+        assert_eq!(members, vec!["d", "e"]);
         assert_eq!(tasks[0].last_ms, 30 * MIN);
     }
 

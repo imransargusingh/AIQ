@@ -769,3 +769,54 @@ fn include_folder_undoes_set_aside() {
     h.cp_in("/ep", "s1", "hello there", MIN);
     assert_eq!(h.prompts(), 1);
 }
+
+/// Delete one item (design aiq-home-deferred-pages E1, E2): the text leaves the store, every store file on
+/// disk, and the detector's memory; the event stays, and card evidence says it was deleted.
+#[test]
+fn forget_item_deletes_text_everywhere_and_keeps_the_event() {
+    let mut h = H::new();
+    const SECRET: &str = "zebra quartz marmalade refactor the login handler";
+    h.send("a", BASE);
+    let gone = h.prompt("a", SECRET);
+    h.svc().ingest(&gone, None);
+    h.send("a", R1);
+    let before = h.svc().engine().clone();
+
+    h.svc().forget_item(&gone.event_id).unwrap();
+
+    // Memory: the working set equals one rebuilt from a store that never had the text.
+    assert_ne!(h.svc().engine(), &before);
+    let now = h.svc().engine().clone();
+    h.restart();
+    assert_eq!(h.svc().engine(), &now);
+    // Store: the event stays (a prompt happened), its text is gone.
+    let st = h.svc().store();
+    let text: Option<String> =
+        st.raw().query_row("SELECT text FROM content WHERE event_id = ?1", [&gone.event_id], |r| r.get(0)).ok();
+    assert_eq!(text, None);
+    assert_eq!(st.events_by_kind().unwrap(), vec![("prompt".to_string(), 3)]);
+    // Disk: no store file holds the bytes (secure_delete + WAL truncate). Fails if either is removed.
+    for suffix in ["", "-wal", "-shm"] {
+        let p = format!("{}{suffix}", h.path.display());
+        if let Ok(bytes) = std::fs::read(&p) {
+            assert!(!bytes.windows(SECRET.len()).any(|w| w == SECRET.as_bytes()), "text still in {p}");
+        }
+    }
+    // A second delete, or an id without text, is refused and changes nothing.
+    assert!(h.svc().forget_item(&gone.event_id).is_err());
+    assert!(h.svc().forget_item("no-such-event").is_err());
+}
+
+#[test]
+fn forget_item_frame_reaches_the_writer() {
+    let (tx, rx) = mpsc::sync_channel::<Cmd>(4);
+    let t = std::thread::spawn(move || {
+        if let Ok(Cmd::ForgetItem { event_id, reply }) = rx.recv() {
+            let _ = reply.send(if event_id == "e1" { Ok(()) } else { Err("no".into()) });
+        }
+    });
+    let req = Request::ForgetItem { token: "t".into(), event_id: "e1".into() };
+    let out = dispatch(req, &tx, &Counters::default(), Instant::now());
+    t.join().unwrap();
+    assert!(matches!(&out, Dispatch::Reply(l) if l.contains("\"ok\":true")), "{out:?}");
+}

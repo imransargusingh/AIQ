@@ -81,6 +81,10 @@ pub enum Cmd {
         folder: String,
         reply: mpsc::Sender<Result<(), String>>,
     },
+    ForgetItem {
+        event_id: String,
+        reply: mpsc::Sender<Result<(), String>>,
+    },
     DrainSpool,
     Shutdown {
         reply: mpsc::Sender<()>,
@@ -207,6 +211,9 @@ fn writer_loop(mut svc: Service<SystemClock>, rx: Receiver<Cmd>, paths: &Paths, 
                 };
                 let _ = reply.send(r);
             }
+            Cmd::ForgetItem { event_id, reply } => {
+                let _ = reply.send(svc.forget_item(&event_id));
+            }
             Cmd::DrainSpool => {
                 drain_spool(paths, &mut svc, counters);
                 svc.prune();
@@ -324,6 +331,11 @@ pub fn dispatch(req: Request, tx: &SyncSender<Cmd>, counters: &Counters, receive
         }
         Request::IncludeFolder { folder, .. } => {
             let r = ask(tx, |reply| Cmd::IncludeFolder { folder, reply })
+                .unwrap_or_else(|| Err("core did not answer".into()));
+            Dispatch::Reply(to_line(&OkReply { ok: r.is_ok(), message: r.err() }))
+        }
+        Request::ForgetItem { event_id, .. } => {
+            let r = ask(tx, |reply| Cmd::ForgetItem { event_id, reply })
                 .unwrap_or_else(|| Err("core did not answer".into()));
             Dispatch::Reply(to_line(&OkReply { ok: r.is_ok(), message: r.err() }))
         }

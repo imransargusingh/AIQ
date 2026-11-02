@@ -64,6 +64,11 @@ impl Paths {
     pub fn pause_flag(&self) -> PathBuf {
         self.data.join("paused")
     }
+    /// AIQ home's first-run setup finished (design aiq-home-deferred-pages E5). App state, not the
+    /// person's data: delete everything keeps it.
+    pub fn setup_flag(&self) -> PathBuf {
+        self.data.join("setup-done")
+    }
     pub fn log(&self) -> PathBuf {
         self.data.join("aiq.log")
     }

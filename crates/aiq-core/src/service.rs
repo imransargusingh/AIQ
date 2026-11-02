@@ -486,6 +486,23 @@ impl<C: Clock> Service<C> {
         })
     }
 
+    /// Delete one prompt's text (Your data, "Delete"), then rebuild the detector working set so the text
+    /// also leaves this process's memory (design aiq-home-deferred-pages E2).
+    pub fn forget_item(&mut self, event_id: &str) -> Result<(), String> {
+        let r = self
+            .store
+            .forget_content(event_id)
+            .and_then(|found| if found { self.rebuild().map(|()| true) } else { Ok(false) });
+        match r {
+            Ok(true) => Ok(()),
+            Ok(false) => Err("that item has no stored text to delete".into()),
+            Err(e) => {
+                self.counters.inc(e.code);
+                Err(e.code.into())
+            }
+        }
+    }
+
     pub fn status(&self) -> StatusReply {
         StatusReply {
             paused: self.paused(),
