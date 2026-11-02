@@ -2444,8 +2444,8 @@ mod tests {
         assert_eq!(j.task_type.as_deref(), Some("other"), "below the bar falls back to other");
         assert_eq!(type_runs(j).unwrap(), vec![rung::TypeRun { task_type: "fix_bug".into(), confidence: 0.6 }; 2]);
         let g = grader("code_change", "fix_bug", 2);
-        run_check(&e.store, &e.paths, &e.homes, &g, &g, NOW, 30, 1).unwrap();
-        run_check(&e.store, &e.paths, &e.homes, &g, &g, NOW + 1, 30, 2).unwrap();
+        run_check(&e.store, &e.paths, &e.homes, &g, &g, NOW, 30, 1, false).unwrap();
+        run_check(&e.store, &e.paths, &e.homes, &g, &g, NOW + 1, 30, 2, false).unwrap();
         let rep = check_report(&e.store).unwrap();
         assert!(rep.contains("Kind of task, all 2 check runs (where the job matched): 0 of 8"), "{rep}");
         assert!(rep.contains("both runs named the kind, but not confidently 8 (second reading also other 0)"), "{rep}");
