@@ -125,4 +125,15 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <ul><li><strong>Instances:</strong> 2026-11-02, check run 01a19ce8 (<code>check::agreement</code>).</li><li><strong>Sweep:</strong> the other subset pairs in <code>agreement</code>: confident job / job and confident rung / rung use the</li></ul>
 <p>same condition plus <code>!uncertain</code> (fine). <code>by_kind</code> counts every task where the judge named a kind, including job misses, on purpose: it answers &quot;when the judge says this kind, how often is it right&quot;, not &quot;where the job matched&quot;.</p>
 <ul><li><strong>Control:</strong> confident kind now uses the same condition as kind. Test</li></ul>
-<p><code>confident_kind_uses_the_same_denominator_as_kind</code> asserts confident n is never above kind n. Rung: automated control.</p></main></body></html>
+<p><code>confident_kind_uses_the_same_denominator_as_kind</code> asserts confident n is never above kind n. Rung: automated control.</p>
+<h3>DC-013 — A test fixture copied from rendered output instead of the file&#x27;s bytes</h3>
+<ul><li><strong>Signature:</strong> PR #73 taught <code>aiq status</code> to read the laptop swapper&#x27;s <code>swapped aiq.exe</code> lines, and its</li></ul>
+<p>test passed, but on the laptop the line still said &quot;no upgrade recorded&quot;. The test line came from the console paste; the real file is UTF-16 LE with a BOM (Windows PowerShell 5.1 <code>Tee-Object -Append</code>), and <code>read_to_string</code> rejected it, which <code>.ok()</code> turned into &quot;not recorded&quot;.</p>
+<ul><li><strong>Why it survives:</strong> a terminal shows UTF-16 and UTF-8 the same, and the degrade-to-&quot;not recorded&quot; rule</li></ul>
+<p>hides the read error.</p>
+<ul><li><strong>Instances:</strong> 2026-11-02, <code>cli.rs</code> status reading <code>bin\upgrade-log.txt</code> (measured on the laptop: starts</li></ul>
+<p>FF FE, 66,974 of 134,022 bytes zero).</p>
+<ul><li><strong>Sweep:</strong> other files AIQ reads that PowerShell writes: the release <code>upgrade.ps1</code> writes its log with</li></ul>
+<p><code>Add-Content</code> (ANSI code page; its lines are ASCII, so read as UTF-8) and <code>update.json</code> with <code>Set-Content -Encoding UTF8</code> (a BOM, already stripped by <code>update::strip_bom</code>). <code>hook-timings</code> is AIQ&#x27;s own.</p>
+<ul><li><strong>Control:</strong> <code>decode_log</code> reads UTF-16 LE/BE and UTF-8 with or without a BOM. Test</li></ul>
+<p><code>upgrade_logs_are_read_in_the_encodings_powershell_writes</code> builds the bytes PowerShell writes. Rule: a parser of a file another program writes is tested on that program&#x27;s bytes, not on a pasted line.</p></main></body></html>

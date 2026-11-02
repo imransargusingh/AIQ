@@ -171,3 +171,19 @@ summary: >-
 - **Control:** confident kind now uses the same condition as kind. Test
   `confident_kind_uses_the_same_denominator_as_kind` asserts confident n is never above kind n. Rung:
   automated control.
+
+### DC-013 — A test fixture copied from rendered output instead of the file's bytes
+- **Signature:** PR #73 taught `aiq status` to read the laptop swapper's `swapped aiq.exe` lines, and its
+  test passed, but on the laptop the line still said "no upgrade recorded". The test line came from the
+  console paste; the real file is UTF-16 LE with a BOM (Windows PowerShell 5.1 `Tee-Object -Append`), and
+  `read_to_string` rejected it, which `.ok()` turned into "not recorded".
+- **Why it survives:** a terminal shows UTF-16 and UTF-8 the same, and the degrade-to-"not recorded" rule
+  hides the read error.
+- **Instances:** 2026-11-02, `cli.rs` status reading `bin\upgrade-log.txt` (measured on the laptop: starts
+  FF FE, 66,974 of 134,022 bytes zero).
+- **Sweep:** other files AIQ reads that PowerShell writes: the release `upgrade.ps1` writes its log with
+  `Add-Content` (ANSI code page; its lines are ASCII, so read as UTF-8) and `update.json` with
+  `Set-Content -Encoding UTF8` (a BOM, already stripped by `update::strip_bom`). `hook-timings` is AIQ's own.
+- **Control:** `decode_log` reads UTF-16 LE/BE and UTF-8 with or without a BOM. Test
+  `upgrade_logs_are_read_in_the_encodings_powershell_writes` builds the bytes PowerShell writes. Rule: a
+  parser of a file another program writes is tested on that program's bytes, not on a pasted line.
