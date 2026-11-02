@@ -236,6 +236,11 @@ fn delete_store_files_removes_all_and_tolerates_missing() {
     s.insert_event(&ev("e1", "s", Some("x")), 1).unwrap();
     let p = s.path().to_owned();
     drop(s);
+    // Security review S10: side files hold prompt text too. SQLite removes them on a clean close, so make
+    // them exist, as after a crash.
+    for side in ["-wal", "-shm", "-journal"] {
+        std::fs::write(format!("{}{side}", p.display()), b"x").unwrap();
+    }
     delete_store_files(&p).unwrap();
     delete_store_files(&p).unwrap();
     assert_eq!(std::fs::read_dir(d.path()).unwrap().count(), 0);

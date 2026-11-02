@@ -44,7 +44,13 @@ pub fn connect(paths: &Paths) -> io::Result<Stream> {
     #[cfg(windows)]
     {
         use interprocess::local_socket::GenericNamespaced;
-        Stream::connect(paths.pipe_name().to_ns_name::<GenericNamespaced>()?)
+        let s = Stream::connect(paths.pipe_name().to_ns_name::<GenericNamespaced>()?)?;
+        // Security review S7: the pipe name is predictable, so another account on this machine could create
+        // it first. Send nothing (no prompt, no token) unless the pipe's server runs as this user; the
+        // caller then spools as for a core that is down.
+        let pid = s.peer_creds()?.pid().ok_or_else(|| io::Error::other("pipe server process unknown"))?;
+        win::require_same_user(pid)?;
+        Ok(s)
     }
 }
 
@@ -112,14 +118,41 @@ pub mod win {
     use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, LocalFree};
     use windows_sys::Win32::Security::Authorization::ConvertSidToStringSidW;
     use windows_sys::Win32::Security::{GetTokenInformation, TOKEN_QUERY, TOKEN_USER, TokenUser};
-    use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+    use windows_sys::Win32::System::Threading::{
+        GetCurrentProcess, OpenProcess, OpenProcessToken, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
 
     /// String SID of the current user (from spike S1).
     pub fn user_sid() -> io::Result<String> {
+        // SAFETY: GetCurrentProcess returns a pseudo-handle that needs no closing.
+        process_user_sid(unsafe { GetCurrentProcess() })
+    }
+
+    /// Fails with PermissionDenied unless process `pid` runs as the current user. A process this user may
+    /// not even query (another account's, without admin rights) fails too.
+    pub fn require_same_user(pid: u32) -> io::Result<()> {
+        // SAFETY: the handle is checked and closed on every path.
+        let theirs = unsafe {
+            let h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+            if h.is_null() {
+                return Err(io::Error::new(io::ErrorKind::PermissionDenied, "pipe server not queryable"));
+            }
+            let sid = process_user_sid(h);
+            CloseHandle(h);
+            sid?
+        };
+        if theirs == user_sid()? {
+            Ok(())
+        } else {
+            Err(io::Error::new(io::ErrorKind::PermissionDenied, "pipe server runs as another user"))
+        }
+    }
+
+    fn process_user_sid(process: HANDLE) -> io::Result<String> {
         // SAFETY: standard token query; every handle and buffer is checked and freed on each path.
         unsafe {
             let mut tok: HANDLE = null_mut();
-            if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut tok) == 0 {
+            if OpenProcessToken(process, TOKEN_QUERY, &mut tok) == 0 {
                 return Err(io::Error::last_os_error());
             }
             let mut len = 0u32;
@@ -138,6 +171,16 @@ pub mod win {
             let out = U16CStr::from_ptr_str(s).to_string_lossy();
             LocalFree(s.cast());
             Ok(out)
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        #[test]
+        fn own_process_passes_and_a_missing_one_fails_closed() {
+            super::require_same_user(std::process::id()).unwrap();
+            // PID 0 is the System Idle Process: never this user, and not queryable.
+            assert!(super::require_same_user(0).is_err());
         }
     }
 }

@@ -307,6 +307,18 @@ the fact-check data is no longer needed (Claude can do it through folder access 
 - Imran's decisions (2026-11-02): T2 keep the Claude subscription default (Claude Code tasks only; closed);
   S1 delete judge sessions by default. Recorded here, in ADR-0007, the threat model and history-import.
 
+## 5a. Fixes since the review (2026-11-02)
+- **S2 fixed:** `crates/aiq-domain/src/secrets.rs` replaces well-known secret shapes with `[secret removed]`
+  in the hook (before the frame is sent or spooled), again in the core's ingest, and in `aiq import`
+  (prompts and commands). Canary set in its tests; `aiq status` shows the count since the core started.
+  Measured: hook p95 1.3 ms on a 61 KB prompt holding 1,600 secrets (release build, Linux, 40 runs).
+- **S7 fixed:** on Windows, `ipc::connect` checks that the pipe's server process runs as the current
+  user and refuses otherwise; the hook then spools.
+- **S10:** the store deletion test now creates `-wal`, `-shm` and `-journal` first and checks all go.
+- **S11 fixed:** `aiq install copilot` says that `experimental` turns on all Copilot experimental
+  features, and that uninstall turns it back off. Open: an install option without the status line.
+- **S1, S3, S4, S5, S6:** in the rung judge build (thread "Build the Rust rung judge").
+
 ## 6. What would change these conclusions
 - Anthropic confirms (or rejects) in writing that a locally installed tool may drive the person's own
   `claude -p` on their subscription → T2 drops to Low (or stays High with no exception).
