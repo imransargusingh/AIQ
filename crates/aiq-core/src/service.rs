@@ -38,13 +38,24 @@ pub struct Service<C: Clock> {
     /// Folder keys where a claude.ai Projects / Remote Control session was set aside (rule RC), so
     /// "Include them" can be offered there although no folder rule exists. In memory; bounded.
     projects_folders: std::collections::HashSet<String>,
-    /// Rule RC result per Claude Code session, read once from its transcript head (bounded).
-    rc_checked: std::collections::HashMap<String, bool>,
+    /// Rule RC result per Claude Code session, read from its transcript head until settled (bounded).
+    rc_checked: std::collections::HashMap<String, RcCheck>,
     /// Coaching inputs derived from the store (design coaching-from-rungs); rebuilt when stale.
     coach: Option<coaching::Cache>,
     /// AIQ-COACH-GUESS-LOW is logged once per core run.
     guess_low_logged: bool,
 }
+
+/// Rule RC per session: a settled answer, or how many reads found the head not yet written.
+#[derive(Debug, Clone, Copy)]
+enum RcCheck {
+    Settled(bool),
+    Unsettled(u32),
+}
+
+/// Reads of an unsettled transcript head per session before AIQ stops looking (a missing file reads in
+/// 0 ms; a written head settles on its first user record, so this bound is rarely reached).
+const RC_TRIES: u32 = 8;
 
 /// One signal to decide on: the detector's fields and the card it would show.
 struct Pending<'a> {
@@ -417,21 +428,32 @@ impl<C: Clock> Service<C> {
         Ok(())
     }
 
-    /// Rule RC from the transcript the prompt names: read its head once per session, then remember. A
-    /// session whose prompt carried no transcript (older hooks set `projects` themselves) is never read.
+    /// Rule RC from the transcript the event names: read its head until it settles the answer, then
+    /// remember. An unsettled head (not yet written) is read again on the session's next events, up to
+    /// `RC_TRIES` reads. A session whose events carry no transcript (older hooks set `projects`
+    /// themselves) is never read.
     fn projects_session(&mut self, ev: &EventV1) -> bool {
+        use crate::projects::Head;
         let key = format!("{}/{}", ev.surface, ev.surface_session_id);
-        if let Some(v) = self.rc_checked.get(&key) {
-            return *v;
+        match self.rc_checked.get(&key) {
+            Some(RcCheck::Settled(v)) => return *v,
+            Some(RcCheck::Unsettled(n)) if *n >= RC_TRIES => return false,
+            _ => {}
         }
         let Some(t) = ev.transcript.as_deref() else { return false };
         let started = std::time::Instant::now();
-        let v = crate::projects::scan(std::path::Path::new(t), crate::projects::HEAD_BYTES);
-        info!(ms = started.elapsed().as_millis() as u64, projects = v, "rc.check");
+        let head = crate::projects::scan(std::path::Path::new(t), crate::projects::HEAD_BYTES);
+        let v = head == Head::Projects;
+        info!(ms = started.elapsed().as_millis() as u64, projects = v, settled = head != Head::Unknown, "rc.check");
         if self.rc_checked.len() >= 4096 {
             self.rc_checked.clear();
         }
-        self.rc_checked.insert(key, v);
+        let check = match (head, self.rc_checked.get(&key)) {
+            (Head::Unknown, Some(RcCheck::Unsettled(n))) => RcCheck::Unsettled(n + 1),
+            (Head::Unknown, _) => RcCheck::Unsettled(1),
+            _ => RcCheck::Settled(v),
+        };
+        self.rc_checked.insert(key, check);
         v
     }
 

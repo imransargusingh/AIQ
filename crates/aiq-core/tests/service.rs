@@ -893,6 +893,50 @@ fn the_core_reads_a_prompts_transcript_once_per_session_for_rule_rc() {
     assert_eq!(h.svc().status().automated_folders, vec![("c:\\repos\\aiq".to_string(), "projects".to_string())]);
 }
 
+// Laptop 2026-11-02 21:28Z: a Remote Control session's first prompt found its transcript not yet written,
+// AIQ remembered "not Projects", and every later event was recorded as the person's work. An unwritten head
+// is read again at the next event (prompt or Stop) until it settles the answer.
+#[test]
+fn an_unwritten_transcript_head_is_read_again_until_it_settles_rule_rc() {
+    let d = tempfile::tempdir().unwrap();
+    let t = d.path().join("rc.jsonl");
+    let mut h = H::new();
+    let send = |h: &mut H, session: &str, t: &std::path::Path, text: &str| {
+        let mut e = h.prompt(session, text);
+        e.cwd = Some("C:\\Repos\\AIQ".into());
+        e.transcript = Some(t.to_string_lossy().into_owned());
+        h.svc().ingest(&e, None);
+    };
+    let stop = |h: &mut H, session: &str, t: &std::path::Path| {
+        let mut e = h.prompt(session, "unused");
+        e.body = EventBody::Stop(StopPayload { stop_hook_active: false, prompt_id: None });
+        e.transcript = Some(t.to_string_lossy().into_owned());
+        h.svc().ingest(&e, None);
+    };
+    send(&mut h, "rc1", &t, "brief one"); // no file yet: recorded, unsettled
+    assert_eq!(h.prompts(), 1);
+    let queue = "{\"type\":\"queue-operation\",\"operation\":\"enqueue\"}\n";
+    std::fs::write(&t, queue).unwrap();
+    send(&mut h, "rc1", &t, "brief two"); // still no user record: unsettled
+    assert_eq!(h.prompts(), 2);
+    let marker = "{\"type\":\"user\",\"isMeta\":true,\"turnOrigin\":\"system\",\"entrypoint\":\"claude-desktop\"}\n";
+    std::fs::write(&t, format!("{queue}{marker}")).unwrap();
+    stop(&mut h, "rc1", &t);
+    send(&mut h, "rc1", &t, "brief three");
+    assert_eq!(h.prompts(), 2, "settled at the Stop: the rest of the session is set aside");
+    assert_eq!(h.svc().status().automated_folders, vec![("c:\\repos\\aiq".to_string(), "projects".to_string())]);
+
+    // A head that never settles is read at most RC_TRIES (8) times, then the session counts as the person's.
+    let never = d.path().join("never.jsonl");
+    std::fs::write(&never, queue).unwrap();
+    for i in 0..8 {
+        send(&mut h, "s2", &never, &format!("task {i}"));
+    }
+    std::fs::write(&never, format!("{queue}{marker}")).unwrap();
+    send(&mut h, "s2", &never, "task 8");
+    assert_eq!(h.prompts(), 11, "stopped looking after 8 unsettled reads");
+}
+
 // Rule AIQ: sessions in AIQ's own check and probe folders (`<temp>\aiq-*`) are tests of AIQ, set aside
 // every prompt; the folder is listed in status and `aiq include` brings it back.
 #[test]

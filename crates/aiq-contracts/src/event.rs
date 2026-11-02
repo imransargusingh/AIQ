@@ -26,8 +26,8 @@ pub struct EventV1 {
     /// `aiq/src/projects.rs`): Claude's own session, set aside unless the person included the folder.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub projects: bool,
-    /// Claude Code: the session's transcript file. The core reads its head once per session for the
-    /// Projects check (rule RC), so the hook never opens it. Not stored.
+    /// Claude Code: the session's transcript file. The core reads its head for the Projects check (rule
+    /// RC) until the head settles it, so the hook never opens it. Not stored.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transcript: Option<String>,
     #[serde(flatten)]

@@ -231,15 +231,14 @@ pub fn to_event(v: &Value, event: &str) -> Option<EventV1> {
     let mut ev = new_event("claude-code", session, cwd_of(v), body);
     // Rule RC: the hook never opens the transcript. On Imran's laptop that open alone was ~0.4 s of every
     // Claude Code hook (measured 2026-11-02: Stop fell from p95 493 ms to 0.2 ms when it stopped reading it;
-    // Copilot hooks, which never read it, prepare in 0.3 ms). The prompt carries the path; the core reads
-    // the head once per session, off the hook's clock.
-    if event == "UserPromptSubmit" {
-        ev.transcript = v
-            .get("transcript_path")
-            .and_then(Value::as_str)
-            .filter(|t| !t.is_empty() && t.len() <= 4096)
-            .map(str::to_owned);
-    }
+    // Copilot hooks, which never read it, prepare in 0.3 ms). Every event carries the path; the core reads
+    // the head off the hook's clock until it settles, so a head not yet written at the first prompt is
+    // read again at that turn's Stop.
+    ev.transcript = v
+        .get("transcript_path")
+        .and_then(Value::as_str)
+        .filter(|t| !t.is_empty() && t.len() <= 4096)
+        .map(str::to_owned);
     Some(ev)
 }
 
@@ -373,7 +372,7 @@ mod tests {
     }
 
     #[test]
-    fn to_event_passes_the_transcript_path_on_prompts_and_never_reads_it() {
+    fn to_event_passes_the_transcript_path_on_every_event_and_never_reads_it() {
         let d = tempfile::tempdir().unwrap();
         let t = d.path().join("s.jsonl");
         std::fs::write(
@@ -386,7 +385,9 @@ mod tests {
         assert!(!e.projects, "the core decides, not the hook");
         assert_eq!(e.transcript.as_deref(), Some(t.to_string_lossy().as_ref()));
         let stop = json!({"session_id":"s","hook_event_name":"Stop","cwd":"/x","transcript_path":t.to_string_lossy()});
-        assert_eq!(to_event(&stop, "Stop").unwrap().transcript, None);
+        let s = to_event(&stop, "Stop").unwrap();
+        assert!(!s.projects);
+        assert_eq!(s.transcript.as_deref(), Some(t.to_string_lossy().as_ref()), "the Stop can settle rule RC");
     }
 
     #[test]
