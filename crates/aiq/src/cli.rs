@@ -53,8 +53,66 @@ fn core_error(paths: &Paths) -> Option<String> {
     std::fs::read_to_string(paths.core_error()).ok().map(|s| s.trim().to_owned())
 }
 
-pub fn status() -> ExitCode {
+pub fn status(rest: &[&str]) -> ExitCode {
     let paths = Paths::from_env();
+    let (out, folders) = status_text(&paths);
+    if !rest.contains(&"--report") {
+        print!("{out}");
+        return ExitCode::SUCCESS;
+    }
+    let homes: Vec<String> =
+        ["USERPROFILE", "HOME"].iter().filter_map(|k| std::env::var(k).ok()).filter(|h| !h.is_empty()).collect();
+    let now = chrono::Utc::now();
+    let report = format!(
+        "AIQ help report, {} UTC\nAIQ {} on {} {}\n\n{}",
+        now.format("%Y-%m-%d %H:%M"),
+        env!("CARGO_PKG_VERSION"),
+        std::env::consts::OS,
+        std::env::consts::ARCH,
+        redact(&out, &folders, &homes)
+    );
+    let file = paths.data.join(format!("aiq-report-{}.txt", now.format("%Y%m%d-%H%M%S")));
+    let _ = paths.ensure_dirs();
+    match aiq_store::create_user_only(&file).and_then(|()| std::fs::write(&file, &report)) {
+        Ok(()) => {
+            println!("Wrote {}", file.display());
+            println!(
+                "It holds versions, counts, timings and error codes. No prompt text; folders show as \
+                 folder-1, folder-2 and your home folder as ~. Read it first. Send it only if you choose to."
+            );
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            println!("Couldn't write the report to {}: {e}", file.display());
+            ExitCode::from(1)
+        }
+    }
+}
+
+/// The help report's text with every named folder shown as `folder-<n>` and the home folder as `~`
+/// (private-alpha design A8: no folder names). Longest name first, so a folder inside another is
+/// replaced whole. Status text holds no prompt text to begin with: only counts, times and codes.
+pub fn redact(text: &str, folders: &[String], homes: &[String]) -> String {
+    let mut names: Vec<(String, String)> =
+        folders.iter().enumerate().map(|(i, f)| (f.clone(), format!("folder-{}", i + 1))).collect();
+    for h in homes {
+        names.push((h.clone(), "~".to_owned()));
+    }
+    names.retain(|(n, _)| !n.is_empty());
+    names.sort_by_key(|(n, _)| std::cmp::Reverse(n.len()));
+    let mut out = text.to_owned();
+    for (n, r) in &names {
+        out = out.replace(n.as_str(), r);
+        // Windows paths may also print with forward slashes.
+        out = out.replace(&n.replace('\\', "/"), r);
+    }
+    out
+}
+
+/// `aiq status` as text, and the folder names it mentions (for the help report's redaction).
+fn status_text(paths: &Paths) -> (String, Vec<String>) {
+    let paths = paths.clone();
+    let mut folders: Vec<String> = Vec::new();
     let reply =
         ask_core(&paths, |token| Request::Status { token }).and_then(|l| serde_json::from_str::<StatusReply>(&l).ok());
     let mut out = String::new();
@@ -80,6 +138,7 @@ pub fn status() -> ExitCode {
             );
             out += &format!("Store size: {}\n", human_bytes(s.store_bytes));
             let ignored = s.core_counters.iter().find(|(k, _)| k == aiq_contracts::codes::INGEST_AUTOMATED);
+            folders.extend(s.automated_folders.iter().map(|(f, _)| f.clone()));
             for (folder, reason) in &s.automated_folders {
                 if reason == "projects" {
                     out += &format!(
@@ -164,8 +223,7 @@ pub fn status() -> ExitCode {
     if !errs.is_empty() {
         out += &format!("Hook notes: {}\n", errs.join(", "));
     }
-    print!("{out}");
-    ExitCode::SUCCESS
+    (out, folders)
 }
 
 fn human_bytes(b: u64) -> String {
@@ -510,6 +568,20 @@ pub fn forget_all(yes: bool) -> ExitCode {
 mod tests {
     use super::*;
     use aiq_contracts::frames::EvidencePrompt;
+
+    #[test]
+    fn report_shows_no_folder_name_and_no_home() {
+        let folders = vec![r"C:\Users\canary\src\secret-project".to_owned(), r"C:\Users\canary\src".to_owned()];
+        let homes = vec![r"C:\Users\canary".to_owned()];
+        let text = "Automated sessions ignored in C:\\Users\\canary\\src\\secret-project (burst).\n\
+                    Automated sessions ignored in C:\\Users\\canary\\src (burst).\n\
+                    Copilot: installed in C:/Users/canary/.copilot\n\
+                    Claude Code: installed in C:\\Users\\canary\\.claude\\settings.json\n";
+        let out = redact(text, &folders, &homes);
+        assert!(!out.contains("canary") && !out.contains("secret-project"), "{out}");
+        assert!(out.contains("ignored in folder-1 (burst)") && out.contains("ignored in folder-2 (burst)"), "{out}");
+        assert!(out.contains("installed in ~/.copilot"), "{out}");
+    }
 
     #[test]
     fn hook_phases_cover_the_last_day_and_skip_old_lines() {

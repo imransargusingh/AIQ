@@ -23,6 +23,8 @@ Usage:
   aiq install claude-code [--yes]     Add AIQ's hooks to ~/.claude/settings.json (shows the change first)
   aiq uninstall claude-code [--yes]   Remove only AIQ's hooks
   aiq status                          What AIQ is doing, cards today, store size, hook times
+  aiq status --report                 Write that to a file you can send for help (no prompt text,
+                                      folders shown as folder-1, folder-2)
   aiq show <card-id>                  A card, why it showed, and the prompts it counted
   aiq pause | aiq resume              Stop or restart capture and tips
   aiq endpoint                        Where the core listens (used by the VS Code extension)
@@ -72,7 +74,7 @@ fn main() -> ExitCode {
         ["uninstall", "claude-code", ..] => install::uninstall(yes),
         ["install", "copilot", ..] => install_copilot::install(yes),
         ["uninstall", "copilot", ..] => install_copilot::uninstall(yes),
-        ["status", ..] => cli::status(),
+        ["status", rest @ ..] => cli::status(rest),
         ["show", id, ..] => cli::show(id),
         ["pause", ..] => cli::pause(true),
         ["resume", ..] => cli::pause(false),
