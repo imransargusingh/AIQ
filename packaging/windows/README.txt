@@ -8,7 +8,9 @@ Install (no admin rights needed):
      finished tasks (stop it in AIQ home's Settings, or: aiq config set judge off), and opens AIQ home.
 
 What leaves your machine: nothing, except the judge calls AIQ makes through your own Copilot or
-Claude Code sign-in. Your prompts stay in %USERPROFILE%\.aiq until you delete them.
+Claude Code sign-in (after you run `aiq judge` once), and a daily check for a newer AIQ release on GitHub
+that sends nothing about you. Your prompts stay in %USERPROFILE%\.aiq until you delete them.
+Full privacy and alpha terms: https://github.com/imransargusingh/AIQ/blob/main/docs/privacy-and-terms.md
 
 Useful commands (in a new terminal):
   aiq status              what AIQ is doing

@@ -367,6 +367,19 @@ fn e2e_forget_all_needs_confirmation() {
 }
 
 #[test]
+fn e2e_status_reads_the_dev_swap_log_next_to_the_exes() {
+    // The laptop's dev swapper logs in <home>\bin, not <home> (measured 2026-11-02 after #66 was installed).
+    let e = Env::new();
+    assert!(e.status().contains("no upgrade recorded"), "{}", e.status());
+    let bin = e.home().join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    std::fs::write(bin.join("upgrade-log.txt"), "2026-11-02T14:00:57.7222903-08:00 swapped aiq.exe (5920768 bytes)\n")
+        .unwrap();
+    let st = e.status();
+    assert!(st.contains("since the last upgrade at 2026-11-02 22:00Z"), "{st}");
+}
+
+#[test]
 fn e2e_status_first_run_and_core_down_states() {
     let mut e = Env::new();
     let down = e.status();
