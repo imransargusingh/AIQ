@@ -1,0 +1,858 @@
+{
+ "run": "2026-11-02",
+ "tasks": [
+  {
+   "task": 1,
+   "job": "other"
+  },
+  {
+   "task": 2,
+   "job": "other"
+  },
+  {
+   "task": 3,
+   "job": "other"
+  },
+  {
+   "task": 4,
+   "job": "other"
+  },
+  {
+   "task": 5,
+   "job": "other"
+  },
+  {
+   "task": 6,
+   "job": "other"
+  },
+  {
+   "task": 7,
+   "job": "code_change"
+  },
+  {
+   "task": 8,
+   "job": "write_doc"
+  },
+  {
+   "task": 9,
+   "job": "other"
+  },
+  {
+   "task": 10,
+   "job": "code_change"
+  },
+  {
+   "task": 11,
+   "job": "other"
+  },
+  {
+   "task": 12,
+   "job": "other"
+  },
+  {
+   "task": 13,
+   "job": "other"
+  },
+  {
+   "task": 14,
+   "job": "write_doc"
+  },
+  {
+   "task": 15,
+   "job": "other"
+  }
+ ],
+ "verdicts": {
+  "job": {
+   "1": {
+    "verdict": "R",
+    "reason": "job matches the work done"
+   },
+   "2": {
+    "verdict": "R",
+    "reason": "job matches the work done"
+   },
+   "3": {
+    "verdict": "R",
+    "reason": "job matches the work done"
+   },
+   "4": {
+    "verdict": "R",
+    "reason": "job matches the work done"
+   },
+   "5": {
+    "verdict": "R",
+    "reason": "job matches the work done"
+   },
+   "6": {
+    "verdict": "R",
+    "reason": "job matches the work done"
+   },
+   "7": {
+    "verdict": "R",
+    "reason": "job matches the work done"
+   },
+   "8": {
+    "verdict": "R",
+    "reason": "job matches the work done"
+   },
+   "9": {
+    "verdict": "R",
+    "reason": "job matches the work done"
+   },
+   "10": {
+    "verdict": "R",
+    "reason": "job matches the work done"
+   },
+   "11": {
+    "verdict": "R",
+    "reason": "job matches the work done"
+   },
+   "12": {
+    "verdict": "R",
+    "reason": "job matches the work done"
+   },
+   "13": {
+    "verdict": "R",
+    "reason": "job matches the work done"
+   },
+   "14": {
+    "verdict": "R",
+    "reason": "job matches the work done"
+   },
+   "15": {
+    "verdict": "R",
+    "reason": "job matches the work done"
+   }
+  },
+  "F4": {
+   "1": {
+    "verdict": "R",
+    "reason": "request shape matches the reader's value"
+   },
+   "2": {
+    "verdict": "W",
+    "reason": "short ask but states goal, context and a compliance limit"
+   },
+   "3": {
+    "verdict": "R",
+    "reason": "request shape matches the reader's value"
+   },
+   "4": {
+    "verdict": "W",
+    "reason": "goal and context, but no limits or rules stated"
+   },
+   "5": {
+    "verdict": "R",
+    "reason": "request shape matches the reader's value"
+   },
+   "6": {
+    "verdict": "W",
+    "reason": "goal and rationale, but no limits or rules stated"
+   },
+   "7": {
+    "verdict": "R",
+    "reason": "request shape matches the reader's value"
+   },
+   "8": {
+    "verdict": "R",
+    "reason": "request shape matches the reader's value"
+   },
+   "9": {
+    "verdict": "R",
+    "reason": "request shape matches the reader's value"
+   },
+   "10": {
+    "verdict": "R",
+    "reason": "request shape matches the reader's value"
+   },
+   "11": {
+    "verdict": "R",
+    "reason": "request shape matches the reader's value"
+   },
+   "12": {
+    "verdict": "W",
+    "reason": "goal and source doc, but no limits or rules stated"
+   },
+   "13": {
+    "verdict": "R",
+    "reason": "request shape matches the reader's value"
+   },
+   "14": {
+    "verdict": "W",
+    "reason": "first request was a bare review ask; detail came in later prompts"
+   },
+   "15": {
+    "verdict": "R",
+    "reason": "request shape matches the reader's value"
+   }
+  },
+  "F5": {
+   "1": {
+    "verdict": "R",
+    "reason": "follow-ups match the reader's value"
+   },
+   "2": {
+    "verdict": "R",
+    "reason": "follow-ups match the reader's value"
+   },
+   "3": {
+    "verdict": "R",
+    "reason": "follow-ups match the reader's value"
+   },
+   "4": {
+    "verdict": "R",
+    "reason": "follow-ups match the reader's value"
+   },
+   "5": {
+    "verdict": "R",
+    "reason": "follow-ups match the reader's value"
+   },
+   "6": {
+    "verdict": "R",
+    "reason": "follow-ups match the reader's value"
+   },
+   "7": {
+    "verdict": "R",
+    "reason": "follow-ups match the reader's value"
+   },
+   "8": {
+    "verdict": "R",
+    "reason": "follow-ups match the reader's value"
+   },
+   "9": {
+    "verdict": "R",
+    "reason": "follow-ups match the reader's value"
+   },
+   "10": {
+    "verdict": "R",
+    "reason": "follow-ups match the reader's value"
+   },
+   "11": {
+    "verdict": "R",
+    "reason": "follow-ups match the reader's value"
+   },
+   "12": {
+    "verdict": "R",
+    "reason": "follow-ups match the reader's value"
+   },
+   "13": {
+    "verdict": "R",
+    "reason": "follow-ups match the reader's value"
+   },
+   "14": {
+    "verdict": "R",
+    "reason": "follow-ups match the reader's value"
+   },
+   "15": {
+    "verdict": "R",
+    "reason": "follow-ups match the reader's value"
+   }
+  },
+  "F6": {
+   "1": {
+    "verdict": "U",
+    "reason": "no check in session; use outside the session not visible"
+   },
+   "2": {
+    "verdict": "U",
+    "reason": "single answer; whether it was checked is not visible"
+   },
+   "3": {
+    "verdict": "U",
+    "reason": "report produced; whether it was reviewed is not visible"
+   },
+   "4": {
+    "verdict": "W",
+    "reason": "follow-ups rerun the scan; no review of the output shown"
+   },
+   "5": {
+    "verdict": "W",
+    "reason": "retries and new asks; no review of the output shown"
+   },
+   "6": {
+    "verdict": "U",
+    "reason": "follow-up question builds on answer; checking not visible"
+   },
+   "7": {
+    "verdict": "R",
+    "reason": "person compared mockups and agent ran tests before commit"
+   },
+   "8": {
+    "verdict": "U",
+    "reason": "proposal drafted; whether it was reviewed is not visible"
+   },
+   "9": {
+    "verdict": "U",
+    "reason": "follow-up uses result; checking not visible"
+   },
+   "10": {
+    "verdict": "R",
+    "reason": "person asked for a safety review; agent ran tests before commit"
+   },
+   "11": {
+    "verdict": "W",
+    "reason": "person tried the advice and pushed back on an answer"
+   },
+   "12": {
+    "verdict": "U",
+    "reason": "comparison copied to a file; checking not visible"
+   },
+   "13": {
+    "verdict": "U",
+    "reason": "follow-up question builds on answer; checking not visible"
+   },
+   "14": {
+    "verdict": "R",
+    "reason": "person reviewed the draft and asked for specific changes"
+   },
+   "15": {
+    "verdict": "U",
+    "reason": "next prompt is unrelated; checking not visible"
+   }
+  },
+  "F7": {
+   "1": {
+    "verdict": "R",
+    "reason": "no task brief given, or brief given, as the reader said"
+   },
+   "2": {
+    "verdict": "R",
+    "reason": "no task brief given, or brief given, as the reader said"
+   },
+   "3": {
+    "verdict": "R",
+    "reason": "no task brief given, or brief given, as the reader said"
+   },
+   "4": {
+    "verdict": "R",
+    "reason": "no task brief given, or brief given, as the reader said"
+   },
+   "5": {
+    "verdict": "R",
+    "reason": "no task brief given, or brief given, as the reader said"
+   },
+   "6": {
+    "verdict": "R",
+    "reason": "no task brief given, or brief given, as the reader said"
+   },
+   "7": {
+    "verdict": "R",
+    "reason": "no task brief given, or brief given, as the reader said"
+   },
+   "8": {
+    "verdict": "R",
+    "reason": "no task brief given, or brief given, as the reader said"
+   },
+   "9": {
+    "verdict": "R",
+    "reason": "no task brief given, or brief given, as the reader said"
+   },
+   "10": {
+    "verdict": "R",
+    "reason": "no task brief given, or brief given, as the reader said"
+   },
+   "11": {
+    "verdict": "R",
+    "reason": "no task brief given, or brief given, as the reader said"
+   },
+   "12": {
+    "verdict": "R",
+    "reason": "no task brief given, or brief given, as the reader said"
+   },
+   "13": {
+    "verdict": "R",
+    "reason": "no task brief given, or brief given, as the reader said"
+   },
+   "14": {
+    "verdict": "R",
+    "reason": "no task brief given, or brief given, as the reader said"
+   },
+   "15": {
+    "verdict": "R",
+    "reason": "no task brief given, or brief given, as the reader said"
+   }
+  },
+  "F12": {
+   "1": {
+    "verdict": "R",
+    "reason": "prompt pattern matches the reader's value"
+   },
+   "2": {
+    "verdict": "R",
+    "reason": "prompt pattern matches the reader's value"
+   },
+   "3": {
+    "verdict": "R",
+    "reason": "prompt pattern matches the reader's value"
+   },
+   "4": {
+    "verdict": "R",
+    "reason": "prompt pattern matches the reader's value"
+   },
+   "5": {
+    "verdict": "R",
+    "reason": "prompt pattern matches the reader's value"
+   },
+   "6": {
+    "verdict": "R",
+    "reason": "prompt pattern matches the reader's value"
+   },
+   "7": {
+    "verdict": "R",
+    "reason": "prompt pattern matches the reader's value"
+   },
+   "8": {
+    "verdict": "R",
+    "reason": "prompt pattern matches the reader's value"
+   },
+   "9": {
+    "verdict": "R",
+    "reason": "prompt pattern matches the reader's value"
+   },
+   "10": {
+    "verdict": "R",
+    "reason": "prompt pattern matches the reader's value"
+   },
+   "11": {
+    "verdict": "R",
+    "reason": "prompt pattern matches the reader's value"
+   },
+   "12": {
+    "verdict": "R",
+    "reason": "prompt pattern matches the reader's value"
+   },
+   "13": {
+    "verdict": "R",
+    "reason": "prompt pattern matches the reader's value"
+   },
+   "14": {
+    "verdict": "R",
+    "reason": "prompt pattern matches the reader's value"
+   },
+   "15": {
+    "verdict": "R",
+    "reason": "prompt pattern matches the reader's value"
+   }
+  },
+  "F13": {
+   "1": {
+    "verdict": "R",
+    "reason": "matches: no done criteria, or measurable outputs listed"
+   },
+   "2": {
+    "verdict": "R",
+    "reason": "matches: no done criteria, or measurable outputs listed"
+   },
+   "3": {
+    "verdict": "A",
+    "reason": "lists deliverables but no checks; depends on what counts as done criteria"
+   },
+   "4": {
+    "verdict": "R",
+    "reason": "matches: no done criteria, or measurable outputs listed"
+   },
+   "5": {
+    "verdict": "R",
+    "reason": "matches: no done criteria, or measurable outputs listed"
+   },
+   "6": {
+    "verdict": "R",
+    "reason": "matches: no done criteria, or measurable outputs listed"
+   },
+   "7": {
+    "verdict": "R",
+    "reason": "matches: no done criteria, or measurable outputs listed"
+   },
+   "8": {
+    "verdict": "A",
+    "reason": "whole proposal asked, with quality words only; definition decides"
+   },
+   "9": {
+    "verdict": "R",
+    "reason": "matches: no done criteria, or measurable outputs listed"
+   },
+   "10": {
+    "verdict": "R",
+    "reason": "matches: no done criteria, or measurable outputs listed"
+   },
+   "11": {
+    "verdict": "R",
+    "reason": "matches: no done criteria, or measurable outputs listed"
+   },
+   "12": {
+    "verdict": "W",
+    "reason": "single comparison ask with no done criteria"
+   },
+   "13": {
+    "verdict": "A",
+    "reason": "lists what to find out; definition decides"
+   },
+   "14": {
+    "verdict": "R",
+    "reason": "matches: no done criteria, or measurable outputs listed"
+   },
+   "15": {
+    "verdict": "R",
+    "reason": "matches: no done criteria, or measurable outputs listed"
+   }
+  },
+  "F1_spike": {
+   "1": {
+    "verdict": "R",
+    "reason": "edit reading correct"
+   },
+   "2": {
+    "verdict": "R",
+    "reason": "edit reading correct"
+   },
+   "3": {
+    "verdict": "W",
+    "reason": "agent wrote the deliverable with apply_patch; spike reader ignores it"
+   },
+   "4": {
+    "verdict": "R",
+    "reason": "edit reading correct"
+   },
+   "5": {
+    "verdict": "R",
+    "reason": "edit reading correct"
+   },
+   "6": {
+    "verdict": "R",
+    "reason": "edit reading correct"
+   },
+   "7": {
+    "verdict": "W",
+    "reason": "agent wrote the deliverable with apply_patch; spike reader ignores it"
+   },
+   "8": {
+    "verdict": "W",
+    "reason": "agent wrote the deliverable with apply_patch; spike reader ignores it"
+   },
+   "9": {
+    "verdict": "R",
+    "reason": "edit reading correct"
+   },
+   "10": {
+    "verdict": "R",
+    "reason": "edit reading correct"
+   },
+   "11": {
+    "verdict": "R",
+    "reason": "edit reading correct"
+   },
+   "12": {
+    "verdict": "W",
+    "reason": "agent wrote the deliverable with apply_patch; spike reader ignores it"
+   },
+   "13": {
+    "verdict": "R",
+    "reason": "edit reading correct"
+   },
+   "14": {
+    "verdict": "W",
+    "reason": "agent wrote the deliverable with apply_patch; spike reader ignores it"
+   },
+   "15": {
+    "verdict": "R",
+    "reason": "edit reading correct"
+   }
+  },
+  "F3_spike": {
+   "1": {
+    "verdict": "R",
+    "reason": "no checks run, as read"
+   },
+   "2": {
+    "verdict": "R",
+    "reason": "no checks run, as read"
+   },
+   "3": {
+    "verdict": "R",
+    "reason": "no checks run, as read"
+   },
+   "4": {
+    "verdict": "R",
+    "reason": "no checks run, as read"
+   },
+   "5": {
+    "verdict": "R",
+    "reason": "no checks run, as read"
+   },
+   "6": {
+    "verdict": "R",
+    "reason": "no checks run, as read"
+   },
+   "7": {
+    "verdict": "W",
+    "reason": "agent ran dotnet test/playwright; spike regex misses them"
+   },
+   "8": {
+    "verdict": "R",
+    "reason": "no checks run, as read"
+   },
+   "9": {
+    "verdict": "R",
+    "reason": "no checks run, as read"
+   },
+   "10": {
+    "verdict": "W",
+    "reason": "agent ran dotnet test/playwright; spike regex misses them"
+   },
+   "11": {
+    "verdict": "R",
+    "reason": "no checks run, as read"
+   },
+   "12": {
+    "verdict": "R",
+    "reason": "no checks run, as read"
+   },
+   "13": {
+    "verdict": "R",
+    "reason": "no checks run, as read"
+   },
+   "14": {
+    "verdict": "R",
+    "reason": "no checks run, as read"
+   },
+   "15": {
+    "verdict": "R",
+    "reason": "no checks run, as read"
+   }
+  },
+  "F8": {
+   "1": {
+    "verdict": "R",
+    "reason": "sub-agent count correct"
+   },
+   "2": {
+    "verdict": "R",
+    "reason": "sub-agent count correct"
+   },
+   "3": {
+    "verdict": "R",
+    "reason": "sub-agent count correct"
+   },
+   "4": {
+    "verdict": "R",
+    "reason": "sub-agent count correct"
+   },
+   "5": {
+    "verdict": "R",
+    "reason": "sub-agent count correct"
+   },
+   "6": {
+    "verdict": "R",
+    "reason": "sub-agent count correct"
+   },
+   "7": {
+    "verdict": "R",
+    "reason": "sub-agent count correct"
+   },
+   "8": {
+    "verdict": "R",
+    "reason": "sub-agent count correct"
+   },
+   "9": {
+    "verdict": "R",
+    "reason": "sub-agent count correct"
+   },
+   "10": {
+    "verdict": "R",
+    "reason": "sub-agent count correct"
+   },
+   "11": {
+    "verdict": "R",
+    "reason": "sub-agent count correct"
+   },
+   "12": {
+    "verdict": "R",
+    "reason": "sub-agent count correct"
+   },
+   "13": {
+    "verdict": "R",
+    "reason": "sub-agent count correct"
+   },
+   "14": {
+    "verdict": "R",
+    "reason": "sub-agent count correct"
+   },
+   "15": {
+    "verdict": "R",
+    "reason": "sub-agent count correct"
+   }
+  },
+  "F1_pr24": {
+   "1": {
+    "verdict": "R",
+    "reason": "edit reading correct"
+   },
+   "2": {
+    "verdict": "R",
+    "reason": "edit reading correct"
+   },
+   "3": {
+    "verdict": "R",
+    "reason": "edit reading correct"
+   },
+   "4": {
+    "verdict": "W",
+    "reason": "only scratch scripts in the session folder were edited; counted as edits"
+   },
+   "5": {
+    "verdict": "R",
+    "reason": "edit reading correct"
+   },
+   "6": {
+    "verdict": "R",
+    "reason": "edit reading correct"
+   },
+   "7": {
+    "verdict": "R",
+    "reason": "edit reading correct"
+   },
+   "8": {
+    "verdict": "R",
+    "reason": "edit reading correct"
+   },
+   "9": {
+    "verdict": "W",
+    "reason": "only scratch scripts in the session folder were edited; counted as edits"
+   },
+   "10": {
+    "verdict": "R",
+    "reason": "edit reading correct"
+   },
+   "11": {
+    "verdict": "R",
+    "reason": "edit reading correct"
+   },
+   "12": {
+    "verdict": "R",
+    "reason": "edit reading correct"
+   },
+   "13": {
+    "verdict": "R",
+    "reason": "edit reading correct"
+   },
+   "14": {
+    "verdict": "R",
+    "reason": "edit reading correct"
+   },
+   "15": {
+    "verdict": "R",
+    "reason": "edit reading correct"
+   }
+  },
+  "F3_pr24": {
+   "1": {
+    "verdict": "R",
+    "reason": "checks reading correct"
+   },
+   "2": {
+    "verdict": "R",
+    "reason": "checks reading correct"
+   },
+   "3": {
+    "verdict": "W",
+    "reason": "'playwright' inside a script string counted as a check"
+   },
+   "4": {
+    "verdict": "W",
+    "reason": "'pytest' inside a folder pattern counted as a check"
+   },
+   "5": {
+    "verdict": "R",
+    "reason": "checks reading correct"
+   },
+   "6": {
+    "verdict": "R",
+    "reason": "checks reading correct"
+   },
+   "7": {
+    "verdict": "R",
+    "reason": "checks reading correct"
+   },
+   "8": {
+    "verdict": "R",
+    "reason": "checks reading correct"
+   },
+   "9": {
+    "verdict": "R",
+    "reason": "checks reading correct"
+   },
+   "10": {
+    "verdict": "R",
+    "reason": "checks reading correct"
+   },
+   "11": {
+    "verdict": "R",
+    "reason": "checks reading correct"
+   },
+   "12": {
+    "verdict": "R",
+    "reason": "checks reading correct"
+   },
+   "13": {
+    "verdict": "R",
+    "reason": "checks reading correct"
+   },
+   "14": {
+    "verdict": "R",
+    "reason": "checks reading correct"
+   },
+   "15": {
+    "verdict": "R",
+    "reason": "checks reading correct"
+   }
+  }
+ },
+ "counts": {
+  "job": {
+   "R": 15
+  },
+  "F4": {
+   "R": 10,
+   "W": 5
+  },
+  "F5": {
+   "R": 15
+  },
+  "F6": {
+   "U": 9,
+   "W": 3,
+   "R": 3
+  },
+  "F7": {
+   "R": 15
+  },
+  "F12": {
+   "R": 15
+  },
+  "F13": {
+   "R": 11,
+   "A": 3,
+   "W": 1
+  },
+  "F1_spike": {
+   "R": 10,
+   "W": 5
+  },
+  "F3_spike": {
+   "R": 13,
+   "W": 2
+  },
+  "F8": {
+   "R": 15
+  },
+  "F1_pr24": {
+   "R": 13,
+   "W": 2
+  },
+  "F3_pr24": {
+   "R": 13,
+   "W": 2
+  }
+ }
+}
