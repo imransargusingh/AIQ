@@ -18,6 +18,9 @@ const NEXT: { v: S["next_rung_tips"]; label: string; note?: string }[] = [
   { v: "off", label: "Off" },
 ];
 
+/** Daily judge caps offered as buttons; any other 0-500 value is set with `aiq config`. */
+const JUDGE_CAPS = [20, 50, 100, 200];
+
 export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: boolean) => void }) {
   const { snap, announce, refresh, singleKeys, setSingleKeys } = ctx;
   const [msg, setMsg] = useState<string | null>(null);
@@ -160,15 +163,33 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
           Claude Code, Copilot and VS Code tasks through your Copilot CLI. It sends the task's prompts and a summary of what the agent
           did, never your own edits. Judge calls use your plan's usage, and a work account's policies and logging apply.
         </p>
+        <div className="group">
+          <span id="jcap">Tasks judged a day, two calls each on your own plan</span>
+          <div className="row">
+            <div className="seg" role="group" aria-labelledby="jcap">
+              {JUDGE_CAPS.map((n) => (
+                <button
+                  key={n}
+                  aria-pressed={snap.settings.judge_daily_tasks === n}
+                  disabled={down}
+                  onClick={() => change("judge_daily_tasks", String(n), `Tasks judged a day set to ${n}.`)}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+            {!JUDGE_CAPS.includes(snap.settings.judge_daily_tasks) && <span className="meta">Now {snap.settings.judge_daily_tasks}, set with aiq config</span>}
+          </div>
+        </div>
         <p>
-          Up to {plural(snap.settings.judge_daily_tasks, "task")} a day, two calls each. Today: {plural(snap.home.judge_today.tasks, "task")},{" "}
+          Up to {plural(snap.settings.judge_daily_tasks, "task")} a day. Today: {plural(snap.home.judge_today.tasks, "task")},{" "}
           {plural(snap.home.judge_today.calls, "call")}
           {snap.home.judge_today.failed_calls > 0 && <>, {snap.home.judge_today.failed_calls} failed</>}
           {snap.home.judge_today.cost_usd !== null && <>, ${snap.home.judge_today.cost_usd.toFixed(2)} reported by Claude Code</>}.
         </p>
         <p className="meta">
           Change it in a terminal: <code>aiq config set judge {snap.settings.judge === "auto" ? "off" : "auto"}</code> ·{" "}
-          <code>aiq config set judge-daily-tasks 20</code> · see what would be sent: <code>aiq judge --dry-run</code>
+          see what would be sent: <code>aiq judge --dry-run</code>
         </p>
       </section>
 
