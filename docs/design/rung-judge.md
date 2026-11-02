@@ -286,6 +286,17 @@ Run 2 in detail (answers cached; per-task rows printed by the eval):
 - Not changed in this slice: tuning F6 (prompt wording, or a log floor when the agent ran the tests)
   against 20 synthetic tasks would fit the test set. Measure on Imran's real Copilot tasks first.
 
+### Log rules checked on real tasks (fact-check rerun, PR #27, 2026-11-02)
+
+On 15 real Copilot CLI sessions: F1 counted the agent's scratch files in `session-state/<id>/files` as
+edits (2 false "agent edited"), and F3 matched check words anywhere in a command (2 false "agent ran
+checks"; missed `npm --prefix <dir> run test:e2e`). Fixed: a turn whose every touched file is the tool's
+scratch space makes no edit; a command is a check only by the program in command position (quoted text
+dropped, wrappers such as `npx` and `python -m` skipped, build tools by subcommand, npm scripts by name).
+Not changed, measured there: F6 could not be settled from the transcript on 9 of 15, so most research and
+Q&A tasks stay Assisted and Uncertain; F4 was right on 10 of 15 (constraints credited to requests that
+state none). Both are prompt or rubric work for the next slice.
+
 ## Conformance notes
 
 - LOA C1 (tier): the judge client is T3; every call row records provider, model and tier implicitly by

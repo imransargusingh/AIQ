@@ -120,6 +120,8 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <p>tasks. That costs nothing users see (Uncertain tasks are not counted on a rung and never coached), but the Tasks page shows the lowered rung beside the Uncertain label.</p>
 <ul><li>Not changed in this slice: tuning F6 (prompt wording, or a log floor when the agent ran the tests)</li></ul>
 <p>against 20 synthetic tasks would fit the test set. Measure on Imran&#x27;s real Copilot tasks first.</p>
+<h3>Log rules checked on real tasks (fact-check rerun, PR #27, 2026-11-02)</h3>
+<p>On 15 real Copilot CLI sessions: F1 counted the agent&#x27;s scratch files in <code>session-state/&lt;id&gt;/files</code> as edits (2 false &quot;agent edited&quot;), and F3 matched check words anywhere in a command (2 false &quot;agent ran checks&quot;; missed <code>npm --prefix &lt;dir&gt; run test:e2e</code>). Fixed: a turn whose every touched file is the tool&#x27;s scratch space makes no edit; a command is a check only by the program in command position (quoted text dropped, wrappers such as <code>npx</code> and <code>python -m</code> skipped, build tools by subcommand, npm scripts by name). Not changed, measured there: F6 could not be settled from the transcript on 9 of 15, so most research and Q&amp;A tasks stay Assisted and Uncertain; F4 was right on 10 of 15 (constraints credited to requests that state none). Both are prompt or rubric work for the next slice.</p>
 <h2>Conformance notes</h2>
 <ul><li>LOA C1 (tier): the judge client is T3; every call row records provider, model and tier implicitly by</li></ul>
 <p>provider. C2 (budget): daily task budget. C3 (receipts): <code>judge_call</code> rows.</p>
