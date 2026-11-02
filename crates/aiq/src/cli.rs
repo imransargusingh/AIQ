@@ -228,7 +228,11 @@ fn status_text(paths: &Paths) -> (String, Vec<String>) {
     let text = std::fs::read_to_string(paths.hook_timings()).unwrap_or_default();
     let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
     out += &hook_time_lines(&text, now, &aside);
-    let upgrade = last_upgrade(&std::fs::read_to_string(paths.data.join(UPGRADE_LOG)).unwrap_or_default());
+    // upgrade.ps1 logs in the AIQ home; the laptop's dev swapper logs next to the exes. Newest of both.
+    let upgrade = [paths.data.join(UPGRADE_LOG), paths.data.join("bin").join(UPGRADE_LOG)]
+        .iter()
+        .filter_map(|p| last_upgrade(&std::fs::read_to_string(p).ok()?))
+        .max();
     out += &hook_budget_lines(&text, &aside, upgrade);
     let errs = hook_error_counts(&paths);
     if !errs.is_empty() {
@@ -280,7 +284,8 @@ pub const UPGRADE_LOG: &str = "upgrade-log.txt";
 /// The hook speed budget of record: AIQ's own part of each hook run, p95 (Imran, 2026-11-01; alpha gate G1).
 pub const HOOK_BUDGET_MS: f64 = 100.0;
 
-/// Unix seconds of the last time the exes changed, from the upgrade log. Two writers, two line shapes:
+/// Unix seconds of the last time the exes changed, from one upgrade log. Two writers, two line shapes and
+/// two places (`<home>\upgrade-log.txt` and `<home>\bin\upgrade-log.txt`; `status` reads both):
 /// `upgrade.ps1` writes `yyyy-mm-dd hh:mm:ssZ Upgraded AIQ…` / `… Rolled back to AIQ…` (lines where nothing
 /// changed are skipped); the laptop's dev swapper writes `<RFC 3339 with offset> swapped aiq.exe (<n> bytes)`
 /// (measured 2026-11-02: `2026-11-02T14:00:57.7222903-08:00 swapped aiq.exe (5920768 bytes)`).
