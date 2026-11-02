@@ -80,6 +80,13 @@ pub fn status() -> ExitCode {
             out += &format!("Store size: {}\n", human_bytes(s.store_bytes));
             let ignored = s.core_counters.iter().find(|(k, _)| k == aiq_contracts::codes::INGEST_AUTOMATED);
             for (folder, reason) in &s.automated_folders {
+                if reason == "projects" {
+                    out += &format!(
+                        "Sessions Claude ran for you through claude.ai Projects or Remote Control are ignored in \
+                         {folder}. To count them: aiq include \"{folder}\"\n"
+                    );
+                    continue;
+                }
                 let why = if reason == "burst" {
                     "many sessions started at once"
                 } else {

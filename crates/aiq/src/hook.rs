@@ -194,7 +194,14 @@ pub fn to_event(v: &Value, event: &str) -> Option<EventV1> {
         }),
         _ => return None,
     };
-    Some(new_event("claude-code", session, cwd_of(v), body))
+    let mut ev = new_event("claude-code", session, cwd_of(v), body);
+    // Rule RC: Claude Code writes the session's first record (a Projects session's system turn) 64 ms–3.7 s
+    // before the first prompt's hook fires (laptop measurement, 11 of 11 sessions), within the first 31 KB.
+    ev.projects = v
+        .get("transcript_path")
+        .and_then(Value::as_str)
+        .is_some_and(|t| crate::projects::scan(std::path::Path::new(t), crate::projects::HEAD_BYTES));
+    Some(ev)
 }
 
 pub const COPILOT_CLI_SURFACE: &str = "copilot-cli";
@@ -259,6 +266,7 @@ fn new_event(surface: &str, session: &str, cwd: Option<String>, body: EventBody)
         ts: aiq_core::sysclock::format_rfc3339_ms(now),
         collector_version: env!("CARGO_PKG_VERSION").into(),
         cwd,
+        projects: false,
         body,
     }
 }
@@ -311,6 +319,22 @@ mod tests {
                 truncated: false
             })
         );
+    }
+
+    #[test]
+    fn to_event_marks_projects_sessions_from_the_transcript() {
+        let d = tempfile::tempdir().unwrap();
+        let t = d.path().join("s.jsonl");
+        let v = |t: &std::path::Path| json!({"session_id":"s","hook_event_name":"UserPromptSubmit","prompt":"x","cwd":"/x","transcript_path":t.to_string_lossy()});
+        assert!(!to_event(&v(&t), "UserPromptSubmit").unwrap().projects, "no transcript yet");
+        std::fs::write(
+            &t,
+            format!("{}\n", json!({"type":"user","isMeta":true,"turnOrigin":"system","entrypoint":"claude-desktop"})),
+        )
+        .unwrap();
+        assert!(to_event(&v(&t), "UserPromptSubmit").unwrap().projects);
+        std::fs::write(&t, format!("{}\n", json!({"type":"user","turnOrigin":"human","entrypoint":"cli"}))).unwrap();
+        assert!(!to_event(&v(&t), "UserPromptSubmit").unwrap().projects);
     }
 
     #[test]

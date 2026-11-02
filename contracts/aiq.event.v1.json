@@ -14,6 +14,7 @@
     "ts": { "type": "string", "format": "date-time" },
     "collector_version": { "type": "string" },
     "cwd": { "type": "string", "description": "Host working folder; optional. Used for the automated-session rule, not stored per event." },
+    "projects": { "type": "boolean", "description": "Claude Code session driven through claude.ai Projects / Remote Control; optional, default false. Set aside unless the folder is included." },
     "kind": { "enum": ["prompt", "stop"] },
     "payload": { "type": "object" }
   },

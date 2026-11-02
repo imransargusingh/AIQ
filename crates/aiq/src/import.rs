@@ -35,6 +35,8 @@ pub struct Parsed {
     pub started_ms: Option<i64>,
     /// `Some(true)` when the tool marked a non-interactive start (Claude Code `entrypoint = sdk-cli`).
     pub non_interactive: Option<bool>,
+    /// A claude.ai Projects / Remote Control session (`projects::is_marker` on any record).
+    pub projects: bool,
     pub events: Vec<ImportedEvent>,
 }
 
@@ -51,6 +53,7 @@ impl Parsed {
             started_ms: self.started_ms,
             human_turns: self.human_turns(),
             non_interactive: self.non_interactive,
+            projects: self.projects,
             template: self.first_prompt().and_then(|t| template_hash(t, p)),
         }
     }
@@ -65,6 +68,8 @@ pub struct RuleInput {
     pub started_ms: Option<i64>,
     pub human_turns: u32,
     pub non_interactive: Option<bool>,
+    /// Rule RC. Not a column of its own: an earlier run's `why` holds it.
+    pub projects: bool,
     pub template: Option<u64>,
 }
 
@@ -75,6 +80,7 @@ impl From<&KnownImport> for RuleInput {
             started_ms: k.started_utc_ms,
             human_turns: k.human_turns,
             non_interactive: k.non_interactive,
+            projects: k.why.split(',').any(|w| w == "RC"),
             template: k.template_key.map(|v| v as u64),
         }
     }
@@ -156,6 +162,7 @@ pub fn read_claude(path: &Path, id: &str, mtime_ms: i64, folder_slug: &str) -> s
         if r.get("isSidechain").and_then(Value::as_bool) == Some(true) {
             continue;
         }
+        p.projects |= crate::projects::is_marker(&r);
         if let Some(cwd) = r.get("cwd").and_then(Value::as_str)
             && p.folder == folder_slug
         {
@@ -336,7 +343,9 @@ pub fn template_hash(prompt: &str, p: &AutomatedParams) -> Option<u64> {
 /// aside (empty = kept). A session is automated when it has at most one human prompt AND a second signal:
 /// NI non-interactive start, T shared first-prompt template (`template_sessions`+ in the folder),
 /// B burst (`burst_sessions`+ started in the folder within ±`burst_min` minutes),
-/// F folder prior (folder over 80% automated). Folders in `include` are never set aside ("Include them").
+/// F folder prior (folder over 80% automated). RC, a claude.ai Projects / Remote Control session, is set aside
+/// whatever its prompt count (Claude's own session, `projects.rs`). Folders in `include` are never set aside
+/// ("Include them").
 /// The live side (`automated::Guard`) uses the same thresholds; T there counts within `template_window_h`
 /// because live it sees only recent sessions, while import sees the folder's whole history (the tested rule).
 pub fn automated(sessions: &[RuleInput], include: &HashSet<String>, p: &AutomatedParams) -> Vec<Vec<&'static str>> {
@@ -357,7 +366,13 @@ pub fn automated(sessions: &[RuleInput], include: &HashSet<String>, p: &Automate
     let mut why: Vec<Vec<&'static str>> = sessions
         .iter()
         .map(|s| {
-            if s.human_turns > 1 || include.contains(&s.folder) {
+            if include.contains(&s.folder) {
+                return vec![];
+            }
+            if s.projects {
+                return vec!["RC"];
+            }
+            if s.human_turns > 1 {
                 return vec![];
             }
             let mut w = vec![];
@@ -380,12 +395,19 @@ pub fn automated(sessions: &[RuleInput], include: &HashSet<String>, p: &Automate
     let mut per_folder: HashMap<&str, (usize, usize)> = HashMap::new();
     for (s, w) in sessions.iter().zip(&why) {
         let e = per_folder.entry(s.folder.as_str()).or_default();
-        e.0 += 1;
-        e.1 += usize::from(!w.is_empty());
+        if !s.projects {
+            e.0 += 1;
+            e.1 += usize::from(!w.is_empty());
+        }
     }
     for (s, w) in sessions.iter().zip(why.iter_mut()) {
         let (n, a) = per_folder[s.folder.as_str()];
-        if w.is_empty() && s.human_turns <= 1 && !include.contains(&s.folder) && a as f64 / n as f64 > FOLDER_PRIOR {
+        if w.is_empty()
+            && !s.projects
+            && s.human_turns <= 1
+            && !include.contains(&s.folder)
+            && a as f64 / n as f64 > FOLDER_PRIOR
+        {
             w.push("F");
         }
     }
@@ -398,6 +420,8 @@ pub fn automated(sessions: &[RuleInput], include: &HashSet<String>, p: &Automate
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct SetAside {
     pub sessions: u64,
+    /// Of `sessions`, the claude.ai Projects / Remote Control sessions (rule RC).
+    pub projects: u64,
     /// `template` or `burst` when the folder shows an app at work (it gets a `folder_rule`, and
     /// `aiq include` applies); None when only single sessions were automated (e.g. `claude -p` runs).
     pub folder_reason: Option<&'static str>,
@@ -489,6 +513,7 @@ pub fn run(
         if auto {
             let e = rep.set_aside.entry(input.folder.clone()).or_default();
             e.sessions += 1;
+            e.projects += u64::from(w.contains(&"RC"));
             e.folder_reason = folder_reason.get(input.folder.as_str()).copied();
         }
         if dry_run {
@@ -558,14 +583,25 @@ pub fn render(rep: &Report, dry_run: bool) -> String {
     let mut aside: Vec<_> = rep.set_aside.iter().collect();
     aside.sort_by(|a, b| b.1.sessions.cmp(&a.1.sessions).then(a.0.cmp(b.0)));
     for (folder, s) in aside.iter().take(10) {
+        if s.projects > 0 {
+            out += &format!(
+                "{folder}: {} sessions Claude ran for you through claude.ai Projects or Remote Control set aside. \
+                 To count them: aiq include \"{folder}\", then aiq import\n",
+                s.projects
+            );
+        }
+        if s.sessions == s.projects {
+            continue;
+        }
+        let rest = s.sessions - s.projects;
         out += &match s.folder_reason {
             Some(_) => format!(
                 "{folder}: {} automated sessions set aside; AIQ ignores this folder's app runs from now on. \
                  If that is your own work: aiq include \"{folder}\", then aiq import\n",
-                s.sessions
+                rest
             ),
             None => {
-                format!("{folder}: {} sessions started by a script (one prompt, no one typing) set aside\n", s.sessions)
+                format!("{folder}: {} sessions started by a script (one prompt, no one typing) set aside\n", rest)
             }
         };
     }
@@ -830,6 +866,34 @@ mod tests {
     }
 
     #[test]
+    fn projects_sessions_are_set_aside_whatever_their_prompt_count_unless_included() {
+        let d = tempfile::tempdir().unwrap();
+        let (claude, copilot) = (d.path().join("claude"), d.path().join("copilot"));
+        let rows = vec![
+            json!({"type": "user", "isMeta": true, "turnOrigin": "system", "entrypoint": "claude-desktop", "cwd": "C:\\repos\\a", "timestamp": "2026-10-20T10:00:00Z", "message": {"content": "brief"}}),
+            json!({"type": "user", "turnOrigin": "human", "projectsUserTurn": true, "entrypoint": "claude-desktop", "timestamp": "2026-10-20T10:01:00Z", "message": {"content": "do the thing"}}),
+            json!({"type": "user", "turnOrigin": "peer", "entrypoint": "claude-desktop", "timestamp": "2026-10-20T10:02:00Z", "message": {"content": "relay"}}),
+        ];
+        write_lines(&claude.join("projects").join("C--repos-a").join("rc.jsonl"), &rows);
+        claude_session(&claude, "C--repos-a", "mine", "claude-desktop", &["fix the bug", "add a test"]);
+        let mut store = Store::open(&d.path().join("aiq.db")).unwrap();
+        let src = discover(&claude, &copilot);
+        let p = AutomatedParams::default();
+        let rep = run(&mut store, &src, &HashSet::new(), &p, false, 1).unwrap();
+        assert_eq!(rep.by_tool[CLAUDE], [2, 1, 1, 0, 0]);
+        assert_eq!(
+            rep.set_aside[&folder_key("C:\\repos\\a")],
+            SetAside { sessions: 1, projects: 1, folder_reason: None }
+        );
+        assert!(render(&rep, false).contains("claude.ai Projects or Remote Control"));
+        // A re-run keeps it aside without re-reading (RC comes back from the stored `why`).
+        let k = store.known_imports().unwrap().into_iter().find(|k| k.source_session_id == "rc").unwrap();
+        assert!(RuleInput::from(&k).projects);
+        let include: HashSet<String> = [folder_key("C:\\repos\\a")].into();
+        assert!(automated(&[RuleInput::from(&k)], &include, &p)[0].is_empty(), "Include them");
+    }
+
+    #[test]
     fn stored_rule_input_matches_the_file_read() {
         let d = tempfile::tempdir().unwrap();
         let (claude, copilot) = (d.path().join("claude"), d.path().join("copilot"));
@@ -856,7 +920,10 @@ mod tests {
         let rep = run(&mut store, &src, &skip, &p, false, 1).unwrap();
         assert_eq!(rep.by_tool[CLAUDE], [2, 1, 1, 0, 0]);
         assert!(!rep.by_tool.contains_key(COPILOT));
-        assert_eq!(rep.set_aside[&folder_key("C:\\repos\\a")], SetAside { sessions: 1, folder_reason: None });
+        assert_eq!(
+            rep.set_aside[&folder_key("C:\\repos\\a")],
+            SetAside { sessions: 1, projects: 0, folder_reason: None }
+        );
         assert!(store.set_aside_folders().unwrap().is_empty(), "a lone claude -p run sets no folder rule");
         let n: i64 = store
             .raw()
