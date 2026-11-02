@@ -61,7 +61,7 @@ jobs:
           $v = '${{ steps.version.outputs.version }}'
           $stage = Join-Path $env:RUNNER_TEMP "aiq-$v-windows-x64"
           New-Item -ItemType Directory -Force $stage | Out-Null
-          Copy-Item target/release/aiq.exe, apps/home/src-tauri/target/release/aiq-home.exe, packaging/windows/install.ps1, packaging/windows/README.txt $stage
+          Copy-Item target/release/aiq.exe, apps/home/src-tauri/target/release/aiq-home.exe, packaging/windows/install.ps1, packaging/windows/upgrade.ps1, packaging/windows/README.txt $stage
           New-Item -ItemType Directory -Force dist | Out-Null
           $zip = "dist/aiq-$v-windows-x64.zip"
           Compress-Archive -Path "$stage/*" -DestinationPath $zip
@@ -85,6 +85,26 @@ jobs:
           & (Join-Path $bin 'aiq.exe') version
           & (Join-Path $bin 'aiq.exe') uninstall copilot --yes
           if (Test-Path (Join-Path $env:USERPROFILE '.copilot\hooks\aiq.json')) { Write-Error 'Copilot hook left behind'; exit 1 }
+      - name: Smoke test - upgrade refuses a tampered zip, upgrades from a good one, rolls back
+        shell: pwsh
+        run: |
+          $v = '${{ steps.version.outputs.version }}'
+          $up = Join-Path $env:USERPROFILE '.aiq\bin\upgrade.ps1'
+          if (-not (Test-Path $up)) { Write-Error 'install did not copy upgrade.ps1'; exit 1 }
+          $bad = Join-Path $env:RUNNER_TEMP 'bad'
+          New-Item -ItemType Directory -Force $bad | Out-Null
+          Copy-Item "dist/aiq-$v-windows-x64.zip", dist/SHA256SUMS $bad
+          Add-Content -Path (Join-Path $bad "aiq-$v-windows-x64.zip") -Value 'tampered'
+          $exeBefore = (Get-FileHash (Join-Path $env:USERPROFILE '.aiq\bin\aiq.exe')).Hash
+          powershell -ExecutionPolicy Bypass -File $up -Zip (Join-Path $bad "aiq-$v-windows-x64.zip") -AllowElevated
+          if ($LASTEXITCODE -eq 0) { Write-Error 'tampered zip was accepted'; exit 1 }
+          if ((Get-FileHash (Join-Path $env:USERPROFILE '.aiq\bin\aiq.exe')).Hash -ne $exeBefore) { Write-Error 'tampered zip changed aiq.exe'; exit 1 }
+          powershell -ExecutionPolicy Bypass -File $up -Zip "dist/aiq-$v-windows-x64.zip" -AllowElevated
+          if ($LASTEXITCODE -ne 0) { Write-Error 'upgrade from a good zip failed'; exit 1 }
+          powershell -ExecutionPolicy Bypass -File $up -Rollback
+          if ($LASTEXITCODE -ne 0) { Write-Error 'rollback failed'; exit 1 }
+          & (Join-Path $env:USERPROFILE '.aiq\bin\aiq.exe') version
+          Get-Content (Join-Path $env:USERPROFILE '.aiq\upgrade-log.txt')
       - uses: actions/upload-artifact@v4
         with:
           name: aiq-release-windows-x64

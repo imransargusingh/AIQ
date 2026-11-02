@@ -15,6 +15,11 @@ Useful commands (in a new terminal):
   aiq export              copy everything AIQ stored to plain files you can read
   aiq status --report     a help file with no prompt text or folder names, to send if you choose
   aiq uninstall --all     disconnect AIQ from every tool (your data stays)
+
+Upgrade to the newest release (checks the download's SHA-256, keeps the old version):
+  powershell -ExecutionPolicy Bypass -File $env:USERPROFILE\.aiq\bin\upgrade.ps1
+Go back to the version before:
+  powershell -ExecutionPolicy Bypass -File $env:USERPROFILE\.aiq\bin\upgrade.ps1 -Rollback
   aiq forget --all        delete everything AIQ stored
 
 Check the download: SHA256SUMS from the same release lists each file's SHA-256.
