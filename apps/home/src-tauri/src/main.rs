@@ -84,7 +84,7 @@ async fn pause(on: bool) -> Result<Snapshot, String> {
 
 /// Only the settings AIQ home shows can be changed from it; the core validates the value.
 fn allowed_setting(key: &str) -> bool {
-    matches!(key, "daily_cap" | "copilot_tip_stays" | "next_rung_tips")
+    matches!(key, "daily_cap" | "copilot_tip_stays" | "next_rung_tips" | "judge_daily_tasks")
 }
 
 #[tauri::command]
@@ -271,6 +271,7 @@ mod tests {
         assert!(allowed_setting("daily_cap"));
         assert!(allowed_setting("copilot_tip_stays"));
         assert!(allowed_setting("next_rung_tips"));
+        assert!(allowed_setting("judge_daily_tasks"));
         assert!(!allowed_setting("paused"));
         assert!(!allowed_setting("anything"));
     }

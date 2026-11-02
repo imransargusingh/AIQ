@@ -223,11 +223,14 @@ pub fn to_event(v: &Value, event: &str) -> Option<EventV1> {
     };
     let mut ev = new_event("claude-code", session, cwd_of(v), body);
     // Rule RC: Claude Code writes the session's first record (a Projects session's system turn) 64 ms–3.7 s
-    // before the first prompt's hook fires (laptop measurement, 11 of 11 sessions), within the first 31 KB.
-    ev.projects = v
-        .get("transcript_path")
-        .and_then(Value::as_str)
-        .is_some_and(|t| crate::projects::scan(std::path::Path::new(t), crate::projects::HEAD_BYTES));
+    // before the first prompt's hook fires (laptop measurement, 11 of 11 sessions), within the first 4 KB.
+    // Only prompts are checked: the core sets the folder aside on the first marked event, and on the laptop
+    // this read was nearly all of a Claude Code hook's time (p95 ~500 ms "preparing", 2026-11-02, measured;
+    // Copilot hooks, which skip it, prepare in 0.3 ms). A Stop never needs it.
+    ev.projects = event == "UserPromptSubmit"
+        && v.get("transcript_path")
+            .and_then(Value::as_str)
+            .is_some_and(|t| crate::projects::scan(std::path::Path::new(t), crate::projects::HOOK_HEAD_BYTES));
     Some(ev)
 }
 
@@ -371,6 +374,14 @@ mod tests {
         assert!(to_event(&v(&t), "UserPromptSubmit").unwrap().projects);
         std::fs::write(&t, format!("{}\n", json!({"type":"user","turnOrigin":"human","entrypoint":"cli"}))).unwrap();
         assert!(!to_event(&v(&t), "UserPromptSubmit").unwrap().projects);
+        // A Stop never reads the transcript.
+        std::fs::write(
+            &t,
+            format!("{}\n", json!({"type":"user","isMeta":true,"turnOrigin":"system","entrypoint":"claude-desktop"})),
+        )
+        .unwrap();
+        let stop = json!({"session_id":"s","hook_event_name":"Stop","cwd":"/x","transcript_path":t.to_string_lossy()});
+        assert!(!to_event(&stop, "Stop").unwrap().projects);
     }
 
     #[test]
