@@ -308,3 +308,33 @@ fn coaching_split_kinds_habits_and_settings_derive_from_judgments() {
     assert_eq!(j.task_type_label, Some("Writing tests"));
     assert_eq!(c.weeks.iter().map(|w| w.tasks).sum::<u32>(), 10);
 }
+
+#[test]
+fn progress_compares_each_kinds_typical_rung_over_two_14_day_halves() {
+    let d = tempfile::tempdir().unwrap();
+    let p = Paths::at(d.path());
+    progress(&p);
+    let s = snap(&p);
+    assert!(s.status.error.is_none(), "{:?}", s.status.error);
+    let c = &s.coaching;
+    assert_eq!((c.progress_days, c.progress_min), (14, 3));
+    let got: Vec<_> = c
+        .progress
+        .iter()
+        .map(|r| (r.task_type.as_str(), r.trend, r.recent, r.earlier, r.uncertain, r.recent_rung, r.earlier_rung))
+        .collect();
+    assert_eq!(
+        got,
+        vec![
+            ("tests", "up", 4, 3, 1, Some(3), Some(2)),
+            ("spec", "down", 3, 3, 0, Some(2), Some(3)),
+            ("fix_bug", "same", 3, 3, 0, Some(1), Some(1)),
+            ("refactor", "too_few", 1, 1, 0, Some(2), Some(2)),
+        ]
+    );
+    // An empty store has no rows but still says the window and minimum.
+    let e = tempfile::tempdir().unwrap();
+    let es = snap(&Paths::at(e.path()));
+    assert!(es.coaching.progress.is_empty());
+    assert_eq!((es.coaching.progress_days, es.coaching.progress_min), (14, 3));
+}

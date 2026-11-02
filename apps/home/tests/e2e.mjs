@@ -72,7 +72,7 @@ const pages = [
 ];
 
 await test("contract: fixtures are aiq.home.v1 snapshots from the Rust read model", async () => {
-  for (const f of ["full", "down", "paused", "empty", "first-run", "coaching"]) {
+  for (const f of ["full", "down", "paused", "empty", "first-run", "coaching", "progress"]) {
     const s = JSON.parse(readFileSync(join(fixtures, `${f}.json`), "utf8"));
     assert.equal(s.schema, "aiq.home.v1");
     for (const k of ["status", "home", "tasks", "tips", "data", "settings", "setup", "coaching"]) assert.ok(k in s, `${f}: ${k}`);
@@ -544,6 +544,40 @@ await test("coaching Home: finished and could be, the rule, uncertain left out, 
   await page.waitForSelector("main h1:text('Writing tests')");
   assert.ok(page.url().endsWith("#kind/code_change/tests"));
   await page.context().close();
+});
+
+await test("progress Home: kinds that moved up or down, counts behind them, too few said plainly, no axe violations", async () => {
+  for (const theme of ["light", "dark", "contrast"]) {
+    const page = await open("progress", { theme: theme === "light" ? undefined : theme });
+    const sec = page.locator("section", { has: page.locator("h2#pg") });
+    const t = await sec.innerText();
+    assert.match(t, /Is each kind of task moving up\?/);
+    assert.match(t, /last 14 days against the 14 before\. Counts are measured; rungs are the judge's reading\./);
+    assert.match(t, /1 kind of task moved up a rung\. 1 moved down\./);
+    const rows = page.getByRole("list", { name: "Rung progress by kind of task" }).getByRole("listitem");
+    assert.equal(await rows.count(), 3, "too-few kinds are one line, not rows");
+    assert.match(await rows.nth(0).innerText(), /Writing tests[\s\S]*Directed \(2\) → Delegated \(3\)[\s\S]*Moved up[\s\S]*4 in the last 14 days · 3 before/);
+    assert.match(await rows.nth(1).innerText(), /Writing a spec or PRD[\s\S]*Delegated \(3\) → Directed \(2\)[\s\S]*Moved down/);
+    assert.match(await rows.nth(2).innerText(), /Fixing a bug or failing test[\s\S]*Assisted \(1\)[\s\S]*Same rung/);
+    assert.match(t, /Too few tasks to say for 1 kind of task: each needs at least 3 judged tasks in both halves\./);
+    const v = await axe(page);
+    assert.deepEqual(v, [], v.join("; "));
+    assert.deepEqual(page.errors, []);
+    if (shots) await page.screenshot({ path: join(shots, `progress-home-${theme}.png`), fullPage: true });
+    if (theme === "light") {
+      await rows.first().getByRole("button").click();
+      await page.waitForSelector("main h1:text('Writing tests')");
+      assert.ok(page.url().endsWith("#kind/code_change/tests"));
+    }
+    await page.context().close();
+  }
+  // Nothing moved yet, and no kinds: the empty wording, never a guessed trend.
+  const same = await open("coaching");
+  assert.match(await same.locator("section", { has: same.locator("h2#pg") }).innerText(), /No kind of task has moved a rung yet\.[\s\S]*Too few tasks to say for 4 kinds of task/);
+  await same.context().close();
+  const none = await open("coaching", { edit: (s) => (s.coaching.progress = []) });
+  assert.match(await none.locator("main").innerText(), /Progress shows once AIQ knows the kind of your tasks from the last 28 days\./);
+  await none.context().close();
 });
 
 await test("kind of task: the pack's step, copy starter, judge words as text, This doesn't fit with a reason, Undo", async () => {

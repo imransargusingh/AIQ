@@ -47,6 +47,8 @@ Usage:
                                       accuracy check paused (auto: AIQ decides again)
   aiq tips                            Each next-step tip, whether it is on, and how often it would show
                                       on your judged tasks (measured, no model call)
+  aiq progress                        Each kind of task's typical rung, last 14 days against the 14
+                                      before: which moved up or down (read-only, no model call)
   aiq judge [--max <n>] [--only claude-code|copilot-cli] [--dry-run]
                                       Judge your finished tasks through your own Claude Code / Copilot CLI
                                       (--dry-run shows what would be sent, sends nothing)
@@ -89,6 +91,7 @@ fn main() -> ExitCode {
         ["include", folder, ..] => cli::include_folder(folder),
         [verb @ ("helpful" | "not" | "snooze" | "off" | "on"), id, ..] => cli::tip_feedback(verb, id),
         ["tips", ..] => cli::tips(),
+        ["progress", ..] => cli::progress(),
         ["flag", rest @ ..] => cli::flag(rest, false),
         ["unflag", rest @ ..] => cli::flag(rest, true),
         ["statusline", "copilot", ..] => statusline::run(),

@@ -140,6 +140,11 @@ are counted separately and never guessed.
 - **Given** the Habits page **When** opened **Then** each habit shows Not yet, Tried or Adopted and "seen in N of M tasks in 14 days".
 - **Given** a tip shown in the last 90 days **When** the person opens tip history **Then** it is listed with time, tool and their answer, and a turned-off tip type can be turned back on from there.
 
+**US-H5b — See whether each kind of task is moving up a rung (the success measure).** Added 2026-11-02.
+- **Given** judged tasks with a kind in the last 28 days **When** Home opens **Then** "Is each kind of task moving up?" shows, per kind, the typical (most common, ties lower) rung of judged, not-Uncertain tasks in the last 14 days against the 14 days before, the task counts behind each, and one line saying how many kinds moved up and down.
+- **Given** a kind with fewer than the tips' repeated-kind minimum (`recurring_min`, 3) judged tasks in either half **When** shown **Then** AIQ says "too few tasks to say", never a move. The judge's fallback kind "Other" is left out.
+- **Given** `aiq progress` **When** run **Then** it prints the same rows from the same read model, read-only and with no model call.
+
 **US-H6 — See, pause and delete what AIQ captured.**
 - **Given** Your data **When** opened **Then** it lists captured events newest first, with time, tool, kind and content, and shows total count and size.
 - **Given** a selected item, an older-than date, or "everything" **When** the person deletes **Then** AIQ names exactly what will go and asks for confirmation; "everything" requires typing `forget`.
