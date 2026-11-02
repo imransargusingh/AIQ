@@ -33,7 +33,8 @@ Usage:
                                       How long a tip stays in Copilot CLI's status line
   aiq import [--dry-run]              Add your past Claude Code and Copilot CLI sessions to AIQ
   aiq include <folder>                Watch a folder AIQ set aside as automated (an app or script's runs)
-  aiq judge [--max <n>] [--dry-run]  Judge your finished tasks through your own Claude Code / Copilot CLI
+  aiq judge [--max <n>] [--only claude-code|copilot-cli] [--dry-run]
+                                      Judge your finished tasks through your own Claude Code / Copilot CLI
                                       (--dry-run shows what would be sent, sends nothing)
   aiq config set judge <auto|off>     Judge new tasks in the background (on after your first aiq judge)
   aiq config set judge-daily-tasks <n>  Most tasks judged per day (0-500, default 50)

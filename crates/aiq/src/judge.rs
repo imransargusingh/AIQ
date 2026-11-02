@@ -736,6 +736,8 @@ pub struct Run<'a> {
     pub copilot: &'a dyn Provider,
     pub now: Now,
     pub max: Option<u32>,
+    /// `--only claude-code|copilot-cli`: judge only tasks that go to this provider.
+    pub only: Option<&'a str>,
 }
 
 /// One pass over the queue within today's budget.
@@ -754,6 +756,9 @@ pub fn run(r: &Run<'_>) -> Result<Report, String> {
     let mut judged_now = judged.clone();
     for t in &q {
         let Some(name) = provider_for(&t.tool) else { continue };
+        if r.only.is_some_and(|o| o != name) {
+            continue;
+        }
         if allowed == 0 {
             rep.waiting += 1;
             continue;
@@ -930,12 +935,17 @@ fn providers(paths: &Paths, homes: &Homes, set: &Settings) -> (ClaudeCli, Copilo
     )
 }
 
-/// `aiq judge [--max <n>] [--dry-run] [--auto]`
+/// `aiq judge [--max <n>] [--only claude-code|copilot-cli] [--dry-run] [--auto]`
 pub fn cli(args: &[&str]) -> ExitCode {
     let paths = Paths::from_env();
     let auto = args.contains(&"--auto");
     let dry = args.contains(&"--dry-run");
     let max = args.iter().position(|a| *a == "--max").and_then(|i| args.get(i + 1)).and_then(|v| v.parse().ok());
+    let only = args.iter().position(|a| *a == "--only").and_then(|i| args.get(i + 1)).copied();
+    if only.is_some_and(|o| o != "claude-code" && o != "copilot-cli") {
+        eprintln!("--only takes claude-code or copilot-cli.");
+        return ExitCode::from(2);
+    }
     if aiq_core::control::is_paused(&paths) {
         if !auto {
             println!("AIQ is paused, so it isn't judging. Resume with: aiq resume");
@@ -970,8 +980,16 @@ pub fn cli(args: &[&str]) -> ExitCode {
         );
     }
     let (claude, copilot) = providers(&paths, &homes, &set);
-    let rep =
-        run(&Run { store: &store, paths: &paths, homes: &homes, claude: &claude, copilot: &copilot, now: n, max });
+    let rep = run(&Run {
+        store: &store,
+        paths: &paths,
+        homes: &homes,
+        claude: &claude,
+        copilot: &copilot,
+        now: n,
+        max,
+        only,
+    });
     match rep {
         Ok(rep) => {
             let line = format!(
@@ -1196,6 +1214,10 @@ mod tests {
     }
 
     fn go(e: &Env, claude: &dyn Provider, copilot: &dyn Provider, max: Option<u32>) -> Report {
+        go_only(e, claude, copilot, max, None)
+    }
+
+    fn go_only(e: &Env, claude: &dyn Provider, copilot: &dyn Provider, max: Option<u32>, only: Option<&str>) -> Report {
         run(&Run {
             store: &e.store,
             paths: &e.paths,
@@ -1204,8 +1226,18 @@ mod tests {
             copilot,
             now: Now { utc_ms: NOW, offset_min: 0 },
             max,
+            only,
         })
         .unwrap()
+    }
+
+    #[test]
+    fn only_judges_tasks_for_the_named_provider() {
+        let e = env();
+        let (c, p) = (Fake::ok(2), Fake::ok(2));
+        let rep = go_only(&e, &c, &p, None, Some("copilot-cli"));
+        assert_eq!(rep.judged, 2, "{rep:?}");
+        assert_eq!((c.calls(), p.calls()), (0, 4));
     }
 
     #[test]
