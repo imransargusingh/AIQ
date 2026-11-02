@@ -10,7 +10,7 @@
 //! Judging imported tasks waits for the rung judge; nothing here calls a model or the network.
 use aiq_contracts::pack::AutomatedParams;
 use aiq_core::paths::Paths;
-use aiq_domain::automated::{folder_key, template_of};
+use aiq_domain::automated::{folder_key, is_aiq_check_folder, template_of};
 use aiq_store::{ImportRunCounts, ImportedEvent, ImportedSession, KnownImport, Store};
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -344,7 +344,8 @@ pub fn template_hash(prompt: &str, p: &AutomatedParams) -> Option<u64> {
 /// NI non-interactive start, T shared first-prompt template (`template_sessions`+ in the folder),
 /// B burst (`burst_sessions`+ started in the folder within ±`burst_min` minutes),
 /// F folder prior (folder over 80% automated). RC, a claude.ai Projects / Remote Control session, is set aside
-/// whatever its prompt count (Claude's own session, `projects.rs`). Folders in `include` are never set aside
+/// whatever its prompt count (Claude's own session, `projects.rs`); so is AIQ, a session in AIQ's own check or
+/// probe folder (`automated::is_aiq_check_folder`). Folders in `include` are never set aside
 /// ("Include them").
 /// The live side (`automated::Guard`) uses the same thresholds; T there counts within `template_window_h`
 /// because live it sees only recent sessions, while import sees the folder's whole history (the tested rule).
@@ -371,6 +372,9 @@ pub fn automated(sessions: &[RuleInput], include: &HashSet<String>, p: &Automate
             }
             if s.projects {
                 return vec!["RC"];
+            }
+            if is_aiq_check_folder(&s.folder) {
+                return vec!["AIQ"];
             }
             if s.human_turns > 1 {
                 return vec![];
@@ -422,6 +426,8 @@ pub struct SetAside {
     pub sessions: u64,
     /// Of `sessions`, the claude.ai Projects / Remote Control sessions (rule RC).
     pub projects: u64,
+    /// Of `sessions`, AIQ's own test sessions (rule AIQ).
+    pub aiq_checks: u64,
     /// `template` or `burst` when the folder shows an app at work (it gets a `folder_rule`, and
     /// `aiq include` applies); None when only single sessions were automated (e.g. `claude -p` runs).
     pub folder_reason: Option<&'static str>,
@@ -465,9 +471,14 @@ pub fn run(
     for s in sources.iter().filter(|s| !skip_ids.contains(&s.id)) {
         rep.by_tool.entry(s.tool).or_default()[0] += 1;
         match known.get(&(s.tool.to_owned(), s.id.clone())) {
+            // Read again when the outcome may change: an included folder's set-aside sessions, and AIQ's own
+            // test sessions an earlier build imported (they leave the history and drop their text).
             Some(k)
                 if k.source_mtime_ms == s.mtime_ms
-                    && !(k.outcome == "automated" && include.contains(&folder_key(&k.folder))) =>
+                    && !(k.outcome == "automated" && include.contains(&folder_key(&k.folder)))
+                    && !(k.outcome == "imported"
+                        && is_aiq_check_folder(&k.folder)
+                        && !include.contains(&folder_key(&k.folder))) =>
             {
                 rows.push((s.tool, None, RuleInput::from(k)));
             }
@@ -489,6 +500,8 @@ pub fn run(
             "template"
         } else if w.contains(&"B") {
             "burst"
+        } else if w.contains(&"AIQ") {
+            "aiq-check" // so live capture sets the folder aside too, and `aiq include` can bring it back
         } else {
             continue;
         };
@@ -514,6 +527,7 @@ pub fn run(
             let e = rep.set_aside.entry(input.folder.clone()).or_default();
             e.sessions += 1;
             e.projects += u64::from(w.contains(&"RC"));
+            e.aiq_checks += u64::from(w.contains(&"AIQ"));
             e.folder_reason = folder_reason.get(input.folder.as_str()).copied();
         }
         if dry_run {
@@ -590,10 +604,17 @@ pub fn render(rep: &Report, dry_run: bool) -> String {
                 s.projects
             );
         }
-        if s.sessions == s.projects {
+        if s.aiq_checks > 0 {
+            out += &format!(
+                "{folder}: {} of AIQ's own test sessions set aside. If that is your own work: aiq include \
+                 \"{folder}\", then aiq import\n",
+                s.aiq_checks
+            );
+        }
+        if s.sessions == s.projects + s.aiq_checks {
             continue;
         }
-        let rest = s.sessions - s.projects;
+        let rest = s.sessions - s.projects - s.aiq_checks;
         out += &match s.folder_reason {
             Some(_) => format!(
                 "{folder}: {} automated sessions set aside; AIQ ignores this folder's app runs from now on. \
@@ -883,7 +904,7 @@ mod tests {
         assert_eq!(rep.by_tool[CLAUDE], [2, 1, 1, 0, 0]);
         assert_eq!(
             rep.set_aside[&folder_key("C:\\repos\\a")],
-            SetAside { sessions: 1, projects: 1, folder_reason: None }
+            SetAside { sessions: 1, projects: 1, aiq_checks: 0, folder_reason: None }
         );
         assert!(render(&rep, false).contains("claude.ai Projects or Remote Control"));
         // A re-run keeps it aside without re-reading (RC comes back from the stored `why`).
@@ -891,6 +912,40 @@ mod tests {
         assert!(RuleInput::from(&k).projects);
         let include: HashSet<String> = [folder_key("C:\\repos\\a")].into();
         assert!(automated(&[RuleInput::from(&k)], &include, &p)[0].is_empty(), "Include them");
+    }
+
+    #[test]
+    fn aiq_check_sessions_are_set_aside_and_earlier_imports_of_them_leave_the_history() {
+        let d = tempfile::tempdir().unwrap();
+        let (claude, copilot) = (d.path().join("claude"), d.path().join("copilot"));
+        let probe = r"C:\Users\p\AppData\Local\Temp\aiq-copilot-probe-3glkf9fj\run0";
+        copilot_session(&copilot, "probe", probe, "2026-10-31T18:04:00Z", &["run: echo aiq-probe, then say done"]);
+        copilot_session(&copilot, "mine", r"C:\repos\a", "2026-10-31T18:05:00Z", &["fix the bug"]);
+        let mut store = Store::open(&d.path().join("aiq.db")).unwrap();
+        let src = discover(&claude, &copilot);
+        let p = AutomatedParams::default();
+        // As an earlier build did: the probe imported with its text (here via an include rule).
+        store.insert_folder_rule(&folder_key(probe), "include", "person", "person", 1).unwrap();
+        run(&mut store, &src, &HashSet::new(), &p, false, 1).unwrap();
+        assert_eq!(store.import_counts().unwrap(), vec![(COPILOT.to_string(), "imported".to_string(), 2)]);
+        store.insert_folder_rule(&folder_key(probe), "set_aside", "aiq-check", "live", 2).unwrap();
+        let rep = run(&mut store, &src, &HashSet::new(), &p, false, 2).unwrap();
+        assert_eq!(rep.by_tool[COPILOT], [2, 0, 1, 1, 0], "probe re-read and set aside; mine unchanged");
+        assert_eq!(rep.set_aside[&folder_key(probe)].aiq_checks, 1);
+        let k: Vec<_> = store.known_imports().unwrap();
+        let probe_row = k.iter().find(|k| k.source_session_id == "probe").unwrap();
+        assert_eq!((probe_row.outcome.as_str(), probe_row.why.as_str()), ("automated", "AIQ"));
+        let texts: i64 = store
+            .raw()
+            .query_row("SELECT count(*) FROM import_event WHERE text LIKE '%aiq-probe%'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(texts, 0, "the test prompt's text is gone");
+        assert!(render(&rep, false).contains("1 of AIQ's own test sessions set aside"));
+        // A fresh store: set aside on the first import, and the folder gets a rule live capture and include use.
+        let mut fresh = Store::open(&d.path().join("fresh.db")).unwrap();
+        let rep = run(&mut fresh, &src, &HashSet::new(), &p, false, 3).unwrap();
+        assert_eq!(rep.by_tool[COPILOT], [2, 1, 1, 0, 0]);
+        assert_eq!(fresh.folder_rules_now().unwrap()[&folder_key(probe)], "set_aside");
     }
 
     #[test]
@@ -922,7 +977,7 @@ mod tests {
         assert!(!rep.by_tool.contains_key(COPILOT));
         assert_eq!(
             rep.set_aside[&folder_key("C:\\repos\\a")],
-            SetAside { sessions: 1, projects: 0, folder_reason: None }
+            SetAside { sessions: 1, projects: 0, aiq_checks: 0, folder_reason: None }
         );
         assert!(store.set_aside_folders().unwrap().is_empty(), "a lone claude -p run sets no folder rule");
         let n: i64 = store

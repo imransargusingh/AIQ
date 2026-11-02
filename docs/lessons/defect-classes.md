@@ -18,7 +18,7 @@ summary: >-
 
 *Governed by `continuous-improvement.md` (CI1–CI12). One entry per class, not per bug.*
 
-**Status counts:** controlled 5 · partially-controlled 0 · uncontrolled 0
+**Status counts:** controlled 6 · partially-controlled 0 · uncontrolled 0
 
 ---
 
@@ -103,3 +103,18 @@ summary: >-
 - **Control:** the Windows default is `%USERPROFILE%\.aiq` via `windows_home`; unit test
   `windows_home_is_in_the_profile_not_appdata` and Windows-only `windows_default_paths_use_the_profile_home`.
   `aiq status` names the home and explains an `AIQ-API-AUTH` count, so a split is visible, not silent.
+
+### DC-008 — An `Option` serialised to JSON loses the difference between "absent" and "null"
+- **Signature:** `FeatureRecord.experimental_before` is `Some(Null)` for "the key was absent" and `None` for
+  "AIQ did not change it". serde writes both as `null` and reads `null` back as `None`, so after a Copilot
+  install on settings without `experimental`, uninstall left `experimental: true` switched on.
+- **Why it survives:** the in-memory round-trip test passes; only the path through the record file loses it,
+  and the e2e tests started from settings that already had `experimental`.
+- **Instances:** 2026-11-02, `aiq install|uninstall copilot` (found while adding `--no-status-line`).
+- **Sweep:** other `Option<Value>` / `Option<Option<_>>` fields written to disk: none (`grep Option<Value>`
+  in `crates/`: only this one).
+- **Control:** the record file now carries `experimental_absent`; unit test
+  `feature_record_keeps_absent_through_its_file` and e2e
+  `e2e_install_copilot_no_status_line_installs_hooks_only_and_removes_an_earlier_one` (seen red first, from
+  settings with no `experimental`). Records written before the fix read as before, so they never remove a
+  setting AIQ did not add. Rung: automated control.

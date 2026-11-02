@@ -185,6 +185,13 @@ Separately, whatever H is:
   the first record is written 64 ms–3.7 s before the first prompt's hook fires, so the live hook reads the
   transcript head (256 KB) and sets the session aside from its first prompt. Set aside per session, not per
   folder (the same folder holds the person's own sessions); `aiq include <folder>` counts them again.
+- **AIQ, AIQ's own check or probe session** (added 2026-11-02). A session whose folder is `<temp>\aiq-*` or
+  below it (`%TEMP%\aiq-phase2-check`, `%TEMP%\aiq-copilot-probe-…\run0`) is a test of AIQ. Measured on
+  Imran's laptop: 8 imported Copilot sessions, all one-prompt probes run by hand or by Remote Control, so
+  they carry no `AIQ_INTERNAL` mark and Copilot's `session.start` shows no one-shot marker; the folder is the
+  only handle. Import sets them aside (why `AIQ`, text dropped; an earlier import of them is re-read and
+  set aside) and writes a `set_aside` folder rule (reason `aiq-check`); live capture does the same at the
+  folder's first event and ignores every event there. `aiq include <folder>` counts them again.
 
 Test on Imran's laptop (counts only; prompts hashed in memory, never printed or stored):
 

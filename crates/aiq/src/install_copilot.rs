@@ -77,6 +77,24 @@ pub struct FeatureRecord {
     /// Some(previous value) when AIQ set `experimental: true`; Some(Null) when the key was absent.
     pub experimental_before: Option<Value>,
     pub added_status_flag: bool,
+    /// File only: the key was absent. JSON writes Some(Null) and None both as `null`, so without this a
+    /// reinstall record lost "absent" and uninstall left `experimental: true` behind. A record written
+    /// before this field reads as before (`null` = not changed), so it never removes a setting AIQ did not add.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    experimental_absent: bool,
+}
+
+impl FeatureRecord {
+    fn to_file(&self) -> String {
+        let f = FeatureRecord { experimental_absent: self.experimental_before == Some(Value::Null), ..self.clone() };
+        serde_json::to_string(&f).unwrap_or_default()
+    }
+
+    fn from_file(text: &str) -> Option<Self> {
+        let f: FeatureRecord = serde_json::from_str(text).ok()?;
+        let experimental_before = if f.experimental_absent { Some(Value::Null) } else { f.experimental_before };
+        Some(FeatureRecord { experimental_before, added_status_flag: f.added_status_flag, experimental_absent: false })
+    }
 }
 
 /// Switch on `experimental` and the `STATUS_LINE` flag. Never clobbers a `feature_flags` or `enabled` of
@@ -129,7 +147,7 @@ pub fn revert_status_feature(settings: &mut Value, rec: &FeatureRecord) {
 fn read_record(paths: &Paths) -> FeatureRecord {
     std::fs::read_to_string(paths.copilot_install_record())
         .ok()
-        .and_then(|t| serde_json::from_str(&t).ok())
+        .and_then(|t| FeatureRecord::from_file(&t))
         .unwrap_or_default()
 }
 
@@ -174,7 +192,10 @@ pub fn status_line() -> String {
     }
 }
 
-pub fn install(yes: bool) -> ExitCode {
+/// `with_status_line` false (`--no-status-line`): hooks only. Tips then show in `aiq show`, AIQ home and VS
+/// Code, never in Copilot CLI's status line; an AIQ status line from an earlier install is taken out (and
+/// `experimental` / the flag put back as that install found them).
+pub fn install(yes: bool, with_status_line: bool) -> ExitCode {
     let exe = match exe_path() {
         Ok(e) => e,
         Err(m) => {
@@ -195,13 +216,24 @@ pub fn install(yes: bool) -> ExitCode {
     };
     let before = v.clone();
     let windows = cfg!(windows);
-    let foreign_sl = add_statusline(&mut v, &statusline_command(&exe_s, &home, windows)).err();
-    let rec = if foreign_sl.is_none() { enable_status_feature(&mut v) } else { FeatureRecord::default() };
+    let paths = Paths::from_env();
+    let (foreign_sl, rec, dropped_sl) = if with_status_line {
+        let foreign = add_statusline(&mut v, &statusline_command(&exe_s, &home, windows)).err();
+        let rec = if foreign.is_none() { enable_status_feature(&mut v) } else { FeatureRecord::default() };
+        (foreign, rec, false)
+    } else {
+        let dropped = strip_statusline(&mut v);
+        if dropped {
+            revert_status_feature(&mut v, &read_record(&paths));
+        }
+        (None, FeatureRecord::default(), dropped)
+    };
     let new_hooks = pretty(&hooks_json(&exe_s));
     let old_hooks = std::fs::read_to_string(&hp).ok();
     let wp = wrapper_file(&home);
-    let new_wrapper = (windows && foreign_sl.is_none()).then(|| wrapper_text(&exe_s));
-    let wrapper_ok = new_wrapper.is_none() || std::fs::read_to_string(&wp).ok() == new_wrapper;
+    let new_wrapper = (windows && with_status_line && foreign_sl.is_none()).then(|| wrapper_text(&exe_s));
+    let stale_wrapper = !with_status_line && wp.exists();
+    let wrapper_ok = (new_wrapper.is_none() || std::fs::read_to_string(&wp).ok() == new_wrapper) && !stale_wrapper;
     if v == before && old_hooks.as_deref() == Some(new_hooks.as_str()) && foreign_sl.is_none() && wrapper_ok {
         println!("Already installed.");
         return ExitCode::SUCCESS;
@@ -232,6 +264,15 @@ pub fn install(yes: bool) -> ExitCode {
             direct_command(&exe_s)
         );
     }
+    if stale_wrapper {
+        println!("\nAIQ will delete {} (AIQ's own file, the old status-line command).", wp.display());
+    }
+    if !with_status_line {
+        println!(
+            "\nNo status line (--no-status-line): AIQ tips will not show in Copilot CLI. Read them with `aiq show`, \
+             in AIQ home, or in VS Code. Run `aiq install copilot` again to add the status line later."
+        );
+    }
     println!("\nYour other Copilot settings and hooks stay as they are.");
     if !confirm("Apply this change?", yes) {
         println!("Nothing changed.");
@@ -251,19 +292,26 @@ pub fn install(yes: bool) -> ExitCode {
             eprintln!("Could not write {}: {e}", sp.display());
             return ExitCode::from(1);
         }
+        if dropped_sl {
+            let _ = std::fs::remove_file(paths.copilot_install_record());
+        }
         if rec != FeatureRecord::default() {
-            let paths = Paths::from_env();
             let old = read_record(&paths); // a reinstall keeps what the first install changed
             let merged = FeatureRecord {
                 experimental_before: old.experimental_before.or(rec.experimental_before),
                 added_status_flag: old.added_status_flag || rec.added_status_flag,
+                ..Default::default()
             };
             let _ = paths.ensure_dirs();
-            let json = serde_json::to_string(&merged).unwrap_or_default();
+            let json = merged.to_file();
             if let Err(e) = aiq_core::paths::write_user_only(&paths.copilot_install_record(), json.as_bytes()) {
                 eprintln!("Could not record the change ({e}); uninstall will leave `experimental` and the flag on.");
             }
         }
+    }
+    if stale_wrapper && let Err(e) = std::fs::remove_file(&wp) {
+        eprintln!("Could not delete {}: {e}", wp.display());
+        return ExitCode::from(1);
     }
     if let Some(w) = new_wrapper.filter(|_| !wrapper_ok)
         && let Err(e) = std::fs::write(&wp, w)
@@ -432,6 +480,20 @@ mod tests {
             revert_status_feature(&mut v, &rec);
             assert_eq!(v, original);
         }
+    }
+
+    #[test]
+    fn feature_record_keeps_absent_through_its_file() {
+        for rec in [
+            FeatureRecord { experimental_before: Some(Value::Null), added_status_flag: true, ..Default::default() },
+            FeatureRecord { experimental_before: Some(json!(false)), added_status_flag: false, ..Default::default() },
+            FeatureRecord::default(),
+        ] {
+            assert_eq!(FeatureRecord::from_file(&rec.to_file()).unwrap(), rec);
+        }
+        // A record from an earlier build: `null` meant "not changed" (the old reading), so it stays that way.
+        let old = FeatureRecord::from_file(r#"{"experimental_before":null,"added_status_flag":true}"#).unwrap();
+        assert_eq!(old.experimental_before, None);
     }
 
     #[test]

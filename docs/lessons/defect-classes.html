@@ -24,7 +24,7 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 @media (max-width:640px) { main { width:100%; margin:0; padding:24px 18px; border:0; border-radius:0; } }
 </style></head><body><main><div class="source">Rendered from defect-classes.md</div><h1>Defect-class register</h1>
 <p><em>Governed by `continuous-improvement.md` (CI1–CI12). One entry per class, not per bug.</em></p>
-<p><strong>Status counts:</strong> controlled 5 · partially-controlled 0 · uncontrolled 0</p>
+<p><strong>Status counts:</strong> controlled 6 · partially-controlled 0 · uncontrolled 0</p>
 <hr>
 <h3>DC-001 — A classification rule that compares against its own earlier outputs drifts</h3>
 <ul><li><strong>Signature:</strong> a detector keeps a window of &quot;what the request looks like&quot; and adds every accepted item to</li></ul>
@@ -80,4 +80,13 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <ul><li><strong>Sweep:</strong> every default path AIQ derives (<code>Paths::from_env</code>, install&#x27;s backup and record, the copy of</li></ul>
 <p>the binary). Settings live in <code>%USERPROFILE%\.claude</code>, which is not redirected. No other AppData use.</p>
 <ul><li><strong>Control:</strong> the Windows default is <code>%USERPROFILE%\.aiq</code> via <code>windows_home</code>; unit test</li></ul>
-<p><code>windows_home_is_in_the_profile_not_appdata</code> and Windows-only <code>windows_default_paths_use_the_profile_home</code>. <code>aiq status</code> names the home and explains an <code>AIQ-API-AUTH</code> count, so a split is visible, not silent.</p></main></body></html>
+<p><code>windows_home_is_in_the_profile_not_appdata</code> and Windows-only <code>windows_default_paths_use_the_profile_home</code>. <code>aiq status</code> names the home and explains an <code>AIQ-API-AUTH</code> count, so a split is visible, not silent.</p>
+<h3>DC-008 — An <code>Option</code> serialised to JSON loses the difference between &quot;absent&quot; and &quot;null&quot;</h3>
+<ul><li><strong>Signature:</strong> <code>FeatureRecord.experimental_before</code> is <code>Some(Null)</code> for &quot;the key was absent&quot; and <code>None</code> for</li></ul>
+<p>&quot;AIQ did not change it&quot;. serde writes both as <code>null</code> and reads <code>null</code> back as <code>None</code>, so after a Copilot install on settings without <code>experimental</code>, uninstall left <code>experimental: true</code> switched on.</p>
+<ul><li><strong>Why it survives:</strong> the in-memory round-trip test passes; only the path through the record file loses it,</li></ul>
+<p>and the e2e tests started from settings that already had <code>experimental</code>.</p>
+<ul><li><strong>Instances:</strong> 2026-11-02, <code>aiq install|uninstall copilot</code> (found while adding <code>--no-status-line</code>).</li><li><strong>Sweep:</strong> other <code>Option&lt;Value&gt;</code> / <code>Option&lt;Option&lt;_&gt;&gt;</code> fields written to disk: none (<code>grep Option&lt;Value&gt;</code></li></ul>
+<p>in <code>crates/</code>: only this one).</p>
+<ul><li><strong>Control:</strong> the record file now carries <code>experimental_absent</code>; unit test</li></ul>
+<p><code>feature_record_keeps_absent_through_its_file</code> and e2e <code>e2e_install_copilot_no_status_line_installs_hooks_only_and_removes_an_earlier_one</code> (seen red first, from settings with no <code>experimental</code>). Records written before the fix read as before, so they never remove a setting AIQ did not add. Rung: automated control.</p></main></body></html>

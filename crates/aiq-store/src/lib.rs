@@ -213,11 +213,39 @@ impl Store {
         self.conn.query_row("PRAGMA user_version", [], |r| r.get(0)).map_err(err(codes::STORE_OPEN))
     }
 
+    /// A store this build cannot bring up to date gets one clear line naming the file and the way out, not a
+    /// bare SQLite error: a newer format (written by a newer AIQ), or a migration that fails (an early test
+    /// build of AIQ wrote a different format under the same version number). Nothing is changed either way.
     fn migrate(&mut self, migrations: &[&str]) -> Result<()> {
         let from = self.user_version()? as usize;
+        let path = self.path.display().to_string();
+        if from > migrations.len() {
+            return Err(StoreError {
+                code: codes::STORE_MIGRATION,
+                detail: format!(
+                    "AIQ's store {path} is format {from}, newer than this aiq knows (up to {}). Install the newer \
+                     aiq again, or run `aiq forget --all` to start fresh (it deletes AIQ's data) and `aiq import`.",
+                    migrations.len()
+                ),
+            });
+        }
+        let old_build = |e: rusqlite::Error| {
+            // SQLite quotes the whole migration script after " in "; keep only its message.
+            let full = e.to_string();
+            let msg = full.split(" in ").next().unwrap_or_default();
+            let why: String = msg.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(120).collect();
+            StoreError {
+                code: codes::STORE_MIGRATION,
+                detail: format!(
+                    "AIQ's store {path} (format {from}) was made by an earlier test build of AIQ and cannot be \
+                     updated ({why}). Nothing was changed. Run `aiq forget --all`, then `aiq import` to bring your \
+                     history back."
+                ),
+            }
+        };
         for (i, sql) in migrations.iter().enumerate().skip(from) {
             let tx = self.conn.transaction().map_err(err(codes::STORE_MIGRATION))?;
-            tx.execute_batch(sql).map_err(err(codes::STORE_MIGRATION))?;
+            tx.execute_batch(sql).map_err(old_build)?;
             tx.pragma_update(None, "user_version", (i + 1) as i64).map_err(err(codes::STORE_MIGRATION))?;
             tx.commit().map_err(err(codes::STORE_MIGRATION))?;
         }

@@ -8,7 +8,7 @@ use aiq_contracts::codes;
 use aiq_contracts::event::{EventBody, EventV1, MAX_SESSION_ID};
 use aiq_contracts::frames::{EvidencePrompt, ShowReply, StatusReply};
 use aiq_contracts::pack::PackV1;
-use aiq_domain::automated::{Guard, Verdict, folder_key};
+use aiq_domain::automated::{Guard, Verdict, folder_key, is_aiq_check_folder};
 use aiq_domain::card::compose;
 use aiq_domain::clock::{Clock, deliveries_counted_today};
 use aiq_domain::job::{AlwaysUnclassified, JobClassifier};
@@ -232,6 +232,19 @@ impl<C: Clock> Service<C> {
                     info!(aiq.reason = "projects", "Projects session set aside");
                 }
                 return Ok(true);
+            }
+        }
+        if let Some(k) = ev.cwd.as_deref().filter(|c| is_aiq_check_folder(c)).map(folder_key) {
+            // Rule AIQ: AIQ's own check and probe folders, every event, unless included. The folder gets a
+            // set-aside rule once, so `aiq status` lists it and `aiq include` brings it back.
+            match self.store.folder_rules_now()?.get(&k).map(String::as_str) {
+                Some("include") => {}
+                Some(_) => return Ok(true),
+                None => {
+                    self.store.insert_folder_rule(&k, "set_aside", "aiq-check", "live", self.clock.now().utc_ms)?;
+                    info!(aiq.reason = "aiq-check", "folder set aside: AIQ's own checks");
+                    return Ok(true);
+                }
             }
         }
         let EventBody::Prompt(p) = &ev.body else { return Ok(self.guard.is_ignored(surface, session)) };

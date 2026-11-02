@@ -25,7 +25,9 @@ Usage:
   aiq show <card-id>                  A card, why it showed, and the prompts it counted
   aiq pause | aiq resume              Stop or restart capture and tips
   aiq endpoint                        Where the core listens (used by the VS Code extension)
-  aiq install copilot [--yes]         Add AIQ's hooks and status line to Copilot (~/.copilot)
+  aiq install copilot [--yes] [--no-status-line]
+                                      Add AIQ's hooks and status line to Copilot (~/.copilot);
+                                      --no-status-line: hooks only, no tips in Copilot CLI's status line
   aiq uninstall copilot [--yes]       Remove only AIQ's Copilot hooks and status line
   aiq config set daily-cap <n>        Most tips per day, all tools together (0-50, default 5)
   aiq config set copilot-tip-stays <next-prompt|two-prompts-or-5-min|until-opened>
@@ -48,7 +50,7 @@ fn main() -> ExitCode {
         ["core", ..] => cli::core(),
         ["install", "claude-code", ..] => install::install(yes),
         ["uninstall", "claude-code", ..] => install::uninstall(yes),
-        ["install", "copilot", ..] => install_copilot::install(yes),
+        ["install", "copilot", ..] => install_copilot::install(yes, !a.contains(&"--no-status-line")),
         ["uninstall", "copilot", ..] => install_copilot::uninstall(yes),
         ["status", ..] => cli::status(),
         ["show", id, ..] => cli::show(id),

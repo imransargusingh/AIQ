@@ -228,6 +228,9 @@ with the Phase 1 rules: show the diff, ask y/N, back up, temp-file-and-rename, r
 refuse to replace an existing `statusLine` (print the line to add instead). Runs the installed hook
 once as a self-test and prints its time. `aiq uninstall copilot` removes the hook file and only an
 AIQ `statusLine`, the wrapper, and what the record says AIQ turned on.
+`aiq install copilot --no-status-line` (added 2026-11-02) installs the hooks only: no `statusLine`, no
+`experimental` or flag change, no wrapper; run over an earlier full install it takes AIQ's status line out
+and puts back what the record says AIQ turned on. Tips still show in `aiq show`, AIQ home and VS Code.
 
 **6. VS Code extension** (`extensions/vscode`, publisher-less VSIX for the alpha, installed by
 `code --install-extension`): polls `take_card_any` every 2 s while a window is focused; shows the card

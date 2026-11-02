@@ -303,6 +303,31 @@ fn e2e_install_copilot_reverts_only_what_it_turned_on() {
 }
 
 #[test]
+fn e2e_install_copilot_no_status_line_installs_hooks_only_and_removes_an_earlier_one() {
+    let e = Env::new();
+    std::fs::create_dir_all(e.copilot()).unwrap();
+    let original = json!({"model": "x"});
+    std::fs::write(e.copilot().join("settings.json"), original.to_string()).unwrap();
+    let o = e.run(&["install", "copilot", "--yes", "--no-status-line"], b"");
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    let out = String::from_utf8(o.stdout).unwrap();
+    assert!(out.contains("No status line (--no-status-line)"), "{out}");
+    assert!(e.copilot().join("hooks").join("aiq.json").exists());
+    let read = || serde_json::from_str::<Value>(&std::fs::read_to_string(e.copilot().join("settings.json")).unwrap());
+    assert_eq!(read().unwrap(), original, "settings untouched: no statusLine, no experimental");
+    assert!(!e.copilot().join("aiq-statusline.cmd").exists());
+    // Switching off later: a full install, then --no-status-line, puts the settings back as they were.
+    assert!(e.run(&["install", "copilot", "--yes"], b"").status.success());
+    assert!(read().unwrap().get("statusLine").is_some());
+    assert!(e.run(&["install", "copilot", "--yes", "--no-status-line"], b"").status.success());
+    assert_eq!(read().unwrap(), original);
+    assert!(!e.copilot().join("aiq-statusline.cmd").exists());
+    assert!(e.copilot().join("hooks").join("aiq.json").exists(), "hooks stay");
+    let again = e.run(&["install", "copilot", "--yes", "--no-status-line"], b"");
+    assert!(String::from_utf8(again.stdout).unwrap().contains("Already installed."));
+}
+
+#[test]
 fn e2e_install_copilot_never_replaces_a_foreign_status_line() {
     let e = Env::new();
     std::fs::create_dir_all(e.copilot()).unwrap();
