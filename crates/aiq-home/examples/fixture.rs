@@ -54,6 +54,15 @@ fn main() {
     c.status.read_ms = 12;
     write(&out, "coaching", &c);
 
+    // Rung progress per kind of task: one up, one down, one the same, one too few (the success measure).
+    let moving = Paths::at(&tmp.join("progress"));
+    seed::progress(&moving);
+    aiq_core::control::finish_setup(&moving).unwrap();
+    let mut m = aiq_home::snapshot(&moving, &pack, now);
+    m.status.core = true;
+    m.status.read_ms = 12;
+    write(&out, "progress", &m);
+
     let empty = Paths::at(&tmp.join("empty"));
     let mut e = aiq_home::snapshot(&empty, &pack, now);
     e.status.core = true;

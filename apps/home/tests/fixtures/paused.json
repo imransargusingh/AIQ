@@ -532,6 +532,9 @@
     "kinds": [],
     "habits": [],
     "habits_imported": true,
-    "untyped": 2
+    "untyped": 2,
+    "progress": [],
+    "progress_days": 14,
+    "progress_min": 3
   }
 }

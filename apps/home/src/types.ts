@@ -94,6 +94,26 @@ export interface Coaching {
   habits_imported: boolean;
   /** Judged before kinds of task existed. */
   untyped: number;
+  /** Each kind's typical rung, last `progress_days` against the `progress_days` before. Moved up first. */
+  progress: ProgressRow[];
+  progress_days: number;
+  /** Judged tasks each half needs before AIQ says a kind moved. */
+  progress_min: number;
+}
+
+export type Trend = "up" | "down" | "same" | "too_few";
+
+export interface ProgressRow {
+  job: string;
+  task_type: string;
+  label: string;
+  /** Judged, not-Uncertain tasks in the last `progress_days`, and in the `progress_days` before. */
+  recent: number;
+  earlier: number;
+  uncertain: number;
+  recent_rung: number | null;
+  earlier_rung: number | null;
+  trend: Trend;
 }
 
 export type KindState = "coach" | "too_few" | "right_rung" | "blocked" | "not_sure" | "flagged";

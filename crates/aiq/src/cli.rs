@@ -878,6 +878,71 @@ pub fn tips() -> ExitCode {
     ExitCode::SUCCESS
 }
 
+/// `aiq progress`: each kind of task's typical rung in the last 14 days against the 14 before, read with
+/// the same snapshot AIQ home reads (read-only, no model call), so both show the same numbers.
+pub fn progress() -> ExitCode {
+    let paths = Paths::from_env();
+    let pack = match aiq_domain::PackSource::load(&aiq_core::pack::BundledPack) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("Could not load AIQ's rules: {e}");
+            return ExitCode::from(1);
+        }
+    };
+    let utc_ms = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64);
+    let s = aiq_home::snapshot(&paths, &pack, aiq_domain::clock::Now { utc_ms, offset_min: 0 });
+    if let Some(e) = &s.status.error {
+        eprintln!("Could not read AIQ's store: {e}");
+        return ExitCode::from(1);
+    }
+    print!("{}", render_progress(&s.coaching));
+    ExitCode::SUCCESS
+}
+
+fn render_progress(c: &aiq_home::Coaching) -> String {
+    use aiq_domain::rung::{job_label, rung_name};
+    let (d, min) = (c.progress_days, c.progress_min);
+    let mut o = format!(
+        "Rung progress by kind of task: the typical rung (most common) of your judged tasks in the last {d} days\n\
+         against the {d} days before. Task counts are measured; rungs are the judge's reading. A kind needs\n\
+         at least {min} judged tasks in each half before AIQ says it moved.\n\n"
+    );
+    let up = c.progress.iter().filter(|r| r.trend == "up").count();
+    let down = c.progress.iter().filter(|r| r.trend == "down").count();
+    if c.progress.is_empty() {
+        o += &format!("No judged tasks with a kind in the last {} days yet.\n", 2 * d);
+        return o;
+    }
+    o += &format!("Moved up a rung: {up}. Moved down: {down}.\n\n");
+    let rung = |r: Option<u8>| r.map_or("none".to_owned(), |r| format!("{} ({r})", rung_name(r)));
+    for r in &c.progress {
+        let what = match r.trend {
+            "up" | "down" => {
+                let steps = r.recent_rung.unwrap_or(0).abs_diff(r.earlier_rung.unwrap_or(0));
+                format!(
+                    "moved {} {} {}: {} -> {}",
+                    r.trend,
+                    steps,
+                    if steps == 1 { "rung" } else { "rungs" },
+                    rung(r.earlier_rung),
+                    rung(r.recent_rung)
+                )
+            }
+            "same" => format!("same rung: {}", rung(r.recent_rung)),
+            _ => "too few tasks to say".to_owned(),
+        };
+        o += &format!(
+            "{} [{}]: {what}\n  {} judged in the last {d} days, {} in the {d} before{}\n",
+            r.label,
+            job_label(&r.job),
+            r.recent,
+            r.earlier,
+            if r.uncertain > 0 { format!("; {} AIQ isn't sure about left out", r.uncertain) } else { String::new() }
+        );
+    }
+    o
+}
+
 fn render_tips(
     reach: &[aiq_domain::coach::Reach],
     off: &[bool],
@@ -916,6 +981,42 @@ fn render_tips(
 #[cfg(test)]
 mod tips_tests {
     use super::*;
+
+    #[test]
+    fn progress_report_names_moves_counts_and_too_few() {
+        let row = |ty: &str, trend: &'static str, recent, earlier, rr, er, uncertain| aiq_home::ProgressRow {
+            job: "code_change".into(),
+            task_type: ty.into(),
+            label: aiq_contracts::judge::task_type_label("code_change", ty).unwrap(),
+            recent,
+            earlier,
+            uncertain,
+            recent_rung: rr,
+            earlier_rung: er,
+            trend,
+        };
+        let c = aiq_home::Coaching {
+            progress: vec![
+                row("tests", "up", 4, 3, Some(3), Some(2), 1),
+                row("fix_bug", "same", 3, 3, Some(1), Some(1), 0),
+                row("refactor", "too_few", 1, 2, Some(2), Some(4), 0),
+            ],
+            progress_days: 14,
+            progress_min: 3,
+            ..Default::default()
+        };
+        let o = render_progress(&c);
+        assert!(o.contains("last 14 days") && o.contains("at least 3 judged tasks in each half"), "{o}");
+        assert!(o.contains("Moved up a rung: 1. Moved down: 0."), "{o}");
+        assert!(
+            o.contains("Writing tests [Code a change]: moved up 1 rung: Directed (2) -> Delegated (3)\n  4 judged in the last 14 days, 3 in the 14 before; 1 AIQ isn't sure about left out"),
+            "{o}"
+        );
+        assert!(o.contains("same rung: Assisted (1)"), "{o}");
+        assert!(o.contains("Refactoring or cleaning up [Code a change]: too few tasks to say\n  1 judged"), "{o}");
+        let empty = aiq_home::Coaching { progress_days: 14, progress_min: 3, ..Default::default() };
+        assert!(render_progress(&empty).contains("No judged tasks with a kind in the last 28 days yet."));
+    }
 
     #[test]
     fn tips_report_names_reach_off_state_and_the_f4_ceiling() {
