@@ -393,6 +393,55 @@ impl Store {
         &self.path
     }
 
+    /// Every row of every table, for `aiq export` (private-alpha design A6): one call of `row` per stored
+    /// row, as a JSON object of column name to value, tables in name order and rows in insert order.
+    /// Reads inside one transaction, so the export is one consistent snapshot even while the core writes.
+    /// Returns the tables and their row counts (a table with no rows is still listed, with 0).
+    pub fn export_rows(
+        &mut self,
+        mut row: impl FnMut(&str, serde_json::Value) -> std::io::Result<()>,
+    ) -> Result<Vec<(String, u64)>> {
+        use rusqlite::types::ValueRef;
+        let tx = self.conn.transaction().map_err(err(codes::STORE_OPEN))?;
+        let tables: Vec<String> = {
+            let mut st = tx
+                .prepare(
+                    "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+                )
+                .map_err(err(codes::STORE_OPEN))?;
+            st.query_map([], |r| r.get(0)).and_then(|rows| rows.collect()).map_err(err(codes::STORE_OPEN))?
+        };
+        let mut counts = Vec::with_capacity(tables.len());
+        for t in tables {
+            let mut st = tx
+                .prepare(&format!("SELECT * FROM \"{}\" ORDER BY rowid", t.replace('"', "\"\"")))
+                .map_err(err(codes::STORE_OPEN))?;
+            let names: Vec<String> = st.column_names().map(str::to_owned).collect();
+            let mut rows = st.query([]).map_err(err(codes::STORE_OPEN))?;
+            let mut n = 0u64;
+            while let Some(r) = rows.next().map_err(err(codes::STORE_OPEN))? {
+                let mut obj = serde_json::Map::with_capacity(names.len());
+                for (i, name) in names.iter().enumerate() {
+                    let v = match r.get_ref(i).map_err(err(codes::STORE_OPEN))? {
+                        ValueRef::Null => serde_json::Value::Null,
+                        ValueRef::Integer(x) => x.into(),
+                        ValueRef::Real(x) => {
+                            serde_json::Number::from_f64(x).map_or(serde_json::Value::Null, Into::into)
+                        }
+                        ValueRef::Text(s) => String::from_utf8_lossy(s).into_owned().into(),
+                        // No column stores bytes today; if one ever does, it exports as lowercase hex.
+                        ValueRef::Blob(b) => b.iter().map(|x| format!("{x:02x}")).collect::<String>().into(),
+                    };
+                    obj.insert(name.clone(), v);
+                }
+                row(&t, obj.into()).map_err(|e| StoreError { code: codes::EXPORT_WRITE, detail: e.to_string() })?;
+                n += 1;
+            }
+            counts.push((t, n));
+        }
+        Ok(counts)
+    }
+
     // ------------------------------------------------------------ coaching facts (schema v6)
 
     pub fn insert_type_guess(&self, g: &TypeGuessRow) -> Result<()> {

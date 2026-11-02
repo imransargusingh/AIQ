@@ -22,6 +22,8 @@ pub const CORE_ALREADY_RUNNING: &str = "AIQ-CORE-ALREADY-RUNNING";
 pub const CORE_START_BACKOFF: &str = "AIQ-CORE-START-BACKOFF";
 /// AIQ home could not read the store (locked past the busy timeout, or unreadable).
 pub const HOME_STORE_READ: &str = "AIQ-HOME-STORE-READ";
+/// `aiq export` could not write its folder (not writable, disk full); the partial folder is removed.
+pub const EXPORT_WRITE: &str = "AIQ-EXPORT-WRITE";
 
 /// Rung judge (design docs/design/rung-judge.md, Failure-mode analysis).
 /// AIQ guessed the kind of task right fewer than 8 in 10 times and turned next-rung tips off (coaching D10).
@@ -54,6 +56,7 @@ pub const ALL: &[&str] = &[
     CORE_ALREADY_RUNNING,
     CORE_START_BACKOFF,
     HOME_STORE_READ,
+    EXPORT_WRITE,
     JUDGE_MISSING,
     JUDGE_SIGNIN,
     JUDGE_SCHEMA,

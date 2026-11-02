@@ -6,6 +6,7 @@
 //!   aiq install|uninstall claude-code, status, show <id>, pause, resume, config set daily-cap <n>, forget --all
 //!   aiq import, forget --imported                   history import (docs/specs/history-import.md)
 mod cli;
+mod export;
 mod hook;
 mod import;
 mod install;
@@ -53,6 +54,8 @@ Usage:
   aiq config set judge <auto|off>     Judge new tasks in the background (on after your first aiq judge)
   aiq config set judge-daily-tasks <n>  Most tasks judged per day (0-500, default 50)
   aiq config set judge-copilot-sessions <delete|keep>  Delete AIQ's own Copilot judge sessions (default)
+  aiq export [<folder>]               Copy everything AIQ stored to plain JSON files you can read
+                                      (default: a new folder under AIQ's own folder)
   aiq forget --imported [--yes]       Delete only what aiq import added
   aiq forget --all [--yes]            Delete everything AIQ stored on this machine
   aiq core                            Run the background core in this terminal
@@ -88,6 +91,7 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         ["import", rest @ ..] => import::cli(rest),
+        ["export", rest @ ..] => export::cli(rest),
         ["judge", rest @ ..] => judge::cli(rest),
         ["forget", "--imported", ..] | ["forget", _, "--imported", ..] => import::forget(yes),
         ["forget", "--all", ..] | ["forget", _, "--all", ..] => cli::forget_all(yes),
