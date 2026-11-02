@@ -110,20 +110,21 @@ Read against main at `ae64a72` (PR #52) and the numbers measured on Imran's lapt
 |---|---|---|---|---|
 | G1 | Hook speed | **Not proven** | Measured after PR #34 and #39 (Claude Code): prompt hook about 1.7 ms typical, AIQ's preparing phase at most 0.6 ms on every kept prompt since 15:14Z. The 24-h p95 that `aiq status` still prints (495 ms at 18:56Z) is the "reading input" phase, the host's own stdin wait, plus lines from before the fix and from automated runs. Checked: `aiq status` prints the p95 by phase (`cli.rs`, `hook_phase_lines`) | One `aiq status` reading after 2026-11-03 15:10Z, when the pre-fix lines age out, with the **Copilot** lines read on their own: the alpha is Copilot-first and no Copilot hook p95 is recorded yet. Separately, excluding automated runs from these figures is with the judge thread |
 | G2 | Copilot hooks live | **Likely met** (Inferred) | Measured: Copilot was connected on the laptop at 04:46Z. Not read today: a live Copilot prompt arriving in Home after a fresh install | Covered by G3 on a clean account. No separate work |
-| G3 | Clean install | **Not met** | Checked: no `release.yml` (only `rust.yml`, `home.yml`), no `install.ps1`, no release zip. The install step itself exists: `aiq install` connects every tool found (PR #32) and never turns on Copilot's experimental mode (PR #35) | A1 release workflow and `install.ps1`; then a human run on a Windows account that never had AIQ |
-| G4 | Upgrade | **Not met** | Checked: no `aiq upgrade`; the script Imran pastes (`%USERPROFILE%\.aiq\bin\upgrade.ps1`) is still not in the repo | A5 `aiq upgrade [--rollback]` with the checksum check; then a run from one release to the next |
+| G3 | Clean install | **Built; needs a human run** | Built (PR #58, #61): `release.yml` makes the zip and `SHA256SUMS`; `install.ps1` installs per user. Measured on the GitHub Windows runner, every packaging PR: install from the zip puts both exes in `bin`, adds the user PATH entry and shortcut, connects Copilot (hook self-test 13 to 14 ms on the runner), and `uninstall --all` takes every one of those back | A first release (Imran's call), then one run on a Windows account that never had AIQ, ideally a managed work laptop (tests the unsigned-exe assumption A2) |
+| G4 | Upgrade | **Built; needs a human run** | Built (PR #60) as `upgrade.ps1`, not a Rust `aiq upgrade` (native PowerShell instead of three new crates). Measured on the Windows runner: a tampered zip is refused with `AIQ-UPGRADE-CHECKSUM` and `aiq.exe` is unchanged; a good zip upgrades; `-Rollback` restores the previous exes | Two published releases, then an upgrade from the first to the second on a real machine with data, checking the store and settings survive |
 | G5 | Copilot terms | **Needs Imran** | Not run. Reading the public terms can be done in the cloud; deciding whether the use is allowed for his alpha users (likely Microsoft colleagues, under their employer's Copilot licence) is his call, and may need his employer's view | A written reading of the current GitHub Copilot terms for `copilot -p` as judge, then his decision |
 | G6 | Anthropic terms | **Not needed for a Copilot-only alpha** | A10: needed only before inviting someone who uses Claude Code | Skip unless Imran wants Claude Code users in the first wave |
 | G7 | Coverage | **Met** | Measured: four packs now (Code a change, Write a spec or doc, Ask or research, Run or ship it, PR #33 and #52). Before the fourth pack, 101 of 473 judged tasks had no job; the survey of 30 of them found 17 were running or operating systems, which the fourth pack now covers (one model's labels, Inferred) | How many tasks still get no job under judge j5 is not measured yet; re-read after the laptop re-judges |
 | G8 | Self-check | **Met** | Checked: `next-rung-tips` defaults to `auto`, under which the self-check turns next-step tips off below 8 of 10 (`coach.rs`, test `self_check_turns_tips_off_at_seven_of_ten`; PR #29). Measured: where the judge named a kind of task, a different-model reader agreed 27 of 27; all 6 misses in 35 were the fallback "Other", which gets no tip | Nothing for the gate. Live kind accuracy after tips fire is a later measurement |
 | G9 | Harmless to other tools | **Needs Imran** | PR #35 is in (checked): connect never turns on experimental mode and lists each file it changed. Imran's VS Code Insiders MCP trouble started 10 minutes after connect (measured times); cause not proven | The restore test he deferred (restore `~/.copilot/settings.json` first, then remove the hook only if still broken), or the same check on a second machine at G3 |
 
-Pieces the design names that are not built (checked against `crates/aiq/src/main.rs`): `aiq export`
-(A6), `aiq status --report` (A8), `aiq uninstall --all` (A7), `aiq upgrade` (A5), `aiq setup --yes`
-and `install.ps1` (A3), `release.yml` (A1). Build order, smallest risk first: A6, A8, A7, A1, A5.
-A3 follows A1 because `install.ps1` ships in the zip. None needs the laptop to build; G3 and G4 need
-a human run once a release exists, and **cutting the first release is Imran's call** (it publishes
-files anyone can download, because the repo is public).
+Pieces built since this review was written (all merged, one PR each): `aiq export` (A6, PR #55),
+`aiq status --report` (A8, PR #56), `aiq uninstall --all` (A7, PR #57 and #61), `release.yml` and
+`install.ps1` (A1, A3, PR #58), `upgrade.ps1` (A5, PR #60). Still not built: the AIQ home "Export
+everything" button, the once-a-day "Update available" line, and `aiq setup --yes` as a separate
+command (`install.ps1` runs `aiq install --yes`, which does the same job). A tag makes only a
+**draft** release; **publishing the first release is Imran's call**, because the repo is public and
+anyone could then download it.
 
 
 ## Responsibility
@@ -249,6 +250,6 @@ seats played by Claude in one session; not independent) · verdict: pass with co
 
 | | |
 |---|---|
-| **Completed** | Design (2026-11-02, morning); gate review against main `ae64a72` (2026-11-02, evening) |
-| **Remaining** | Build A6 export, A8 report, A7 uninstall all, A1 release workflow, A5 upgrade (cloud, one PR each); gates G1, G2 re-read on the laptop; G3, G4 after a first release; G5 terms reading; G9 test |
-| **Best next action** | `/implement` A6 `aiq export` (privacy control the spec requires, no laptop needed) |
+| **Completed** | Design (2026-11-02, morning); gate review against main `ae64a72` (2026-11-02, evening); build of A1, A3, A5, A6, A7, A8 (PR #55 to #61) |
+| **Remaining** | G1 Copilot hook p95 read on the laptop; first release (Imran); G3 and G4 human runs; G5 terms decision; G9 test |
+| **Best next action** | Imran decides whether to publish a first release (v0.1.0) so G3 can run |
