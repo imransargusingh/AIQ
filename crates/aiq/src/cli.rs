@@ -1137,10 +1137,10 @@ fn update_text(v: &aiq_core::update::View, now: i64) -> String {
         o.push_str("This copy was not installed with install.ps1, so it does not update itself.\n");
         return o;
     }
-    o.push_str(if v.mode == "auto" {
-        "Updates: automatic (aiq config set update ask: tell me first).\n"
-    } else {
-        "Updates: tell me first (aiq config set update auto: install by itself).\n"
+    o.push_str(match v.mode.as_str() {
+        "auto" => "Updates: automatic (aiq config set update ask: tell me first; off: never check).\n",
+        "off" => "Updates: off. AIQ never checks by itself. Check now: aiq update --now (aiq config set update auto: turn it back on).\n",
+        _ => "Updates: tell me first (aiq config set update auto: install by itself; off: never check).\n",
     });
     match v.checked_ms {
         Some(t) => o.push_str(&format!("Last checked {}.", ago(t))),
@@ -1220,6 +1220,8 @@ mod update_tests {
             t.contains("v0.2.0 is downloaded and checked. It installs when AIQ is idle (last try: AIQ home is open)."),
             "{t}"
         );
+        let off = update_text(&View { mode: "off".into(), ..w.clone() }, 0);
+        assert!(off.contains("Updates: off. AIQ never checks by itself."), "{off}");
         let ask = update_text(&View { mode: "ask".into(), ..w }, 0);
         assert!(ask.contains("Install it: aiq update --now"), "{ask}");
     }

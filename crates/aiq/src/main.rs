@@ -66,12 +66,13 @@ Usage:
   aiq forget --imported [--yes]       Delete only what aiq import added
   aiq forget --all [--yes]            Delete everything AIQ stored on this machine
   aiq update [--now]                  What AIQ's updater last did; --now checks for a newer release now
-  aiq config set update <auto|ask>    Install updates by itself when idle (auto, default), or tell you first
+  aiq config set update <auto|ask|off>  Install updates by itself when idle (auto, default), tell you
+                                      first (ask), or never check by itself (off)
   aiq core                            Run the background core in this terminal
   aiq version
 
 Your data stays on this machine. Judge calls go only through your own Copilot or Claude Code, and
-once a day AIQ asks GitHub for a newer release. Privacy and terms: docs/privacy-and-terms.md in the AIQ repo.";
+once a day AIQ asks GitHub for a newer release (unless updates are off). Privacy and terms: docs/privacy-and-terms.md in the AIQ repo.";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();

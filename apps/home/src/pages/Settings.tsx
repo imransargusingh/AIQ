@@ -18,9 +18,10 @@ const NEXT: { v: S["next_rung_tips"]; label: string; note?: string }[] = [
   { v: "off", label: "Off" },
 ];
 
-const UPDATE: { v: "auto" | "ask"; label: string; note?: string }[] = [
+const UPDATE: { v: "auto" | "ask" | "off"; label: string; note?: string }[] = [
   { v: "auto", label: "Update automatically, when AIQ home is closed", note: "Default" },
   { v: "ask", label: "Tell me first" },
+  { v: "off", label: "Don't check for updates" },
 ];
 
 /** Daily judge caps offered as buttons; any other 0-500 value is set with `aiq config`. */
@@ -32,6 +33,12 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
   const down = !snap.status.core;
   const st = snap.settings;
   const up = snap.update;
+  const checkNow = async () => {
+    const r = await api.runUpdate("check");
+    const m = r.ok ? "Checking GitHub for a newer AIQ. If there is one, Home offers to install it." : r.message;
+    setMsg(r.ok ? null : m);
+    announce(m);
+  };
   const goBack = async () => {
     const r = await api.runUpdate("rollback");
     const m = r.ok ? "Going back to the previous version. AIQ home closes and opens again." : r.message;
@@ -274,16 +281,30 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
                 </label>
               ))}
             </fieldset>
+            {up.mode === "off" ? (
+              <span className="meta">
+                AIQ doesn't check for updates and makes no network call of its own. You're on AIQ {up.running}.
+                {up.checked_ms != null && ` Last checked ${when(up.checked_ms, snap.now_ms, snap.offset_min)}.`}
+              </span>
+            ) : (
             <span className="meta">
               {up.checked_ms != null ? `Last checked ${when(up.checked_ms, snap.now_ms, snap.offset_min)}.` : "Not checked yet."}
               {up.check_error ? " That check didn't reach GitHub; AIQ tries again in a day." : ""} AIQ asks GitHub once a day whether a newer
               version is out, checks the download's fingerprint, and keeps the version before so you can go back. Nothing about you is sent.
             </span>
-            {up.can_rollback && (
+            )}
+            {(up.mode === "off" || up.can_rollback) && (
               <div className="row">
+                {up.mode === "off" && (
+                  <button className="btn" onClick={checkNow}>
+                    Check for updates now
+                  </button>
+                )}
+                {up.can_rollback && (
                 <button className="btn" onClick={goBack}>
                   Go back to the previous version
                 </button>
+                )}
               </div>
             )}
           </>

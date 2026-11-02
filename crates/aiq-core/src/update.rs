@@ -9,9 +9,11 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::time::Duration;
 
-/// Store key of the person's choice: `auto` (default) installs by itself; `ask` downloads and tells first.
+/// Store key of the person's choice: `auto` (default) installs by itself; `ask` downloads and tells first;
+/// `off` never checks by itself (Imran, 2026-11-02), so AIQ makes no network call of its own; `aiq update --now`
+/// still checks when the person asks.
 pub const SETTING_UPDATE: &str = "update";
-pub const MODES: [&str; 2] = ["auto", "ask"];
+pub const MODES: [&str; 3] = ["auto", "ask", "off"];
 pub const DEFAULT_MODE: &str = "auto";
 /// A check is due once this long has passed since the last one, successful or not.
 pub const CHECK_EVERY_MS: i64 = 24 * 3600 * 1000;
@@ -21,7 +23,7 @@ const KICK_FIRST: Duration = Duration::from_secs(5 * 60);
 const KICK_EVERY: Duration = Duration::from_secs(3600);
 
 pub fn validate_mode(value: &str) -> Result<String, String> {
-    if MODES.contains(&value) { Ok(value.to_owned()) } else { Err("update must be auto or ask".into()) }
+    if MODES.contains(&value) { Ok(value.to_owned()) } else { Err("update must be auto, ask or off".into()) }
 }
 
 /// `update.json`, as `upgrade.ps1` writes it. Every field is optional: a missing file is "never checked".
@@ -104,6 +106,9 @@ pub enum Action {
 
 /// The kicker's rule. `mode` is the stored setting (None: the default).
 pub fn decide(now_ms: i64, st: &State, mode: Option<&str>) -> Option<Action> {
+    if mode == Some("off") {
+        return None;
+    }
     let auto = mode.unwrap_or(DEFAULT_MODE) == "auto";
     let due = st.checked_at.as_deref().and_then(parse_utc_ms).is_none_or(|t| now_ms - t >= CHECK_EVERY_MS);
     if due {
@@ -291,6 +296,13 @@ mod tests {
     }
 
     #[test]
+    fn off_never_checks_or_applies_by_itself() {
+        assert_eq!(decide(t0(), &State::default(), Some("off")), None);
+        assert_eq!(decide(t0() + 3_600_000, &st(Some("waiting"), Some(T0)), Some("off")), None);
+        assert_eq!(view(&Paths::at(&std::env::temp_dir().join("aiq-off-view")), Some("off"), t0()).mode, "off");
+    }
+
+    #[test]
     fn script_args_name_the_action_and_the_wait() {
         let p = std::path::Path::new("u.ps1");
         let a = script_args(p, Action::Check { apply: true }, None, false);
@@ -352,6 +364,7 @@ mod tests {
     #[test]
     fn mode_validation() {
         assert_eq!(validate_mode("ask"), Ok("ask".into()));
+        assert_eq!(validate_mode("off"), Ok("off".into()));
         assert!(validate_mode("never").is_err());
     }
 }
