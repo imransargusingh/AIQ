@@ -162,16 +162,23 @@ async fn forget_item(event_id: String) -> Result<Outcome, String> {
 /// "This doesn't fit" (action `flag` with a reason) or its undo, for one kind of task's next step
 /// (design coaching-from-rungs D8). Through the core when it runs, else directly in the store.
 #[tauri::command]
-async fn guidance_flag(job: String, task_type: String, move_id: String, action: String, reason: Option<String>) -> Result<Outcome, String> {
+async fn guidance_flag(
+    job: String,
+    task_type: String,
+    move_id: String,
+    action: String,
+    reason: Option<String>,
+) -> Result<Outcome, String> {
     blocking(move || {
         let t = Instant::now();
         let paths = Paths::from_env();
-        let r = control::guidance_flag(&paths, &job, &task_type, &move_id, &action, reason.as_deref(), None, CORE_TIMEOUT)
-            .map_err(|e| match e {
-                ControlError::NotRunning => NOT_RUNNING.to_owned(),
-                ControlError::Refused(m) => format!("Not changed: {m}"),
-                ControlError::Io(m) => m,
-            });
+        let r =
+            control::guidance_flag(&paths, &job, &task_type, &move_id, &action, reason.as_deref(), None, CORE_TIMEOUT)
+                .map_err(|e| match e {
+                    ControlError::NotRunning => NOT_RUNNING.to_owned(),
+                    ControlError::Refused(m) => format!("Not changed: {m}"),
+                    ControlError::Io(m) => m,
+                });
         log(&paths, "guidance_flag", t, &format!("action={action} {}", if r.is_ok() { "ok" } else { "refused" }));
         Outcome::from(r)
     })
@@ -205,10 +212,24 @@ fn aiq_exe() -> std::path::PathBuf {
         .unwrap_or_else(|| name.into())
 }
 
+/// What `connect_tools` did: the files `aiq install` reports it changed, or why it failed.
+#[derive(Debug, Serialize)]
+struct Connected {
+    ok: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<String>,
+    changed: Vec<String>,
+}
+
+/// The `Changed: <path>` lines `aiq install` ends with.
+fn changed_lines(stdout: &str) -> Vec<String> {
+    stdout.lines().filter_map(|l| l.strip_prefix("Changed: ")).map(str::to_string).collect()
+}
+
 /// Setup connects every tool it found (Imran, 2026-11-02): runs `aiq install --yes`, the same install the
 /// CLI runs (diff, backup, self-test), so AIQ home never writes another tool's settings itself.
 #[tauri::command]
-async fn connect_tools() -> Result<Outcome, String> {
+async fn connect_tools() -> Result<Connected, String> {
     blocking(|| {
         let t = Instant::now();
         let paths = Paths::from_env();
@@ -220,12 +241,27 @@ async fn connect_tools() -> Result<Outcome, String> {
             c.creation_flags(0x0800_0000); // CREATE_NO_WINDOW: no console flashes up
         }
         let r = match c.output() {
-            Ok(o) if o.status.success() => Ok(()),
-            Ok(o) => Err(String::from_utf8_lossy(&o.stderr).lines().last().unwrap_or("").to_string()),
-            Err(e) => Err(format!("Could not run aiq ({e}).")),
+            Ok(o) => {
+                let changed = changed_lines(&String::from_utf8_lossy(&o.stdout));
+                let why = (!o.status.success())
+                    .then(|| String::from_utf8_lossy(&o.stderr).lines().last().unwrap_or("").to_string());
+                (changed, why)
+            }
+            Err(e) => (Vec::new(), Some(format!("Could not run aiq ({e})."))),
         };
-        log(&paths, "connect_tools", t, if r.is_ok() { "ok" } else { "error" });
-        Outcome::from(r.map_err(|m| format!("AIQ couldn't connect your tools. {m} Run aiq install in a terminal to see why.")))
+        let (changed, why) = r;
+        log(
+            &paths,
+            "connect_tools",
+            t,
+            &format!("{} changed={}", if why.is_none() { "ok" } else { "error" }, changed.len()),
+        );
+        Connected {
+            ok: why.is_none(),
+            message: why
+                .map(|m| format!("AIQ couldn't connect your tools. {m} Run aiq install in a terminal to see why.")),
+            changed,
+        }
     })
     .await
 }
@@ -281,15 +317,28 @@ mod tests {
     fn handler_build_manifest_and_capability_list_the_same_commands() {
         let src = include_str!("main.rs");
         let start = src.find("generate_handler![").unwrap() + "generate_handler![".len();
-        let handler: Vec<&str> = src[start..].split(']').next().unwrap().split(',').map(str::trim).filter(|s| !s.is_empty()).collect();
+        let handler: Vec<&str> =
+            src[start..].split(']').next().unwrap().split(',').map(str::trim).filter(|s| !s.is_empty()).collect();
         let build = include_str!("../build.rs");
         let cap: serde_json::Value = serde_json::from_str(include_str!("../capabilities/main.json")).unwrap();
-        let perms: Vec<String> = cap["permissions"].as_array().unwrap().iter().map(|p| p.as_str().unwrap().to_string()).collect();
+        let perms: Vec<String> =
+            cap["permissions"].as_array().unwrap().iter().map(|p| p.as_str().unwrap().to_string()).collect();
         for c in &handler {
             assert!(build.contains(&format!("\"{c}\"")), "{c} missing from build.rs");
-            assert!(perms.contains(&format!("allow-{}", c.replace('_', "-"))), "{c} missing from capabilities/main.json");
+            assert!(
+                perms.contains(&format!("allow-{}", c.replace('_', "-"))),
+                "{c} missing from capabilities/main.json"
+            );
         }
         assert_eq!(perms.len(), handler.len(), "capability file allows a command that doesn't exist");
+    }
+
+    #[test]
+    fn connect_reports_only_the_changed_lines() {
+        let out = "GitHub Copilot:\nAIQ will write C:\\x\\aiq.json\nUndo: aiq uninstall copilot\n\nChanged: C:\\x\\aiq.json\n";
+        assert_eq!(changed_lines(out), vec![r"C:\x\aiq.json".to_string()]);
+        let c = Connected { ok: true, message: None, changed: vec!["a".into()] };
+        assert_eq!(serde_json::to_string(&c).unwrap(), r#"{"ok":true,"changed":["a"]}"#);
     }
 
     #[test]
