@@ -227,6 +227,8 @@ fn status_text(paths: &Paths) -> (String, Vec<String>) {
     let text = std::fs::read_to_string(paths.hook_timings()).unwrap_or_default();
     let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
     out += &hook_time_lines(&text, now, &aside);
+    let upgrade = last_upgrade(&std::fs::read_to_string(paths.data.join(UPGRADE_LOG)).unwrap_or_default());
+    out += &hook_budget_lines(&text, &aside, upgrade);
     let errs = hook_error_counts(&paths);
     if !errs.is_empty() {
         out += &format!("Hook notes: {}\n", errs.join(", "));
@@ -270,6 +272,65 @@ pub fn hook_phase_lines(text: &str, now: u64) -> String {
             format!("  {ev}, last 24 h ({n} runs), p95 by phase: reading input {r:.1} ms, preparing {p:.1} ms, sending {s:.1} ms\n")
         })
         .collect()
+}
+
+/// The upgrade script's log (`packaging/windows/upgrade.ps1`), in the AIQ home: `<yyyy-mm-dd hh:mm:ssZ> <message>`.
+pub const UPGRADE_LOG: &str = "upgrade-log.txt";
+/// The hook speed budget of record: AIQ's own part of each hook run, p95 (Imran, 2026-11-01; alpha gate G1).
+pub const HOOK_BUDGET_MS: f64 = 100.0;
+
+/// Unix seconds of the last upgrade or rollback that changed the exes, from the upgrade log. Lines where
+/// nothing changed (checksum refused, already newest, failed swap) are skipped.
+/// assume: every laptop upgrade goes through upgrade.ps1, which writes this log. If false: no
+/// since-upgrade line, and the budget line says no upgrade is recorded (never a guessed window).
+pub fn last_upgrade(log: &str) -> Option<u64> {
+    log.lines()
+        .filter(|l| {
+            let m = l.get(21..).unwrap_or("");
+            m.starts_with("Upgraded AIQ") || m.starts_with("Rolled back to AIQ")
+        })
+        .filter_map(|l| chrono::NaiveDateTime::parse_from_str(l.get(..19)?, "%Y-%m-%d %H:%M:%S").ok())
+        .map(|t| t.and_utc().timestamp().max(0) as u64)
+        .max()
+}
+
+/// The figure that counts against the hook budget: AIQ's own part of each run (total less reading the
+/// host's input, which is the host's wait), p95 per event, over runs since the last upgrade, so a fix shows
+/// the day it is installed instead of when older lines age out. Same exclusions as the other hook figures.
+pub fn hook_budget_lines(text: &str, aside: &[String], since: Option<u64>) -> String {
+    let Some(since) = since else {
+        return format!(
+            "Hook budget ({HOOK_BUDGET_MS:.0} ms p95, AIQ's own part): no upgrade recorded in {UPGRADE_LOG}, so \
+             no since-upgrade figure\n"
+        );
+    };
+    let at = chrono::DateTime::from_timestamp(since as i64, 0).map(|t| t.format("%Y-%m-%d %H:%MZ").to_string());
+    let mut out = format!(
+        "Hook budget ({HOOK_BUDGET_MS:.0} ms p95 of AIQ's own part, the figure for alpha gate G1), since the last \
+         upgrade at {}:\n",
+        at.unwrap_or_default()
+    );
+    let (kept, _) = split_hook_runs(text, aside);
+    let mut by: std::collections::BTreeMap<&str, Vec<u64>> = Default::default();
+    for l in kept {
+        let mut it = l.split_whitespace();
+        let (Some(ev), Some(total)) = (it.next(), it.next().and_then(|u| u.parse::<u64>().ok())) else { continue };
+        let field = |k: &str| l.split_whitespace().find_map(|w| w.strip_prefix(k)).and_then(|m| m.parse::<u64>().ok());
+        let (Some(t), Some(read)) = (field("at="), field("read_us=")) else { continue };
+        if t >= since {
+            by.entry(ev).or_default().push(total.saturating_sub(read));
+        }
+    }
+    if by.is_empty() {
+        out += "  no hook runs since then yet\n";
+    }
+    for (ev, mut v) in by {
+        v.sort_unstable();
+        let p95 = v[((v.len() as f64 * 0.95).ceil() as usize).saturating_sub(1).min(v.len() - 1)] as f64 / 1000.0;
+        let verdict = if p95 <= HOOK_BUDGET_MS { "within" } else { "OVER" };
+        out += &format!("  {ev}: p95 {p95:.1} ms over {} runs, {verdict} budget\n", v.len());
+    }
+    out
 }
 
 /// Hook outcomes where AIQ did no work for a person: a headless `claude -p` / Agent SDK run (`automated`)
@@ -683,6 +744,36 @@ mod tests {
         // Core not running: no folder list, so only the outcome rule applies; nothing left out says nothing.
         assert!(hook_time_lines(&text, now, &[]).contains("leave out 2 runs"));
         assert!(!hook_time_lines("Stop 200 no-card\n", now, &[]).contains("leave out"));
+    }
+
+    #[test]
+    fn last_upgrade_reads_only_upgrades_that_changed_the_exes() {
+        let log = "2026-11-02 15:14:00Z Upgraded AIQ 0.1.0 to 0.1.0 ((local zip)). Your data and settings are kept.\n\
+                   2026-11-02 18:00:00Z AIQ-UPGRADE-CHECKSUM: aiq.zip does not match SHA256SUMS. Nothing changed.\n\
+                   2026-11-02 19:00:00Z Rolled back to AIQ 0.1.0. Run -Rollback again to return to the newer one.\n\
+                   2026-11-02 20:00:00Z AIQ 0.1.0 is the newest release. Nothing to do.\n\
+                   garbage line\n";
+        assert_eq!(last_upgrade(log), Some(1_793_646_000)); // 2026-11-02 19:00:00Z
+        assert_eq!(last_upgrade(""), None);
+    }
+
+    #[test]
+    fn hook_budget_counts_aiqs_own_part_since_the_upgrade() {
+        let since = 1_000;
+        let text = "UserPromptSubmit 460000 sent read_us=1000 prep_us=455000 at=900 v=0.1.0\n\
+                    UserPromptSubmit 400000 sent read_us=399400 prep_us=300 at=1100 v=0.1.0\n\
+                    UserPromptSubmit 2000 sent read_us=1500 prep_us=200 at=1200 v=0.1.0\n\
+                    UserPromptSubmit 900000 automated read_us=900000 at=1300 v=0.1.0\n\
+                    Stop 150000 no-card read_us=1000 prep_us=100 at=1400 v=0.1.0\n";
+        assert_eq!(
+            hook_budget_lines(text, &[], Some(since)),
+            "Hook budget (100 ms p95 of AIQ's own part, the figure for alpha gate G1), since the last upgrade at \
+             1970-01-01 00:16Z:\n  \
+             Stop: p95 149.0 ms over 1 runs, OVER budget\n  \
+             UserPromptSubmit: p95 0.6 ms over 2 runs, within budget\n"
+        );
+        assert!(hook_budget_lines("", &[], Some(since)).ends_with("  no hook runs since then yet\n"));
+        assert!(hook_budget_lines(text, &[], None).contains("no upgrade recorded"));
     }
 
     #[test]
