@@ -64,13 +64,24 @@ fn strip_bom(b: &[u8]) -> &[u8] {
     b.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(b)
 }
 
-/// Auto-update runs only for an installed copy: this exe sits in `<data>\bin` next to `upgrade.ps1`, on
-/// Windows. A developer build run from `target\` never updates itself.
+/// The line the shipped `upgrade.ps1` carries. A hand-written `upgrade.ps1` (the dogfood laptop's, which
+/// swaps staged dev builds and runs a paid accuracy check) lacks it, so the core never starts that one.
+pub const SCRIPT_MARKER: &str = "AIQ-AUTO-UPDATE: 1";
+
+/// Auto-update runs only for an installed copy: this exe sits in `<data>\bin` next to the shipped
+/// `upgrade.ps1` (it carries [`SCRIPT_MARKER`]), on Windows. A developer build run from `target\` never
+/// updates itself.
 pub fn supported(paths: &Paths) -> bool {
     let bin = paths.data.join("bin");
     cfg!(windows)
-        && script_path(paths).is_file()
+        && script_is_shipped(paths)
         && std::env::current_exe().ok().and_then(|e| e.parent().map(|p| same_dir(p, &bin))).unwrap_or(false)
+}
+
+pub fn script_is_shipped(paths: &Paths) -> bool {
+    std::fs::read(script_path(paths))
+        .map(|b| String::from_utf8_lossy(&b).lines().take(40).any(|l| l.contains(SCRIPT_MARKER)))
+        .unwrap_or(false)
 }
 
 fn same_dir(a: &std::path::Path, b: &std::path::Path) -> bool {
@@ -323,6 +334,19 @@ mod tests {
         std::fs::write(state_path(&p), format!(r#"{{"state":"applied","from":"0.1.0","at":"{T0}"}}"#)).unwrap();
         assert_eq!(view(&p, None, t0() + 1000).note, "applied");
         assert_eq!(view(&p, None, t0() + APPLIED_NOTE_MS).note, "none");
+    }
+
+    #[test]
+    fn only_the_shipped_script_is_ever_started() {
+        let d = tempfile::tempdir().unwrap();
+        let p = Paths::at(d.path());
+        assert!(!script_is_shipped(&p), "no script");
+        std::fs::create_dir_all(d.path().join("bin")).unwrap();
+        std::fs::write(script_path(&p), "# hand-written: swap .new exes, run aiq judge --check\n").unwrap();
+        assert!(!script_is_shipped(&p), "a hand-written upgrade.ps1 is never started by the core");
+        let shipped = include_str!("../../../packaging/windows/upgrade.ps1");
+        std::fs::write(script_path(&p), shipped).unwrap();
+        assert!(script_is_shipped(&p), "the repo's upgrade.ps1 carries the marker near its top");
     }
 
     #[test]

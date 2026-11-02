@@ -1,4 +1,5 @@
 # AIQ upgrade for Windows (private-alpha design A5; auto-update design docs/design/auto-update.md). No admin rights.
+# AIQ-AUTO-UPDATE: 1   (the core starts only a script with this line; keep it in the first 40 lines)
 #
 #   powershell -ExecutionPolicy Bypass -File $env:USERPROFILE\.aiq\bin\upgrade.ps1            newest published release, now
 #   powershell -ExecutionPolicy Bypass -File $env:USERPROFILE\.aiq\bin\upgrade.ps1 -Rollback  put the previous exes back
