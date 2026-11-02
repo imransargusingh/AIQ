@@ -70,7 +70,8 @@ Usage:
   aiq core                            Run the background core in this terminal
   aiq version
 
-Everything stays on this machine.";
+Your data stays on this machine. Judge calls go only through your own Copilot or Claude Code, and
+once a day AIQ asks GitHub for a newer release. Privacy and terms: docs/privacy-and-terms.md in the AIQ repo.";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
