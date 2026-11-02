@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Judge Accuracy Check</title><style>
+:root { color-scheme: light dark; --bg:#f7f5ef; --panel:#fff; --text:#20201d;
+  --muted:#66645f; --line:#d9d5ca; --accent:#3157a4; --code:#f0eee7; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#171816; --panel:#20221f; --text:#f2f1eb; --muted:#b8b6ae;
+    --line:#3d403a; --accent:#8fb0ff; --code:#292c27; }
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text);
+  font:16px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif; }
+main { width:min(920px,calc(100% - 32px)); margin:32px auto; padding:40px;
+  background:var(--panel); border:1px solid var(--line); border-radius:12px; }
+h1,h2,h3,h4,h5,h6 { line-height:1.2; margin:1.5em 0 .55em; }
+h1 { margin-top:0; font-size:2.2rem; } h2 { border-bottom:1px solid var(--line); padding-bottom:.3em; }
+a { color:var(--accent); } code { background:var(--code); padding:.12em .35em; border-radius:4px; }
+pre { overflow:auto; padding:16px; background:var(--code); border-radius:8px; }
+pre code { padding:0; } blockquote { margin:1em 0; padding:.2em 1em; color:var(--muted);
+  border-left:4px solid var(--line); }
+table { width:100%; border-collapse:collapse; margin:1em 0; display:block; overflow:auto; }
+th,td { padding:.55em .75em; border:1px solid var(--line); text-align:left; vertical-align:top; }
+th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); }
+.source { color:var(--muted); font-size:.9rem; margin-bottom:2rem; }
+@media (max-width:640px) { main { width:100%; margin:0; padding:24px 18px; border:0; border-radius:0; } }
+</style></head><body><main><div class="source">Rendered from judge-accuracy-check.md</div><h1>Design: accuracy check of the rung judge</h1>
+<p>Produced with AI-Forward <code>/design-slice</code>. Imran picked this slice on 2026-11-02 (&quot;Accuracy check on my tasks first&quot;, next-slice card) over the private alpha. Design only. No code in this change.</p>
+<h2>Goal state</h2>
+<table><thead><tr><th></th><th></th></tr></thead><tbody><tr><td><strong>Goal</strong></td><td>Know, with numbers marked measured or Inferred, how often the judge gets Imran&#x27;s real tasks right: job, kind of task, rung, and each fact</td></tr><tr><td><strong>Done when</strong></td><td>(design) merged with its gate record; (build) one <code>aiq judge --check</code> run on Imran&#x27;s laptop prints the report below, Home shows it, and the numbers land in the rung-judge design&#x27;s eval section</td></tr><tr><td><strong>Not in scope</strong></td><td>Tuning the judge prompt or rules (next slice, driven by these numbers); a person labelling tasks (Imran: human triage is unreliable and a burden); the private alpha (deferred, design kept on branch <code>claude/project-thread-wjefak</code>)</td></tr><tr><td><strong>Tier</strong></td><td>T2 (new judge calls on the person&#x27;s data; new stored fact)</td></tr></tbody></table>
+<h2>Grounding</h2>
+<ul><li>Rung-judge design, eval (measured 2026-11-02): 20 <strong>synthetic</strong> held-out tasks, exact 10/20, within</li></ul>
+<p>one 15/20, job 18/20. 11/20 Uncertain, 6 of them from F6. The design says: &quot;Measure on Imran&#x27;s real Copilot tasks first.&quot;</p>
+<ul><li>Fact-check rerun (PR #27, 15 hand-picked real Copilot sessions, model-graded): model facts 84/93; F4</li></ul>
+<p>10/15, F6 can&#x27;t be settled on 9/15. Done by copying sessions into the cloud. That route does not scale and is not something AIQ users can do.</p>
+<ul><li>Coaching design: task-kind agreement is <strong>not measured</strong> (needs an eval rerun); thresholds are guesses.</li></ul>
+<p>The live type-guess self-check exists (auto-off below 8 of 10).</p>
+<ul><li>Rung-judge design, conformance notes: &quot;Not measured yet: how often the judge picks <code>ask_research</code></li></ul>
+<p>correctly&quot; (pack added in PR #33).</p>
+<ul><li>Project rules: data stays on the device; judge calls go only to the provider that already saw the task,</li></ul>
+<p>under the person&#x27;s own sign-in (ADR-0007); AIQ decides itself with an easy override (Imran).</p>
+<h2>Decisions</h2>
+<table><thead><tr><th>#</th><th>Question</th><th>Decision</th><th>Why</th></tr></thead><tbody><tr><td>K1</td><td>Where does the check run?</td><td><strong>In the product</strong>, on the person&#x27;s machine: <code>aiq judge --check</code>. No copying of sessions or the store to the cloud</td><td>Same privacy path as the judge (ADR-0007). Works for every future user, so accuracy becomes a measured property of AIQ, not a one-off study</td></tr><tr><td>K2</td><td>What is the reference answer?</td><td>A <strong>second reading</strong> by a stronger model, <strong>blind</strong> (it never sees the judge&#x27;s answer), with a fuller transcript (up to 40,000 characters, as in PR #27) and the option to say <em>can&#x27;t settle</em> per fact</td><td>No person labels (Imran&#x27;s rule). Blind avoids anchoring. All grader-based numbers are labelled <strong>Inferred: checked by a second model, not by you</strong></td></tr><tr><td>K3</td><td>Which model reads?</td><td>Same provider as the task. Copilot tasks: sealed <code>copilot -p</code> with the strongest model the person&#x27;s plan allows (setting <code>check-model</code>, default: Copilot&#x27;s own pick). Claude Code tasks: <code>claude -p --model opus</code></td><td>ADR-0007: never a provider that didn&#x27;t already see the task. If the plan forces one model (Imran&#x27;s admin forces <code>gpt-6.1-sol</code>, measured), the report says the grader is the same model as the judge</td></tr><tr><td>K4</td><td>Which tasks?</td><td>A seeded random sample of judged tasks (latest judgment per task, automated sessions excluded), <strong>stratified by job</strong> so each pack gets at least 5 when it has them. Default 30, <code>--sample &lt;n&gt;</code>. Seed and list stored</td><td>Random, so the result is not hand-picked like PR #27. 30 is a guess at a useful floor for a first read; the report prints the interval so a small sample can&#x27;t look precise</td></tr><tr><td>K5</td><td>Cost?</td><td>One grader call per task. Counts against the judge&#x27;s daily budget (50 a day). Copilot: about 1 premium request and ~11 s a call (measured, run 3). <code>--dry-run</code> prints the sample and the cost estimate first</td><td>The person sees the cost before spending it</td></tr><tr><td>K6</td><td>What happens with the numbers?</td><td>(a) Report in the CLI and on Home &gt; Status. (b) <strong>AIQ acts by itself:</strong> a kind of task whose checked agreement is under 8 of 10 (at least 5 checked) stops being coached, with &quot;AIQ paused this: its judge agreed with a second reading on n of m&quot;. Override: <code>aiq on-kind &lt;job&gt;/&lt;type&gt;</code></td><td>Imran: AIQ decides, easy override. Same bar as the type-guess self-check, so one rule, not two. The bar is a guess until the first run</td></tr><tr><td>K7</td><td>Re-run?</td><td><code>aiq judge --check</code> again draws a new sample; earlier checks stay. A judgment re-made by a newer judge version is checked again only in a new run</td><td>Append-only history; agreement is derived per judge version</td></tr></tbody></table>
+<h2>Numbers in the report</h2>
+<p><strong>Measured from the store (no grader, exact):</strong></p>
+<table><thead><tr><th>#</th><th>Number</th><th>Source</th></tr></thead><tbody><tr><td>N1</td><td>Uncertain rate, per job, and which fact caused it</td><td><code>judgment.state</code>, <code>facts</code></td></tr><tr><td>N2</td><td>Repeat stability: on a re-judge of the same sample by the same judge, how often job, kind and rung come out the same</td><td>a second judge run on 10 of the sampled tasks (K5 budget)</td></tr><tr><td>N3</td><td>Live kind-guess hit rate (nearest neighbour vs judged kind)</td><td><code>type_guess</code> (already stored)</td></tr><tr><td>N4</td><td>Tip feedback: helpful, not helpful, snoozed, off, &quot;This doesn&#x27;t fit&quot;, per move</td><td><code>tip_feedback</code>, <code>guidance_flag</code></td></tr></tbody></table>
+<p><strong>Agreement with the second reading (Inferred, labelled so):</strong></p>
+<table><thead><tr><th>#</th><th>Number</th></tr></thead><tbody><tr><td>A1</td><td>Job agreement (incl. <code>ask_research</code>)</td></tr><tr><td>A2</td><td>Kind-of-task agreement, per job</td></tr><tr><td>A3</td><td>Rung exact and within one; model rung and final rung separately</td></tr><tr><td>A4</td><td>Per fact: agree, disagree, can&#x27;t settle (F4, F6 and F13 called out)</td></tr><tr><td>A5</td><td>Confident judgments only: the same three numbers, since only these are coached</td></tr></tbody></table>
+<p>Each rate prints as <code>k of n</code> with a 90% Wilson interval. Nothing prints as a bare percentage.</p>
+<h2>Data model</h2>
+<ul><li><strong>Bounded context:</strong> Rung assessment. <strong>New fact table `judge_check`, schema v7 (expand only).</strong></li><li><strong>Grain:</strong> one row is exactly one second reading of one judgment, identified by <code>check_id</code> (UUIDv7),</li></ul>
+<p>recorded when the grader call finishes.</p>
+<ul><li>Columns: <code>check_id</code>, <code>run_id</code>, <code>judgment_id</code> (by identity), <code>task_id</code>, <code>grader_provider</code>,</li></ul>
+<p><code>grader_model</code>, <code>answer</code> (JSON: job, task type, rung, facts with value and <em>can&#x27;t settle</em>), <code>call_id</code>, <code>checked_utc_ms</code>, <code>check_version</code>. Append-only trigger, as for <code>judgment</code>.</p>
+<ul><li><strong>`judge_check_run`:</strong> one row is exactly one <code>aiq judge --check</code> run: <code>run_id</code>, <code>seed</code>, <code>sample</code> (JSON</li></ul>
+<p>list of judgment ids), <code>requested</code>, <code>started_utc_ms</code>.</p>
+<ul><li><strong>Derive, don&#x27;t store:</strong> every agreement number (A1–A5) and the pause rule (K6b) are computed from</li></ul>
+<p><code>judgment</code> + <code>judge_check</code>. No stored percentages. Additivity: counts additive, rates non-additive.</p>
+<ul><li>History rule: rows are never updated; a new judge version gets new checks.</li><li><code>aiq forget --all</code> and delete-one remove these rows too (they hold the grader&#x27;s reading of the text).</li></ul>
+<h2>Change surfaces (E7)</h2>
+<table><thead><tr><th>Surface</th><th>Change</th></tr></thead><tbody><tr><td>Store</td><td>v7: <code>judge_check</code>, <code>judge_check_run</code>, append-only triggers; forget paths</td></tr><tr><td>Contracts</td><td><code>aiq.check.v1</code> grader answer schema (strict parse, like <code>aiq.judge.v2</code>)</td></tr><tr><td>Domain</td><td><code>aiq_domain::check</code>: sample (seeded, stratified), agreement, Wilson interval, pause rule</td></tr><tr><td>Runner</td><td><code>aiq judge --check [--sample n] [--dry-run]</code>; grader prompt (blind, 40k excerpt, <em>can&#x27;t settle</em>) through the existing sealed Copilot / Claude runners</td></tr><tr><td>Coaching</td><td>Pause rule feeds the same &quot;not coached&quot; state as flags; <code>aiq on-kind</code> override</td></tr><tr><td>Home read model</td><td><code>Snapshot.check</code> (latest run&#x27;s derived numbers)</td></tr><tr><td>UI</td><td>Status: &quot;Judge check&quot; card; kind page: paused-by-check state and Turn back on</td></tr><tr><td>Docs</td><td>Rung-judge design eval section gets the real numbers</td></tr></tbody></table>
+<h2>Failure modes</h2>
+<table><thead><tr><th>Mode</th><th>Disposition</th></tr></thead><tbody><tr><td>Grader call fails, times out, or connects a tool/MCP server</td><td>Same as the judge: thrown away, counted as &quot;not checked&quot;, never guessed</td></tr><tr><td>Grader answer malformed</td><td>Strict parse; counted as &quot;not checked&quot;</td></tr><tr><td>Fewer judged tasks than the sample</td><td>Use all; the report says so</td></tr><tr><td>Plan forces the same model for grader and judge</td><td>Report says &quot;grader is the same model as the judge&quot;, and agreement is labelled weaker</td></tr><tr><td>Budget used up mid-run</td><td>Run stops; partial results kept and labelled partial</td></tr><tr><td>Pause rule fires on noise (small n)</td><td>Needs at least 5 checked for a kind; override is one command</td></tr></tbody></table>
+<h2>Adversarial and privacy analysis</h2>
+<p>Same trust boundary as the judge (B5: core to the person&#x27;s AI provider). Prompt-injection in task text can steer the grader as it can the judge: content is fenced the same way, and the grader&#x27;s answer only changes a report and a pause, never a rung. The grader sees the same task text the provider already holds; a fuller excerpt (40k vs 18k) is a larger disclosure to that same provider, accepted under the person&#x27;s run of the command. No new data leaves the device. Rows are deleted with the person&#x27;s data.</p>
+<h2>Test plan</h2>
+<ul><li>D0: fmt, clippy, existing suites.</li><li>Domain: seeded sample is reproducible and stratified; Wilson interval against known values; pause</li></ul>
+<p>rule at 7/10, 8/10, 4 checked; agreement ignores <em>can&#x27;t settle</em>.</p>
+<ul><li>Store: v7 migration; append-only update refused; forget removes check rows.</li><li>Runner: blind prompt never contains the judge&#x27;s answer (test greps the prompt); malformed and</li></ul>
+<p>tool-connected answers counted as not checked; dry-run spends nothing.</p>
+<ul><li>UI e2e: Judge check card states (none yet, partial, full), paused kind with Turn back on; axe.</li><li>Real run (laptop, measured): one <code>aiq judge --check</code> on Imran&#x27;s store; numbers recorded.</li></ul>
+<h2>Run plan</h2>
+<ol><li><code>/implement</code> this design in the cloud (no laptop needed).</li><li>The thread that has the laptop builds main and gives Imran the upgrade line.</li><li><code>aiq judge --check --dry-run</code> (shows the sample and cost), then <code>aiq judge --check</code>. Laptop work is</li></ol>
+<p>read-only apart from AIQ&#x27;s own store.</p>
+<ol><li>Results go into the rung-judge design&#x27;s eval section and decide the next slice: tuning the facts that</li></ol>
+<p>miss (F4, F6 are the known suspects), or opening the alpha.</p>
+<h2>Flagged risks</h2>
+<ul><li>Model-graded agreement is not truth. A shared blind spot between judge and grader looks like a match.</li></ul>
+<p>Mitigation: blind reading, fuller excerpt, a stronger model where the plan allows; the label says so.</p>
+<ul><li>If Imran&#x27;s plan forces one model for every Copilot call, grader and judge are the same model and</li></ul>
+<p>agreement will read high. The report shows this.</p>
+<ul><li>30 tasks from one person is a small sample; intervals will be wide (for example 24 of 30 gives</li></ul>
+<p>roughly 66% to 90%, computed with the Wilson formula).</p>
+<h2>Gate record</h2>
+<p><code>GATE design-slice · 2026-11-02 · Patterns, Simplifier, Test Architect, Data &amp; Persistence, Security, SRE (all seats played by Claude in one session; not independent) · verdict: pass with conditions</code></p>
+<ul><li>Simplifier: a one-off cloud study (as in PR #27) is smaller, but it copies the person&#x27;s sessions out</li></ul>
+<p>and can&#x27;t be repeated by users. Kept in-product; scope trimmed to one command, one table, one card.</p>
+<ul><li>Test Architect (hard): blindness must be tested (the prompt must not contain the judge&#x27;s answer).</li><li>Data &amp; Persistence: grain declared; agreement derived, not stored. Pass.</li><li>Security: no new boundary; fuller excerpt to the same provider accepted.</li></ul>
+<h2>Status and next action</h2>
+<table><thead><tr><th></th><th></th></tr></thead><tbody><tr><td><strong>Completed</strong></td><td>Design for the accuracy check</td></tr><tr><td><strong>Remaining</strong></td><td>Build; one laptop run; feed numbers into the next slice</td></tr><tr><td><strong>Best next action</strong></td><td><code>/implement</code> this design (cloud), then the laptop run through the thread that has the laptop</td></tr></tbody></table></main></body></html>
