@@ -376,11 +376,100 @@ pub fn uninstall_all(yes: bool) -> ExitCode {
             changed = true;
         }
     }
+    let paths = Paths::from_env();
+    match undo_windows_install(&paths) {
+        Ok(lines) => {
+            changed |= !lines.is_empty();
+            lines.iter().for_each(|l| println!("{l}"));
+        }
+        Err(e) => {
+            println!("Couldn't undo the Windows install's PATH entry or shortcut: {e}");
+            failed = true;
+        }
+    }
     if !changed {
         println!("No tool had AIQ connected. Nothing changed.");
     }
-    println!("Your data stays in {}. To delete it too: aiq forget --all", Paths::from_env().data.display());
+    println!("Your data stays in {}. To delete it too: aiq forget --all", paths.data.display());
     if failed { ExitCode::from(1) } else { ExitCode::SUCCESS }
+}
+
+/// What `packaging/windows/install.ps1` changed outside the AI tools, so uninstall puts back exactly that.
+#[derive(Deserialize)]
+struct WindowsInstall {
+    #[serde(default)]
+    path_added: bool,
+    shortcut: Option<String>,
+    bin: Option<String>,
+}
+
+/// Undo install.ps1's Start menu shortcut and user PATH entry (private-alpha design A7), then drop its record so a
+/// second run changes nothing. No record (built from source, or Linux/macOS): nothing to do.
+fn undo_windows_install(paths: &Paths) -> Result<Vec<String>, String> {
+    let rec_file = paths.data.join("windows-install.json");
+    let Ok(text) = std::fs::read_to_string(&rec_file) else { return Ok(Vec::new()) };
+    // Windows PowerShell 5 writes UTF-8 with a byte order mark.
+    let rec: WindowsInstall = serde_json::from_str(text.trim_start_matches('\u{feff}'))
+        .map_err(|e| format!("{}: {e}", rec_file.display()))?;
+    let mut out = Vec::new();
+    if let Some(lnk) = rec.shortcut.as_deref().map(Path::new).filter(|p| p.exists()) {
+        std::fs::remove_file(lnk).map_err(|e| format!("{}: {e}", lnk.display()))?;
+        out.push(format!("Removed: {}", lnk.display()));
+    }
+    if let (true, Some(bin)) = (rec.path_added, rec.bin.as_deref())
+        && let Some(new) = path_without(&user_path()?, bin)
+    {
+        set_user_path(&new)?;
+        out.push(format!("Removed from your user PATH: {bin}"));
+    }
+    std::fs::remove_file(&rec_file).map_err(|e| format!("{}: {e}", rec_file.display()))?;
+    Ok(out)
+}
+
+/// `path` without `entry` (case-insensitive, trailing backslash ignored, as Windows compares folders), or None when
+/// it is not there. Other entries keep their order and spelling.
+fn path_without(path: &str, entry: &str) -> Option<String> {
+    let norm = |s: &str| s.trim().trim_end_matches(['\\', '/']).to_lowercase();
+    let want = norm(entry);
+    let parts: Vec<&str> = path.split(';').filter(|p| !p.is_empty()).collect();
+    let kept: Vec<&str> = parts.iter().copied().filter(|p| norm(p) != want).collect();
+    (kept.len() != parts.len()).then(|| kept.join(";"))
+}
+
+/// The user PATH as stored (HKCU\Environment), read the same way install.ps1 wrote it.
+#[cfg(windows)]
+fn user_path() -> Result<String, String> {
+    let o = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", "[Environment]::GetEnvironmentVariable('Path','User')"])
+        .output()
+        .map_err(|e| format!("powershell: {e}"))?;
+    Ok(String::from_utf8_lossy(&o.stdout).trim().to_owned())
+}
+
+#[cfg(windows)]
+fn set_user_path(new: &str) -> Result<(), String> {
+    // The value goes through an environment variable, never through the command text, so no quoting is involved.
+    let st = std::process::Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            "[Environment]::SetEnvironmentVariable('Path', $env:AIQ_NEW_PATH, 'User')",
+        ])
+        .env("AIQ_NEW_PATH", new)
+        .status()
+        .map_err(|e| format!("powershell: {e}"))?;
+    if st.success() { Ok(()) } else { Err(format!("powershell exited with {st}")) }
+}
+
+#[cfg(not(windows))]
+fn user_path() -> Result<String, String> {
+    Ok(String::new())
+}
+
+#[cfg(not(windows))]
+fn set_user_path(_: &str) -> Result<(), String> {
+    Ok(())
 }
 
 fn tool_name(tool: &str) -> &'static str {
@@ -393,6 +482,28 @@ fn tool_name(tool: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn path_without_removes_only_the_bin_folder() {
+        let bin = r"C:\Users\a\.aiq\bin";
+        assert_eq!(path_without(r"C:\tools;c:\users\a\.aiq\bin\;D:\x", bin).as_deref(), Some(r"C:\tools;D:\x"));
+        assert_eq!(path_without(r"C:\tools;D:\x", bin), None);
+        assert_eq!(path_without(bin, bin).as_deref(), Some(""));
+    }
+
+    #[test]
+    fn undo_removes_the_shortcut_and_the_record_once() {
+        let d = tempfile::tempdir().unwrap();
+        let paths = Paths::at(d.path());
+        let lnk = d.path().join("AIQ.lnk");
+        std::fs::write(&lnk, "x").unwrap();
+        let rec = serde_json::json!({"path_added": false, "shortcut": lnk, "bin": "C:/x"});
+        std::fs::write(d.path().join("windows-install.json"), format!("\u{feff}{rec}")).unwrap();
+        let lines = undo_windows_install(&paths).unwrap();
+        assert_eq!(lines, vec![format!("Removed: {}", lnk.display())]);
+        assert!(!lnk.exists() && !d.path().join("windows-install.json").exists());
+        assert!(undo_windows_install(&paths).unwrap().is_empty(), "second run changes nothing");
+    }
 
     fn other_hooks() -> Value {
         json!({
