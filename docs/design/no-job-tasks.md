@@ -150,9 +150,32 @@ stored**, and no prompt text appears in the output. The kind list is a guess at 
 counts show whether a fourth pack would cover enough tasks. Cost: one call per task, about one premium
 request each on Copilot (from the check runs).
 
+## N6 result (Imran's laptop, build bf1c5cc, 2026-11-02 19:35-19:39Z)
+
+30 of 30 sampled "both said other" tasks answered. The counts are measured. The kinds and labels are
+Inferred: the tool that saw each task read it, and no person checked.
+
+| Kind | Count | Example labels |
+|---|---|---|
+| operate_systems | **17** | application restart troubleshooting; package application release; publish clean project repository; publish project source; refresh data and launch |
+| chat_or_test | 3 | agent behavior inquiry; retry request; single-word reply test |
+| plan_or_manage | 3 | advance work priorities; managing team tasks; plan execution |
+| set_up_tools | 3 | authenticate tool connection; network access configuration; preserve agent session continuity |
+| other | 2 | capture full page screenshot; resuming interrupted work |
+| learn_brainstorm | 1 | interface design exploration |
+| review_feedback | 1 | feedback on review process |
+
+What this means:
+- One kind dominates: running, shipping or fixing a working system (restart, release, publish, launch).
+  17 of 30 is 57% (Wilson 90%: 42-70%). Scaled to the 76 such tasks, that is about 32 to 53 tasks, or
+  7% to 11% of Imran's 473 judged tasks (worked out, not measured).
+- No other kind reaches 4 of 30, so no second new pack is supported.
+- A fourth pack, "Run or ship it", is the only coverage change these numbers back. Whether to add it is a
+  product decision for Imran.
+
 ## Questions for Imran
 
-None. The cause and the rule are both settled from data.
+Whether to add a fourth pack, "Run or ship it", for the operate-systems tasks above.
 
 ## Gate record
 
@@ -165,6 +188,6 @@ None. The cause and the rule are both settled from data.
 
 | | |
 |---|---|
-| **Completed** | Design; measurement build; cause measured; no-job check run; decisions above |
-| **Remaining** | Survey run on the laptop; fourth-pack decision |
-| **Best next action** | Imran runs `aiq judge --survey-other`; the fourth-pack decision goes to him with those counts |
+| **Completed** | Design; measurement build; cause measured; no-job check run; survey run; decisions above |
+| **Remaining** | Fourth-pack decision |
+| **Best next action** | Imran decides on a "Run or ship it" pack; if yes, design it with `/design-slice` |
