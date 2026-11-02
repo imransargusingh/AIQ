@@ -64,8 +64,18 @@ pub struct Home {
     pub window_days: i64,
     /// Tasks whose first prompt is in the window. Measured count.
     pub tasks_in_window: u32,
-    /// Judged tasks in the window. Always 0 until the rung judge exists.
+    /// Tasks in the window with a judgment. Measured count.
     pub judged: u32,
+    /// Of those, judged Uncertain (shown, never coached, not in `rungs`).
+    pub uncertain: u32,
+    /// Judged, not-Uncertain tasks in the window per current rung (index 0 = Assisted).
+    pub rungs: [u32; 5],
+    /// The rung with the most judged tasks in the window (ties go to the lower rung). None when none.
+    pub most_common_rung: Option<u8>,
+    /// Coachable next steps (potential above current, confident, not Uncertain), newest first, at most 5.
+    pub next_steps: Vec<NextStep>,
+    /// Judging today: tasks sent, calls, cost where the tool reported it.
+    pub judge_today: JudgeToday,
     pub imported_in_window: u32,
     /// Oldest first; the last one ends now.
     pub weeks: Vec<Week>,
@@ -73,6 +83,24 @@ pub struct Home {
     pub by_tool: Vec<(String, u32)>,
     pub set_aside: Vec<SetAside>,
     pub tips_today: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct NextStep {
+    pub task_id: String,
+    pub job: String,
+    pub current: u8,
+    pub potential: u8,
+    pub gap: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct JudgeToday {
+    pub tasks: u32,
+    pub calls: u32,
+    pub failed_calls: u32,
+    /// Sum of the cost the tool reported. None when no call reported one ("not recorded", never a guess).
+    pub cost_usd: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -98,10 +126,77 @@ pub struct TaskRow {
     pub prompts: u32,
     /// live or imported
     pub origin: &'static str,
-    /// None until the job classifier exists (Phase 4).
+    /// The judged job (code_change, write_doc, unclassified); None until judged.
     pub job: Option<String>,
-    /// None until the rung judge exists (Phase 5). 1..=5 when judged.
+    /// Current rung 1..=5; None until judged.
     pub rung: Option<u8>,
+    /// The current judgment; None until judged.
+    pub judgment: Option<TaskJudgment>,
+    /// Session of the first prompt (the judge finds the tool's transcript by it). Not sent to the page.
+    #[serde(skip)]
+    pub session: String,
+    /// Keys and times of the task's prompts, in order. Not sent to the page.
+    #[serde(skip)]
+    pub members: Vec<(String, i64)>,
+}
+
+/// One task's current judgment as the views show it. Model-written text is plain text (TR-5).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct TaskJudgment {
+    pub judged_ms: i64,
+    /// judged, uncertain, right_rung, blocked
+    pub state: String,
+    pub current: u8,
+    pub potential: u8,
+    pub ceiling: u8,
+    pub current_confidence: f64,
+    pub potential_confidence: f64,
+    pub job: String,
+    pub coachable: bool,
+    pub evidence: Vec<String>,
+    pub gap: String,
+    pub blockers: Vec<String>,
+    /// claude-code or copilot-cli: the person's own account that read the task.
+    pub provider: String,
+    pub model: Option<String>,
+    /// "What was read?": how many prompts and characters were sent.
+    pub read_prompts: u32,
+    pub read_chars: u32,
+    pub read_actions: bool,
+    pub versions: String,
+}
+
+fn json_strings(s: &str) -> Vec<String> {
+    serde_json::from_str::<Vec<String>>(s).unwrap_or_default()
+}
+
+impl TaskRow {
+    fn attach(&mut self, j: &aiq_store::JudgmentRow) {
+        let read: serde_json::Value = serde_json::from_str(&j.read).unwrap_or_default();
+        let n = |k: &str| read.get(k).and_then(serde_json::Value::as_u64).unwrap_or(0) as u32;
+        self.job = Some(j.job.clone());
+        self.rung = Some(j.current_rung);
+        self.judgment = Some(TaskJudgment {
+            judged_ms: j.judged_utc_ms,
+            state: j.state.clone(),
+            current: j.current_rung,
+            potential: j.potential_rung,
+            ceiling: j.ceiling_rung,
+            current_confidence: j.current_confidence,
+            potential_confidence: j.potential_confidence,
+            job: j.job.clone(),
+            coachable: j.coachable,
+            evidence: json_strings(&j.evidence),
+            gap: j.gap.clone(),
+            blockers: json_strings(&j.blockers),
+            provider: j.provider.clone(),
+            model: j.model.clone(),
+            read_prompts: n("prompts"),
+            read_chars: n("chars"),
+            read_actions: read.get("actions").and_then(serde_json::Value::as_bool).unwrap_or(false),
+            versions: format!("{} · {} · {}", j.fact_set_version, j.rubric_version, j.judge_version),
+        });
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -147,6 +242,9 @@ pub struct Item {
 pub struct Settings {
     pub daily_cap: u32,
     pub copilot_tip_stays: &'static str,
+    /// auto (judge new tasks in the background) or off. "off" until the person first runs `aiq judge`.
+    pub judge: String,
+    pub judge_daily_tasks: u32,
 }
 
 /// Read the whole snapshot. Never fails: an unreadable store gives the empty snapshot with `status.error`.
@@ -198,6 +296,11 @@ fn empty(paths: &Paths, pack: &PackV1, now: Now) -> Snapshot {
             window_days: WINDOW_DAYS,
             tasks_in_window: 0,
             judged: 0,
+            uncertain: 0,
+            rungs: [0; 5],
+            most_common_rung: None,
+            next_steps: vec![],
+            judge_today: JudgeToday { tasks: 0, calls: 0, failed_calls: 0, cost_usd: None },
             imported_in_window: 0,
             weeks: (0..WEEKS).map(|i| Week { start_ms: week0 + i * 7 * DAY_MS, tasks: 0 }).collect(),
             by_tool: vec![],
@@ -220,6 +323,8 @@ fn empty(paths: &Paths, pack: &PackV1, now: Now) -> Snapshot {
         settings: Settings {
             daily_cap: pack.trigger.default_daily_cap,
             copilot_tip_stays: TipStays::NextPrompt.as_str(),
+            judge: "off".into(),
+            judge_daily_tasks: aiq_domain::rung::DEFAULT_DAILY_TASKS,
         },
     }
 }
@@ -246,8 +351,6 @@ fn read(db: &std::path::Path, pack: &PackV1, now: Now, started: Instant, s: &mut
 fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()> {
     let c = store.raw();
     let window_start = now.utc_ms - WINDOW_DAYS * DAY_MS;
-    let gap = pack.idle_gap_min as i64 * 60_000;
-    let span = &pack.reprompt.span_surfaces;
 
     // Settings: latest value per key, parsed as the core parses them.
     if store.has_table("setting_change").map_err(|e| e.to_string())? {
@@ -256,6 +359,12 @@ fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()>
         }
         if let Some(t) = store.setting("copilot_tip_stays").ok().flatten().and_then(|v| TipStays::parse(&v)) {
             s.settings.copilot_tip_stays = t.as_str();
+        }
+        if let Some(v) = store.setting("judge").ok().flatten() {
+            s.settings.judge = v;
+        }
+        if let Some(n) = store.setting("judge_daily_tasks").ok().flatten().and_then(|v| v.parse().ok()) {
+            s.settings.judge_daily_tasks = n;
         }
     }
 
@@ -268,84 +377,44 @@ fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()>
     s.home.set_aside = set_aside.iter().map(|(f, r, _)| SetAside { folder: f.clone(), reason: r.clone() }).collect();
     let aside: BTreeSet<&str> = set_aside.iter().map(|(f, _, _)| f.as_str()).collect();
 
-    // Live tasks. Read from one idle gap before the window so a Task that started just before it is whole.
-    let mut rows: Vec<(String, String, String, i64, Option<String>)> = Vec::new();
-    {
-        let mut st = q(c.prepare(
-            "SELECT e.event_id, e.surface, e.surface_session_id, e.ts_utc_ms, json_extract(e.payload_meta, '$.folder')
-             FROM event e LEFT JOIN content t ON t.event_id = e.event_id
-             WHERE e.kind = 'prompt' AND e.ts_utc_ms >= ?1 AND (t.text IS NULL OR trim(t.text) != '')
-             ORDER BY e.ts_utc_ms, e.event_id",
-        ))?;
-        let it =
-            q(st.query_map([window_start - gap], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))))?;
-        for row in it {
-            rows.push(q(row)?);
+    let mut tasks = task_list(store, pack, window_start, &aside)?;
+    let judgments = store.current_judgments().map_err(|e| e.to_string())?;
+    for t in tasks.iter_mut() {
+        if let Some(j) = judgments.get(&t.task_id) {
+            t.attach(j);
         }
     }
-    let folder_of: std::collections::BTreeMap<&str, Option<&str>> =
-        rows.iter().map(|(id, _, _, _, f)| (id.as_str(), f.as_deref())).collect();
-    let live = split_tasks(
-        rows.iter().map(|(id, surface, session, ts, _)| TaskPrompt { event_id: id, surface, session, utc_ms: *ts }),
-        span,
-        gap,
-    );
-    let mut tasks: Vec<TaskRow> = live
-        .into_iter()
-        .map(|t| {
-            let folder = folder_of.get(t.task_id.as_str()).copied().flatten().map(str::to_owned);
-            row(t, folder, "live")
-        })
-        .collect();
-
-    // Imported tasks (`aiq import`, schema v4). A store from before v4 has no import tables.
-    if store.has_table("import_session").map_err(|e| e.to_string())?
-        && store.has_table("import_event").map_err(|e| e.to_string())?
-    {
-        let mut st = q(c.prepare(
-            "SELECT s.tool, s.source_session_id, s.folder, e.seq, e.ts_utc_ms
-             FROM import_event e JOIN import_session s ON s.tool = e.tool AND s.source_session_id = e.source_session_id
-             WHERE s.outcome = 'imported' AND e.kind = 'prompt' AND e.ts_utc_ms IS NOT NULL AND e.ts_utc_ms >= ?1
-               AND (e.text IS NULL OR trim(e.text) != '')
-             ORDER BY e.ts_utc_ms, s.source_session_id, e.seq",
-        ))?;
-        let it = q(st.query_map([window_start - gap], |r| {
-            Ok((
-                r.get::<_, String>(0)?,
-                r.get::<_, String>(1)?,
-                r.get::<_, String>(2)?,
-                r.get::<_, i64>(3)?,
-                r.get::<_, i64>(4)?,
-            ))
-        }))?;
-        let mut imp: Vec<(String, String, String, String, i64)> = Vec::new();
-        for r in it {
-            let (tool, sid, folder, seq, ts) = q(r)?;
-            imp.push((format!("import:{tool}:{sid}:{seq}"), tool, sid, folder_key(&folder), ts));
-        }
-        let folder_of: std::collections::BTreeMap<&str, &str> =
-            imp.iter().map(|(id, _, _, f, _)| (id.as_str(), f.as_str())).collect();
-        // Imported sessions never span: each source session is its own stream.
-        let spans = split_tasks(
-            imp.iter().map(|(id, tool, sid, _, ts)| TaskPrompt {
-                event_id: id,
-                surface: tool,
-                session: sid,
-                utc_ms: *ts,
-            }),
-            &[],
-            gap,
-        );
-        for t in spans {
-            let f = folder_of.get(t.task_id.as_str()).map(|f| f.to_string()).filter(|f| !f.is_empty());
-            tasks.push(row(t, f, "imported"));
-        }
-    }
-
-    tasks.retain(|t| t.first_ms >= window_start && !t.folder.as_deref().is_some_and(|f| aside.contains(f)));
-    tasks.sort_by(|a, b| b.first_ms.cmp(&a.first_ms).then_with(|| a.task_id.cmp(&b.task_id)));
-
     s.home.tasks_in_window = tasks.len() as u32;
+    for t in &tasks {
+        if let Some(j) = &t.judgment {
+            s.home.judged += 1;
+            if j.state == "uncertain" {
+                s.home.uncertain += 1;
+            } else {
+                s.home.rungs[(j.current.clamp(1, 5) - 1) as usize] += 1;
+            }
+            if j.coachable && s.home.next_steps.len() < 5 {
+                s.home.next_steps.push(NextStep {
+                    task_id: t.task_id.clone(),
+                    job: j.job.clone(),
+                    current: j.current,
+                    potential: j.potential,
+                    gap: j.gap.clone(),
+                });
+            }
+        }
+    }
+    let top = s.home.rungs.iter().copied().max().unwrap_or(0);
+    s.home.most_common_rung = (top > 0).then(|| s.home.rungs.iter().position(|&n| n == top).unwrap() as u8 + 1);
+    {
+        let calls = store.judge_calls_since(now.local_midnight_utc_ms()).map_err(|e| e.to_string())?;
+        let t = &mut s.home.judge_today;
+        t.calls = calls.len() as u32;
+        t.failed_calls = calls.iter().filter(|c| c.outcome != "ok").count() as u32;
+        t.tasks = calls.iter().map(|c| c.task_id.as_str()).collect::<BTreeSet<_>>().len() as u32;
+        let costs: Vec<f64> = calls.iter().filter_map(|c| c.cost_usd).collect();
+        t.cost_usd = (!costs.is_empty()).then(|| costs.iter().sum());
+    }
     s.home.imported_in_window = tasks.iter().filter(|t| t.origin == "imported").count() as u32;
     for w in s.home.weeks.iter_mut() {
         let end = w.start_ms + 7 * DAY_MS;
@@ -441,6 +510,102 @@ fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()>
     Ok(())
 }
 
+/// Every task whose first prompt is at or after `since_ms`, live and imported, outside set-aside folders,
+/// newest first. The one Task list both AIQ home and the rung judge read, so their task ids always agree.
+pub fn tasks(store: &Store, pack: &PackV1, since_ms: i64) -> Result<Vec<TaskRow>, String> {
+    let aside: BTreeSet<String> = if store.has_table("folder_rule").map_err(|e| e.to_string())? {
+        store.set_aside_folders().map_err(|e| e.to_string())?.into_iter().map(|(f, _, _)| f).collect()
+    } else {
+        BTreeSet::new()
+    };
+    let aside: BTreeSet<&str> = aside.iter().map(String::as_str).collect();
+    task_list(store, pack, since_ms, &aside)
+}
+
+fn task_list(store: &Store, pack: &PackV1, window_start: i64, aside: &BTreeSet<&str>) -> R<Vec<TaskRow>> {
+    let c = store.raw();
+    let gap = pack.idle_gap_min as i64 * 60_000;
+    let span = &pack.reprompt.span_surfaces;
+    // Live tasks. Read from one idle gap before the window so a Task that started just before it is whole.
+    let mut rows: Vec<(String, String, String, i64, Option<String>)> = Vec::new();
+    {
+        let mut st = q(c.prepare(
+            "SELECT e.event_id, e.surface, e.surface_session_id, e.ts_utc_ms, json_extract(e.payload_meta, '$.folder')
+             FROM event e LEFT JOIN content t ON t.event_id = e.event_id
+             WHERE e.kind = 'prompt' AND e.ts_utc_ms >= ?1 AND (t.text IS NULL OR trim(t.text) != '')
+             ORDER BY e.ts_utc_ms, e.event_id",
+        ))?;
+        let it =
+            q(st.query_map([window_start - gap], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))))?;
+        for row in it {
+            rows.push(q(row)?);
+        }
+    }
+    let folder_of: std::collections::BTreeMap<&str, Option<&str>> =
+        rows.iter().map(|(id, _, _, _, f)| (id.as_str(), f.as_deref())).collect();
+    let live = split_tasks(
+        rows.iter().map(|(id, surface, session, ts, _)| TaskPrompt { event_id: id, surface, session, utc_ms: *ts }),
+        span,
+        gap,
+    );
+    let mut tasks: Vec<TaskRow> = live
+        .into_iter()
+        .map(|t| {
+            let folder = folder_of.get(t.task_id.as_str()).copied().flatten().map(str::to_owned);
+            row(t, folder, "live")
+        })
+        .collect();
+
+    // Imported tasks (`aiq import`, schema v4). A store from before v4 has no import tables.
+    if store.has_table("import_session").map_err(|e| e.to_string())?
+        && store.has_table("import_event").map_err(|e| e.to_string())?
+    {
+        let mut st = q(c.prepare(
+            "SELECT s.tool, s.source_session_id, s.folder, e.seq, e.ts_utc_ms
+             FROM import_event e JOIN import_session s ON s.tool = e.tool AND s.source_session_id = e.source_session_id
+             WHERE s.outcome = 'imported' AND e.kind = 'prompt' AND e.ts_utc_ms IS NOT NULL AND e.ts_utc_ms >= ?1
+               AND (e.text IS NULL OR trim(e.text) != '')
+             ORDER BY e.ts_utc_ms, s.source_session_id, e.seq",
+        ))?;
+        let it = q(st.query_map([window_start - gap], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, i64>(3)?,
+                r.get::<_, i64>(4)?,
+            ))
+        }))?;
+        let mut imp: Vec<(String, String, String, String, i64)> = Vec::new();
+        for r in it {
+            let (tool, sid, folder, seq, ts) = q(r)?;
+            imp.push((format!("import:{tool}:{sid}:{seq}"), tool, sid, folder_key(&folder), ts));
+        }
+        let folder_of: std::collections::BTreeMap<&str, &str> =
+            imp.iter().map(|(id, _, _, f, _)| (id.as_str(), f.as_str())).collect();
+        // Imported sessions never span: each source session is its own stream.
+        let spans = split_tasks(
+            imp.iter().map(|(id, tool, sid, _, ts)| TaskPrompt {
+                event_id: id,
+                surface: tool,
+                session: sid,
+                utc_ms: *ts,
+            }),
+            &[],
+            gap,
+        );
+        for t in spans {
+            let f = folder_of.get(t.task_id.as_str()).map(|f| f.to_string()).filter(|f| !f.is_empty());
+            tasks.push(row(t, f, "imported"));
+        }
+    }
+
+    tasks.retain(|t| t.first_ms >= window_start && !t.folder.as_deref().is_some_and(|f| aside.contains(f)));
+    tasks.sort_by(|a, b| b.first_ms.cmp(&a.first_ms).then_with(|| a.task_id.cmp(&b.task_id)));
+
+    Ok(tasks)
+}
+
 fn row(t: TaskSpan, folder: Option<String>, origin: &'static str) -> TaskRow {
     TaskRow {
         task_id: t.task_id,
@@ -452,5 +617,8 @@ fn row(t: TaskSpan, folder: Option<String>, origin: &'static str) -> TaskRow {
         origin,
         job: None,
         rung: None,
+        judgment: None,
+        session: t.session,
+        members: t.members,
     }
 }

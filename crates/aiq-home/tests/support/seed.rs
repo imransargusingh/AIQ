@@ -138,6 +138,71 @@ impl Seed {
         card_id
     }
 
+    /// A current judgment (schema v5) for `task_id`, and its two judge calls at `at`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn judgment(
+        &mut self,
+        task_id: &str,
+        origin: &str,
+        provider: &str,
+        at: i64,
+        (job, current, potential, state, coachable): (&str, u8, u8, &str, bool),
+        evidence: &[&str],
+        gap: &str,
+    ) {
+        let id = self.id();
+        for run in 1..=2u8 {
+            self.store
+                .insert_judge_call(&aiq_store::NewJudgeCall {
+                    call_id: &format!("{id}-{run}"),
+                    task_id,
+                    run,
+                    provider,
+                    model: Some("claude-sonnet-5-5"),
+                    started_utc_ms: at,
+                    latency_ms: 9_000,
+                    outcome: "ok",
+                    code: None,
+                    input_chars: 6_000,
+                    tool_session_id: None,
+                    cost_usd: (provider == "claude-code").then_some(0.02),
+                    tokens_in: None,
+                    tokens_out: None,
+                })
+                .unwrap();
+        }
+        self.store
+            .insert_judgment(&aiq_store::JudgmentRow {
+                judgment_id: id,
+                task_id: task_id.into(),
+                origin: origin.into(),
+                provider: provider.into(),
+                model: Some("claude-sonnet-5-5".into()),
+                judged_utc_ms: at,
+                job: job.into(),
+                job_confidence: 0.9,
+                model_rung: current,
+                current_rung: current,
+                current_confidence: 0.85,
+                potential_rung: potential,
+                potential_confidence: 0.85,
+                ceiling_rung: 5,
+                state: state.into(),
+                coachable,
+                facts: "{}".into(),
+                evidence: serde_json::json!(evidence).to_string(),
+                gap: gap.into(),
+                blockers: "[]".into(),
+                placement: "[]".into(),
+                read: serde_json::json!({"prompts": 3, "chars": 160, "actions": true}).to_string(),
+                call_ids: "[]".into(),
+                fact_set_version: "fs1".into(),
+                rubric_version: "r1".into(),
+                judge_version: "j1".into(),
+            })
+            .unwrap();
+    }
+
     pub fn set_aside(&mut self, folder: &str, at: i64) {
         self.store.insert_folder_rule(folder, "set_aside", "burst", "live", at).unwrap();
     }
@@ -196,9 +261,35 @@ pub fn standard(paths: &Paths, with_import: bool) -> String {
         "please refactor the login handler, typed errors returned",
     );
     s.stop("claude-code", "cc1", now - 2 * DAY + 12 * MIN);
-    s.tip("claude-code", "cc1", now - 2 * DAY + 12 * MIN, vec![a, b, c], true);
-    // Copilot CLI, two tasks in one session nine days ago (a 45 minute gap splits them).
-    s.prompt("copilot-cli", "cp1", now - 9 * DAY, Some(FORESIGHT), "write a spec for the export button");
+    s.tip("claude-code", "cc1", now - 2 * DAY + 12 * MIN, vec![a.clone(), b, c], true);
+    // Judged Directed, next step Delegated (coachable). Model text with markup must render as text (TR-5).
+    s.judgment(
+        &a,
+        "live",
+        "claude-code",
+        now - 3 * 60 * MIN,
+        ("code_change", 2, 3, "judged", true),
+        &[
+            "You gave the agent the goal and the error type to use.",
+            "You checked the diff before keeping it <b>bold</b>.",
+        ],
+        "Hand the agent the whole change with the tests it must pass, and let it run them.",
+    );
+    // Copilot CLI, two tasks in one session nine days ago (a 45 minute gap splits them). The first is judged
+    // Uncertain (job unclear).
+    let sp = s.prompt("copilot-cli", "cp1", now - 9 * DAY, Some(FORESIGHT), "write a spec for the export button");
+    s.judgment(
+        &sp,
+        "live",
+        "copilot-cli",
+        now - 2 * 60 * MIN,
+        ("unclassified", 1, 2, "uncertain", false),
+        &[
+            "You asked for a spec in one line.",
+            "Not Directed: AIQ couldn't tell whether the output was checked before use.",
+        ],
+        "Give the agent the audience, goal and constraints.",
+    );
     s.stop("copilot-cli", "cp1", now - 9 * DAY + MIN);
     s.prompt("copilot-cli", "cp1", now - 9 * DAY + 46 * MIN, Some(FORESIGHT), "<img src=x onerror=alert(1)> add tests");
     // VS Code: each turn is its own session, but they are one task (span_surfaces).
@@ -223,6 +314,15 @@ pub fn standard(paths: &Paths, with_import: bool) -> String {
             r"C:\Users\Imran\source\repos\Foresight",
             "imported",
             &[(now - 25 * DAY, "plan the migration"), (now - 25 * DAY + 5 * MIN, "go")],
+        );
+        s.judgment(
+            "import:copilot-cli:imp1:0",
+            "imported",
+            "copilot-cli",
+            now - 60 * MIN,
+            ("write_doc", 3, 3, "right_rung", false),
+            &["You handed the agent the whole plan with what done looks like."],
+            "",
         );
         s.imported_session(
             "copilot-cli",

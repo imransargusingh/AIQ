@@ -20,6 +20,13 @@ pub const CORE_START_BACKOFF: &str = "AIQ-CORE-START-BACKOFF";
 /// AIQ home could not read the store (locked past the busy timeout, or unreadable).
 pub const HOME_STORE_READ: &str = "AIQ-HOME-STORE-READ";
 
+/// Rung judge (design docs/design/rung-judge.md, Failure-mode analysis).
+pub const JUDGE_MISSING: &str = "AIQ-JUDGE-MISSING";
+pub const JUDGE_SIGNIN: &str = "AIQ-JUDGE-SIGNIN";
+pub const JUDGE_SCHEMA: &str = "AIQ-JUDGE-SCHEMA";
+pub const JUDGE_TIMEOUT: &str = "AIQ-JUDGE-TIMEOUT";
+pub const JUDGE_ERROR: &str = "AIQ-JUDGE-ERROR";
+
 /// Every code, for status output and the registry test.
 pub const ALL: &[&str] = &[
     HOOK_PARSE,
@@ -40,6 +47,11 @@ pub const ALL: &[&str] = &[
     CORE_ALREADY_RUNNING,
     CORE_START_BACKOFF,
     HOME_STORE_READ,
+    JUDGE_MISSING,
+    JUDGE_SIGNIN,
+    JUDGE_SCHEMA,
+    JUDGE_TIMEOUT,
+    JUDGE_ERROR,
 ];
 
 #[cfg(test)]

@@ -215,6 +215,8 @@ pub struct TaskSpan {
     pub first_ms: i64,
     pub last_ms: i64,
     pub prompts: u32,
+    /// Event ids of the Task's prompts, with their times, in order (the rung judge reads these prompts).
+    pub members: Vec<(String, i64)>,
 }
 
 /// Group prompts into Tasks with the same rule the live detector uses (`task_key`, `starts_new_task`).
@@ -233,6 +235,7 @@ pub fn split_tasks<'a>(
                 let t = &mut out[i];
                 t.last_ms = t.last_ms.max(p.utc_ms);
                 t.prompts += 1;
+                t.members.push((p.event_id.to_owned(), p.utc_ms));
             }
             _ => {
                 open.insert(key, out.len());
@@ -243,6 +246,7 @@ pub fn split_tasks<'a>(
                     first_ms: p.utc_ms,
                     last_ms: p.utc_ms,
                     prompts: 1,
+                    members: vec![(p.event_id.to_owned(), p.utc_ms)],
                 });
             }
         }

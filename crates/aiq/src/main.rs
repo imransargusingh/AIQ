@@ -10,6 +10,7 @@ mod hook;
 mod import;
 mod install;
 mod install_copilot;
+mod judge;
 mod spawn;
 mod statusline;
 
@@ -31,6 +32,11 @@ Usage:
                                       How long a tip stays in Copilot CLI's status line
   aiq import [--dry-run]              Add your past Claude Code and Copilot CLI sessions to AIQ
   aiq include <folder>                Watch a folder AIQ set aside as automated (an app or script's runs)
+  aiq judge [--max <n>] [--dry-run]  Judge your finished tasks through your own Claude Code / Copilot CLI
+                                      (--dry-run shows what would be sent, sends nothing)
+  aiq config set judge <auto|off>     Judge new tasks in the background (on after your first aiq judge)
+  aiq config set judge-daily-tasks <n>  Most tasks judged per day (0-500, default 50)
+  aiq config set judge-copilot-sessions <delete|keep>  Delete AIQ's own Copilot judge sessions (default)
   aiq forget --imported [--yes]       Delete only what aiq import added
   aiq forget --all [--yes]            Delete everything AIQ stored on this machine
   aiq core                            Run the background core in this terminal
@@ -61,6 +67,7 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         ["import", rest @ ..] => import::cli(rest),
+        ["judge", rest @ ..] => judge::cli(rest),
         ["forget", "--imported", ..] | ["forget", _, "--imported", ..] => import::forget(yes),
         ["forget", "--all", ..] | ["forget", _, "--all", ..] => cli::forget_all(yes),
         ["version" | "--version" | "-V", ..] => {

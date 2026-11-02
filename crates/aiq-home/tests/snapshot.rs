@@ -51,8 +51,23 @@ fn tasks_follow_the_task_rule_window_and_set_aside() {
         ]
     );
     assert_eq!(s.home.tasks_in_window, 6);
-    assert!(s.tasks.iter().all(|t| t.rung.is_none() && t.job.is_none() && t.origin == "live"));
-    assert_eq!(s.home.judged, 0, "no judge: nothing is judged, nothing guessed");
+    assert!(s.tasks.iter().all(|t| t.origin == "live"));
+    // Judged tasks carry their current judgment; the rest stay unjudged (nothing guessed).
+    let judged: Vec<(&str, Option<u8>)> =
+        s.tasks.iter().filter(|t| t.judgment.is_some()).map(|t| (t.tool.as_str(), t.rung)).collect();
+    assert_eq!(judged, vec![("claude-code", Some(2)), ("copilot-cli", Some(1))]);
+    assert!(s.tasks.iter().filter(|t| t.judgment.is_none()).all(|t| t.rung.is_none() && t.job.is_none()));
+    assert_eq!((s.home.judged, s.home.uncertain), (2, 1));
+    assert_eq!(s.home.rungs, [0, 1, 0, 0, 0], "Uncertain judgments are not counted on a rung");
+    assert_eq!(s.home.most_common_rung, Some(2));
+    assert_eq!(s.home.next_steps.len(), 1);
+    assert_eq!((s.home.next_steps[0].current, s.home.next_steps[0].potential), (2, 3));
+    let j = s.tasks[1].judgment.as_ref().unwrap();
+    assert_eq!(j.evidence[1], "You checked the diff before keeping it <b>bold</b>.", "kept as text");
+    assert_eq!((j.read_prompts, j.read_actions), (3, true));
+    // Two judgments' calls landed today (local midnight 00:00, NOW is 12:00): 4 calls, 2 tasks, Claude's cost only.
+    assert_eq!((s.home.judge_today.tasks, s.home.judge_today.calls), (2, 4));
+    assert!((s.home.judge_today.cost_usd.unwrap() - 0.04).abs() < 1e-9);
     assert_eq!(s.tasks[1].folder.as_deref(), Some(AIQ));
     assert_eq!(s.tasks[4].folder, None, "vscode prompts carried no folder");
     assert!(s.tasks.iter().all(|t| t.folder.as_deref() != Some(PIPELINE)));

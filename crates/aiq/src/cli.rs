@@ -12,6 +12,7 @@ const NOT_RUNNING: &str = "AIQ is not running. It starts with your next Claude C
 
 pub fn core() -> ExitCode {
     let paths = Paths::from_env();
+    crate::judge::start_background(paths.clone());
     match server::run(&paths) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) if e.code == aiq_contracts::codes::CORE_ALREADY_RUNNING => {
@@ -279,8 +280,16 @@ pub fn config_set(name: &str, value: &str) -> ExitCode {
     let (key, done) = match name {
         "daily-cap" => ("daily_cap", format!("Daily tip limit set to {value}.")),
         "copilot-tip-stays" => ("copilot_tip_stays", format!("Copilot CLI tip stays: {value}.")),
+        "judge" => ("judge", format!("Background judging: {value}.")),
+        "judge-daily-tasks" => ("judge_daily_tasks", format!("Most tasks judged per day: {value}.")),
+        "judge-claude-model" => ("judge_claude_model", format!("Claude judge model: {value}.")),
+        "judge-copilot-model" => ("judge_copilot_model", format!("Copilot judge model: {value}.")),
+        "judge-copilot-sessions" => ("judge_copilot_sessions", format!("Copilot judge sessions: {value}.")),
         _ => {
-            println!("Unknown setting {name}. Settings: daily-cap, copilot-tip-stays.");
+            println!(
+                "Unknown setting {name}. Settings: daily-cap, copilot-tip-stays, judge, judge-daily-tasks, \
+                 judge-claude-model, judge-copilot-model, judge-copilot-sessions."
+            );
             return ExitCode::from(2);
         }
     };
@@ -328,6 +337,10 @@ pub fn forget_all(yes: bool) -> ExitCode {
     });
     match r {
         Ok(()) => {
+            let n = crate::judge::forget_judge_sessions(&paths, &crate::judge::Homes::from_env());
+            if n > 0 {
+                println!("Also deleted {n} Copilot session(s) AIQ's judge had left.");
+            }
             println!("Deleted. AIQ starts fresh with your next Claude Code prompt.");
             ExitCode::SUCCESS
         }

@@ -12,8 +12,9 @@ pub const SCHEMA_V1: &str = include_str!("schema_v1.sql");
 pub const SCHEMA_V2: &str = include_str!("schema_v2.sql");
 pub const SCHEMA_V3: &str = include_str!("schema_v3.sql");
 pub const SCHEMA_V4: &str = include_str!("schema_v4.sql");
+pub const SCHEMA_V5: &str = include_str!("schema_v5.sql");
 /// Migration N takes the store from `user_version` N to N+1, in one transaction.
-pub const MIGRATIONS: &[&str] = &[SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4];
+pub const MIGRATIONS: &[&str] = &[SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5];
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StoreError {
@@ -159,6 +160,101 @@ pub struct CardRecord {
     pub delivered: bool,
     /// (event ts, text or None when the content row was deleted), in evidence order.
     pub evidence: Vec<(i64, Option<String>)>,
+}
+
+/// One call to the person's provider (schema v5 `judge_call`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct NewJudgeCall<'a> {
+    pub call_id: &'a str,
+    pub task_id: &'a str,
+    pub run: u8,
+    pub provider: &'a str,
+    pub model: Option<&'a str>,
+    pub started_utc_ms: i64,
+    pub latency_ms: i64,
+    pub outcome: &'a str,
+    pub code: Option<&'a str>,
+    pub input_chars: i64,
+    pub tool_session_id: Option<&'a str>,
+    pub cost_usd: Option<f64>,
+    pub tokens_in: Option<i64>,
+    pub tokens_out: Option<i64>,
+}
+
+/// One judgment version (schema v5 `judgment`). JSON columns are passed already serialised.
+#[derive(Debug, Clone, PartialEq)]
+pub struct JudgmentRow {
+    pub judgment_id: String,
+    pub task_id: String,
+    pub origin: String,
+    pub provider: String,
+    pub model: Option<String>,
+    pub judged_utc_ms: i64,
+    pub job: String,
+    pub job_confidence: f64,
+    pub model_rung: u8,
+    pub current_rung: u8,
+    pub current_confidence: f64,
+    pub potential_rung: u8,
+    pub potential_confidence: f64,
+    pub ceiling_rung: u8,
+    pub state: String,
+    pub coachable: bool,
+    pub facts: String,
+    pub evidence: String,
+    pub gap: String,
+    pub blockers: String,
+    pub placement: String,
+    pub read: String,
+    pub call_ids: String,
+    pub fact_set_version: String,
+    pub rubric_version: String,
+    pub judge_version: String,
+}
+
+/// A judge call as the queue needs it: when, and whether it worked.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CallOutcome {
+    pub task_id: String,
+    pub started_utc_ms: i64,
+    pub outcome: String,
+    pub cost_usd: Option<f64>,
+}
+
+const JUDGMENT_COLS: &str = "judgment_id, task_id, origin, provider, model, judged_utc_ms, job, job_confidence,
+    model_rung, current_rung, current_confidence, potential_rung, potential_confidence, ceiling_rung, state,
+    coachable, facts, evidence, gap, blockers, placement, read, call_ids, fact_set_version, rubric_version,
+    judge_version";
+
+fn judgment_from(r: &rusqlite::Row<'_>) -> rusqlite::Result<JudgmentRow> {
+    Ok(JudgmentRow {
+        judgment_id: r.get(0)?,
+        task_id: r.get(1)?,
+        origin: r.get(2)?,
+        provider: r.get(3)?,
+        model: r.get(4)?,
+        judged_utc_ms: r.get(5)?,
+        job: r.get(6)?,
+        job_confidence: r.get(7)?,
+        model_rung: r.get(8)?,
+        current_rung: r.get(9)?,
+        current_confidence: r.get(10)?,
+        potential_rung: r.get(11)?,
+        potential_confidence: r.get(12)?,
+        ceiling_rung: r.get(13)?,
+        state: r.get(14)?,
+        coachable: r.get(15)?,
+        facts: r.get(16)?,
+        evidence: r.get(17)?,
+        gap: r.get(18)?,
+        blockers: r.get(19)?,
+        placement: r.get(20)?,
+        read: r.get(21)?,
+        call_ids: r.get(22)?,
+        fact_set_version: r.get(23)?,
+        rubric_version: r.get(24)?,
+        judge_version: r.get(25)?,
+    })
 }
 
 pub struct Store {
@@ -761,9 +857,127 @@ impl Store {
             .map_err(err(codes::STORE_OPEN))
     }
 
-    /// Delete everything history import stored (US-8). Live capture is untouched.
+    pub fn insert_judge_call(&self, c: &NewJudgeCall<'_>) -> Result<()> {
+        self.conn
+            .execute(
+                "INSERT INTO judge_call (call_id, task_id, run, provider, model, started_utc_ms, latency_ms, outcome,
+                   code, input_chars, tool_session_id, cost_usd, tokens_in, tokens_out)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                params![
+                    c.call_id,
+                    c.task_id,
+                    c.run,
+                    c.provider,
+                    c.model,
+                    c.started_utc_ms,
+                    c.latency_ms,
+                    c.outcome,
+                    c.code,
+                    c.input_chars,
+                    c.tool_session_id,
+                    c.cost_usd,
+                    c.tokens_in,
+                    c.tokens_out
+                ],
+            )
+            .map(|_| ())
+            .map_err(err(codes::STORE_WRITE))
+    }
+
+    pub fn insert_judgment(&self, j: &JudgmentRow) -> Result<()> {
+        self.conn
+            .execute(
+                &format!(
+                    "INSERT INTO judgment ({JUDGMENT_COLS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
+                     ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26)"
+                ),
+                params![
+                    j.judgment_id,
+                    j.task_id,
+                    j.origin,
+                    j.provider,
+                    j.model,
+                    j.judged_utc_ms,
+                    j.job,
+                    j.job_confidence,
+                    j.model_rung,
+                    j.current_rung,
+                    j.current_confidence,
+                    j.potential_rung,
+                    j.potential_confidence,
+                    j.ceiling_rung,
+                    j.state,
+                    j.coachable,
+                    j.facts,
+                    j.evidence,
+                    j.gap,
+                    j.blockers,
+                    j.placement,
+                    j.read,
+                    j.call_ids,
+                    j.fact_set_version,
+                    j.rubric_version,
+                    j.judge_version
+                ],
+            )
+            .map(|_| ())
+            .map_err(err(codes::STORE_WRITE))
+    }
+
+    /// The current judgment of every judged task: the newest version per task (derived, never stored).
+    /// Empty on a store from before schema v5.
+    pub fn current_judgments(&self) -> Result<HashMap<String, JudgmentRow>> {
+        if !self.has_table("judgment")? {
+            return Ok(HashMap::new());
+        }
+        let mut st = self
+            .conn
+            .prepare(&format!(
+                "SELECT {JUDGMENT_COLS} FROM judgment j
+                 WHERE j.rowid = (SELECT x.rowid FROM judgment x WHERE x.task_id = j.task_id
+                                  ORDER BY x.judged_utc_ms DESC, x.rowid DESC LIMIT 1)"
+            ))
+            .map_err(err(codes::STORE_OPEN))?;
+        let rows = st.query_map([], judgment_from).map_err(err(codes::STORE_OPEN))?;
+        let mut out = HashMap::new();
+        for r in rows {
+            let r = r.map_err(err(codes::STORE_OPEN))?;
+            out.insert(r.task_id.clone(), r);
+        }
+        Ok(out)
+    }
+
+    /// Judge calls started at or after `since_ms`, oldest first (budget and retry back-off are derived from these).
+    pub fn judge_calls_since(&self, since_ms: i64) -> Result<Vec<CallOutcome>> {
+        if !self.has_table("judge_call")? {
+            return Ok(vec![]);
+        }
+        let mut st = self
+            .conn
+            .prepare(
+                "SELECT task_id, started_utc_ms, outcome, cost_usd FROM judge_call WHERE started_utc_ms >= ?1
+                 ORDER BY started_utc_ms, rowid",
+            )
+            .map_err(err(codes::STORE_OPEN))?;
+        let rows = st
+            .query_map([since_ms], |r| {
+                Ok(CallOutcome {
+                    task_id: r.get(0)?,
+                    started_utc_ms: r.get(1)?,
+                    outcome: r.get(2)?,
+                    cost_usd: r.get(3)?,
+                })
+            })
+            .map_err(err(codes::STORE_OPEN))?;
+        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(err(codes::STORE_OPEN))
+    }
+
+    /// Delete everything history import stored (US-8), including imported tasks' judgments and judge calls.
+    /// Live capture is untouched.
     pub fn forget_imported(&mut self) -> Result<u64> {
         let tx = self.conn.transaction().map_err(err(codes::STORE_WRITE))?;
+        tx.execute("DELETE FROM judgment WHERE origin = 'imported'", []).map_err(err(codes::STORE_WRITE))?;
+        tx.execute("DELETE FROM judge_call WHERE task_id LIKE 'import:%'", []).map_err(err(codes::STORE_WRITE))?;
         tx.execute("DELETE FROM import_event", []).map_err(err(codes::STORE_WRITE))?;
         let n = tx.execute("DELETE FROM import_session", []).map_err(err(codes::STORE_WRITE))?;
         tx.execute("DELETE FROM import_run", []).map_err(err(codes::STORE_WRITE))?;
