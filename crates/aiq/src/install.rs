@@ -11,19 +11,10 @@ use std::process::ExitCode;
 pub const EVENTS: [(&str, bool); 2] = [("UserPromptSubmit", true), ("Stop", false)];
 
 pub fn settings_path() -> PathBuf {
-    if let Some(d) = std::env::var_os("CLAUDE_CONFIG_DIR").filter(|v| !v.is_empty()) {
-        return PathBuf::from(d).join("settings.json");
-    }
-    let home =
-        std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).map(PathBuf::from).unwrap_or_default();
-    home.join(".claude").join("settings.json")
+    aiq_core::tools::claude_settings_path()
 }
 
-/// One AIQ hook entry: `args[0..2] == ["hook", "claude-code"]` is how install and uninstall find their own.
-fn is_aiq_hook(h: &Value) -> bool {
-    let a = h.get("args").and_then(Value::as_array);
-    a.is_some_and(|a| a.len() >= 2 && a[0] == "hook" && a[1] == "claude-code")
-}
+use aiq_core::tools::is_aiq_claude_hook as is_aiq_hook;
 
 /// Remove AIQ's entries; drop containers that became empty. Returns true if anything was removed.
 pub fn strip_aiq(settings: &mut Value) -> bool {
@@ -68,8 +59,7 @@ pub fn add_aiq(settings: &mut Value, exe: &str) {
 }
 
 pub fn has_aiq(settings: &Value) -> bool {
-    let mut c = settings.clone();
-    strip_aiq(&mut c)
+    aiq_core::tools::claude_has_aiq(settings)
 }
 
 pub fn status_line() -> String {

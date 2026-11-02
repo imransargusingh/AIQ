@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main",
-  "description": "AIQ home's only window may call the four AIQ commands and nothing else: no file system, shell, network or plugin access.",
+  "description": "AIQ home's only window may call the seven AIQ commands and nothing else: no file system, shell, network or plugin access.",
   "windows": ["main"],
-  "permissions": ["allow-snapshot", "allow-pause", "allow-set-setting", "allow-forget-all"]
+  "permissions": ["allow-snapshot", "allow-pause", "allow-set-setting", "allow-forget-all", "allow-task", "allow-forget-item", "allow-finish-setup"]
 }

@@ -774,6 +774,23 @@ impl Store {
         Ok(n as u64)
     }
 
+    /// Delete one prompt's text, the person's "delete this item" (design aiq-home-deferred-pages E1, E2).
+    /// The event row stays (append-only fact: a prompt happened). The bytes go too: `secure_delete` zeroes
+    /// the freed pages, and a TRUNCATE checkpoint empties the WAL that still held the deleted row.
+    /// Returns false when the event has no stored text (unknown id, a turn end, or already deleted).
+    pub fn forget_content(&self, event_id: &str) -> Result<bool> {
+        self.conn.execute_batch("PRAGMA secure_delete = ON;").map_err(err(codes::STORE_WRITE))?;
+        let n = self
+            .conn
+            .execute("DELETE FROM content WHERE event_id = ?1", [event_id])
+            .map_err(err(codes::STORE_WRITE))?;
+        if n > 0 {
+            // A reader (AIQ home) can hold the WAL open; then the checkpoint is partial and runs again on the next delete.
+            let _ = self.conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(()));
+        }
+        Ok(n > 0)
+    }
+
     /// Bytes on disk for the store, including the WAL.
     pub fn size_bytes(&self) -> u64 {
         let wal = PathBuf::from(format!("{}-wal", self.path.display()));

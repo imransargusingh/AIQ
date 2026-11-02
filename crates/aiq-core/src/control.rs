@@ -67,6 +67,36 @@ pub fn forget_all(paths: &Paths, timeout: Duration) -> Result<(), ControlError> 
     }
 }
 
+/// Delete one prompt's text (design aiq-home-deferred-pages E3): through the core when it runs, because it
+/// also holds the text in memory; else directly in the store, as nobody else writes while the core is down.
+pub fn forget_item(paths: &Paths, event_id: &str, timeout: Duration) -> Result<(), ControlError> {
+    match ok_reply(ask(paths, timeout, |token| Request::ForgetItem { token, event_id: event_id.into() })) {
+        Err(ControlError::NotRunning) => {
+            let db = paths.db();
+            if !db.exists() {
+                return Err(ControlError::Refused("that item has no stored text to delete".into()));
+            }
+            let store = aiq_store::Store::open(&db).map_err(|e| ControlError::Io(e.to_string()))?;
+            match store.forget_content(event_id) {
+                Ok(true) => Ok(()),
+                Ok(false) => Err(ControlError::Refused("that item has no stored text to delete".into())),
+                Err(e) => Err(ControlError::Io(e.to_string())),
+            }
+        }
+        other => other,
+    }
+}
+
+/// AIQ home's first-run setup finished.
+pub fn setup_done(paths: &Paths) -> bool {
+    paths.setup_flag().exists()
+}
+
+pub fn finish_setup(paths: &Paths) -> std::io::Result<()> {
+    paths.ensure_dirs()?;
+    crate::paths::write_user_only(&paths.setup_flag(), b"done\n")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -88,6 +118,36 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let p = Paths::at(d.path());
         assert_eq!(set_setting(&p, "daily_cap", "3", Duration::from_millis(50)), Err(ControlError::NotRunning));
+    }
+
+    #[test]
+    fn setup_flag_round_trip() {
+        let d = tempfile::tempdir().unwrap();
+        let p = Paths::at(&d.path().join("fresh"));
+        assert!(!setup_done(&p));
+        finish_setup(&p).unwrap();
+        assert!(setup_done(&p));
+    }
+
+    #[test]
+    fn forget_item_without_core_deletes_in_the_store() {
+        let d = tempfile::tempdir().unwrap();
+        let p = Paths::at(d.path());
+        assert!(matches!(forget_item(&p, "e1", Duration::from_millis(50)), Err(ControlError::Refused(_))));
+        let s = aiq_store::Store::open(&p.db()).unwrap();
+        s.raw()
+            .execute_batch(
+                "INSERT INTO surface_session VALUES ('claude-code', 's', 0);
+                 INSERT INTO event VALUES ('e1', 'claude-code', 's', 'prompt', 1, 1, 'p1', NULL, 't', 5, '{\"has_text\":1}');
+                 INSERT INTO content VALUES ('e1', 'hello');",
+            )
+            .unwrap();
+        drop(s);
+        forget_item(&p, "e1", Duration::from_millis(50)).unwrap();
+        let s = aiq_store::Store::open(&p.db()).unwrap();
+        let n: i64 = s.raw().query_row("SELECT count(*) FROM content", [], |r| r.get(0)).unwrap();
+        assert_eq!(n, 0);
+        assert!(matches!(forget_item(&p, "e1", Duration::from_millis(50)), Err(ControlError::Refused(_))));
     }
 
     #[test]

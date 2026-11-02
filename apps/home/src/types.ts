@@ -10,6 +10,7 @@ export interface Snapshot {
   tips: TipRow[];
   data: Data;
   settings: Settings;
+  setup: Setup;
 }
 
 export interface Status {
@@ -82,3 +83,30 @@ export interface Settings {
 
 /** A command's answer: done, or a sentence the person can act on. */
 export type Outcome = { ok: true } | { ok: false; message: string };
+
+/** First-run setup (design aiq-home-deferred-pages E5–E7). */
+export interface Setup {
+  done: boolean;
+  tools: ToolFound[];
+}
+
+export interface ToolFound {
+  tool: "claude-code" | "copilot";
+  hooked: boolean;
+  present: boolean;
+  install: string;
+}
+
+/** One task with its prompts, from the `task` command (crates/aiq-home/src/detail.rs). */
+export interface TaskDetail {
+  task: TaskRow;
+  prompts: TaskPromptText[];
+  read_ms: number;
+}
+
+export interface TaskPromptText {
+  event_id: string;
+  ts_ms: number | null;
+  text: string | null;
+  deleted: boolean;
+}

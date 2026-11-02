@@ -24,10 +24,17 @@ fn main() {
 
     let full = Paths::at(&tmp.join("full"));
     seed::standard(&full, true);
+    aiq_core::control::finish_setup(&full).unwrap();
     let mut s = aiq_home::snapshot(&full, &pack, now);
     s.status.core = true;
     s.status.read_ms = 12; // fixed, so screenshots and tests do not churn
     write(&out, "full", &s);
+
+    // Task detail of the newest Claude Code task (three prompts, a tip fired on it).
+    let id = &s.tasks.iter().find(|t| t.tool == "claude-code" && t.prompts == 3).unwrap().task_id;
+    let mut det = aiq_home::task_detail(&full, &pack, now, id).unwrap();
+    det.read_ms = 9;
+    std::fs::write(out.join("task.json"), serde_json::to_string_pretty(&det).unwrap()).unwrap();
 
     s.status.core = false;
     write(&out, "down", &s);
@@ -41,13 +48,20 @@ fn main() {
     let empty = Paths::at(&tmp.join("empty"));
     let mut e = aiq_home::snapshot(&empty, &pack, now);
     e.status.core = true;
-    e.data.location = r"C:\Users\you\.aiq".into();
+    write(&out, "first-run", &e);
+    e.setup.done = true;
     write(&out, "empty", &e);
     let _ = std::fs::remove_dir_all(&tmp);
 }
 
 fn write(dir: &std::path::Path, name: &str, s: &aiq_home::Snapshot) {
+    use aiq_core::tools::ToolFound;
     let mut s = s.clone();
     s.data.location = r"C:\Users\you\.aiq".into();
+    // Fixed, not this machine's: Claude Code hooked, Copilot present but not hooked.
+    s.setup.tools = vec![
+        ToolFound { tool: "claude-code", hooked: true, present: true, install: "aiq install claude-code" },
+        ToolFound { tool: "copilot", hooked: false, present: true, install: "aiq install copilot" },
+    ];
     std::fs::write(dir.join(format!("{name}.json")), serde_json::to_string_pretty(&s).unwrap()).unwrap();
 }

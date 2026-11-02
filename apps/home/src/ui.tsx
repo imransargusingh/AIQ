@@ -3,9 +3,10 @@ import { useEffect, useRef, type ReactNode } from "react";
 import type { Snapshot } from "./types";
 import { when } from "./format";
 
-export type Page = "home" | "tasks" | "tips" | "data" | "settings";
+/** Nav pages, plus two places outside the nav: one task's detail (from Tasks) and setup. */
+export type Page = "home" | "tasks" | "tips" | "data" | "settings" | "task" | "setup";
 
-export const PAGES: { id: Page; label: string; key: string }[] = [
+export const PAGES: { id: Exclude<Page, "task" | "setup">; label: string; key: string }[] = [
   { id: "home", label: "Home", key: "H" },
   { id: "tasks", label: "Tasks", key: "T" },
   { id: "tips", label: "Habits and tips", key: "B" },
@@ -16,6 +17,8 @@ export const PAGES: { id: Page; label: string; key: string }[] = [
 export interface Ctx {
   snap: Snapshot;
   go: (p: Page) => void;
+  /** Open one task's detail page. */
+  openTask: (taskId: string) => void;
   announce: (msg: string) => void;
   togglePause: () => void;
   refresh: () => void;
@@ -118,3 +121,23 @@ export const Sk = ({ w = "100%", h = "14px" }: { w?: string; h?: string }) => <s
 export const Chip = ({ children, tone }: { children: ReactNode; tone?: "ok" | "warn" | "tried" }) => (
   <span className={`chip${tone ? ` ${tone}` : ""}`}>{children}</span>
 );
+
+/** Prompts can be many KB; show a preview and keep the full text one click (or Enter) away. */
+const PREVIEW = 280;
+export function Content({ text }: { text: string }) {
+  if (text.length <= PREVIEW) return <>{text}</>;
+  return (
+    <details>
+      <summary>
+        {text.slice(0, PREVIEW).trimEnd()}… <span className="mute">({text.length.toLocaleString("en-GB")} characters, show all)</span>
+      </summary>
+      <span className="rest">{text.slice(PREVIEW)}</span>
+    </details>
+  );
+}
+
+/** A one-line name for a prompt: its first words. */
+export function preview(text: string, max = 80): string {
+  const t = text.replace(/\s+/g, " ").trim();
+  return t.length <= max ? t : `${t.slice(0, max).trimEnd()}…`;
+}
