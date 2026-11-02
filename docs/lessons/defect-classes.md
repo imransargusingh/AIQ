@@ -156,3 +156,18 @@ summary: >-
   `core.lock` uses. Test `one_run_holds_the_lock_however_long_it_runs_and_frees_it_when_it_ends` ages the
   file an hour and still sees the run hold it. A killed run's leftovers in `judge-work` (prompt text) are
   swept when the next run takes the lock (`sweep_removes_what_an_interrupted_call_left_and_respects_keep`).
+
+### DC-012 — A "subset" rate counted on a wider base than the rate it narrows
+- **Signature:** the check report printed kind 14 of 17 and "confident judgments only" kind 14 of 18. A
+  subset can't have the larger base. Kind was counted only where the job matched; confident kind also
+  counted confident tasks whose job differed, as kind misses.
+- **Why it survives:** each count had its own `if`, and the unit test had no confident task with a job miss.
+  It shows only when two numbers from the same report are read side by side.
+- **Instances:** 2026-11-02, check run 01a19ce8 (`check::agreement`).
+- **Sweep:** the other subset pairs in `agreement`: confident job / job and confident rung / rung use the
+  same condition plus `!uncertain` (fine). `by_kind` counts every task where the judge named a kind,
+  including job misses, on purpose: it answers "when the judge says this kind, how often is it right", not
+  "where the job matched".
+- **Control:** confident kind now uses the same condition as kind. Test
+  `confident_kind_uses_the_same_denominator_as_kind` asserts confident n is never above kind n. Rung:
+  automated control.

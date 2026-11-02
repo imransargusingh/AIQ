@@ -137,7 +137,8 @@ pub struct Agreement {
     pub rung_exact: Count,
     pub rung_within_one: Count,
     pub model_rung_exact: Count,
-    /// The same three, on confident (not Uncertain) judgments only: the ones AIQ coaches.
+    /// The same three, on confident (not Uncertain) judgments only: the ones AIQ coaches. `confident_type`
+    /// is compared only where the job matched, as `task_type` is (one definition of "kind agreement").
     pub confident_job: Count,
     pub confident_type: Count,
     pub confident_rung_exact: Count,
@@ -171,7 +172,7 @@ pub fn agreement(pairs: &[(JudgeView, CheckAnswer)]) -> Agreement {
         }
         if !j.uncertain {
             a.confident_job.add(job_ok);
-            if j.task_type.is_some() {
+            if job_ok && j.task_type.is_some() {
                 a.confident_type.add(type_ok);
             }
             a.confident_rung_exact.add(rung_ok);
@@ -297,6 +298,21 @@ mod tests {
         assert_eq!((f6.agree.k, f6.agree.n, f6.cant_settle, f6.judge_unknown), (0, 1, 1, 1));
         assert_eq!(a.by_kind[&("code_change".to_owned(), "fix_bug".to_owned())], Count { k: 0, n: 1 });
         assert!(a.no_job_read_as.is_empty());
+    }
+
+    #[test]
+    fn confident_kind_uses_the_same_denominator_as_kind() {
+        // The 15:37Z report printed kind 14 of 17 but confident kind 14 of 18: the confident count also
+        // scored tasks whose job differed. Confident kind must be a subset of kind, never larger.
+        let pairs = vec![
+            (judge("code_change", "fix_bug", 2, false, None), grader("ask_research", "troubleshoot", 2, None, None)),
+            (judge("code_change", "feature", 2, false, None), grader("code_change", "feature", 2, None, None)),
+            (judge("code_change", "tests", 2, true, None), grader("code_change", "fix_bug", 2, None, None)),
+        ];
+        let a = agreement(&pairs);
+        assert_eq!((a.task_type.k, a.task_type.n), (1, 2));
+        assert_eq!((a.confident_type.k, a.confident_type.n), (1, 1), "job miss and uncertain both left out");
+        assert!(a.confident_type.n <= a.task_type.n);
     }
 
     #[test]
