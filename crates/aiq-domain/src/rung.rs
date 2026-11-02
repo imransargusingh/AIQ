@@ -912,6 +912,92 @@ pub const CANDIDATE_RULES: [(&str, &str); 2] = [
     ("R2", "both runs name the same pack job, confidence 0.5 or more"),
 ];
 
+/// One run's task-type pick, as kept in a judgment's `read.type_runs` (kind-of-task accuracy, design
+/// `docs/design/kind-of-task.md` T1). Recorded from this build on; older judgments have none.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypeRun {
+    pub task_type: String,
+    pub confidence: f64,
+}
+
+/// Why a judgment with a pack job got the kind `other` (design kind-of-task T2). Derived, never stored.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum KindOther {
+    /// Every run picked `other` confidently: the judge thinks no listed kind fits.
+    AllOther,
+    /// Runs picked different kinds.
+    Disagree,
+    /// Runs agreed on a listed kind but at least one was below the bar.
+    LowConfidence,
+    /// Runs agreed on a kind that is not on the job's list.
+    NotOnList,
+    /// Only one run answered.
+    OneRun,
+}
+
+impl KindOther {
+    pub fn words(self) -> &'static str {
+        match self {
+            KindOther::AllOther => "both runs said other",
+            KindOther::Disagree => "the two runs named different kinds",
+            KindOther::LowConfidence => "both runs named the kind, but not confidently",
+            KindOther::NotOnList => "the kind named is not on the job's list",
+            KindOther::OneRun => "only one run answered",
+        }
+    }
+}
+
+/// The cause of a fallback `other` kind for `job`, or None when the runs give a listed kind.
+pub fn kind_other_cause(job: &str, runs: &[TypeRun]) -> Option<KindOther> {
+    let first = runs.first()?;
+    let listed = |t: &str| t != "other" && aiq_contracts::judge::task_type_label(job, t).is_some();
+    if runs.len() < 2 {
+        return (!listed(&first.task_type) || first.confidence < TASK_TYPE_THRESHOLD).then_some(KindOther::OneRun);
+    }
+    if runs.iter().any(|r| r.task_type != first.task_type) {
+        return Some(KindOther::Disagree);
+    }
+    if first.task_type == "other" {
+        return Some(KindOther::AllOther);
+    }
+    if !listed(&first.task_type) {
+        return Some(KindOther::NotOnList);
+    }
+    runs.iter().any(|r| r.confidence < TASK_TYPE_THRESHOLD).then_some(KindOther::LowConfidence)
+}
+
+/// Candidate rules for giving a fallback-`other` task a listed kind (design kind-of-task T3). Each returns
+/// the kind it would give, or None. Not in use: measured against the second reading first, like R1-R2.
+pub fn candidate_type(rule: &str, job: &str, runs: &[TypeRun]) -> Option<String> {
+    let listed =
+        |r: &&TypeRun| r.task_type != "other" && aiq_contracts::judge::task_type_label(job, &r.task_type).is_some();
+    let named: Vec<&TypeRun> = runs.iter().filter(listed).collect();
+    match rule {
+        // K1: the runs named different listed kinds (or one said other): take the more confident listed
+        // kind, if it clears the bar and is clearly ahead (0.1) of every other run.
+        "K1" => {
+            if runs.len() < 2 || runs.iter().all(|r| r.task_type == runs[0].task_type) {
+                return None;
+            }
+            let best = named.iter().copied().max_by(|a, b| a.confidence.total_cmp(&b.confidence))?;
+            let ahead =
+                runs.iter().filter(|r| r.task_type != best.task_type).all(|r| best.confidence >= r.confidence + 0.1);
+            (best.confidence >= TASK_TYPE_THRESHOLD && ahead).then(|| best.task_type.clone())
+        }
+        // K2: every run named the same listed kind, at a lower bar of 0.5.
+        "K2" => (runs.len() >= 2
+            && named.len() == runs.len()
+            && named.iter().all(|r| r.task_type == named[0].task_type && r.confidence >= 0.5))
+        .then(|| named[0].task_type.clone()),
+        _ => None,
+    }
+}
+
+pub const KIND_CANDIDATE_RULES: [(&str, &str); 2] = [
+    ("K1", "runs named different kinds; take the clearly more confident one"),
+    ("K2", "both runs name the same kind, confidence 0.5 or more"),
+];
+
 /// Merge two runs into one judgment. `same_job_recent` counts this person's tasks of the same job in the last
 /// 30 days (F11), for the Factory repetition rule. Runs must be non-empty.
 pub fn place(runs: &[Response], log: &LogFacts, same_job_recent: u32) -> (Facts, Placement) {
@@ -1423,6 +1509,49 @@ mod tests {
         un.job = "other".into();
         let (_, p) = place(&[un.clone(), un], &l, 0);
         assert_eq!(p.task_type, None, "unclassified has no type");
+    }
+
+    fn tr(t: &str, c: f64) -> TypeRun {
+        TypeRun { task_type: t.into(), confidence: c }
+    }
+
+    #[test]
+    fn kind_other_cause_matches_the_merge_rule() {
+        // The cause is None exactly when `place` keeps the runs' kind; otherwise it names why it fell back.
+        let l = log_facts(&turns(&["a"], None), false);
+        let cases: [(&str, f64, &str, f64, Option<KindOther>); 6] = [
+            ("fix_bug", 0.9, "fix_bug", 0.8, None),
+            ("fix_bug", 0.9, "tests", 0.9, Some(KindOther::Disagree)),
+            ("fix_bug", 0.9, "fix_bug", 0.6, Some(KindOther::LowConfidence)),
+            ("spec", 0.9, "spec", 0.9, Some(KindOther::NotOnList)),
+            ("other", 0.9, "other", 0.9, Some(KindOther::AllOther)),
+            ("other", 0.9, "fix_bug", 0.9, Some(KindOther::Disagree)),
+        ];
+        for (t1, c1, t2, c2, want) in cases {
+            let runs = [tr(t1, c1), tr(t2, c2)];
+            assert_eq!(kind_other_cause("code_change", &runs), want, "{t1} {t2}");
+            let (mut a, mut b) = (run(2), run(2));
+            (a.task_type, a.task_type_confidence, b.task_type, b.task_type_confidence) = (t1.into(), c1, t2.into(), c2);
+            let (_, p) = place(&[a, b], &l, 0);
+            assert_eq!(p.task_type.as_deref() != Some("other"), want.is_none(), "{t1} {t2}: {:?}", p.task_type);
+        }
+        assert_eq!(kind_other_cause("code_change", &[tr("fix_bug", 0.6)]), Some(KindOther::OneRun));
+        assert_eq!(kind_other_cause("code_change", &[]), None);
+    }
+
+    #[test]
+    fn candidate_kind_rules_only_give_a_listed_kind() {
+        let k = |rule, a: TypeRun, b: TypeRun| candidate_type(rule, "ask_research", &[a, b]);
+        assert_eq!(k("K1", tr("how_to", 0.9), tr("explain", 0.7)).as_deref(), Some("how_to"));
+        assert_eq!(k("K1", tr("how_to", 0.9), tr("other", 0.6)).as_deref(), Some("how_to"));
+        assert_eq!(k("K1", tr("how_to", 0.8), tr("explain", 0.75)), None, "not clearly ahead");
+        assert_eq!(k("K1", tr("how_to", 0.65), tr("other", 0.3)), None, "below the bar");
+        assert_eq!(k("K1", tr("how_to", 0.9), tr("how_to", 0.6)), None, "runs agree: K2's case");
+        assert_eq!(k("K1", tr("fix_bug", 0.9), tr("other", 0.5)), None, "not an ask_research kind");
+        assert_eq!(k("K2", tr("find", 0.55), tr("find", 0.6)).as_deref(), Some("find"));
+        assert_eq!(k("K2", tr("find", 0.4), tr("find", 0.9)), None);
+        assert_eq!(k("K2", tr("other", 0.9), tr("other", 0.9)), None);
+        assert_eq!(k("K9", tr("find", 0.9), tr("find", 0.9)), None);
     }
 
     #[test]

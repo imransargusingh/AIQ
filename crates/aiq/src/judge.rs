@@ -733,6 +733,8 @@ pub fn judge_task(
         "corrections": rung::corrections(turns, reprompt),
         // Each run's job pick, so a missing job can be explained from data (design no-job-tasks N1).
         "job_runs": runs.iter().map(|r| json!({"job": r.job, "confidence": r.job_confidence})).collect::<Vec<_>>(),
+        // Each run's kind pick, so a fallback `other` kind can be explained and rules scored (kind-of-task T1).
+        "type_runs": runs.iter().map(|r| json!({"task_type": r.task_type, "confidence": r.task_type_confidence})).collect::<Vec<_>>(),
     });
     let row = JudgmentRow {
         judgment_id: uuid::Uuid::now_v7().to_string(),
@@ -1347,6 +1349,97 @@ fn job_runs(j: &JudgmentRow) -> Option<Vec<rung::JobRun>> {
         .collect()
 }
 
+fn type_runs(j: &JudgmentRow) -> Option<Vec<rung::TypeRun>> {
+    let v: Value = serde_json::from_str(&j.read).ok()?;
+    v.get("type_runs")?
+        .as_array()?
+        .iter()
+        .map(|r| {
+            Some(rung::TypeRun {
+                task_type: r.get("task_type")?.as_str()?.to_owned(),
+                confidence: r.get("confidence")?.as_f64()?,
+            })
+        })
+        .collect()
+}
+
+/// Why the judge's kind was `other`, in words. From the recorded runs when kept; otherwise only what the
+/// stored confidence can say (the merge keeps the lower run's confidence, so below the bar = not confident).
+fn kind_other_words(j: &JudgmentRow) -> &'static str {
+    match type_runs(j) {
+        Some(r) => rung::kind_other_cause(&j.job, &r).map_or("both runs said other", |c| c.words()),
+        None if j.task_type_confidence.is_some_and(|c| c < rung::TASK_TYPE_THRESHOLD) => {
+            "not confident (runs not kept)"
+        }
+        None => "runs differed or said other (runs not kept)",
+    }
+}
+
+/// Kind of task across every check run (design kind-of-task T4): pooled agreement, where the misses come
+/// from, and the candidate rules' before/after. Each check counts once; a task checked twice counts twice.
+fn kind_report(store: &Store) -> aiq_store::Result<String> {
+    use aiq_domain::check::Count;
+    let mut o = String::new();
+    let mut runs = 0usize;
+    let mut kind = Count::default();
+    let mut fallback: std::collections::BTreeMap<&str, Count> = Default::default();
+    let mut named_misses: std::collections::BTreeMap<String, u32> = Default::default();
+    let mut rules: Vec<(Count, Count, u32)> = vec![Default::default(); rung::KIND_CANDIDATE_RULES.len()];
+    let mut with_runs = 0u32;
+    for run in store.check_runs()? {
+        runs += 1;
+        for c in store.checks_of_run(&run.run_id)? {
+            let Some(ans) =
+                c.answer.as_deref().and_then(|a| serde_json::from_str::<aiq_contracts::check::CheckAnswer>(a).ok())
+            else {
+                continue;
+            };
+            let Some(j) = store.judgment(&c.judgment_id)? else { continue };
+            let Some(t) = j.task_type.as_deref().filter(|_| j.job == ans.job) else { continue };
+            let hit = t == ans.task_type;
+            kind.add(hit);
+            if t == "other" {
+                fallback.entry(kind_other_words(&j)).or_default().add(hit);
+            } else if !hit {
+                *named_misses.entry(format!("{}: {} read as {}", j.job, t, ans.task_type)).or_default() += 1;
+            }
+            let Some(tr) = type_runs(&j) else { continue };
+            with_runs += 1;
+            for (i, (rule, _)) in rung::KIND_CANDIDATE_RULES.iter().enumerate() {
+                let given = (t == "other").then(|| rung::candidate_type(rule, &j.job, &tr)).flatten();
+                let after = given.as_deref().unwrap_or(t);
+                rules[i].0.add(hit);
+                rules[i].1.add(after == ans.task_type);
+                rules[i].2 += given.is_some() as u32;
+            }
+        }
+    }
+    if runs == 0 {
+        return Ok(o);
+    }
+    o += &format!("  Kind of task, all {runs} check runs (where the job matched): {}\n", kind.show());
+    if !fallback.is_empty() {
+        let w: Vec<String> =
+            fallback.iter().map(|(k, c)| format!("{k} {} (second reading also other {})", c.n, c.k)).collect();
+        o += &format!("    Judge's kind was other because: {}\n", w.join("; "));
+    }
+    if !named_misses.is_empty() {
+        let w: Vec<String> = named_misses.iter().map(|(k, n)| format!("{k} {n}")).collect();
+        o += &format!("    Judge named a kind, second reading named another: {}\n", w.join("; "));
+    }
+    if with_runs == 0 {
+        o += "    Rules for a kind of other: not measured yet (needs tasks judged by this build, then a check)\n";
+    } else {
+        o += &format!(
+            "    Rules for a kind of other (not in use; on the {with_runs} checks whose runs were kept, before -> after):\n"
+        );
+        for ((rule, words), (before, after, given)) in rung::KIND_CANDIDATE_RULES.iter().zip(&rules) {
+            o += &format!("      {rule} ({words}): gives a kind to {given}; {} -> {}\n", before.show(), after.show());
+        }
+    }
+    Ok(o)
+}
+
 fn judge_view(j: &JudgmentRow) -> aiq_domain::check::JudgeView {
     let facts = aiq_contracts::judge::parse_stored_facts(&j.facts);
     aiq_domain::check::JudgeView {
@@ -1493,6 +1586,7 @@ pub fn check_report(store: &Store) -> aiq_store::Result<String> {
     for (job, c) in &ag.task_type_by_job {
         o += &format!("    {job}: {}\n", c.show());
     }
+    o += &kind_report(store)?;
     o += &format!("  Rung exact: {}\n", ag.rung_exact.show());
     o += &format!("  Rung within one: {}\n", ag.rung_within_one.show());
     o += &format!("  Judge model's own rung exact (before AIQ's rules): {}\n", ag.model_rung_exact.show());
@@ -2302,6 +2396,28 @@ mod tests {
         let rep = check_report(&e.store).unwrap();
         assert!(rep.contains("Why: both runs said other 4"), "{rep}");
         assert!(rep.contains("R1 (") && rep.contains("gives a job to 0 of 4"), "{rep}");
+    }
+
+    #[test]
+    fn kind_report_pools_check_runs_explains_other_and_scores_rules_before_after() {
+        let e = env();
+        let mut judge = Fake::ok(2);
+        if let Some(a) = judge.answer.as_mut() {
+            a["task_type_confidence"] = json!(0.6);
+        }
+        go(&e, &judge, &judge, None);
+        let judged = e.store.current_judgments().unwrap();
+        let j = judged.values().next().unwrap();
+        assert_eq!(j.task_type.as_deref(), Some("other"), "below the bar falls back to other");
+        assert_eq!(type_runs(j).unwrap(), vec![rung::TypeRun { task_type: "fix_bug".into(), confidence: 0.6 }; 2]);
+        let g = grader("code_change", "fix_bug", 2);
+        run_check(&e.store, &e.paths, &e.homes, &g, &g, NOW, 30, 1).unwrap();
+        run_check(&e.store, &e.paths, &e.homes, &g, &g, NOW + 1, 30, 2).unwrap();
+        let rep = check_report(&e.store).unwrap();
+        assert!(rep.contains("Kind of task, all 2 check runs (where the job matched): 0 of 8"), "{rep}");
+        assert!(rep.contains("both runs named the kind, but not confidently 8 (second reading also other 0)"), "{rep}");
+        assert!(rep.contains("K2 (") && rep.contains("gives a kind to 8; 0 of 8 (0-25%) -> 8 of 8"), "{rep}");
+        assert!(rep.contains("K1 (") && rep.contains("gives a kind to 0;"), "{rep}");
     }
 
     #[test]
