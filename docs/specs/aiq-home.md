@@ -11,6 +11,7 @@ links:
   - { to: spec-rung-model, rel: depends-on }
 review-suggested:
   - { by: design-coaching-from-rungs, on: 2026-11-02, reason: "Kept task needs F2, which the judge can't read yet (question Q-A to Imran); task types come from a fixed per-job list the judge picks; Uncertain judgments are left out of the split and counted beside it (drift C1, C2, C6)." }
+  - { by: design-private-alpha, on: 2026-11-02, reason: "H11 and the setup judge step say Copilot judges via VS Code LM API and check Claude first; the build uses Copilot CLI copilot -p, so setup goes Copilot-first (drift R1, R2)." }
 review-by: 2026-11-30
 summary: >-
   What AIQ home, the private desktop app, must let a person do: set AIQ up, see how much of their
