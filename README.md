@@ -15,6 +15,15 @@ anything new, and one card appears under Claude's reply:
 
 At most one card per Claude Code session, at most 5 a day (your setting).
 
+## Install (Windows, private alpha)
+
+A version tag builds `aiq-<version>-windows-x64.zip` and `SHA256SUMS` and attaches them to a **draft**
+GitHub release (`.github/workflows/release.yml`); nothing is public until someone presses Publish. Unzip, then
+run `powershell -ExecutionPolicy Bypass -File .\install.ps1` in a normal (not administrator) window. It copies
+both exes to `%USERPROFILE%\.aiq\bin`, adds that folder to your user PATH, adds an AIQ Start menu shortcut,
+connects every AI tool it finds and lists each file it changed, then starts `aiq import` and opens AIQ home.
+The script is `packaging/windows/install.ps1`.
+
 ## Build
 
 Rust 1.89 or later. No other tools are needed (the store is plain SQLite, compiled in).
