@@ -36,7 +36,16 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <p>it stores <strong>`other`</strong>. The second reader always picks a specific kind. So a fallback <code>other</code> counts as a miss even when both runs leaned to the reader&#x27;s kind.</p>
 <ul><li><strong>Not measured:</strong> how many of the six misses were fallback <code>other</code> and how many were a different named</li></ul>
 <p>kind. The store keeps only the merged kind and the lower confidence, not each run&#x27;s pick.</p>
-<h2>Possible causes (Inferred until T1 is measured)</h2>
+<h2>First breakdown (measured, Imran&#x27;s laptop, build a4b9331, 2026-11-02 18:47Z, no model calls)</h2>
+<p>Pooled over check runs 01a19ca2 and 01a19ce8: kind <strong>29 of 35 (70-91%)</strong> where the job matched.</p>
+<table><thead><tr><th>Judge&#x27;s kind</th><th>Checks</th><th>Second reading agreed</th></tr></thead><tbody><tr><td>A named kind</td><td>27</td><td><strong>27 of 27</strong> (no named miss)</td></tr><tr><td><code>other</code>, not confident (stored confidence below 0.7)</td><td>6</td><td>2 (reader also said other)</td></tr><tr><td><code>other</code>, runs differed or both said other</td><td>2</td><td>0</td></tr></tbody></table>
+<ul><li><strong>Every kind miss (6 of 6) is AIQ&#x27;s fallback `other`, none is a wrong named kind.</strong> So K-c is not seen</li></ul>
+<p>and T5 (re-word the prompt, re-judge everything) is not indicated.</p>
+<ul><li>A fallback <code>other</code> is not wrong coaching: the live tip never guesses a kind of <code>other</code></li></ul>
+<p>(<code>coach::guess_type</code> returns none for <code>other</code>). It is a task AIQ could have named and did not: lost coverage, not a wrong answer.</p>
+<ul><li>Not yet known: what each run picked in those 8 (judged before runs were kept), so K1 and K2 are not</li></ul>
+<p>scored. Most were &quot;not confident&quot;, which points at K2 (Inferred; 8 checks).</p>
+<h2>Possible causes (before the first breakdown)</h2>
 <table><thead><tr><th>Cause</th><th>What it looks like</th><th>Fix it points to</th></tr></thead><tbody><tr><td>K-a Fallback: runs differ</td><td>Run 1 says <code>how_to</code>, run 2 says <code>explain</code>; stored <code>other</code></td><td>Tie-break rule K1, or sharper definitions</td></tr><tr><td>K-b Fallback: not confident</td><td>Both runs say <code>find</code>, one at 0.6; stored <code>other</code></td><td>Lower bar K2</td></tr><tr><td>K-c Named the wrong kind</td><td>Judge and reader both confident, different kinds</td><td>Definitions in the prompt (T5)</td></tr></tbody></table>
 <p>Overlaps in the list that could drive K-a and K-c (Inferred from the labels, not from data): <code>explain</code> appears under both code_change and ask_research; ask_research <code>how_to</code> vs <code>explain</code> vs <code>troubleshoot</code>; <code>find</code> vs <code>research</code> vs <code>analyse</code>; code_change <code>fix_bug</code> vs <code>build_fix</code>.</p>
 <h2>Decisions</h2>
@@ -51,4 +60,4 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <p><code>GATE design-slice · 2026-11-02 · Simplifier, Test Architect, Data &amp; Persistence (seats played by Claude; not independent) · pass</code></p>
 <ul><li>Simplifier: one JSON field, no bump, no re-judge, no live rule.</li><li>Test Architect: cause matches the merge rule in a table test; rules unit-tested; a runner test proves the runs are recorded and the report pools two check runs and shows before -&gt; after; confident-kind base has its own test.</li><li>Data &amp; Persistence: <code>read</code> is the judgment&#x27;s own JSON; cause and rule results are derived.</li></ul>
 <h2>Status and next action</h2>
-<table><thead><tr><th></th><th></th></tr></thead><tbody><tr><td><strong>Completed</strong></td><td>Design; measurement build</td></tr><tr><td><strong>Remaining</strong></td><td>Laptop upgrade; new judgments; a check; pick a fix</td></tr><tr><td><strong>Best next action</strong></td><td>Install, then run <code>aiq judge --check-report</code> (free)</td></tr></tbody></table></main></body></html>
+<table><thead><tr><th></th><th></th></tr></thead><tbody><tr><td><strong>Completed</strong></td><td>Design; measurement build; first breakdown (all misses are fallback <code>other</code>)</td></tr><tr><td><strong>Remaining</strong></td><td>New judgments on this build; a check; score K1/K2; pick one or none</td></tr><tr><td><strong>Best next action</strong></td><td>The judge thread runs the next <code>aiq judge --check</code> after a few days of judging</td></tr></tbody></table></main></body></html>

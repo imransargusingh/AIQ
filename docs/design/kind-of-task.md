@@ -48,7 +48,25 @@ Measured on Imran's laptop (check runs 01a19ca2 and 01a19ce8, 2026-11-02, record
 - **Not measured:** how many of the six misses were fallback `other` and how many were a different named
   kind. The store keeps only the merged kind and the lower confidence, not each run's pick.
 
-## Possible causes (Inferred until T1 is measured)
+## First breakdown (measured, Imran's laptop, build a4b9331, 2026-11-02 18:47Z, no model calls)
+
+Pooled over check runs 01a19ca2 and 01a19ce8: kind **29 of 35 (70-91%)** where the job matched.
+
+| Judge's kind | Checks | Second reading agreed |
+|---|---|---|
+| A named kind | 27 | **27 of 27** (no named miss) |
+| `other`, not confident (stored confidence below 0.7) | 6 | 2 (reader also said other) |
+| `other`, runs differed or both said other | 2 | 0 |
+
+- **Every kind miss (6 of 6) is AIQ's fallback `other`, none is a wrong named kind.** So K-c is not seen
+  and T5 (re-word the prompt, re-judge everything) is not indicated.
+- A fallback `other` is not wrong coaching: the live tip never guesses a kind of `other`
+  (`coach::guess_type` returns none for `other`). It is a task AIQ could have named and did not: lost
+  coverage, not a wrong answer.
+- Not yet known: what each run picked in those 8 (judged before runs were kept), so K1 and K2 are not
+  scored. Most were "not confident", which points at K2 (Inferred; 8 checks).
+
+## Possible causes (before the first breakdown)
 
 | Cause | What it looks like | Fix it points to |
 |---|---|---|
@@ -103,6 +121,6 @@ None. Cause and fix are settled from data.
 
 | | |
 |---|---|
-| **Completed** | Design; measurement build |
-| **Remaining** | Laptop upgrade; new judgments; a check; pick a fix |
-| **Best next action** | Install, then run `aiq judge --check-report` (free) |
+| **Completed** | Design; measurement build; first breakdown (all misses are fallback `other`) |
+| **Remaining** | New judgments on this build; a check; score K1/K2; pick one or none |
+| **Best next action** | The judge thread runs the next `aiq judge --check` after a few days of judging |
