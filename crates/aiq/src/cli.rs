@@ -589,3 +589,111 @@ mod tests {
         assert!(render_show(&gone).contains("The evidence for this card was deleted."));
     }
 }
+
+/// `aiq tips`: every next-step tip, whether it is on, and how far it reaches on the person's own judged tasks
+/// in the coaching window. Measured from stored judgments; no model call, no core needed.
+pub fn tips() -> ExitCode {
+    let paths = Paths::from_env();
+    let store = match crate::import::open_store(&paths) {
+        Ok(s) => s,
+        Err(c) => return c,
+    };
+    let pack = match aiq_domain::PackSource::load(&aiq_core::pack::BundledPack) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("Could not load AIQ's rules: {e}");
+            return ExitCode::from(1);
+        }
+    };
+    let utc_ms = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64);
+    let now = aiq_domain::clock::Now { utc_ms, offset_min: 0 };
+    let cache = match aiq_core::coaching::Cache::build(&store, &pack, now) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("Could not read AIQ's store ({}): {}", e.code, e.detail);
+            return ExitCode::from(1);
+        }
+    };
+    use aiq_domain::coach;
+    let p = &pack.coach;
+    let reach = coach::reach(&cache.tasks, &cache.rows, &pack.moves, utc_ms, p);
+    let f4 = coach::f4_missing(&cache.tasks, utc_ms, 0.8, p);
+    let off: Vec<bool> = reach
+        .iter()
+        .map(|r| coach::tip_pref(&cache.feedback, &coach::tip_id(&r.move_id), utc_ms, p) == coach::TipPref::Off)
+        .collect();
+    let mode = aiq_core::coaching::mode(&store);
+    print!("{}", render_tips(&reach, &off, &f4, &mode, cache.tips_on(&mode, &pack), p.window_days));
+    ExitCode::SUCCESS
+}
+
+fn render_tips(
+    reach: &[aiq_domain::coach::Reach],
+    off: &[bool],
+    f4: &std::collections::BTreeMap<String, (u32, u32)>,
+    mode: &str,
+    on_now: bool,
+    days: u32,
+) -> String {
+    let mut o = format!(
+        "Next-step tips, on your judged tasks from the last {days} days (measured from your judgments, no model call).\n\
+         A tip shows in the moment only for a kind of task you repeat whose next step it is.\n\
+         Next-step tips: {mode}{}\n\n",
+        if on_now { "" } else { " (not showing now)" }
+    );
+    let jobs: Vec<String> = f4.iter().map(|(j, (n, k))| format!("{j} {k} of {n}")).collect();
+    o += &format!(
+        "Requests the judge was sure had no goal, context or limits (any rung): {}\n\n",
+        if jobs.is_empty() { "no judged tasks yet".to_owned() } else { jobs.join(", ") }
+    );
+    for (r, is_off) in reach.iter().zip(off) {
+        let kinds: Vec<String> = r.kinds.iter().map(|(l, n)| format!("{l} ({n} tasks)")).collect();
+        o += &format!(
+            "{} [{}{}]\n  applies to {} judged {}; can show now for: {}\n",
+            r.habit,
+            if r.job == "any" { "every job" } else { r.job.as_str() },
+            if *is_off { ", turned off" } else { "" },
+            r.tasks,
+            if r.tasks == 1 { "task" } else { "tasks" },
+            if kinds.is_empty() { "none yet".to_owned() } else { kinds.join(", ") }
+        );
+    }
+    o += "\nTurn one off or on: aiq off <card> from a tip, aiq on next_rung.<id>, or Settings in AIQ home.\n";
+    o
+}
+
+#[cfg(test)]
+mod tips_tests {
+    use super::*;
+
+    #[test]
+    fn tips_report_names_reach_off_state_and_the_f4_ceiling() {
+        let r = vec![
+            aiq_domain::coach::Reach {
+                move_id: "brief".into(),
+                job: "code_change".into(),
+                habit: "Give the agent the goal".into(),
+                tasks: 4,
+                kinds: vec![("Writing tests", 6)],
+            },
+            aiq_domain::coach::Reach {
+                move_id: "written_brief".into(),
+                job: "any".into(),
+                habit: "Give a written brief".into(),
+                tasks: 1,
+                kinds: vec![],
+            },
+        ];
+        let f4 = [("code_change".to_owned(), (32, 5))].into_iter().collect();
+        let o = render_tips(&r, &[false, true], &f4, "auto", true, 30);
+        assert!(o.contains("last 30 days"));
+        assert!(o.contains("no goal, context or limits (any rung): code_change 5 of 32"));
+        assert!(o.contains("Give the agent the goal [code_change]\n  applies to 4 judged tasks; can show now for: Writing tests (6 tasks)"));
+        assert!(o.contains(
+            "Give a written brief [every job, turned off]\n  applies to 1 judged task; can show now for: none yet"
+        ));
+        assert!(
+            render_tips(&r, &[false, false], &Default::default(), "off", false, 30).contains("off (not showing now)")
+        );
+    }
+}

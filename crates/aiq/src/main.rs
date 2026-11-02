@@ -39,6 +39,8 @@ Usage:
   aiq unflag <job>/<type> <move>      Undo a flag
   aiq config set next-rung-tips <auto|on|off>  Next-step tips for kinds of task you repeat (auto: AIQ
                                       turns them off itself if it guesses the kind of task wrong)
+  aiq tips                            Each next-step tip, whether it is on, and how often it would show
+                                      on your judged tasks (measured, no model call)
   aiq judge [--max <n>] [--only claude-code|copilot-cli] [--dry-run]
                                       Judge your finished tasks through your own Claude Code / Copilot CLI
                                       (--dry-run shows what would be sent, sends nothing)
@@ -75,6 +77,7 @@ fn main() -> ExitCode {
         ["config", "set", name, value, ..] => cli::config_set(name, value),
         ["include", folder, ..] => cli::include_folder(folder),
         [verb @ ("helpful" | "not" | "snooze" | "off" | "on"), id, ..] => cli::tip_feedback(verb, id),
+        ["tips", ..] => cli::tips(),
         ["flag", rest @ ..] => cli::flag(rest, false),
         ["unflag", rest @ ..] => cli::flag(rest, true),
         ["statusline", "copilot", ..] => statusline::run(),

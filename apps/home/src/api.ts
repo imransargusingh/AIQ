@@ -89,6 +89,10 @@ function fixture<T>(cmd: string, args: Record<string, unknown>): Promise<T> {
       s.settings.tips_off = s.settings.tips_off.filter((t) => t !== args.tipId);
       out = { ok: true };
       break;
+    case "tip_off":
+      if (!s.settings.tips_off.includes(args.tipId as string)) s.settings.tips_off.push(args.tipId as string);
+      out = { ok: true };
+      break;
     case "connect_tools":
       if (f.fail?.includes(cmd)) {
         out = { ok: false, message: "AIQ couldn't connect your tools. Could not write the settings file. Run aiq install in a terminal to see why.", changed: [] };
@@ -122,4 +126,6 @@ export const api = {
     invoke<Outcome>("guidance_flag", { job, taskType, moveId, action, reason }),
   /** Turn a tip back on after "Don't show this again". */
   tipOn: (tipId: string) => invoke<Outcome>("tip_on", { tipId }),
+  /** Settings' per-tip switch: turn a tip off before it shows (same as "Don't show this again"). */
+  tipOff: (tipId: string) => invoke<Outcome>("tip_off", { tipId }),
 };

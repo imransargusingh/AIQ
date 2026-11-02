@@ -900,6 +900,88 @@
     "guess_auto_off": false,
     "tips_off": [
       "next_rung.agent_checks"
+    ],
+    "next_tips": [
+      {
+        "tip_id": "next_rung.brief",
+        "habit": "Give the agent the goal, context and limits up front",
+        "job": "code_change"
+      },
+      {
+        "tip_id": "next_rung.brief_doc",
+        "habit": "Say who the doc is for, what it must do, and its limits",
+        "job": "write_doc"
+      },
+      {
+        "tip_id": "next_rung.brief_question",
+        "habit": "Say why you're asking, what you know, and what to leave out",
+        "job": "ask_research"
+      },
+      {
+        "tip_id": "next_rung.new_info",
+        "habit": "Say what was wrong before asking again",
+        "job": "any"
+      },
+      {
+        "tip_id": "next_rung.check_code",
+        "habit": "Check the diff or run the tests before using the result",
+        "job": "code_change"
+      },
+      {
+        "tip_id": "next_rung.check_sources",
+        "habit": "Check drafted claims against a source",
+        "job": "write_doc"
+      },
+      {
+        "tip_id": "next_rung.hand_over",
+        "habit": "Hand over the whole task with a done test",
+        "job": "code_change"
+      },
+      {
+        "tip_id": "next_rung.hand_over_doc",
+        "habit": "Ask for the whole draft with what done means",
+        "job": "write_doc"
+      },
+      {
+        "tip_id": "next_rung.let_agent_edit",
+        "habit": "Let the agent make the edits",
+        "job": "code_change"
+      },
+      {
+        "tip_id": "next_rung.check_answer",
+        "habit": "Check the answer before acting on it",
+        "job": "ask_research"
+      },
+      {
+        "tip_id": "next_rung.whole_question",
+        "habit": "Ask the whole question and say what a good answer covers",
+        "job": "ask_research"
+      },
+      {
+        "tip_id": "next_rung.let_agent_look",
+        "habit": "Let the agent look it up itself",
+        "job": "ask_research"
+      },
+      {
+        "tip_id": "next_rung.written_brief",
+        "habit": "Give the agent a written brief or instructions file",
+        "job": "any"
+      },
+      {
+        "tip_id": "next_rung.agent_checks",
+        "habit": "Ask the agent to run the tests itself",
+        "job": "code_change"
+      },
+      {
+        "tip_id": "next_rung.split_and_check",
+        "habit": "Split the work with an automated check between steps",
+        "job": "any"
+      },
+      {
+        "tip_id": "next_rung.split_question",
+        "habit": "Split a big question across sub-agents",
+        "job": "ask_research"
+      }
     ]
   },
   "setup": {
@@ -1189,8 +1271,8 @@
       },
       {
         "job": "write_doc",
-        "move_id": "brief",
-        "name": "Give the agent the goal, context and limits up front",
+        "move_id": "brief_doc",
+        "name": "Say who the doc is for, what it must do, and its limits",
         "state": "adopted",
         "eligible": 3,
         "seen": 3,

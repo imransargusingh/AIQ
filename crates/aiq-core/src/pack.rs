@@ -37,7 +37,7 @@ mod tests {
     #[test]
     fn bundled_moves_carry_no_rung_name_number_or_model_text_and_fit_the_status_line() {
         let p = BundledPack.load().unwrap();
-        assert_eq!(p.moves.len(), 14);
+        assert_eq!(p.moves.len(), 16);
         for m in &p.moves {
             for t in [&m.noticed, &m.why, &m.try_this, &m.habit] {
                 assert!(!aiq_domain::rung::RUNG_NAMES.iter().any(|r| t.contains(r)), "{t}");
@@ -59,6 +59,12 @@ mod tests {
             for step in 1..=3u8 {
                 assert!(p.moves.iter().any(|m| m.step == step && (m.job == job || m.job == "any")), "{job} {step}");
             }
+        }
+        // Goal, context and limits (F4) is coached in each job's own words, and only when the judge is sure.
+        for job in aiq_domain::rung::PACK_JOBS {
+            let f4: Vec<_> = p.moves.iter().filter(|m| m.facts == ["F4"] && m.job == job).collect();
+            assert_eq!(f4.len(), 1, "{job}");
+            assert_eq!(f4[0].min_confidence, Some(0.8), "{job}");
         }
     }
 
