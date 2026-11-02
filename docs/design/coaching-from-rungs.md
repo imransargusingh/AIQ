@@ -2,7 +2,7 @@
 id: design-coaching-from-rungs
 title: "Design: coaching from rung results (next step per task type, next-rung tips, Home numbers, habits)"
 type: design
-status: draft
+status: implemented
 owner: "Imran"
 phase: "3b+5"
 tags: [design, coaching, rung-model, habits, aiq-home, copilot-cli, vscode, claude-code, feedback]
@@ -440,10 +440,45 @@ pages in CI as in Phase 3.
 - **SRE:** guess latency, precision and auto-off are measured and visible. Pass.
 - **Condition:** PR #24 merged first. (Q-A answered by Imran 2026-11-02.)
 
+## Implementation record (2026-11-02, `/implement`, branch `claude/project-thread-vlly20`)
+
+Built cloud-only on main after PR #24. Every design surface (E7 list above) is reached: judge answer v2,
+store v6, `aiq_domain::coach`, the core next-rung trigger, Copilot CLI status line, VS Code buttons,
+Claude Code card, CLI commands, AIQ home snapshot and screens.
+
+### Which numbers are measured and which are guessed
+
+| Number | Value | Measured or guessed | Source |
+|---|---|---|---|
+| Warm next-rung decision (5,003 judgments, release build, cloud Linux) | 2 ms | **Measured** | `crates/aiq-core/tests/next_rung.rs` perf test |
+| Hourly cache rebuild, same store | 143–161 ms; p95 of decisions incl. rebuild 182 ms | **Measured** | same test; over the 50 ms upgrade trigger, under the 2 s budget |
+| F4 (goal, context, limits) read right | 10 of 15 | **Measured** (PR #27 fact check) | so the `brief` move needs confidence 0.8 (`min_confidence`) |
+| F5 (re-prompts added information) read right | 15 of 15 | **Measured** (PR #27) | `new_info` coached as designed |
+| F6 (output checked) unobservable | 9 of 15 | **Measured** (PR #27) | unknown F6 gives no move (design rule, unchanged) |
+| Judge task-type agreement with a person | not yet | **Not measured** | the eval cache predates `task_type`; next: rerun the 20-task eval with `claude -p` |
+| `coach.match_threshold` 0.45, `match_agree` 2 of 3 | | **Guessed** | to be set from the person's own self-check (`aiq status` shows it) |
+| `guess_check_min` 10, `guess_precision` 0.8 | | **Guessed** (mirrors the coaching bar) | |
+| `move_cooldown_h` 72, `snooze_days` 7, `not_helpful_days` 30 | | **Guessed** | |
+| `recurring_min` 3, `type_majority` > 0.5 | | From coaching-loop D5 / this design D3 | |
+| `split_min` 10, `week_min` 3, `habit_days` 14, `habit_min` 3 | | From the specs (aiq-home US-H2, coaching-loop D5) | |
+| `TASK_TYPE_THRESHOLD` 0.7 | | **Guessed** (same as the job threshold) | |
+| Kept rule | Delegated or higher, no correcting re-prompt | Imran's decision (Q-A) | shown under the number on Home |
+
+Every threshold is a named constant in `crates/aiq-core/packs/bundled.toml` `[coach]` (comments mark
+spec values and guesses) or in `aiq_domain::rung` / `aiq_domain::coach`.
+
+### Deviations and additions
+
+- A habit's last move records whether it was a lapse (Adopted back to Tried), so Habits can say
+  "Back to Tried" instead of "You tried a habit". Derived, not stored.
+- The Tauri shell's two new commands (`guidance_flag`, `tip_on`) compile only on the Windows CI runner;
+  the cloud container lacks the GTK libraries.
+- Home week columns show a finished share only for weeks with at least `week_min` judged tasks.
+
 ## Status and next action
 
 | | |
 |---|---|
-| **Completed** | Design for Phase 3b + the coaching half of Phase 5: task types, moves, next-rung tips, Home split and rows, habits, feedback |
-| **Remaining** | PR #24 merge; `/implement` of this design; F2 and F9 readers (later slices) |
-| **Best next action** | `/implement` after PR #24 merges, starting with `aiq_domain::coach` and the v2 judge field, then the core trigger on Copilot CLI |
+| **Completed** | Design (PR #25) and its implementation: task types, moves, next-rung tips on Copilot CLI, VS Code and Claude Code, feedback and flags, self-check, Home split and rows, kind page, habits, settings |
+| **Remaining** | Measure task-type agreement (eval rerun); laptop reinstall and a real-data look; F2 and F9 readers (later slices) |
+| **Best next action** | Merge after review, reinstall on the laptop, judge real history so kinds of task appear, then rerun the eval for task-type agreement |
