@@ -127,30 +127,25 @@ const EDIT_TOOLS: [&str; 10] = [
     "insert",
     "write_file",
 ];
-const CHECK_WORDS: [&str; 22] = [
-    "pytest",
-    "npm test",
-    "npm run test",
-    "cargo test",
-    "go test",
-    "jest",
-    "vitest",
-    "dotnet test",
-    "mvn test",
-    "gradle test",
-    "unittest",
-    "make test",
-    "cargo build",
-    "npm run build",
-    "dotnet build",
-    "tsc",
-    "eslint",
-    "ruff",
-    "mypy",
-    "clippy",
-    "pyright",
-    "playwright",
+/// Programs that are a check by themselves (after wrappers such as `npx` or `python -m`).
+const CHECK_PROGRAMS: [&str; 13] = [
+    "pytest", "jest", "vitest", "mocha", "tsc", "eslint", "ruff", "mypy", "pyright", "unittest", "tox", "rspec",
+    "phpunit",
 ];
+/// Build tools whose first subcommand decides whether the command is a check.
+const CHECK_SUBCOMMANDS: [(&str, &[&str]); 8] = [
+    ("cargo", &["test", "build", "check", "clippy", "nextest"]),
+    ("go", &["test", "vet", "build"]),
+    ("dotnet", &["test", "build"]),
+    ("mvn", &["test", "verify", "package"]),
+    ("gradle", &["test", "check", "build"]),
+    ("gradlew", &["test", "check", "build"]),
+    ("make", &["test", "check"]),
+    ("playwright", &["test"]),
+];
+/// Script names (`npm run <x>`) that are checks: the name or its first `:`-part.
+const CHECK_SCRIPTS: [&str; 8] = ["test", "lint", "build", "check", "typecheck", "e2e", "tsc", "verify"];
+const WRAPPERS: [&str; 6] = ["npx", "pnpx", "bunx", "uvx", "time", "sudo"];
 const PERSON_RAN: [&str; 6] =
     ["i ran ", "i ran the", "ran the tests myself", "ran them locally", "ran it locally", "i'll run"];
 const SPEC_MARKS: [&str; 7] = ["/spec", "spec.md", "/specs/", "/adr/", "/design/", "brief", "requirements.md"];
@@ -160,9 +155,97 @@ fn is_edit_tool(name: &str) -> bool {
     EDIT_TOOLS.contains(&n.as_str())
 }
 
+/// Did this shell command run a test, build, lint or type check? Read as a command line, not as text:
+/// quoted strings are dropped and only the program in command position counts, so `python -c "import
+/// playwright"` or `grep -r pytest src` is not a check (fact-check rerun, 2026-11-02: substring matching
+/// gave 2 false "agent ran checks" in 15 real Copilot tasks and missed `npm --prefix web run test:e2e`).
 fn is_check(cmd: &str) -> bool {
-    let c = cmd.to_ascii_lowercase();
-    CHECK_WORDS.iter().any(|w| c.contains(w))
+    let c = strip_quoted(&cmd.to_ascii_lowercase());
+    c.split(['\n', ';', '|', '&']).any(|part| {
+        let toks: Vec<&str> = part.split_whitespace().collect();
+        segment_is_check(&toks)
+    })
+}
+
+fn strip_quoted(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut quote: Option<char> = None;
+    for ch in s.chars() {
+        match quote {
+            Some(q) if ch == q => quote = None,
+            Some(_) => {}
+            None if ch == '"' || ch == '\'' => quote = Some(ch),
+            None => out.push(ch),
+        }
+    }
+    out
+}
+
+fn program(tok: &str) -> &str {
+    let base = tok.rsplit(['/', '\\']).next().unwrap_or(tok);
+    base.trim_end_matches(".exe").trim_end_matches(".cmd").trim_end_matches(".bat")
+}
+
+fn segment_is_check(toks: &[&str]) -> bool {
+    let mut i = 0;
+    // Skip env assignments (`CI=1`) and wrappers (`npx`, `python -m`, `uv run`, `poetry run`).
+    while i < toks.len() {
+        let p = program(toks[i]);
+        if toks[i].contains('=') && !toks[i].starts_with('-') || WRAPPERS.contains(&p) {
+            i += 1;
+        } else if (matches!(p, "python" | "python3" | "py") && toks.get(i + 1) == Some(&"-m"))
+            || (matches!(p, "uv" | "poetry" | "pipenv" | "hatch") && toks.get(i + 1) == Some(&"run"))
+        {
+            i += 2;
+        } else {
+            break;
+        }
+    }
+    let Some(first) = toks.get(i) else { return false };
+    let p = program(first);
+    if CHECK_PROGRAMS.contains(&p) {
+        return true;
+    }
+    // The first non-flag argument; flags that take a value (`--prefix <dir>`, `-C <dir>`) skip it too.
+    let args: Vec<&str> = {
+        let mut v = Vec::new();
+        let mut j = i + 1;
+        while j < toks.len() {
+            let t = toks[j];
+            if matches!(
+                t,
+                "--prefix" | "-c" | "--dir" | "--cwd" | "--manifest-path" | "-p" | "--package" | "-f" | "--filter"
+            ) {
+                j += 2;
+                continue;
+            }
+            if !t.starts_with('-') {
+                v.push(t);
+            }
+            j += 1;
+        }
+        v
+    };
+    if let Some((_, subs)) = CHECK_SUBCOMMANDS.iter().find(|(name, _)| *name == p) {
+        return args.first().is_some_and(|a| subs.contains(a));
+    }
+    if matches!(p, "npm" | "pnpm" | "yarn" | "bun") {
+        let script = |s: &str| CHECK_SCRIPTS.contains(&s.split(':').next().unwrap_or(s));
+        return match args.first() {
+            Some(&"test") | Some(&"t") => true,
+            Some(&"run") | Some(&"run-script") => args.get(1).is_some_and(|s| script(s)),
+            Some(s) if p != "npm" => script(s),
+            _ => false,
+        };
+    }
+    false
+}
+
+/// A file in the agent tool's own scratch space (Copilot keeps `session-state/<id>/files`): writing there is
+/// working notes, not an edit to the person's work (fact-check rerun: 2 false "agent edited" in 15).
+fn is_scratch(path: &str) -> bool {
+    let p = path.to_ascii_lowercase().replace('\\', "/");
+    p.contains("session-state/") && p.contains("/files/")
 }
 
 fn names_spec(s: &str) -> bool {
@@ -197,7 +280,14 @@ pub fn log_facts(turns: &[Turn], actions_known: bool) -> LogFacts {
         };
     }
     let acts: Vec<&ActionSummary> = turns.iter().filter_map(|t| t.actions.as_ref()).collect();
-    let edits: u32 = acts.iter().flat_map(|a| a.tools.iter()).filter(|(k, _)| is_edit_tool(k)).map(|(_, n)| *n).sum();
+    // A turn whose every touched file is the tool's scratch space made no edit to the person's work.
+    let edits: u32 = acts
+        .iter()
+        .filter(|a| a.files.is_empty() || !a.files.iter().all(|f| is_scratch(f)))
+        .flat_map(|a| a.tools.iter())
+        .filter(|(k, _)| is_edit_tool(k))
+        .map(|(_, n)| *n)
+        .sum();
     let subagents: u32 = acts.iter().map(|a| a.subagents).sum();
     let agent_checked = acts.iter().any(|a| a.commands.iter().any(|c| is_check(c)));
     let checks_by = if agent_checked {
@@ -1190,6 +1280,47 @@ mod tests {
         let e = envelope("copilot-cli", &small, &log_facts(&small, true), "F");
         assert!(e.contains("agent tools: Edit×1") && e.contains("ran: cargo test"));
         assert!(e.contains("checks (tests, build, lint) run by: agent"));
+    }
+
+    #[test]
+    fn checks_are_read_as_command_lines_not_substrings() {
+        for yes in [
+            "cargo test",
+            "cargo clippy --all-targets",
+            "cd web && npm test",
+            "npm --prefix web run test:e2e",
+            "pnpm lint",
+            "npx playwright test",
+            "python -m pytest -q",
+            "CI=1 npx vitest run",
+            "go vet ./...",
+            "dotnet build App.sln",
+            "C:\\tools\\pytest.exe tests",
+        ] {
+            assert!(is_check(yes), "{yes}");
+        }
+        for no in [
+            "python -c \"from playwright.sync_api import sync_playwright\"",
+            "grep -rn pytest src",
+            "ls tests/pytest_*",
+            "npm install",
+            "cargo run -- export",
+            "echo 'run cargo test later'",
+            "git commit -m \"fix tests\"",
+        ] {
+            assert!(!is_check(no), "{no}");
+        }
+    }
+
+    #[test]
+    fn writes_to_the_tools_scratch_space_are_not_edits() {
+        let scratch = turns(
+            &["look into it"],
+            acts(&[("create", 2)], &[], &["C:\\Users\\x\\.copilot\\session-state\\abc\\files\\a.py"], 0),
+        );
+        assert_eq!(log_facts(&scratch, true).agent_edited, Some(false));
+        let real = turns(&["fix it"], acts(&[("edit", 1)], &[], &["src/a.rs"], 0));
+        assert_eq!(log_facts(&real, true).agent_edited, Some(true));
     }
 
     #[test]

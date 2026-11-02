@@ -330,6 +330,94 @@ for per-fact rates. The grader marking F6 settled every time is suspect, because
 what the person did outside the session. Next: re-run with more sessions (e.g. 15) to firm up F5,
 F6 and F13, and check whether the fact reader's F5 and F13 definitions need tightening.
 
+### Fact check rerun: 15 Copilot CLI sessions (2026-11-02)
+
+Goal: firm up the three weak facts from the first run (F5, F6, F13) with more tasks, mostly Copilot
+CLI, because target users mostly use Copilot. Verdicts per fact and task, with reasons and no prompt
+text, are in `prototypes/phase0-spike/results/fact-check-2026-11-02.json`.
+
+**Method.** Same as the first run, with three differences, all forced by the rules for this run
+(read-only on the laptop, start no programs there):
+
+- **Sessions.** 15 hand-typed Copilot CLI sessions from the last 60 days, copied read-only. Not a
+  random sample: picked from the 101 sessions outside set-aside folders (the automated-session folder
+  rule, AIQ's judge and temp folders, the judge-session list), favouring sessions with follow-up
+  prompts and leaving out logs over about 25 MB. One repeated session was dropped. Every one of the 15
+  is real work; none is an AIQ test prompt. **No Claude Code sessions**: `~/.claude` is a protected
+  folder for folder access, so it can't be read from a cloud session.
+- **Fact reader.** Haiku 5.5, given the spike's own fact prompt and minimised excerpt, run in the
+  cloud session. Not the person's `copilot -p` as in the product.
+- **Grader.** Opus 5.5, given a fuller transcript (up to 40,000 characters instead of 18,000), with
+  the grader rules from `fact_check.py`. Two extra verdicts are counted apart from right and wrong:
+  *can't settle* (the transcript can't show it) and *ambiguous* (the answer depends on how the fact is
+  defined).
+- **Facts.** All 10 facts on every task (150), not 5 per task. Log facts F1 and F3 were scored twice:
+  with the spike's readers and with the rung judge's rules in PR #24 (`aiq_domain::rung`).
+
+**Results** (all counts measured on these 15 tasks; "right" is the grader's verdict, not a person's):
+
+| Fact | Right | Wrong | Can't settle | Ambiguous | Precision (settled) | First run |
+|---|---|---|---|---|---|---|
+| job | 15 | 0 | | | 100% | 3/3 |
+| F4 goal, context and constraints | 10 | 5 | | | 67% | 3/3 |
+| F5 re-prompts added information | 15 | 0 | | | 100% | 1/3 |
+| F6 output checked before use | 3 | 3 | 9 | | 50% | 2/3 |
+| F7 written brief given | 15 | 0 | | | 100% | 3/3 |
+| F12 step by step | 15 | 0 | | | 100% | 3/3 |
+| F13 whole outcome handed over | 11 | 1 | | 3 | 92% | 2/3 |
+| Model facts, all | 84 | 9 | 9 | 3 | 90% | |
+| F1 agent edits: spike / PR #24 rules | 10 / 13 | 5 / 2 | | | 67% / 87% | 3/3 |
+| F3 who ran checks: spike / PR #24 rules | 13 / 13 | 2 / 2 | | | 87% / 87% | 3/3 |
+| F8 sub-agents | 15 | 0 | | | 100% | 3/3 |
+| All, PR #24 log rules | 125 | 13 | 9 | 3 | 91% | 26/30 |
+
+Job mix (measured): 11 *Other work* (research, questions, analysis), 2 *Code a change*, 2 *Write a
+spec or doc*. 13 of 15 tasks have follow-up prompts. 5 of 15 sessions hold more than one task;
+facts were judged per session, as in the first run.
+
+**What this says about the three weak facts.**
+
+- **F5 is fine now: 15/15.** The first run's 1/3 doesn't recur. Caveat: most follow-ups here are new
+  questions, which the reader counts as "added information"; only 3 sessions have true retries
+  ("try again", a repeated prompt), and the reader got all 3 right.
+- **F6 can't be read from Copilot CLI transcripts for most tasks: 9 of 15 can't be settled.** On the
+  6 that can, the reader is right on 3. Its misses go both ways: it credits checking where the person
+  only reran the work, and misses it where the person tried the advice and pushed back. F6 is only
+  readable when the agent runs checks or a follow-up shows the person tested or challenged the result.
+- **F13 is close: 11 right, 1 wrong, 3 ambiguous.** The 3 ambiguous tasks list what to deliver but give
+  no checks. Whether that counts as "done criteria" is a definition question, not a reading error.
+- **New weak fact: F4 at 67%.** All 5 misses credit "constraints" to requests that state a goal and
+  context but no limits, or score the first prompt on detail that came later.
+
+**Log-fact rules (PR #24).** The spike's readers miss Copilot's `apply_patch` edits and `dotnet test` /
+Playwright runs; the PR #24 rules fix both. Two new faults in the PR #24 rules:
+
+- **F1 counts scratch scripts.** The agent's throwaway analysis scripts in the Copilot session folder
+  count as edits (2 of 15). A simple "documents only" rule for that folder would fail too: one
+  agent wrote its deliverable Word document through a script.
+- **F3 matches check words anywhere in a command.** It matches "playwright" inside a string and
+  "pytest" in a folder pattern (2 of 15). It would also miss `npm --prefix <dir> run test:e2e`.
+
+**Against the bar.** The spec needs each model fact right on at least 90% of check tasks. F4 (67%)
+and F6 (50% of settled, 60% unsettled) fail. F13 passes only if the ambiguous tasks go its way.
+Job, F5, F7 and F12 pass. Confidence: **Inferred.** The grader is a model, not the person. The sample
+is 15 hand-picked tasks from one person, mostly research. The reader ran outside the person's own
+Copilot.
+
+**Recommended changes** (for the judge thread and the job packs):
+
+1. **F6:** treat it as unknown unless the log shows a check or a follow-up shows the person tested or
+   challenged the result. Don't let an unknown F6 cap research tasks at Assisted: today the Directed
+   guardrail needs F6 yes, and a low-confidence fact counts as not met.
+2. **F4:** define "constraints" in the reader prompt with yes and no examples, and score the first
+   prompt only.
+3. **F13:** decide whether a list of deliverables with no checks counts as done criteria, and add that
+   example to the reader prompt.
+4. **PR #24 log rules:** separate scratch work from deliverables for F1. Match check commands by
+   command words, not substrings, for F3.
+5. **Packs:** most of this person's Copilot work is *Other work*, which the two alpha packs don't
+   cover. Worth weighing before coaching ships.
+
 ## What would change this verdict
 
 - **Real sessions, checked by facts (the main gate).** Follow the rung-model spec's Q6, not a large
