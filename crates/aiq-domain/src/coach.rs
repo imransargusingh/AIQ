@@ -48,7 +48,7 @@ pub struct JudgedTask {
     pub live: bool,
     pub tool: String,
     pub first_ms: i64,
-    /// code_change, write_doc, ask_research or unclassified.
+    /// code_change, write_doc, ask_research, run_ship or unclassified.
     pub job: String,
     /// None when judged before task types existed (j1) or the job is unclassified.
     pub task_type: Option<String>,

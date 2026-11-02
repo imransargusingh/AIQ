@@ -45,12 +45,12 @@ pub struct Response {
     pub blockers: Vec<String>,
 }
 
-pub const JOBS: [&str; 4] = ["code_change", "write_doc", "ask_research", "other"];
+pub const JOBS: [&str; 5] = ["code_change", "write_doc", "ask_research", "run_ship", "other"];
 
 /// The fixed task types per pack job (design coaching-from-rungs, "Pack data"): (job, id, label). The judge
 /// answers one id; `other` within a job when unsure. Part of the answer contract, so the strict parse can
 /// reject anything else.
-pub const TASK_TYPES: [(&str, &str, &str); 26] = [
+pub const TASK_TYPES: [(&str, &str, &str); 31] = [
     ("code_change", "fix_bug", "Fixing a bug or failing test"),
     ("code_change", "feature", "Adding a feature"),
     ("code_change", "tests", "Writing tests"),
@@ -78,6 +78,12 @@ pub const TASK_TYPES: [(&str, &str, &str); 26] = [
     ("ask_research", "research", "Researching a topic"),
     ("ask_research", "analyse", "Analysing data"),
     ("ask_research", "other", "Other questions"),
+    // Run or ship it (Imran 2026-11-02, card: most tasks no pack covered were restart, release or set-up work).
+    ("run_ship", "restart_fix", "Getting something running again"),
+    ("run_ship", "release", "Releasing or publishing"),
+    ("run_ship", "run_job", "Running a script or pipeline"),
+    ("run_ship", "setup", "Setting up or connecting a tool"),
+    ("run_ship", "other", "Other running or shipping"),
 ];
 
 /// Every task-type id the answer may carry (the union over jobs, `other` once).
@@ -334,6 +340,19 @@ mod tests {
         assert_eq!(task_type_label("write_doc", "spec"), Some("Writing a spec or PRD"));
         assert_eq!(task_type_label("write_doc", "tests"), None, "type must belong to the job");
         assert_eq!(task_type_ids().iter().filter(|i| **i == "other").count(), 1);
+    }
+
+    #[test]
+    fn run_or_ship_is_a_job_with_its_own_task_types() {
+        assert!(JOBS.contains(&"run_ship"));
+        let mut v = good();
+        v["job"] = serde_json::json!("run_ship");
+        v["task_type"] = serde_json::json!("release");
+        assert!(parse_response(v).is_ok());
+        for t in ["restart_fix", "release", "run_job", "setup", "other"] {
+            assert!(task_type_label("run_ship", t).is_some(), "{t}");
+        }
+        assert_eq!(task_type_label("run_ship", "fix_bug"), None);
     }
 
     #[test]

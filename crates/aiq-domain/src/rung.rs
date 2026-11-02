@@ -9,11 +9,12 @@ use aiq_contracts::judge::{ActionSummary, Fact, Response};
 pub const FACT_SET_VERSION: &str = "fs1";
 pub const RUBRIC_VERSION: &str = "r1";
 /// j2: the answer names a task type (design coaching-from-rungs D1); j1 judgments are re-judged lazily.
-/// j3 added the Ask or research pack; j4 records each run's job pick (design no-job-tasks).
-pub const JUDGE_VERSION: &str = "j4";
-/// Judgments of these versions stay current unless their job was unclassified: j3 and j4 change nothing
+/// j3 added the Ask or research pack; j4 records each run's job pick (design no-job-tasks); j5 added the Run
+/// or ship it pack (design run-or-ship-pack).
+pub const JUDGE_VERSION: &str = "j5";
+/// Judgments of these versions stay current unless their job was unclassified: j3 to j5 change nothing
 /// for a task that got a pack job, so only tasks with no job need judging again.
-pub const JUDGE_VERSIONS_KEPT: [&str; 2] = ["j2", "j3"];
+pub const JUDGE_VERSIONS_KEPT: [&str; 3] = ["j2", "j3", "j4"];
 /// A model fact below this confidence counts as unknown (D10: the spike's correct facts sat at 0.5–0.6).
 pub const FACT_THRESHOLD: f64 = 0.6;
 /// Job below this confidence is Unclassified (spike: 100% precision at 0.7).
@@ -34,15 +35,19 @@ pub fn rung_name(r: u8) -> &'static str {
 }
 
 /// The job packs that exist (coaching-loop D7). Anything else is Unclassified.
-pub const PACK_JOBS: [&str; 3] = ["code_change", "write_doc", "ask_research"];
+pub const PACK_JOBS: [&str; 4] = ["code_change", "write_doc", "ask_research", "run_ship"];
 /// The job whose result is an answer to the person, not a change to their files.
 pub const ANSWER_JOB: &str = "ask_research";
+/// Jobs where "the agent did it itself" means it read, searched, fetched or ran something (F14), not that it
+/// edited files (F1).
+pub const RAN_ITSELF_JOBS: [&str; 2] = ["ask_research", "run_ship"];
 
 pub fn job_label(job: &str) -> &'static str {
     match job {
         "code_change" => "Code a change",
         "write_doc" => "Write a spec or doc",
         "ask_research" => "Ask or research",
+        "run_ship" => "Run or ship it",
         _ => "Unclassified",
     }
 }
@@ -339,6 +344,7 @@ JOB (what the task is for, never the person's title):
 - code_change: change, fix, refactor, test or migrate code or config. Incidental doc edits inside a code change stay code_change.
 - write_doc: produce or edit a spec, design note, ADR, README, runbook, release notes or other durable document.
 - ask_research: the result is an answer for the person, not a change to their files: how-to questions, understanding code or concepts, finding the cause of a problem, comparing options, finding information, researching a topic, analysing data.
+- run_ship: the result is a system in a new state, not changed files and not an answer: start, restart or get a broken app running; package, release, publish or deploy; run a script, pipeline or data refresh; install, connect or configure a tool or environment. If the goal is edited code or config, it is code_change even if it is then run; if the goal is that something runs, ships or connects, it is run_ship even if a file changes on the way.
 - other: anything else, such as chat with no work goal.
 job_confidence: your probability (0-1) that the job is right.
 
@@ -346,6 +352,7 @@ TASK TYPE (the kind of task within its job; use other when none fits or you are 
 - code_change: fix_bug (fixing a bug or failing test), feature (adding a feature), tests (writing tests), refactor (refactoring or cleaning up), build_fix (fixing lint and build errors), deps (upgrading dependencies), review (reviewing code or a pull request), explain (explaining or exploring code), scaffold (setting up or scaffolding), other.
 - write_doc: spec (a spec or PRD), design_note (a design note), status (a status update), criteria (acceptance criteria), research (summarising research), howto (a README or how-to), notes (turning notes into a summary), other.
 - ask_research: how_to (asking how to do something), explain (understanding how something works), troubleshoot (finding the cause of a problem), compare (comparing options), find (finding facts in files or data), research (researching a topic), analyse (analysing data), other.
+- run_ship: restart_fix (getting a stopped or broken thing running), release (packaging, publishing or deploying), run_job (running a script, pipeline or data refresh), setup (installing, connecting or configuring a tool), other.
 - job other: answer other.
 task_type_confidence: your probability (0-1) that the task type is right.
 
@@ -361,8 +368,8 @@ fit: this kind of task is well specified, checkable and repeatable enough that a
 RUNGS (place the task at the highest rung whose description is clearly met; when evidence is mixed, pick the lower rung and say why):
 1 Assisted: short ad hoc prompts or pasted snippets; the person does the work and AI fills in pieces.
 2 Directed: a structured request with goal, context and constraints; output checked before use. Not 2 if re-prompting adds nothing, or output is used unchecked.
-3 Delegated: a whole task handed to an agent with done criteria; the person reviews the result rather than doing the steps. Not 3 if the person makes most edits or drives each step. For ask_research: the whole question handed over with what a good answer needs, and the agent looked things up itself.
-4 Orchestrated: several agents or steps coordinated with a written spec and automated checks between steps. Not 4 with manual handoffs or no automated verification. For ask_research: a written brief and the question split across sub-agents.
+3 Delegated: a whole task handed to an agent with done criteria; the person reviews the result rather than doing the steps. Not 3 if the person makes most edits or drives each step. For ask_research: the whole question handed over with what a good answer needs, and the agent looked things up itself. For run_ship: the whole release or run handed over with a done check, and the agent ran the commands itself.
+4 Orchestrated: several agents or steps coordinated with a written spec and automated checks between steps. Not 4 with manual handoffs or no automated verification. For ask_research: a written brief and the question split across sub-agents. For run_ship: a written runbook with an automated check between steps.
 5 Factory: a reusable, versioned workflow that runs again with little change and others can trigger. Not 5 for one-off setups only this person runs.
 Judge outcomes and verification, not activity volume or prompt length.
 
@@ -593,6 +600,8 @@ pub struct Facts {
     pub fit: Merged,
     /// The task's job is Ask or research: its guardrails read F14 and F15 instead of F1, F8 and F3.
     pub answer: bool,
+    /// The task's job is Ask or research or Run or ship it: Delegated reads F14 instead of F1.
+    pub ran_itself: bool,
     /// F2 is unknown in slice 1 (no post-turn diff): `None`.
     pub f2_person_share: Option<u8>,
     pub reprompts: u32,
@@ -628,6 +637,7 @@ pub fn merge_facts(runs: &[Response], log: &LogFacts) -> Facts {
         f15: Merged::log("F15", log.subagents.map(|n| n > 0)),
         fit: m("fit", |r| r.fit),
         answer: false,
+        ran_itself: false,
         f2_person_share: None,
         reprompts: log.reprompts,
     }
@@ -647,7 +657,7 @@ pub fn delegated(f: &Facts) -> Gate {
     if f.f2_person_share.is_some_and(|s| s >= 50) {
         return Gate::Fails("F2");
     }
-    let did = if f.answer { &f.f14 } else { &f.f1 };
+    let did = if f.ran_itself { &f.f14 } else { &f.f1 };
     need(did).or_else(|| need(&f.f13)).or_else(|| need(&f.f6)).unwrap_or(Gate::Holds)
 }
 
@@ -704,7 +714,7 @@ pub fn missing(f: &Facts, rung: u8) -> Vec<Gate> {
             if f.f2_person_share.is_some_and(|s| s >= 50) {
                 push(Some(Gate::Fails("F2")));
             }
-            push(need(if f.answer { &f.f14 } else { &f.f1 }));
+            push(need(if f.ran_itself { &f.f14 } else { &f.f1 }));
             push(need(&f.f13));
             push(need(&f.f6));
         }
@@ -765,6 +775,7 @@ pub fn facts_from_json(json: &str, reprompts: u32, job: &str) -> Facts {
         f15: m("F15"),
         fit: m("fit"),
         answer: job == ANSWER_JOB,
+        ran_itself: RAN_ITSELF_JOBS.contains(&job),
         f2_person_share: None,
         reprompts,
     }
@@ -1017,6 +1028,7 @@ pub fn place(runs: &[Response], log: &LogFacts, same_job_recent: u32) -> (Facts,
         "unclassified".to_owned()
     };
     facts.answer = job == ANSWER_JOB;
+    facts.ran_itself = RAN_ITSELF_JOBS.contains(&job.as_str());
 
     // Task type (design coaching-from-rungs D1): runs agree, confident, and on the job's list; else `other`.
     let type0 = &runs[0].task_type;
@@ -1282,6 +1294,45 @@ mod tests {
         let stored = r#"{"F14":{"value":false,"confidence":1.0,"source":"log"},"F13":{"value":true,"confidence":0.9},"F6":{"value":true,"confidence":0.9},"F12":{"value":false,"confidence":0.9}}"#;
         assert_eq!(missing(&facts_from_json(stored, 0, "ask_research"), 3), vec![Gate::Fails("F14")]);
         assert_eq!(missing(&facts_from_json(stored, 0, "code_change"), 3), vec![Gate::Unknown("F1")]);
+    }
+
+    fn ship(rung: u8) -> Response {
+        Response { job: "run_ship".into(), task_type: "release".into(), ..run(rung) }
+    }
+
+    #[test]
+    fn a_release_is_delegated_when_the_agent_ran_it_and_orchestrated_by_checks_between_steps() {
+        assert!(PACK_JOBS.contains(&"run_ship"));
+        assert_eq!(job_label("run_ship"), "Run or ship it");
+        // The agent ran the commands itself, and edited nothing: Delegated (F14 stands in for F1).
+        let ran = log_facts(&turns(&["publish the release"], acts(&[("Bash", 4)], &["npm publish"], &[], 0)), true);
+        assert_eq!((ran.looked_up, ran.agent_edited), (Some(true), Some(false)));
+        let (f, p) = place(&[ship(3), ship(3)], &ran, 0);
+        assert_eq!((p.job.as_str(), p.task_type.as_deref(), p.current), ("run_ship", Some("release"), 3));
+        assert!(f.ran_itself && !f.answer && !p.uncertain);
+        // The agent ran nothing: not Delegated.
+        let bare = log_facts(&turns(&["publish the release"], acts(&[], &[], &[], 0)), true);
+        let (_, p) = place(&[ship(3), ship(3)], &bare, 0);
+        assert_eq!(p.current, 2);
+        // Rung 4 needs checks between steps (F8), as a code change does, not sub-agents alone (F15).
+        let mut r = ship(4);
+        r.f7_written_brief = yes(0.9);
+        let split =
+            log_facts(&turns(&["release it"], acts(&[("Task", 2), ("Bash", 4)], &["make release"], &[], 2)), true);
+        let (f, p) = place(&[r.clone(), r], &split, 0);
+        assert_eq!(p.current, 3);
+        assert!(missing(&f, 4).contains(&Gate::Fails("F8")), "{:?}", missing(&f, 4));
+        // Coaching reads the stored facts with the task's job.
+        let stored = r#"{"F14":{"value":false,"confidence":1.0,"source":"log"},"F13":{"value":true,"confidence":0.9},"F6":{"value":true,"confidence":0.9},"F12":{"value":false,"confidence":0.9}}"#;
+        assert_eq!(missing(&facts_from_json(stored, 0, "run_ship"), 3), vec![Gate::Fails("F14")]);
+    }
+
+    #[test]
+    fn the_judge_names_the_run_or_ship_job_and_rejudges_every_older_no_job_task() {
+        assert_eq!(JUDGE_VERSION, "j5");
+        assert!(JUDGE_VERSIONS_KEPT.contains(&"j4"), "a task with a pack job keeps its judgment");
+        assert!(SYSTEM.contains("- run_ship:"));
+        assert!(SYSTEM.contains("restart_fix") && SYSTEM.contains("run_job"));
     }
 
     #[test]

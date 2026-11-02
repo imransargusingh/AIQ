@@ -92,7 +92,7 @@ pub struct MoveDef {
     pub step: u8,
     /// Guardrail fact ids of rung `step + 1` this move answers (a confident "no" on any of them).
     pub facts: Vec<String>,
-    /// `any`, `code_change`, `write_doc` or `ask_research`.
+    /// `any`, `code_change`, `write_doc`, `ask_research` or `run_ship`.
     pub job: String,
     /// The Habits page name.
     pub habit: String,
@@ -220,7 +220,7 @@ impl PackV1 {
             if let Some(f) = m.facts.iter().find(|f| !MOVE_FACTS.contains(&f.as_str())) {
                 return Err(format!("move {}: unknown fact {f}", m.move_id));
             }
-            if !["any", "code_change", "write_doc", "ask_research"].contains(&m.job.as_str()) {
+            if !["any", "code_change", "write_doc", "ask_research", "run_ship"].contains(&m.job.as_str()) {
                 return Err(format!("move {}: job {}", m.move_id, m.job));
             }
             let text = [&m.noticed, &m.why, &m.try_this, &m.starter, &m.habit];

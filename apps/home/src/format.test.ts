@@ -13,6 +13,7 @@ describe("format", () => {
     expect(jobOf(t({}))).toBe("Not classified yet");
     expect(jobOf(t({ job: "write_doc" }))).toBe("Write a spec or doc");
     expect(jobName("ask_research")).toBe("Ask or research");
+    expect(jobName("run_ship")).toBe("Run or ship it");
     expect(stateLabel("uncertain")).toBe("Uncertain");
     expect(stateLabel("blocked")).toBe("Capped by a blocker");
     expect(stateLabel("judged")).toBe("");
