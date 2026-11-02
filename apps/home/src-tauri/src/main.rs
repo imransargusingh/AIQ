@@ -1,5 +1,5 @@
-//! AIQ home desktop shell (designs `docs/design/aiq-home-app.md`, `aiq-home-deferred-pages.md`). Seven
-//! commands, each a thin call:
+//! AIQ home desktop shell (designs `docs/design/aiq-home-app.md`, `aiq-home-deferred-pages.md`). Ten
+//! commands, each a thin call (the list is checked against build.rs and the capability file by a test):
 //! reads go to the `aiq-home` read model (read-only store), changes go through `aiq_core::control` to the
 //! core, the only writer. Each command's time and outcome is logged locally to `<data>/home.log`.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
@@ -195,6 +195,41 @@ async fn tip_on(tip_id: String) -> Result<Outcome, String> {
     .await
 }
 
+/// The `aiq` binary beside AIQ home (both live in `<data>/bin`), else `aiq` on PATH.
+fn aiq_exe() -> std::path::PathBuf {
+    let name = if cfg!(windows) { "aiq.exe" } else { "aiq" };
+    std::env::current_exe()
+        .ok()
+        .and_then(|e| e.parent().map(|d| d.join(name)))
+        .filter(|p| p.exists())
+        .unwrap_or_else(|| name.into())
+}
+
+/// Setup connects every tool it found (Imran, 2026-11-02): runs `aiq install --yes`, the same install the
+/// CLI runs (diff, backup, self-test), so AIQ home never writes another tool's settings itself.
+#[tauri::command]
+async fn connect_tools() -> Result<Outcome, String> {
+    blocking(|| {
+        let t = Instant::now();
+        let paths = Paths::from_env();
+        let mut c = std::process::Command::new(aiq_exe());
+        c.args(["install", "--yes"]).stdin(std::process::Stdio::null());
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            c.creation_flags(0x0800_0000); // CREATE_NO_WINDOW: no console flashes up
+        }
+        let r = match c.output() {
+            Ok(o) if o.status.success() => Ok(()),
+            Ok(o) => Err(String::from_utf8_lossy(&o.stderr).lines().last().unwrap_or("").to_string()),
+            Err(e) => Err(format!("Could not run aiq ({e}).")),
+        };
+        log(&paths, "connect_tools", t, if r.is_ok() { "ok" } else { "error" });
+        Outcome::from(r.map_err(|m| format!("AIQ couldn't connect your tools. {m} Run aiq install in a terminal to see why.")))
+    })
+    .await
+}
+
 /// First-run setup finished: AIQ home opens on Home from now on.
 #[tauri::command]
 async fn finish_setup() -> Result<Snapshot, String> {
@@ -220,7 +255,8 @@ fn main() {
             forget_item,
             finish_setup,
             guidance_flag,
-            tip_on
+            tip_on,
+            connect_tools
         ])
         .run(tauri::generate_context!())
         .expect("AIQ home could not start its window");
@@ -237,6 +273,23 @@ mod tests {
         assert!(allowed_setting("next_rung_tips"));
         assert!(!allowed_setting("paused"));
         assert!(!allowed_setting("anything"));
+    }
+
+    /// Every command the window can call is in generate_handler!, build.rs and the capability file, so a new
+    /// command can't be built but denied at run time (guidance_flag and tip_on were missing from both).
+    #[test]
+    fn handler_build_manifest_and_capability_list_the_same_commands() {
+        let src = include_str!("main.rs");
+        let start = src.find("generate_handler![").unwrap() + "generate_handler![".len();
+        let handler: Vec<&str> = src[start..].split(']').next().unwrap().split(',').map(str::trim).filter(|s| !s.is_empty()).collect();
+        let build = include_str!("../build.rs");
+        let cap: serde_json::Value = serde_json::from_str(include_str!("../capabilities/main.json")).unwrap();
+        let perms: Vec<String> = cap["permissions"].as_array().unwrap().iter().map(|p| p.as_str().unwrap().to_string()).collect();
+        for c in &handler {
+            assert!(build.contains(&format!("\"{c}\"")), "{c} missing from build.rs");
+            assert!(perms.contains(&format!("allow-{}", c.replace('_', "-"))), "{c} missing from capabilities/main.json");
+        }
+        assert_eq!(perms.len(), handler.len(), "capability file allows a command that doesn't exist");
     }
 
     #[test]

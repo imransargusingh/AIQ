@@ -38,7 +38,7 @@ async function test(name, fn) {
   }
 }
 
-async function open(fixture, { theme, hash = "", width = 1280, height = 800, forced = false, edit } = {}) {
+async function open(fixture, { theme, hash = "", width = 1280, height = 800, forced = false, edit, fail = [] } = {}) {
   const ctx = await browser.newContext({ viewport: { width, height }, forcedColors: forced ? "active" : "none" });
   const page = await ctx.newPage();
   const errors = [];
@@ -47,9 +47,9 @@ async function open(fixture, { theme, hash = "", width = 1280, height = 800, for
   const snapshot = JSON.parse(readFileSync(join(fixtures, `${fixture}.json`), "utf8"));
   const task = JSON.parse(readFileSync(join(fixtures, "task.json"), "utf8"));
   if (edit) edit(snapshot);
-  await page.addInitScript(([s, t]) => {
-    window.__AIQ_FIXTURE__ = { snapshot: s, task: t, calls: [] };
-  }, [snapshot, task]);
+  await page.addInitScript(([s, t, f]) => {
+    window.__AIQ_FIXTURE__ = { snapshot: s, task: t, calls: [], fail: f };
+  }, [snapshot, task, fail]);
   await page.goto(base + hash);
   if (theme) await page.evaluate((t) => (document.documentElement.dataset.theme = t), theme);
   await page.waitForSelector("main h1");
@@ -382,10 +382,14 @@ await test("setup: first run walks five steps with Back; Start only after I unde
   assert.equal(await h1(), "Tools AIQ will watch");
   assert.equal(await page.evaluate(() => document.activeElement?.tagName), "H1", "focus moves to the step's heading");
   assert.match(await page.locator(".steps li.done").innerText(), /Privacy\s*\(done\)/);
+  // First run connects the tool it found by itself, and says how to undo it.
+  await page.waitForFunction(() => document.querySelector("main")?.innerText.includes("GitHub Copilot · connected just now"));
   let t = await page.locator("main").innerText();
-  assert.match(t, /Claude Code · connected/);
-  assert.match(t, /GitHub Copilot · found, not connected yet/);
-  assert.ok(t.includes("aiq install copilot"));
+  assert.match(t, /Claude Code · connected\n/);
+  assert.ok(t.includes("To undo, run aiq uninstall copilot."));
+  assert.ok(!t.includes("aiq uninstall claude-code"), "only the tool connected just now shows the undo");
+  assert.equal(await page.getByRole("button", { name: /^Connect/ }).count(), 0);
+  await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Connected GitHub Copilot.");
   assert.deepEqual(await axe(page), []);
   await page.getByRole("button", { name: "Back" }).click();
   assert.equal(await h1(), "Your coach, on your computer only");
@@ -415,7 +419,7 @@ await test("setup: first run walks five steps with Back; Start only after I unde
   await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Setup done. AIQ is watching.");
   assert.equal(await page.locator("nav").count(), 1);
   const calls = await page.evaluate(() => window.__AIQ_FIXTURE__.calls.map((c) => c.cmd).filter((c) => c !== "snapshot"));
-  assert.deepEqual(calls, ["set_setting", "finish_setup"]);
+  assert.deepEqual(calls, ["connect_tools", "set_setting", "finish_setup"], "connected once, not again on Back");
   await page.context().close();
 });
 
@@ -441,6 +445,32 @@ await test("setup: core down keeps the default tips a day and says so; keys don'
   assert.ok((await page.locator("main").innerText()).includes("AIQ isn't running yet, so this stays at 5 for now."));
   assert.equal(await page.getByRole("button", { name: "5 (default)", exact: true }).isDisabled(), true);
   assert.deepEqual(await axe(page), []);
+  await page.context().close();
+});
+
+await test("setup: connecting fails, says why and offers Connect again", async () => {
+  const page = await open("first-run", { fail: ["connect_tools"] });
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.waitForSelector("[role=alert]");
+  const t = await page.locator("main").innerText();
+  assert.ok(t.includes("AIQ couldn't connect your tools."), t);
+  assert.match(t, /GitHub Copilot · found, not connected yet/);
+  assert.ok(t.includes("aiq install copilot"));
+  assert.equal(await page.getByRole("button", { name: "Connect GitHub Copilot" }).count(), 1);
+  assert.deepEqual(await axe(page), []);
+  await page.context().close();
+});
+
+await test("setup: run again never reconnects by itself; Connect does", async () => {
+  const page = await open("full", { hash: "#settings", edit: (s) => (s.setup.tools.find((x) => x.tool === "copilot").hooked = false) });
+  await page.getByRole("button", { name: "Run setup again" }).click();
+  await page.getByRole("button", { name: "Continue" }).click();
+  assert.match(await page.locator("main").innerText(), /GitHub Copilot · found, not connected yet/);
+  const calls = () => page.evaluate(() => window.__AIQ_FIXTURE__.calls.map((c) => c.cmd).filter((c) => c === "connect_tools"));
+  assert.deepEqual(await calls(), []);
+  await page.getByRole("button", { name: "Connect GitHub Copilot" }).click();
+  await page.waitForFunction(() => document.querySelector("main")?.innerText.includes("GitHub Copilot · connected just now"));
+  assert.deepEqual(await calls(), ["connect_tools"]);
   await page.context().close();
 });
 

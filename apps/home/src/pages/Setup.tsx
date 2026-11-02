@@ -1,7 +1,7 @@
 // First-run setup (spec US-H1; design aiq-home-deferred-pages E5–E7), laid out and worded as the signed-off
 // mockup's setup (docs/mockups/aiq-home.html): a step rail, one heading per step, Continue then Back.
 // Start is enabled only after "I understand" on the last step.
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import type { Snapshot, ToolFound } from "../types";
 import { Title, type Ctx } from "../ui";
@@ -19,6 +19,36 @@ export function Setup(ctx: Ctx & { rerun: boolean; finish: (s: Snapshot) => void
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const down = !snap.status.core;
+  // Tools AIQ connected in this setup, so their row can say how to undo it.
+  const [connected, setConnected] = useState<string[]>([]);
+  const [connecting, setConnecting] = useState(false);
+  const tried = useRef(false);
+  const waiting = snap.setup.tools.filter((t) => t.present && !t.hooked);
+
+  // Imran, 2026-11-02: setup connects the tools it finds by itself (first run only; "Run setup again"
+  // offers a Connect button instead, so a tool the person disconnected isn't silently reconnected).
+  const connect = async () => {
+    const names = waiting.map((t) => t.tool);
+    setConnecting(true);
+    try {
+      const r = await api.connectTools();
+      if (r.ok) {
+        setConnected((c) => [...c, ...names]);
+        setMsg(null);
+        announce(`Connected ${names.map((n) => TOOL[n].name).join(" and ")}.`);
+      } else setMsg(r.message);
+    } catch (e) {
+      setMsg(String((e as Error)?.message ?? e));
+    }
+    setConnecting(false);
+    refresh();
+  };
+  useEffect(() => {
+    if (step === 1 && !rerun && !tried.current && waiting.length > 0) {
+      tried.current = true;
+      void connect();
+    }
+  });
 
   const to = (n: number) => {
     setMsg(null);
@@ -106,15 +136,36 @@ export function Setup(ctx: Ctx & { rerun: boolean; finish: (s: Snapshot) => void
               {snap.setup.tools.map((t) => (
                 <div className="opt" key={t.tool}>
                   <span>
-                    <b>{TOOL[t.tool].name}</b> · {t.hooked ? "connected" : t.present ? "found, not connected yet" : "not found on this computer"}
+                    <b>{TOOL[t.tool].name}</b> ·{" "}
+                    {t.hooked
+                      ? connected.includes(t.tool)
+                        ? "connected just now"
+                        : "connected"
+                      : t.present
+                        ? connecting
+                          ? "connecting…"
+                          : "found, not connected yet"
+                        : "not found on this computer"}
                     <br />
                     <span className="meta">
                       {t.hooked ? (
-                        TOOL[t.tool].where
-                      ) : t.present ? (
                         <>
-                          To connect it, run <code>{t.install}</code> in a terminal. AIQ shows the change and backs up the file first.
+                          {TOOL[t.tool].where}
+                          {connected.includes(t.tool) && (
+                            <>
+                              {" "}
+                              AIQ backed up the file it changed. To undo, run <code>aiq uninstall {t.tool}</code>.
+                            </>
+                          )}
                         </>
+                      ) : t.present ? (
+                        connecting ? (
+                          "Adding AIQ's hooks. AIQ backs up the file first."
+                        ) : (
+                          <>
+                            AIQ adds its hooks and backs up the file first. Or run <code>{t.install}</code> in a terminal to see the change.
+                          </>
+                        )
                       ) : (
                         "Install it, then run setup again from Settings."
                       )}
@@ -123,7 +174,19 @@ export function Setup(ctx: Ctx & { rerun: boolean; finish: (s: Snapshot) => void
                 </div>
               ))}
             </div>
-            {snap.setup.tools.every((t) => !t.hooked) && (
+            {waiting.length > 0 && !connecting && (
+              <div className="row">
+                <button className="btn" onClick={connect}>
+                  Connect {waiting.length > 1 ? "them" : TOOL[waiting[0].tool].name}
+                </button>
+              </div>
+            )}
+            {msg && (
+              <p className="errtext" role="alert">
+                {msg}
+              </p>
+            )}
+            {snap.setup.tools.every((t) => !t.hooked) && !connecting && (
               <p className="mute">AIQ isn't connected to a tool yet. You can finish setup now and connect one later.</p>
             )}
             {nav()}
