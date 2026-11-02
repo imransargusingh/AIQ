@@ -139,6 +139,6 @@ export const api = {
   tipOn: (tipId: string) => invoke<Outcome>("tip_on", { tipId }),
   /** Settings' per-tip switch: turn a tip off before it shows (same as "Don't show this again"). */
   tipOff: (tipId: string) => invoke<Outcome>("tip_off", { tipId }),
-  /** Install the waiting update, or go back to the previous version; AIQ home closes and reopens. */
-  runUpdate: (action: "install" | "rollback") => invoke<Outcome>("run_update", { action }),
+  /** Install the waiting update or go back (AIQ home closes and reopens), or check now (it stays open). */
+  runUpdate: (action: "install" | "rollback" | "check") => invoke<Outcome>("run_update", { action }),
 };

@@ -300,16 +300,21 @@ async fn run_update(app: tauri::AppHandle, action: String) -> Result<Outcome, St
     blocking(move || {
         let t = Instant::now();
         let paths = Paths::from_env();
+        // "check": look for a newer release and download it without installing (the person asked, so it runs
+        // even with updates off); AIQ home stays open and shows "ready to install" once the script is done.
+        let check = action == "check";
         let r = match action.as_str() {
             "install" => Ok(Action::Apply),
             "rollback" => Ok(Action::Rollback),
+            "check" => Ok(Action::Check { apply: false }),
             _ => Err(format!("AIQ home can't run update action {action}.")),
         }
         .and_then(|a| {
-            update::start(&paths, a, Some(std::process::id()), true).map_err(|e| format!("Could not start: {e}."))
+            let (wait, relaunch) = if check { (None, false) } else { (Some(std::process::id()), true) };
+            update::start(&paths, a, wait, relaunch).map_err(|e| format!("Could not start: {e}."))
         });
         log(&paths, "run_update", t, &format!("action={action} {}", if r.is_ok() { "ok" } else { "refused" }));
-        if r.is_ok() {
+        if r.is_ok() && !check {
             std::thread::spawn(move || {
                 std::thread::sleep(Duration::from_millis(400));
                 app.exit(0);
