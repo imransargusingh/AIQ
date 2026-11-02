@@ -175,6 +175,14 @@ pub fn status_line() -> String {
 }
 
 pub fn install(yes: bool) -> ExitCode {
+    install_with(yes, true)
+}
+
+/// `may_turn_on_experimental` false (connect-everything, which setup runs without showing the diff): when
+/// Copilot's `experimental` mode is not already on, connect the hooks only and leave `settings.json` alone.
+/// Turning it on switches on every experimental feature in every Copilot session, and VS Code reads the same
+/// file, so that stays a choice the person makes with `aiq install copilot` (2026-11-02, VS Code MCP report).
+pub fn install_with(yes: bool, may_turn_on_experimental: bool) -> ExitCode {
     let exe = match exe_path() {
         Ok(e) => e,
         Err(m) => {
@@ -195,12 +203,14 @@ pub fn install(yes: bool) -> ExitCode {
     };
     let before = v.clone();
     let windows = cfg!(windows);
-    let foreign_sl = add_statusline(&mut v, &statusline_command(&exe_s, &home, windows)).err();
-    let rec = if foreign_sl.is_none() { enable_status_feature(&mut v) } else { FeatureRecord::default() };
+    let with_sl = may_turn_on_experimental || before.get("experimental") == Some(&Value::Bool(true));
+    let foreign_sl =
+        if with_sl { add_statusline(&mut v, &statusline_command(&exe_s, &home, windows)).err() } else { None };
+    let rec = if with_sl && foreign_sl.is_none() { enable_status_feature(&mut v) } else { FeatureRecord::default() };
     let new_hooks = pretty(&hooks_json(&exe_s));
     let old_hooks = std::fs::read_to_string(&hp).ok();
     let wp = wrapper_file(&home);
-    let new_wrapper = (windows && foreign_sl.is_none()).then(|| wrapper_text(&exe_s));
+    let new_wrapper = (windows && with_sl && foreign_sl.is_none()).then(|| wrapper_text(&exe_s));
     let wrapper_ok = new_wrapper.is_none() || std::fs::read_to_string(&wp).ok() == new_wrapper;
     if v == before && old_hooks.as_deref() == Some(new_hooks.as_str()) && foreign_sl.is_none() && wrapper_ok {
         println!("Already installed.");
@@ -230,6 +240,13 @@ pub fn install(yes: bool) -> ExitCode {
             "\nYou already have a Copilot status line ({cmd}). AIQ will not replace it.\nTo see AIQ tips in it, add \
              the output of this command to your status-line script:\n  {}",
             direct_command(&exe_s)
+        );
+    }
+    if !with_sl {
+        println!(
+            "\nAIQ left {} alone: its Copilot CLI status line needs Copilot's `experimental` mode, which switches \
+             on ALL experimental features. Tips show in AIQ home and VS Code. To add the status line, run: aiq install copilot",
+            sp.display()
         );
     }
     println!("\nYour other Copilot settings and hooks stay as they are.");

@@ -90,11 +90,11 @@ function fixture<T>(cmd: string, args: Record<string, unknown>): Promise<T> {
       break;
     case "connect_tools":
       if (f.fail?.includes(cmd)) {
-        out = { ok: false, message: "AIQ couldn't connect your tools. Could not write the settings file. Run aiq install in a terminal to see why." };
+        out = { ok: false, message: "AIQ couldn't connect your tools. Could not write the settings file. Run aiq install in a terminal to see why.", changed: [] };
         break;
       }
       for (const t of s.setup.tools) if (t.present) t.hooked = true;
-      out = { ok: true };
+      out = { ok: true, changed: ["C:\\Users\\you\\.copilot\\hooks\\aiq.json"] };
       break;
     case "finish_setup":
       s.setup.done = true;
@@ -115,7 +115,7 @@ export const api = {
   forgetItem: (eventId: string) => invoke<Outcome>("forget_item", { eventId }),
   finishSetup: () => invoke<Snapshot>("finish_setup"),
   /** Connect every tool found but not hooked yet (runs `aiq install --yes`). */
-  connectTools: () => invoke<Outcome>("connect_tools"),
+  connectTools: () => invoke<{ ok: boolean; message?: string; changed: string[] }>("connect_tools"),
   /** "This doesn't fit" (flag, with a reason) or its undo, for one kind of task's next step. */
   guidanceFlag: (job: string, taskType: string, moveId: string, action: "flag" | "undo", reason: FlagReason | null) =>
     invoke<Outcome>("guidance_flag", { job, taskType, moveId, action, reason }),
