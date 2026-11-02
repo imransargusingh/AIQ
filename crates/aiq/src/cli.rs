@@ -13,6 +13,7 @@ const NOT_RUNNING: &str = "AIQ is not running. It starts with your next Claude C
 pub fn core() -> ExitCode {
     let paths = Paths::from_env();
     crate::judge::start_background(paths.clone());
+    aiq_core::update::start_background(paths.clone());
     match server::run(&paths) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) if e.code == aiq_contracts::codes::CORE_ALREADY_RUNNING => {
@@ -552,11 +553,12 @@ pub fn config_set(name: &str, value: &str) -> ExitCode {
         "next-rung-tips" => ("next_rung_tips", format!("Next-step tips: {value}.")),
         "check-claude-model" => ("check_claude_model", format!("Accuracy check, Claude model: {value}.")),
         "check-copilot-model" => ("check_copilot_model", format!("Accuracy check, Copilot model: {value}.")),
+        "update" => ("update", format!("Updates: {value}.")),
         _ => {
             println!(
                 "Unknown setting {name}. Settings: daily-cap, copilot-tip-stays, judge, judge-daily-tasks, \
                  judge-claude-model, judge-copilot-model, judge-copilot-sessions, next-rung-tips, check-claude-model, \
-                 check-copilot-model, keep-on.<job or job/kind>."
+                 check-copilot-model, update, keep-on.<job or job/kind>."
             );
             return ExitCode::from(2);
         }
@@ -1067,5 +1069,144 @@ mod tips_tests {
         let out = render_accuracy_paused(&[p(true)]);
         assert!(out.contains("kept on by you") && out.contains("aiq config set keep-on.run_ship auto"));
         assert!(render_accuracy_paused(&[]).is_empty());
+    }
+}
+
+/// `aiq update [--now]` (design auto-update U6): what the updater last did, and start a check now.
+pub fn update(rest: &[&str]) -> ExitCode {
+    use aiq_core::update::{self, Action};
+    let paths = Paths::from_env();
+    let mode = aiq_store::Store::open_read_only(&paths.db())
+        .ok()
+        .and_then(|s| s.setting(update::SETTING_UPDATE).ok().flatten());
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64);
+    let v = update::view(&paths, mode.as_deref(), now);
+    if rest.contains(&"--now") {
+        // The script waits for this process to end, so it is not counted as AIQ being busy.
+        return match update::start(&paths, Action::Check { apply: true }, Some(std::process::id()), false) {
+            Ok(()) => {
+                println!(
+                    "Checking for a newer AIQ now. If there is one, it installs as soon as AIQ is idle \
+                     (AIQ home closed). Run `aiq update` in a minute to see the result."
+                );
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                println!("Could not start the update: {e}.");
+                ExitCode::from(1)
+            }
+        };
+    }
+    print!("{}", update_text(&v, now));
+    ExitCode::SUCCESS
+}
+
+fn update_text(v: &aiq_core::update::View, now: i64) -> String {
+    let ago = |ms: i64| {
+        let h = (now - ms).max(0) / 3_600_000;
+        if h < 1 {
+            "less than an hour ago".to_owned()
+        } else if h < 48 {
+            format!("{h} h ago")
+        } else {
+            format!("{} days ago", h / 24)
+        }
+    };
+    let mut o = format!("AIQ {}.\n", v.running);
+    if !v.supported {
+        o.push_str("This copy was not installed with install.ps1, so it does not update itself.\n");
+        return o;
+    }
+    o.push_str(if v.mode == "auto" {
+        "Updates: automatic (aiq config set update ask: tell me first).\n"
+    } else {
+        "Updates: tell me first (aiq config set update auto: install by itself).\n"
+    });
+    match v.checked_ms {
+        Some(t) => o.push_str(&format!("Last checked {}.", ago(t))),
+        None => o.push_str("Not checked yet. The first check runs a few minutes after AIQ starts."),
+    }
+    if let Some(e) = &v.check_error {
+        o.push_str(&format!(" That check failed ({e}); it tries again in a day."));
+    }
+    o.push('\n');
+    let avail = v.available.as_deref().unwrap_or("A newer version");
+    match v.note {
+        "waiting" if v.mode == "auto" => o.push_str(&format!(
+            "{avail} is downloaded and checked. It installs when AIQ is idle{}.\n",
+            v.blocked.as_deref().map(|b| format!(" (last try: {b})")).unwrap_or_default()
+        )),
+        "waiting" => o.push_str(&format!("{avail} is downloaded and checked. Install it: aiq update --now\n")),
+        "applied" => o.push_str(&format!(
+            "Updated from {} {}.\n",
+            v.from.as_deref().unwrap_or("the previous version"),
+            v.at_ms.map(ago).unwrap_or_default()
+        )),
+        "failed" => {
+            o.push_str(&format!("The last update did not install: {}.\n", v.message.as_deref().unwrap_or("unknown")))
+        }
+        "rolled_back" => o.push_str(&format!(
+            "You went back from {}. AIQ won't install that version again by itself.\n",
+            v.from.as_deref().unwrap_or("the newer version")
+        )),
+        _ => {}
+    }
+    if v.can_rollback {
+        o.push_str("Go back to the previous version: powershell -ExecutionPolicy Bypass -File %USERPROFILE%\\.aiq\\bin\\upgrade.ps1 -Rollback\n");
+    }
+    o
+}
+
+#[cfg(test)]
+mod update_tests {
+    use super::update_text;
+    use aiq_core::update::View;
+
+    fn v() -> View {
+        View {
+            supported: true,
+            mode: "auto".into(),
+            running: "0.1.0".into(),
+            note: "none",
+            available: None,
+            blocked: None,
+            from: None,
+            at_ms: None,
+            message: None,
+            checked_ms: None,
+            check_error: None,
+            can_rollback: false,
+        }
+    }
+
+    #[test]
+    fn dev_copy_says_it_does_not_update() {
+        let t = update_text(&View { supported: false, ..v() }, 0);
+        assert!(t.contains("does not update itself"));
+    }
+
+    #[test]
+    fn waiting_names_what_it_waits_for() {
+        let w = View {
+            note: "waiting",
+            available: Some("v0.2.0".into()),
+            blocked: Some("AIQ home is open".into()),
+            checked_ms: Some(0),
+            ..v()
+        };
+        let t = update_text(&w, 3_600_000 * 3);
+        assert!(t.contains("Last checked 3 h ago."), "{t}");
+        assert!(
+            t.contains("v0.2.0 is downloaded and checked. It installs when AIQ is idle (last try: AIQ home is open)."),
+            "{t}"
+        );
+        let ask = update_text(&View { mode: "ask".into(), ..w }, 0);
+        assert!(ask.contains("Install it: aiq update --now"), "{ask}");
+    }
+
+    #[test]
+    fn failed_check_says_when_it_retries() {
+        let t = update_text(&View { checked_ms: Some(0), check_error: Some("404".into()), ..v() }, 0);
+        assert!(t.contains("That check failed (404); it tries again in a day."), "{t}");
     }
 }

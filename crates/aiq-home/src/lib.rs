@@ -49,6 +49,8 @@ pub struct Snapshot {
     pub setup: Setup,
     /// Coaching from rung results (design coaching-from-rungs): every value derived from judgments here.
     pub coaching: Coaching,
+    /// Auto-update (design auto-update U5): the switch and the one line Home shows.
+    pub update: aiq_core::update::View,
 }
 
 /// Home's split, the kinds of task, the habits (design coaching-from-rungs D3, D6, D9; aiq-home H2–H4).
@@ -493,6 +495,7 @@ fn empty(paths: &Paths, pack: &PackV1, now: Now) -> Snapshot {
             weeks: (0..WEEKS).map(|i| WeekSplit { start_ms: week0 + i * 7 * DAY_MS, tasks: 0, finished: 0 }).collect(),
             ..Default::default()
         },
+        update: aiq_core::update::view(paths, None, now.utc_ms),
     }
 }
 
@@ -526,6 +529,11 @@ fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()>
         }
         if let Some(t) = store.setting("copilot_tip_stays").ok().flatten().and_then(|v| TipStays::parse(&v)) {
             s.settings.copilot_tip_stays = t.as_str();
+        }
+        if let Some(m) = store.setting(aiq_core::update::SETTING_UPDATE).ok().flatten()
+            && aiq_core::update::validate_mode(&m).is_ok()
+        {
+            s.update.mode = m;
         }
         if let Some(v) = store.setting("judge").ok().flatten() {
             s.settings.judge = v;

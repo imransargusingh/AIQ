@@ -238,5 +238,19 @@
     "progress": [],
     "progress_days": 14,
     "progress_min": 3
+  },
+  "update": {
+    "supported": true,
+    "mode": "auto",
+    "running": "0.1.0",
+    "note": "none",
+    "available": null,
+    "blocked": null,
+    "from": null,
+    "at_ms": null,
+    "message": null,
+    "checked_ms": 1793530800000,
+    "check_error": null,
+    "can_rollback": true
   }
 }

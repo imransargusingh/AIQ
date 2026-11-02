@@ -12,6 +12,24 @@ export interface Snapshot {
   settings: Settings;
   setup: Setup;
   coaching: Coaching;
+  update: Update;
+}
+
+/** Auto-update (crates/aiq-core/src/update.rs `View`, design auto-update U5). */
+export interface Update {
+  /** False for a copy not installed with install.ps1: it never updates itself. */
+  supported: boolean;
+  mode: "auto" | "ask";
+  running: string;
+  note: "none" | "waiting" | "applied" | "failed" | "rolled_back";
+  available: string | null;
+  blocked: string | null;
+  from: string | null;
+  at_ms: number | null;
+  message: string | null;
+  checked_ms: number | null;
+  check_error: string | null;
+  can_rollback: boolean;
 }
 
 export interface Status {

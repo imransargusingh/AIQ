@@ -81,5 +81,10 @@ fn write(dir: &std::path::Path, name: &str, s: &aiq_home::Snapshot) {
         ToolFound { tool: "claude-code", hooked: true, present: true, install: "aiq install claude-code" },
         ToolFound { tool: "copilot", hooked: false, present: true, install: "aiq install copilot" },
     ];
+    // Fixed, not this machine's: an installed copy, checked an hour before the seed's now, nothing waiting.
+    s.update.supported = true;
+    s.update.running = "0.1.0".into();
+    s.update.checked_ms = Some(s.now_ms - 3_600_000);
+    s.update.can_rollback = true;
     std::fs::write(dir.join(format!("{name}.json")), serde_json::to_string_pretty(&s).unwrap()).unwrap();
 }

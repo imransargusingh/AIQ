@@ -1,5 +1,5 @@
 fn main() {
-    // Only these eleven app commands exist; the capability file allows exactly these (design: STRIDE, E).
+    // Only these twelve app commands exist; the capability file allows exactly these (design: STRIDE, E).
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(tauri_build::AppManifest::new().commands(&[
         "snapshot",
         "pause",
@@ -12,6 +12,7 @@ fn main() {
         "tip_on",
         "tip_off",
         "connect_tools",
+        "run_update",
     ])))
     .expect("tauri build");
 }

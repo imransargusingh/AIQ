@@ -12,6 +12,7 @@ on:
     paths:
       - "packaging/**"
       - "crates/aiq/src/install.rs"
+      - "crates/aiq-core/src/update.rs"
       - ".github/workflows/release.yml"
   workflow_dispatch:
     inputs:
@@ -112,6 +113,58 @@ jobs:
           if ($LASTEXITCODE -ne 0) { Write-Error 'rollback failed'; exit 1 }
           & (Join-Path $env:USERPROFILE '.aiq\bin\aiq.exe') version
           Get-Content (Join-Path $env:USERPROFILE '.aiq\upgrade-log.txt')
+      - name: Smoke test - auto-update refuses a tampered download, waits while AIQ home is open, installs when idle, never reinstalls a version rolled back from
+        shell: pwsh
+        run: |
+          $v = '${{ steps.version.outputs.version }}'
+          $aiq = Join-Path $env:USERPROFILE '.aiq'
+          $up = Join-Path $aiq 'bin\upgrade.ps1'
+          $exe = Join-Path $aiq 'bin\aiq.exe'
+          function St { Get-Content -Raw (Join-Path $aiq 'update.json') | ConvertFrom-Json }
+          function Fail([string]$m) { Write-Error $m; Get-Content (Join-Path $aiq 'upgrade-log.txt') -Tail 10; exit 1 }
+          # A folder standing in for GitHub: this build's zip published as a newer tag.
+          $feed = Join-Path $env:RUNNER_TEMP 'feed'
+          New-Item -ItemType Directory -Force $feed | Out-Null
+          Copy-Item "dist/aiq-$v-windows-x64.zip", dist/SHA256SUMS $feed
+          @{ tag_name = 'v99.0.0'; zip = "aiq-$v-windows-x64.zip" } | ConvertTo-Json | Set-Content (Join-Path $feed 'latest.json')
+          $bad = Join-Path $env:RUNNER_TEMP 'feed-bad'
+          Copy-Item -Recurse $feed $bad
+          Add-Content -Path (Join-Path $bad "aiq-$v-windows-x64.zip") -Value 'tampered'
+
+          $h0 = (Get-FileHash $exe).Hash
+          powershell -ExecutionPolicy Bypass -File $up -Check -Apply -Feed $bad
+          if ($LASTEXITCODE -eq 0) { Fail 'tampered download was accepted' }
+          if ((St).state -ne 'failed') { Fail "tampered: state $((St).state), want failed" }
+          if (Test-Path (Join-Path $aiq 'update')) { Fail 'tampered download left staged' }
+          if ((Get-FileHash $exe).Hash -ne $h0) { Fail 'tampered download changed aiq.exe' }
+
+          # AIQ home open: the update downloads and waits.
+          $home_ = Start-Process -PassThru -FilePath (Join-Path $aiq 'bin\aiq-home.exe')
+          Start-Sleep -Seconds 3
+          if ($home_.HasExited) { Fail "AIQ home did not stay open on the runner (exit $($home_.ExitCode))" }
+          powershell -ExecutionPolicy Bypass -File $up -Check -Apply -Feed $feed
+          if ($LASTEXITCODE -ne 3) { Fail "with AIQ home open, exit $LASTEXITCODE, want 3 (waiting)" }
+          $s = St
+          if ($s.state -ne 'waiting' -or $s.available -ne 'v99.0.0' -or $s.blocked -ne 'AIQ home is open') { Fail "waiting: $($s | ConvertTo-Json -Compress)" }
+          Stop-Process -Id $home_.Id -Force
+          Start-Sleep -Seconds 1
+
+          # Idle: the waiting update installs, keeps .old copies, and says so.
+          powershell -ExecutionPolicy Bypass -File $up -Apply
+          if ($LASTEXITCODE -ne 0) { Fail "apply when idle: exit $LASTEXITCODE" }
+          $s = St
+          if ($s.state -ne 'applied' -or $s.installed_tag -ne 'v99.0.0' -or $s.from -ne $v) { Fail "applied: $($s | ConvertTo-Json -Compress)" }
+          if (Test-Path (Join-Path $aiq 'update')) { Fail 'staged files left after install' }
+          foreach ($f in 'aiq.exe.old', 'aiq-home.exe.old') { if (-not (Test-Path (Join-Path $aiq "bin\$f"))) { Fail "no $f kept" } }
+          & $exe update
+
+          # Go back: the release left is never installed again by itself.
+          powershell -ExecutionPolicy Bypass -File $up -Rollback
+          if ($LASTEXITCODE -ne 0) { Fail 'rollback failed' }
+          if ((St).skip -ne 'v99.0.0') { Fail "rollback did not record the release left: $((St) | ConvertTo-Json -Compress)" }
+          powershell -ExecutionPolicy Bypass -File $up -Check -Apply -Feed $feed
+          if ((St).state -ne 'rolled_back' -or (Test-Path (Join-Path $aiq 'update'))) { Fail "reinstalled after rollback: $((St) | ConvertTo-Json -Compress)" }
+          Get-Content (Join-Path $aiq 'upgrade-log.txt') -Tail 8
       - name: Smoke test - uninstall --all removes hooks, user PATH entry and shortcut, keeps the data
         shell: pwsh
         run: |

@@ -1,5 +1,5 @@
-//! AIQ home desktop shell (designs `docs/design/aiq-home-app.md`, `aiq-home-deferred-pages.md`). Ten
-//! commands, each a thin call (the list is checked against build.rs and the capability file by a test):
+//! AIQ home desktop shell (designs `docs/design/aiq-home-app.md`, `aiq-home-deferred-pages.md`, `auto-update.md`).
+//! Twelve commands, each a thin call (the list is checked against build.rs and the capability file by a test):
 //! reads go to the `aiq-home` read model (read-only store), changes go through `aiq_core::control` to the
 //! core, the only writer. Each command's time and outcome is logged locally to `<data>/home.log`.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
@@ -84,7 +84,8 @@ async fn pause(on: bool) -> Result<Snapshot, String> {
 
 /// Only the settings AIQ home shows can be changed from it; the core validates the value.
 fn allowed_setting(key: &str) -> bool {
-    matches!(key, "daily_cap" | "copilot_tip_stays" | "next_rung_tips" | "judge_daily_tasks") || key.starts_with("keep_on.")
+    matches!(key, "daily_cap" | "copilot_tip_stays" | "next_rung_tips" | "judge_daily_tasks" | "update")
+        || key.starts_with("keep_on.")
 }
 
 #[tauri::command]
@@ -290,6 +291,35 @@ async fn finish_setup() -> Result<Snapshot, String> {
     .await?
 }
 
+/// "Install now" (`install`) or "Go back to the previous version" (`rollback`), design auto-update U5: start
+/// `upgrade.ps1`, which waits for this window to close, swaps the exes and opens AIQ home again. The window
+/// closes itself right after replying, so the swap never waits on it.
+#[tauri::command]
+async fn run_update(app: tauri::AppHandle, action: String) -> Result<Outcome, String> {
+    use aiq_core::update::{self, Action};
+    blocking(move || {
+        let t = Instant::now();
+        let paths = Paths::from_env();
+        let r = match action.as_str() {
+            "install" => Ok(Action::Apply),
+            "rollback" => Ok(Action::Rollback),
+            _ => Err(format!("AIQ home can't run update action {action}.")),
+        }
+        .and_then(|a| {
+            update::start(&paths, a, Some(std::process::id()), true).map_err(|e| format!("Could not start: {e}."))
+        });
+        log(&paths, "run_update", t, &format!("action={action} {}", if r.is_ok() { "ok" } else { "refused" }));
+        if r.is_ok() {
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(400));
+                app.exit(0);
+            });
+        }
+        Outcome::from(r)
+    })
+    .await
+}
+
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -303,7 +333,8 @@ fn main() {
             guidance_flag,
             tip_on,
             tip_off,
-            connect_tools
+            connect_tools,
+            run_update
         ])
         .run(tauri::generate_context!())
         .expect("AIQ home could not start its window");
@@ -319,6 +350,7 @@ mod tests {
         assert!(allowed_setting("copilot_tip_stays"));
         assert!(allowed_setting("next_rung_tips"));
         assert!(allowed_setting("judge_daily_tasks"));
+        assert!(allowed_setting("update"));
         assert!(!allowed_setting("paused"));
         assert!(!allowed_setting("anything"));
     }

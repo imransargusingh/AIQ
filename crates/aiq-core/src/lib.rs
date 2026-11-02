@@ -12,3 +12,4 @@ pub mod service;
 pub mod spool;
 pub mod sysclock;
 pub mod tools;
+pub mod update;

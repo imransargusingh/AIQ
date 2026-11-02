@@ -65,6 +65,8 @@ Usage:
                                       (default: a new folder under AIQ's own folder)
   aiq forget --imported [--yes]       Delete only what aiq import added
   aiq forget --all [--yes]            Delete everything AIQ stored on this machine
+  aiq update [--now]                  What AIQ's updater last did; --now checks for a newer release now
+  aiq config set update <auto|ask>    Install updates by itself when idle (auto, default), or tell you first
   aiq core                            Run the background core in this terminal
   aiq version
 
@@ -99,6 +101,7 @@ fn main() -> ExitCode {
             println!("{}", aiq_core::paths::Paths::from_env().endpoint_json());
             ExitCode::SUCCESS
         }
+        ["update", rest @ ..] => cli::update(rest),
         ["import", rest @ ..] => import::cli(rest),
         ["export", rest @ ..] => export::cli(rest),
         ["judge", rest @ ..] => judge::cli(rest),

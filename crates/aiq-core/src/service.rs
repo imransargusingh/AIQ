@@ -782,6 +782,7 @@ impl<C: Clock> Service<C> {
                     return Err(format!("copilot-tip-stays must be one of: {}", all.join(", ")));
                 }
             },
+            crate::update::SETTING_UPDATE => crate::update::validate_mode(value)?,
             SETTING_DAILY_CAP => match value.parse::<u32>() {
                 Ok(n) if n <= MAX_DAILY_CAP => n.to_string(),
                 _ => return Err(format!("daily-cap must be a whole number from 0 to {MAX_DAILY_CAP}")),
