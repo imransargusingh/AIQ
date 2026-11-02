@@ -11,7 +11,6 @@ mod import;
 mod install;
 mod install_copilot;
 mod judge;
-mod projects;
 mod spawn;
 mod statusline;
 

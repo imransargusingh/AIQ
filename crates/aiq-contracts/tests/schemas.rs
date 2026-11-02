@@ -20,6 +20,7 @@ fn ev(body: EventBody) -> EventV1 {
         collector_version: "0.1.0".into(),
         cwd: None,
         projects: false,
+        transcript: None,
         body,
     }
 }

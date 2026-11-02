@@ -222,15 +222,17 @@ pub fn to_event(v: &Value, event: &str) -> Option<EventV1> {
         _ => return None,
     };
     let mut ev = new_event("claude-code", session, cwd_of(v), body);
-    // Rule RC: Claude Code writes the session's first record (a Projects session's system turn) 64 ms–3.7 s
-    // before the first prompt's hook fires (laptop measurement, 11 of 11 sessions), within the first 4 KB.
-    // Only prompts are checked: the core sets the folder aside on the first marked event, and on the laptop
-    // this read was nearly all of a Claude Code hook's time (p95 ~500 ms "preparing", 2026-11-02, measured;
-    // Copilot hooks, which skip it, prepare in 0.3 ms). A Stop never needs it.
-    ev.projects = event == "UserPromptSubmit"
-        && v.get("transcript_path")
+    // Rule RC: the hook never opens the transcript. On Imran's laptop that open alone was ~0.4 s of every
+    // Claude Code hook (measured 2026-11-02: Stop fell from p95 493 ms to 0.2 ms when it stopped reading it;
+    // Copilot hooks, which never read it, prepare in 0.3 ms). The prompt carries the path; the core reads
+    // the head once per session, off the hook's clock.
+    if event == "UserPromptSubmit" {
+        ev.transcript = v
+            .get("transcript_path")
             .and_then(Value::as_str)
-            .is_some_and(|t| crate::projects::scan(std::path::Path::new(t), crate::projects::HOOK_HEAD_BYTES));
+            .filter(|t| !t.is_empty() && t.len() <= 4096)
+            .map(str::to_owned);
+    }
     Some(ev)
 }
 
@@ -297,6 +299,7 @@ fn new_event(surface: &str, session: &str, cwd: Option<String>, body: EventBody)
         collector_version: env!("CARGO_PKG_VERSION").into(),
         cwd,
         projects: false,
+        transcript: None,
         body,
     }
 }
@@ -361,27 +364,20 @@ mod tests {
     }
 
     #[test]
-    fn to_event_marks_projects_sessions_from_the_transcript() {
+    fn to_event_passes_the_transcript_path_on_prompts_and_never_reads_it() {
         let d = tempfile::tempdir().unwrap();
         let t = d.path().join("s.jsonl");
-        let v = |t: &std::path::Path| json!({"session_id":"s","hook_event_name":"UserPromptSubmit","prompt":"x","cwd":"/x","transcript_path":t.to_string_lossy()});
-        assert!(!to_event(&v(&t), "UserPromptSubmit").unwrap().projects, "no transcript yet");
         std::fs::write(
             &t,
             format!("{}\n", json!({"type":"user","isMeta":true,"turnOrigin":"system","entrypoint":"claude-desktop"})),
         )
         .unwrap();
-        assert!(to_event(&v(&t), "UserPromptSubmit").unwrap().projects);
-        std::fs::write(&t, format!("{}\n", json!({"type":"user","turnOrigin":"human","entrypoint":"cli"}))).unwrap();
-        assert!(!to_event(&v(&t), "UserPromptSubmit").unwrap().projects);
-        // A Stop never reads the transcript.
-        std::fs::write(
-            &t,
-            format!("{}\n", json!({"type":"user","isMeta":true,"turnOrigin":"system","entrypoint":"claude-desktop"})),
-        )
-        .unwrap();
+        let p = json!({"session_id":"s","hook_event_name":"UserPromptSubmit","prompt":"x","cwd":"/x","transcript_path":t.to_string_lossy()});
+        let e = to_event(&p, "UserPromptSubmit").unwrap();
+        assert!(!e.projects, "the core decides, not the hook");
+        assert_eq!(e.transcript.as_deref(), Some(t.to_string_lossy().as_ref()));
         let stop = json!({"session_id":"s","hook_event_name":"Stop","cwd":"/x","transcript_path":t.to_string_lossy()});
-        assert!(!to_event(&stop, "Stop").unwrap().projects);
+        assert_eq!(to_event(&stop, "Stop").unwrap().transcript, None);
     }
 
     #[test]
