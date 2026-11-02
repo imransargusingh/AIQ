@@ -412,7 +412,7 @@ impl Provider for CopilotCli {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Settings {
-    /// None until the person first runs `aiq judge` (consent by action, D4).
+    /// None until `aiq install` connects a tool or the person first runs `aiq judge` (D4).
     pub mode: Option<String>,
     pub daily_tasks: u32,
     pub claude_model: String,
@@ -973,9 +973,49 @@ pub fn start_background(paths: Paths) {
     });
 }
 
+// ------------------------------------------------------------------ turned on at install
+
+/// What `aiq install` did about background judging (D4, amended 2026-11-02: setup turns it on, because a
+/// fresh install otherwise judged nothing and so never coached from rungs).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AtInstall {
+    /// Never set before: AIQ turned it on.
+    TurnedOn,
+    AlreadyOn,
+    /// The person turned it off earlier: an install never turns it back on.
+    KeptOff,
+}
+
+/// Turn background judging on when it has never been set. A value the person chose, on or off, stays.
+pub fn turn_on_at_install(store: &Store, now_ms: i64) -> Result<AtInstall, String> {
+    match store.setting(rung::SETTING_JUDGE).map_err(|e| e.detail)?.as_deref() {
+        Some("auto") => Ok(AtInstall::AlreadyOn),
+        Some(_) => Ok(AtInstall::KeptOff),
+        None => {
+            store.set_setting(rung::SETTING_JUDGE, "auto", now_ms).map_err(|e| e.detail)?;
+            Ok(AtInstall::TurnedOn)
+        }
+    }
+}
+
+/// What `aiq install` prints about it: what is sent and where, the daily cap, and how to undo.
+pub fn at_install_text(r: AtInstall, daily_tasks: u32) -> String {
+    match r {
+        AtInstall::TurnedOn => format!(
+            "Judging: turned on. {DISCLOSURE}\nAIQ judges up to {daily_tasks} new tasks a day in the background.\n\
+             Undo: aiq config set judge off (or Settings > Rung model in AIQ home)\n"
+        ),
+        AtInstall::AlreadyOn => {
+            format!("Judging is already on (up to {daily_tasks} tasks a day). Turn it off: aiq config set judge off\n")
+        }
+        AtInstall::KeptOff => "Judging stays off, as you set it. Turn it on: aiq config set judge auto\n".into(),
+    }
+}
+
 // ------------------------------------------------------------------ CLI
 
-const DISCLOSURE: &str = "AIQ judges each task you finish with AI: the rung it was done at and the next step.
+pub(crate) const DISCLOSURE: &str =
+    "AIQ judges each task you finish with AI: the rung it was done at and the next step.
 What is sent: the task's prompts and a summary of what the agent did (tools, files, commands). Never your
 own edits or diffs. Where: only to the tool that already saw the task, through your own sign-in:
   Claude Code tasks -> your Claude Code (`claude -p`, no tools, no hooks, no saved session)
@@ -2007,6 +2047,24 @@ mod tests {
 
     const MIN: i64 = 60_000;
     const NOW: i64 = 100 * DAY_MS;
+
+    #[test]
+    fn install_turns_judging_on_once_and_never_overrides_the_persons_choice() {
+        let d = TempDir::new().unwrap();
+        let store = Store::open(&d.path().join("aiq.db")).unwrap();
+        assert_eq!(turn_on_at_install(&store, NOW).unwrap(), AtInstall::TurnedOn);
+        assert_eq!(settings(&store).mode.as_deref(), Some("auto"));
+        assert_eq!(settings(&store).daily_tasks, rung::DEFAULT_DAILY_TASKS, "the budget is unchanged");
+        assert_eq!(turn_on_at_install(&store, NOW + 1).unwrap(), AtInstall::AlreadyOn);
+        store.set_setting(rung::SETTING_JUDGE, "off", NOW + 2).unwrap();
+        assert_eq!(turn_on_at_install(&store, NOW + 3).unwrap(), AtInstall::KeptOff);
+        assert_eq!(settings(&store).mode.as_deref(), Some("off"), "a reinstall keeps it off");
+        let t = at_install_text(AtInstall::TurnedOn, 50);
+        assert!(
+            t.starts_with("Judging: turned on.") && t.contains("What is sent:") && t.contains("up to 50 new tasks")
+        );
+        assert!(t.contains("Undo: aiq config set judge off"));
+    }
 
     #[test]
     fn one_run_holds_the_lock_however_long_it_runs_and_frees_it_when_it_ends() {

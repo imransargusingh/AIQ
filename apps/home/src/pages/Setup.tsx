@@ -64,6 +64,14 @@ export function Setup(ctx: Ctx & { rerun: boolean; finish: (s: Snapshot) => void
       refresh();
     } else setMsg(r.message);
   };
+  const setJudge = async (on: boolean) => {
+    const r = await api.setSetting("judge", on ? "auto" : "off");
+    if (r.ok) {
+      setMsg(null);
+      announce(on ? "Judging is on." : "Judging is off. AIQ judges no new tasks.");
+      refresh();
+    } else setMsg(r.message);
+  };
   const start = async () => {
     setBusy(true);
     try {
@@ -211,13 +219,36 @@ export function Setup(ctx: Ctx & { rerun: boolean; finish: (s: Snapshot) => void
           <>
             <header className="group">
               <Title>How AIQ will judge your tasks</Title>
-              <p className="mute">Nothing to connect yet. The rung model comes in a later version of AIQ. Tips work without it.</p>
+              <p className="mute">
+                {snap.settings.judge === "auto"
+                  ? "Judging is on. AIQ turned it on when it connected your tools, so it can show which rung each task was done at and coach the next step."
+                  : "Judging is off. Without it AIQ can't tell the rung of a task, so it shows no next-step tips."}
+              </p>
             </header>
             <p>
-              When it comes, AIQ will judge finished tasks through your own signed-in Claude Code or Copilot, using your own plan. AIQ never reads
-              or stores your sign-in.
+              AIQ judges each finished task through the tool that already saw it, with your own sign-in: Claude Code tasks through your Claude
+              Code, Copilot and VS Code tasks through your Copilot CLI. It sends the task's prompts and a summary of what the agent did, never
+              your own edits. Up to {snap.settings.judge_daily_tasks} tasks a day, two calls each on your own plan. AIQ never reads or stores
+              your sign-in.
             </p>
             <p className="meta">On a work account, your organisation's policies apply to these calls, including logging and retention.</p>
+            <div className="row" style={{ justifyContent: "space-between" }}>
+              <span id="sjon">Judge finished tasks in the background</span>
+              <button
+                className="switch"
+                role="switch"
+                aria-checked={snap.settings.judge === "auto"}
+                aria-labelledby="sjon"
+                disabled={down}
+                onClick={() => setJudge(snap.settings.judge !== "auto")}
+              />
+            </div>
+            <p className="meta">Change it any time in Settings, under Rung model.</p>
+            {msg && (
+              <p className="errtext" role="alert">
+                {msg}
+              </p>
+            )}
             {nav()}
           </>
         )}

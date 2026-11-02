@@ -1,5 +1,5 @@
 // Settings (spec US-H7): tips a day and how long a Copilot CLI tip stays, written through the core.
-// Quiet hours, tip types, preset, judge and sharing wait for their phases; they say so.
+// Quiet hours, tip types, preset and sharing wait for their phases; they say so.
 import { useState } from "react";
 import { api, type SettingKey } from "../api";
 import type { Settings as S } from "../types";
@@ -211,6 +211,21 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
           Claude Code, Copilot and VS Code tasks through your Copilot CLI. It sends the task's prompts and a summary of what the agent
           did, never your own edits. Judge calls use your plan's usage, and a work account's policies and logging apply.
         </p>
+        <div className="row" style={{ justifyContent: "space-between" }}>
+          <span id="jon">Judge finished tasks in the background</span>
+          <button
+            className="switch"
+            role="switch"
+            aria-checked={st.judge === "auto"}
+            aria-labelledby="jon"
+            disabled={down}
+            onClick={() =>
+              st.judge === "auto"
+                ? change("judge", "off", "Judging is off. AIQ judges no new tasks.")
+                : change("judge", "auto", "Judging is on.")
+            }
+          />
+        </div>
         <div className="group">
           <span id="jcap">Tasks judged a day, two calls each on your own plan</span>
           <div className="row">
@@ -236,8 +251,8 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
           {snap.home.judge_today.cost_usd !== null && <>, ${snap.home.judge_today.cost_usd.toFixed(2)} reported by Claude Code</>}.
         </p>
         <p className="meta">
-          Change it in a terminal: <code>aiq config set judge {snap.settings.judge === "auto" ? "off" : "auto"}</code> ·{" "}
-          see what would be sent: <code>aiq judge --dry-run</code>
+          In a terminal: <code>aiq config set judge {snap.settings.judge === "auto" ? "off" : "auto"}</code> · see what would be sent:{" "}
+          <code>aiq judge --dry-run</code>
         </p>
       </section>
 

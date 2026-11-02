@@ -301,7 +301,8 @@ pub fn uninstall(yes: bool) -> ExitCode {
 /// installed?"). Each tool's own install runs unchanged: it shows the change, keeps a backup, and
 /// asks unless `--yes`. AIQ home's first-run setup runs this with `--yes`. Copilot is connected without
 /// turning on its `experimental` mode (see `install_copilot::install_with`). Ends with one `Changed: <path>`
-/// line per file that changed, which AIQ home shows.
+/// line per file that changed, which AIQ home shows. Turns background judging on unless the person turned
+/// it off (`judging`).
 pub fn install_found(yes: bool) -> ExitCode {
     let tools = aiq_core::tools::found();
     let todo: Vec<_> = tools.iter().filter(|t| t.present && !t.hooked).collect();
@@ -313,6 +314,8 @@ pub fn install_found(yes: bool) -> ExitCode {
             println!(
                 "No supported AI tool found (Claude Code, GitHub Copilot). Install one, then run aiq install again."
             );
+        } else {
+            judging();
         }
         return ExitCode::SUCCESS;
     }
@@ -330,6 +333,10 @@ pub fn install_found(yes: bool) -> ExitCode {
         failed |= code != ExitCode::SUCCESS;
         println!("Undo: aiq uninstall {}", t.tool);
     }
+    if aiq_core::tools::found().iter().any(|t| t.hooked) {
+        println!();
+        judging();
+    }
     let after = read();
     println!();
     for (p, (b, a)) in watched.iter().zip(before.iter().zip(&after)) {
@@ -338,6 +345,23 @@ pub fn install_found(yes: bool) -> ExitCode {
         }
     }
     if failed { ExitCode::from(1) } else { ExitCode::SUCCESS }
+}
+
+/// Once a tool is connected, background judging is on unless the person turned it off (rung-judge D4):
+/// otherwise a new install judges nothing and never coaches from rungs. Prints what it did and the undo.
+fn judging() {
+    let paths = Paths::from_env();
+    let Ok(store) = crate::import::open_store(&paths) else {
+        println!(
+            "Judging: AIQ couldn't open its store, so judging stays as it was. Turn it on: aiq config set judge auto"
+        );
+        return;
+    };
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64);
+    match crate::judge::turn_on_at_install(&store, now) {
+        Ok(r) => print!("{}", crate::judge::at_install_text(r, crate::judge::settings(&store).daily_tasks)),
+        Err(e) => println!("Judging: not changed ({e}). Turn it on: aiq config set judge auto"),
+    }
 }
 
 /// Every file connecting or disconnecting a tool can write.

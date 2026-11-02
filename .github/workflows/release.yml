@@ -91,6 +91,9 @@ jobs:
           if (-not (Test-Path (Join-Path ([Environment]::GetFolderPath('Programs')) 'AIQ.lnk'))) { Write-Error 'no shortcut'; exit 1 }
           if (-not (Test-Path (Join-Path $env:USERPROFILE '.copilot\hooks\aiq.json'))) { Write-Error 'Copilot not connected'; exit 1 }
           & (Join-Path $bin 'aiq.exe') version
+          # install.ps1 turned background judging on (rung-judge D4): a second connect reads it back from the store.
+          $again = & (Join-Path $bin 'aiq.exe') install --yes | Out-String
+          if ($again -notmatch 'Judging is already on') { Write-Error "judging not turned on at install: $again"; exit 1 }
           & (Join-Path $bin 'aiq.exe') uninstall copilot --yes
           if (Test-Path (Join-Path $env:USERPROFILE '.copilot\hooks\aiq.json')) { Write-Error 'Copilot hook left behind'; exit 1 }
       - name: Smoke test - upgrade refuses a tampered zip, upgrades from a good one, rolls back

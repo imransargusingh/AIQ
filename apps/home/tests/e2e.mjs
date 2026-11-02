@@ -191,7 +191,7 @@ await test("keyboard: G-letter navigation, P pause, Ctrl+K palette", async () =>
 
 await test("keyboard: single-key shortcuts can be turned off", async () => {
   const page = await open("full", { hash: "#settings" });
-  await page.getByRole("switch").click();
+  await page.getByRole("switch", { name: /Single-key shortcuts/ }).click();
   await page.locator("body").click();
   await page.keyboard.press("g");
   await page.keyboard.press("h");
@@ -275,11 +275,19 @@ await test("Settings change through the core; tips a day", async () => {
   await page.getByRole("group", { name: /Tasks judged a day/ }).getByRole("button", { name: "100", exact: true }).click();
   await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Tasks judged a day set to 100.");
   assert.equal(await page.getByRole("group", { name: /Tasks judged a day/ }).getByRole("button", { name: "100", exact: true }).getAttribute("aria-pressed"), "true");
+  // Judging has a switch here, not only a terminal command.
+  const jsw = page.getByRole("switch", { name: "Judge finished tasks in the background" });
+  assert.equal(await jsw.getAttribute("aria-checked"), "false");
+  await jsw.click();
+  await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Judging is on.");
+  assert.equal(await jsw.getAttribute("aria-checked"), "true");
+  assert.ok((await page.locator("main").innerText()).includes("Judging in the background"));
   const calls = await page.evaluate(() => window.__AIQ_FIXTURE__.calls.filter((c) => c.cmd === "set_setting").map((c) => c.args));
   assert.deepEqual(calls, [
     { key: "daily_cap", value: "5" },
     { key: "copilot_tip_stays", value: "until-opened" },
     { key: "judge_daily_tasks", value: "100" },
+    { key: "judge", value: "auto" },
   ]);
   await page.context().close();
 });
@@ -405,8 +413,19 @@ await test("setup: first run walks five steps with Back; Start only after I unde
   await cont.click();
   assert.equal(await h1(), "How AIQ will judge your tasks");
   t = await page.locator("main").innerText();
-  assert.ok(t.includes("Nothing to connect yet."));
+  assert.ok(!t.includes("later version"), "the rung model is here, not coming");
+  assert.ok(t.includes("Judging is on. AIQ turned it on when it connected your tools"), t);
+  assert.ok(t.includes("Up to 50 tasks a day"), t);
   assert.ok(t.includes("AIQ never reads or stores your sign-in."));
+  const jsw = page.getByRole("switch", { name: "Judge finished tasks in the background" });
+  assert.equal(await jsw.getAttribute("aria-checked"), "true");
+  await jsw.click();
+  await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Judging is off. AIQ judges no new tasks.");
+  assert.equal(await jsw.getAttribute("aria-checked"), "false");
+  assert.ok((await page.locator("main").innerText()).includes("Judging is off. Without it AIQ can't tell the rung"));
+  await jsw.click();
+  await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Judging is on.");
+  assert.deepEqual(await axe(page), []);
   assert.ok(t.includes("On a work account, your organisation's policies apply"));
   await cont.click();
   assert.equal(await h1(), "How many tips a day?");
@@ -427,7 +446,7 @@ await test("setup: first run walks five steps with Back; Start only after I unde
   await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Setup done. AIQ is watching.");
   assert.equal(await page.locator("nav").count(), 1);
   const calls = await page.evaluate(() => window.__AIQ_FIXTURE__.calls.map((c) => c.cmd).filter((c) => c !== "snapshot"));
-  assert.deepEqual(calls, ["connect_tools", "set_setting", "finish_setup"], "connected once, not again on Back");
+  assert.deepEqual(calls, ["connect_tools", "set_setting", "set_setting", "set_setting", "finish_setup"], "connected once, not again on Back");
   await page.context().close();
 });
 
