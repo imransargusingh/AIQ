@@ -5,7 +5,7 @@ use aiq_core::paths::Paths;
 use aiq_core::server;
 use std::io::{BufRead, Write};
 use std::process::ExitCode;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const CLI_TIMEOUT: Duration = Duration::from_secs(5);
 const NOT_RUNNING: &str = "AIQ is not running. It starts with your next Claude Code prompt, or run `aiq core`.";
@@ -176,6 +176,36 @@ fn human_bytes(b: u64) -> String {
     }
 }
 
+/// p95 of each phase of a hook run over the last 24 h, per event, from lines that carry phase fields.
+/// Older lines have no `at=` and are left out rather than guessed into a window.
+pub fn hook_phase_lines(text: &str, now: u64) -> String {
+    let mut by: std::collections::BTreeMap<&str, [Vec<u64>; 3]> = Default::default();
+    for l in text.lines() {
+        let mut it = l.split_whitespace();
+        let (Some(ev), Some(total)) = (it.next(), it.next().and_then(|u| u.parse::<u64>().ok())) else { continue };
+        let field = |k: &str| l.split_whitespace().find_map(|w| w.strip_prefix(k)).and_then(|m| m.parse::<u64>().ok());
+        let (Some(at), Some(read), Some(prep)) = (field("at="), field("read_us="), field("prep_us=")) else { continue };
+        if now.saturating_sub(at) > 24 * 3600 {
+            continue;
+        }
+        let v = by.entry(ev).or_default();
+        v[0].push(read);
+        v[1].push(prep);
+        v[2].push(total.saturating_sub(read + prep));
+    }
+    let p95 = |v: &mut Vec<u64>| {
+        v.sort_unstable();
+        v[((v.len() as f64 * 0.95).ceil() as usize).saturating_sub(1).min(v.len() - 1)] as f64 / 1000.0
+    };
+    by.into_iter()
+        .map(|(ev, mut v)| {
+            let n = v[0].len();
+            let (r, p, s) = (p95(&mut v[0]), p95(&mut v[1]), p95(&mut v[2]));
+            format!("  {ev}, last 24 h ({n} runs), p95 by phase: reading input {r:.1} ms, preparing {p:.1} ms, sending {s:.1} ms\n")
+        })
+        .collect()
+}
+
 /// p50 / p95 in-process hook time per event, from the hook's own timing log.
 fn hook_time_lines(paths: &Paths) -> String {
     let text = std::fs::read_to_string(paths.hook_timings()).unwrap_or_default();
@@ -204,6 +234,8 @@ fn hook_time_lines(paths: &Paths) -> String {
             format!("Hook time in-process, {ev}: p50 {p50:.1} ms, p95 {p95:.1} ms ({} runs)\n", v.len())
         })
         .collect();
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    out += &hook_phase_lines(&text, now);
     if !host.is_empty() {
         let (p50, p95) = pct(&mut host);
         out += &format!(
@@ -475,6 +507,20 @@ pub fn forget_all(yes: bool) -> ExitCode {
 mod tests {
     use super::*;
     use aiq_contracts::frames::EvidencePrompt;
+
+    #[test]
+    fn hook_phases_cover_the_last_day_and_skip_old_lines() {
+        let now = 100_000;
+        let text = "UserPromptSubmit 500000 sent\n\
+            UserPromptSubmit 10000 sent read_us=1000 prep_us=2000 at=99000 v=0.1.0\n\
+            UserPromptSubmit 400000 sent read_us=390000 prep_us=5000 at=99500 v=0.1.0\n\
+            UserPromptSubmit 9000 sent read_us=1 prep_us=1 at=1 v=0.1.0\n";
+        let out = hook_phase_lines(text, now);
+        assert_eq!(
+            out,
+            "  UserPromptSubmit, last 24 h (2 runs), p95 by phase: reading input 390.0 ms, preparing 5.0 ms, sending 7.0 ms\n"
+        );
+    }
 
     #[test]
     fn sanitize_strips_ansi_escape_and_controls() {
