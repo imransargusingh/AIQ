@@ -116,7 +116,7 @@ Read against main at `ae64a72` (PR #52) and the numbers measured on Imran's lapt
 | G6 | Anthropic terms | **Not needed for a Copilot-only alpha** | A10: needed only before inviting someone who uses Claude Code | Skip unless Imran wants Claude Code users in the first wave |
 | G7 | Coverage | **Met** | Measured: four packs now (Code a change, Write a spec or doc, Ask or research, Run or ship it, PR #33 and #52). Before the fourth pack, 101 of 473 judged tasks had no job; the survey of 30 of them found 17 were running or operating systems, which the fourth pack now covers (one model's labels, Inferred) | How many tasks still get no job under judge j5 is not measured yet; re-read after the laptop re-judges |
 | G8 | Self-check | **Met** | Checked: `next-rung-tips` defaults to `auto`, under which the self-check turns next-step tips off below 8 of 10 (`coach.rs`, test `self_check_turns_tips_off_at_seven_of_ten`; PR #29). Measured: where the judge named a kind of task, a different-model reader agreed 27 of 27; all 6 misses in 35 were the fallback "Other", which gets no tip | Nothing for the gate. Live kind accuracy after tips fire is a later measurement |
-| G9 | Harmless to other tools | **Needs Imran** | PR #35 is in (checked): connect never turns on experimental mode and lists each file it changed. Imran's VS Code Insiders MCP trouble started 10 minutes after connect (measured times); cause not proven | The restore test he deferred (restore `~/.copilot/settings.json` first, then remove the hook only if still broken), or the same check on a second machine at G3 |
+| G9 | Harmless to other tools | **Dropped** (Imran, 2026-11-02 21:33Z) | Since PR #35, connect adds only AIQ's own hook file and leaves Copilot's settings alone unless experimental mode is already on, and lists every file it changed | Nothing. Residual risk accepted: the cause of the 2026-11-02 VS Code MCP trouble is still unproven |
 
 Pieces built since this review was written (all merged, one PR each): `aiq export` (A6, PR #55),
 `aiq status --report` (A8, PR #56), `aiq uninstall --all` (A7, PR #57 and #61), `release.yml` and
@@ -251,5 +251,5 @@ seats played by Claude in one session; not independent) · verdict: pass with co
 | | |
 |---|---|
 | **Completed** | Design (2026-11-02, morning); gate review against main `ae64a72` (2026-11-02, evening); build of A1, A3, A5, A6, A7, A8 (PR #55 to #61) |
-| **Remaining** | G1 Copilot hook p95 read on the laptop; first release (Imran); G3 and G4 human runs; G9 test |
+| **Remaining** | G1 Copilot hook p95 read on the laptop; first release (Imran); G3 and G4 human runs |
 | **Best next action** | Imran decides whether to publish a first release (v0.1.0) so G3 can run |
