@@ -317,13 +317,7 @@ pub fn install_found(yes: bool) -> ExitCode {
         return ExitCode::SUCCESS;
     }
     // Every file a connect can write, read before and after, so the person is told exactly what changed.
-    let ch = aiq_core::tools::copilot_home();
-    let watched = [
-        settings_path(),
-        crate::install_copilot::hook_file(&ch),
-        crate::install_copilot::wrapper_file(&ch),
-        ch.join("settings.json"),
-    ];
+    let watched = connect_files();
     let read = || watched.iter().map(|p| std::fs::read(p).ok()).collect::<Vec<_>>();
     let before = read();
     let mut failed = false;
@@ -343,6 +337,49 @@ pub fn install_found(yes: bool) -> ExitCode {
             println!("Changed: {}", p.display());
         }
     }
+    if failed { ExitCode::from(1) } else { ExitCode::SUCCESS }
+}
+
+/// Every file connecting or disconnecting a tool can write.
+fn connect_files() -> [std::path::PathBuf; 4] {
+    let ch = aiq_core::tools::copilot_home();
+    [
+        settings_path(),
+        crate::install_copilot::hook_file(&ch),
+        crate::install_copilot::wrapper_file(&ch),
+        ch.join("settings.json"),
+    ]
+}
+
+/// `aiq uninstall --all` (private-alpha design A7): disconnect every tool AIQ is connected to, list each
+/// file that changed, and keep the person's data. Deleting data is a separate choice (`aiq forget --all`).
+pub fn uninstall_all(yes: bool) -> ExitCode {
+    let tools: Vec<_> = aiq_core::tools::found().into_iter().filter(|t| t.hooked || t.present).collect();
+    let watched = connect_files();
+    let read = || watched.iter().map(|p| std::fs::read(p).ok()).collect::<Vec<_>>();
+    let before = read();
+    let mut failed = false;
+    for t in &tools {
+        println!("{}:", tool_name(t.tool));
+        let code = match t.tool {
+            "claude-code" => uninstall(yes),
+            _ => crate::install_copilot::uninstall(yes),
+        };
+        failed |= code != ExitCode::SUCCESS;
+    }
+    let after = read();
+    println!();
+    let mut changed = false;
+    for (p, (b, a)) in watched.iter().zip(before.iter().zip(&after)) {
+        if b != a {
+            println!("Changed: {}", p.display());
+            changed = true;
+        }
+    }
+    if !changed {
+        println!("No tool had AIQ connected. Nothing changed.");
+    }
+    println!("Your data stays in {}. To delete it too: aiq forget --all", Paths::from_env().data.display());
     if failed { ExitCode::from(1) } else { ExitCode::SUCCESS }
 }
 

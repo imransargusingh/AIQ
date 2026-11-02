@@ -23,6 +23,7 @@ Usage:
   aiq install [--yes]                 Connect every AI tool found here (Claude Code, Copilot); shows each change first
   aiq install claude-code [--yes]     Add AIQ's hooks to ~/.claude/settings.json (shows the change first)
   aiq uninstall claude-code [--yes]   Remove only AIQ's hooks
+  aiq uninstall --all [--yes]         Disconnect AIQ from every tool; your data stays (aiq forget --all deletes it)
   aiq status                          What AIQ is doing, cards today, store size, hook times
   aiq status --report                 Write that to a file you can send for help (no prompt text,
                                       folders shown as folder-1, folder-2)
@@ -74,6 +75,7 @@ fn main() -> ExitCode {
         ["core", ..] => cli::core(),
         ["install"] | ["install", "--yes" | "-y"] => install::install_found(yes),
         ["install", "claude-code", ..] => install::install(yes),
+        ["uninstall", "--all", ..] | ["uninstall", _, "--all", ..] => install::uninstall_all(yes),
         ["uninstall", "claude-code", ..] => install::uninstall(yes),
         ["install", "copilot", ..] => install_copilot::install(yes),
         ["uninstall", "copilot", ..] => install_copilot::uninstall(yes),
