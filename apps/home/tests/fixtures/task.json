@@ -1,0 +1,34 @@
+{
+  "task": {
+    "task_id": "019000000001-0000-7000-8000-000000000000",
+    "tool": "claude-code",
+    "folder": "c:\\users\\imran\\source\\repos\\aiq",
+    "first_ms": 1793361600000,
+    "last_ms": 1793362140000,
+    "prompts": 3,
+    "origin": "live",
+    "job": null,
+    "rung": null
+  },
+  "prompts": [
+    {
+      "event_id": "019000000001-0000-7000-8000-000000000000",
+      "ts_ms": 1793361600000,
+      "text": "refactor the login handler to return typed errors",
+      "deleted": false
+    },
+    {
+      "event_id": "019000000002-0000-7000-8000-000000000000",
+      "ts_ms": 1793361840000,
+      "text": "refactor login handler so it returns typed errors",
+      "deleted": false
+    },
+    {
+      "event_id": "019000000003-0000-7000-8000-000000000000",
+      "ts_ms": 1793362140000,
+      "text": "please refactor the login handler, typed errors returned",
+      "deleted": false
+    }
+  ],
+  "read_ms": 9
+}

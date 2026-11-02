@@ -11,6 +11,8 @@ import { Tasks } from "./pages/Tasks";
 import { Tips } from "./pages/Tips";
 import { Data } from "./pages/Data";
 import { Settings } from "./pages/Settings";
+import { Task } from "./pages/Task";
+import { Setup } from "./pages/Setup";
 
 const REFRESH_MS = 15_000;
 const KEYS_PREF = "aiq.singleKeys";
@@ -23,15 +25,23 @@ function readPref(): boolean {
   }
 }
 
-function hashPage(): Page {
-  const h = location.hash.slice(1) as Page;
-  return PAGES.some((p) => p.id === h) ? h : "home";
+interface Route {
+  page: Page;
+  task: string | null;
+}
+
+function hashRoute(): Route {
+  const h = location.hash.slice(1);
+  if (h.startsWith("task/")) return { page: "task", task: decodeURIComponent(h.slice(5)) };
+  if (h === "setup") return { page: "setup", task: null };
+  return { page: PAGES.some((p) => p.id === h) ? (h as Page) : "home", task: null };
 }
 
 export function App() {
   const [snap, setSnap] = useState<Snapshot | null>(null);
   const [loadErr, setLoadErr] = useState<string | null>(null);
-  const [page, setPage] = useState<Page>(hashPage);
+  const [route, setRoute] = useState<Route>(hashRoute);
+  const page = route.page;
   const [palette, setPalette] = useState(false);
   const [said, setSaid] = useState("");
   const [singleKeys, setSingleKeysState] = useState(readPref);
@@ -55,8 +65,12 @@ export function App() {
     [],
   );
   const go = useCallback((p: Page) => {
-    setPage(p);
+    setRoute({ page: p, task: null });
     history.replaceState(null, "", `#${p}`);
+  }, []);
+  const openTask = useCallback((id: string) => {
+    setRoute({ page: "task", task: id });
+    history.replaceState(null, "", `#task/${encodeURIComponent(id)}`);
   }, []);
   const togglePause = useCallback(() => {
     if (!snap) return;
@@ -93,8 +107,12 @@ export function App() {
     };
   }, [refresh]);
 
+  // First run: setup until the person finishes it once; re-run from Settings (#setup).
+  const inSetup = !!snap && (!snap.setup.done || page === "setup");
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (inSetup) return;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setPalette((p) => !p);
@@ -122,10 +140,33 @@ export function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [singleKeys, palette, go, togglePause]);
+  }, [singleKeys, palette, go, togglePause, inSetup]);
 
-  const ctx: Ctx | null = snap && { snap, go, announce, togglePause, refresh };
+  const ctx: Ctx | null = snap && { snap, go, openTask, announce, togglePause, refresh };
   const watching = snap?.home.by_tool.map(([t]) => toolName(t)) ?? [];
+
+  if (ctx && inSetup) {
+    return (
+      <div className="app">
+        <div className="titlebar">
+          <b style={{ color: "var(--ink)" }}>AIQ</b>
+        </div>
+        <main id="main" tabIndex={-1}>
+          <Setup
+            {...ctx}
+            rerun={snap!.setup.done}
+            finish={(s) => {
+              setSnap(s);
+              go("home");
+              announce("Setup done. AIQ is watching.");
+            }}
+            close={() => go("settings")}
+          />
+        </main>
+        <p className="sr" role="status" aria-live="polite">{said}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="app">
@@ -152,7 +193,7 @@ export function App() {
             <a
               key={p.id}
               href={`#${p.id}`}
-              aria-current={page === p.id ? "page" : undefined}
+              aria-current={page === p.id || (page === "task" && p.id === "tasks") ? "page" : undefined}
               aria-keyshortcuts={singleKeys ? `G ${p.key}` : undefined}
               onClick={(e) => {
                 e.preventDefault();
@@ -209,6 +250,7 @@ export function App() {
           {ctx && page === "tips" && <Tips key="tips" {...ctx} />}
           {ctx && page === "data" && <Data key="data" {...ctx} />}
           {ctx && page === "settings" && <Settings key="settings" {...ctx} singleKeys={singleKeys} setSingleKeys={setSingleKeys} />}
+          {ctx && page === "task" && route.task && <Task key={`task-${route.task}`} {...ctx} taskId={route.task} />}
         </main>
       </div>
       <p className="sr" role="status" aria-live="polite">{said}</p>
@@ -231,6 +273,7 @@ function Palette({ ctx, onClose }: { ctx: Ctx; onClose: () => void }) {
       ...PAGES.map((p) => ({ label: `Go to ${p.label}`, hint: `G ${p.key}`, run: () => ctx.go(p.id) })),
       { label: ctx.snap.status.paused ? "Resume AIQ" : "Pause AIQ", hint: "P", run: ctx.togglePause },
       { label: "Delete everything…", run: () => ctx.go("data") },
+      { label: "Run setup again", run: () => ctx.go("setup") },
       { label: "Refresh", run: ctx.refresh },
     ],
     [ctx],

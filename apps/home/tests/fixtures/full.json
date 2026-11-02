@@ -273,5 +273,22 @@
   "settings": {
     "daily_cap": 3,
     "copilot_tip_stays": "next-prompt"
+  },
+  "setup": {
+    "done": true,
+    "tools": [
+      {
+        "tool": "claude-code",
+        "hooked": true,
+        "present": true,
+        "install": "aiq install claude-code"
+      },
+      {
+        "tool": "copilot",
+        "hooked": false,
+        "present": true,
+        "install": "aiq install copilot"
+      }
+    ]
   }
 }

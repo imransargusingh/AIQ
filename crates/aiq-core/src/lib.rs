@@ -9,3 +9,4 @@ pub mod server;
 pub mod service;
 pub mod spool;
 pub mod sysclock;
+pub mod tools;
