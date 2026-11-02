@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { api, type SettingKey } from "../api";
 import type { Settings as S } from "../types";
-import { plural } from "../format";
+import { jobName, plural } from "../format";
 import { Banners, Title, type Ctx } from "../ui";
 
 const STAYS: { v: S["copilot_tip_stays"]; label: string; note?: string }[] = [
@@ -30,13 +30,22 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
   const tipName = (tipId: string) => {
     const move = tipId.replace(/^next_rung\./, "");
     const k = snap.coaching.kinds.find((x) => x.next?.move_id === move);
-    return k?.next?.habit ?? snap.coaching.habits.find((h) => h.move_id === move)?.name ?? tipId;
+    return k?.next?.habit ?? snap.coaching.habits.find((h) => h.move_id === move)?.name ?? st.next_tips.find((t) => t.tip_id === tipId)?.habit ?? tipId;
   };
-  const tipOn = async (tipId: string) => {
-    const r = await api.tipOn(tipId);
+  // Next-step tips by job, pack order kept: each job's own tips, then those for every job.
+  const tipsOff = new Set(st.tips_off);
+  const nextIds = new Set(st.next_tips.map((t) => t.tip_id));
+  const byJob = ["code_change", "write_doc", "ask_research", "any"]
+    .map((job) => [job, st.next_tips.filter((t) => t.job === job)] as const)
+    .filter(([, ts]) => ts.length > 0);
+  const nextOn = st.next_tips.filter((t) => !tipsOff.has(t.tip_id)).length;
+  // Other tips turned off (the next-step ones have their own switch above).
+  const otherOff = st.tips_off.filter((t) => !nextIds.has(t));
+  const tipOn = async (tipId: string, on = true) => {
+    const r = await (on ? api.tipOn(tipId) : api.tipOff(tipId));
     if (r.ok) {
       setMsg(null);
-      announce(`${tipName(tipId)}: tip turned back on.`);
+      announce(`${tipName(tipId)}: tip turned ${on ? "back on" : "off"}.`);
       refresh();
     } else {
       setMsg(r.message);
@@ -129,11 +138,34 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
               : "AIQ checks its guesses of the kind of task against the judge. Below 8 in 10 right, it stops these tips by itself."}
           </span>
         )}
-        {st.tips_off.length > 0 && (
+        {st.next_tips.length > 0 && (
+          <details className="group">
+            <summary>
+              Choose which next-step tips AIQ may show <span className="meta">· {nextOn} of {st.next_tips.length} on</span>
+            </summary>
+            <fieldset className="group" aria-label="Next-step tips AIQ may show" style={{ border: 0, padding: 0, margin: "var(--s2) 0 0" }} disabled={down}>
+              {byJob.map(([job, ts]) => (
+                <div className="group" role="group" aria-labelledby={`nt-${job}`} key={job}>
+                  <span className="meta" id={`nt-${job}`}>
+                    {job === "any" ? "Every job" : jobName(job)}
+                  </span>
+                  {ts.map((t) => (
+                    <label className="opt" key={t.tip_id}>
+                      <input type="checkbox" checked={!tipsOff.has(t.tip_id)} onChange={(e) => tipOn(t.tip_id, e.target.checked)} />
+                      <span>{t.habit}</span>
+                    </label>
+                  ))}
+                </div>
+              ))}
+            </fieldset>
+            <span className="meta">A tip only shows for a kind of task you repeat, at most your tips a day, and never within 30 minutes of another.</span>
+          </details>
+        )}
+        {otherOff.length > 0 && (
           <div className="group">
             <span id="toff">Tips you turned off</span>
             <ul aria-labelledby="toff" style={{ listStyle: "none", margin: 0, padding: 0 }} className="group">
-              {st.tips_off.map((t) => (
+              {otherOff.map((t) => (
                 <li className="row" key={t} style={{ justifyContent: "space-between" }}>
                   <span>{tipName(t)}</span>
                   <button className="btn" onClick={() => tipOn(t)}>Turn back on</button>

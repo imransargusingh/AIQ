@@ -621,18 +621,32 @@ await test("Habits: words for each state, seen in n of m, banners, imported foot
   await page.context().close();
 });
 
-await test("Settings: next-step tips auto/on/off, AIQ's self-check stop with Turn back on, tips turned off", async () => {
+await test("Settings: next-step tips auto/on/off, AIQ's self-check stop with Turn back on, a switch per tip", async () => {
   const page = await open("coaching", { hash: "#settings" });
   assert.equal(await page.getByLabel(/On, unless AIQ's guesses are often wrong/).isChecked(), true);
   await page.getByLabel("Off", { exact: true }).check();
   await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Next-step tips: off.");
-  const off = page.getByRole("list", { name: "Tips you turned off" });
-  assert.match(await off.innerText(), /Ask the agent to run the tests itself/);
-  await off.getByRole("button", { name: "Turn back on" }).click();
+  // Every next-step tip has its own switch, by job; one turned off earlier shows unchecked.
+  await page.getByText("Choose which next-step tips AIQ may show").click();
+  const tips = page.getByRole("group", { name: "Next-step tips AIQ may show" });
+  const checks = tips.getByRole("checkbox");
+  assert.equal(await checks.count(), 16);
+  const agentChecks = tips.getByLabel("Ask the agent to run the tests itself");
+  assert.equal(await agentChecks.isChecked(), false);
+  await agentChecks.check();
   await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent?.endsWith("tip turned back on."));
-  assert.equal(await page.getByRole("list", { name: "Tips you turned off" }).count(), 0);
-  const calls = await page.evaluate(() => window.__AIQ_FIXTURE__.calls.filter((c) => ["set_setting", "tip_on"].includes(c.cmd)).map((c) => c.args));
-  assert.deepEqual(calls, [{ key: "next_rung_tips", value: "off" }, { tipId: "next_rung.agent_checks" }]);
+  const docBrief = tips.getByRole("group", { name: "Write a spec or doc" }).getByLabel("Say who the doc is for, what it must do, and its limits");
+  await docBrief.uncheck();
+  await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent?.endsWith("tip turned off."));
+  assert.equal(await docBrief.isChecked(), false);
+  assert.equal(await page.getByRole("list", { name: "Tips you turned off" }).count(), 0, "next-step tips are not listed twice");
+  const calls = await page.evaluate(() => window.__AIQ_FIXTURE__.calls.filter((c) => ["set_setting", "tip_on", "tip_off"].includes(c.cmd)).map((c) => [c.cmd, c.args]));
+  assert.deepEqual(calls, [
+    ["set_setting", { key: "next_rung_tips", value: "off" }],
+    ["tip_on", { tipId: "next_rung.agent_checks" }],
+    ["tip_off", { tipId: "next_rung.brief_doc" }],
+  ]);
+  assert.deepEqual(await axe(page), []);
   await page.context().close();
   const stopped = await open("coaching", {
     hash: "#settings",

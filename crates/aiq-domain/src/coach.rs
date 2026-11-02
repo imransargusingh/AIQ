@@ -353,6 +353,56 @@ pub fn type_rows(
     rows
 }
 
+/// How far one move reaches on the person's judged tasks in the window (measured from stored facts, no model).
+/// A next-step tip fires in the moment only for a kind of task whose coached move this is (D3/D4), so
+/// `kinds` is what can fire; `tasks` counts every judged task where the move applies.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Reach {
+    pub move_id: String,
+    pub job: String,
+    pub habit: String,
+    /// Judged, not-Uncertain tasks in the window where this move applies (moves_for).
+    pub tasks: u32,
+    /// Kinds of task whose coached next step is this move: (label, judged tasks of that kind in the window).
+    pub kinds: Vec<(&'static str, u32)>,
+}
+
+/// One `Reach` per pack move, in pack order.
+pub fn reach(tasks: &[JudgedTask], rows: &[TypeRow], moves: &[MoveDef], now_ms: i64, p: &CoachParams) -> Vec<Reach> {
+    let since = now_ms - p.window_days as i64 * DAY_MS;
+    let recent: Vec<&JudgedTask> = tasks.iter().filter(|t| t.first_ms >= since && !t.uncertain()).collect();
+    moves
+        .iter()
+        .map(|m| Reach {
+            move_id: m.move_id.clone(),
+            job: m.job.clone(),
+            habit: m.habit.clone(),
+            tasks: recent.iter().filter(|t| moves_for(t, moves).iter().any(|x| x.move_id == m.move_id)).count() as u32,
+            kinds: rows
+                .iter()
+                .filter(|r| r.state == RowState::Coach && r.move_id.as_deref() == Some(m.move_id.as_str()))
+                .map(|r| (r.label, r.tasks))
+                .collect(),
+        })
+        .collect()
+}
+
+/// Judged, not-Uncertain tasks in the window per job, and how many the judge was sure (≥ `min_conf`) had no
+/// goal, context and limits (F4 "no"), at any rung. The F4 tip only coaches Assisted tasks; this is the
+/// ceiling if it coached every rung.
+pub fn f4_missing(tasks: &[JudgedTask], now_ms: i64, min_conf: f64, p: &CoachParams) -> BTreeMap<String, (u32, u32)> {
+    let since = now_ms - p.window_days as i64 * DAY_MS;
+    let mut out: BTreeMap<String, (u32, u32)> = BTreeMap::new();
+    for t in tasks.iter().filter(|t| t.first_ms >= since && !t.uncertain()) {
+        let e = out.entry(t.job.clone()).or_default();
+        e.0 += 1;
+        if t.facts.f4.value == Some(false) && t.facts.f4.confidence >= min_conf {
+            e.1 += 1;
+        }
+    }
+    out
+}
+
 /// Home's opportunity rows: coached rows, at most `n`, by times a week, then rungs to gain, then label; a move
 /// with two "Not helpful" (or two "not useful" flags) in 30 days ranks after every other.
 pub fn opportunities<'a>(
@@ -818,6 +868,32 @@ mod tests {
         // Outside the window: no row.
         let old = vec![delegated_person_checks("a", 31)];
         assert!(type_rows(&old, &m, &[], NOW, &p).is_empty());
+    }
+
+    #[test]
+    fn reach_counts_tasks_per_move_and_only_coached_kinds_can_fire() {
+        let m = moves();
+        let p = params();
+        // Three Assisted code tasks with no goal or limits (F4 no) and checked output (F6 yes): `brief`.
+        let assisted = |id: &str, day: i64| {
+            task(id, day, "tests", 1, "judged", true, &facts(&[("F4", false), ("F6", true)], None), Some(0))
+        };
+        let mut ts: Vec<JudgedTask> = (0..3).map(|i| assisted(&format!("a{i}"), i + 1)).collect();
+        ts.push(delegated_person_checks("d", 1));
+        let mut old = assisted("old", 31);
+        old.task_id = "old".into();
+        ts.push(old);
+        let rows = type_rows(&ts, &m, &[], NOW, &p);
+        let r = reach(&ts, &rows, &m, NOW, &p);
+        assert_eq!(r.len(), m.len(), "one per move, pack order");
+        let brief = r.iter().find(|x| x.move_id == "brief").unwrap();
+        assert_eq!(brief.tasks, 3, "the 31-day-old task is outside the window");
+        assert_eq!(brief.kinds, vec![("Writing tests", 4)], "the kind's coached move is brief (3 of 4)");
+        let wb = r.iter().find(|x| x.move_id == "written_brief").unwrap();
+        assert_eq!((wb.tasks, wb.kinds.len()), (1, 0), "a move on one task is not the kind's move");
+        // F4 ceiling at any rung: the Delegated task has F4 unknown; three of four sure-no in the window.
+        let f4 = f4_missing(&ts, NOW, 0.8, &p);
+        assert_eq!(f4.get("code_change"), Some(&(4, 3)));
     }
 
     #[test]

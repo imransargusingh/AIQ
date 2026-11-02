@@ -149,7 +149,9 @@ tasks in the first week; if not, the list is re-cut from the `other` tasks' judg
 
 | Move id | Step | Fact the next rung needs | Job | Habit name (Habits page) | Tip `noticed` (card, ≤ 140 chars, `{type}` = lower-case type label) |
 |---|---|---|---|---|---|
-| `brief` | 1 → 2 | F4 goal, context, constraints | any | Give the agent the goal, context and limits up front | "this looks like {type}. Last times, the request had no goal or limits." |
+| `brief` | 1 → 2 | F4 goal, context, constraints (min confidence 0.8) | code | Give the agent the goal, context and limits up front | "this looks like {type}. Last times, the request had no goal or limits." |
+| `brief_doc` | 1 → 2 | F4 goal, context, constraints (min confidence 0.8) | doc | Say who the doc is for, what it must do, and its limits | "this looks like {type}. Last times, the request had no reader or purpose." |
+| `brief_question` | 1 → 2 | F4 goal, context, constraints (min confidence 0.8) | research | Say why you're asking, what you know, and what to leave out | "this looks like {type}. Last times, the question had no why or limits." |
 | `new_info` | 1 → 2 | F5 re-prompts add information (eligible when ≥ 1 re-prompt) | any | Say what was wrong before asking again | "this looks like {type}. Last times, rewording without new details cost extra rounds." |
 | `check_code` | 1 → 2 | F6 output checked | code | Check the diff or run the tests before using the result | "this looks like {type}. Last times, the result was used without a check." |
 | `check_sources` | 1 → 2 | F6 output checked | doc | Check drafted claims against a source | "this looks like {type}. Last times, the draft's claims weren't checked against a source." |

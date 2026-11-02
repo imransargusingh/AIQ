@@ -189,6 +189,15 @@ export interface Settings {
   guess_auto_off: boolean;
   /** Tips turned off with "Don't show this again". */
   tips_off: string[];
+  /** Every next-step tip AIQ can show, in pack order. */
+  next_tips: NextTip[];
+}
+
+export interface NextTip {
+  tip_id: string;
+  habit: string;
+  /** code_change, write_doc, ask_research or any. */
+  job: string;
 }
 
 /** A command's answer: done, or a sentence the person can act on. */

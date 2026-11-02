@@ -352,6 +352,16 @@ pub struct Settings {
     pub guess_auto_off: bool,
     /// Tip ids the person turned off ("Don't show this again"), for "Turn back on".
     pub tips_off: Vec<String>,
+    /// Every next-step tip the pack can show, in pack order, for Settings' on/off list.
+    pub next_tips: Vec<NextTip>,
+}
+
+/// One next-step tip as Settings lists it: its tip id, the habit it builds, and its job (or `any`).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct NextTip {
+    pub tip_id: String,
+    pub habit: String,
+    pub job: String,
 }
 
 /// Read the whole snapshot. Never fails: an unreadable store gives the empty snapshot with `status.error`.
@@ -439,6 +449,15 @@ fn empty(paths: &Paths, pack: &PackV1, now: Now) -> Snapshot {
             guess_right: 0,
             guess_auto_off: false,
             tips_off: vec![],
+            next_tips: pack
+                .moves
+                .iter()
+                .map(|m| NextTip {
+                    tip_id: aiq_domain::coach::tip_id(&m.move_id),
+                    habit: m.habit.clone(),
+                    job: m.job.clone(),
+                })
+                .collect(),
         },
         setup: Setup { done: false, tools: vec![] },
         coaching: Coaching {

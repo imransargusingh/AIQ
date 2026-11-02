@@ -188,15 +188,25 @@ async fn guidance_flag(
 /// "Turn back on" for a tip the person turned off.
 #[tauri::command]
 async fn tip_on(tip_id: String) -> Result<Outcome, String> {
+    tip_switch(tip_id, "on").await
+}
+
+/// Settings' per-tip switch: turn a tip off without waiting for it to show (same record as "Don't show this again").
+#[tauri::command]
+async fn tip_off(tip_id: String) -> Result<Outcome, String> {
+    tip_switch(tip_id, "off").await
+}
+
+async fn tip_switch(tip_id: String, answer: &'static str) -> Result<Outcome, String> {
     blocking(move || {
         let t = Instant::now();
         let paths = Paths::from_env();
-        let r = control::tip_feedback(&paths, None, Some(&tip_id), "on", "home", CORE_TIMEOUT).map_err(|e| match e {
+        let r = control::tip_feedback(&paths, None, Some(&tip_id), answer, "home", CORE_TIMEOUT).map_err(|e| match e {
             ControlError::NotRunning => NOT_RUNNING.to_owned(),
             ControlError::Refused(m) => format!("Not changed: {m}"),
             ControlError::Io(m) => m,
         });
-        log(&paths, "tip_on", t, if r.is_ok() { "ok" } else { "refused" });
+        log(&paths, &format!("tip_{answer}"), t, if r.is_ok() { "ok" } else { "refused" });
         Outcome::from(r)
     })
     .await
@@ -292,6 +302,7 @@ fn main() {
             finish_setup,
             guidance_flag,
             tip_on,
+            tip_off,
             connect_tools
         ])
         .run(tauri::generate_context!())

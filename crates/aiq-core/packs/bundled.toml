@@ -2,7 +2,7 @@
 # Every number here is uncalibrated pack data; the real-data week tunes it (design: assume: lines).
 schema = "aiq.pack.v1"
 pack_id = "aiq.core"
-version = "bundled-6"
+version = "bundled-7"
 idle_gap_min = 30
 
 [reprompt]
@@ -81,14 +81,39 @@ habit_min = 3             # coaching-loop D5 (spec)
 move_id = "brief"
 step = 1
 facts = ["F4"]
-job = "any"
+job = "code_change"
 # F4 read right only 10 of 15 in the real-data fact check (PR #27, measured): coach its "no" only when sure.
+# One `brief` move per job, so the words fit the work (the id stays `brief` for code, so past answers hold).
 min_confidence = 0.8
 habit = "Give the agent the goal, context and limits up front"
 noticed = "this looks like {type}. Last times, the request had no goal or limits."
 why = "a request with the goal, the context and the limits lets the agent get it right the first time."
 try_this = "start with what done looks like, what it touches, and what it must not change."
 starter = "Goal: <what done looks like>. Context: <files, background>. Limits: <what not to change>. Then: <the task>."
+
+[[moves]]
+move_id = "brief_doc"
+step = 1
+facts = ["F4"]
+job = "write_doc"
+min_confidence = 0.8
+habit = "Say who the doc is for, what it must do, and its limits"
+noticed = "this looks like {type}. Last times, the request had no reader or purpose."
+why = "a draft aimed at a named reader and purpose needs far less rewriting."
+try_this = "say who will read it, what they should do after, what to draw on, and the length or tone."
+starter = "Write <doc> for <reader> so they can <decide or do what>. Use <sources>. Limits: <length, tone, what to leave out>."
+
+[[moves]]
+move_id = "brief_question"
+step = 1
+facts = ["F4"]
+job = "ask_research"
+min_confidence = 0.8
+habit = "Say why you're asking, what you know, and what to leave out"
+noticed = "this looks like {type}. Last times, the question had no why or limits."
+why = "the reason behind a question and what you already know let the agent answer the right question."
+try_this = "say what you'll do with the answer, what you already know, and where not to look."
+starter = "I'm asking because <decision or task>. I already know <what you know>. Look at <where>, not <where not>. Answer: <question>."
 
 [[moves]]
 move_id = "new_info"
