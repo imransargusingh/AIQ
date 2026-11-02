@@ -2,6 +2,7 @@
 //! The model places the rung and answers narrow facts; this module turns two runs and the on-device log
 //! facts into one judgment: merge → floor (log facts only) → guardrails lower → potential → Uncertain.
 //! The same input always gives the same judgment. No I/O.
+use crate::secrets;
 use aiq_contracts::judge::{ActionSummary, Fact, Response};
 
 /// Stamped on every judgment. Bump on any change to the fact set, the rules below, or the prompt.
@@ -288,7 +289,8 @@ fn render(tool: &str, turns: &[Turn], log: &LogFacts, fence: &str, cap: usize) -
     let n = turns.len();
     let (head, tail) = if n > MAX_PROMPTS { (MAX_PROMPTS / 2, MAX_PROMPTS / 2) } else { (n, 0) };
     let emit = |i: usize, t: &Turn, o: &mut String| {
-        o.push_str(&format!("Prompt {}: {}\n", i + 1, cut(t.prompt.trim(), cap)));
+        // Prompts stored before ingest redaction (S2) or imported may still hold secrets: redact again here.
+        o.push_str(&format!("Prompt {}: {}\n", i + 1, cut(&secrets::redact(t.prompt.trim()).0, cap)));
         if let Some(a) = &t.actions {
             if !a.tools.is_empty() {
                 let tools: Vec<String> = a.tools.iter().map(|(k, v)| format!("{k}×{v}")).collect();
@@ -299,7 +301,7 @@ fn render(tool: &str, turns: &[Turn], log: &LogFacts, fence: &str, cap: usize) -
                 o.push_str(&format!("  files: {}\n", f.join(", ")));
             }
             for c in a.commands.iter().take(8) {
-                o.push_str(&format!("  ran: {}\n", cut(c, 160)));
+                o.push_str(&format!("  ran: {}\n", cut(&secrets::redact(c).0, 160)));
             }
             if a.subagents > 0 {
                 o.push_str(&format!("  sub-agents: {}\n", a.subagents));
@@ -981,5 +983,17 @@ mod tests {
         let e = envelope("copilot-cli", &small, &log_facts(&small, true), "F");
         assert!(e.contains("agent tools: Edit×1") && e.contains("ran: cargo test"));
         assert!(e.contains("checks (tests, build, lint) run by: agent"));
+    }
+
+    #[test]
+    fn envelope_never_carries_a_secret() {
+        let key = "ghp_0123456789abcdefghijklmnopqrstuvwxyz";
+        let t = turns(
+            &[&format!("use token {key} to push")],
+            acts(&[("Bash", 1)], &[&format!("git push https://{key}@github.com")], &[], 0),
+        );
+        let e = envelope("copilot-cli", &t, &log_facts(&t, true), "F");
+        assert!(!e.contains(key), "{e}");
+        assert!(e.contains(secrets::MARKER));
     }
 }

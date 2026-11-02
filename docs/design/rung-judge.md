@@ -316,5 +316,5 @@ Run 2 in detail (answers cached; per-task rows printed by the eval):
 | | |
 |---|---|
 | **Completed** | Design; build (contracts, domain, store v5, runner, AIQ home views); tests; held-out eval (above) |
-| **Remaining** | Laptop run: Copilot path first (prompt on stdin, sealing, MCP canary, session deletion), then Claude; F6 coverage on real tasks; secrets redaction of the envelope once PR #22 lands |
+| **Remaining** | Laptop run: Copilot path first (prompt on stdin, sealing, MCP canary, session deletion), then Claude; F6 coverage on real tasks |
 | **Best next action** | Laptop check on Imran's real store |

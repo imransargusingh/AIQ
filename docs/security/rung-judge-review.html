@@ -106,6 +106,14 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <p>threat model.</p>
 <ul><li>Pointer notes in ADR-0007 and the threat model to this review; threat-model rows for S1, S2, S6, S7.</li><li>Imran&#x27;s decisions (2026-11-02): T2 keep the Claude subscription default (Claude Code tasks only; closed);</li></ul>
 <p>S1 delete judge sessions by default. Recorded here, in ADR-0007, the threat model and history-import.</p>
+<h2>5a. Fixes since the review (2026-11-02)</h2>
+<ul><li><strong>S2 fixed:</strong> <code>crates/aiq-domain/src/secrets.rs</code> replaces well-known secret shapes with <code>[secret removed]</code></li></ul>
+<p>in the hook (before the frame is sent or spooled), again in the core&#x27;s ingest, and in <code>aiq import</code> (prompts and commands). Canary set in its tests; <code>aiq status</code> shows the count since the core started. Measured: hook p95 1.3 ms on a 61 KB prompt holding 1,600 secrets (release build, Linux, 40 runs).</p>
+<ul><li><strong>S7 fixed:</strong> on Windows, <code>ipc::connect</code> checks that the pipe&#x27;s server process runs as the current</li></ul>
+<p>user and refuses otherwise; the hook then spools.</p>
+<ul><li><strong>S10:</strong> the store deletion test now creates <code>-wal</code>, <code>-shm</code> and <code>-journal</code> first and checks all go.</li><li><strong>S11 fixed:</strong> <code>aiq install copilot</code> says that <code>experimental</code> turns on all Copilot experimental</li></ul>
+<p>features, and that uninstall turns it back off. Open: an install option without the status line.</p>
+<ul><li><strong>S1, S3, S4, S5, S6:</strong> in the rung judge build (thread &quot;Build the Rust rung judge&quot;).</li></ul>
 <h2>6. What would change these conclusions</h2>
 <ul><li>Anthropic confirms (or rejects) in writing that a locally installed tool may drive the person&#x27;s own</li></ul>
 <p><code>claude -p</code> on their subscription → T2 drops to Low (or stays High with no exception).</p>
