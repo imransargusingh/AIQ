@@ -184,7 +184,7 @@ outcome is announced in one `role=status` region. Dialogs trap focus, start on C
 | Pattern | Why | Simplifier check |
 |---|---|---|
 | CQRS-lite: read model over the store, commands through the core | Core stays the single writer; reads survive core down | Passes: no second write path, no cache |
-| Snapshot per view refresh (one read, whole view model) | 30 days of one person's data is small; one call is simplest | Measured `read_ms`; upgrade to per-page reads if p95 > 150 ms |
+| Snapshot per view refresh (one read, whole view model) | 30 days of one person's data is small; one call is simplest | Measured `read_ms` and `open_ms` (home.log). Laptop 2026-11-01: median 29 ms on a quiet machine, but 0.2–17 s while the whole machine was busy, in the app and in the standalone `probe` alike, so the cost is the machine, not the query. Mitigated: one read at a time, none while hidden, long prompts previewed. Upgrade to per-page reads if p95 > 150 ms on a quiet machine |
 | Port the mockup markup into React components | Signed-off design; no UI library | Passes: no component library, no router (hash state) |
 
 `simplify:` no router, no state library, no data-fetch library. Ceiling: five pages and one snapshot.

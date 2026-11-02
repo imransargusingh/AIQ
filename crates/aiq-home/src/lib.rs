@@ -51,6 +51,10 @@ pub struct Status {
     pub last_event_ms: Option<i64>,
     /// Measured: how long this snapshot took to read.
     pub read_ms: u64,
+    /// Measured: the part of `read_ms` before the queries run: the pause check, opening the store and its read lock. Logged by the
+    /// shell (home.log), not sent to the page; it tells a slow open or lock wait apart from slow queries.
+    #[serde(skip)]
+    pub open_ms: u64,
     /// Set when the store could not be read; the views show their error state with this code.
     pub error: Option<String>,
 }
@@ -153,7 +157,7 @@ pub fn snapshot(paths: &Paths, pack: &PackV1, now: Now) -> Snapshot {
     let db = paths.db();
     if db.exists() {
         s.status.store_found = true;
-        if let Err(e) = read(&db, pack, now, &mut s) {
+        if let Err(e) = read(&db, pack, now, started, &mut s) {
             let e2 = empty(paths, pack, now);
             s.home = e2.home;
             s.tasks = e2.tasks;
@@ -181,7 +185,15 @@ fn empty(paths: &Paths, pack: &PackV1, now: Now) -> Snapshot {
         schema: SCHEMA,
         now_ms: now.utc_ms,
         offset_min: now.offset_min,
-        status: Status { core: false, paused: false, store_found: false, last_event_ms: None, read_ms: 0, error: None },
+        status: Status {
+            core: false,
+            paused: false,
+            store_found: false,
+            last_event_ms: None,
+            read_ms: 0,
+            open_ms: 0,
+            error: None,
+        },
         home: Home {
             window_days: WINDOW_DAYS,
             tasks_in_window: 0,
@@ -218,11 +230,14 @@ fn q<T>(r: rusqlite::Result<T>) -> R<T> {
     r.map_err(|e| e.to_string())
 }
 
-fn read(db: &std::path::Path, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()> {
+fn read(db: &std::path::Path, pack: &PackV1, now: Now, started: Instant, s: &mut Snapshot) -> R<()> {
     let store = Store::open_read_only(db).map_err(|e| e.to_string())?;
     let c = store.raw();
     // One read transaction: every number in the snapshot comes from the same committed state.
     q(c.execute_batch("BEGIN DEFERRED"))?;
+    // The first read takes the read lock; time to here is open + lock wait (IO1: measured, not guessed).
+    q(c.query_row("SELECT count(*) FROM sqlite_master", [], |r| r.get::<_, i64>(0)))?;
+    s.status.open_ms = started.elapsed().as_millis() as u64;
     let out = read_in_tx(&store, pack, now, s);
     let _ = c.execute_batch("COMMIT");
     out

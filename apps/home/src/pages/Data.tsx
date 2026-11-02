@@ -89,7 +89,9 @@ export function Data(ctx: Ctx) {
                   <td className="num" style={{ whiteSpace: "nowrap" }}>{when(i.ts_ms, snap.now_ms, snap.offset_min)}</td>
                   <td style={{ whiteSpace: "nowrap" }}>{toolName(i.tool)}</td>
                   <td>{i.kind === "prompt" ? "Prompt" : "Turn ended"}</td>
-                  <td className={i.text ? "wrap" : "mute"}>{i.text ?? (i.deleted ? "Text deleted" : i.kind === "prompt" ? "No text captured" : "—")}</td>
+                  <td className={i.text ? "wrap" : "mute"}>
+                    {i.text ? <Content text={i.text} /> : i.deleted ? "Text deleted" : i.kind === "prompt" ? "No text captured" : "—"}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -132,5 +134,19 @@ export function Data(ctx: Ctx) {
         </Dialog>
       )}
     </div>
+  );
+}
+
+/** Prompts can be many KB; show a preview and keep the full text one click (or Enter) away. */
+const PREVIEW = 280;
+function Content({ text }: { text: string }) {
+  if (text.length <= PREVIEW) return <>{text}</>;
+  return (
+    <details>
+      <summary>
+        {text.slice(0, PREVIEW).trimEnd()}… <span className="mute">({text.length.toLocaleString("en-GB")} characters, show all)</span>
+      </summary>
+      <span className="rest">{text.slice(PREVIEW)}</span>
+    </details>
   );
 }

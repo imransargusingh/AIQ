@@ -36,13 +36,14 @@ async function test(name, fn) {
   }
 }
 
-async function open(fixture, { theme, hash = "", width = 1280, height = 800, forced = false } = {}) {
+async function open(fixture, { theme, hash = "", width = 1280, height = 800, forced = false, edit } = {}) {
   const ctx = await browser.newContext({ viewport: { width, height }, forcedColors: forced ? "active" : "none" });
   const page = await ctx.newPage();
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
   const snapshot = JSON.parse(readFileSync(join(fixtures, `${fixture}.json`), "utf8"));
+  if (edit) edit(snapshot);
   await page.addInitScript((s) => {
     window.__AIQ_FIXTURE__ = { snapshot: s, calls: [] };
   }, snapshot);
@@ -196,6 +197,23 @@ await test("Tasks: sort, J/K, imported and not-judged labels; prompt markup is t
   assert.equal(await page.locator("main img").count(), 0, "a prompt containing <img> renders as text");
   assert.ok((await page.locator("main").innerText()).includes("<img src=x onerror=alert(1)> add tests"));
   assert.ok((await page.locator("main").innerText()).includes("Text deleted"));
+  await page.context().close();
+});
+
+await test("Your data: long prompts are collapsed to a preview, full text one click away", async () => {
+  // Real prompts can be many KB (laptop check 2026-11-01: the page was the slowest to check).
+  const long = "start " + "word ".repeat(2000) + "end";
+  const page = await open("full", { hash: "#data", edit: (s) => s.data.items.forEach((i) => i.text && (i.text = long)) });
+  const first = page.locator("tbody tr").first().locator("details");
+  assert.equal(await first.count(), 1);
+  assert.ok(!(await first.evaluate((d) => d.open)));
+  assert.ok((await first.locator("summary").innerText()).length < 320);
+  assert.ok(!(await first.locator(".rest").isVisible()), "full text hidden until opened");
+  await first.locator("summary").focus();
+  await page.keyboard.press("Enter");
+  assert.ok(await first.locator(".rest").isVisible());
+  assert.ok((await first.innerText()).includes(" end"));
+  assert.deepEqual(await axe(page), []);
   await page.context().close();
 });
 

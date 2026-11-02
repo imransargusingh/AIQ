@@ -60,7 +60,7 @@ async fn snapshot() -> Result<Snapshot, String> {
         let s = read(&paths);
         let r = match &s.status.error {
             Some(code) => format!("error={code}"),
-            None => format!("ok read_ms={} core={}", s.status.read_ms, s.status.core),
+            None => format!("ok read_ms={} open_ms={} core={}", s.status.read_ms, s.status.open_ms, s.status.core),
         };
         log(&paths, "snapshot", t, &r);
         s
