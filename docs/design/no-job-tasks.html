@@ -55,6 +55,12 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <p>Choosing between them needs to know what a different model calls the C1 tasks. In run 01a19ce8 it gave 4 of 9 no-job tasks Ask or research.</p>
 <p><strong>N5 (added):</strong> <code>aiq judge --check --no-job</code> samples only no-job judgments, spread across the three causes. The report then splits &quot;the second reading said&quot; by cause. One run of 30, at about 30 premium requests (worked out from one request per task), shows:</p>
 <ul><li>what the C1 tasks are: a pack the judge misses, which points to R3, or <code>other</code>, which points to coverage</li><li>whether R2 clears the bar on C3</li></ul>
+<h2>N6: what the &quot;both said other&quot; tasks are (built 2026-11-02)</h2>
+<p><code>aiq judge --survey-other [--sample n] [--dry-run]</code> takes a seeded random sample, 30 by default, of judgments where both runs said <code>other</code>. For each one it asks the tool that already saw the task (the sealed judge path, ADR-0007) for two things:</p>
+<ul><li>a broad <strong>kind</strong> from a fixed draft list: communicate, plan or manage, analyze data, set up tools,</li></ul>
+<p>operate systems, review or feedback, learn or brainstorm, personal or admin, chat or test, other</p>
+<ul><li>a <strong>label</strong> of 2 to 5 generic words, with no names, paths or quotes</li></ul>
+<p>AIQ keeps only letters in the label and prints counts per kind with up to five labels each. <strong>Nothing is stored</strong>, and no prompt text appears in the output. The kind list is a guess at useful buckets, and the counts show whether a fourth pack would cover enough tasks. Cost: one call per task, about one premium request each on Copilot (from the check runs).</p>
 <h2>Questions for Imran</h2>
 <p>None. The cause and the rule are both settled from data.</p>
 <h2>Gate record</h2>
