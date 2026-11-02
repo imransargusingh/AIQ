@@ -42,21 +42,51 @@ pub const STOP_WAIT_MS: u64 = 30;
 pub const STOP_REPLY_BUDGET: Duration = Duration::from_millis(35);
 const CORE_START_BACKOFF_S: u64 = 10;
 const SMALL_LOG_MAX: u64 = 32 * 1024;
+/// The timing log keeps about 1,000 runs at ~110 bytes a line; it restarts when full.
+const TIMINGS_LOG_MAX: u64 = 128 * 1024;
 
 pub fn run(host: &str, event: &str) -> ExitCode {
     let start = Instant::now();
     std::panic::set_hook(Box::new(|_| {})); // a panic must never print into Claude Code
     let paths = Paths::from_env();
-    let (outcome, host_ms) = std::panic::catch_unwind(|| inner(&paths, host, event)).unwrap_or(("panic", None));
-    // Copilot's own start-up (its event timestamp to this process running) is measured and shown in
-    // `aiq status`, not counted against AIQ's budget (Imran, 2026-11-01).
-    let host = host_ms.map_or(String::new(), |ms| format!(" host_ms={ms}"));
-    let _ = bounded_append(
-        &paths.hook_timings(),
-        &format!("{event} {} {outcome}{host}", start.elapsed().as_micros()),
-        SMALL_LOG_MAX,
-    );
+    let mut marks = Marks::default();
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        inner_outcome(&paths, host, event, start, &mut marks)
+    }))
+    .unwrap_or("panic");
+    let total = start.elapsed().as_micros();
+    let at = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    let _ = bounded_append(&paths.hook_timings(), &timing_line(event, total, outcome, &marks, at), TIMINGS_LOG_MAX);
     ExitCode::SUCCESS
+}
+
+/// Where one hook run spent its time, so a slow run can be tied to a phase, a build and a time of day.
+#[derive(Default)]
+pub struct Marks {
+    /// Copilot's own start-up (its event timestamp to this process running): shown in `aiq status`, not
+    /// counted against AIQ's budget (Imran, 2026-11-01).
+    pub host_ms: Option<i64>,
+    /// Reading the host's payload from stdin.
+    pub read_us: Option<u128>,
+    /// Payload read to frame ready: parse, secret removal, the transcript check.
+    pub prep_us: Option<u128>,
+}
+
+/// `<event> <total us> <outcome>` stays first, so older readers keep working; then `key=value` fields.
+/// The send phase is derived (total - read - prep), never stored twice.
+pub fn timing_line(event: &str, total_us: u128, outcome: &str, m: &Marks, at_unix_s: u64) -> String {
+    let mut l = format!("{event} {total_us} {outcome}");
+    if let Some(ms) = m.host_ms {
+        l += &format!(" host_ms={ms}");
+    }
+    if let Some(us) = m.read_us {
+        l += &format!(" read_us={us}");
+    }
+    if let Some(us) = m.prep_us {
+        l += &format!(" prep_us={us}");
+    }
+    l += &format!(" at={at_unix_s} v={}", env!("CARGO_PKG_VERSION"));
+    l
 }
 
 fn count(paths: &Paths, code: &str) {
@@ -69,19 +99,15 @@ pub fn host_start_ms(v: &Value, now_ms: i64) -> Option<i64> {
     Some(now_ms - ts).filter(|d| (0..60_000).contains(d))
 }
 
-/// Returns a short outcome label for the timing log, and the host's start-up time when known.
-fn inner(paths: &Paths, host: &str, event: &str) -> (&'static str, Option<i64>) {
-    let mut host_ms = None;
-    let outcome = inner_outcome(paths, host, event, &mut host_ms);
-    (outcome, host_ms)
-}
-
-fn inner_outcome(paths: &Paths, host: &str, event: &str, host_ms: &mut Option<i64>) -> &'static str {
+/// Returns a short outcome label for the timing log; fills `marks` as phases finish.
+fn inner_outcome(paths: &Paths, host: &str, event: &str, start: Instant, marks: &mut Marks) -> &'static str {
     let mut buf = Vec::new();
     let mut stdin = std::io::stdin().lock();
     let _ = (&mut stdin).take(MAX_STDIN).read_to_end(&mut buf);
     // Discard the rest instead of closing early, so the host never sees a broken pipe while writing.
     let _ = std::io::copy(&mut stdin.take(MAX_DRAIN), &mut std::io::sink());
+    let read_done = start.elapsed().as_micros();
+    marks.read_us = Some(read_done);
     if std::env::var_os(INTERNAL_ENV).is_some_and(|v| !v.is_empty()) {
         return "internal";
     }
@@ -100,7 +126,7 @@ fn inner_outcome(paths: &Paths, host: &str, event: &str, host_ms: &mut Option<i6
     };
     if host == "copilot" {
         let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);
-        *host_ms = host_start_ms(&v, now);
+        marks.host_ms = host_start_ms(&v, now);
     }
     let parsed = if host == "copilot" {
         to_copilot_event(&v, event, copilot_surface(|k| std::env::var_os(k).is_some()))
@@ -115,6 +141,7 @@ fn inner_outcome(paths: &Paths, host: &str, event: &str, host_ms: &mut Option<i6
         return "paused"; // nothing captured while paused
     }
     let trace_id = uuid::Uuid::new_v4().simple().to_string();
+    marks.prep_us = Some(start.elapsed().as_micros() - read_done);
     let token = ipc::read_token(paths).unwrap_or_default();
     match &ev.body {
         // Copilot: both events are ingests (nothing to show at agentStop; the status line renders).
@@ -304,6 +331,15 @@ fn maybe_start_core(paths: &Paths) {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn timing_line_keeps_the_old_head_and_adds_phases_time_and_build() {
+        let m = Marks { host_ms: Some(40), read_us: Some(1200), prep_us: Some(300) };
+        let l = timing_line("UserPromptSubmit", 2000, "sent", &m, 1_762_000_000);
+        assert!(l.starts_with("UserPromptSubmit 2000 sent host_ms=40 read_us=1200 prep_us=300 at=1762000000 v="));
+        let bare = timing_line("Stop", 9, "paused", &Marks::default(), 5);
+        assert_eq!(bare, format!("Stop 9 paused at=5 v={}", env!("CARGO_PKG_VERSION")));
+    }
 
     #[test]
     fn to_event_claude_prompt_payload() {
