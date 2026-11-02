@@ -10,6 +10,7 @@ mod hook;
 mod import;
 mod install;
 mod install_copilot;
+mod projects;
 mod spawn;
 mod statusline;
 
