@@ -391,6 +391,7 @@ mod tests {
             try_this: "x".into(),
             evidence_ref: "aiq show c".into(),
             pack_version: "p".into(),
+            starter: None,
         };
         let r = ShowReply {
             card: Some(card.clone()),

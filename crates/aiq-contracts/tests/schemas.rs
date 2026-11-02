@@ -71,8 +71,12 @@ fn card_schema_accepts_card_and_rejects_multiline_noticed() {
         try_this: "t".into(),
         evidence_ref: "aiq show c1".into(),
         pack_version: "1".into(),
+        starter: None,
     };
     assert!(s.is_valid(&serde_json::to_value(&c).unwrap()));
+    c.starter = Some("Write tests for <function>.".into());
+    assert!(s.is_valid(&serde_json::to_value(&c).unwrap()), "next-rung starter");
+    c.starter = None;
     c.noticed = "a\nb".into();
     assert!(!s.is_valid(&serde_json::to_value(&c).unwrap()));
 }

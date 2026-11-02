@@ -228,6 +228,21 @@ pub fn parse_stored_facts(json: &str) -> BTreeMap<String, StoredFact> {
         .collect()
 }
 
+/// The coaching-relevant part of a judgment's `read` record. `reprompts` and `corrections` are None on
+/// judgments written before they were recorded (judge j1): unknown, never guessed.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct ReadRecord {
+    pub prompts: u32,
+    pub reprompts: Option<u32>,
+    pub corrections: Option<u32>,
+}
+
+pub fn parse_read(json: &str) -> ReadRecord {
+    let v: serde_json::Value = serde_json::from_str(json).unwrap_or_default();
+    let n = |k: &str| v.get(k).and_then(serde_json::Value::as_u64).map(|x| x as u32);
+    ReadRecord { prompts: n("prompts").unwrap_or(0), reprompts: n("reprompts"), corrections: n("corrections") }
+}
+
 /// What the agent did in one turn, as `aiq import` summarises it on device (tool names and counts, files
 /// touched, commands run, sub-agents started). Never contains the agent's reply text.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
