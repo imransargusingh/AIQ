@@ -48,7 +48,7 @@ pub struct JudgedTask {
     pub live: bool,
     pub tool: String,
     pub first_ms: i64,
-    /// code_change, write_doc or unclassified.
+    /// code_change, write_doc, ask_research or unclassified.
     pub job: String,
     /// None when judged before task types existed (j1) or the job is unclassified.
     pub task_type: Option<String>,
@@ -89,7 +89,7 @@ impl JudgedTask {
             current,
             potential,
             coachable,
-            facts: rung::facts_from_json(facts_json, reprompts),
+            facts: rung::facts_from_json(facts_json, reprompts, job),
             corrections: read.corrections,
         }
     }
@@ -463,6 +463,8 @@ pub fn observe(t: &JudgedTask, m: &MoveDef) -> Option<bool> {
             "F8" => b(&f.f8),
             "F12" => b(&f.f12).map(|v| !v),
             "F13" => b(&f.f13),
+            "F14" => b(&f.f14),
+            "F15" => b(&f.f15),
             _ => None,
         }
     };

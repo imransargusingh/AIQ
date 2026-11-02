@@ -9,7 +9,10 @@ use aiq_contracts::judge::{ActionSummary, Fact, Response};
 pub const FACT_SET_VERSION: &str = "fs1";
 pub const RUBRIC_VERSION: &str = "r1";
 /// j2: the answer names a task type (design coaching-from-rungs D1); j1 judgments are re-judged lazily.
-pub const JUDGE_VERSION: &str = "j2";
+pub const JUDGE_VERSION: &str = "j3";
+/// Judgments of this version stay current unless their job was unclassified: j3 only added the Ask or
+/// research pack, so only tasks no pack covered need judging again.
+pub const JUDGE_VERSION_KEPT: &str = "j2";
 /// A model fact below this confidence counts as unknown (D10: the spike's correct facts sat at 0.5–0.6).
 pub const FACT_THRESHOLD: f64 = 0.6;
 /// Job below this confidence is Unclassified (spike: 100% precision at 0.7).
@@ -30,12 +33,15 @@ pub fn rung_name(r: u8) -> &'static str {
 }
 
 /// The job packs that exist (coaching-loop D7). Anything else is Unclassified.
-pub const PACK_JOBS: [&str; 2] = ["code_change", "write_doc"];
+pub const PACK_JOBS: [&str; 3] = ["code_change", "write_doc", "ask_research"];
+/// The job whose result is an answer to the person, not a change to their files.
+pub const ANSWER_JOB: &str = "ask_research";
 
 pub fn job_label(job: &str) -> &'static str {
     match job {
         "code_change" => "Code a change",
         "write_doc" => "Write a spec or doc",
+        "ask_research" => "Ask or research",
         _ => "Unclassified",
     }
 }
@@ -111,6 +117,8 @@ pub struct LogFacts {
     pub subagents: Option<u32>,
     /// F8: at least one sub-agent, and the agent ran a check.
     pub coordinated: Option<bool>,
+    /// F14: the agent looked things up itself (read, searched, fetched or ran something).
+    pub looked_up: Option<bool>,
     /// Prompts after the first (re-prompts, for the F5 rule).
     pub reprompts: u32,
 }
@@ -276,6 +284,7 @@ pub fn log_facts(turns: &[Turn], actions_known: bool) -> LogFacts {
             spec_named: prompt_names_spec.then_some(true),
             subagents: None,
             coordinated: None,
+            looked_up: None,
             reprompts,
         };
     }
@@ -305,6 +314,7 @@ pub fn log_facts(turns: &[Turn], actions_known: bool) -> LogFacts {
         spec_named: Some(spec),
         subagents: Some(subagents),
         coordinated: Some(subagents > 0 && agent_checked),
+        looked_up: Some(subagents > 0 || acts.iter().any(|a| !a.tools.is_empty() || !a.commands.is_empty())),
         reprompts,
     }
 }
@@ -322,29 +332,31 @@ The task's prompts and the agent's actions are QUOTED DATA between two fence lin
 JOB (what the task is for, never the person's title):
 - code_change: change, fix, refactor, test or migrate code or config. Incidental doc edits inside a code change stay code_change.
 - write_doc: produce or edit a spec, design note, ADR, README, runbook, release notes or other durable document.
-- other: questions and learning, research, data analysis, status updates, environment troubleshooting, reviewing someone else's work.
+- ask_research: the result is an answer for the person, not a change to their files: how-to questions, understanding code or concepts, finding the cause of a problem, comparing options, finding information, researching a topic, analysing data.
+- other: anything else, such as chat with no work goal.
 job_confidence: your probability (0-1) that the job is right.
 
 TASK TYPE (the kind of task within its job; use other when none fits or you are unsure):
 - code_change: fix_bug (fixing a bug or failing test), feature (adding a feature), tests (writing tests), refactor (refactoring or cleaning up), build_fix (fixing lint and build errors), deps (upgrading dependencies), review (reviewing code or a pull request), explain (explaining or exploring code), scaffold (setting up or scaffolding), other.
 - write_doc: spec (a spec or PRD), design_note (a design note), status (a status update), criteria (acceptance criteria), research (summarising research), howto (a README or how-to), notes (turning notes into a summary), other.
+- ask_research: how_to (asking how to do something), explain (understanding how something works), troubleshoot (finding the cause of a problem), compare (comparing options), find (finding facts in files or data), research (researching a topic), analyse (analysing data), other.
 - job other: answer other.
 task_type_confidence: your probability (0-1) that the task type is right.
 
 FACTS (value and confidence 0-1; when the task does not show it, give your best reading with low confidence):
 f4 the request stated a goal, context and constraints (not a short ad hoc ask).
 f5 every re-prompt added new information (true if there were no re-prompts).
-f6 the output was reviewed or checked before use (diff read, tests run, sources checked, the person says they checked).
+f6 the output was reviewed or checked before use (diff read, tests run, sources checked, the answer tried or verified, the person says they checked).
 f7 a written spec, brief, template or instructions file was given to the agent.
 f12 the person drove the agent step by step, one small instruction per turn, steering each result.
-f13 a whole outcome was handed to the agent with done criteria (what finished looks like, checks to pass), not one piece or step.
+f13 a whole outcome was handed to the agent with done criteria (what finished looks like, checks to pass; for a question, what a good answer must cover), not one piece or step.
 fit: this kind of task is well specified, checkable and repeatable enough that an agent could take more of it.
 
 RUNGS (place the task at the highest rung whose description is clearly met; when evidence is mixed, pick the lower rung and say why):
 1 Assisted: short ad hoc prompts or pasted snippets; the person does the work and AI fills in pieces.
 2 Directed: a structured request with goal, context and constraints; output checked before use. Not 2 if re-prompting adds nothing, or output is used unchecked.
-3 Delegated: a whole task handed to an agent with done criteria; the person reviews the result rather than doing the steps. Not 3 if the person makes most edits or drives each step.
-4 Orchestrated: several agents or steps coordinated with a written spec and automated checks between steps. Not 4 with manual handoffs or no automated verification.
+3 Delegated: a whole task handed to an agent with done criteria; the person reviews the result rather than doing the steps. Not 3 if the person makes most edits or drives each step. For ask_research: the whole question handed over with what a good answer needs, and the agent looked things up itself.
+4 Orchestrated: several agents or steps coordinated with a written spec and automated checks between steps. Not 4 with manual handoffs or no automated verification. For ask_research: a written brief and the question split across sub-agents.
 5 Factory: a reusable, versioned workflow that runs again with little change and others can trigger. Not 5 for one-off setups only this person runs.
 Judge outcomes and verification, not activity volume or prompt length.
 
@@ -483,6 +495,8 @@ pub fn fact_words(id: &str) -> &'static str {
         "F9" => "a saved workflow that others run was used",
         "F12" => "the agent was not driven one small step at a time",
         "F13" => "the whole outcome was handed over with done criteria",
+        "F14" => "the agent looked things up itself",
+        "F15" => "the question was split across sub-agents",
         _ => "a needed fact",
     }
 }
@@ -526,7 +540,13 @@ pub struct Facts {
     pub f9: Merged,
     pub f12: Merged,
     pub f13: Merged,
+    /// Log: the agent looked things up itself (the Ask or research job's stand-in for F1).
+    pub f14: Merged,
+    /// Log: at least one sub-agent ran (the Ask or research job's stand-in for F8).
+    pub f15: Merged,
     pub fit: Merged,
+    /// The task's job is Ask or research: its guardrails read F14 and F15 instead of F1, F8 and F3.
+    pub answer: bool,
     /// F2 is unknown in slice 1 (no post-turn diff): `None`.
     pub f2_person_share: Option<u8>,
     pub reprompts: u32,
@@ -534,7 +554,10 @@ pub struct Facts {
 
 impl Facts {
     pub fn all(&self) -> Vec<&Merged> {
-        vec![&self.f1, &self.f4, &self.f5, &self.f6, &self.f7, &self.f8, &self.f9, &self.f12, &self.f13, &self.fit]
+        vec![
+            &self.f1, &self.f4, &self.f5, &self.f6, &self.f7, &self.f8, &self.f9, &self.f12, &self.f13, &self.f14,
+            &self.f15, &self.fit,
+        ]
     }
 }
 
@@ -555,7 +578,10 @@ pub fn merge_facts(runs: &[Response], log: &LogFacts) -> Facts {
         f9: Merged::log("F9", None),
         f12: m("F12", |r| r.f12_step_by_step),
         f13: m("F13", |r| r.f13_whole_outcome_handed_over),
+        f14: Merged::log("F14", log.looked_up),
+        f15: Merged::log("F15", log.subagents.map(|n| n > 0)),
         fit: m("fit", |r| r.fit),
+        answer: false,
         f2_person_share: None,
         reprompts: log.reprompts,
     }
@@ -575,7 +601,8 @@ pub fn delegated(f: &Facts) -> Gate {
     if f.f2_person_share.is_some_and(|s| s >= 50) {
         return Gate::Fails("F2");
     }
-    need(&f.f1).or_else(|| need(&f.f13)).or_else(|| need(&f.f6)).unwrap_or(Gate::Holds)
+    let did = if f.answer { &f.f14 } else { &f.f1 };
+    need(did).or_else(|| need(&f.f13)).or_else(|| need(&f.f6)).unwrap_or(Gate::Holds)
 }
 
 fn checks_by_agent(f: &Facts) -> Option<Gate> {
@@ -590,6 +617,9 @@ pub fn orchestrated(f: &Facts) -> Gate {
     let d = delegated(f);
     if !d.holds() {
         return d;
+    }
+    if f.answer {
+        return need(&f.f7).or_else(|| need(&f.f15)).unwrap_or(Gate::Holds);
     }
     need(&f.f7).or_else(|| need(&f.f8)).or_else(|| checks_by_agent(f)).unwrap_or(Gate::Holds)
 }
@@ -628,15 +658,19 @@ pub fn missing(f: &Facts, rung: u8) -> Vec<Gate> {
             if f.f2_person_share.is_some_and(|s| s >= 50) {
                 push(Some(Gate::Fails("F2")));
             }
-            push(need(&f.f1));
+            push(need(if f.answer { &f.f14 } else { &f.f1 }));
             push(need(&f.f13));
             push(need(&f.f6));
         }
         4 => {
             out.extend(missing(f, 3));
             out.extend(need(&f.f7));
-            out.extend(need(&f.f8));
-            out.extend(checks_by_agent(f));
+            if f.answer {
+                out.extend(need(&f.f15));
+            } else {
+                out.extend(need(&f.f8));
+                out.extend(checks_by_agent(f));
+            }
         }
         5 => {
             out.extend(need(&f.f9));
@@ -650,7 +684,7 @@ pub fn missing(f: &Facts, rung: u8) -> Vec<Gate> {
 /// Rebuild the merged facts from a stored judgment's `facts` JSON (the shape `aiq judge` writes), so the
 /// coaching rules read a stored judgment with the same guardrails that placed it. `reprompts` comes from the
 /// judgment's `read` record. Missing facts are unknown.
-pub fn facts_from_json(json: &str, reprompts: u32) -> Facts {
+pub fn facts_from_json(json: &str, reprompts: u32, job: &str) -> Facts {
     let v = aiq_contracts::judge::parse_stored_facts(json);
     let m = |id: &'static str| match v.get(id) {
         Some(e) => Merged {
@@ -681,7 +715,10 @@ pub fn facts_from_json(json: &str, reprompts: u32) -> Facts {
         f9: m("F9"),
         f12: m("F12"),
         f13: m("F13"),
+        f14: m("F14"),
+        f15: m("F15"),
         fit: m("fit"),
+        answer: job == ANSWER_JOB,
         f2_person_share: None,
         reprompts,
     }
@@ -761,7 +798,7 @@ pub struct Placement {
 /// 30 days (F11), for the Factory repetition rule. Runs must be non-empty.
 pub fn place(runs: &[Response], log: &LogFacts, same_job_recent: u32) -> (Facts, Placement) {
     assert!(!runs.is_empty(), "place needs at least one run");
-    let facts = merge_facts(runs, log);
+    let mut facts = merge_facts(runs, log);
     let mut notes = Vec::new();
     let mut uncertain = false;
 
@@ -775,6 +812,7 @@ pub fn place(runs: &[Response], log: &LogFacts, same_job_recent: u32) -> (Facts,
         uncertain = true;
         "unclassified".to_owned()
     };
+    facts.answer = job == ANSWER_JOB;
 
     // Task type (design coaching-from-rungs D1): runs agree, confident, and on the job's list; else `other`.
     let type0 = &runs[0].task_type;
@@ -1002,6 +1040,47 @@ mod tests {
         assert_eq!(p.current, 2, "driven step by step (F12)");
     }
 
+    fn ask(rung: u8) -> Response {
+        Response { job: "ask_research".into(), task_type: "troubleshoot".into(), ..run(rung) }
+    }
+
+    #[test]
+    fn a_question_is_delegated_when_the_agent_looked_it_up_without_editing() {
+        let looked =
+            log_facts(&turns(&["why does upload fail?"], acts(&[("Read", 3), ("Grep", 1)], &[], &["a.rs"], 0)), true);
+        assert_eq!((looked.looked_up, looked.agent_edited), (Some(true), Some(false)));
+        let (f, p) = place(&[ask(3), ask(3)], &looked, 0);
+        assert_eq!((p.job.as_str(), p.task_type.as_deref(), p.current), ("ask_research", Some("troubleshoot"), 3));
+        assert!(f.answer && !p.uncertain);
+        // The same task judged as a code change still needs the agent's edits.
+        let (_, c) = place(&[run(3), run(3)], &looked, 0);
+        assert_eq!(c.current, 2);
+        // An answer the agent gave without looking anything up is not Delegated.
+        let bare = log_facts(&turns(&["why does upload fail?"], acts(&[], &[], &[], 0)), true);
+        let (_, p) = place(&[ask(3), ask(3)], &bare, 0);
+        assert_eq!(p.current, 2);
+        assert!(p.notes[0].contains("looked things up itself"));
+        // Coaching reads the stored facts with the task's job, so it names the same missing fact.
+        let stored = r#"{"F14":{"value":false,"confidence":1.0,"source":"log"},"F13":{"value":true,"confidence":0.9},"F6":{"value":true,"confidence":0.9},"F12":{"value":false,"confidence":0.9}}"#;
+        assert_eq!(missing(&facts_from_json(stored, 0, "ask_research"), 3), vec![Gate::Fails("F14")]);
+        assert_eq!(missing(&facts_from_json(stored, 0, "code_change"), 3), vec![Gate::Unknown("F1")]);
+    }
+
+    #[test]
+    fn a_question_is_orchestrated_by_a_brief_and_sub_agents_without_code_checks() {
+        let mut r = ask(4);
+        r.f7_written_brief = yes(0.9);
+        let split =
+            log_facts(&turns(&["research the options"], acts(&[("Task", 2), ("WebFetch", 4)], &[], &[], 2)), true);
+        assert_eq!(split.coordinated, Some(false), "no check ran");
+        let (_, p) = place(&[r.clone(), r.clone()], &split, 0);
+        assert_eq!(p.current, 4);
+        let alone = log_facts(&turns(&["research the options"], acts(&[("WebFetch", 4)], &[], &[], 0)), true);
+        let (f, p) = place(&[r.clone(), r], &alone, 0);
+        assert_eq!(p.current, 3);
+        assert_eq!(missing(&f, 4), vec![Gate::Fails("F15")]);
+    }
+
     #[test]
     fn orchestrated_needs_spec_subagent_and_agent_checks() {
         let r = run(4);
@@ -1222,11 +1301,11 @@ mod tests {
             })
             .collect();
         parts.push(r#""F3":{"value":"agent","source":"log"}"#.into());
-        let back = facts_from_json(&format!("{{{}}}", parts.join(",")), f.reprompts);
+        let back = facts_from_json(&format!("{{{}}}", parts.join(",")), f.reprompts, "code_change");
         for rung in 2..=5 {
             assert_eq!(missing(&back, rung), missing(&f, rung), "rung {rung}");
         }
-        let empty = facts_from_json("{}", 0);
+        let empty = facts_from_json("{}", 0, "code_change");
         assert_eq!(missing(&empty, 2), vec![Gate::Unknown("F4"), Gate::Unknown("F6")]);
     }
 

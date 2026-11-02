@@ -37,13 +37,17 @@ mod tests {
     #[test]
     fn bundled_moves_carry_no_rung_name_number_or_model_text_and_fit_the_status_line() {
         let p = BundledPack.load().unwrap();
-        assert_eq!(p.moves.len(), 10);
+        assert_eq!(p.moves.len(), 14);
         for m in &p.moves {
             for t in [&m.noticed, &m.why, &m.try_this, &m.habit] {
                 assert!(!aiq_domain::rung::RUNG_NAMES.iter().any(|r| t.contains(r)), "{t}");
                 assert!(!t.chars().any(|c| ('1'..='5').contains(&c)), "{t}");
             }
-            let longest = aiq_domain::coach::card_label("code_change", "review");
+            let longest = aiq_contracts::judge::TASK_TYPES
+                .iter()
+                .map(|(j, t, _)| aiq_domain::coach::card_label(j, t))
+                .max_by_key(|l| l.chars().count())
+                .unwrap_or_default();
             let line = format!(
                 "AIQ tip: {} · aiq show 0193f1c2-aaaa-7bbb-8ccc-0123456789ab",
                 m.noticed.replace("{type}", &longest)
@@ -51,7 +55,7 @@ mod tests {
             assert!(line.chars().count() <= 160, "{} chars: {line}", line.chars().count());
         }
         // Every step the rung guardrails need for each job has a move.
-        for job in ["code_change", "write_doc"] {
+        for job in aiq_domain::rung::PACK_JOBS {
             for step in 1..=3u8 {
                 assert!(p.moves.iter().any(|m| m.step == step && (m.job == job || m.job == "any")), "{job} {step}");
             }

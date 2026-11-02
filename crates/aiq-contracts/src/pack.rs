@@ -92,7 +92,7 @@ pub struct MoveDef {
     pub step: u8,
     /// Guardrail fact ids of rung `step + 1` this move answers (a confident "no" on any of them).
     pub facts: Vec<String>,
-    /// `any`, `code_change` or `write_doc`.
+    /// `any`, `code_change`, `write_doc` or `ask_research`.
     pub job: String,
     /// The Habits page name.
     pub habit: String,
@@ -109,7 +109,7 @@ pub struct MoveDef {
 }
 
 /// Facts a move may name (the rung guardrails' facts, rung-model fact set fs1).
-pub const MOVE_FACTS: [&str; 10] = ["F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F12", "F13"];
+pub const MOVE_FACTS: [&str; 12] = ["F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F12", "F13", "F14", "F15"];
 
 /// The import spec's automated-session rule, live side (docs/specs/history-import.md, US-12). Defaults are
 /// the spec's tested values.
@@ -220,7 +220,7 @@ impl PackV1 {
             if let Some(f) = m.facts.iter().find(|f| !MOVE_FACTS.contains(&f.as_str())) {
                 return Err(format!("move {}: unknown fact {f}", m.move_id));
             }
-            if !["any", "code_change", "write_doc"].contains(&m.job.as_str()) {
+            if !["any", "code_change", "write_doc", "ask_research"].contains(&m.job.as_str()) {
                 return Err(format!("move {}: job {}", m.move_id, m.job));
             }
             let text = [&m.noticed, &m.why, &m.try_this, &m.starter, &m.habit];

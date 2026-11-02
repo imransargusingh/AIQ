@@ -48,7 +48,7 @@ export interface TaskRow {
   last_ms: number;
   prompts: number;
   origin: "live" | "imported";
-  /** code_change, write_doc or unclassified once judged. */
+  /** code_change, write_doc, ask_research or unclassified once judged. */
   job: string | null;
   rung: number | null;
   judgment: TaskJudgment | null;

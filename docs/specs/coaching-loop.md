@@ -51,6 +51,9 @@ Jobs in this spec (alpha job packs):
 - **Code a change:** fix a bug, add a feature, refactor, write tests, with an agent or completions.
 - **Write a spec or doc:** a spec, PRD, design note, research summary or status update drafted with
   an agent in a CLI or VS Code.
+- **Ask or research** (added 2026-11-02, Imran's card: 9 of his first 10 real tasks were questions or
+  research): the result is an answer for the person, not a change to their files. How-to questions,
+  understanding code or concepts, finding a cause, comparing options, finding facts, research, data analysis.
 
 People (anyone doing those jobs on VS Code, Claude Code or Copilot CLI):
 - **Rung 1–2 (primary):** uses completions and chat; rarely hands over a whole task. Motivated

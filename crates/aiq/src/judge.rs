@@ -445,7 +445,8 @@ pub fn provider_for(tool: &str) -> Option<&'static str> {
 fn current_version(j: &JudgmentRow) -> bool {
     j.fact_set_version == rung::FACT_SET_VERSION
         && j.rubric_version == rung::RUBRIC_VERSION
-        && j.judge_version == rung::JUDGE_VERSION
+        && (j.judge_version == rung::JUDGE_VERSION
+            || (j.judge_version == rung::JUDGE_VERSION_KEPT && j.job != "unclassified"))
 }
 
 /// Tasks to judge now, best first: closed, not judged at the current versions, not waiting out a retry,
@@ -1433,6 +1434,44 @@ mod tests {
     }
 
     #[test]
+    fn only_unclassified_judgments_of_the_last_version_are_judged_again() {
+        let j = |job: &str, version: &str| JudgmentRow {
+            judgment_id: "j".into(),
+            task_id: "t".into(),
+            origin: "live".into(),
+            provider: "claude".into(),
+            model: None,
+            judged_utc_ms: 0,
+            job: job.into(),
+            job_confidence: 0.9,
+            model_rung: 1,
+            current_rung: 1,
+            current_confidence: 0.9,
+            potential_rung: 2,
+            potential_confidence: 0.9,
+            ceiling_rung: 3,
+            state: "judged".into(),
+            coachable: false,
+            facts: "{}".into(),
+            evidence: "[]".into(),
+            gap: String::new(),
+            blockers: "[]".into(),
+            placement: "[]".into(),
+            read: "{}".into(),
+            call_ids: "[]".into(),
+            fact_set_version: rung::FACT_SET_VERSION.into(),
+            rubric_version: rung::RUBRIC_VERSION.into(),
+            judge_version: version.into(),
+            task_type: None,
+            task_type_confidence: None,
+        };
+        assert!(current_version(&j("code_change", rung::JUDGE_VERSION_KEPT)));
+        assert!(!current_version(&j("unclassified", rung::JUDGE_VERSION_KEPT)), "Ask or research may cover it now");
+        assert!(current_version(&j("unclassified", rung::JUDGE_VERSION)));
+        assert!(!current_version(&j("code_change", "j1")));
+    }
+
+    #[test]
     fn claude_call_is_sealed() {
         let c = ClaudeCli { exe: None, model: "sonnet".into(), scratch: PathBuf::from("/tmp") };
         let a = c.args(&json!({"type": "object"}), Path::new("/tmp/x/system.txt"));
@@ -1660,7 +1699,9 @@ mod eval {
             n += 1;
             exact += (pl.current == want) as u32;
             within += (pl.current.abs_diff(want) <= 1) as u32;
-            job_ok += (got_job == want_job || (want_job == "other" && runs[0].job == "other")) as u32;
+            // The held-out labels predate the Ask or research pack (j3): their "other" covers questions.
+            let other_ok = want_job == "other" && ["other", rung::ANSWER_JOB].contains(&runs[0].job.as_str());
+            job_ok += (got_job == want_job || other_ok) as u32;
             rows.push(format!(
                 "{} want {} got {} (model {}) state {} job {}/{}",
                 c["id"],
