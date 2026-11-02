@@ -134,7 +134,21 @@ The report then splits "the second reading said" by cause. One run of 30, at abo
   each.
 - **What would change the coverage:** a fourth pack for whatever the C1 tasks are. Nobody knows what they
   are yet, and the second reader only says `other`. Finding out needs a short private label per task, kept
-  on the device. That is new scope, recorded as a next step, not built.
+  on the device. Built as N6 below.
+
+## N6: what the "both said other" tasks are (built 2026-11-02)
+
+`aiq judge --survey-other [--sample n] [--dry-run]` takes a seeded random sample, 30 by default, of
+judgments where both runs said `other`. For each one it asks the tool that already saw the task (the
+sealed judge path, ADR-0007) for two things:
+- a broad **kind** from a fixed draft list: communicate, plan or manage, analyze data, set up tools,
+  operate systems, review or feedback, learn or brainstorm, personal or admin, chat or test, other
+- a **label** of 2 to 5 generic words, with no names, paths or quotes
+
+AIQ keeps only letters in the label and prints counts per kind with up to five labels each. **Nothing is
+stored**, and no prompt text appears in the output. The kind list is a guess at useful buckets, and the
+counts show whether a fourth pack would cover enough tasks. Cost: one call per task, about one premium
+request each on Copilot (from the check runs).
 
 ## Questions for Imran
 
@@ -152,5 +166,5 @@ None. The cause and the rule are both settled from data.
 | | |
 |---|---|
 | **Completed** | Design; measurement build; cause measured; no-job check run; decisions above |
-| **Remaining** | Nothing for this goal |
-| **Best next action** | None needed for accuracy. Optional: find out what the C1 tasks are, to decide on a fourth pack |
+| **Remaining** | Survey run on the laptop; fourth-pack decision |
+| **Best next action** | Imran runs `aiq judge --survey-other`; the fourth-pack decision goes to him with those counts |

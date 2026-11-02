@@ -65,11 +65,17 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <ul><li><strong>No rule goes live.</strong> R2 agrees 4 of 7 and R1 1 of 2, both below the N3 bar of 8 of 10. R4, a third run</li></ul>
 <p>for the 25 C2 and C3 tasks, isn&#x27;t worth it: that is about 5% of tasks, and they would cost an extra call each.</p>
 <ul><li><strong>What would change the coverage:</strong> a fourth pack for whatever the C1 tasks are. Nobody knows what they</li></ul>
-<p>are yet, and the second reader only says <code>other</code>. Finding out needs a short private label per task, kept on the device. That is new scope, recorded as a next step, not built.</p>
+<p>are yet, and the second reader only says <code>other</code>. Finding out needs a short private label per task, kept on the device. Built as N6 below.</p>
+<h2>N6: what the &quot;both said other&quot; tasks are (built 2026-11-02)</h2>
+<p><code>aiq judge --survey-other [--sample n] [--dry-run]</code> takes a seeded random sample, 30 by default, of judgments where both runs said <code>other</code>. For each one it asks the tool that already saw the task (the sealed judge path, ADR-0007) for two things:</p>
+<ul><li>a broad <strong>kind</strong> from a fixed draft list: communicate, plan or manage, analyze data, set up tools,</li></ul>
+<p>operate systems, review or feedback, learn or brainstorm, personal or admin, chat or test, other</p>
+<ul><li>a <strong>label</strong> of 2 to 5 generic words, with no names, paths or quotes</li></ul>
+<p>AIQ keeps only letters in the label and prints counts per kind with up to five labels each. <strong>Nothing is stored</strong>, and no prompt text appears in the output. The kind list is a guess at useful buckets, and the counts show whether a fourth pack would cover enough tasks. Cost: one call per task, about one premium request each on Copilot (from the check runs).</p>
 <h2>Questions for Imran</h2>
 <p>None. The cause and the rule are both settled from data.</p>
 <h2>Gate record</h2>
 <p><code>GATE design-slice · 2026-11-02 · Simplifier, Test Architect, Data &amp; Persistence (seats played by Claude; not independent) · pass</code></p>
 <ul><li>Simplifier: measure first, and switch no rule on yet. Adding a field to <code>read</code> is cheaper than a column.</li><li>Test Architect: the cause and both rules are unit-tested. The runner test checks that the runs are recorded and that the report explains them.</li><li>Data &amp; Persistence: <code>read</code> is the judgment&#x27;s own JSON, and the cause is derived from it, not stored.</li></ul>
 <h2>Status and next action</h2>
-<table><thead><tr><th></th><th></th></tr></thead><tbody><tr><td><strong>Completed</strong></td><td>Design; measurement build; cause measured; no-job check run; decisions above</td></tr><tr><td><strong>Remaining</strong></td><td>Nothing for this goal</td></tr><tr><td><strong>Best next action</strong></td><td>None needed for accuracy. Optional: find out what the C1 tasks are, to decide on a fourth pack</td></tr></tbody></table></main></body></html>
+<table><thead><tr><th></th><th></th></tr></thead><tbody><tr><td><strong>Completed</strong></td><td>Design; measurement build; cause measured; no-job check run; decisions above</td></tr><tr><td><strong>Remaining</strong></td><td>Survey run on the laptop; fourth-pack decision</td></tr><tr><td><strong>Best next action</strong></td><td>Imran runs <code>aiq judge --survey-other</code>; the fourth-pack decision goes to him with those counts</td></tr></tbody></table></main></body></html>
