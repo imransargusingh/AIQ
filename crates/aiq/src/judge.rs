@@ -1022,6 +1022,9 @@ pub fn cli(args: &[&str]) -> ExitCode {
     if auto && set.mode.as_deref() != Some("auto") {
         return ExitCode::SUCCESS;
     }
+    if args.iter().any(|a| *a == "--check" || *a == "--check-report") {
+        return check_cli(args, &paths, &store);
+    }
     let homes = Homes::from_env();
     let n = now();
     if dry {
@@ -1137,6 +1140,358 @@ fn dry_run(store: &Store, homes: &Homes, n: Now, only: Option<&str>) -> ExitCode
         println!("{}", rung::envelope(&t.tool, &turns, &log, "AIQ-QUOTE-xxxx"));
     }
     ExitCode::SUCCESS
+}
+
+// ------------------------------------------------------------------ accuracy check
+
+/// The second reader (design judge-accuracy-check K3): Claude Code tasks default to opus, Copilot tasks to
+/// the judge's Copilot model (Copilot's own pick) unless the person names one.
+const CHECK_CLAUDE_DEFAULT: &str = "opus";
+
+/// One check run's tally of what happened to each sampled task.
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct CheckRun {
+    pub run_id: String,
+    pub checked: u32,
+    pub failed: u32,
+    pub skipped_no_text: u32,
+    pub unavailable: Vec<(String, String)>,
+    pub cost_usd: f64,
+}
+
+/// The judged tasks a check may sample: the current judgment of each closed task AIQ knows, any job.
+fn check_candidates(store: &Store, tasks: &[TaskRow]) -> aiq_store::Result<Vec<aiq_domain::check::Candidate>> {
+    let known: HashSet<&str> = tasks.iter().map(|t| t.task_id.as_str()).collect();
+    let judged = store.current_judgments()?;
+    Ok(judged
+        .values()
+        .filter(|j| known.contains(j.task_id.as_str()))
+        .map(|j| aiq_domain::check::Candidate { judgment_id: j.judgment_id.clone(), job: j.job.clone() })
+        .collect())
+}
+
+/// Read each sampled task a second time, blind, through the provider that already saw it; store each reading.
+#[allow(clippy::too_many_arguments)]
+pub fn run_check(
+    store: &Store,
+    paths: &Paths,
+    homes: &Homes,
+    claude: &dyn Provider,
+    copilot: &dyn Provider,
+    now_utc_ms: i64,
+    size: usize,
+    seed: u64,
+) -> Result<CheckRun, String> {
+    use aiq_contracts::check::{check_schema, parse_check};
+    let pack = aiq_core::pack::parse(aiq_core::pack::BUNDLED_TOML).map_err(|e| e.to_string())?;
+    let tasks = aiq_home::tasks(store, &pack, 0)?;
+    let by_id: HashMap<&str, &TaskRow> = tasks.iter().map(|t| (t.task_id.as_str(), t)).collect();
+    let cands = check_candidates(store, &tasks).map_err(|e| e.to_string())?;
+    let sample = aiq_domain::check::sample(&cands, size, seed);
+    let run_id = uuid::Uuid::now_v7().to_string();
+    store
+        .insert_check_run(&aiq_store::CheckRunRow {
+            run_id: run_id.clone(),
+            seed,
+            requested: size as u32,
+            sample: sample.clone(),
+            started_utc_ms: now_utc_ms,
+            check_version: aiq_domain::check::CHECK_VERSION.into(),
+        })
+        .map_err(|e| e.to_string())?;
+    let system = rung::check_system();
+    let schema = check_schema();
+    let mut rep = CheckRun { run_id: run_id.clone(), ..Default::default() };
+    let mut down: HashSet<&str> = HashSet::new();
+    for jid in &sample {
+        let Some(j) = store.judgment(jid).map_err(|e| e.to_string())? else { continue };
+        let Some(t) = by_id.get(j.task_id.as_str()) else { continue };
+        let Some(name) = provider_for(&t.tool) else { continue };
+        if down.contains(name) {
+            rep.failed += 1;
+            continue;
+        }
+        let (turns, known) = task_turns(store, homes, t).map_err(|e| e.to_string())?;
+        if turns.is_empty() {
+            rep.skipped_no_text += 1;
+            continue;
+        }
+        let log = rung::log_facts(&turns, known);
+        let fence = format!("AIQ-QUOTE-{}", uuid::Uuid::new_v4().simple());
+        let user =
+            rung::envelope_within(&t.tool, &turns, &log, &fence, rung::CHECK_PROMPT_CAP, rung::CHECK_ENVELOPE_CAP);
+        let session_id = uuid::Uuid::new_v4().to_string();
+        if name == COPILOT && record_judge_session(paths, &session_id).is_err() {
+            rep.failed += 1;
+            continue;
+        }
+        let provider = if name == CLAUDE { claude } else { copilot };
+        let mut r = provider.call(&CallReq { system: &system, user: &user, schema: &schema, session_id: &session_id });
+        let mut answer = None;
+        if let Outcome::Ok(v) = &r.outcome {
+            match parse_check(v.clone()) {
+                Ok(a) => answer = Some(serde_json::to_string(&a).expect("answer serializes")),
+                Err(why) => r.outcome = Outcome::Schema(why),
+            }
+        }
+        store
+            .insert_check(&aiq_store::CheckRow {
+                check_id: uuid::Uuid::now_v7().to_string(),
+                run_id: run_id.clone(),
+                judgment_id: j.judgment_id.clone(),
+                task_id: j.task_id.clone(),
+                grader_provider: name.to_owned(),
+                grader_model: r.model.clone(),
+                outcome: r.outcome.label().0.to_owned(),
+                answer: answer.clone(),
+                latency_ms: r.latency_ms,
+                cost_usd: r.cost_usd,
+                checked_utc_ms: now_ms(),
+            })
+            .map_err(|e| e.to_string())?;
+        rep.cost_usd += r.cost_usd.unwrap_or(0.0);
+        let _ = bounded_append(
+            &paths.data.join("judge.log"),
+            &format!("check {} {} {} ms={}", j.task_id, name, r.outcome.label().0, r.latency_ms),
+            LOG_MAX,
+        );
+        if answer.is_some() {
+            rep.checked += 1;
+        } else {
+            rep.failed += 1;
+            match &r.outcome {
+                Outcome::Missing => {
+                    down.insert(name);
+                    rep.unavailable.push((name.to_owned(), "not installed (not found on PATH)".into()));
+                }
+                Outcome::NotSignedIn(why) => {
+                    down.insert(name);
+                    rep.unavailable.push((name.to_owned(), format!("not signed in: {why}")));
+                }
+                _ => {}
+            }
+        }
+    }
+    Ok(rep)
+}
+
+fn judge_view(j: &JudgmentRow) -> aiq_domain::check::JudgeView {
+    let facts = aiq_contracts::judge::parse_stored_facts(&j.facts);
+    aiq_domain::check::JudgeView {
+        job: j.job.clone(),
+        task_type: j.task_type.clone(),
+        current_rung: j.current_rung,
+        model_rung: j.model_rung,
+        uncertain: j.state == "uncertain",
+        facts: aiq_contracts::check::FACTS
+            .iter()
+            .map(|id| ((*id).to_owned(), facts.get(*id).and_then(|f| f.value)))
+            .collect(),
+    }
+}
+
+/// The report for the latest check run, plus the numbers measured from the store alone (N1, N3, N4).
+pub fn check_report(store: &Store) -> aiq_store::Result<String> {
+    use aiq_domain::check::{Count, agreement};
+    let mut o = String::new();
+    let judged = store.current_judgments()?;
+    // N1: Uncertain rate per job (measured).
+    o += "Measured from your data (exact, no second model):\n";
+    let mut jobs: std::collections::BTreeMap<&str, Count> = Default::default();
+    for j in judged.values() {
+        jobs.entry(j.job.as_str()).or_default().add(j.state == "uncertain");
+    }
+    for (job, c) in &jobs {
+        o += &format!("  Uncertain, {job}: {} of {}\n", c.k, c.n);
+    }
+    // N3: live kind-of-task guesses against the later judgment (same rule as the coaching self-check).
+    let mut guess = Count::default();
+    let mut seen = HashSet::new();
+    for g in store.type_guesses()? {
+        if !seen.insert(g.task_id.clone()) {
+            continue;
+        }
+        if let Some(j) = judged.get(&g.task_id).filter(|j| j.state != "uncertain" && j.task_type.is_some()) {
+            guess.add(j.job == g.job && j.task_type.as_deref() == Some(g.task_type.as_str()));
+        }
+    }
+    o += &format!("  Live kind-of-task guess matched the judge: {}\n", guess.show());
+    // N4: answers to tips.
+    let mut answers: std::collections::BTreeMap<String, u32> = Default::default();
+    for f in store.tip_feedback_all()? {
+        *answers.entry(f.answer.clone()).or_default() += 1;
+    }
+    let flags = store.guidance_flags_all()?.iter().filter(|f| f.action == "flag").count();
+    let a: Vec<String> = answers.iter().map(|(k, v)| format!("{k} {v}")).collect();
+    o += &format!(
+        "  Tip answers: {}; \"This doesn't fit\": {flags}\n",
+        if a.is_empty() { "none yet".to_owned() } else { a.join(", ") }
+    );
+
+    let Some(run) = store.latest_check_run()? else {
+        o += "\nNo accuracy check yet. Run: aiq judge --check --dry-run, then aiq judge --check\n";
+        return Ok(o);
+    };
+    let checks = store.checks_of_run(&run.run_id)?;
+    let mut pairs = Vec::new();
+    let mut models: HashSet<(String, Option<String>)> = HashSet::new();
+    let mut same_model = 0u32;
+    for c in &checks {
+        let Some(ans) =
+            c.answer.as_deref().and_then(|a| serde_json::from_str::<aiq_contracts::check::CheckAnswer>(a).ok())
+        else {
+            continue;
+        };
+        let Some(j) = store.judgment(&c.judgment_id)? else { continue };
+        if j.model.is_some() && j.model == c.grader_model {
+            same_model += 1;
+        }
+        models.insert((c.grader_provider.clone(), c.grader_model.clone()));
+        pairs.push((judge_view(&j), ans));
+    }
+    let ag = agreement(&pairs);
+    let failed = checks.len() - pairs.len();
+    o += &format!(
+        "\nChecked by a second model, not by you (Inferred). Run {}: {} of {} sampled tasks read{}.\n",
+        &run.run_id[..8.min(run.run_id.len())],
+        pairs.len(),
+        run.sample.len(),
+        if failed > 0 { format!(", {failed} could not be read") } else { String::new() }
+    );
+    if same_model > 0 {
+        o += &format!(
+            "  Note: on {same_model} of them the second reader was the same model as the judge, so agreement reads high.\n"
+        );
+    }
+    o += &format!("  Job: {}\n", ag.job.show());
+    o += &format!("  Kind of task (where the job matched): {}\n", ag.task_type.show());
+    for (job, c) in &ag.task_type_by_job {
+        o += &format!("    {job}: {}\n", c.show());
+    }
+    o += &format!("  Rung exact: {}\n", ag.rung_exact.show());
+    o += &format!("  Rung within one: {}\n", ag.rung_within_one.show());
+    o += &format!("  Judge model's own rung exact (before AIQ's rules): {}\n", ag.model_rung_exact.show());
+    o += &format!(
+        "  Confident judgments only (the ones AIQ coaches): job {}; kind {}; rung exact {}\n",
+        ag.confident_job.show(),
+        ag.confident_type.show(),
+        ag.confident_rung_exact.show()
+    );
+    o += "  Facts (agree where both answered; can't settle; judge didn't know):\n";
+    for id in aiq_contracts::check::FACTS {
+        let t = ag.facts.get(id).copied().unwrap_or_default();
+        o += &format!(
+            "    {id}: {}; can't settle {}; judge unknown {}\n",
+            t.agree.show(),
+            t.cant_settle,
+            t.judge_unknown
+        );
+    }
+    let low: Vec<String> = ag
+        .by_kind
+        .iter()
+        .filter(|(_, c)| c.n >= 5 && (c.k as f64) < 0.8 * c.n as f64)
+        .map(|((j, t), c)| format!("{j}/{t} ({} of {})", c.k, c.n))
+        .collect();
+    if !low.is_empty() {
+        o += &format!("  Kinds of task under 8 of 10 (at least 5 checked): {}\n", low.join(", "));
+    }
+    let m: Vec<String> =
+        models.iter().map(|(p, m)| format!("{p} {}", m.as_deref().unwrap_or("(model not reported)"))).collect();
+    o += &format!("  Second reader: {}\n", m.join(", "));
+    Ok(o)
+}
+
+/// `aiq judge --check [--sample <n>] [--dry-run]` and `aiq judge --check-report`.
+fn check_cli(args: &[&str], paths: &Paths, store: &Store) -> ExitCode {
+    if args.contains(&"--check-report") {
+        return match check_report(store) {
+            Ok(r) => {
+                print!("{r}");
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("{e}");
+                ExitCode::from(1)
+            }
+        };
+    }
+    let size =
+        match args.iter().position(|a| *a == "--sample").map(|i| args.get(i + 1).and_then(|v| v.parse::<usize>().ok()))
+        {
+            None => aiq_domain::check::DEFAULT_SAMPLE,
+            Some(Some(n)) if (1..=200).contains(&n) => n,
+            Some(_) => {
+                eprintln!("--sample takes a whole number from 1 to 200.");
+                return ExitCode::from(2);
+            }
+        };
+    let pack = match aiq_core::pack::parse(aiq_core::pack::BUNDLED_TOML) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("{e}");
+            return ExitCode::from(1);
+        }
+    };
+    let tasks = aiq_home::tasks(store, &pack, 0).unwrap_or_default();
+    let cands = check_candidates(store, &tasks).unwrap_or_default();
+    let n = size.min(cands.len());
+    if args.contains(&"--dry-run") {
+        let by_tool = |p: &str| {
+            let ids: HashSet<String> = aiq_domain::check::sample(&cands, size, 0).into_iter().collect();
+            let judged = store.current_judgments().unwrap_or_default();
+            let by_id: HashMap<&str, &TaskRow> = tasks.iter().map(|t| (t.task_id.as_str(), t)).collect();
+            judged
+                .values()
+                .filter(|j| ids.contains(&j.judgment_id))
+                .filter(|j| by_id.get(j.task_id.as_str()).and_then(|t| provider_for(&t.tool)) == Some(p))
+                .count()
+        };
+        println!(
+            "AIQ would read {n} of your {} judged tasks a second time, blind, through the tool that already saw each one:\n  Copilot: {} (about one premium request and ~11 s each, measured)\n  Claude Code: {} (billed to your Claude plan)\nIt picks them at random, spread across jobs. Nothing was sent.",
+            cands.len(),
+            by_tool(COPILOT),
+            by_tool(CLAUDE)
+        );
+        return ExitCode::SUCCESS;
+    }
+    if n == 0 {
+        println!("No judged tasks yet, so there is nothing to check. AIQ judges new tasks in the background.");
+        return ExitCode::SUCCESS;
+    }
+    let Some(_lock) = Lock::take(lock_path(paths)) else {
+        println!("AIQ is judging in the background. Try again in a few minutes.");
+        return ExitCode::SUCCESS;
+    };
+    let get = |k: &str| store.setting(k).ok().flatten();
+    let set = settings(store);
+    let (mut claude, mut copilot) = providers(paths, &set);
+    claude.model = get(rung::SETTING_CHECK_CLAUDE_MODEL).unwrap_or_else(|| CHECK_CLAUDE_DEFAULT.into());
+    copilot.model = get(rung::SETTING_CHECK_COPILOT_MODEL).filter(|m| m != "default").or(copilot.model);
+    let seed = now_ms() as u64 ^ 0xA1C0_C4EC;
+    println!("Reading {n} judged tasks a second time. This takes about {} minutes.", (n * 12).div_ceil(60));
+    match run_check(store, paths, &Homes::from_env(), &claude, &copilot, now_ms(), size, seed) {
+        Ok(r) => {
+            for (p, why) in &r.unavailable {
+                println!("{p}: {why}. Its tasks were not checked.");
+            }
+            if r.skipped_no_text > 0 {
+                println!("{} had no prompt text left, so they were skipped.", r.skipped_no_text);
+            }
+            if r.cost_usd > 0.0 {
+                println!("Cost Claude Code reported: ${:.2}.", r.cost_usd);
+            }
+            match check_report(store) {
+                Ok(rep) => print!("\n{rep}"),
+                Err(e) => eprintln!("{e}"),
+            }
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("AIQ could not run the check: {e}");
+            ExitCode::from(1)
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1642,6 +1997,87 @@ mod tests {
         assert!(signed_out("Error: Authentication token found but could not be validated. To authenticate, ..."));
         assert!(signed_out("Not logged in · Please run /login"));
         assert!(!signed_out("rate limited"));
+    }
+
+    /// The second reader: answers `answer` and records the system prompt and message it was sent.
+    struct Grader {
+        answer: Value,
+        sent: RefCell<Vec<(String, String)>>,
+    }
+
+    impl Provider for Grader {
+        fn call(&self, req: &CallReq<'_>) -> CallResult {
+            self.sent.borrow_mut().push((req.system.to_owned(), req.user.to_owned()));
+            CallResult {
+                outcome: Outcome::Ok(self.answer.clone()),
+                model: Some("grader".into()),
+                latency_ms: 7,
+                cost_usd: None,
+                tokens_in: None,
+                tokens_out: None,
+            }
+        }
+    }
+
+    fn grader(job: &str, ty: &str, rung: u8) -> Grader {
+        Grader {
+            answer: json!({"job": job, "task_type": ty, "current_rung": rung, "f4_goal_context_constraints": true,
+                "f5_reprompts_added_information": true, "f6_output_checked": null, "f7_written_brief": false,
+                "f12_step_by_step": false, "f13_whole_outcome_handed_over": true}),
+            sent: RefCell::new(vec![]),
+        }
+    }
+
+    #[test]
+    fn check_reads_judged_tasks_blind_stores_each_reading_and_reports_agreement() {
+        let e = env();
+        let judge = Fake::ok(2);
+        go(&e, &judge, &judge, None);
+        let judged = e.store.current_judgments().unwrap();
+        assert_eq!(judged.len(), 4, "three live tasks and one imported");
+        let g = grader("code_change", "fix_bug", 2);
+        let r = run_check(&e.store, &e.paths, &e.homes, &g, &g, NOW, 30, 42).unwrap();
+        assert_eq!((r.checked, r.failed), (4, 0));
+        // Blind: nothing the judge answered is in what the grader was sent.
+        for (system, user) in g.sent.borrow().iter() {
+            for judge_said in
+                ["You gave the agent the failing test.", "Let the agent run the tests.", "rung=", "\"current_rung\""]
+            {
+                assert!(!system.contains(judge_said) && !user.contains(judge_said), "{judge_said}");
+            }
+            assert!(system.contains("you do not see its answer") && user.contains("START OF QUOTED TASK DATA"));
+        }
+        let run = e.store.latest_check_run().unwrap().unwrap();
+        assert_eq!((run.seed, run.requested, run.sample.len()), (42, 30, 4));
+        let rows = e.store.checks_of_run(&run.run_id).unwrap();
+        assert!(rows.iter().all(|c| c.outcome == "ok" && c.answer.is_some()));
+        let rep = check_report(&e.store).unwrap();
+        assert!(rep.contains("Checked by a second model, not by you (Inferred)"), "{rep}");
+        assert!(rep.contains("Job: 4 of 4"), "{rep}");
+        assert!(rep.contains("F6: none checked; can't settle 4"), "{rep}");
+        assert!(rep.contains("Uncertain, code_change"), "{rep}");
+    }
+
+    #[test]
+    fn check_with_a_malformed_answer_counts_not_checked_never_guessed() {
+        let e = env();
+        let judge = Fake::ok(2);
+        go(&e, &judge, &judge, None);
+        let mut g = grader("code_change", "fix_bug", 2);
+        g.answer.as_object_mut().unwrap().remove("f6_output_checked");
+        let r = run_check(&e.store, &e.paths, &e.homes, &g, &g, NOW, 30, 1).unwrap();
+        assert_eq!((r.checked, r.failed), (0, 4));
+        let run = e.store.latest_check_run().unwrap().unwrap();
+        assert!(
+            e.store.checks_of_run(&run.run_id).unwrap().iter().all(|c| c.outcome == "schema" && c.answer.is_none())
+        );
+        assert!(check_report(&e.store).unwrap().contains("0 of 4 sampled tasks read, 4 could not be read"));
+    }
+
+    #[test]
+    fn check_report_before_any_check_says_how_to_start() {
+        let e = env();
+        assert!(check_report(&e.store).unwrap().contains("No accuracy check yet"));
     }
 }
 

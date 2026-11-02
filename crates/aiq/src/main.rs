@@ -43,6 +43,10 @@ Usage:
   aiq judge [--max <n>] [--only claude-code|copilot-cli] [--dry-run]
                                       Judge your finished tasks through your own Claude Code / Copilot CLI
                                       (--dry-run shows what would be sent, sends nothing)
+  aiq judge --check [--sample <n>] [--dry-run]
+                                      Check the judge: a second model reads n judged tasks blind (default 30)
+                                      and AIQ reports how often they agree (--dry-run: sample and cost only)
+  aiq judge --check-report            The latest check's numbers again, and what AIQ measured itself
   aiq config set judge <auto|off>     Judge new tasks in the background (on after your first aiq judge)
   aiq config set judge-daily-tasks <n>  Most tasks judged per day (0-500, default 50)
   aiq config set judge-copilot-sessions <delete|keep>  Delete AIQ's own Copilot judge sessions (default)

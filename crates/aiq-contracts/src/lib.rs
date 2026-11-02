@@ -2,6 +2,7 @@
 //!
 //! One crate, one binary: the hook and the core can never disagree on a frame shape.
 pub mod card;
+pub mod check;
 pub mod codes;
 pub mod event;
 pub mod frames;

@@ -2,6 +2,7 @@
 //! ids and time come in as arguments, so every rule is testable with plain values.
 pub mod automated;
 pub mod card;
+pub mod check;
 pub mod clock;
 pub mod coach;
 pub mod job;
