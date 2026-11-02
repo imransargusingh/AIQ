@@ -91,8 +91,9 @@ Each gate is checked by a command or test, and the result is recorded with "meas
 | G4 | Upgrade | `aiq upgrade` from the previous release keeps the store and settings; `--rollback` works | Not run |
 | G5 | Copilot terms | Current GitHub Copilot terms read for running `copilot -p` as the judge on the user's own sign-in; finding recorded | Not run (architecture risk) |
 | G6 | Anthropic terms | Only for Claude Code users (A10) | Not run |
-| G7 | Coverage | Imran has decided the question/research pack card | Open. 9 of his first 10 judged tasks (measured) had no pack, so a Copilot user with similar work would get little coaching |
+| G7 | Coverage | A pack covers question and research work | **Done** (PR #33 merged 2026-11-02: Ask or research pack). Before it, 9 of Imran's first 10 judged tasks (measured) had no pack |
 | G8 | Self-check | The task-kind self-check (auto-off below 8 of 10, built in PR #29) is on by default | Built; its accuracy on real tasks is **not measured** |
+| G9 | Harmless to other tools | Connecting AIQ changes nothing another tool depends on. VS Code and the Copilot app read `~/.copilot/hooks/` **and** `~/.copilot/settings.json` (VS Code agent hooks docs). Pass when, on a machine with MCP servers set up in VS Code and Copilot CLI, every server's state is the same before and after connect and after uninstall, and connect lists every file it changed | **Open.** Imran's VS Code Insiders MCP trouble began 10 min after setup auto-connected Copilot (measured times; cause not proven, reversible test held by Imran). PR #35: setup never turns on Copilot's experimental mode by itself and lists the files it changed |
 
 ## Responsibility
 
