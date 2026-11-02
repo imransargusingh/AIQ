@@ -280,18 +280,27 @@ pub const UPGRADE_LOG: &str = "upgrade-log.txt";
 /// The hook speed budget of record: AIQ's own part of each hook run, p95 (Imran, 2026-11-01; alpha gate G1).
 pub const HOOK_BUDGET_MS: f64 = 100.0;
 
-/// Unix seconds of the last upgrade or rollback that changed the exes, from the upgrade log. Lines where
-/// nothing changed (checksum refused, already newest, failed swap) are skipped.
-/// assume: every laptop upgrade goes through upgrade.ps1, which writes this log. If false: no
-/// since-upgrade line, and the budget line says no upgrade is recorded (never a guessed window).
+/// Unix seconds of the last time the exes changed, from the upgrade log. Two writers, two line shapes:
+/// `upgrade.ps1` writes `yyyy-mm-dd hh:mm:ssZ Upgraded AIQ…` / `… Rolled back to AIQ…` (lines where nothing
+/// changed are skipped); the laptop's dev swapper writes `<RFC 3339 with offset> swapped aiq.exe (<n> bytes)`
+/// (measured 2026-11-02: `2026-11-02T14:00:57.7222903-08:00 swapped aiq.exe (5920768 bytes)`).
+/// assume: every exe change goes through one of the two. If false: the budget line says no upgrade is
+/// recorded, or counts from an older swap (never a guessed window).
 pub fn last_upgrade(log: &str) -> Option<u64> {
     log.lines()
-        .filter(|l| {
+        .filter_map(|l| {
             let m = l.get(21..).unwrap_or("");
-            m.starts_with("Upgraded AIQ") || m.starts_with("Rolled back to AIQ")
+            if m.starts_with("Upgraded AIQ") || m.starts_with("Rolled back to AIQ") {
+                let t = chrono::NaiveDateTime::parse_from_str(l.get(..19)?, "%Y-%m-%d %H:%M:%S").ok()?;
+                return Some(t.and_utc().timestamp());
+            }
+            let (ts, rest) = l.split_once(' ')?;
+            if !rest.starts_with("swapped aiq.exe") {
+                return None;
+            }
+            chrono::DateTime::parse_from_rfc3339(ts).ok().map(|t| t.timestamp())
         })
-        .filter_map(|l| chrono::NaiveDateTime::parse_from_str(l.get(..19)?, "%Y-%m-%d %H:%M:%S").ok())
-        .map(|t| t.and_utc().timestamp().max(0) as u64)
+        .map(|t| t.max(0) as u64)
         .max()
 }
 
@@ -757,6 +766,12 @@ mod tests {
                    garbage line\n";
         assert_eq!(last_upgrade(log), Some(1_793_646_000)); // 2026-11-02 19:00:00Z
         assert_eq!(last_upgrade(""), None);
+        // The laptop's dev swapper, local time with an offset; a swapped aiq-home.exe alone does not count.
+        let dev = format!(
+            "{log}2026-11-02T14:00:57.7222903-08:00 swapped aiq.exe (5920768 bytes)\n\
+             2026-11-02T14:30:00-08:00 swapped aiq-home.exe (100 bytes)\n"
+        );
+        assert_eq!(last_upgrade(&dev), Some(1_793_656_857)); // 2026-11-02 22:00:57Z
     }
 
     #[test]
