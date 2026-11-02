@@ -234,7 +234,10 @@
     "kinds": [],
     "habits": [],
     "habits_imported": false,
-    "untyped": 0
+    "untyped": 0,
+    "progress": [],
+    "progress_days": 14,
+    "progress_min": 3
   },
   "update": {
     "supported": true,

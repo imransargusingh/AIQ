@@ -34,27 +34,34 @@ pub fn is_marker(r: &Value) -> bool {
             && r.get("entrypoint").and_then(Value::as_str) == Some("claude-desktop"))
 }
 
-/// Fast byte check before parsing: a record can only be a marker if one of these appears in its line.
-fn may_mark(line: &str) -> bool {
-    line.contains("projectsUserTurn")
-        || line.contains("projects-relay")
-        || line.contains("\"peer\"")
-        || line.contains("\"system\"")
+/// What a transcript's head says about rule RC.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Head {
+    Projects,
+    /// A user record, or a full head, with no marker: the answer will not change.
+    NotProjects,
+    /// Missing, unreadable, or no user record yet: Claude Code had not written the session's first records.
+    /// Laptop 2026-11-02 21:28Z: the first prompt's check found nothing in 0 ms, yet the transcript's
+    /// marker record is stamped 51 ms before it; the session was then recorded as the person's work.
+    Unknown,
 }
 
-/// Does the transcript's head (up to `max_bytes`) carry a Projects marker? False when it is missing or
-/// unreadable (the first prompt's hook can fire before Claude Code writes the file).
-pub fn scan(path: &Path, max_bytes: u64) -> bool {
-    let Ok(f) = std::fs::File::open(path) else { return false };
+/// Read the transcript's head (up to `max_bytes`) for a Projects marker.
+pub fn scan(path: &Path, max_bytes: u64) -> Head {
+    let Ok(f) = std::fs::File::open(path) else { return Head::Unknown };
     let mut buf = Vec::new();
     if f.take(max_bytes).read_to_end(&mut buf).is_err() {
-        return false;
+        return Head::Unknown;
     }
-    String::from_utf8_lossy(&buf)
-        .lines()
-        .filter(|l| may_mark(l))
-        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
-        .any(|r| is_marker(&r))
+    let text = String::from_utf8_lossy(&buf);
+    let mut user = false;
+    for r in text.lines().filter_map(|l| serde_json::from_str::<Value>(l).ok()) {
+        if is_marker(&r) {
+            return Head::Projects;
+        }
+        user |= r.get("type").and_then(Value::as_str) == Some("user");
+    }
+    if user || buf.len() as u64 >= max_bytes { Head::NotProjects } else { Head::Unknown }
 }
 
 #[cfg(test)]
@@ -83,13 +90,31 @@ mod tests {
     fn scan_reads_only_the_head_and_never_fails_loudly() {
         let d = tempfile::tempdir().unwrap();
         let p = d.path().join("t.jsonl");
-        assert!(!scan(&p, HEAD_BYTES), "missing file");
+        assert_eq!(scan(&p, HEAD_BYTES), Head::Unknown, "missing file");
         let pad = json!({"type":"assistant","message":{"content":"x".repeat(1000)}}).to_string();
         let mark = json!({"type":"user","projectsUserTurn":true}).to_string();
         std::fs::write(&p, format!("{pad}\n{mark}\n")).unwrap();
-        assert!(scan(&p, HEAD_BYTES));
-        assert!(!scan(&p, 500), "marker past the head is not read");
+        assert_eq!(scan(&p, HEAD_BYTES), Head::Projects);
+        assert_eq!(scan(&p, 500), Head::NotProjects, "marker past a full head is not read");
         std::fs::write(&p, format!("{pad}\nnot json \"peer\"\n")).unwrap();
-        assert!(!scan(&p, HEAD_BYTES));
+        assert_eq!(scan(&p, HEAD_BYTES), Head::Unknown, "no user record yet");
+    }
+
+    #[test]
+    fn only_a_user_record_or_a_full_head_settles_not_projects() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("t.jsonl");
+        // Claude Code 2.1.3xx writes queue records before the session's first user record (laptop, 2026-11-02).
+        let queue = json!({"type":"queue-operation","operation":"enqueue"}).to_string();
+        std::fs::write(&p, format!("{queue}\n")).unwrap();
+        assert_eq!(scan(&p, HEAD_BYTES), Head::Unknown);
+        std::fs::write(&p, "").unwrap();
+        assert_eq!(scan(&p, HEAD_BYTES), Head::Unknown, "empty file");
+        let marker = json!({"type":"user","isMeta":true,"turnOrigin":"system","entrypoint":"claude-desktop"});
+        std::fs::write(&p, format!("{queue}\n{marker}\n")).unwrap();
+        assert_eq!(scan(&p, HEAD_BYTES), Head::Projects);
+        let human = json!({"type":"user","turnOrigin":"human","entrypoint":"cli"});
+        std::fs::write(&p, format!("{queue}\n{human}\n")).unwrap();
+        assert_eq!(scan(&p, HEAD_BYTES), Head::NotProjects);
     }
 }

@@ -73,6 +73,26 @@ pub struct Coaching {
     pub habits_imported: bool,
     /// Judged tasks in the window whose kind is not known yet (judged before kinds existed).
     pub untyped: u32,
+    /// Each kind of task's typical rung, last `progress_days` against the `progress_days` before (the success
+    /// measure: a recurring kind moves up a rung). Moved up first.
+    pub progress: Vec<ProgressRow>,
+    pub progress_days: u32,
+    /// Judged, not-Uncertain tasks each half needs before AIQ says a kind moved (the tips' repeated-kind rule).
+    pub progress_min: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ProgressRow {
+    pub job: String,
+    pub task_type: String,
+    pub label: &'static str,
+    pub recent: u32,
+    pub earlier: u32,
+    pub uncertain: u32,
+    pub recent_rung: Option<u8>,
+    pub earlier_rung: Option<u8>,
+    /// up, down, same, too_few
+    pub trend: &'static str,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Default)]
@@ -469,6 +489,8 @@ fn empty(paths: &Paths, pack: &PackV1, now: Now) -> Snapshot {
         coaching: Coaching {
             split_min: pack.coach.split_min,
             week_min: pack.coach.week_min,
+            progress_days: aiq_domain::coach::PROGRESS_DAYS,
+            progress_min: pack.coach.recurring_min,
             rule: FINISHED_RULE,
             weeks: (0..WEEKS).map(|i| WeekSplit { start_ms: week0 + i * 7 * DAY_MS, tasks: 0, finished: 0 }).collect(),
             ..Default::default()
@@ -861,6 +883,20 @@ fn coaching(
         })
         .collect();
     c.habits_imported = judged.iter().any(|t| !t.live);
+    c.progress = coach::progress(&judged, now.utc_ms, p)
+        .into_iter()
+        .map(|r| ProgressRow {
+            job: r.job,
+            task_type: r.task_type,
+            label: r.label,
+            recent: r.recent,
+            earlier: r.earlier,
+            uncertain: r.uncertain,
+            recent_rung: r.recent_rung,
+            earlier_rung: r.earlier_rung,
+            trend: r.trend.as_str(),
+        })
+        .collect();
 
     // Settings: next-rung tips and the self-check, from the same facts the core reads.
     let mode = aiq_core::coaching::mode(store);

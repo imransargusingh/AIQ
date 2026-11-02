@@ -3,7 +3,7 @@
 // on Tasks but never counted on a rung or in the split here. Until a task is judged it says so; nothing is
 // guessed. Model-written text renders as plain text only (TR-5).
 import { useState } from "react";
-import { KindList, judgedBy, pct } from "../coach";
+import { KindList, ProgressList, judgedBy, pct } from "../coach";
 import { RUNGS, day, folderName, plural, rungLabel, sentence, toolName, topPlaces, when } from "../format";
 import { AccuracyPaused, Banners, Title, UpdateLine, type Ctx } from "../ui";
 
@@ -189,6 +189,24 @@ export function Home(ctx: Ctx) {
           </div>
         </section>
       </div>
+
+      <section className="group" aria-labelledby="pg">
+        <div className="head">
+          <h2 id="pg">Is each kind of task moving up?</h2>
+          <span className="meta">
+            Typical rung of your judged tasks, last {c.progress_days} days against the {c.progress_days} before. Counts are measured; rungs are the judge's reading.
+          </span>
+        </div>
+        {c.progress.length === 0 ? (
+          <p className="mute">
+            {h.judged === 0
+              ? "Progress shows here once tasks are judged."
+              : `Progress shows once AIQ knows the kind of your tasks from the last ${2 * c.progress_days} days.`}
+          </p>
+        ) : (
+          <ProgressList c={c} open={ctx.openKind} />
+        )}
+      </section>
 
       <section className="group" aria-labelledby="ns">
         <div className="head">

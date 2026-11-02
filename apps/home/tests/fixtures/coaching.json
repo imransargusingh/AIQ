@@ -1347,7 +1347,55 @@
       }
     ],
     "habits_imported": false,
-    "untyped": 0
+    "untyped": 0,
+    "progress": [
+      {
+        "job": "code_change",
+        "task_type": "tests",
+        "label": "Writing tests",
+        "recent": 6,
+        "earlier": 0,
+        "uncertain": 1,
+        "recent_rung": 3,
+        "earlier_rung": null,
+        "trend": "too_few"
+      },
+      {
+        "job": "write_doc",
+        "task_type": "spec",
+        "label": "Writing a spec or PRD",
+        "recent": 3,
+        "earlier": 1,
+        "uncertain": 0,
+        "recent_rung": 2,
+        "earlier_rung": 2,
+        "trend": "too_few"
+      },
+      {
+        "job": "code_change",
+        "task_type": "fix_bug",
+        "label": "Fixing a bug or failing test",
+        "recent": 0,
+        "earlier": 3,
+        "uncertain": 0,
+        "recent_rung": null,
+        "earlier_rung": 1,
+        "trend": "too_few"
+      },
+      {
+        "job": "code_change",
+        "task_type": "refactor",
+        "label": "Refactoring or cleaning up",
+        "recent": 0,
+        "earlier": 2,
+        "uncertain": 0,
+        "recent_rung": null,
+        "earlier_rung": 2,
+        "trend": "too_few"
+      }
+    ],
+    "progress_days": 14,
+    "progress_min": 3
   },
   "update": {
     "supported": true,

@@ -1420,21 +1420,35 @@ pub struct CheckRun {
     pub cost_usd: f64,
 }
 
-/// The judged tasks a check may sample: the current judgment of each closed task AIQ knows, any job.
-/// With `no_job_only`, only judgments with no job, spread by why they have none (design no-job-tasks N5).
+/// Which judged tasks a check samples.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum CheckScope<'a> {
+    /// Every job, spread across jobs.
+    All,
+    /// Only judgments with no job, spread by why they have none (design no-job-tasks N5).
+    NoJob,
+    /// Only judgments of one job, so a newly added job gets enough checks to settle the pause rule.
+    Job(&'a str),
+}
+
+/// The judged tasks a check may sample: the current judgment of each closed task AIQ knows, in `scope`.
 fn check_candidates(
     store: &Store,
     tasks: &[TaskRow],
-    no_job_only: bool,
+    scope: CheckScope<'_>,
 ) -> aiq_store::Result<Vec<aiq_domain::check::Candidate>> {
     let known: HashSet<&str> = tasks.iter().map(|t| t.task_id.as_str()).collect();
     let judged = store.current_judgments()?;
     Ok(judged
         .values()
         .filter(|j| known.contains(j.task_id.as_str()))
-        .filter(|j| !no_job_only || j.job == "unclassified")
+        .filter(|j| match scope {
+            CheckScope::All => true,
+            CheckScope::NoJob => j.job == "unclassified",
+            CheckScope::Job(job) => j.job == job,
+        })
         .map(|j| {
-            let group = if no_job_only { no_job_group(j).to_owned() } else { j.job.clone() };
+            let group = if scope == CheckScope::NoJob { no_job_group(j).to_owned() } else { j.job.clone() };
             aiq_domain::check::Candidate { judgment_id: j.judgment_id.clone(), job: group }
         })
         .collect())
@@ -1459,13 +1473,13 @@ pub fn run_check(
     now_utc_ms: i64,
     size: usize,
     seed: u64,
-    no_job_only: bool,
+    scope: CheckScope<'_>,
 ) -> Result<CheckRun, String> {
     use aiq_contracts::check::{check_schema, parse_check};
     let pack = aiq_core::pack::parse(aiq_core::pack::BUNDLED_TOML).map_err(|e| e.to_string())?;
     let tasks = aiq_home::tasks(store, &pack, 0)?;
     let by_id: HashMap<&str, &TaskRow> = tasks.iter().map(|t| (t.task_id.as_str(), t)).collect();
-    let cands = check_candidates(store, &tasks, no_job_only).map_err(|e| e.to_string())?;
+    let cands = check_candidates(store, &tasks, scope).map_err(|e| e.to_string())?;
     let sample = aiq_domain::check::sample(&cands, size, seed);
     let run_id = uuid::Uuid::now_v7().to_string();
     store
@@ -1852,7 +1866,7 @@ pub fn check_report(store: &Store) -> aiq_store::Result<String> {
     Ok(o)
 }
 
-/// `aiq judge --check [--sample <n>] [--dry-run]` and `aiq judge --check-report`.
+/// `aiq judge --check [--sample <n>] [--no-job | --job <job>] [--dry-run]` and `aiq judge --check-report`.
 fn check_cli(args: &[&str], paths: &Paths, store: &Store) -> ExitCode {
     if args.contains(&"--check-report") {
         return match check_report(store) {
@@ -1884,8 +1898,25 @@ fn check_cli(args: &[&str], paths: &Paths, store: &Store) -> ExitCode {
         }
     };
     let tasks = aiq_home::tasks(store, &pack, 0).unwrap_or_default();
-    let no_job_only = args.contains(&"--no-job");
-    let cands = check_candidates(store, &tasks, no_job_only).unwrap_or_default();
+    let scope = match args.iter().position(|a| *a == "--job").map(|i| args.get(i + 1).copied()) {
+        None if args.contains(&"--no-job") => CheckScope::NoJob,
+        None => CheckScope::All,
+        Some(Some(job))
+            if !args.contains(&"--no-job") && job != "other" && aiq_contracts::judge::JOBS.contains(&job) =>
+        {
+            CheckScope::Job(job)
+        }
+        Some(_) => {
+            let ids: Vec<&str> = aiq_contracts::judge::JOBS.iter().copied().filter(|j| *j != "other").collect();
+            eprintln!(
+                "--job takes one of: {} (and not with --no-job; use --no-job for tasks with none).",
+                ids.join(", ")
+            );
+            return ExitCode::from(2);
+        }
+    };
+    let no_job_only = scope == CheckScope::NoJob;
+    let cands = check_candidates(store, &tasks, scope).unwrap_or_default();
     let n = size.min(cands.len());
     if args.contains(&"--dry-run") {
         let by_tool = |p: &str| {
@@ -1901,7 +1932,11 @@ fn check_cli(args: &[&str], paths: &Paths, store: &Store) -> ExitCode {
         println!(
             "AIQ would read {n} of your {} {} a second time, blind, through the tool that already saw each one:\n  Copilot: {} (about one premium request and ~11 s each, measured)\n  Claude Code: {} (billed to your Claude plan)\nIt picks them at random, spread across {}. The second reader is a different model from the same tool:\n  Claude Code: opus (check-claude-model to change)\n  Copilot: the first offered of gpt-6-astra, claude-sonnet-5.5, gpt-5.6-sol that the judge did not use (check-copilot-model to choose)\nNothing was sent.",
             cands.len(),
-            if no_job_only { "judged tasks with no job" } else { "judged tasks" },
+            match scope {
+                CheckScope::All => "judged tasks".to_owned(),
+                CheckScope::NoJob => "judged tasks with no job".to_owned(),
+                CheckScope::Job(job) => format!("judged {job} tasks"),
+            },
             by_tool(COPILOT),
             by_tool(CLAUDE),
             if no_job_only { "why they have no job" } else { "jobs" },
@@ -1939,7 +1974,7 @@ fn check_cli(args: &[&str], paths: &Paths, store: &Store) -> ExitCode {
     };
     let seed = now_ms() as u64 ^ 0xA1C0_C4EC;
     println!("Reading {n} judged tasks a second time. This takes about {} minutes.", (n * 12).div_ceil(60));
-    match run_check(store, paths, &Homes::from_env(), &claude, &copilot, now_ms(), size, seed, no_job_only) {
+    match run_check(store, paths, &Homes::from_env(), &claude, &copilot, now_ms(), size, seed, scope) {
         Ok(r) => {
             for (p, why) in &r.unavailable {
                 println!("{p}: {why}. Its tasks were not checked.");
@@ -2589,7 +2624,7 @@ mod tests {
         let judged = e.store.current_judgments().unwrap();
         assert_eq!(judged.len(), 4, "three live tasks and one imported");
         let g = grader("code_change", "fix_bug", 2);
-        let r = run_check(&e.store, &e.paths, &e.homes, &g, &g, NOW, 30, 42, false).unwrap();
+        let r = run_check(&e.store, &e.paths, &e.homes, &g, &g, NOW, 30, 42, CheckScope::All).unwrap();
         assert_eq!((r.checked, r.failed), (4, 0));
         // Blind: nothing the judge answered is in what the grader was sent.
         for (system, user) in g.sent.borrow().iter() {
@@ -2610,6 +2645,14 @@ mod tests {
         assert!(rep.contains("F6: none checked; can't settle 4"), "{rep}");
         assert!(rep.contains("Uncertain, code_change"), "{rep}");
         assert!(rep.contains("Paused by this check: nothing"), "4 checked is too few to pause: {rep}");
+        // --job samples only that job's judgments, so a new job can reach the pause rule's 10 checks.
+        let pack = aiq_core::pack::parse(aiq_core::pack::BUNDLED_TOML).unwrap();
+        let tasks = aiq_home::tasks(&e.store, &pack, 0).unwrap();
+        assert_eq!(check_candidates(&e.store, &tasks, CheckScope::Job("code_change")).unwrap().len(), 4);
+        assert_eq!(check_candidates(&e.store, &tasks, CheckScope::Job("run_ship")).unwrap().len(), 0);
+        let none =
+            run_check(&e.store, &e.paths, &e.homes, &g, &g, NOW + 1, 30, 7, CheckScope::Job("run_ship")).unwrap();
+        assert_eq!(none.checked, 0, "no run_ship judgments, nothing read");
     }
 
     #[test]
@@ -2627,7 +2670,7 @@ mod tests {
         assert_eq!(runs.len(), 2);
         assert_eq!(rung::no_job_cause(&runs), Some(rung::NoJob::AllOther));
         let g = grader("ask_research", "explain", 1);
-        run_check(&e.store, &e.paths, &e.homes, &g, &g, NOW, 30, 1, true).unwrap();
+        run_check(&e.store, &e.paths, &e.homes, &g, &g, NOW, 30, 1, CheckScope::NoJob).unwrap();
         let rep = check_report(&e.store).unwrap();
         assert!(rep.contains("Why: both runs said other 4"), "{rep}");
         assert!(rep.contains("R1 (") && rep.contains("gives a job to 0 of 4"), "{rep}");
@@ -2635,7 +2678,11 @@ mod tests {
         // The no-job sample takes only no-job judgments.
         let run = e.store.latest_check_run().unwrap().unwrap();
         assert_eq!(run.sample.len(), 4);
-        assert_eq!(check_candidates(&e.store, &[], true).unwrap().len(), 0, "unknown tasks are never sampled");
+        assert_eq!(
+            check_candidates(&e.store, &[], CheckScope::NoJob).unwrap().len(),
+            0,
+            "unknown tasks are never sampled"
+        );
     }
 
     #[test]
@@ -2651,8 +2698,8 @@ mod tests {
         assert_eq!(j.task_type.as_deref(), Some("other"), "below the bar falls back to other");
         assert_eq!(type_runs(j).unwrap(), vec![rung::TypeRun { task_type: "fix_bug".into(), confidence: 0.6 }; 2]);
         let g = grader("code_change", "fix_bug", 2);
-        run_check(&e.store, &e.paths, &e.homes, &g, &g, NOW, 30, 1, false).unwrap();
-        run_check(&e.store, &e.paths, &e.homes, &g, &g, NOW + 1, 30, 2, false).unwrap();
+        run_check(&e.store, &e.paths, &e.homes, &g, &g, NOW, 30, 1, CheckScope::All).unwrap();
+        run_check(&e.store, &e.paths, &e.homes, &g, &g, NOW + 1, 30, 2, CheckScope::All).unwrap();
         let rep = check_report(&e.store).unwrap();
         assert!(rep.contains("Kind of task, all 2 check runs (where the job matched): 0 of 8"), "{rep}");
         assert!(rep.contains("both runs named the kind, but not confidently 8 (second reading also other 0)"), "{rep}");
@@ -2692,7 +2739,7 @@ mod tests {
         go(&e, &judge, &judge, None);
         let mut g = grader("code_change", "fix_bug", 2);
         g.answer.as_object_mut().unwrap().remove("f6_output_checked");
-        let r = run_check(&e.store, &e.paths, &e.homes, &g, &g, NOW, 30, 1, false).unwrap();
+        let r = run_check(&e.store, &e.paths, &e.homes, &g, &g, NOW, 30, 1, CheckScope::All).unwrap();
         assert_eq!((r.checked, r.failed), (0, 4));
         let run = e.store.latest_check_run().unwrap().unwrap();
         assert!(

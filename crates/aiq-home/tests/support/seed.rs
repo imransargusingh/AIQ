@@ -429,3 +429,32 @@ pub fn coaching(paths: &Paths) {
         })
         .unwrap();
 }
+
+/// Rung progress (the success measure): kinds of task judged in the last 14 days and the 14 before.
+/// Writing tests moves up (Directed to Delegated), a spec moves down, fixing a bug stays, refactoring is too few.
+pub fn progress(paths: &Paths) {
+    let mut s = Seed::new(paths);
+    // (job, type, rung, state, days ago)
+    let mut rows: Vec<(&str, &str, u8, &str, i64)> = vec![];
+    for d in [16, 18, 20] {
+        rows.push(("code_change", "tests", 2, "judged", d));
+        rows.push(("write_doc", "spec", 3, "judged", d + 1));
+        rows.push(("code_change", "fix_bug", 1, "right_rung", d + 2));
+    }
+    for d in [1, 3, 5, 7] {
+        rows.push(("code_change", "tests", 3, "judged", d));
+    }
+    for d in [2, 4, 6] {
+        rows.push(("write_doc", "spec", 2, "judged", d));
+        rows.push(("code_change", "fix_bug", 1, "right_rung", d + 1));
+    }
+    rows.push(("code_change", "tests", 4, "uncertain", 2));
+    rows.push(("code_change", "refactor", 2, "judged", 3));
+    rows.push(("code_change", "refactor", 2, "judged", 17));
+    for (i, (job, ty, cur, state, days)) in rows.iter().enumerate() {
+        let at = NOW - days * DAY - (i as i64) * MIN;
+        let id = s.prompt("copilot-cli", &format!("p{i}"), at, Some(AIQ), &format!("{ty} task number {i}"));
+        s.stop("copilot-cli", &format!("p{i}"), at + 3 * MIN);
+        s.store.insert_judgment(&coach_row(&id, job, ty, *cur, state, 0)).unwrap();
+    }
+}
