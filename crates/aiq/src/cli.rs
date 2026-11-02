@@ -115,6 +115,7 @@ pub fn status() -> ExitCode {
                 if let Some(o) = c.other_pct {
                     out += &format!("Judged tasks typed \"other\": {o}%\n");
                 }
+                out += &render_accuracy_paused(&c.accuracy_paused);
             }
             if let Some((_, n)) = ignored {
                 out += &format!("Automated prompts ignored since the core started: {n}\n");
@@ -356,9 +357,35 @@ pub fn include_folder(folder: &str) -> ExitCode {
     }
 }
 
+/// Jobs and kinds the accuracy check paused, and the one command that keeps each showing (design K6b).
+pub fn render_accuracy_paused(p: &[aiq_contracts::frames::PausedScope]) -> String {
+    let mut out = String::new();
+    for s in p {
+        if s.kept_on {
+            out += &format!(
+                "Next-step tips for {}: kept on by you, though a second model agreed with the judge only {} of {} times. \
+                 Let AIQ decide again: aiq config set keep-on.{} auto\n",
+                s.label, s.agreed, s.checked, s.scope
+            );
+        } else {
+            out += &format!(
+                "Next-step tips for {}: paused by AIQ. A second model agreed with the judge only {} of {} times \
+                 (under 8 in 10). They come back when a later check clears the bar (aiq judge --check). \
+                 Keep them showing: aiq config set keep-on.{} on\n",
+                s.label, s.agreed, s.checked, s.scope
+            );
+        }
+    }
+    out
+}
+
 /// `aiq config set <name> <value>`: `daily-cap` or `copilot-tip-stays`.
 pub fn config_set(name: &str, value: &str) -> ExitCode {
+    let keep_on = name.strip_prefix("keep-on.").map(|s| format!("keep_on.{s}"));
     let (key, done) = match name {
+        _ if keep_on.is_some() => {
+            (keep_on.as_deref().unwrap_or_default(), format!("Next-step tips for {}: {value}.", &name[8..]))
+        }
         "daily-cap" => ("daily_cap", format!("Daily tip limit set to {value}.")),
         "copilot-tip-stays" => ("copilot_tip_stays", format!("Copilot CLI tip stays: {value}.")),
         "judge" => ("judge", format!("Background judging: {value}.")),
@@ -373,7 +400,7 @@ pub fn config_set(name: &str, value: &str) -> ExitCode {
             println!(
                 "Unknown setting {name}. Settings: daily-cap, copilot-tip-stays, judge, judge-daily-tasks, \
                  judge-claude-model, judge-copilot-model, judge-copilot-sessions, next-rung-tips, check-claude-model, \
-                 check-copilot-model."
+                 check-copilot-model, keep-on.<job or job/kind>."
             );
             return ExitCode::from(2);
         }
@@ -695,5 +722,25 @@ mod tips_tests {
         assert!(
             render_tips(&r, &[false, false], &Default::default(), "off", false, 30).contains("off (not showing now)")
         );
+    }
+
+    #[test]
+    fn accuracy_pause_lines_say_why_and_give_one_command() {
+        let p = |kept| aiq_contracts::frames::PausedScope {
+            scope: "run_ship".into(),
+            label: "Run or ship it".into(),
+            agreed: 6,
+            checked: 10,
+            kept_on: kept,
+        };
+        let out = render_accuracy_paused(&[p(false)]);
+        assert!(
+            out.contains("paused by AIQ")
+                && out.contains("6 of 10")
+                && out.contains("aiq config set keep-on.run_ship on")
+        );
+        let out = render_accuracy_paused(&[p(true)]);
+        assert!(out.contains("kept on by you") && out.contains("aiq config set keep-on.run_ship auto"));
+        assert!(render_accuracy_paused(&[]).is_empty());
     }
 }

@@ -561,18 +561,28 @@ impl Store {
     }
 
     /// A cheap fingerprint of everything the coaching cache is derived from: when it changes, rebuild.
-    pub fn coach_fingerprint(&self) -> Result<(i64, i64, i64)> {
+    /// The fourth number is the newest accuracy-check reading (the pause rule, design K6b; 0 before v7).
+    pub fn coach_fingerprint(&self) -> Result<(i64, i64, i64, i64)> {
         if !self.has_table("guidance_flag")? {
-            return Ok((0, 0, 0));
+            return Ok((0, 0, 0, 0));
         }
-        self.conn
+        let (a, b, c) = self
+            .conn
             .query_row(
                 "SELECT (SELECT coalesce(max(rowid), 0) FROM judgment), (SELECT coalesce(max(flag_id), 0) FROM guidance_flag),
                         (SELECT coalesce(max(feedback_id), 0) FROM tip_feedback)",
                 [],
                 |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
             )
-            .map_err(err(codes::STORE_OPEN))
+            .map_err(err(codes::STORE_OPEN))?;
+        let d = if self.has_table("judge_check")? {
+            self.conn
+                .query_row("SELECT coalesce(max(rowid), 0) FROM judge_check", [], |r| r.get(0))
+                .map_err(err(codes::STORE_OPEN))?
+        } else {
+            0
+        };
+        Ok((a, b, c, d))
     }
 
     pub fn user_version(&self) -> Result<i64> {

@@ -39,6 +39,8 @@ Usage:
   aiq unflag <job>/<type> <move>      Undo a flag
   aiq config set next-rung-tips <auto|on|off>  Next-step tips for kinds of task you repeat (auto: AIQ
                                       turns them off itself if it guesses the kind of task wrong)
+  aiq config set keep-on.<job or job/type> <on|auto>  Keep next-step tips showing for a job or kind the
+                                      accuracy check paused (auto: AIQ decides again)
   aiq tips                            Each next-step tip, whether it is on, and how often it would show
                                       on your judged tasks (measured, no model call)
   aiq judge [--max <n>] [--only claude-code|copilot-cli] [--dry-run]

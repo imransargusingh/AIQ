@@ -4,7 +4,7 @@ import { useState } from "react";
 import { api, type SettingKey } from "../api";
 import type { Settings as S } from "../types";
 import { jobName, plural } from "../format";
-import { Banners, Title, type Ctx } from "../ui";
+import { AccuracyPaused, Banners, Title, type Ctx } from "../ui";
 
 const STAYS: { v: S["copilot_tip_stays"]; label: string; note?: string }[] = [
   { v: "next-prompt", label: "Until your next prompt", note: "Default" },
@@ -137,6 +137,10 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
               ? `AIQ checks its guesses of the kind of task against the judge: right ${st.guess_right} of ${st.guess_checked} times so far. Below 8 in 10, it stops these tips by itself.`
               : "AIQ checks its guesses of the kind of task against the judge. Below 8 in 10 right, it stops these tips by itself."}
           </span>
+        )}
+        <AccuracyPaused {...ctx} />
+        {st.next_rung_tips === "auto" && st.accuracy_paused.length === 0 && (
+          <span className="meta">AIQ also pauses the tips for a job or kind of task by itself when an accuracy check (aiq judge --check) agrees with its judge under 8 in 10.</span>
         )}
         {st.next_tips.length > 0 && (
           <details className="group">

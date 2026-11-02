@@ -1,5 +1,6 @@
 // Small shared pieces: banners, dialog with focus trap, skeletons, chips.
 import { useEffect, useRef, type ReactNode } from "react";
+import { api } from "./api";
 import type { Snapshot } from "./types";
 import { when } from "./format";
 
@@ -142,4 +143,45 @@ export function Content({ text }: { text: string }) {
 export function preview(text: string, max = 80): string {
   const t = text.replace(/\s+/g, " ").trim();
   return t.length <= max ? t : `${t.slice(0, max).trimEnd()}…`;
+}
+
+/** Next-step tips the accuracy check paused (design K6b): why, in measured counts, and one-click overrides. */
+export function AccuracyPaused({ snap, announce, refresh }: Pick<Ctx, "snap" | "announce" | "refresh">) {
+  const ps = snap.settings.next_rung_tips === "auto" ? snap.settings.accuracy_paused : [];
+  if (ps.length === 0) return null;
+  const down = !snap.status.core;
+  const change = async (key: `keep_on.${string}`, value: string, done: string) => {
+    const r = await api.setSetting(key, value);
+    announce(r.ok ? done : r.message);
+    if (r.ok) refresh();
+  };
+  return (
+    <ul className="group" aria-label="Tips paused by the accuracy check" style={{ listStyle: "none", margin: 0, padding: 0 }}>
+      {ps.map((p) => (
+        <li key={p.scope} className="banner">
+          <div className="grow">
+            {p.kept_on ? (
+              <>
+                <b>{p.label}:</b> next-step tips stay on because you chose to keep them, though a second model agreed with AIQ's judge only {p.agreed} of {p.checked} times.
+              </>
+            ) : (
+              <>
+                <b>{p.label}:</b> AIQ paused these next-step tips. A second model agreed with its judge only {p.agreed} of {p.checked} times, under 8 in 10. They come back by
+                themselves when a later accuracy check clears the bar.
+              </>
+            )}
+          </div>
+          {p.kept_on ? (
+            <button className="btn" disabled={down} onClick={() => change(`keep_on.${p.scope}`, "auto", `${p.label}: AIQ decides again.`)}>
+              Let AIQ decide
+            </button>
+          ) : (
+            <button className="btn" disabled={down} onClick={() => change(`keep_on.${p.scope}`, "on", `${p.label}: next-step tips kept on.`)}>
+              Keep showing
+            </button>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
 }

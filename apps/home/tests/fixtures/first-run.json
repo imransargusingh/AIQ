@@ -177,7 +177,8 @@
         "habit": "Split a big question across sub-agents",
         "job": "ask_research"
       }
-    ]
+    ],
+    "accuracy_paused": []
   },
   "setup": {
     "done": false,

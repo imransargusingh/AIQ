@@ -4,6 +4,7 @@
 //! front end derives the same rows, habits and self-check from the same facts.
 use aiq_contracts::judge::{parse_read, task_type_label};
 use aiq_contracts::pack::PackV1;
+use aiq_domain::check::{Reading, Scope, Verdict, verdicts};
 use aiq_domain::clock::Now;
 use aiq_domain::coach::{self, Feedback, Flag, GuessCheck, Habit, JudgedTask, Neighbour, TypeRow};
 use aiq_domain::text::features;
@@ -69,6 +70,75 @@ pub fn flags(store: &Store) -> Result<Vec<Flag>, StoreError> {
         .collect())
 }
 
+/// Settings key prefix for "Keep showing these tips" on a paused job or kind (design K6b): the value is the
+/// newest check run the person saw, so a later check lets AIQ decide again; `auto` clears it.
+pub const SETTING_KEEP_ON: &str = "keep_on.";
+
+pub fn keep_on_key(scope: &Scope) -> String {
+    format!("{SETTING_KEEP_ON}{}", scope.key())
+}
+
+/// The person kept this paused scope on, for the evidence it rests on now.
+pub fn kept_on(store: &Store, v: &Verdict) -> bool {
+    store.setting(&keep_on_key(&v.scope)).ok().flatten().as_deref() == Some(v.newest_run.as_str())
+}
+
+/// Every second reading whose judgment is still the task's current one, for the pause rule (K6b). A task
+/// judged again since (a new judge version) drops out: the check described the old judge. Unreadable
+/// answers are "not checked", never guessed.
+pub fn readings(store: &Store) -> Result<Vec<Reading>, StoreError> {
+    let current: std::collections::HashSet<String> =
+        store.current_judgments()?.into_values().map(|j| j.judgment_id).collect();
+    let mut out = Vec::new();
+    for run in store.check_runs()? {
+        for c in store.checks_of_run(&run.run_id)? {
+            if !current.contains(&c.judgment_id) {
+                continue;
+            }
+            let Some(ans) =
+                c.answer.as_deref().and_then(|a| serde_json::from_str::<aiq_contracts::check::CheckAnswer>(a).ok())
+            else {
+                continue;
+            };
+            let Some(j) = store.judgment(&c.judgment_id)? else { continue };
+            out.push(Reading {
+                run_id: run.run_id.clone(),
+                run_started_ms: run.started_utc_ms,
+                judge_job: j.job,
+                judge_type: j.task_type,
+                reader_job: ans.job,
+                reader_type: ans.task_type,
+            });
+        }
+    }
+    Ok(out)
+}
+
+/// The paused jobs and kinds as people see them, still-paused first, then the ones the person kept on.
+pub fn paused_scopes(store: &Store, pauses: &[Verdict]) -> Vec<aiq_contracts::frames::PausedScope> {
+    let mut v: Vec<_> = pauses
+        .iter()
+        .map(|p| aiq_contracts::frames::PausedScope {
+            scope: p.scope.key(),
+            label: scope_label(&p.scope),
+            agreed: p.agree.k,
+            checked: p.agree.n,
+            kept_on: kept_on(store, p),
+        })
+        .collect();
+    v.sort_by(|a, b| a.kept_on.cmp(&b.kept_on).then_with(|| a.scope.cmp(&b.scope)));
+    v
+}
+
+/// A paused job or kind, in words: "Run or ship it" or "Code a change: Fixing a bug".
+pub fn scope_label(scope: &Scope) -> String {
+    let job = aiq_domain::rung::job_label(scope.job()).to_owned();
+    match scope {
+        Scope::Job(_) => job,
+        Scope::Kind(j, t) => format!("{job}: {}", task_type_label(j, t).unwrap_or(t)),
+    }
+}
+
 /// The next-rung tips setting: auto (default), on or off.
 pub fn mode(store: &Store) -> String {
     store
@@ -85,7 +155,7 @@ pub fn mode(store: &Store) -> String {
 // rebuild time (`coach.cache` in core.log) passes 50 ms.
 #[derive(Debug, Clone)]
 pub struct Cache {
-    pub fingerprint: (i64, i64, i64),
+    pub fingerprint: (i64, i64, i64, i64),
     pub guesses: usize,
     pub built_ms: i64,
     pub build_ms: u64,
@@ -97,6 +167,8 @@ pub struct Cache {
     pub feedback: Vec<Feedback>,
     /// Share of judged, typed tasks in the window whose type is `other` (the list's fit, design assume line).
     pub other_share: Option<f64>,
+    /// Jobs and kinds of task the latest accuracy checks paused (design K6b), before the person's overrides.
+    pub pauses: Vec<Verdict>,
 }
 
 pub const REBUILD_EVERY_MS: i64 = 3_600_000;
@@ -147,11 +219,26 @@ impl Cache {
             habits,
             check,
             feedback: feedback(store)?,
+            pauses: verdicts(&readings(store)?).into_iter().filter(|v| v.paused).collect(),
         })
     }
 
     pub fn stale(&self, store: &Store, now_ms: i64) -> bool {
         now_ms - self.built_ms > REBUILD_EVERY_MS || store.coach_fingerprint().ok() != Some(self.fingerprint)
+    }
+
+    /// The pause that stops a next-step tip for a task guessed as (job, kind), if any: only under `auto`, and
+    /// not one the person kept on for the same evidence. The job's pause wins over the kind's.
+    pub fn paused_for(&self, store: &Store, mode: &str, job: &str, task_type: &str) -> Option<&Verdict> {
+        if mode != "auto" {
+            return None;
+        }
+        let job_scope = Scope::Job(job.to_owned());
+        let kind_scope = Scope::Kind(job.to_owned(), task_type.to_owned());
+        [job_scope, kind_scope]
+            .iter()
+            .filter_map(|s| self.pauses.iter().find(|v| &v.scope == s))
+            .find(|v| !kept_on(store, v))
     }
 
     /// Next-rung tips are on now: off when the person turned them off, or (auto) AIQ's self-check did.

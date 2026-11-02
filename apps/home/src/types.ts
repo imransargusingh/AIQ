@@ -191,6 +191,20 @@ export interface Settings {
   tips_off: string[];
   /** Every next-step tip AIQ can show, in pack order. */
   next_tips: NextTip[];
+  /** Jobs and kinds of task whose next-step tips the accuracy check paused (still paused first). */
+  accuracy_paused: PausedScope[];
+}
+
+/** A job or kind of task the accuracy check paused: a second model agreed with the judge under 8 in 10. */
+export interface PausedScope {
+  /** run_ship or code_change/fix_bug. */
+  scope: string;
+  /** "Run or ship it" or "Code a change: Fixing a bug". */
+  label: string;
+  agreed: number;
+  checked: number;
+  /** The person chose "Keep showing" for this evidence. */
+  kept_on: boolean;
 }
 
 export interface NextTip {

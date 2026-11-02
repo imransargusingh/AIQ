@@ -2,7 +2,7 @@
 // Outside Tauri (the UI tests) a fixture stands in, set on window by the test before the page loads.
 import type { Outcome, Snapshot, TaskDetail } from "./types";
 
-export type SettingKey = "daily_cap" | "copilot_tip_stays" | "next_rung_tips" | "judge_daily_tasks";
+export type SettingKey = "daily_cap" | "copilot_tip_stays" | "next_rung_tips" | "judge_daily_tasks" | `keep_on.${string}`;
 /** The reasons the core accepts (crates/aiq-core/src/coaching.rs FLAG_REASONS). */
 export type FlagReason = "evidence_wrong" | "not_useful" | "blocked" | "other";
 
@@ -42,6 +42,12 @@ function fixture<T>(cmd: string, args: Record<string, unknown>): Promise<T> {
         if (args.key === "daily_cap") s.settings.daily_cap = Number(args.value);
         if (args.key === "judge_daily_tasks") s.settings.judge_daily_tasks = Number(args.value);
         if (args.key === "copilot_tip_stays") s.settings.copilot_tip_stays = args.value as Snapshot["settings"]["copilot_tip_stays"];
+        const keep = String(args.key).startsWith("keep_on.") ? s.settings.accuracy_paused.find((p) => `keep_on.${p.scope}` === args.key) : undefined;
+        if (String(args.key).startsWith("keep_on.") && !keep) {
+          out = { ok: false, message: "Not changed: AIQ hasn't paused tips for that." };
+          break;
+        }
+        if (keep) keep.kept_on = args.value === "on";
         if (args.key === "next_rung_tips") {
           s.settings.next_rung_tips = args.value as Snapshot["settings"]["next_rung_tips"];
           s.settings.next_rung_on = args.value === "on" || (args.value === "auto" && !s.settings.guess_auto_off);

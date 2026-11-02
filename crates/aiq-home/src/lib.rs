@@ -354,6 +354,9 @@ pub struct Settings {
     pub tips_off: Vec<String>,
     /// Every next-step tip the pack can show, in pack order, for Settings' on/off list.
     pub next_tips: Vec<NextTip>,
+    /// Jobs and kinds of task whose next-step tips the accuracy check paused (design K6b), still-paused
+    /// first, then the ones the person kept on. Same rule and words as the core's status.
+    pub accuracy_paused: Vec<aiq_contracts::frames::PausedScope>,
 }
 
 /// One next-step tip as Settings lists it: its tip id, the habit it builds, and its job (or `any`).
@@ -458,6 +461,7 @@ fn empty(paths: &Paths, pack: &PackV1, now: Now) -> Snapshot {
                     job: m.job.clone(),
                 })
                 .collect(),
+            accuracy_paused: vec![],
         },
         setup: Setup { done: false, tools: vec![] },
         coaching: Coaching {
@@ -872,5 +876,8 @@ fn coaching(
     let mut off: Vec<String> = feedback.iter().map(|f| f.tip_id.clone()).collect::<BTreeSet<_>>().into_iter().collect();
     off.retain(|t| coach::tip_pref(&feedback, t, now.utc_ms, p) == coach::TipPref::Off);
     st.tips_off = off;
+    let readings = aiq_core::coaching::readings(store).map_err(e)?;
+    let paused: Vec<_> = aiq_domain::check::verdicts(&readings).into_iter().filter(|v| v.paused).collect();
+    st.accuracy_paused = aiq_core::coaching::paused_scopes(store, &paused);
     Ok(())
 }

@@ -468,7 +468,7 @@ fn coaching_facts_are_append_only_and_read_back_in_order() {
         .is_err(),
         "answer is a closed set"
     );
-    assert_ne!(s.coach_fingerprint().unwrap(), (0, 0, 0));
+    assert_ne!(s.coach_fingerprint().unwrap(), (0, 0, 0, 0));
 }
 
 #[test]

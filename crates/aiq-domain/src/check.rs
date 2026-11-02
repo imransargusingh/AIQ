@@ -189,6 +189,120 @@ pub fn agreement(pairs: &[(JudgeView, CheckAnswer)]) -> Agreement {
     a
 }
 
+// ------------------------------------------------------------------ pause rule (K6b)
+
+/// The pause bar (K6b): below 8 in 10 agreement a pack's job, or one kind of task, stops being coached.
+/// Guess, not measured: it is the bar every rule in AIQ uses (rung-model US-7, the live type-guess
+/// self-check, the no-job and kind-of-task rules). Raise or lower it only from a measured repeat-run spread.
+pub const PAUSE_BAR: f64 = 0.8;
+/// A job needs at least this many checked readings before it can pause (guess: the run_ship gate's 10).
+pub const PAUSE_MIN_JOB: u32 = 10;
+/// A kind of task needs at least this many (guess: design K6's 5; a kind is rarely sampled 10 times).
+pub const PAUSE_MIN_KIND: u32 = 5;
+
+/// What a pause covers: a pack's job (every next-step tip for tasks of that job), or one kind of task.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Scope {
+    Job(String),
+    Kind(String, String),
+}
+
+impl Scope {
+    /// `run_ship` or `code_change/fix_bug`: the form settings and the CLI use.
+    pub fn key(&self) -> String {
+        match self {
+            Scope::Job(j) => j.clone(),
+            Scope::Kind(j, t) => format!("{j}/{t}"),
+        }
+    }
+    pub fn parse(s: &str) -> Option<Scope> {
+        let ok = |p: &str| !p.is_empty() && p.len() <= 40 && p.chars().all(|c| c.is_ascii_lowercase() || c == '_');
+        match s.split_once('/') {
+            Some((j, t)) if ok(j) && ok(t) => Some(Scope::Kind(j.into(), t.into())),
+            None if ok(s) => Some(Scope::Job(s.into())),
+            _ => None,
+        }
+    }
+    pub fn job(&self) -> &str {
+        match self {
+            Scope::Job(j) | Scope::Kind(j, _) => j,
+        }
+    }
+    fn min_checked(&self) -> u32 {
+        match self {
+            Scope::Job(_) => PAUSE_MIN_JOB,
+            Scope::Kind(..) => PAUSE_MIN_KIND,
+        }
+    }
+}
+
+/// One second reading of a judgment that is still the task's current one, as the pause rule reads it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Reading {
+    pub run_id: String,
+    pub run_started_ms: i64,
+    /// The judge's job (`unclassified` when it gave none) and kind.
+    pub judge_job: String,
+    pub judge_type: Option<String>,
+    pub reader_job: String,
+    pub reader_type: String,
+}
+
+/// The verdict for one scope, from the newest checks.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Verdict {
+    pub scope: Scope,
+    /// Agreement over the window: the newest whole check runs until at least the scope's minimum.
+    pub agree: Count,
+    /// The newest run in the window: an override names it, so new evidence lets AIQ decide again.
+    pub newest_run: String,
+    pub runs: u32,
+    /// Enough readings and under the bar.
+    pub paused: bool,
+}
+
+/// The pause rule (K6b). Per scope, readings are taken newest run first, whole runs at a time, until the
+/// scope's minimum is reached; older runs then stop counting, so a later check that clears the bar resumes
+/// tips by itself. A job is scored on tasks the judge put in that job (did the reader agree?); a kind on
+/// tasks the judge gave that kind (same job and same kind?). `other` kinds never coach, so are never scored.
+pub fn verdicts(readings: &[Reading]) -> Vec<Verdict> {
+    let mut runs: Vec<(&str, i64)> = readings.iter().map(|r| (r.run_id.as_str(), r.run_started_ms)).collect();
+    runs.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| b.0.cmp(a.0)));
+    runs.dedup();
+    let mut scored: BTreeMap<Scope, Vec<(&str, bool)>> = BTreeMap::new();
+    for (run, _) in &runs {
+        for r in readings.iter().filter(|r| r.run_id == *run) {
+            if r.judge_job == "unclassified" || r.judge_job == "other" {
+                continue;
+            }
+            let job_ok = r.reader_job == r.judge_job;
+            scored.entry(Scope::Job(r.judge_job.clone())).or_default().push((run, job_ok));
+            if let Some(t) = r.judge_type.as_deref().filter(|t| *t != "other") {
+                let hit = job_ok && r.reader_type == t;
+                scored.entry(Scope::Kind(r.judge_job.clone(), t.to_owned())).or_default().push((run, hit));
+            }
+        }
+    }
+    scored
+        .into_iter()
+        .map(|(scope, list)| {
+            let mut agree = Count::default();
+            let mut seen: Vec<&str> = Vec::new();
+            for (run, hit) in list {
+                if !seen.contains(&run) {
+                    if agree.n >= scope.min_checked() {
+                        break;
+                    }
+                    seen.push(run);
+                }
+                agree.add(hit);
+            }
+            let paused = agree.n >= scope.min_checked() && (agree.k as f64) < PAUSE_BAR * agree.n as f64;
+            Verdict { newest_run: seen[0].to_owned(), runs: seen.len() as u32, agree, paused, scope }
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -328,5 +442,83 @@ mod tests {
         assert_eq!(a.task_type.n, 0, "no type to compare when the judge gave no job");
         assert_eq!(a.no_job_read_as.get("other"), Some(&1));
         assert_eq!(a.no_job_read_as.get("ask_research"), Some(&1));
+    }
+
+    fn reading(run: &str, at: i64, judge: (&str, &str), reader: (&str, &str)) -> Reading {
+        Reading {
+            run_id: run.into(),
+            run_started_ms: at,
+            judge_job: judge.0.into(),
+            judge_type: Some(judge.1.into()),
+            reader_job: reader.0.into(),
+            reader_type: reader.1.into(),
+        }
+    }
+
+    fn many(run: &str, at: i64, n: usize, hits: usize, kind: (&str, &str)) -> Vec<Reading> {
+        (0..n).map(|i| reading(run, at, kind, if i < hits { kind } else { ("ask_research", "explain") })).collect()
+    }
+
+    fn find<'a>(v: &'a [Verdict], key: &str) -> &'a Verdict {
+        v.iter().find(|x| x.scope.key() == key).unwrap()
+    }
+
+    #[test]
+    fn a_job_pauses_at_seven_of_ten_not_at_eight_and_needs_ten() {
+        let v = verdicts(&many("r1", 1, 10, 7, ("run_ship", "deploy")));
+        let j = find(&v, "run_ship");
+        assert!(j.paused && j.agree == Count { k: 7, n: 10 });
+        assert!(!find(&verdicts(&many("r1", 1, 10, 8, ("run_ship", "deploy"))), "run_ship").paused);
+        let few = verdicts(&many("r1", 1, 9, 0, ("run_ship", "deploy")));
+        assert!(!find(&few, "run_ship").paused, "9 checked is too few for a job");
+        assert!(find(&few, "run_ship/deploy").paused, "but 9 is enough for a kind (5)");
+    }
+
+    #[test]
+    fn a_kind_pauses_at_three_of_five_and_needs_the_job_to_match() {
+        let mut r = many("r1", 1, 4, 4, ("code_change", "fix_bug"));
+        r.push(reading("r1", 1, ("code_change", "fix_bug"), ("ask_research", "fix_bug")));
+        let k = find(&verdicts(&r), "code_change/fix_bug").clone();
+        assert_eq!((k.agree, k.paused), (Count { k: 4, n: 5 }, false));
+        r.push(reading("r1", 1, ("code_change", "fix_bug"), ("code_change", "feature")));
+        let k = find(&verdicts(&r), "code_change/fix_bug").clone();
+        assert_eq!((k.agree, k.paused), (Count { k: 4, n: 6 }, true));
+        let few = verdicts(&many("r1", 1, 4, 0, ("code_change", "fix_bug")));
+        assert!(!find(&few, "code_change/fix_bug").paused, "4 checked is too few");
+    }
+
+    #[test]
+    fn a_newer_check_that_clears_the_bar_resumes_and_older_runs_stop_counting() {
+        let mut r = many("old", 1, 10, 5, ("run_ship", "deploy"));
+        assert!(find(&verdicts(&r), "run_ship").paused);
+        r.extend(many("new", 2, 10, 9, ("run_ship", "deploy")));
+        let j = find(&verdicts(&r), "run_ship").clone();
+        assert_eq!((j.agree, j.paused, j.newest_run.as_str(), j.runs), (Count { k: 9, n: 10 }, false, "new", 1));
+        // A small newer run is pooled with the one before it, whole runs at a time.
+        let mut r = many("old", 1, 10, 5, ("run_ship", "deploy"));
+        r.extend(many("new", 2, 5, 5, ("run_ship", "deploy")));
+        let j = find(&verdicts(&r), "run_ship").clone();
+        assert_eq!((j.agree, j.paused, j.runs), (Count { k: 10, n: 15 }, true, 2));
+    }
+
+    #[test]
+    fn no_job_and_other_kinds_are_never_scored() {
+        let r = vec![
+            reading("r", 1, ("unclassified", "other"), ("run_ship", "deploy")),
+            reading("r", 1, ("code_change", "other"), ("code_change", "fix_bug")),
+        ];
+        let v = verdicts(&r);
+        assert_eq!(v.len(), 1);
+        assert_eq!(v[0].scope, Scope::Job("code_change".into()));
+    }
+
+    #[test]
+    fn scope_keys_round_trip_and_bad_ones_are_refused() {
+        for k in ["run_ship", "code_change/fix_bug"] {
+            assert_eq!(Scope::parse(k).unwrap().key(), k);
+        }
+        for k in ["", "a/b/c", "Run", "x/", "../etc", "a b"] {
+            assert!(Scope::parse(k).is_none(), "{k}");
+        }
     }
 }
