@@ -29,6 +29,11 @@ pub const WEEKS: i64 = 4;
 pub const TIP_DAYS: i64 = 90;
 /// Your data lists at most this many newest events; the counts are always exact.
 pub const MAX_ITEMS: usize = 500;
+/// Shown under "Tasks agents finished" (Imran 2026-11-02, Q-A: until AIQ can measure your own edits).
+pub const FINISHED_RULE: &str =
+    "A task counts as finished when it was judged Delegated or higher and you sent no re-prompt correcting the agent.";
+/// Home shows at most this many kinds of task with a next step (aiq-home US-H3).
+pub const OPPORTUNITY_ROWS: usize = 3;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Snapshot {
@@ -42,6 +47,90 @@ pub struct Snapshot {
     pub data: Data,
     pub settings: Settings,
     pub setup: Setup,
+    /// Coaching from rung results (design coaching-from-rungs): every value derived from judgments here.
+    pub coaching: Coaching,
+}
+
+/// Home's split, the kinds of task, the habits (design coaching-from-rungs D3, D6, D9; aiq-home H2–H4).
+#[derive(Debug, Clone, PartialEq, Serialize, Default)]
+pub struct Coaching {
+    pub split: SplitOut,
+    /// The split shows with at least this many tasks (US-H2).
+    pub split_min: u32,
+    /// The rule under the headline (Imran 2026-11-02, Q-A).
+    pub rule: &'static str,
+    /// Oldest first, same weeks as `home.weeks`.
+    pub weeks: Vec<WeekSplit>,
+    pub week_min: u32,
+    /// Home's rows: at most 3 kinds of task with a next step, ranked (US-H3).
+    pub opportunities: Vec<KindRow>,
+    /// Every kind of task with judged tasks in the window, most tasks first.
+    pub kinds: Vec<KindRow>,
+    pub habits: Vec<HabitRow>,
+    /// Some habit observations come from imported history (LINDDUN "unawareness" footnote).
+    pub habits_imported: bool,
+    /// Judged tasks in the window whose kind is not known yet (judged before kinds existed).
+    pub untyped: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Default)]
+pub struct SplitOut {
+    pub tasks: u32,
+    pub finished: u32,
+    pub could: u32,
+    pub needs: u32,
+    pub uncertain: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct WeekSplit {
+    pub start_ms: i64,
+    pub tasks: u32,
+    pub finished: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct MoveOut {
+    pub move_id: String,
+    pub habit: String,
+    pub why: String,
+    pub try_this: String,
+    pub starter: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct KindRow {
+    pub job: String,
+    pub task_type: String,
+    pub label: &'static str,
+    pub tasks: u32,
+    pub uncertain: u32,
+    pub per_week: f64,
+    pub today: Option<u8>,
+    pub potential: Option<u8>,
+    /// coach, too_few, right_rung, blocked, not_sure, flagged
+    pub state: &'static str,
+    /// The move coached (state coach) or flagged (state flagged).
+    pub next: Option<MoveOut>,
+    /// Two "Not helpful" answers in 30 days: ranked last.
+    pub ranked_last: bool,
+    /// The newest task of this kind, and the judge's own words about it (plain text, TR-5).
+    pub last_task_id: Option<String>,
+    pub last_gap: Option<String>,
+    pub task_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct HabitRow {
+    pub job: String,
+    pub move_id: String,
+    pub name: String,
+    /// not_yet, tried, adopted
+    pub state: &'static str,
+    pub eligible: u32,
+    pub seen: u32,
+    pub moved_to: Option<&'static str>,
+    pub moved_ms: Option<i64>,
 }
 
 /// First-run setup (design aiq-home-deferred-pages E5–E7).
@@ -84,8 +173,6 @@ pub struct Home {
     pub rungs: [u32; 5],
     /// The rung with the most judged tasks in the window (ties go to the lower rung). None when none.
     pub most_common_rung: Option<u8>,
-    /// Coachable next steps (potential above current, confident, not Uncertain), newest first, at most 5.
-    pub next_steps: Vec<NextStep>,
     /// Judging today: tasks sent, calls, cost where the tool reported it.
     pub judge_today: JudgeToday,
     pub imported_in_window: u32,
@@ -95,15 +182,6 @@ pub struct Home {
     pub by_tool: Vec<(String, u32)>,
     pub set_aside: Vec<SetAside>,
     pub tips_today: u32,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct NextStep {
-    pub task_id: String,
-    pub job: String,
-    pub current: u8,
-    pub potential: u8,
-    pub gap: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -164,6 +242,9 @@ pub struct TaskJudgment {
     pub current_confidence: f64,
     pub potential_confidence: f64,
     pub job: String,
+    /// The kind of task within the job; None when judged before kinds existed.
+    pub task_type: Option<String>,
+    pub task_type_label: Option<&'static str>,
     pub coachable: bool,
     pub evidence: Vec<String>,
     pub gap: String,
@@ -197,6 +278,8 @@ impl TaskRow {
             current_confidence: j.current_confidence,
             potential_confidence: j.potential_confidence,
             job: j.job.clone(),
+            task_type: j.task_type.clone(),
+            task_type_label: j.task_type.as_deref().and_then(|t| aiq_contracts::judge::task_type_label(&j.job, t)),
             coachable: j.coachable,
             evidence: json_strings(&j.evidence),
             gap: j.gap.clone(),
@@ -257,6 +340,16 @@ pub struct Settings {
     /// auto (judge new tasks in the background) or off. "off" until the person first runs `aiq judge`.
     pub judge: String,
     pub judge_daily_tasks: u32,
+    /// auto, on or off.
+    pub next_rung_tips: String,
+    /// Next-rung tips may show now (off by the setting, or by AIQ's self-check under auto).
+    pub next_rung_on: bool,
+    /// AIQ's self-check of its kind-of-task guesses (D10). Measured counts.
+    pub guess_checked: u32,
+    pub guess_right: u32,
+    pub guess_auto_off: bool,
+    /// Tip ids the person turned off ("Don't show this again"), for "Turn back on".
+    pub tips_off: Vec<String>,
 }
 
 /// Read the whole snapshot. Never fails: an unreadable store gives the empty snapshot with `status.error`.
@@ -274,6 +367,7 @@ pub fn snapshot(paths: &Paths, pack: &PackV1, now: Now) -> Snapshot {
             s.tasks = e2.tasks;
             s.tips = e2.tips;
             s.data = e2.data;
+            s.coaching = e2.coaching;
             s.status.error = Some(format!("{}: {e}", codes::HOME_STORE_READ));
         }
     }
@@ -312,7 +406,6 @@ fn empty(paths: &Paths, pack: &PackV1, now: Now) -> Snapshot {
             uncertain: 0,
             rungs: [0; 5],
             most_common_rung: None,
-            next_steps: vec![],
             judge_today: JudgeToday { tasks: 0, calls: 0, failed_calls: 0, cost_usd: None },
             imported_in_window: 0,
             weeks: (0..WEEKS).map(|i| Week { start_ms: week0 + i * 7 * DAY_MS, tasks: 0 }).collect(),
@@ -338,8 +431,21 @@ fn empty(paths: &Paths, pack: &PackV1, now: Now) -> Snapshot {
             copilot_tip_stays: TipStays::NextPrompt.as_str(),
             judge: "off".into(),
             judge_daily_tasks: aiq_domain::rung::DEFAULT_DAILY_TASKS,
+            next_rung_tips: "auto".into(),
+            next_rung_on: true,
+            guess_checked: 0,
+            guess_right: 0,
+            guess_auto_off: false,
+            tips_off: vec![],
         },
         setup: Setup { done: false, tools: vec![] },
+        coaching: Coaching {
+            split_min: pack.coach.split_min,
+            week_min: pack.coach.week_min,
+            rule: FINISHED_RULE,
+            weeks: (0..WEEKS).map(|i| WeekSplit { start_ms: week0 + i * 7 * DAY_MS, tasks: 0, finished: 0 }).collect(),
+            ..Default::default()
+        },
     }
 }
 
@@ -407,15 +513,6 @@ fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()>
             } else {
                 s.home.rungs[(j.current.clamp(1, 5) - 1) as usize] += 1;
             }
-            if j.coachable && s.home.next_steps.len() < 5 {
-                s.home.next_steps.push(NextStep {
-                    task_id: t.task_id.clone(),
-                    job: j.job.clone(),
-                    current: j.current,
-                    potential: j.potential,
-                    gap: j.gap.clone(),
-                });
-            }
         }
     }
     let top = s.home.rungs.iter().copied().max().unwrap_or(0);
@@ -441,6 +538,7 @@ fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()>
     let mut by: Vec<(String, u32)> = by.into_iter().map(|(k, n)| (k.to_owned(), n)).collect();
     by.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
     s.home.by_tool = by;
+    coaching(store, pack, now, &tasks, &judgments, s)?;
     s.tasks = tasks;
 
     // Tips: delivered cards in the last 90 days, newest first; tips today counted as the trigger engine counts.
@@ -635,4 +733,122 @@ fn row(t: TaskSpan, folder: Option<String>, origin: &'static str) -> TaskRow {
         session: t.session,
         members: t.members,
     }
+}
+
+/// The coaching numbers over the same task list and judgments as the rest of the snapshot.
+fn coaching(
+    store: &Store,
+    pack: &PackV1,
+    now: Now,
+    tasks: &[TaskRow],
+    judgments: &std::collections::HashMap<String, aiq_store::JudgmentRow>,
+    s: &mut Snapshot,
+) -> R<()> {
+    use aiq_domain::coach;
+    let e = |e: aiq_store::StoreError| e.to_string();
+    let judged: Vec<coach::JudgedTask> = tasks
+        .iter()
+        .filter_map(|t| {
+            let j = judgments.get(&t.task_id)?;
+            Some(coach::JudgedTask::new(
+                &t.task_id,
+                t.origin == "live",
+                &t.tool,
+                t.first_ms,
+                &j.job,
+                j.task_type.as_deref(),
+                &j.state,
+                j.current_rung,
+                j.potential_rung,
+                j.coachable,
+                &j.facts,
+                aiq_contracts::judge::parse_read(&j.read),
+            ))
+        })
+        .collect();
+    let feedback = aiq_core::coaching::feedback(store).map_err(e)?;
+    let flags = aiq_core::coaching::flags(store).map_err(e)?;
+    let p = &pack.coach;
+    let rows = coach::type_rows(&judged, &pack.moves, &flags, now.utc_ms, p);
+    let c = &mut s.coaching;
+    let sp = coach::split(&judged, &rows, now.utc_ms - WINDOW_DAYS * DAY_MS, now.utc_ms + 1);
+    c.split =
+        SplitOut { tasks: sp.tasks, finished: sp.finished, could: sp.could, needs: sp.needs, uncertain: sp.uncertain };
+    for w in c.weeks.iter_mut() {
+        let ws = coach::split(&judged, &rows, w.start_ms, w.start_ms + 7 * DAY_MS);
+        (w.tasks, w.finished) = (ws.tasks, ws.finished);
+    }
+    c.untyped = judged.iter().filter(|t| !t.uncertain() && t.task_type.is_none()).count() as u32;
+    let move_out = |id: &str| {
+        pack.moves.iter().find(|m| m.move_id == id).map(|m| MoveOut {
+            move_id: m.move_id.clone(),
+            habit: m.habit.clone(),
+            why: m.why.clone(),
+            try_this: m.try_this.clone(),
+            starter: m.starter.clone(),
+        })
+    };
+    let kind = |r: &coach::TypeRow| {
+        let last = r.task_ids.iter().filter_map(|id| judgments.get(id)).find(|j| j.state != "uncertain");
+        KindRow {
+            job: r.job.clone(),
+            task_type: r.task_type.clone(),
+            label: r.label,
+            tasks: r.tasks,
+            uncertain: r.uncertain,
+            per_week: (r.per_week * 10.0).round() / 10.0,
+            today: r.today,
+            potential: r.potential,
+            state: r.state.as_str(),
+            next: r.move_id.as_deref().and_then(move_out),
+            ranked_last: r
+                .move_id
+                .as_deref()
+                .is_some_and(|m| coach::ranked_last(&feedback, &flags, &r.job, m, now.utc_ms, p)),
+            last_task_id: r.task_ids.first().cloned(),
+            last_gap: last.map(|j| j.gap.clone()).filter(|g| !g.is_empty()),
+            task_ids: r.task_ids.clone(),
+        }
+    };
+    c.opportunities =
+        coach::opportunities(&rows, &feedback, &flags, now.utc_ms, p, OPPORTUNITY_ROWS).into_iter().map(kind).collect();
+    c.kinds = rows.iter().map(kind).collect();
+    c.habits = coach::habits(&judged, &pack.moves, now.utc_ms, now.offset_min, p)
+        .into_iter()
+        .map(|h| HabitRow {
+            job: h.job,
+            move_id: h.move_id,
+            name: h.name,
+            state: h.state.as_str(),
+            eligible: h.eligible,
+            seen: h.seen,
+            moved_to: h.moved_to.map(|m| m.as_str()),
+            moved_ms: h.moved_ms,
+        })
+        .collect();
+    c.habits_imported = judged.iter().any(|t| !t.live);
+
+    // Settings: next-rung tips and the self-check, from the same facts the core reads.
+    let mode = aiq_core::coaching::mode(store);
+    let by_id: std::collections::BTreeMap<&str, &coach::JudgedTask> =
+        judged.iter().map(|t| (t.task_id.as_str(), t)).collect();
+    let guesses = store.type_guesses().map_err(e)?;
+    let check = coach::check_guesses(
+        guesses.iter().map(|g| (g.task_id.as_str(), g.job.as_str(), g.task_type.as_str())),
+        &by_id,
+    );
+    let st = &mut s.settings;
+    st.guess_checked = check.checked;
+    st.guess_right = check.right;
+    st.guess_auto_off = check.auto_off(p);
+    st.next_rung_on = match mode.as_str() {
+        "off" => false,
+        "on" => true,
+        _ => !st.guess_auto_off,
+    };
+    st.next_rung_tips = mode;
+    let mut off: Vec<String> = feedback.iter().map(|f| f.tip_id.clone()).collect::<BTreeSet<_>>().into_iter().collect();
+    off.retain(|t| coach::tip_pref(&feedback, t, now.utc_ms, p) == coach::TipPref::Off);
+    st.tips_off = off;
+    Ok(())
 }
