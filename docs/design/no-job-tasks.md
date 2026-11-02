@@ -75,6 +75,38 @@ waiting, under Imran's standing rule: it is cloud-only and changes no rule anyon
 3. `aiq judge --check` (new sample, different second reader), then `aiq judge --check-report`.
 4. Pick R1, R2, R3, R4 or none against N3, and record it here.
 
+## Cause, measured (Imran's laptop, 2026-11-02 ~18:30Z, build 7434187)
+
+Every no-job judgment has now been re-judged at j4. **No job: 100 of 436** current judgments. The count
+went up from 70 because more never-judged tasks have been judged since; about 23% of the new ones get no
+job. That share is the laptop thread's figure, which I did not recompute.
+
+| Cause | Count |
+|---|---|
+| C1 both runs said `other` | **75** |
+| C3 agreed on a pack job, not confidently | 18 |
+| C2 the runs named different jobs | 7 |
+
+The candidate rules, scored against the old check sample (run 01a19ce8):
+
+| Rule | Tasks it gives a job | Agreed with the second reading |
+|---|---|---|
+| R1 | 3 of 100 | 0 of 1 |
+| R2 | 18 of 100 | 1 of 2 |
+
+What this means:
+- R1 can't help: it covers only 3 tasks. R2 covers 18 but has only 2 checks behind it, far short of the
+  N3 bar. Neither goes live.
+- C1 dominates, so by N4 the fix is in the prompt (R3) or in coverage (a pack for whatever those tasks are).
+  Choosing between them needs to know what a different model calls the C1 tasks. In run 01a19ce8 it gave
+  4 of 9 no-job tasks Ask or research.
+
+**N5 (added):** `aiq judge --check --no-job` samples only no-job judgments, spread across the three causes.
+The report then splits "the second reading said" by cause. One run of 30, at about 30 premium requests
+(worked out from one request per task), shows:
+- what the C1 tasks are: a pack the judge misses, which points to R3, or `other`, which points to coverage
+- whether R2 clears the bar on C3
+
 ## Questions for Imran
 
 None. The cause and the rule are both settled from data.
@@ -90,6 +122,6 @@ None. The cause and the rule are both settled from data.
 
 | | |
 |---|---|
-| **Completed** | Design; measurement build |
+| **Completed** | Design; measurement build; cause measured (C1 75 of 100) |
 | **Remaining** | Laptop re-judge and a check; pick a rule |
-| **Best next action** | Upgrade the laptop, wait for re-judging, then run `aiq judge --check` |
+| **Best next action** | Upgrade the laptop, then run `aiq judge --check --no-job` once background judging has finished |

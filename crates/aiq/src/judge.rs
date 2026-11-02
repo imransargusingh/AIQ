@@ -1220,14 +1220,31 @@ pub struct CheckRun {
 }
 
 /// The judged tasks a check may sample: the current judgment of each closed task AIQ knows, any job.
-fn check_candidates(store: &Store, tasks: &[TaskRow]) -> aiq_store::Result<Vec<aiq_domain::check::Candidate>> {
+/// With `no_job_only`, only judgments with no job, spread by why they have none (design no-job-tasks N5).
+fn check_candidates(
+    store: &Store,
+    tasks: &[TaskRow],
+    no_job_only: bool,
+) -> aiq_store::Result<Vec<aiq_domain::check::Candidate>> {
     let known: HashSet<&str> = tasks.iter().map(|t| t.task_id.as_str()).collect();
     let judged = store.current_judgments()?;
     Ok(judged
         .values()
         .filter(|j| known.contains(j.task_id.as_str()))
-        .map(|j| aiq_domain::check::Candidate { judgment_id: j.judgment_id.clone(), job: j.job.clone() })
+        .filter(|j| !no_job_only || j.job == "unclassified")
+        .map(|j| {
+            let group = if no_job_only { no_job_group(j).to_owned() } else { j.job.clone() };
+            aiq_domain::check::Candidate { judgment_id: j.judgment_id.clone(), job: group }
+        })
         .collect())
+}
+
+/// Why a judgment has no job, in a few words; "not recorded" before judge j4.
+fn no_job_group(j: &JudgmentRow) -> &'static str {
+    match job_runs(j) {
+        Some(r) => rung::no_job_cause(&r).map_or("no cause found", |c| c.words()),
+        None => "not recorded yet (judged before AIQ kept each run's pick)",
+    }
 }
 
 /// Read each sampled task a second time, blind, through the provider that already saw it; store each reading.
@@ -1241,12 +1258,13 @@ pub fn run_check(
     now_utc_ms: i64,
     size: usize,
     seed: u64,
+    no_job_only: bool,
 ) -> Result<CheckRun, String> {
     use aiq_contracts::check::{check_schema, parse_check};
     let pack = aiq_core::pack::parse(aiq_core::pack::BUNDLED_TOML).map_err(|e| e.to_string())?;
     let tasks = aiq_home::tasks(store, &pack, 0)?;
     let by_id: HashMap<&str, &TaskRow> = tasks.iter().map(|t| (t.task_id.as_str(), t)).collect();
-    let cands = check_candidates(store, &tasks).map_err(|e| e.to_string())?;
+    let cands = check_candidates(store, &tasks, no_job_only).map_err(|e| e.to_string())?;
     let sample = aiq_domain::check::sample(&cands, size, seed);
     let run_id = uuid::Uuid::now_v7().to_string();
     store
@@ -1385,8 +1403,7 @@ pub fn check_report(store: &Store) -> aiq_store::Result<String> {
     // Why each no-job judgment has none (design no-job-tasks N1; recorded from judge j4 on).
     let mut why: std::collections::BTreeMap<&str, u32> = Default::default();
     for j in judged.values().filter(|j| j.job == "unclassified") {
-        let cause = job_runs(j).map(|r| rung::no_job_cause(&r).map_or("no cause found", |c| c.words()));
-        *why.entry(cause.unwrap_or("not recorded yet (judged before AIQ kept each run's pick)")).or_default() += 1;
+        *why.entry(no_job_group(j)).or_default() += 1;
     }
     if !why.is_empty() {
         let w: Vec<String> = why.iter().map(|(k, v)| format!("{k} {v}")).collect();
@@ -1427,6 +1444,7 @@ pub fn check_report(store: &Store) -> aiq_store::Result<String> {
     let mut pairs = Vec::new();
     let mut models: HashSet<(String, Option<String>)> = HashSet::new();
     let mut same_model = 0u32;
+    let mut no_job_said: std::collections::BTreeMap<&str, std::collections::BTreeMap<String, u32>> = Default::default();
     for c in &checks {
         let Some(ans) =
             c.answer.as_deref().and_then(|a| serde_json::from_str::<aiq_contracts::check::CheckAnswer>(a).ok())
@@ -1438,6 +1456,9 @@ pub fn check_report(store: &Store) -> aiq_store::Result<String> {
             same_model += 1;
         }
         models.insert((c.grader_provider.clone(), c.grader_model.clone()));
+        if j.job == "unclassified" {
+            *no_job_said.entry(no_job_group(&j)).or_default().entry(ans.job.clone()).or_default() += 1;
+        }
         pairs.push((judge_view(&j), ans));
     }
     let ag = agreement(&pairs);
@@ -1467,6 +1488,10 @@ pub fn check_report(store: &Store) -> aiq_store::Result<String> {
         let picks: Vec<String> = ag.no_job_read_as.iter().map(|(j, n)| format!("{j} {n}")).collect();
         let total: u32 = ag.no_job_read_as.values().sum();
         o += &format!("    Where the judge gave no job ({total}), the second reading said: {}\n", picks.join(", "));
+        for (cause, said) in &no_job_said {
+            let p: Vec<String> = said.iter().map(|(j, n)| format!("{j} {n}")).collect();
+            o += &format!("      {cause}: {}\n", p.join(", "));
+        }
     }
     // Candidate rules for no-job tasks (design no-job-tasks R1-R2): measured here, not in use.
     let no_job_rows: Vec<&JudgmentRow> = judged.values().filter(|j| j.job == "unclassified").collect();
@@ -1559,7 +1584,8 @@ fn check_cli(args: &[&str], paths: &Paths, store: &Store) -> ExitCode {
         }
     };
     let tasks = aiq_home::tasks(store, &pack, 0).unwrap_or_default();
-    let cands = check_candidates(store, &tasks).unwrap_or_default();
+    let no_job_only = args.contains(&"--no-job");
+    let cands = check_candidates(store, &tasks, no_job_only).unwrap_or_default();
     let n = size.min(cands.len());
     if args.contains(&"--dry-run") {
         let by_tool = |p: &str| {
@@ -1573,10 +1599,12 @@ fn check_cli(args: &[&str], paths: &Paths, store: &Store) -> ExitCode {
                 .count()
         };
         println!(
-            "AIQ would read {n} of your {} judged tasks a second time, blind, through the tool that already saw each one:\n  Copilot: {} (about one premium request and ~11 s each, measured)\n  Claude Code: {} (billed to your Claude plan)\nIt picks them at random, spread across jobs. The second reader is a different model from the same tool:\n  Claude Code: opus (check-claude-model to change)\n  Copilot: the first offered of gpt-6-astra, claude-sonnet-5.5, gpt-5.6-sol that the judge did not use (check-copilot-model to choose)\nNothing was sent.",
+            "AIQ would read {n} of your {} {} a second time, blind, through the tool that already saw each one:\n  Copilot: {} (about one premium request and ~11 s each, measured)\n  Claude Code: {} (billed to your Claude plan)\nIt picks them at random, spread across {}. The second reader is a different model from the same tool:\n  Claude Code: opus (check-claude-model to change)\n  Copilot: the first offered of gpt-6-astra, claude-sonnet-5.5, gpt-5.6-sol that the judge did not use (check-copilot-model to choose)\nNothing was sent.",
             cands.len(),
+            if no_job_only { "judged tasks with no job" } else { "judged tasks" },
             by_tool(COPILOT),
-            by_tool(CLAUDE)
+            by_tool(CLAUDE),
+            if no_job_only { "why they have no job" } else { "jobs" },
         );
         return ExitCode::SUCCESS;
     }
@@ -1611,7 +1639,7 @@ fn check_cli(args: &[&str], paths: &Paths, store: &Store) -> ExitCode {
     };
     let seed = now_ms() as u64 ^ 0xA1C0_C4EC;
     println!("Reading {n} judged tasks a second time. This takes about {} minutes.", (n * 12).div_ceil(60));
-    match run_check(store, paths, &Homes::from_env(), &claude, &copilot, now_ms(), size, seed) {
+    match run_check(store, paths, &Homes::from_env(), &claude, &copilot, now_ms(), size, seed, no_job_only) {
         Ok(r) => {
             for (p, why) in &r.unavailable {
                 println!("{p}: {why}. Its tasks were not checked.");
@@ -2261,7 +2289,7 @@ mod tests {
         let judged = e.store.current_judgments().unwrap();
         assert_eq!(judged.len(), 4, "three live tasks and one imported");
         let g = grader("code_change", "fix_bug", 2);
-        let r = run_check(&e.store, &e.paths, &e.homes, &g, &g, NOW, 30, 42).unwrap();
+        let r = run_check(&e.store, &e.paths, &e.homes, &g, &g, NOW, 30, 42, false).unwrap();
         assert_eq!((r.checked, r.failed), (4, 0));
         // Blind: nothing the judge answered is in what the grader was sent.
         for (system, user) in g.sent.borrow().iter() {
@@ -2298,10 +2326,15 @@ mod tests {
         assert_eq!(runs.len(), 2);
         assert_eq!(rung::no_job_cause(&runs), Some(rung::NoJob::AllOther));
         let g = grader("ask_research", "explain", 1);
-        run_check(&e.store, &e.paths, &e.homes, &g, &g, NOW, 30, 1).unwrap();
+        run_check(&e.store, &e.paths, &e.homes, &g, &g, NOW, 30, 1, true).unwrap();
         let rep = check_report(&e.store).unwrap();
         assert!(rep.contains("Why: both runs said other 4"), "{rep}");
         assert!(rep.contains("R1 (") && rep.contains("gives a job to 0 of 4"), "{rep}");
+        assert!(rep.contains("      both runs said other: ask_research 4"), "{rep}");
+        // The no-job sample takes only no-job judgments.
+        let run = e.store.latest_check_run().unwrap().unwrap();
+        assert_eq!(run.sample.len(), 4);
+        assert_eq!(check_candidates(&e.store, &[], true).unwrap().len(), 0, "unknown tasks are never sampled");
     }
 
     #[test]
@@ -2311,7 +2344,7 @@ mod tests {
         go(&e, &judge, &judge, None);
         let mut g = grader("code_change", "fix_bug", 2);
         g.answer.as_object_mut().unwrap().remove("f6_output_checked");
-        let r = run_check(&e.store, &e.paths, &e.homes, &g, &g, NOW, 30, 1).unwrap();
+        let r = run_check(&e.store, &e.paths, &e.homes, &g, &g, NOW, 30, 1, false).unwrap();
         assert_eq!((r.checked, r.failed), (0, 4));
         let run = e.store.latest_check_run().unwrap().unwrap();
         assert!(
