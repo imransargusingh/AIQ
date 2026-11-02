@@ -33,6 +33,9 @@ pub struct Service<C: Clock> {
     classifier: Box<dyn JobClassifier + Send>,
     counters: Arc<Counters>,
     guard: Guard,
+    /// Folder keys where a claude.ai Projects / Remote Control session was set aside (rule RC), so
+    /// "Include them" can be offered there although no folder rule exists. In memory; bounded.
+    projects_folders: std::collections::HashSet<String>,
 }
 
 /// What the Copilot CLI status line shows.
@@ -58,6 +61,7 @@ impl<C: Clock> Service<C> {
             classifier: Box::new(AlwaysUnclassified),
             counters,
             guard: Guard::new(),
+            projects_folders: Default::default(),
         };
         s.rebuild()?;
         Ok(s)
@@ -211,6 +215,16 @@ impl<C: Clock> Service<C> {
     /// The automated-session rule, live side. True: record nothing for this event.
     fn automated(&mut self, ev: &EventV1) -> Result<bool, StoreError> {
         let (surface, session) = (ev.surface.as_str(), ev.surface_session_id.as_str());
+        if ev.projects {
+            // Rule RC: Claude's own Projects / Remote Control session, every event, unless included.
+            let k = ev.cwd.as_deref().map(folder_key).unwrap_or_default();
+            if self.store.folder_rules_now()?.get(&k).map(String::as_str) != Some("include") {
+                if self.projects_folders.len() < 1024 && !k.is_empty() && self.projects_folders.insert(k) {
+                    info!(aiq.reason = "projects", "Projects session set aside");
+                }
+                return Ok(true);
+            }
+        }
         let EventBody::Prompt(p) = &ev.body else { return Ok(self.guard.is_ignored(surface, session)) };
         if !self.guard.is_ignored(surface, session) && self.store.session_known(surface, session)? {
             return Ok(false); // not a first prompt, and not a session being ignored
@@ -246,7 +260,7 @@ impl<C: Clock> Service<C> {
     /// "Include them": the person says a set-aside folder is their own work. Returns false if it was not set aside.
     pub fn include_folder(&mut self, folder: &str) -> Result<bool, StoreError> {
         let k = folder_key(folder);
-        if !self.store.set_aside_folders()?.iter().any(|(f, _, _)| *f == k) {
+        if !self.projects_folders.contains(&k) && !self.store.set_aside_folders()?.iter().any(|(f, _, _)| *f == k) {
             return Ok(false);
         }
         self.store.insert_folder_rule(&k, "include", "person", "person", self.clock.now().utc_ms)?;
@@ -513,7 +527,18 @@ impl<C: Clock> Service<C> {
             decisions: self.store.decisions().unwrap_or_default(),
             store_bytes: self.store.size_bytes(),
             core_counters: self.counters.snapshot(),
-            automated_folders: self.set_aside_folders(),
+            automated_folders: {
+                let mut f = self.set_aside_folders();
+                let mut rc: Vec<_> = self.projects_folders.iter().filter(|k| !f.iter().any(|(x, _)| x == *k)).collect();
+                rc.sort();
+                let rules = self.store.folder_rules_now().unwrap_or_default();
+                f.extend(
+                    rc.into_iter()
+                        .filter(|k| rules.get(*k).map(String::as_str) != Some("include"))
+                        .map(|k| (k.clone(), "projects".to_string())),
+                );
+                f
+            },
         }
     }
 

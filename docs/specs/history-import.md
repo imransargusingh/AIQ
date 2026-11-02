@@ -174,6 +174,18 @@ H ≤ 1 and any of:
 - **B, burst.** 50+ sessions started in the same folder within ±30 minutes.
 - **F, folder prior** (added after the test). The folder is over 80% automated by the signals above.
 
+Separately, whatever H is:
+
+- **RC, Projects / Remote Control session** (added 2026-11-02). Claude Code run by the Claude desktop app for
+  a claude.ai Project thread is Claude's own session, not the person's hand-typed work, though it has many
+  turns. Its `entrypoint` is `claude-desktop`, like a session typed in the app, so the marker is on the
+  transcript records: `projectsUserTurn: true`, `origin.subkind = projects-relay`, `turnOrigin = peer`, or a
+  desktop `turnOrigin = system` first turn. Laptop measurement (Claude Code 2.1.299–2.1.316): 14 of 27
+  desktop transcripts carry a marker, 0 of 9 terminal and 0 of 639 headless ones; in all 11 live sessions
+  the first record is written 64 ms–3.7 s before the first prompt's hook fires, so the live hook reads the
+  transcript head (256 KB) and sets the session aside from its first prompt. Set aside per session, not per
+  folder (the same folder holds the person's own sessions); `aiq include <folder>` counts them again.
+
 Test on Imran's laptop (counts only; prompts hashed in memory, never printed or stored):
 
 | | Copilot CLI | Claude Code |

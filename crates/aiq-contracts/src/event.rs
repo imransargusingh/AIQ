@@ -22,6 +22,10 @@ pub struct EventV1 {
     /// folder). Not stored with the event; only a folder that is set aside is kept.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cwd: Option<String>,
+    /// The session is driven through claude.ai Projects / Remote Control (Claude Code transcript markers,
+    /// `aiq/src/projects.rs`): Claude's own session, set aside unless the person included the folder.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub projects: bool,
     #[serde(flatten)]
     pub body: EventBody,
 }
@@ -84,6 +88,7 @@ mod tests {
             ts: "2026-10-31T12:00:00Z".into(),
             collector_version: "0.1.0".into(),
             cwd: None,
+            projects: false,
             body: EventBody::Prompt(PromptPayload {
                 text: Some("fix it".into()),
                 chars: 6,
