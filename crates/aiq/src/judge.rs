@@ -1144,9 +1144,57 @@ fn dry_run(store: &Store, homes: &Homes, n: Now, only: Option<&str>) -> ExitCode
 
 // ------------------------------------------------------------------ accuracy check
 
-/// The second reader (design judge-accuracy-check K3): Claude Code tasks default to opus, Copilot tasks to
-/// the judge's Copilot model (Copilot's own pick) unless the person names one.
+/// The second reader is a different model from the same provider (Imran, 2026-11-02). Claude Code tasks
+/// default to opus (the judge defaults to sonnet).
 const CHECK_CLAUDE_DEFAULT: &str = "opus";
+
+/// Copilot second readers to try in order when `check-copilot-model` is not set. Copilot CLI lists no model
+/// ids; these were seen on Imran's laptop 2026-11-02 (`recentModelIds`; `claude-sonnet-5.5` answered a
+/// sealed call). Any the judge used is skipped. Last resort: Copilot's own pick, which the report flags when
+/// it is the judge's model.
+const CHECK_COPILOT_CANDIDATES: [&str; 3] = ["gpt-6-astra", "claude-sonnet-5.5", "gpt-5.6-sol"];
+
+/// Copilot's answer when a `--model` id is not offered to this person (measured: exit 1 after ~8 s).
+fn model_not_available(o: &Outcome) -> bool {
+    matches!(o, Outcome::Error(m) if m.contains("from --model flag is not available"))
+}
+
+/// The Copilot models a check tries, in order: the person's choice alone, or the candidates the judge did
+/// not use, then Copilot's own pick (None).
+fn check_copilot_models(chosen: Option<String>, judge_models: &HashSet<String>) -> Vec<Option<String>> {
+    if let Some(m) = chosen.filter(|m| m != "default") {
+        return vec![Some(m)];
+    }
+    let mut v: Vec<Option<String>> = CHECK_COPILOT_CANDIDATES
+        .iter()
+        .filter(|m| !judge_models.contains(**m))
+        .map(|m| Some((*m).to_owned()))
+        .collect();
+    v.push(None);
+    v
+}
+
+/// Calls through the first model that is offered; on "not available" moves to the next for the rest of the
+/// run (each miss costs Copilot's ~8 s refusal once, not once per task).
+struct ModelChain<F: Fn(Option<&str>, &CallReq<'_>) -> CallResult> {
+    models: Vec<Option<String>>,
+    at: std::cell::Cell<usize>,
+    call: F,
+}
+
+impl<F: Fn(Option<&str>, &CallReq<'_>) -> CallResult> Provider for ModelChain<F> {
+    fn call(&self, req: &CallReq<'_>) -> CallResult {
+        loop {
+            let i = self.at.get();
+            let r = (self.call)(self.models.get(i).cloned().flatten().as_deref(), req);
+            if i + 1 < self.models.len() && model_not_available(&r.outcome) {
+                self.at.set(i + 1);
+                continue;
+            }
+            return r;
+        }
+    }
+}
 
 /// One check run's tally of what happened to each sampled task.
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -1462,7 +1510,7 @@ fn check_cli(args: &[&str], paths: &Paths, store: &Store) -> ExitCode {
                 .count()
         };
         println!(
-            "AIQ would read {n} of your {} judged tasks a second time, blind, through the tool that already saw each one:\n  Copilot: {} (about one premium request and ~11 s each, measured)\n  Claude Code: {} (billed to your Claude plan)\nIt picks them at random, spread across jobs. Nothing was sent.",
+            "AIQ would read {n} of your {} judged tasks a second time, blind, through the tool that already saw each one:\n  Copilot: {} (about one premium request and ~11 s each, measured)\n  Claude Code: {} (billed to your Claude plan)\nIt picks them at random, spread across jobs. The second reader is a different model from the same tool:\n  Claude Code: opus (check-claude-model to change)\n  Copilot: the first offered of gpt-6-astra, claude-sonnet-5.5, gpt-5.6-sol that the judge did not use (check-copilot-model to choose)\nNothing was sent.",
             cands.len(),
             by_tool(COPILOT),
             by_tool(CLAUDE)
@@ -1479,9 +1527,24 @@ fn check_cli(args: &[&str], paths: &Paths, store: &Store) -> ExitCode {
     };
     let get = |k: &str| store.setting(k).ok().flatten();
     let set = settings(store);
-    let (mut claude, mut copilot) = providers(paths, &set);
+    let (mut claude, copilot) = providers(paths, &set);
     claude.model = get(rung::SETTING_CHECK_CLAUDE_MODEL).unwrap_or_else(|| CHECK_CLAUDE_DEFAULT.into());
-    copilot.model = get(rung::SETTING_CHECK_COPILOT_MODEL).filter(|m| m != "default").or(copilot.model);
+    // Models the judge itself answered with, so the second reader can avoid them.
+    let judge_models: HashSet<String> =
+        store.current_judgments().map(|m| m.into_values().filter_map(|j| j.model).collect()).unwrap_or_default();
+    let copilot = ModelChain {
+        models: check_copilot_models(get(rung::SETTING_CHECK_COPILOT_MODEL), &judge_models),
+        at: std::cell::Cell::new(0),
+        call: |m: Option<&str>, req: &CallReq<'_>| {
+            CopilotCli {
+                exe: copilot.exe.clone(),
+                model: m.map(str::to_owned),
+                work: copilot.work.clone(),
+                keep_sessions: copilot.keep_sessions,
+            }
+            .call(req)
+        },
+    };
     let seed = now_ms() as u64 ^ 0xA1C0_C4EC;
     println!("Reading {n} judged tasks a second time. This takes about {} minutes.", (n * 12).div_ceil(60));
     match run_check(store, paths, &Homes::from_env(), &claude, &copilot, now_ms(), size, seed) {
@@ -2043,6 +2106,51 @@ mod tests {
                 "f12_step_by_step": false, "f13_whole_outcome_handed_over": true}),
             sent: RefCell::new(vec![]),
         }
+    }
+
+    #[test]
+    fn check_copilot_reader_skips_the_judges_model_and_honours_the_persons_choice() {
+        let judge: HashSet<String> = ["gpt-6-astra".to_owned()].into();
+        assert_eq!(
+            check_copilot_models(None, &judge),
+            vec![Some("claude-sonnet-5.5".into()), Some("gpt-5.6-sol".into()), None]
+        );
+        assert_eq!(check_copilot_models(Some("gpt-6.1-luna".into()), &judge), vec![Some("gpt-6.1-luna".into())]);
+        assert_eq!(check_copilot_models(Some("default".into()), &HashSet::new()).len(), 4);
+    }
+
+    #[test]
+    fn check_model_chain_moves_past_a_model_that_is_not_offered_once() {
+        let asked = RefCell::new(Vec::<Option<String>>::new());
+        let chain = ModelChain {
+            models: vec![Some("a".into()), Some("b".into()), None],
+            at: std::cell::Cell::new(0),
+            call: |m: Option<&str>, _req: &CallReq<'_>| {
+                asked.borrow_mut().push(m.map(str::to_owned));
+                let outcome = if m == Some("a") {
+                    Outcome::Error("Error: Model \"a\" from --model flag is not available.".into())
+                } else {
+                    Outcome::Ok(json!({}))
+                };
+                CallResult {
+                    outcome,
+                    model: m.map(str::to_owned),
+                    latency_ms: 1,
+                    cost_usd: None,
+                    tokens_in: None,
+                    tokens_out: None,
+                }
+            },
+        };
+        let schema = json!({});
+        let req = CallReq { system: "s", user: "u", schema: &schema, session_id: "x" };
+        assert!(matches!(chain.call(&req).outcome, Outcome::Ok(_)));
+        assert!(matches!(chain.call(&req).outcome, Outcome::Ok(_)));
+        assert_eq!(
+            *asked.borrow(),
+            vec![Some("a".into()), Some("b".into()), Some("b".into())],
+            "a is tried once per run"
+        );
     }
 
     #[test]

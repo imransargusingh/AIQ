@@ -91,8 +91,8 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <h3>Deviations from the design (recorded, not silent)</h3>
 <ul><li><strong>K5:</strong> check calls do <strong>not</strong> count against the daily judge budget. The check is one command the person</li></ul>
 <p>runs, <code>--dry-run</code> shows the count and cost first, and counting it would starve background judging that day.</p>
-<ul><li><strong>K3:</strong> Copilot grader uses the judge&#x27;s model unless <code>check-copilot-model</code> is set. The report says when grader</li></ul>
-<p>and judge are the same model, and that agreement then reads high.</p>
+<ul><li><strong>K3 (revised 2026-11-02 after the first run):</strong> the second reader is a different model from the **same</li></ul>
+<p>provider** (Imran). The first run used the judge&#x27;s model on 29 of 30 because no Copilot model was set. Copilot CLI lists no model ids, so AIQ tries <code>gpt-6-astra</code>, then <code>claude-sonnet-5.5</code>, then <code>gpt-5.6-sol</code>. It skips any model the judge used. When Copilot answers &quot;from --model flag is not available&quot;, AIQ moves to the next model for the rest of the run. That refusal takes about 8 s, measured. If no candidate is offered, Copilot picks the model itself. <code>check-copilot-model</code> overrides all of this. Claude Code stays <code>opus</code>, and the judge defaults to <code>sonnet</code>. Ids measured on Imran&#x27;s laptop: <code>recentModelIds</code>, and a sealed <code>--model claude-sonnet-5.5</code> call that answered as that model. His plan sets Sol as the default but does not lock it. The report still flags a same-model reading.</p>
 <ul><li><strong>N2 (repeat stability):</strong> deferred. It needs a second judge run on the sample; add it once the first</li></ul>
 <p>numbers show whether it matters.</p>
 <ul><li><strong>K6b (pause a kind under 8 of 10) and the Home &quot;Judge check&quot; card:</strong> deferred until the first real run.</li></ul>
