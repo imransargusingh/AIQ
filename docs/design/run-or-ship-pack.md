@@ -84,6 +84,27 @@ Step 3 and 4 use the existing `written_brief` (a runbook is a written brief) and
 
 Only one: whether to add this pack (the card in the thread). The name "Run or ship it" is a draft he can change.
 
+## Result (Imran's laptop, build 3393c97, 2026-11-02 22:42Z, check run 01a19e47, measured)
+
+`aiq judge --check --job run_ship --sample 20`, with `gpt-6-astra` as the second reader. All 20 tasks were read.
+Agreement is Inferred: it compares two models, and no person checked.
+
+| Measure | Agreed |
+|---|---|
+| Job | **20 of 20** (90%: 88-100%) |
+| Kind of task | 20 of 20 |
+| Rung, exact | 19 of 20 |
+| Rung, within one | 20 of 20 |
+| F4 / F13 | 18 of 20 / 18 of 19 |
+| F5, F7, F12 | 20 of 20 |
+| F6 | could not be settled on any of the 20 |
+
+- It clears the P8 bar of 8 of 10, so the tips stay on. The check reported "Paused by this check: nothing."
+- **47 tasks are now judged `run_ship`, and none is Uncertain.** No job fell from 101 of 473 to 51 of 476.
+  Of those 51: both runs said `other` 31, both named a pack job but not confidently 17, the runs differed 3.
+- Still open: R2 would give a job to 15 of the 51, but none of those 15 has been checked yet. F6 is
+  unsettled here too, the same open gap as in the other packs.
+
 ## Gate record
 
 `GATE design-slice · 2026-11-02 · Simplifier, Test Architect, Data & Persistence, Security (seats played by Claude; not independent) · pass (draft)`
@@ -96,6 +117,6 @@ Only one: whether to add this pack (the card in the thread). The name "Run or sh
 
 | | |
 |---|---|
-| **Completed** | Survey; design; Imran's yes; build (job, task types, prompt, rung guardrails, four tips, UI name) |
-| **Remaining** | Laptop upgrade; re-judge of the no-job tasks; accuracy check on `run_ship` |
-| **Best next action** | Upgrade the laptop, let it re-judge for a day, then `aiq judge --check` |
+| **Completed** | Survey; design; Imran's yes; build; laptop upgrade; re-judge; accuracy check passed |
+| **Remaining** | None for this pack |
+| **Best next action** | Watch whether `run_ship` tips fire and are tried; the automatic pause covers a drop in accuracy |
