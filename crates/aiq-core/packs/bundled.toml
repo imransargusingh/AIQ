@@ -82,6 +82,8 @@ move_id = "brief"
 step = 1
 facts = ["F4"]
 job = "any"
+# F4 read right only 10 of 15 in the real-data fact check (PR #27, measured): coach its "no" only when sure.
+min_confidence = 0.8
 habit = "Give the agent the goal, context and limits up front"
 noticed = "this looks like {type}. Last times, the request had no goal or limits."
 why = "a request with the goal, the context and the limits lets the agent get it right the first time."

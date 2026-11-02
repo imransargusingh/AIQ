@@ -24,6 +24,8 @@ pub const CORE_START_BACKOFF: &str = "AIQ-CORE-START-BACKOFF";
 pub const HOME_STORE_READ: &str = "AIQ-HOME-STORE-READ";
 
 /// Rung judge (design docs/design/rung-judge.md, Failure-mode analysis).
+/// AIQ guessed the kind of task right fewer than 8 in 10 times and turned next-rung tips off (coaching D10).
+pub const COACH_GUESS_LOW: &str = "AIQ-COACH-GUESS-LOW";
 pub const JUDGE_MISSING: &str = "AIQ-JUDGE-MISSING";
 pub const JUDGE_SIGNIN: &str = "AIQ-JUDGE-SIGNIN";
 pub const JUDGE_SCHEMA: &str = "AIQ-JUDGE-SCHEMA";
@@ -32,6 +34,7 @@ pub const JUDGE_ERROR: &str = "AIQ-JUDGE-ERROR";
 
 /// Every code, for status output and the registry test.
 pub const ALL: &[&str] = &[
+    COACH_GUESS_LOW,
     HOOK_PARSE,
     HOOK_FOREIGN_HOST,
     HOOK_SPOOLED,

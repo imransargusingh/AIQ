@@ -102,6 +102,10 @@ pub struct MoveDef {
     pub try_this: String,
     /// A starter prompt with `<placeholders>`, copied by the person, never sent.
     pub starter: String,
+    /// A model-read fact must be at least this confident before its "no" is coached. For facts the real-data
+    /// fact check found weak (F4 read right 10 of 15, PR #27). Log facts are always 1.0.
+    #[serde(default)]
+    pub min_confidence: Option<f64>,
 }
 
 /// Facts a move may name (the rung guardrails' facts, rung-model fact set fs1).
@@ -202,6 +206,9 @@ impl PackV1 {
         for m in &self.moves {
             if !seen.insert(m.move_id.as_str()) {
                 return Err(format!("move {} appears twice", m.move_id));
+            }
+            if m.min_confidence.is_some_and(|c| !(0.0..=1.0).contains(&c)) {
+                return Err(format!("move {}: min_confidence in 0..=1", m.move_id));
             }
             if !(1..=4).contains(&m.step) || m.facts.is_empty() {
                 return Err(format!("move {}: step 1..=4 and at least one fact", m.move_id));

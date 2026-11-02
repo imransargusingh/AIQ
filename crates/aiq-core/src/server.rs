@@ -43,6 +43,22 @@ impl std::fmt::Display for CoreError {
 }
 
 pub enum Cmd {
+    TipFeedback {
+        card_id: Option<String>,
+        tip_id: Option<String>,
+        answer: String,
+        surface: String,
+        reply: mpsc::Sender<Result<(), String>>,
+    },
+    GuidanceFlag {
+        job: String,
+        task_type: String,
+        move_id: String,
+        action: String,
+        reason: Option<String>,
+        note: Option<String>,
+        reply: mpsc::Sender<Result<(), String>>,
+    },
     Ingest {
         event: EventV1,
         trace_id: Option<String>,
@@ -214,6 +230,12 @@ fn writer_loop(mut svc: Service<SystemClock>, rx: Receiver<Cmd>, paths: &Paths, 
             Cmd::ForgetItem { event_id, reply } => {
                 let _ = reply.send(svc.forget_item(&event_id));
             }
+            Cmd::TipFeedback { card_id, tip_id, answer, surface, reply } => {
+                let _ = reply.send(svc.tip_feedback(card_id.as_deref(), tip_id.as_deref(), &answer, &surface));
+            }
+            Cmd::GuidanceFlag { job, task_type, move_id, action, reason, note, reply } => {
+                let _ = reply.send(svc.guidance_flag(&job, &task_type, &move_id, &action, reason.as_deref(), note.as_deref()));
+            }
             Cmd::DrainSpool => {
                 drain_spool(paths, &mut svc, counters);
                 svc.prune();
@@ -336,6 +358,16 @@ pub fn dispatch(req: Request, tx: &SyncSender<Cmd>, counters: &Counters, receive
         }
         Request::ForgetItem { event_id, .. } => {
             let r = ask(tx, |reply| Cmd::ForgetItem { event_id, reply })
+                .unwrap_or_else(|| Err("core did not answer".into()));
+            Dispatch::Reply(to_line(&OkReply { ok: r.is_ok(), message: r.err() }))
+        }
+        Request::TipFeedback { card_id, tip_id, answer, surface, .. } => {
+            let r = ask(tx, |reply| Cmd::TipFeedback { card_id, tip_id, answer, surface, reply })
+                .unwrap_or_else(|| Err("core did not answer".into()));
+            Dispatch::Reply(to_line(&OkReply { ok: r.is_ok(), message: r.err() }))
+        }
+        Request::GuidanceFlag { job, task_type, move_id, action, reason, note, .. } => {
+            let r = ask(tx, |reply| Cmd::GuidanceFlag { job, task_type, move_id, action, reason, note, reply })
                 .unwrap_or_else(|| Err("core did not answer".into()));
             Dispatch::Reply(to_line(&OkReply { ok: r.is_ok(), message: r.err() }))
         }

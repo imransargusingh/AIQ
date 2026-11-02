@@ -124,10 +124,13 @@ pub fn moves_for<'a>(t: &JudgedTask, moves: &'a [MoveDef]) -> Vec<&'a MoveDef> {
             _ => None,
         })
         .collect();
+    let conf = |id: &str| t.facts.all().into_iter().find(|m| m.id == id).map_or(1.0, |m| m.confidence);
     moves
         .iter()
         .filter(|m| m.step == t.current && job_matches(m, &t.job))
-        .filter(|m| m.facts.iter().any(|f| fails.contains(f.as_str())))
+        .filter(|m| {
+            m.facts.iter().any(|f| fails.contains(f.as_str()) && m.min_confidence.is_none_or(|c| conf(f) >= c))
+        })
         .collect()
 }
 
@@ -617,6 +620,7 @@ mod tests {
             why: "w".into(),
             try_this: "t".into(),
             starter: "s".into(),
+            min_confidence: None,
         }
     }
 
@@ -688,6 +692,15 @@ mod tests {
         // Directed → Delegated driven step by step: let_agent_edit (F12 rule-out).
         let d = task("e", 1, "tests", 2, "judged", true, &facts(&[("F1", true), ("F12", true), ("F13", true), ("F6", true)], None), Some(0));
         assert_eq!(moves_for(&d, &m).iter().map(|m| m.move_id.as_str()).collect::<Vec<_>>(), vec!["let_agent_edit"]);
+        // A weak fact's "no" needs its move's higher bar (F4 at 0.9 here passes 0.8, at 0.7 it does not).
+        let mut strict = m.clone();
+        strict[0].min_confidence = Some(0.8);
+        let weak = |c: f64| {
+            let fj = format!(r#"{{"F4":{{"value":false,"confidence":{c},"source":"model","disputed":false}},"F6":{{"value":true,"confidence":0.9,"source":"model","disputed":false}}}}"#);
+            task("w", 1, "tests", 1, "judged", true, &fj, Some(0))
+        };
+        assert_eq!(moves_for(&weak(0.9), &strict).len(), 1);
+        assert!(moves_for(&weak(0.7), &strict).is_empty());
         // A doc task never gets a code move.
         let mut doc = task("f", 1, "spec", 1, "judged", true, &facts(&[("F4", true), ("F6", false)], None), None);
         doc.job = "write_doc".into();

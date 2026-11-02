@@ -59,6 +59,28 @@ pub enum Request {
         token: String,
         event_id: String,
     },
+    /// The person's answer to a tip (coaching-from-rungs D8): `card_id` names the card, or `tip_id` the tip.
+    TipFeedback {
+        token: String,
+        #[serde(default)]
+        card_id: Option<String>,
+        #[serde(default)]
+        tip_id: Option<String>,
+        answer: String,
+        surface: String,
+    },
+    /// "This doesn't fit" (`action` flag, with a reason) or its undo, for one (job, task type, move).
+    GuidanceFlag {
+        token: String,
+        job: String,
+        task_type: String,
+        move_id: String,
+        action: String,
+        #[serde(default)]
+        reason: Option<String>,
+        #[serde(default)]
+        note: Option<String>,
+    },
 }
 
 impl Request {
@@ -73,7 +95,9 @@ impl Request {
             | Request::Setting { token, .. }
             | Request::Forget { token }
             | Request::IncludeFolder { token, .. }
-            | Request::ForgetItem { token, .. } => token,
+            | Request::ForgetItem { token, .. }
+            | Request::TipFeedback { token, .. }
+            | Request::GuidanceFlag { token, .. } => token,
         }
     }
 }
@@ -110,6 +134,34 @@ pub struct StatusReply {
     /// Folders whose sessions AIQ ignores as automated, newest first: (folder, reason).
     #[serde(default)]
     pub automated_folders: Vec<(String, String)>,
+    /// Next-rung tips and AIQ's self-check of its type guesses (coaching-from-rungs D10).
+    #[serde(default)]
+    pub coach: Option<CoachStatus>,
+}
+
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct CoachStatus {
+    /// auto, on or off (the setting).
+    pub mode: String,
+    /// Next-rung tips may show now.
+    pub tips_on: bool,
+    /// Type guesses checked against the later judgment, and how many were right. Measured.
+    pub checked: u32,
+    pub right: u32,
+    /// Task types that coach a move now.
+    pub coached_types: u32,
+    /// Share of judged, typed tasks whose type is `other`, in percent; None with no typed tasks.
+    pub other_pct: Option<u32>,
+    /// Measured: last cache rebuild.
+    pub cache_ms: u64,
+}
+
+/// A judged task a next-rung guess leaned on: when, which tool, which kind. Never its text.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LeanedOn {
+    pub ts: String,
+    pub tool: String,
+    pub task_type: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -126,6 +178,9 @@ pub struct ShowReply {
     pub reason_code: Option<String>,
     pub delivered: bool,
     pub evidence: Vec<EvidencePrompt>,
+    /// Next-rung tips: the judged tasks the guess leaned on (time, tool, kind; never text).
+    #[serde(default)]
+    pub leaned_on: Vec<LeanedOn>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
