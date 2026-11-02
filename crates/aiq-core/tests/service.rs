@@ -185,6 +185,7 @@ fn ev_on(surface: &str, id: &str, session: &str, ms: i64, body: EventBody) -> Ev
         ts: format_rfc3339_ms(ms),
         collector_version: "test".into(),
         cwd: None,
+        projects: false,
         body,
     }
 }
@@ -768,4 +769,29 @@ fn include_folder_undoes_set_aside() {
     assert!(h.svc().status().automated_folders.is_empty());
     h.cp_in("/ep", "s1", "hello there", MIN);
     assert_eq!(h.prompts(), 1);
+}
+
+// Rule RC: a claude.ai Projects / Remote Control session is Claude's own work, set aside from its first
+// prompt whatever its prompt count; `aiq include` brings the folder's Projects sessions back.
+#[test]
+fn projects_sessions_record_nothing_until_the_folder_is_included() {
+    let mut h = H::new();
+    let rc = |h: &mut H, session: &str, text: &str| {
+        let mut e = h.prompt(session, text);
+        e.cwd = Some("C:\\Repos\\AIQ".into());
+        e.projects = true;
+        h.svc().ingest(&e, None);
+    };
+    for t in ["relay brief", "a person's message via the thread", "a peer's message"] {
+        rc(&mut h, "rc1", t);
+    }
+    h.send("mine", "fix the build"); // a terminal session in the same folder: recorded
+    assert_eq!(h.prompts(), 1);
+    let st = h.svc().status();
+    assert_eq!(st.automated_folders, vec![("c:\\repos\\aiq".to_string(), "projects".to_string())]);
+    assert!(st.core_counters.iter().any(|(k, n)| k == codes::INGEST_AUTOMATED && *n == 3));
+    assert!(h.svc().include_folder("c:/repos/aiq/").unwrap());
+    assert!(h.svc().status().automated_folders.is_empty());
+    rc(&mut h, "rc2", "relay brief two");
+    assert_eq!(h.prompts(), 2, "included: Projects sessions are recorded");
 }

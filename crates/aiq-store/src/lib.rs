@@ -92,6 +92,8 @@ pub struct KnownImport {
     pub non_interactive: Option<bool>,
     pub template_key: Option<i64>,
     pub outcome: String,
+    /// The automated rule's signals at the last run (`NI,T,B,F,RC`); '' when imported.
+    pub why: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -751,7 +753,7 @@ impl Store {
             .conn
             .prepare(
                 "SELECT tool, source_session_id, source_mtime_ms, folder, started_utc_ms, human_turns, non_interactive,
-                        template_key, outcome
+                        template_key, outcome, why
                  FROM import_session",
             )
             .map_err(err(codes::STORE_OPEN))?;
@@ -767,6 +769,7 @@ impl Store {
                     non_interactive: r.get(6)?,
                     template_key: r.get(7)?,
                     outcome: r.get(8)?,
+                    why: r.get(9)?,
                 })
             })
             .map_err(err(codes::STORE_OPEN))?;
