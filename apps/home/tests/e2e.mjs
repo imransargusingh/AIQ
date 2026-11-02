@@ -272,8 +272,15 @@ await test("Settings change through the core; tips a day", async () => {
   await page.getByRole("button", { name: "5", exact: true }).click();
   await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Tips a day set to 5.");
   await page.getByLabel("Until you open it").check();
+  await page.getByRole("group", { name: /Tasks judged a day/ }).getByRole("button", { name: "100", exact: true }).click();
+  await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Tasks judged a day set to 100.");
+  assert.equal(await page.getByRole("group", { name: /Tasks judged a day/ }).getByRole("button", { name: "100", exact: true }).getAttribute("aria-pressed"), "true");
   const calls = await page.evaluate(() => window.__AIQ_FIXTURE__.calls.filter((c) => c.cmd === "set_setting").map((c) => c.args));
-  assert.deepEqual(calls, [{ key: "daily_cap", value: "5" }, { key: "copilot_tip_stays", value: "until-opened" }]);
+  assert.deepEqual(calls, [
+    { key: "daily_cap", value: "5" },
+    { key: "copilot_tip_stays", value: "until-opened" },
+    { key: "judge_daily_tasks", value: "100" },
+  ]);
   await page.context().close();
 });
 

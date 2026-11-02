@@ -2,7 +2,7 @@
 // Outside Tauri (the UI tests) a fixture stands in, set on window by the test before the page loads.
 import type { Outcome, Snapshot, TaskDetail } from "./types";
 
-export type SettingKey = "daily_cap" | "copilot_tip_stays" | "next_rung_tips";
+export type SettingKey = "daily_cap" | "copilot_tip_stays" | "next_rung_tips" | "judge_daily_tasks";
 /** The reasons the core accepts (crates/aiq-core/src/coaching.rs FLAG_REASONS). */
 export type FlagReason = "evidence_wrong" | "not_useful" | "blocked" | "other";
 
@@ -40,6 +40,7 @@ function fixture<T>(cmd: string, args: Record<string, unknown>): Promise<T> {
       if (!s.status.core) out = { ok: false, message: "AIQ isn't running, so settings can't change right now. It starts with your next prompt in Claude Code or Copilot." };
       else {
         if (args.key === "daily_cap") s.settings.daily_cap = Number(args.value);
+        if (args.key === "judge_daily_tasks") s.settings.judge_daily_tasks = Number(args.value);
         if (args.key === "copilot_tip_stays") s.settings.copilot_tip_stays = args.value as Snapshot["settings"]["copilot_tip_stays"];
         if (args.key === "next_rung_tips") {
           s.settings.next_rung_tips = args.value as Snapshot["settings"]["next_rung_tips"];

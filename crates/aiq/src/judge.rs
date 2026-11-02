@@ -450,7 +450,8 @@ fn current_version(j: &JudgmentRow) -> bool {
 }
 
 /// Tasks to judge now, best first: closed, not judged at the current versions, not waiting out a retry,
-/// not given up. Unjudged before outdated; newest first within each.
+/// not given up. First the tasks a new pack may now cover (their last judgment was unclassified, so the
+/// person saw them as Uncertain), then unjudged, then other outdated; newest first within each.
 pub fn queue<'a>(
     tasks: &'a [TaskRow],
     judged: &HashMap<String, JudgmentRow>,
@@ -468,7 +469,7 @@ pub fn queue<'a>(
             e.1 = e.1.max(c.started_utc_ms);
         }
     }
-    let mut q: Vec<(bool, &TaskRow)> = tasks
+    let mut q: Vec<(u8, &TaskRow)> = tasks
         .iter()
         .filter(|t| t.last_ms + idle_gap_ms < now_ms)
         .filter(|t| provider_for(&t.tool).is_some_and(|p| only.is_none_or(|o| o == p)))
@@ -478,7 +479,14 @@ pub fn queue<'a>(
             Some((n, _)) if *n >= GIVE_UP => false,
             Some((n, last)) => now_ms >= last + BACKOFF_MS[(n - 1).min(BACKOFF_MS.len() - 1)],
         })
-        .map(|t| (judged.contains_key(&t.task_id), t))
+        .map(|t| {
+            let rank = match judged.get(&t.task_id) {
+                Some(j) if j.job == "unclassified" => 0,
+                None => 1,
+                Some(_) => 2,
+            };
+            (rank, t)
+        })
         .collect();
     q.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| b.1.first_ms.cmp(&a.1.first_ms)));
     q.into_iter().map(|(_, t)| t).collect()
@@ -1465,6 +1473,30 @@ mod tests {
             task_type: None,
             task_type_confidence: None,
         };
+        // Tasks the new pack may cover go first, then never-judged ones, then other outdated judgments.
+        let row = |id: &str, first: i64| TaskRow {
+            task_id: id.into(),
+            tool: "copilot-cli".into(),
+            folder: None,
+            first_ms: first,
+            last_ms: first,
+            prompts: 1,
+            origin: "live",
+            job: None,
+            rung: None,
+            judgment: None,
+            session: "s".into(),
+            members: vec![],
+        };
+        let tasks = vec![row("new", 3_000), row("uncovered", 1_000), row("old_doc", 2_000)];
+        let judged: HashMap<String, JudgmentRow> = [
+            ("uncovered".to_owned(), j("unclassified", rung::JUDGE_VERSION_KEPT)),
+            ("old_doc".to_owned(), j("write_doc", "j1")),
+        ]
+        .into();
+        let q = queue(&tasks, &judged, &[], NOW, 30 * MIN, None);
+        let ids: Vec<&str> = q.iter().map(|t| t.task_id.as_str()).collect();
+        assert_eq!(ids, vec!["uncovered", "new", "old_doc"]);
         assert!(current_version(&j("code_change", rung::JUDGE_VERSION_KEPT)));
         assert!(!current_version(&j("unclassified", rung::JUDGE_VERSION_KEPT)), "Ask or research may cover it now");
         assert!(current_version(&j("unclassified", rung::JUDGE_VERSION)));
