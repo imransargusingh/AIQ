@@ -37,7 +37,7 @@ mod tests {
     #[test]
     fn bundled_moves_carry_no_rung_name_number_or_model_text_and_fit_the_status_line() {
         let p = BundledPack.load().unwrap();
-        assert_eq!(p.moves.len(), 16);
+        assert_eq!(p.moves.len(), 20);
         for m in &p.moves {
             for t in [&m.noticed, &m.why, &m.try_this, &m.habit] {
                 assert!(!aiq_domain::rung::RUNG_NAMES.iter().any(|r| t.contains(r)), "{t}");

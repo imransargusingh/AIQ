@@ -35,7 +35,7 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
   // Next-step tips by job, pack order kept: each job's own tips, then those for every job.
   const tipsOff = new Set(st.tips_off);
   const nextIds = new Set(st.next_tips.map((t) => t.tip_id));
-  const byJob = ["code_change", "write_doc", "ask_research", "any"]
+  const byJob = ["code_change", "write_doc", "ask_research", "run_ship", "any"]
     .map((job) => [job, st.next_tips.filter((t) => t.job === job)] as const)
     .filter(([, ts]) => ts.length > 0);
   const nextOn = st.next_tips.filter((t) => !tipsOff.has(t.tip_id)).length;

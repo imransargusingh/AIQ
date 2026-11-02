@@ -48,7 +48,7 @@ export interface TaskRow {
   last_ms: number;
   prompts: number;
   origin: "live" | "imported";
-  /** code_change, write_doc, ask_research or unclassified once judged. */
+  /** code_change, write_doc, ask_research, run_ship or unclassified once judged. */
   job: string | null;
   rung: number | null;
   judgment: TaskJudgment | null;
@@ -196,7 +196,7 @@ export interface Settings {
 export interface NextTip {
   tip_id: string;
   habit: string;
-  /** code_change, write_doc, ask_research or any. */
+  /** code_change, write_doc, ask_research, run_ship or any. */
   job: string;
 }
 
