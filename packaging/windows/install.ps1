@@ -4,7 +4,7 @@
 #   powershell -ExecutionPolicy Bypass -File .\install.ps1 -NoLaunch  same, without starting import or AIQ home
 #
 # What it does, in order, printing each change:
-#   1. copies aiq.exe and aiq-home.exe to %USERPROFILE%\.aiq\bin (keeps any old copy as .old)
+#   1. copies aiq.exe and aiq-home.exe to %USERPROFILE%\.aiq\bin (keeps any old copy as .old), and upgrade.ps1
 #   2. adds that folder to your user PATH (not the machine PATH)
 #   3. adds an "AIQ" Start menu shortcut for AIQ home
 #   4. records 2 and 3 in %USERPROFILE%\.aiq\windows-install.json, so `aiq uninstall --all` can put them back
@@ -43,6 +43,11 @@ foreach ($exe in 'aiq.exe', 'aiq-home.exe') {
     if (Test-Path $to) { Copy-Item -Force $to "$to.old" }
     Copy-Item -Force (Join-Path $src $exe) $to
     Write-Host "Copied: $to"
+}
+$up = Join-Path $src 'upgrade.ps1'
+if (Test-Path $up) {
+    Copy-Item -Force $up (Join-Path $bin 'upgrade.ps1')
+    Write-Host "Copied: $(Join-Path $bin 'upgrade.ps1')"
 }
 
 # 2. User PATH. SetEnvironmentVariable at User scope writes HKCU\Environment and tells running programs.
