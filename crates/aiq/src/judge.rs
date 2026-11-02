@@ -440,16 +440,56 @@ pub fn provider_for(tool: &str) -> Option<&'static str> {
     }
 }
 
-fn current_version(j: &JudgmentRow) -> bool {
+/// Current at today's versions, and its job matches the reclaim gate (`reclaim` = rule R2 is live).
+fn current_version(j: &JudgmentRow, reclaim: bool) -> bool {
     j.fact_set_version == rung::FACT_SET_VERSION
         && j.rubric_version == rung::RUBRIC_VERSION
         && (j.judge_version == rung::JUDGE_VERSION
             || (rung::JUDGE_VERSIONS_KEPT.contains(&j.judge_version.as_str()) && j.job != "unclassified"))
+        && !reclaim_mismatch(j, reclaim)
+}
+
+/// A task R2 covers whose stored job does not match the gate: no job while R2 is live, or R2's job after the
+/// gate turned off. It is judged again (first in the queue), so the gate reaches stored judgments too.
+fn reclaim_mismatch(j: &JudgmentRow, reclaim: bool) -> bool {
+    job_runs(j).and_then(|r| rung::reclaimed_job(&r)).is_some() && (j.job == "unclassified") == reclaim
+}
+
+/// Second readings of every task R2 covers at today's judge version, kept or since judged again: the check
+/// describes this judge and this rule (design reclaim-low-confidence). Unreadable answers are not checked.
+pub fn rule_readings(store: &Store) -> aiq_store::Result<Vec<aiq_domain::check::RuleReading>> {
+    let mut out = Vec::new();
+    for run in store.check_runs()? {
+        for c in store.checks_of_run(&run.run_id)? {
+            let Some(ans) =
+                c.answer.as_deref().and_then(|a| serde_json::from_str::<aiq_contracts::check::CheckAnswer>(a).ok())
+            else {
+                continue;
+            };
+            let Some(j) = store.judgment(&c.judgment_id)?.filter(|j| j.judge_version == rung::JUDGE_VERSION) else {
+                continue;
+            };
+            let Some(rule_job) = job_runs(&j).and_then(|r| rung::reclaimed_job(&r)) else { continue };
+            out.push(aiq_domain::check::RuleReading {
+                run_id: run.run_id.clone(),
+                run_started_ms: run.started_utc_ms,
+                rule_job,
+                reader_job: ans.job,
+            });
+        }
+    }
+    Ok(out)
+}
+
+/// Whether R2 is live now, from the stored checks. Off when the store can't be read.
+pub fn reclaim_gate(store: &Store) -> aiq_domain::check::RuleGate {
+    rule_readings(store).map(|r| aiq_domain::check::reclaim_gate(&r)).unwrap_or_default()
 }
 
 /// Tasks to judge now, best first: closed, not judged at the current versions, not waiting out a retry,
-/// not given up. First the tasks a new pack may now cover (their last judgment was unclassified, so the
-/// person saw them as Uncertain), then unjudged, then other outdated; newest first within each.
+/// not given up. First the tasks a new pack or the reclaim gate may now cover (their last judgment was
+/// unclassified, or R2's job after the gate turned off), then unjudged, then other outdated; newest first
+/// within each.
 pub fn queue<'a>(
     tasks: &'a [TaskRow],
     judged: &HashMap<String, JudgmentRow>,
@@ -457,6 +497,7 @@ pub fn queue<'a>(
     now_ms: i64,
     idle_gap_ms: i64,
     only: Option<&str>,
+    reclaim: bool,
 ) -> Vec<&'a TaskRow> {
     let mut fails: HashMap<&str, (usize, i64)> = HashMap::new();
     for c in calls.iter().filter(|c| c.outcome != "ok") {
@@ -471,7 +512,7 @@ pub fn queue<'a>(
         .iter()
         .filter(|t| t.last_ms + idle_gap_ms < now_ms)
         .filter(|t| provider_for(&t.tool).is_some_and(|p| only.is_none_or(|o| o == p)))
-        .filter(|t| judged.get(&t.task_id).is_none_or(|j| !current_version(j)))
+        .filter(|t| judged.get(&t.task_id).is_none_or(|j| !current_version(j, reclaim)))
         .filter(|t| match fails.get(t.task_id.as_str()) {
             None => true,
             Some((n, _)) if *n >= GIVE_UP => false,
@@ -479,7 +520,7 @@ pub fn queue<'a>(
         })
         .map(|t| {
             let rank = match judged.get(&t.task_id) {
-                Some(j) if j.job == "unclassified" => 0,
+                Some(j) if j.job == "unclassified" || reclaim_mismatch(j, reclaim) => 0,
                 None => 1,
                 Some(_) => 2,
             };
@@ -645,6 +686,7 @@ pub fn judge_task(
     actions_known: bool,
     judged: &HashMap<String, JudgmentRow>,
     reprompt: &aiq_contracts::pack::RepromptParams,
+    reclaim: bool,
 ) -> aiq_store::Result<(Option<Judged>, Vec<CallResult>)> {
     let log = rung::log_facts(turns, actions_known);
     let fence = format!("AIQ-QUOTE-{}", uuid::Uuid::new_v4().simple());
@@ -699,7 +741,7 @@ pub fn judge_task(
         return Ok((None, results));
     }
     let job = runs[0].job.clone();
-    let (facts, mut p) = rung::place(&runs, &log, same_job_recent(judged, &job, now_ms()));
+    let (facts, mut p) = rung::place_with(&runs, &log, same_job_recent(judged, &job, now_ms()), reclaim);
     if runs.len() < 2 {
         // Consistency needs two runs; one answer is shown, never coached.
         p.uncertain = true;
@@ -805,7 +847,9 @@ pub fn run(r: &Run<'_>) -> Result<Report, String> {
     let tasks = aiq_home::tasks(r.store, &pack, 0)?;
     let judged = r.store.current_judgments().map_err(|e| e.to_string())?;
     let calls = r.store.judge_calls_since(r.now.utc_ms - 7 * DAY_MS).map_err(|e| e.to_string())?;
-    let q = queue(&tasks, &judged, &calls, r.now.utc_ms, gap, r.only);
+    // Read once per pass: a check run during the pass takes effect on the next one.
+    let reclaim = reclaim_gate(r.store).live;
+    let q = queue(&tasks, &judged, &calls, r.now.utc_ms, gap, r.only, reclaim);
     let used = tasks_today(&calls, r.now.local_midnight_utc_ms()) as u32;
     let mut rep = Report { budget_left: set.daily_tasks.saturating_sub(used), ..Default::default() };
     let mut allowed = rep.budget_left.min(r.max.unwrap_or(u32::MAX));
@@ -827,8 +871,9 @@ pub fn run(r: &Run<'_>) -> Result<Report, String> {
             continue;
         }
         let provider = if name == CLAUDE { r.claude } else { r.copilot };
-        let (j, results) = judge_task(r.store, r.paths, provider, name, t, &turns, known, &judged_now, &pack.reprompt)
-            .map_err(|e| e.to_string())?;
+        let (j, results) =
+            judge_task(r.store, r.paths, provider, name, t, &turns, known, &judged_now, &pack.reprompt, reclaim)
+                .map_err(|e| e.to_string())?;
         allowed -= 1;
         rep.budget_left = rep.budget_left.saturating_sub(1);
         rep.cost_usd += results.iter().filter_map(|c| c.cost_usd).sum::<f64>();
@@ -1176,7 +1221,7 @@ fn dry_run(store: &Store, homes: &Homes, n: Now, only: Option<&str>) -> ExitCode
     let tasks = aiq_home::tasks(store, &pack, 0).unwrap_or_default();
     let judged = store.current_judgments().unwrap_or_default();
     let calls = store.judge_calls_since(n.utc_ms - 7 * DAY_MS).unwrap_or_default();
-    let q = queue(&tasks, &judged, &calls, n.utc_ms, pack.idle_gap_min as i64 * 60_000, only);
+    let q = queue(&tasks, &judged, &calls, n.utc_ms, pack.idle_gap_min as i64 * 60_000, only, reclaim_gate(store).live);
     let used = tasks_today(&calls, n.local_midnight_utc_ms()) as u32;
     println!("{DISCLOSURE}\n");
     println!(
@@ -1842,7 +1887,7 @@ pub fn check_report(store: &Store) -> aiq_store::Result<String> {
     // Candidate rules for no-job tasks (design no-job-tasks R1-R2): measured here, not in use.
     let no_job_rows: Vec<&JudgmentRow> = judged.values().filter(|j| j.job == "unclassified").collect();
     if no_job_rows.iter().any(|j| job_runs(j).is_some()) {
-        o += "  Rules AIQ could use for tasks with no job (not in use; measured on your judgments):\n";
+        o += "  Rules AIQ could use for tasks with no job (measured on your judgments; whether R2 is in use is below):\n";
         for (rule, words) in rung::CANDIDATE_RULES {
             let mut gives = 0u32;
             let mut agree = Count::default();
@@ -1860,6 +1905,14 @@ pub fn check_report(store: &Store) -> aiq_store::Result<String> {
             );
         }
     }
+    // The reclaim gate (design reclaim-low-confidence): R2 goes live by itself at the no-job N3 bar.
+    let gate = reclaim_gate(store);
+    o += &format!(
+        "  R2 in use: {}. Second readings of the tasks it covers (newest checks): {}; it needs at least {} checked and 8 in 10 agreeing.\n",
+        if gate.live { "yes, AIQ gives these tasks the job both runs named" } else { "no" },
+        gate.agree.show(),
+        aiq_domain::check::RECLAIM_MIN
+    );
     o += &format!("  Kind of task (where the job matched): {}\n", ag.task_type.show());
     for (job, c) in &ag.task_type_by_job {
         o += &format!("    {job}: {}\n", c.show());
@@ -2384,13 +2437,13 @@ mod tests {
             cost_usd: None,
         };
         let calls: Vec<CallOutcome> = (0..6).map(|i| fail(NOW - DAY_MS * 3 + i)).collect();
-        let q = queue(&tasks, &HashMap::new(), &calls, NOW, 30 * MIN, None);
+        let q = queue(&tasks, &HashMap::new(), &calls, NOW, 30 * MIN, None, false);
         let ids: Vec<&str> = q.iter().map(|t| t.task_id.as_str()).collect();
         assert_eq!(ids, vec!["new", "old"], "open is not closed; gone gave up after 6 failed calls");
         let one = vec![fail(NOW - 30 * MIN)];
-        let q = queue(&tasks, &HashMap::new(), &one, NOW, 30 * MIN, None);
+        let q = queue(&tasks, &HashMap::new(), &one, NOW, 30 * MIN, None, false);
         assert!(!q.iter().any(|t| t.task_id == "gone"), "within the first hour's back-off");
-        let q = queue(&tasks, &HashMap::new(), &one, NOW + 31 * MIN, 30 * MIN, None);
+        let q = queue(&tasks, &HashMap::new(), &one, NOW + 31 * MIN, 30 * MIN, None, false);
         assert!(q.iter().any(|t| t.task_id == "gone"));
     }
 
@@ -2447,16 +2500,19 @@ mod tests {
             ("old_doc".to_owned(), j("write_doc", "j1")),
         ]
         .into();
-        let q = queue(&tasks, &judged, &[], NOW, 30 * MIN, None);
+        let q = queue(&tasks, &judged, &[], NOW, 30 * MIN, None, false);
         let ids: Vec<&str> = q.iter().map(|t| t.task_id.as_str()).collect();
         assert_eq!(ids, vec!["uncovered", "new", "old_doc"]);
-        assert!(current_version(&j("code_change", rung::JUDGE_VERSIONS_KEPT[1])));
-        assert!(!current_version(&j("unclassified", rung::JUDGE_VERSIONS_KEPT[1])), "Ask or research may cover it now");
+        assert!(current_version(&j("code_change", rung::JUDGE_VERSIONS_KEPT[1]), false));
+        assert!(
+            !current_version(&j("unclassified", rung::JUDGE_VERSIONS_KEPT[1]), false),
+            "Ask or research may cover it now"
+        );
         // DC-009: the check compares "no pack job" in the grader's word, `other`.
         assert_eq!(judge_view(&j("unclassified", rung::JUDGE_VERSION)).job, "other");
         assert_eq!(judge_view(&j("code_change", rung::JUDGE_VERSION)).job, "code_change");
-        assert!(current_version(&j("unclassified", rung::JUDGE_VERSION)));
-        assert!(!current_version(&j("code_change", "j1")));
+        assert!(current_version(&j("unclassified", rung::JUDGE_VERSION), false));
+        assert!(!current_version(&j("code_change", "j1"), false));
     }
 
     #[test]
@@ -2741,6 +2797,50 @@ mod tests {
             0,
             "unknown tasks are never sampled"
         );
+    }
+
+    #[test]
+    fn r2_goes_live_only_at_the_bar_reclaims_stored_tasks_and_gives_them_back_when_it_drops() {
+        let e = env();
+        let mut judge = Fake::ok(1);
+        if let Some(a) = judge.answer.as_mut() {
+            a["job"] = json!("ask_research");
+            a["job_confidence"] = json!(0.6);
+            a["task_type"] = json!("explain");
+        }
+        go(&e, &judge, &judge, None);
+        let no_job =
+            |e: &Env| e.store.current_judgments().unwrap().values().filter(|j| j.job == "unclassified").count();
+        assert_eq!(no_job(&e), 4, "off by default: today's rule");
+        // Two checks (8 readings) agree, still too few: nothing changes.
+        let agree = grader("ask_research", "explain", 1);
+        run_check(&e.store, &e.paths, &e.homes, &agree, &agree, NOW, 30, 1, CheckScope::NoJob).unwrap();
+        run_check(&e.store, &e.paths, &e.homes, &agree, &agree, NOW + 1, 30, 2, CheckScope::NoJob).unwrap();
+        assert!(!reclaim_gate(&e.store).live);
+        let rep = check_report(&e.store).unwrap();
+        assert!(rep.contains("R2 in use: no. Second readings of the tasks it covers (newest checks): 8 of 8"), "{rep}");
+        let judged = e.store.current_judgments().unwrap();
+        let tasks =
+            aiq_home::tasks(&e.store, &aiq_core::pack::parse(aiq_core::pack::BUNDLED_TOML).unwrap(), 0).unwrap();
+        assert!(queue(&tasks, &judged, &[], NOW, 30 * MIN, None, false).is_empty(), "nothing re-judged while off");
+        // A third: 12 of 12 agree, so R2 is live and the four stored tasks are judged again, first.
+        run_check(&e.store, &e.paths, &e.homes, &agree, &agree, NOW + 2, 30, 3, CheckScope::NoJob).unwrap();
+        let gate = reclaim_gate(&e.store);
+        assert!(gate.live && gate.agree == aiq_domain::check::Count { k: 12, n: 12 }, "{gate:?}");
+        assert_eq!(queue(&tasks, &judged, &[], NOW, 30 * MIN, None, true).len(), 4);
+        go(&e, &judge, &judge, None);
+        let judged = e.store.current_judgments().unwrap();
+        assert!(judged.values().all(|j| j.job == "ask_research" && j.state != "uncertain"), "{judged:?}");
+        assert!(judged.values().all(|j| j.placement.contains("not confidently")));
+        assert!(queue(&tasks, &judged, &[], NOW, 30 * MIN, None, true).is_empty(), "reclaimed once, then current");
+        assert!(check_report(&e.store).unwrap().contains("R2 in use: yes"));
+        // A later check of the reclaimed tasks disagrees: the newest runs fall under the bar, R2 turns off,
+        // and the reclaimed tasks are judged again without it.
+        let disagree = grader("code_change", "fix_bug", 1);
+        run_check(&e.store, &e.paths, &e.homes, &disagree, &disagree, NOW + 3, 30, 4, CheckScope::All).unwrap();
+        assert!(!reclaim_gate(&e.store).live, "8 of 12");
+        go(&e, &judge, &judge, None);
+        assert_eq!(no_job(&e), 4);
     }
 
     #[test]

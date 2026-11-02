@@ -918,6 +918,12 @@ pub fn candidate_job(rule: &str, runs: &[JobRun]) -> Option<String> {
     }
 }
 
+/// Rule R2 as AIQ uses it once the reclaim gate is live (design reclaim-low-confidence): the job both runs
+/// named at 0.5 or more, for a task the normal job rule leaves without one. None otherwise.
+pub fn reclaimed_job(runs: &[JobRun]) -> Option<String> {
+    no_job_cause(runs).and_then(|_| candidate_job("R2", runs))
+}
+
 pub const CANDIDATE_RULES: [(&str, &str); 2] = [
     ("R1", "one run names a pack job confidently, the other says other"),
     ("R2", "both runs name the same pack job, confidence 0.5 or more"),
@@ -1009,9 +1015,16 @@ pub const KIND_CANDIDATE_RULES: [(&str, &str); 2] = [
     ("K2", "both runs name the same kind, confidence 0.5 or more"),
 ];
 
-/// Merge two runs into one judgment. `same_job_recent` counts this person's tasks of the same job in the last
-/// 30 days (F11), for the Factory repetition rule. Runs must be non-empty.
+/// Merge two runs into one judgment, with the strict job rule only. `same_job_recent` counts this person's
+/// tasks of the same job in the last 30 days (F11), for the Factory repetition rule. Runs must be non-empty.
 pub fn place(runs: &[Response], log: &LogFacts, same_job_recent: u32) -> (Facts, Placement) {
+    place_with(runs, log, same_job_recent, false)
+}
+
+/// `place`, and with `reclaim` (the reclaim gate is live) a task the strict job rule leaves without a job
+/// takes the job rule R2 gives it. Everything after the job is unchanged: the kind still needs 0.7, and a
+/// tip still needs potential confidence 0.8 and no unknown gate.
+pub fn place_with(runs: &[Response], log: &LogFacts, same_job_recent: u32, reclaim: bool) -> (Facts, Placement) {
     assert!(!runs.is_empty(), "place needs at least one run");
     let mut facts = merge_facts(runs, log);
     let mut notes = Vec::new();
@@ -1021,8 +1034,16 @@ pub fn place(runs: &[Response], log: &LogFacts, same_job_recent: u32) -> (Facts,
     let job0 = &runs[0].job;
     let job_conf = runs.iter().map(|r| r.job_confidence).fold(1.0_f64, f64::min);
     let job_agree = runs.iter().all(|r| &r.job == job0);
+    let job_runs: Vec<JobRun> =
+        runs.iter().map(|r| JobRun { job: r.job.clone(), confidence: r.job_confidence }).collect();
     let job = if job_agree && job_conf >= JOB_THRESHOLD && PACK_JOBS.contains(&job0.as_str()) {
         job0.clone()
+    } else if let Some(j) = reclaim.then(|| reclaimed_job(&job_runs)).flatten() {
+        notes.push(format!(
+            "Both judge runs named {}, though not confidently. AIQ uses that because a second reader agreed on 8 in 10 such tasks.",
+            job_label(&j)
+        ));
+        j
     } else {
         uncertain = true;
         "unclassified".to_owned()
@@ -1469,6 +1490,52 @@ mod tests {
         y.job = "code_change".into();
         let (_, p) = place(&[x, y], &l, 0);
         assert_eq!(p.job, "unclassified", "runs disagree on job");
+    }
+
+    #[test]
+    fn reclaimed_job_is_r2_only_where_the_strict_rule_gave_none() {
+        assert_eq!(reclaimed_job(&[jr("ask_research", 0.6), jr("ask_research", 0.5)]).as_deref(), Some("ask_research"));
+        assert_eq!(reclaimed_job(&[jr("ask_research", 0.9), jr("ask_research", 0.8)]), None, "already has a job");
+        assert_eq!(reclaimed_job(&[jr("ask_research", 0.6), jr("ask_research", 0.4)]), None, "under 0.5");
+        assert_eq!(reclaimed_job(&[jr("ask_research", 0.6), jr("other", 0.9)]), None, "runs disagree");
+        assert_eq!(reclaimed_job(&[jr("ask_research", 0.6)]), None, "one run");
+        assert_eq!(reclaimed_job(&[jr("other", 0.6), jr("other", 0.6)]), None, "not a pack");
+    }
+
+    #[test]
+    fn reclaim_gives_the_job_only_when_live_and_keeps_every_later_bar() {
+        let l = log_facts(&turns(&["a"], None), false);
+        let mut a = run(2);
+        a.job = "ask_research".into();
+        a.job_confidence = 0.6;
+        a.task_type = "explain".into();
+        let (_, off) = place_with(&[a.clone(), a.clone()], &l, 0, false);
+        assert_eq!(off, place(&[a.clone(), a.clone()], &l, 0).1, "off is today's rule");
+        assert_eq!(off.job, "unclassified");
+        assert!(off.uncertain && !off.coachable);
+        let (_, on) = place_with(&[a.clone(), a.clone()], &l, 0, true);
+        assert_eq!(on.job, "ask_research");
+        assert!(!on.uncertain);
+        assert!(on.notes.iter().any(|n| n.contains("not confidently")), "{:?}", on.notes);
+        // Every later bar still holds: the kind needs 0.7, and a tip needs potential confidence 0.8.
+        let mut k = a.clone();
+        k.task_type_confidence = 0.6;
+        let (_, p) = place_with(&[k.clone(), k], &l, 0, true);
+        assert_eq!(p.task_type.as_deref(), Some("other"));
+        let mut c = a.clone();
+        c.potential_confidence = 0.7;
+        let (_, p) = place_with(&[c.clone(), c], &l, 0, true);
+        assert_eq!(p.job, "ask_research");
+        assert!(!p.coachable, "below 0.8 is shown, not coached");
+        // Live does not touch tasks R2 doesn't cover.
+        let mut d = a.clone();
+        d.job_confidence = 0.4;
+        assert_eq!(place_with(&[d.clone(), d], &l, 0, true).1.job, "unclassified");
+        let mut o = a.clone();
+        o.job = "other".into();
+        assert_eq!(place_with(&[a.clone(), o], &l, 0, true).1.job, "unclassified", "runs disagree");
+        let strong = run(2);
+        assert_eq!(place_with(&[strong.clone(), strong.clone()], &l, 0, true), place(&[strong.clone(), strong], &l, 0));
     }
 
     #[test]

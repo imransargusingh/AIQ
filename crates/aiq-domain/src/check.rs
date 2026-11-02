@@ -266,11 +266,9 @@ pub struct Verdict {
 /// tips by itself. A job is scored on tasks the judge put in that job (did the reader agree?); a kind on
 /// tasks the judge gave that kind (same job and same kind?). `other` kinds never coach, so are never scored.
 pub fn verdicts(readings: &[Reading]) -> Vec<Verdict> {
-    let mut runs: Vec<(&str, i64)> = readings.iter().map(|r| (r.run_id.as_str(), r.run_started_ms)).collect();
-    runs.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| b.0.cmp(a.0)));
-    runs.dedup();
+    let runs = newest_first(readings.iter().map(|r| (r.run_id.as_str(), r.run_started_ms)));
     let mut scored: BTreeMap<Scope, Vec<(&str, bool)>> = BTreeMap::new();
-    for (run, _) in &runs {
+    for run in &runs {
         for r in readings.iter().filter(|r| r.run_id == *run) {
             if r.judge_job == "unclassified" || r.judge_job == "other" {
                 continue;
@@ -286,21 +284,73 @@ pub fn verdicts(readings: &[Reading]) -> Vec<Verdict> {
     scored
         .into_iter()
         .map(|(scope, list)| {
-            let mut agree = Count::default();
-            let mut seen: Vec<&str> = Vec::new();
-            for (run, hit) in list {
-                if !seen.contains(&run) {
-                    if agree.n >= scope.min_checked() {
-                        break;
-                    }
-                    seen.push(run);
-                }
-                agree.add(hit);
-            }
+            let (agree, seen) = window(list, scope.min_checked());
             let paused = agree.n >= scope.min_checked() && (agree.k as f64) < PAUSE_BAR * agree.n as f64;
             Verdict { newest_run: seen[0].to_owned(), runs: seen.len() as u32, agree, paused, scope }
         })
         .collect()
+}
+
+/// Check run ids, newest first (ties by id), each once.
+fn newest_first<'a>(runs: impl Iterator<Item = (&'a str, i64)>) -> Vec<&'a str> {
+    let mut runs: Vec<(&str, i64)> = runs.collect();
+    runs.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| b.0.cmp(a.0)));
+    runs.dedup();
+    runs.into_iter().map(|(r, _)| r).collect()
+}
+
+/// The newest whole runs of `list` (already newest run first) until at least `min` readings: older runs
+/// then stop counting, so later evidence decides by itself. Returns the agreement and the runs used.
+fn window(list: Vec<(&str, bool)>, min: u32) -> (Count, Vec<&str>) {
+    let mut agree = Count::default();
+    let mut seen: Vec<&str> = Vec::new();
+    for (run, hit) in list {
+        if !seen.contains(&run) {
+            if agree.n >= min {
+                break;
+            }
+            seen.push(run);
+        }
+        agree.add(hit);
+    }
+    (agree, seen)
+}
+
+// ------------------------------------------------------------------ reclaim gate (design reclaim-low-confidence)
+
+/// Rule R2 goes live only after at least this many second readings of the tasks it would reclaim (no-job N3).
+pub const RECLAIM_MIN: u32 = 10;
+
+/// One second reading of a task rule R2 gives a job (or would): did the reader name the same job?
+#[derive(Debug, Clone, PartialEq)]
+pub struct RuleReading {
+    pub run_id: String,
+    pub run_started_ms: i64,
+    /// The job R2 gives the task.
+    pub rule_job: String,
+    pub reader_job: String,
+}
+
+/// Whether R2 is live, and the evidence it rests on.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct RuleGate {
+    pub agree: Count,
+    pub runs: u32,
+    pub live: bool,
+}
+
+/// The reclaim gate (no-job N3, the same bar and window as the pause rule): R2 is live when the newest whole
+/// check runs hold at least `RECLAIM_MIN` readings of R2 tasks and the reader agreed on at least 8 in 10.
+/// Off is the default: no readings, too few, or under the bar. A later check under the bar turns it off.
+pub fn reclaim_gate(readings: &[RuleReading]) -> RuleGate {
+    let runs = newest_first(readings.iter().map(|r| (r.run_id.as_str(), r.run_started_ms)));
+    let list: Vec<(&str, bool)> = runs
+        .iter()
+        .flat_map(|run| readings.iter().filter(move |r| r.run_id == *run).map(|r| (*run, r.reader_job == r.rule_job)))
+        .collect();
+    let (agree, seen) = window(list, RECLAIM_MIN);
+    let live = agree.n >= RECLAIM_MIN && (agree.k as f64) >= PAUSE_BAR * agree.n as f64;
+    RuleGate { agree, runs: seen.len() as u32, live }
 }
 
 #[cfg(test)]
@@ -520,5 +570,43 @@ mod tests {
         for k in ["", "a/b/c", "Run", "x/", "../etc", "a b"] {
             assert!(Scope::parse(k).is_none(), "{k}");
         }
+    }
+
+    fn rule(run: &str, at: i64, n: usize, hits: usize) -> Vec<RuleReading> {
+        (0..n)
+            .map(|i| RuleReading {
+                run_id: run.into(),
+                run_started_ms: at,
+                rule_job: "ask_research".into(),
+                reader_job: if i < hits { "ask_research" } else { "other" }.into(),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn reclaim_is_off_until_ten_checked_and_eight_in_ten_agree() {
+        assert!(!reclaim_gate(&[]).live, "off by default");
+        assert!(!reclaim_gate(&rule("r1", 1, 9, 9)).live, "9 of 9 is too few");
+        let on = reclaim_gate(&rule("r1", 1, 10, 8));
+        assert!(on.live && on.agree == Count { k: 8, n: 10 } && on.runs == 1);
+        assert!(!reclaim_gate(&rule("r1", 1, 10, 7)).live, "7 of 10 is under the bar");
+        // The measured pre-run_ship reading (4 of 7) never turns it on.
+        assert!(!reclaim_gate(&rule("r1", 1, 7, 4)).live);
+    }
+
+    #[test]
+    fn reclaim_reads_the_newest_whole_runs_so_a_later_check_turns_it_off_or_on() {
+        let mut r = rule("old", 1, 10, 10);
+        r.extend(rule("new", 2, 10, 6));
+        let g = reclaim_gate(&r);
+        assert!(!g.live && g.agree == Count { k: 6, n: 10 }, "the newer check decides");
+        let mut r = rule("old", 1, 10, 3);
+        r.extend(rule("new", 2, 12, 11));
+        assert!(reclaim_gate(&r).live);
+        // Two small runs together reach the minimum.
+        let mut r = rule("a", 1, 6, 5);
+        r.extend(rule("b", 2, 6, 5));
+        let g = reclaim_gate(&r);
+        assert!(g.live && g.agree == Count { k: 10, n: 12 } && g.runs == 2);
     }
 }

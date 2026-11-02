@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Reclaim Low Confidence</title><style>
+:root { color-scheme: light dark; --bg:#f7f5ef; --panel:#fff; --text:#20201d;
+  --muted:#66645f; --line:#d9d5ca; --accent:#3157a4; --code:#f0eee7; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#171816; --panel:#20221f; --text:#f2f1eb; --muted:#b8b6ae;
+    --line:#3d403a; --accent:#8fb0ff; --code:#292c27; }
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text);
+  font:16px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif; }
+main { width:min(920px,calc(100% - 32px)); margin:32px auto; padding:40px;
+  background:var(--panel); border:1px solid var(--line); border-radius:12px; }
+h1,h2,h3,h4,h5,h6 { line-height:1.2; margin:1.5em 0 .55em; }
+h1 { margin-top:0; font-size:2.2rem; } h2 { border-bottom:1px solid var(--line); padding-bottom:.3em; }
+a { color:var(--accent); } code { background:var(--code); padding:.12em .35em; border-radius:4px; }
+pre { overflow:auto; padding:16px; background:var(--code); border-radius:8px; }
+pre code { padding:0; } blockquote { margin:1em 0; padding:.2em 1em; color:var(--muted);
+  border-left:4px solid var(--line); }
+table { width:100%; border-collapse:collapse; margin:1em 0; display:block; overflow:auto; }
+th,td { padding:.55em .75em; border:1px solid var(--line); text-align:left; vertical-align:top; }
+th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); }
+.source { color:var(--muted); font-size:.9rem; margin-bottom:2rem; }
+@media (max-width:640px) { main { width:100%; margin:0; padding:24px 18px; border:0; border-radius:0; } }
+</style></head><body><main><div class="source">Rendered from reclaim-low-confidence.md</div><h1>Design: reclaim pack tasks the judge read without confidence</h1>
+<p>Cloud-only, started under Imran&#x27;s standing rule. Built from the repo, design notes <a href="no-job-tasks.md">no-job-tasks</a> and the no-job remainder note (PR #79). I could not read the laptop store, so every number is quoted from a named laptop run or marked as worked out.</p>
+<h2>Goal state</h2>
+<table><thead><tr><th></th><th></th></tr></thead><tbody><tr><td><strong>Goal</strong></td><td>The pack tasks AIQ leaves without a job only because the judge was unsure get a job and tips, without giving tasks the wrong job</td></tr><tr><td><strong>Done when</strong></td><td>R2 is live exactly when the accuracy check backs it (N3 bar), stored judgments follow the gate, and the report says whether it is live</td></tr><tr><td><strong>Not in scope</strong></td><td>The 31 &quot;both said other&quot; tasks (no pack fits; PR #79); the 3 &quot;runs disagree&quot; tasks (R1 covers almost none of them, see below); new packs; the kind-of-task rules</td></tr><tr><td><strong>Tier</strong></td><td>T1: a judging rule that can change which tasks get tips, so Imran&#x27;s OK before merge</td></tr></tbody></table>
+<h2>What is measured</h2>
+<p>Measured on Imran&#x27;s laptop (build 3393c97, 2026-11-02 22:42Z): 51 of 476 judged tasks have no job.</p>
+<table><thead><tr><th>Group</th><th>Count</th><th>Covered here?</th></tr></thead><tbody><tr><td>C1 both runs said <code>other</code></td><td>31</td><td>No. A different model also said other on 18 of 18 sampled (run 01a19d99)</td></tr><tr><td>C3 both runs named the same pack job, one below 0.7</td><td>17</td><td>Yes, where both are 0.5 or more: R2 gives a job to <strong>15 of 51</strong> (measured)</td></tr><tr><td>C2 the runs named different jobs</td><td>3</td><td>No. R1 (one confident pack job, the other <code>other</code>) gave a job to 3 of 101 before and agreed 1 of 2</td></tr></tbody></table>
+<p>R2&#x27;s only second reading so far: <strong>agreed 4 of 7</strong> (run 01a19d99, before Run or ship it existed, a different set of tasks). That is under the bar, so R2 would <strong>not</strong> be live today.</p>
+<h2>Options considered</h2>
+<table><thead><tr><th>Option</th><th>Why not (or why)</th></tr></thead><tbody><tr><td>Turn R2 on now</td><td>4 of 7 is under the bar. A wrong job means wrong coaching, which is worse than none (no-job N3)</td></tr><tr><td>Lower <code>JOB_THRESHOLD</code> from 0.7 to 0.5 for every task</td><td>Same risk, and it would also move tasks whose runs disagree. Not measured at all</td></tr><tr><td>Accept one run&#x27;s job when the other is unsure</td><td>That is R1&#x27;s shape; 1 of 2 agreed, and it covers 3 tasks</td></tr><tr><td><strong>R2 behind a self-switching gate (chosen)</strong></td><td>AIQ decides from its own checks, as the auto-pause does (PR #59). No setting for Imran, nothing live until the bar is met, and it turns itself off if a later check drops</td></tr></tbody></table>
+<h2>Decisions</h2>
+<table><thead><tr><th>#</th><th>Question</th><th>Decision</th><th>Why</th></tr></thead><tbody><tr><td>R2-1</td><td>Which rule?</td><td>R2 unchanged: both runs name the same pack job, each at 0.5 or more, where the strict rule gave none (<code>rung::reclaimed_job</code>)</td><td>Already built and measured (no-job N2); one definition</td></tr><tr><td>R2-2</td><td>When is it live?</td><td>The newest whole check runs hold at least <strong>10</strong> second readings of tasks R2 covers, and the reader named R2&#x27;s job on at least <strong>8 in 10</strong> (<code>check::reclaim_gate</code>)</td><td>The no-job N3 bar, and the same window as the pause rule (one helper, <code>window</code>)</td></tr><tr><td>R2-3</td><td>Which readings count?</td><td>Every check of a task R2 covers at <strong>today&#x27;s judge version</strong>, whether that judgment is still current or was judged again since</td><td>Reclaiming a task judges it again; if its check then dropped out, the gate would turn itself off and flip back and forth. A new judge version starts the evidence again (safe direction: off)</td></tr><tr><td>R2-4</td><td>Stored judgments</td><td>A task R2 covers whose stored job does not match the gate (no job while live, R2&#x27;s job after it turned off) is out of date and goes <strong>first</strong> in the judging queue. Judged again, it lands on the gate&#x27;s side and leaves the queue</td><td>One judging pass reaches the old tasks. Each one costs 2 judge calls (about 30 for 15 tasks; on Copilot about one premium request each, from the check runs)</td></tr><tr><td>R2-5</td><td>What stays the same</td><td>The kind still needs 0.7; a tip still needs potential confidence <strong>0.8</strong> and no unknown gate; the per-job and per-kind auto-pause (PR #59) still applies once the reclaimed tasks are checked</td><td>The 0.8 coaching bar is on the rung step, not the job. R2 only decides the job</td></tr><tr><td>R2-6</td><td>What people see</td><td>A reclaimed judgment says why: &quot;Both judge runs named Ask or research, though not confidently. AIQ uses that because a second reader agreed on 8 in 10 such tasks.&quot; <code>--check-report</code> prints &quot;R2 in use: yes/no&quot; with the agreement and the bar</td><td>Explainable from the judgment alone</td></tr></tbody></table>
+<h2>Change surfaces (E7)</h2>
+<table><thead><tr><th>Surface</th><th>Change</th></tr></thead><tbody><tr><td>Domain</td><td><code>rung::reclaimed_job</code>, <code>rung::place_with(.., reclaim)</code> (<code>place</code> = strict, unchanged); <code>check::RuleReading</code>, <code>RuleGate</code>, <code>reclaim_gate</code>, <code>RECLAIM_MIN</code>; <code>window</code> shared with the pause rule</td></tr><tr><td>Runner</td><td><code>judge::rule_readings</code>, <code>reclaim_gate</code>; the queue and <code>current_version</code> take the gate; the judging pass reads it once; <code>--check-report</code> line</td></tr><tr><td>Store, contracts, Home</td><td>None. The job, state and note are the judgment&#x27;s own fields, so Home and tips follow without change</td></tr></tbody></table>
+<h2>Residual risks</h2>
+<ul><li><strong>Lag after the gate turns off.</strong> Reclaimed tasks keep their job, and their tips, until the next judging</li></ul>
+<p>pass judges them again. They go first, but only within the daily budget. Inferred, not measured: how long that is on the laptop.</p>
+<ul><li><strong>Small evidence.</strong> 10 readings at 8 in 10 still allows a true rate of about 54% (Wilson 90% low end, computed). That is</li></ul>
+<p>the same bar every AIQ rule uses; the pause rule&#x27;s later checks are the backstop.</p>
+<ul><li><strong>Version reset.</strong> A judge version bump discards the evidence, so R2 turns off and reclaimed tasks lose</li></ul>
+<p>their job until a new check. Safe, but it costs a check run.</p>
+<h2>Laptop reading that decides it</h2>
+<p>Already asked of the judge thread for PR #79 (about 51 premium requests). Read-only apart from storing the check answers, like every check:</p>
+<pre><code>aiq judge --check --no-job --sample 51
+aiq judge --check-report</code></pre>
+<p>After this change is installed, the report line <code>R2 in use: ...</code> says whether the bar is met. Before it, read <code>R2 (...): gives a job to N of 51; second reading agreed k of n</code>: R2 goes live on install only if k of n is at least 8 in 10 with n at least 10.</p>
+<h2>Gate record</h2>
+<p><code>GATE design-slice · 2026-11-02 · Simplifier, Test Architect, Data &amp; Persistence (seats played by Claude; not independent) · pass</code></p>
+<ul><li>Simplifier: no setting, no column; the gate is derived from stored checks each pass.</li><li>Test Architect: domain tests for the rule, the gate&#x27;s bar and window; one runner test drives off → live →</li></ul>
+<p>reclaim → off → give back through the real store.</p>
+<ul><li>Data &amp; Persistence: the gate is derived, never stored; the judgment stays the one record of the job.</li></ul>
+<h2>Status and next action</h2>
+<table><thead><tr><th></th><th></th></tr></thead><tbody><tr><td><strong>Completed</strong></td><td>Rule, gate, queue and report built and tested (PR)</td></tr><tr><td><strong>Remaining</strong></td><td>Imran&#x27;s OK to merge; the no-job check on the laptop</td></tr><tr><td><strong>Best next action</strong></td><td>Merge on Imran&#x27;s OK; the judge thread stages it in the next upgrade</td></tr></tbody></table></main></body></html>
