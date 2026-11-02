@@ -524,3 +524,37 @@ fn v7_check_rows_round_trip_are_append_only_and_imported_ones_go_with_forget_imp
     let left: Vec<String> = s.checks_of_run("r1").unwrap().into_iter().map(|c| c.task_id).collect();
     assert_eq!(left, vec!["t1".to_string()]);
 }
+
+#[test]
+fn store_from_an_early_build_fails_with_one_clear_line_and_stays_unchanged() {
+    // An early `aiq import` build wrote its import tables as v3; this build's v4 creates them again.
+    let d = TempDir::new().unwrap();
+    let p = d.path().join("aiq.db");
+    {
+        let s = Store::open_with(&p, &[SCHEMA_V1, SCHEMA_V2]).unwrap();
+        s.raw().execute_batch(SCHEMA_V4).unwrap();
+        s.raw().pragma_update(None, "user_version", 3).unwrap();
+    }
+    let e = Store::open(&p).err().unwrap();
+    assert_eq!(e.code, codes::STORE_MIGRATION);
+    assert!(e.detail.contains(&p.display().to_string()), "{}", e.detail);
+    assert!(e.detail.contains("`aiq forget --all`, then `aiq import`"), "{}", e.detail);
+    assert!(!e.detail.contains('\n') && e.detail.len() < 400, "one short line: {}", e.detail);
+    let s = Store::open_with(&p, &[SCHEMA_V1, SCHEMA_V2, SCHEMA_V3]).unwrap();
+    assert_eq!(s.user_version().unwrap(), 3, "nothing changed");
+}
+
+#[test]
+fn store_from_a_newer_aiq_is_refused_not_opened_as_if_current() {
+    let d = TempDir::new().unwrap();
+    let p = d.path().join("aiq.db");
+    drop(Store::open(&p).unwrap());
+    let e = Store::open_with(&p, &[SCHEMA_V1, SCHEMA_V2]).err().unwrap();
+    assert_eq!(e.code, codes::STORE_MIGRATION);
+    assert!(e.detail.contains("newer than this aiq knows (up to 2)") && e.detail.contains(&p.display().to_string()));
+    assert_eq!(
+        Store::open(&p).unwrap().user_version().unwrap(),
+        MIGRATIONS.len() as i64,
+        "the store itself is untouched"
+    );
+}
