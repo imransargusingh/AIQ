@@ -201,16 +201,40 @@ not checked; report before any run). `cargo test --workspace`, fmt and clippy gr
   does not lock it. The report still flags a same-model reading.
 - **N2 (repeat stability):** deferred. It needs a second judge run on the sample; add it once the first
   numbers show whether it matters.
-- **K6b (pause a kind under 8 of 10) and the Home "Judge check" card:** deferred until the first real run.
-  The bar is a guess; pausing coaching on an unmeasured bar would be acting on a guess. The CLI report already
-  lists kinds under 8 of 10 with at least 5 checked.
+- **K6b (automatic pause):** built 2026-11-02 after the first real runs; see "K6b: the automatic pause" below.
+  The Home "Judge check" card is still deferred (the CLI report carries the numbers).
 - **Delete-one:** check rows hold ids, the grader's job, type, rung and true/false/null facts, never task text,
   so deleting one prompt's text needs no change here.
+
+## K6b: the automatic pause (built 2026-11-02)
+
+AIQ decides; the person can override in one click or one command. Nothing new is stored: the pause is
+derived from check rows, judgments and one override setting each time the coaching cache is built.
+
+| # | Decision | Rule | Measured or guessed |
+|---|---|---|---|
+| P1 | What pauses | A pack's **job** (every next-step tip for a task AIQ guesses is in that job), or one **kind of task** (job and kind) | Design choice |
+| P2 | Job score | Of the checked tasks the judge put in that job, how many the second reader also put in it | Same count as the report's job agreement, split by the judge's job |
+| P3 | Kind score | Of the checked tasks the judge gave that kind, how many the reader gave the same job **and** kind. `other` kinds and no-job tasks are never scored (they never coach) | Same count as the report's kind agreement (`by_kind`) |
+| P4 | Bar | Pause below **8 in 10** | **Guess.** The bar every AIQ rule uses (rung-model US-7, type-guess self-check, no-job and kind rules). Not measured: no repeat-run spread exists yet (N2) |
+| P5 | Minimum checked | Job **10**, kind **5**. Fewer means "not enough checked", never "paused". A job with no checks at all (for example `run_ship` before its first check) is not paused | **Guess.** 10 is the `run_ship` gate (run-or-ship-pack P8); 5 is K6. At 10 checked, 7 of 10 has a 90% interval of about 45–88%, so a pause can be noise; the override is the remedy |
+| P6 | Which checks | Newest run first, whole runs at a time, until the minimum is reached; older runs then stop counting. Only checks of judgments that are still the task's current one: a task judged again by a newer judge drops out | Design choice: "the latest check decides", so a later check that clears the bar resumes tips by itself |
+| P7 | Where it acts | The live next-step tip: after AIQ guesses a new task's kind, a paused job or kind holds the tip. The decision is recorded as a drop with reason `accuracy_paused`, and the core counts `AIQ-COACH-ACCURACY-PAUSED`. The kind guess is still recorded, so the self-check keeps learning | Measurable from the decision log and `aiq status` |
+| P8 | Override | Home and Settings show each pause with **Keep showing**; the CLI prints `aiq config set keep-on.<job or job/kind> on`. The setting stores the newest check run behind the pause, so a **newer** check lets AIQ decide again. **Let AIQ decide** / `... auto` clears it. "Always on" (`next-rung-tips on`) ignores pauses, as it ignores the self-check | Design choice (AIQ decides, easy override) |
+| P9 | Shown | Home banner and Settings: "AIQ paused these next-step tips. A second model agreed with its judge only k of n times, under 8 in 10." `aiq status` and `aiq judge --check-report` print the same verdicts from the same function | One rule, one definition (the report's old "kinds under 8 of 10" line now calls it) |
+
+Not covered: the Phase 2 in-the-moment tips that are not next-step tips (they do not rest on the judge's
+job); facts and rungs (a rung miss changes which step is coached, but the check's rung numbers are 27/30
+exact; pausing on them is a later decision). Tests: domain (7 of 10 pauses a job, 8 of 10 doesn't, 9 checked
+is too few for a job but enough for a kind, a newer passing run resumes, a small newer run pools with the one
+before, no-job and `other` never scored); core (pause holds the tip with `accuracy_paused`, Keep showing
+brings it back, a newer failing check pauses again, a newer passing check resumes, Always on ignores it);
+UI e2e with axe (Home and Settings text, both buttons call the core with the right key).
 
 ## Status and next action
 
 | | |
 |---|---|
-| **Completed** | Design; build of `aiq judge --check` and its report |
-| **Remaining** | One laptop run; record numbers in the rung-judge design's eval section; then K6b and the Home card |
-| **Best next action** | Upgrade the laptop, run `aiq judge --check --dry-run`, then `aiq judge --check` |
+| **Completed** | Design; build of `aiq judge --check` and its report; laptop runs (eval section); K6b automatic pause |
+| **Remaining** | Home "Judge check" card; N2 repeat stability (would let P4/P5 be measured instead of guessed) |
+| **Best next action** | Install the build on the laptop and run `aiq judge --check-report`: it now says what is paused |

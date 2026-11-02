@@ -360,7 +360,17 @@ impl<C: Clock> Service<C> {
         };
         let tip = coach::tip_id(&m.move_id);
         let cooldown_ms = pack.coach.move_cooldown_h as i64 * 3_600_000;
+        let accuracy = cache.paused_for(&self.store, mode, &row.job, &row.task_type).map(|v| {
+            self.counters.inc(codes::COACH_ACCURACY_PAUSED);
+            info!(
+                scope = v.scope.key().as_str(),
+                agree = v.agree.k,
+                checked = v.agree.n,
+                "next-step tip held: the accuracy check paused this job or kind"
+            );
+        });
         let suppressed = match coach::tip_pref(&cache.feedback, &tip, now.utc_ms, &pack.coach) {
+            _ if accuracy.is_some() => Some(Reason::AccuracyPaused),
             TipPref::Off => Some(Reason::TipOff),
             TipPref::Snoozed(_) => Some(Reason::Snoozed),
             TipPref::Shown => {
@@ -754,6 +764,7 @@ impl<C: Clock> Service<C> {
                 Ok(n) if n <= MAX_DAILY_CAP => n.to_string(),
                 _ => return Err(format!("daily-cap must be a whole number from 0 to {MAX_DAILY_CAP}")),
             },
+            k if k.starts_with(coaching::SETTING_KEEP_ON) => self.keep_on_value(k, value)?,
             _ => match aiq_domain::rung::validate_setting(key, value).or_else(|| coach::validate_setting(key, value)) {
                 Some(v) => v?,
                 None => return Err(format!("unknown setting {key}")),
@@ -763,6 +774,25 @@ impl<C: Clock> Service<C> {
             self.counters.inc(e.code);
             e.to_string()
         })
+    }
+
+    /// `keep_on.<job>` or `keep_on.<job>/<kind>` (design K6b): `on` keeps a paused job or kind's tips showing
+    /// for the evidence it rests on now (stored as that newest check run); `auto` lets AIQ decide again.
+    fn keep_on_value(&mut self, key: &str, value: &str) -> Result<String, String> {
+        let scope = aiq_domain::check::Scope::parse(&key[coaching::SETTING_KEEP_ON.len()..])
+            .ok_or_else(|| "name a job, or a job/kind of task".to_owned())?;
+        match value {
+            "auto" => Ok("auto".into()),
+            "on" => {
+                let readings = coaching::readings(&self.store).map_err(|e| e.code.to_string())?;
+                aiq_domain::check::verdicts(&readings)
+                    .into_iter()
+                    .find(|v| v.scope == scope && v.paused)
+                    .map(|v| v.newest_run)
+                    .ok_or_else(|| format!("AIQ hasn't paused tips for {}", coaching::scope_label(&scope)))
+            }
+            _ => Err("keep-on must be on or auto".into()),
+        }
     }
 
     /// Delete one prompt's text (Your data, "Delete"), then rebuild the detector working set so the text
@@ -817,6 +847,7 @@ impl<C: Clock> Service<C> {
                     coached_types: c.rows.iter().filter(|r| r.state == coach::RowState::Coach).count() as u32,
                     other_pct: c.other_share.map(|x| (x * 100.0).round() as u32),
                     cache_ms: c.build_ms,
+                    accuracy_paused: coaching::paused_scopes(&self.store, &c.pauses),
                 }
             }),
         }

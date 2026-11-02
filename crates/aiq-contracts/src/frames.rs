@@ -154,6 +154,23 @@ pub struct CoachStatus {
     pub other_pct: Option<u32>,
     /// Measured: last cache rebuild.
     pub cache_ms: u64,
+    /// Jobs and kinds of task the accuracy check paused (design K6b), with the person's overrides.
+    #[serde(default)]
+    pub accuracy_paused: Vec<PausedScope>,
+}
+
+/// One job or kind of task whose next-step tips the accuracy check paused (design K6b).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PausedScope {
+    /// `run_ship` or `code_change/fix_bug`: what `aiq config set keep-on.<scope> on` takes.
+    pub scope: String,
+    /// "Run or ship it" or "Code a change: Fixing a bug".
+    pub label: String,
+    /// The second reading agreed with the judge `agreed` of `checked` times (Inferred: a second model).
+    pub agreed: u32,
+    pub checked: u32,
+    /// The person chose "Keep showing" for this evidence, so tips still show.
+    pub kept_on: bool,
 }
 
 /// A judged task a next-rung guess leaned on: when, which tool, which kind. Never its text.

@@ -38,6 +38,8 @@ pub enum Reason {
     Cooldown,
     /// The tip's habit is Adopted: no point coaching it (D12).
     HabitAdopted,
+    /// The latest accuracy check agreed with the judge under 8 in 10 for this job or kind (design K6b).
+    AccuracyPaused,
 }
 
 impl Reason {
@@ -56,6 +58,7 @@ impl Reason {
             Reason::Snoozed => "snoozed",
             Reason::Cooldown => "cooldown",
             Reason::HabitAdopted => "habit_adopted",
+            Reason::AccuracyPaused => "accuracy_paused",
         }
     }
 }

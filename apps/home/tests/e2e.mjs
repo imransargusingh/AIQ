@@ -660,6 +660,37 @@ await test("Settings: next-step tips auto/on/off, AIQ's self-check stop with Tur
   await stopped.context().close();
 });
 
+await test("Accuracy pause (K6b): Home and Settings say why, Keep showing and Let AIQ decide go through the core", async () => {
+  const paused = (s) => {
+    s.settings.accuracy_paused = [
+      { scope: "run_ship", label: "Run or ship it", agreed: 6, checked: 10, kept_on: false },
+      { scope: "code_change/fix_bug", label: "Code a change: Fixing a bug", agreed: 4, checked: 6, kept_on: true },
+    ];
+  };
+  const home = await open("coaching", { edit: paused });
+  const ht = await home.locator("main").innerText();
+  assert.match(ht, /Run or ship it: AIQ paused these next-step tips\. A second model agreed with its judge only 6 of 10 times, under 8 in 10\./);
+  assert.match(ht, /Code a change: Fixing a bug: next-step tips stay on because you chose to keep them/);
+  await home.getByRole("button", { name: "Keep showing" }).click();
+  await home.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Run or ship it: next-step tips kept on.");
+  assert.deepEqual(await axe(home), []);
+  await home.context().close();
+  const st = await open("coaching", { hash: "#settings", edit: paused });
+  await st.getByRole("button", { name: "Let AIQ decide" }).click();
+  await st.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Code a change: Fixing a bug: AIQ decides again.");
+  const calls = await st.evaluate(() => window.__AIQ_FIXTURE__.calls.filter((c) => c.cmd === "set_setting").map((c) => c.args));
+  assert.deepEqual(calls, [{ key: "keep_on.code_change/fix_bug", value: "auto" }]);
+  assert.deepEqual(await axe(st), []);
+  await st.context().close();
+  // "Always on" ignores pauses, so nothing is shown; with none paused Settings says the rule exists.
+  const on = await open("coaching", { hash: "#settings", edit: (s) => (paused(s), (s.settings.next_rung_tips = "on")) });
+  assert.equal(await on.getByRole("button", { name: "Keep showing" }).count(), 0);
+  await on.context().close();
+  const none = await open("coaching", { hash: "#settings" });
+  assert.match(await none.locator("main").innerText(), /AIQ also pauses the tips for a job or kind of task by itself/);
+  await none.context().close();
+});
+
 await browser.close();
 server.close();
 const failed = results.filter((r) => r[1] !== "pass").length;

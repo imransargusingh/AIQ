@@ -8,7 +8,7 @@ use aiq_core::service::{Service, TipLineOut};
 use aiq_core::sysclock::format_rfc3339_ms;
 use aiq_domain::PackSource;
 use aiq_domain::clock::{Clock, Now};
-use aiq_store::{JudgmentRow, Store, TypeGuessRow};
+use aiq_store::{CheckRow, CheckRunRow, JudgmentRow, Store, TypeGuessRow};
 use std::sync::{Arc, Mutex};
 use tempfile::TempDir;
 
@@ -308,6 +308,96 @@ fn self_check_turns_tips_off_at_seven_of_ten_and_on_brings_them_back() {
     h.advance(2 * HOUR);
     h.prompt("copilot-cli", "b", NEW);
     assert!(full(h.cp_turn_end("b")).is_some());
+}
+
+/// One accuracy-check run over ten code_change "tests" judgments; the reader agrees on `agree` of them.
+fn check_run(path: &std::path::Path, run: &str, started: i64, agree: usize) {
+    let s = Store::open(path).unwrap();
+    let ids: Vec<String> = (0..10).map(|i| format!("{run}-c{i}")).collect();
+    s.insert_check_run(&CheckRunRow {
+        run_id: run.into(),
+        seed: 1,
+        requested: 10,
+        sample: ids.iter().map(|id| format!("j-{id}")).collect(),
+        started_utc_ms: started,
+        check_version: "c1".into(),
+    })
+    .unwrap();
+    for (i, id) in ids.iter().enumerate() {
+        s.insert_judgment(&judgment(id, "tests")).unwrap();
+        let (job, ty) = if i < agree { ("code_change", "tests") } else { ("ask_research", "explain") };
+        s.insert_check(&CheckRow {
+            check_id: format!("k-{id}"),
+            run_id: run.into(),
+            judgment_id: format!("j-{id}"),
+            task_id: id.clone(),
+            grader_provider: "copilot-cli".into(),
+            grader_model: Some("reader".into()),
+            outcome: "ok".into(),
+            answer: Some(format!(
+                r#"{{"job":"{job}","task_type":"{ty}","current_rung":3,"f4_goal_context_constraints":null,
+                "f5_reprompts_added_information":null,"f6_output_checked":null,"f7_written_brief":null,
+                "f12_step_by_step":null,"f13_whole_outcome_handed_over":null}}"#
+            )),
+            latency_ms: 1,
+            cost_usd: None,
+            checked_utc_ms: started,
+        })
+        .unwrap();
+    }
+}
+
+/// Design K6b: the accuracy check under 8 of 10 for a job holds its tips (recorded as accuracy_paused), the
+/// person can keep them showing, and a later check that clears the bar brings them back by itself.
+#[test]
+fn accuracy_check_pauses_a_job_keep_on_overrides_and_a_later_check_resumes() {
+    let mut h = H::new();
+    h.seed();
+    check_run(&h.path, "r1", T0, 7);
+    h.prompt("copilot-cli", "a", NEW);
+    assert!(full(h.cp_turn_end("a")).is_none(), "7 of 10: paused");
+    assert!(h.decisions().iter().any(|(o, r, _)| o == "drop" && r == "accuracy_paused"), "{:?}", h.decisions());
+    let st = h.svc.status().coach.unwrap();
+    let job = st.accuracy_paused.iter().find(|p| p.scope == "code_change").unwrap();
+    assert_eq!((job.agreed, job.checked, job.kept_on, job.label.as_str()), (7, 10, false, "Code a change"));
+    assert!(st.accuracy_paused.iter().any(|p| p.scope == "code_change/tests"), "the kind is under the bar too");
+    assert!(st.tips_on, "the self-check is a separate rule and stays on");
+
+    // Keep showing: both the job and the kind, for this evidence.
+    assert!(h.svc.set("keep_on.run_ship", "on").is_err(), "not paused, nothing to keep on");
+    assert!(h.svc.set("keep_on.code_change", "maybe").is_err());
+    assert!(h.svc.set("keep_on.Bad/Scope/x", "on").is_err());
+    h.svc.set("keep_on.code_change", "on").unwrap();
+    h.svc.set("keep_on.code_change/tests", "on").unwrap();
+    h.advance(2 * HOUR);
+    h.prompt("copilot-cli", "b", NEW);
+    assert!(full(h.cp_turn_end("b")).is_some(), "{:?}", h.decisions());
+    assert!(h.svc.status().coach.unwrap().accuracy_paused.iter().all(|p| p.kept_on));
+
+    // A newer check, still under the bar: new evidence, so AIQ decides again and pauses.
+    check_run(&h.path, "r2", T0 + HOUR, 6);
+    h.advance(80 * HOUR);
+    h.prompt("copilot-cli", "c", NEW);
+    assert!(full(h.cp_turn_end("c")).is_none(), "{:?}", h.decisions());
+    assert!(h.svc.status().coach.unwrap().accuracy_paused.iter().any(|p| !p.kept_on));
+
+    // A later check that clears the bar: tips come back with no action from the person.
+    check_run(&h.path, "r3", T0 + 2 * HOUR, 9);
+    h.advance(80 * HOUR);
+    h.prompt("copilot-cli", "d", NEW);
+    assert!(full(h.cp_turn_end("d")).is_some(), "{:?}", h.decisions());
+    assert!(h.svc.status().coach.unwrap().accuracy_paused.is_empty());
+}
+
+/// "Always on" ignores the accuracy pause, as it ignores the self-check.
+#[test]
+fn always_on_ignores_the_accuracy_pause() {
+    let mut h = H::new();
+    h.seed();
+    check_run(&h.path, "r1", T0, 5);
+    h.svc.set("next_rung_tips", "on").unwrap();
+    h.prompt("copilot-cli", "a", NEW);
+    assert!(full(h.cp_turn_end("a")).is_some(), "{:?}", h.decisions());
 }
 
 /// Coaching-loop US-1: the first-prompt decision within 2 s p95 with 5,000 judgments (measured here, printed).

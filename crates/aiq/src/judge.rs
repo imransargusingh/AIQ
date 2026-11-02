@@ -1830,14 +1830,21 @@ pub fn check_report(store: &Store) -> aiq_store::Result<String> {
             t.judge_unknown
         );
     }
-    let low: Vec<String> = ag
-        .by_kind
-        .iter()
-        .filter(|(_, c)| c.n >= 5 && (c.k as f64) < 0.8 * c.n as f64)
-        .map(|((j, t), c)| format!("{j}/{t} ({} of {})", c.k, c.n))
-        .collect();
-    if !low.is_empty() {
-        o += &format!("  Kinds of task under 8 of 10 (at least 5 checked): {}\n", low.join(", "));
+    // The pause rule (design K6b) over every check of a still-current judgment, newest runs first: the same
+    // verdicts the live tips read, so the report and the tips can't disagree.
+    let verdicts = aiq_domain::check::verdicts(&aiq_core::coaching::readings(store)?);
+    let paused: Vec<&aiq_domain::check::Verdict> = verdicts.iter().filter(|v| v.paused).collect();
+    if paused.is_empty() {
+        o += "  Paused by this check: nothing (a job pauses under 8 of 10 with at least 10 checked, a kind with at least 5)\n";
+    } else {
+        let w: Vec<String> = paused
+            .iter()
+            .map(|v| format!("{} ({} of {})", aiq_core::coaching::scope_label(&v.scope), v.agree.k, v.agree.n))
+            .collect();
+        o += &format!(
+            "  Paused by this check (next-step tips held until a later check clears 8 of 10): {}\n",
+            w.join(", ")
+        );
     }
     let m: Vec<String> =
         models.iter().map(|(p, m)| format!("{p} {}", m.as_deref().unwrap_or("(model not reported)"))).collect();
@@ -2602,6 +2609,7 @@ mod tests {
         assert!(rep.contains("Job: 4 of 4"), "{rep}");
         assert!(rep.contains("F6: none checked; can't settle 4"), "{rep}");
         assert!(rep.contains("Uncertain, code_change"), "{rep}");
+        assert!(rep.contains("Paused by this check: nothing"), "4 checked is too few to pause: {rep}");
     }
 
     #[test]

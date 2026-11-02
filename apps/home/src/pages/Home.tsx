@@ -5,7 +5,7 @@
 import { useState } from "react";
 import { KindList, judgedBy, pct } from "../coach";
 import { RUNGS, day, folderName, plural, rungLabel, sentence, toolName, topPlaces, when } from "../format";
-import { Banners, Title, type Ctx } from "../ui";
+import { AccuracyPaused, Banners, Title, type Ctx } from "../ui";
 
 export function Home(ctx: Ctx) {
   const { snap, go } = ctx;
@@ -45,6 +45,7 @@ export function Home(ctx: Ctx) {
   return (
     <div className="page">
       <Banners {...ctx} />
+      <AccuracyPaused {...ctx} />
       <Title sr>Home</Title>
       <section
         className="mainrung"
