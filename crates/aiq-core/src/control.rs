@@ -97,70 +97,6 @@ pub fn finish_setup(paths: &Paths) -> std::io::Result<()> {
     crate::paths::write_user_only(&paths.setup_flag(), b"done\n")
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn pause_flag_round_trip_without_core() {
-        let d = tempfile::tempdir().unwrap();
-        let p = Paths::at(d.path());
-        assert!(!is_paused(&p));
-        set_paused(&p, true, Duration::from_millis(50)).unwrap();
-        assert!(is_paused(&p));
-        set_paused(&p, false, Duration::from_millis(50)).unwrap();
-        set_paused(&p, false, Duration::from_millis(50)).unwrap();
-        assert!(!is_paused(&p));
-    }
-
-    #[test]
-    fn setting_without_core_is_not_running() {
-        let d = tempfile::tempdir().unwrap();
-        let p = Paths::at(d.path());
-        assert_eq!(set_setting(&p, "daily_cap", "3", Duration::from_millis(50)), Err(ControlError::NotRunning));
-    }
-
-    #[test]
-    fn setup_flag_round_trip() {
-        let d = tempfile::tempdir().unwrap();
-        let p = Paths::at(&d.path().join("fresh"));
-        assert!(!setup_done(&p));
-        finish_setup(&p).unwrap();
-        assert!(setup_done(&p));
-    }
-
-    #[test]
-    fn forget_item_without_core_deletes_in_the_store() {
-        let d = tempfile::tempdir().unwrap();
-        let p = Paths::at(d.path());
-        assert!(matches!(forget_item(&p, "e1", Duration::from_millis(50)), Err(ControlError::Refused(_))));
-        let s = aiq_store::Store::open(&p.db()).unwrap();
-        s.raw()
-            .execute_batch(
-                "INSERT INTO surface_session VALUES ('claude-code', 's', 0);
-                 INSERT INTO event VALUES ('e1', 'claude-code', 's', 'prompt', 1, 1, 'p1', NULL, 't', 5, '{\"has_text\":1}');
-                 INSERT INTO content VALUES ('e1', 'hello');",
-            )
-            .unwrap();
-        drop(s);
-        forget_item(&p, "e1", Duration::from_millis(50)).unwrap();
-        let s = aiq_store::Store::open(&p.db()).unwrap();
-        let n: i64 = s.raw().query_row("SELECT count(*) FROM content", [], |r| r.get(0)).unwrap();
-        assert_eq!(n, 0);
-        assert!(matches!(forget_item(&p, "e1", Duration::from_millis(50)), Err(ControlError::Refused(_))));
-    }
-
-    #[test]
-    fn forget_without_core_deletes_files() {
-        let d = tempfile::tempdir().unwrap();
-        let p = Paths::at(d.path());
-        p.ensure_dirs().unwrap();
-        std::fs::write(p.spool(), "x\n").unwrap();
-        forget_all(&p, Duration::from_millis(50)).unwrap();
-        assert!(!p.spool().exists());
-    }
-}
-
 /// Record the person's answer to a tip (coaching-from-rungs D8): through the core when it runs, else
 /// directly in the store, as nobody else writes while the core is down.
 pub fn tip_feedback(
@@ -230,4 +166,68 @@ fn direct_store(paths: &Paths) -> Result<aiq_store::Store, ControlError> {
 
 fn now_ms() -> i64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pause_flag_round_trip_without_core() {
+        let d = tempfile::tempdir().unwrap();
+        let p = Paths::at(d.path());
+        assert!(!is_paused(&p));
+        set_paused(&p, true, Duration::from_millis(50)).unwrap();
+        assert!(is_paused(&p));
+        set_paused(&p, false, Duration::from_millis(50)).unwrap();
+        set_paused(&p, false, Duration::from_millis(50)).unwrap();
+        assert!(!is_paused(&p));
+    }
+
+    #[test]
+    fn setting_without_core_is_not_running() {
+        let d = tempfile::tempdir().unwrap();
+        let p = Paths::at(d.path());
+        assert_eq!(set_setting(&p, "daily_cap", "3", Duration::from_millis(50)), Err(ControlError::NotRunning));
+    }
+
+    #[test]
+    fn setup_flag_round_trip() {
+        let d = tempfile::tempdir().unwrap();
+        let p = Paths::at(&d.path().join("fresh"));
+        assert!(!setup_done(&p));
+        finish_setup(&p).unwrap();
+        assert!(setup_done(&p));
+    }
+
+    #[test]
+    fn forget_item_without_core_deletes_in_the_store() {
+        let d = tempfile::tempdir().unwrap();
+        let p = Paths::at(d.path());
+        assert!(matches!(forget_item(&p, "e1", Duration::from_millis(50)), Err(ControlError::Refused(_))));
+        let s = aiq_store::Store::open(&p.db()).unwrap();
+        s.raw()
+            .execute_batch(
+                "INSERT INTO surface_session VALUES ('claude-code', 's', 0);
+                 INSERT INTO event VALUES ('e1', 'claude-code', 's', 'prompt', 1, 1, 'p1', NULL, 't', 5, '{\"has_text\":1}');
+                 INSERT INTO content VALUES ('e1', 'hello');",
+            )
+            .unwrap();
+        drop(s);
+        forget_item(&p, "e1", Duration::from_millis(50)).unwrap();
+        let s = aiq_store::Store::open(&p.db()).unwrap();
+        let n: i64 = s.raw().query_row("SELECT count(*) FROM content", [], |r| r.get(0)).unwrap();
+        assert_eq!(n, 0);
+        assert!(matches!(forget_item(&p, "e1", Duration::from_millis(50)), Err(ControlError::Refused(_))));
+    }
+
+    #[test]
+    fn forget_without_core_deletes_files() {
+        let d = tempfile::tempdir().unwrap();
+        let p = Paths::at(d.path());
+        p.ensure_dirs().unwrap();
+        std::fs::write(p.spool(), "x\n").unwrap();
+        forget_all(&p, Duration::from_millis(50)).unwrap();
+        assert!(!p.spool().exists());
+    }
 }

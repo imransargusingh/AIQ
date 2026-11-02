@@ -188,7 +188,9 @@ pub fn record_feedback(
                 .map_err(|_| format!("card {c} is unreadable"))?
                 .tip_id
         }
-        (None, Some(t)) if !t.is_empty() && t.len() <= 80 && t.chars().all(|c| c.is_ascii_alphanumeric() || "._-".contains(c)) => {
+        (None, Some(t))
+            if !t.is_empty() && t.len() <= 80 && t.chars().all(|c| c.is_ascii_alphanumeric() || "._-".contains(c)) =>
+        {
             t.to_owned()
         }
         _ => return Err("name a card or a tip".into()),

@@ -191,7 +191,11 @@ impl PackV1 {
             return Err(format!("no tip for opportunity {}", r.opportunity_id));
         }
         let c = &self.coach;
-        for (n, x) in [("type_majority", c.type_majority), ("match_threshold", c.match_threshold), ("guess_precision", c.guess_precision)] {
+        for (n, x) in [
+            ("type_majority", c.type_majority),
+            ("match_threshold", c.match_threshold),
+            ("guess_precision", c.guess_precision),
+        ] {
             if !(0.0..=1.0).contains(&x) {
                 return Err(format!("coach.{n} must be in 0..=1"));
             }

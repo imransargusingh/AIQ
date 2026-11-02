@@ -816,8 +816,8 @@ pub fn run(r: &Run<'_>) -> Result<Report, String> {
             continue;
         }
         let provider = if name == CLAUDE { r.claude } else { r.copilot };
-        let (j, results) =
-            judge_task(r.store, r.paths, provider, name, t, &turns, known, &judged_now, &pack.reprompt).map_err(|e| e.to_string())?;
+        let (j, results) = judge_task(r.store, r.paths, provider, name, t, &turns, known, &judged_now, &pack.reprompt)
+            .map_err(|e| e.to_string())?;
         allowed -= 1;
         rep.budget_left = rep.budget_left.saturating_sub(1);
         rep.cost_usd += results.iter().filter_map(|c| c.cost_usd).sum::<f64>();

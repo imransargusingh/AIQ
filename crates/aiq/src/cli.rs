@@ -483,7 +483,14 @@ mod tests {
 
     #[test]
     fn render_show_unknown_and_deleted_states() {
-        let none = ShowReply { card: None, outcome: None, reason_code: None, delivered: false, evidence: vec![], leaned_on: vec![] };
+        let none = ShowReply {
+            card: None,
+            outcome: None,
+            reason_code: None,
+            delivered: false,
+            evidence: vec![],
+            leaned_on: vec![],
+        };
         assert_eq!(render_show(&none), "No card with that id.\n");
     }
 

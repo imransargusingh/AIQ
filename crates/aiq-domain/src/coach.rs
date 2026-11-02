@@ -128,9 +128,7 @@ pub fn moves_for<'a>(t: &JudgedTask, moves: &'a [MoveDef]) -> Vec<&'a MoveDef> {
     moves
         .iter()
         .filter(|m| m.step == t.current && job_matches(m, &t.job))
-        .filter(|m| {
-            m.facts.iter().any(|f| fails.contains(f.as_str()) && m.min_confidence.is_none_or(|c| conf(f) >= c))
-        })
+        .filter(|m| m.facts.iter().any(|f| fails.contains(f.as_str()) && m.min_confidence.is_none_or(|c| conf(f) >= c)))
         .collect()
 }
 
@@ -167,23 +165,39 @@ pub enum TipPref {
 
 /// Latest off / on / snooze answer decides; helpful and not-helpful don't change whether it shows.
 pub fn tip_pref(feedback: &[Feedback], tip_id: &str, now_ms: i64, p: &CoachParams) -> TipPref {
-    let last = feedback.iter().filter(|f| f.tip_id == tip_id && ["off", "on", "snooze"].contains(&f.answer.as_str())).max_by_key(|f| f.utc_ms);
+    let last = feedback
+        .iter()
+        .filter(|f| f.tip_id == tip_id && ["off", "on", "snooze"].contains(&f.answer.as_str()))
+        .max_by_key(|f| f.utc_ms);
     match last.map(|f| (f.answer.as_str(), f.utc_ms)) {
         Some(("off", _)) => TipPref::Off,
-        Some(("snooze", at)) if now_ms < at + p.snooze_days as i64 * DAY_MS => TipPref::Snoozed(at + p.snooze_days as i64 * DAY_MS),
+        Some(("snooze", at)) if now_ms < at + p.snooze_days as i64 * DAY_MS => {
+            TipPref::Snoozed(at + p.snooze_days as i64 * DAY_MS)
+        }
         _ => TipPref::Shown,
     }
 }
 
 /// Two "Not helpful" answers in the window rank the tip below every tip without one (US-4).
-pub fn ranked_last(feedback: &[Feedback], flags: &[Flag], job: &str, move_id: &str, now_ms: i64, p: &CoachParams) -> bool {
+pub fn ranked_last(
+    feedback: &[Feedback],
+    flags: &[Flag],
+    job: &str,
+    move_id: &str,
+    now_ms: i64,
+    p: &CoachParams,
+) -> bool {
     let since = now_ms - p.not_helpful_days as i64 * DAY_MS;
     let id = tip_id(move_id);
     let nh = feedback.iter().filter(|f| f.tip_id == id && f.answer == "not_helpful" && f.utc_ms >= since).count();
     let nu = flags
         .iter()
         .filter(|f| {
-            f.job == job && f.move_id == move_id && f.action == "flag" && f.reason.as_deref() == Some("not_useful") && f.utc_ms >= since
+            f.job == job
+                && f.move_id == move_id
+                && f.action == "flag"
+                && f.reason.as_deref() == Some("not_useful")
+                && f.utc_ms >= since
         })
         .count();
     nh >= 2 || nu >= 2
@@ -256,7 +270,13 @@ pub struct TypeRow {
 }
 
 /// One row per (job, task type) with judged tasks whose first prompt is in the window, most frequent first.
-pub fn type_rows(tasks: &[JudgedTask], moves: &[MoveDef], flags: &[Flag], now_ms: i64, p: &CoachParams) -> Vec<TypeRow> {
+pub fn type_rows(
+    tasks: &[JudgedTask],
+    moves: &[MoveDef],
+    flags: &[Flag],
+    now_ms: i64,
+    p: &CoachParams,
+) -> Vec<TypeRow> {
     let since = now_ms - p.window_days as i64 * DAY_MS;
     let mut groups: BTreeMap<(&str, &str), Vec<&JudgedTask>> = BTreeMap::new();
     for t in tasks.iter().filter(|t| t.first_ms >= since) {
@@ -335,7 +355,14 @@ pub fn type_rows(tasks: &[JudgedTask], moves: &[MoveDef], flags: &[Flag], now_ms
 
 /// Home's opportunity rows: coached rows, at most `n`, by times a week, then rungs to gain, then label; a move
 /// with two "Not helpful" (or two "not useful" flags) in 30 days ranks after every other.
-pub fn opportunities<'a>(rows: &'a [TypeRow], feedback: &[Feedback], flags: &[Flag], now_ms: i64, p: &CoachParams, n: usize) -> Vec<&'a TypeRow> {
+pub fn opportunities<'a>(
+    rows: &'a [TypeRow],
+    feedback: &[Feedback],
+    flags: &[Flag],
+    now_ms: i64,
+    p: &CoachParams,
+    n: usize,
+) -> Vec<&'a TypeRow> {
     let mut v: Vec<(bool, &TypeRow)> = rows
         .iter()
         .filter(|r| r.state == RowState::Coach)
@@ -344,7 +371,10 @@ pub fn opportunities<'a>(rows: &'a [TypeRow], feedback: &[Feedback], flags: &[Fl
     v.sort_by(|(la, a), (lb, b)| {
         la.cmp(lb)
             .then_with(|| b.tasks.cmp(&a.tasks))
-            .then_with(|| (b.potential.unwrap_or(0) - b.today.unwrap_or(0)).cmp(&(a.potential.unwrap_or(0) - a.today.unwrap_or(0))))
+            .then_with(|| {
+                (b.potential.unwrap_or(0) - b.today.unwrap_or(0))
+                    .cmp(&(a.potential.unwrap_or(0) - a.today.unwrap_or(0)))
+            })
             .then_with(|| a.label.cmp(b.label))
     });
     v.into_iter().take(n).map(|(_, r)| r).collect()
@@ -474,11 +504,11 @@ pub fn replay(obs: &[(i64, bool)], p: &CoachParams, offset_min: i32) -> (HabitSt
         let eligible = window.len() as u32;
         let seen = window.iter().filter(|(_, s)| *s).count() as u32;
         let before = state;
+        let lapsed = state == HabitState::Adopted && eligible >= p.habit_min;
+        let first_use = state == HabitState::NotYet && upto.iter().any(|(_, s)| *s);
         if eligible >= p.habit_min && seen * 2 > eligible {
             state = HabitState::Adopted;
-        } else if state == HabitState::Adopted && eligible >= p.habit_min {
-            state = HabitState::Tried;
-        } else if state == HabitState::NotYet && upto.iter().any(|(_, s)| *s) {
+        } else if lapsed || first_use {
             state = HabitState::Tried;
         }
         if state != before {
@@ -497,11 +527,8 @@ pub fn habits(tasks: &[JudgedTask], moves: &[MoveDef], now_ms: i64, offset_min: 
     let mut out = Vec::new();
     for job in rung::PACK_JOBS {
         for m in moves.iter().filter(|m| job_matches(m, job)) {
-            let obs: Vec<(i64, bool)> = tasks
-                .iter()
-                .filter(|t| t.job == job)
-                .filter_map(|t| observe(t, m).map(|s| (t.first_ms, s)))
-                .collect();
+            let obs: Vec<(i64, bool)> =
+                tasks.iter().filter(|t| t.job == job).filter_map(|t| observe(t, m).map(|s| (t.first_ms, s))).collect();
             if !obs.iter().any(|(t, _)| *t >= since) {
                 continue;
             }
@@ -550,7 +577,8 @@ pub fn guess_type(words: &BTreeSet<String>, neighbours: &[Neighbour], p: &CoachP
     if words.is_empty() {
         return None;
     }
-    let mut scored: Vec<(f64, &Neighbour)> = neighbours.iter().map(|n| (crate::text::jaccard(words, &n.words), n)).collect();
+    let mut scored: Vec<(f64, &Neighbour)> =
+        neighbours.iter().map(|n| (crate::text::jaccard(words, &n.words), n)).collect();
     scored.sort_by(|a, b| b.0.total_cmp(&a.0).then_with(|| b.1.first_ms.cmp(&a.1.first_ms)));
     let top: Vec<&(f64, &Neighbour)> = scored.iter().take(p.match_top as usize).collect();
     let (best, n0) = **top.first()?;
@@ -582,7 +610,10 @@ impl GuessCheck {
 
 /// Check each guess (task id, job, type) against that task's later judgment. Not-yet-judged and Uncertain
 /// judgments are not checked; a judged `other` counts as wrong.
-pub fn check_guesses<'a>(guesses: impl IntoIterator<Item = (&'a str, &'a str, &'a str)>, judged: &BTreeMap<&str, &JudgedTask>) -> GuessCheck {
+pub fn check_guesses<'a>(
+    guesses: impl IntoIterator<Item = (&'a str, &'a str, &'a str)>,
+    judged: &BTreeMap<&str, &JudgedTask>,
+) -> GuessCheck {
     let mut c = GuessCheck::default();
     let mut seen = BTreeSet::new();
     for (task, job, ty) in guesses {
@@ -640,8 +671,10 @@ mod tests {
 
     /// facts JSON: each (id, Some(v)) known at 0.9, missing ids unknown.
     fn facts(known: &[(&str, bool)], f3: Option<&str>) -> String {
-        let mut parts: Vec<String> =
-            known.iter().map(|(id, v)| format!(r#""{id}":{{"value":{v},"confidence":0.9,"source":"model","disputed":false}}"#)).collect();
+        let mut parts: Vec<String> = known
+            .iter()
+            .map(|(id, v)| format!(r#""{id}":{{"value":{v},"confidence":0.9,"source":"model","disputed":false}}"#))
+            .collect();
         if let Some(c) = f3 {
             parts.push(format!(r#""F3":{{"value":"{c}","source":"log"}}"#));
         }
@@ -649,7 +682,16 @@ mod tests {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn task(id: &str, day: i64, ty: &str, current: u8, state: &str, coachable: bool, fj: &str, corrections: Option<u32>) -> JudgedTask {
+    fn task(
+        id: &str,
+        day: i64,
+        ty: &str,
+        current: u8,
+        state: &str,
+        coachable: bool,
+        fj: &str,
+        corrections: Option<u32>,
+    ) -> JudgedTask {
         JudgedTask::new(
             id,
             true,
@@ -670,7 +712,19 @@ mod tests {
 
     /// A Delegated task where the agent did not run the checks: move agent_checks.
     fn delegated_person_checks(id: &str, day: i64) -> JudgedTask {
-        task(id, day, "tests", 3, "judged", true, &facts(&[("F1", true), ("F13", true), ("F6", true), ("F12", false), ("F7", false), ("F8", false)], Some("person")), Some(0))
+        task(
+            id,
+            day,
+            "tests",
+            3,
+            "judged",
+            true,
+            &facts(
+                &[("F1", true), ("F13", true), ("F6", true), ("F12", false), ("F7", false), ("F8", false)],
+                Some("person"),
+            ),
+            Some(0),
+        )
     }
 
     #[test]
@@ -680,7 +734,16 @@ mod tests {
         let got: Vec<&str> = moves_for(&t, &m).iter().map(|m| m.move_id.as_str()).collect();
         assert_eq!(got, vec!["written_brief", "agent_checks", "split_and_check"], "pack order");
         // Unknown F3 and F7, F8: no move.
-        let u = task("b", 1, "tests", 3, "judged", true, &facts(&[("F1", true), ("F13", true), ("F6", true), ("F12", false)], None), Some(0));
+        let u = task(
+            "b",
+            1,
+            "tests",
+            3,
+            "judged",
+            true,
+            &facts(&[("F1", true), ("F13", true), ("F6", true), ("F12", false)], None),
+            Some(0),
+        );
         assert!(moves_for(&u, &m).is_empty(), "unknown is never a move");
         // Not coachable or Uncertain: no move.
         let mut nc = delegated_person_checks("c", 1);
@@ -690,13 +753,24 @@ mod tests {
         un.state = "uncertain".into();
         assert!(moves_for(&un, &m).is_empty());
         // Directed → Delegated driven step by step: let_agent_edit (F12 rule-out).
-        let d = task("e", 1, "tests", 2, "judged", true, &facts(&[("F1", true), ("F12", true), ("F13", true), ("F6", true)], None), Some(0));
+        let d = task(
+            "e",
+            1,
+            "tests",
+            2,
+            "judged",
+            true,
+            &facts(&[("F1", true), ("F12", true), ("F13", true), ("F6", true)], None),
+            Some(0),
+        );
         assert_eq!(moves_for(&d, &m).iter().map(|m| m.move_id.as_str()).collect::<Vec<_>>(), vec!["let_agent_edit"]);
         // A weak fact's "no" needs its move's higher bar (F4 at 0.9 here passes 0.8, at 0.7 it does not).
         let mut strict = m.clone();
         strict[0].min_confidence = Some(0.8);
         let weak = |c: f64| {
-            let fj = format!(r#"{{"F4":{{"value":false,"confidence":{c},"source":"model","disputed":false}},"F6":{{"value":true,"confidence":0.9,"source":"model","disputed":false}}}}"#);
+            let fj = format!(
+                r#"{{"F4":{{"value":false,"confidence":{c},"source":"model","disputed":false}},"F6":{{"value":true,"confidence":0.9,"source":"model","disputed":false}}}}"#
+            );
             task("w", 1, "tests", 1, "judged", true, &fj, Some(0))
         };
         assert_eq!(moves_for(&weak(0.9), &strict).len(), 1);
@@ -714,7 +788,8 @@ mod tests {
         let two = vec![delegated_person_checks("a", 1), delegated_person_checks("b", 2)];
         let r = type_rows(&two, &m, &[], NOW, &p);
         assert_eq!((r[0].state, r[0].tasks), (RowState::TooFew, 2));
-        let three = vec![delegated_person_checks("a", 1), delegated_person_checks("b", 2), delegated_person_checks("c", 3)];
+        let three =
+            vec![delegated_person_checks("a", 1), delegated_person_checks("b", 2), delegated_person_checks("c", 3)];
         let r = type_rows(&three, &m, &[], NOW, &p);
         assert_eq!(r[0].state, RowState::Coach);
         assert_eq!((r[0].today, r[0].potential), (Some(3), Some(4)));
@@ -765,7 +840,16 @@ mod tests {
         let p = params();
         let mut ts: Vec<JudgedTask> = (0..3).map(|i| delegated_person_checks(&format!("t{i}"), i + 1)).collect();
         for i in 0..4 {
-            let mut t = task(&format!("f{i}"), i + 1, "fix_bug", 1, "judged", true, &facts(&[("F4", false), ("F6", true)], None), Some(0));
+            let mut t = task(
+                &format!("f{i}"),
+                i + 1,
+                "fix_bug",
+                1,
+                "judged",
+                true,
+                &facts(&[("F4", false), ("F6", true)], None),
+                Some(0),
+            );
             t.facts.reprompts = 0;
             ts.push(t);
         }
@@ -869,7 +953,11 @@ mod tests {
         assert!(g.similarity >= 0.45);
         assert_eq!(g.neighbours.len(), 3);
         assert!(guess_type(&w(&["deploy", "kubernetes"]), &ns, &p).is_none(), "below threshold");
-        let split = vec![nb("a", "tests", &["unit", "tests"]), nb("c", "fix_bug", &["unit", "crash"]), nb("d", "review", &["unit", "pr"])];
+        let split = vec![
+            nb("a", "tests", &["unit", "tests"]),
+            nb("c", "fix_bug", &["unit", "crash"]),
+            nb("d", "review", &["unit", "pr"]),
+        ];
         assert!(guess_type(&w(&["unit", "tests"]), &split, &p).is_none(), "only 1 of 3 agree");
         let other = vec![nb("a", "other", &["x", "y"]), nb("b", "other", &["x", "y"])];
         assert!(guess_type(&w(&["x", "y"]), &other, &p).is_none(), "other never guesses");
@@ -883,13 +971,21 @@ mod tests {
         let map: BTreeMap<&str, &JudgedTask> = judged.iter().map(|t| (t.task_id.as_str(), t)).collect();
         let ids: Vec<String> = (0..10).map(|i| format!("t{i}")).collect();
         let g = |right: usize| -> GuessCheck {
-            check_guesses(ids.iter().enumerate().map(|(i, id)| (id.as_str(), "code_change", if i < right { "tests" } else { "fix_bug" })), &map)
+            check_guesses(
+                ids.iter()
+                    .enumerate()
+                    .map(|(i, id)| (id.as_str(), "code_change", if i < right { "tests" } else { "fix_bug" })),
+                &map,
+            )
         };
         assert_eq!(g(8), GuessCheck { checked: 10, right: 8 });
         assert!(!g(8).auto_off(&p));
         assert!(g(7).auto_off(&p));
         let nine: BTreeMap<&str, &JudgedTask> = map.iter().take(9).map(|(k, v)| (*k, *v)).collect();
-        assert!(!check_guesses(ids.iter().map(|id| (id.as_str(), "code_change", "fix_bug")), &nine).auto_off(&p), "9 checks is too few");
+        assert!(
+            !check_guesses(ids.iter().map(|id| (id.as_str(), "code_change", "fix_bug")), &nine).auto_off(&p),
+            "9 checks is too few"
+        );
     }
 
     #[test]

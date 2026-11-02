@@ -234,7 +234,14 @@ fn writer_loop(mut svc: Service<SystemClock>, rx: Receiver<Cmd>, paths: &Paths, 
                 let _ = reply.send(svc.tip_feedback(card_id.as_deref(), tip_id.as_deref(), &answer, &surface));
             }
             Cmd::GuidanceFlag { job, task_type, move_id, action, reason, note, reply } => {
-                let _ = reply.send(svc.guidance_flag(&job, &task_type, &move_id, &action, reason.as_deref(), note.as_deref()));
+                let _ = reply.send(svc.guidance_flag(
+                    &job,
+                    &task_type,
+                    &move_id,
+                    &action,
+                    reason.as_deref(),
+                    note.as_deref(),
+                ));
             }
             Cmd::DrainSpool => {
                 drain_spool(paths, &mut svc, counters);

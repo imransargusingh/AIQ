@@ -62,6 +62,8 @@ struct Pending<'a> {
 
 /// What the Copilot CLI status line shows.
 #[derive(Debug, Clone, PartialEq)]
+// One value per status-line call, never stored in bulk: the size difference does not matter.
+#[allow(clippy::large_enum_variant)]
 pub enum TipLineOut {
     Full(CardV1),
     /// The "1 tip waiting" marker, with the card id for `aiq show`.
@@ -255,7 +257,12 @@ impl<C: Clock> Service<C> {
         let now = self.clock.now();
         if self.coach.as_ref().is_none_or(|c| c.stale(&self.store, now.utc_ms)) {
             let c = coaching::Cache::build(&self.store, &self.pack, now)?;
-            info!(coach.cache_ms = c.build_ms, coach.tasks = c.tasks.len(), coach.neighbours = c.neighbours.len(), "coach.cache");
+            info!(
+                coach.cache_ms = c.build_ms,
+                coach.tasks = c.tasks.len(),
+                coach.neighbours = c.neighbours.len(),
+                "coach.cache"
+            );
             self.coach = Some(c);
         }
         Ok(self.coach.as_ref().expect("built above"))
@@ -277,18 +284,48 @@ impl<C: Clock> Service<C> {
             return Ok(());
         }
         let pack = self.pack.clone();
-        let cache = self.coach_cache()?.clone();
-        if !cache.tips_on(&mode, &pack) {
+        self.coach_cache()?;
+        // Taken out and put back so the decision can use `self` without copying thousands of neighbours.
+        let cache = self.coach.take().expect("built above");
+        let r = self.next_rung_with(&cache, &pack, &mode, surface, session, task_id, text, trace_id, started);
+        self.coach = Some(cache);
+        r
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn next_rung_with(
+        &mut self,
+        cache: &coaching::Cache,
+        pack: &aiq_contracts::pack::PackV1,
+        mode: &str,
+        surface: &str,
+        session: &str,
+        task_id: &str,
+        text: &str,
+        trace_id: Option<&str>,
+        started: std::time::Instant,
+    ) -> Result<(), StoreError> {
+        if !cache.tips_on(mode, pack) {
             if !self.guess_low_logged {
                 self.guess_low_logged = true;
                 self.counters.inc(codes::COACH_GUESS_LOW);
-                warn!(error.code = codes::COACH_GUESS_LOW, checked = cache.check.checked, right = cache.check.right, "next-rung tips turned off by AIQ's self-check");
+                warn!(
+                    error.code = codes::COACH_GUESS_LOW,
+                    checked = cache.check.checked,
+                    right = cache.check.right,
+                    "next-rung tips turned off by AIQ's self-check"
+                );
             }
             return Ok(());
         }
         let words = features(text, &pack.reprompt).words;
         let Some(g) = coach::guess_type(&words, &cache.neighbours, &pack.coach) else {
-            info!(ms = started.elapsed().as_millis() as u64, neighbours = cache.neighbours.len(), coach.outcome = "no_guess", "coach.guess");
+            info!(
+                ms = started.elapsed().as_millis() as u64,
+                neighbours = cache.neighbours.len(),
+                coach.outcome = "no_guess",
+                "coach.guess"
+            );
             return Ok(());
         };
         let now = self.clock.now();
@@ -302,12 +339,20 @@ impl<C: Clock> Service<C> {
             neighbours: g.neighbours.clone(),
             utc_ms: now.utc_ms,
         })?;
-        let row = cache.rows.iter().find(|r| r.job == g.job && r.task_type == g.task_type && r.state == coach::RowState::Coach);
+        let row = cache
+            .rows
+            .iter()
+            .find(|r| r.job == g.job && r.task_type == g.task_type && r.state == coach::RowState::Coach);
         let Some((row, m)) = row.and_then(|r| {
             let id = r.move_id.as_deref()?;
             pack.moves.iter().find(|m| m.move_id == id).map(|m| (r, m))
         }) else {
-            info!(ms = started.elapsed().as_millis() as u64, similarity = g.similarity, coach.outcome = "not_coachable", "coach.guess");
+            info!(
+                ms = started.elapsed().as_millis() as u64,
+                similarity = g.similarity,
+                coach.outcome = "not_coachable",
+                "coach.guess"
+            );
             return Ok(());
         };
         let tip = coach::tip_id(&m.move_id);
@@ -318,7 +363,11 @@ impl<C: Clock> Service<C> {
             TipPref::Shown => {
                 if self.store.deliveries_of_tip(&tip)?.first().is_some_and(|t| now.utc_ms - t < cooldown_ms) {
                     Some(Reason::Cooldown)
-                } else if cache.habits.iter().any(|h| h.job == row.job && h.move_id == m.move_id && h.state == HabitState::Adopted) {
+                } else if cache
+                    .habits
+                    .iter()
+                    .any(|h| h.job == row.job && h.move_id == m.move_id && h.state == HabitState::Adopted)
+                {
                     Some(Reason::HabitAdopted)
                 } else {
                     None
@@ -326,6 +375,7 @@ impl<C: Clock> Service<C> {
             }
         };
         let card = compose_move(m, &row.job, &row.task_type, &new_id(), &pack.version);
+        let (job, threshold) = (row.job.clone(), pack.coach.match_threshold);
         self.decide_and_record(
             surface,
             session,
@@ -337,15 +387,20 @@ impl<C: Clock> Service<C> {
                 reprompt_count: 0,
                 score: g.similarity,
                 evidence: &g.neighbours,
-                job: Job::Named(row.job.clone()),
+                job: Job::Named(job),
                 core_opportunity: false,
-                threshold: pack.coach.match_threshold,
+                threshold,
                 suppressed,
                 card,
             },
             trace_id,
         )?;
-        info!(ms = started.elapsed().as_millis() as u64, similarity = g.similarity, coach.outcome = "decided", "coach.guess");
+        info!(
+            ms = started.elapsed().as_millis() as u64,
+            similarity = g.similarity,
+            coach.outcome = "decided",
+            "coach.guess"
+        );
         Ok(())
     }
 
@@ -734,7 +789,13 @@ impl<C: Clock> Service<C> {
     }
 
     /// The person's answer to a tip, from any surface.
-    pub fn tip_feedback(&mut self, card_id: Option<&str>, tip_id: Option<&str>, answer: &str, surface: &str) -> Result<(), String> {
+    pub fn tip_feedback(
+        &mut self,
+        card_id: Option<&str>,
+        tip_id: Option<&str>,
+        answer: &str,
+        surface: &str,
+    ) -> Result<(), String> {
         coaching::record_feedback(&self.store, card_id, tip_id, answer, surface, self.clock.now().utc_ms).map(|_| ())
     }
 

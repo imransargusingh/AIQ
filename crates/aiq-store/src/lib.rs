@@ -1179,11 +1179,8 @@ impl Store {
             return Ok(HashMap::new());
         }
         // A store from before v6 (read by AIQ home without migrating) has no task-type columns: type unknown.
-        let typed = if self.has_column("judgment", "task_type")? {
-            "task_type, task_type_confidence"
-        } else {
-            "NULL, NULL"
-        };
+        let typed =
+            if self.has_column("judgment", "task_type")? { "task_type, task_type_confidence" } else { "NULL, NULL" };
         let mut st = self
             .conn
             .prepare(&format!(

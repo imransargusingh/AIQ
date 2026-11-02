@@ -1125,7 +1125,10 @@ mod tests {
             .map(|m| {
                 let v = m.value.map_or("null".to_owned(), |b| b.to_string());
                 let src = if m.source == Source::Log { "log" } else { "model" };
-                format!(r#""{}":{{"value":{v},"confidence":{},"source":"{src}","disputed":{}}}"#, m.id, m.confidence, m.disputed)
+                format!(
+                    r#""{}":{{"value":{v},"confidence":{},"source":"{src}","disputed":{}}}"#,
+                    m.id, m.confidence, m.disputed
+                )
             })
             .collect();
         parts.push(r#""F3":{"value":"agent","source":"log"}"#.into());
@@ -1153,7 +1156,10 @@ mod tests {
             cues: vec!["try again".into(), "that's wrong".into(), "not working".into()],
             span_surfaces: vec![],
         };
-        let t = turns(&["Try again please", "add a test for the parser", "That's wrong, the cap is 5", "not working"], None);
+        let t = turns(
+            &["Try again please", "add a test for the parser", "That's wrong, the cap is 5", "not working"],
+            None,
+        );
         assert_eq!(corrections(&t, &p), 2, "the first prompt never counts");
     }
 

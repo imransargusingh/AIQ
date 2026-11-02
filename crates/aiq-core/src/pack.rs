@@ -44,7 +44,10 @@ mod tests {
                 assert!(!t.chars().any(|c| ('1'..='5').contains(&c)), "{t}");
             }
             let longest = aiq_domain::coach::card_label("code_change", "review");
-            let line = format!("AIQ tip: {} · aiq show 0193f1c2-aaaa-7bbb-8ccc-0123456789ab", m.noticed.replace("{type}", &longest));
+            let line = format!(
+                "AIQ tip: {} · aiq show 0193f1c2-aaaa-7bbb-8ccc-0123456789ab",
+                m.noticed.replace("{type}", &longest)
+            );
             assert!(line.chars().count() <= 160, "{} chars: {line}", line.chars().count());
         }
         // Every step the rung guardrails need for each job has a move.
