@@ -146,6 +146,23 @@ impl H {
             self.cp_send(session, t);
         }
     }
+    /// A Copilot CLI prompt from a working folder; `gap_ms` before it.
+    fn cp_in(&mut self, folder: &str, session: &str, text: &str, gap_ms: i64) {
+        self.clock.advance(gap_ms);
+        let id = self.id();
+        let body = EventBody::Prompt(PromptPayload {
+            text: Some(text.into()),
+            chars: text.len() as u64,
+            prompt_id: None,
+            truncated: false,
+        });
+        let mut e = ev_on("copilot-cli", &id, session, self.clock.now().utc_ms, body);
+        e.cwd = Some(folder.into());
+        self.svc().ingest(&e, None);
+    }
+    fn prompts(&mut self) -> u64 {
+        self.svc().status().events_by_kind.iter().find(|(k, _)| k == "prompt").map_or(0, |(_, n)| *n)
+    }
     fn tip(&mut self, session: &str) -> Option<TipLineOut> {
         self.svc().tip_line("copilot-cli", Some(session))
     }
@@ -167,6 +184,7 @@ fn ev_on(surface: &str, id: &str, session: &str, ms: i64, body: EventBody) -> Ev
         seq: None,
         ts: format_rfc3339_ms(ms),
         collector_version: "test".into(),
+        cwd: None,
         body,
     }
 }
@@ -699,4 +717,55 @@ fn set_copilot_tip_stays_validates() {
     assert_eq!(h.svc().copilot_tip_stays(), aiq_domain::tipline::TipStays::NextPrompt);
     h.svc().set("copilot_tip_stays", "until-opened").unwrap();
     assert_eq!(h.svc().copilot_tip_stays(), aiq_domain::tipline::TipStays::UntilOpened);
+}
+
+// Import spec US-12, live side: an app's pipeline that calls Copilot with the same first prompt.
+#[test]
+fn automated_template_sessions_set_folder_aside_and_record_nothing_after() {
+    let mut h = H::new();
+    for i in 0..10 {
+        h.cp_in(
+            "C:\\Repos\\Executive_Presence",
+            &format!("run{i}"),
+            &format!("Collect profile for user {i} from https://x/{i}"),
+            3 * MIN,
+        );
+        h.cp_stop(&format!("run{i}"));
+    }
+    assert_eq!(h.prompts(), 10, "before the rule fires, the first ten are recorded (simplify: in design)");
+    h.cp_in("c:/repos/executive_presence/", "run10", "Collect profile for user 77 from https://x/77", 3 * MIN);
+    h.cp_stop("run10");
+    assert_eq!(h.prompts(), 10, "the 11th template session records nothing");
+    let st = h.svc().status();
+    assert_eq!(st.automated_folders, vec![("c:\\repos\\executive_presence".to_string(), "template".to_string())]);
+    assert!(st.core_counters.iter().any(|(k, n)| k == codes::INGEST_AUTOMATED && *n == 2), "prompt and stop");
+    // The folder stays set aside after a restart (persisted), whatever the prompt.
+    h.restart();
+    h.cp_in("C:\\Repos\\Executive_Presence", "run11", "something new entirely", 60 * MIN);
+    assert_eq!(h.prompts(), 10);
+    // Another folder is untouched.
+    h.cp_in("C:\\Repos\\AIQ", "mine", "Collect profile for user 1 from https://x/1", MIN);
+    assert_eq!(h.prompts(), 11);
+}
+
+#[test]
+fn automated_folder_person_session_recorded_from_second_prompt() {
+    let mut h = H::new();
+    h.svc().store().insert_folder_rule("/ep", "set_aside", "template", "live", T0).unwrap();
+    for t in [BASE, R1, R2, R3, "and one more reword of the same thing"] {
+        h.cp_in("/ep", "person", t, MIN);
+    }
+    assert_eq!(h.prompts(), 4, "first prompt ignored (H = 1 so far), then a person: recorded");
+    assert!(h.svc().status().core_counters.iter().any(|(k, n)| k == codes::INGEST_AUTOMATED && *n == 1));
+}
+
+#[test]
+fn include_folder_undoes_set_aside() {
+    let mut h = H::new();
+    h.svc().store().insert_folder_rule("/ep", "set_aside", "burst", "live", T0).unwrap();
+    assert!(!h.svc().include_folder("/other").unwrap(), "not set aside: nothing written");
+    assert!(h.svc().include_folder("/ep/").unwrap());
+    assert!(h.svc().status().automated_folders.is_empty());
+    h.cp_in("/ep", "s1", "hello there", MIN);
+    assert_eq!(h.prompts(), 1);
 }

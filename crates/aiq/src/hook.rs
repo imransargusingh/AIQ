@@ -19,6 +19,20 @@ pub const MAX_STDIN: u64 = 256 * 1024;
 /// Set by AIQ on processes it starts itself (the Phase 5 judge's `copilot -p` / `claude -p`), whose hooks
 /// would otherwise feed AIQ its own calls (surface spike: `copilot -p` fires the person's hooks).
 pub const INTERNAL_ENV: &str = "AIQ_INTERNAL";
+/// Claude Code's start mode, inherited by its hooks: `cli`, `claude-desktop`, or `sdk-*` for a headless
+/// `claude -p` / Agent SDK run. Import spec rule NI: `sdk-cli` sessions are automated (586 of 586 on
+/// Imran's laptop), so the live hook records nothing for them (US-12).
+/// assume: hooks inherit the variable like every child of Claude Code (seen in this session's tool
+/// processes, whose transcript `entrypoint` matches it). Confirm: a `claude -p` run with AIQ installed adds
+/// no events. If false: headless runs are still caught by the core's burst/template rule.
+pub const CLAUDE_ENTRYPOINT_ENV: &str = "CLAUDE_CODE_ENTRYPOINT";
+/// Longest working-folder path sent to the core.
+const MAX_CWD_BYTES: usize = 1024;
+
+/// Rule NI for Claude Code: an `sdk-*` entrypoint is a program, not a person.
+pub fn claude_headless(entrypoint: Option<&str>) -> bool {
+    entrypoint.is_some_and(|e| e.starts_with("sdk"))
+}
 /// Bytes past the cap that are read and thrown away (bounded, so a runaway writer cannot hold the hook).
 pub const MAX_DRAIN: u64 = 16 * 1024 * 1024;
 /// Connect + write budget (ADR-0005).
@@ -73,6 +87,9 @@ fn inner_outcome(paths: &Paths, host: &str, event: &str, host_ms: &mut Option<i6
     }
     if host != "claude-code" && host != "copilot" {
         return "unknown-host";
+    }
+    if host == "claude-code" && claude_headless(std::env::var(CLAUDE_ENTRYPOINT_ENV).ok().as_deref()) {
+        return "automated";
     }
     let v: Value = match serde_json::from_slice(&buf) {
         Ok(v @ Value::Object(_)) => v,
@@ -177,7 +194,7 @@ pub fn to_event(v: &Value, event: &str) -> Option<EventV1> {
         }),
         _ => return None,
     };
-    Some(new_event("claude-code", session, body))
+    Some(new_event("claude-code", session, cwd_of(v), body))
 }
 
 pub const COPILOT_CLI_SURFACE: &str = "copilot-cli";
@@ -210,7 +227,7 @@ pub fn to_copilot_event(v: &Value, event: &str, surface: &str) -> Option<EventV1
         "agentStop" => EventBody::Stop(StopPayload { stop_hook_active: false, prompt_id: None }),
         _ => return None,
     };
-    Some(new_event(surface, session, body))
+    Some(new_event(surface, session, cwd_of(v), body))
 }
 
 fn prompt_payload(raw: Option<&str>, prompt_id: Option<String>) -> PromptPayload {
@@ -224,7 +241,12 @@ fn prompt_payload(raw: Option<&str>, prompt_id: Option<String>) -> PromptPayload
     PromptPayload { text, chars: raw.map_or(0, |t| t.chars().count() as u64), prompt_id, truncated }
 }
 
-fn new_event(surface: &str, session: &str, body: EventBody) -> EventV1 {
+/// Both hosts send the session's working folder as `cwd`.
+fn cwd_of(v: &Value) -> Option<String> {
+    v.get("cwd").and_then(Value::as_str).filter(|c| !c.is_empty() && c.len() <= MAX_CWD_BYTES).map(str::to_owned)
+}
+
+fn new_event(surface: &str, session: &str, cwd: Option<String>, body: EventBody) -> EventV1 {
     let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);
     EventV1 {
         schema: SCHEMA.into(),
@@ -234,6 +256,7 @@ fn new_event(surface: &str, session: &str, body: EventBody) -> EventV1 {
         seq: None,
         ts: aiq_core::sysclock::format_rfc3339_ms(now),
         collector_version: env!("CARGO_PKG_VERSION").into(),
+        cwd,
         body,
     }
 }
@@ -321,6 +344,23 @@ mod tests {
         assert_eq!(copilot_surface(has(&["COPILOT_CLI_RUN_AS_NODE", "COPILOT_LOADER_PID"])), "copilot-cli");
         let v = json!({"sessionId":"v1","prompt":"x"});
         assert_eq!(to_copilot_event(&v, "userPromptSubmitted", VSCODE_SURFACE).unwrap().surface, "vscode");
+    }
+
+    #[test]
+    fn claude_headless_is_sdk_entrypoints_only() {
+        assert!(claude_headless(Some("sdk-cli")) && claude_headless(Some("sdk-ts")));
+        assert!(!claude_headless(Some("cli")) && !claude_headless(Some("claude-desktop")) && !claude_headless(None));
+    }
+
+    #[test]
+    fn events_carry_the_hosts_cwd() {
+        let v = json!({"sessionId":"c1","cwd":"C:\\EP","prompt":"x"});
+        assert_eq!(
+            to_copilot_event(&v, "userPromptSubmitted", COPILOT_CLI_SURFACE).unwrap().cwd.as_deref(),
+            Some("C:\\EP")
+        );
+        let v = json!({"session_id":"s","hook_event_name":"Stop","cwd":"x".repeat(MAX_CWD_BYTES + 1)});
+        assert_eq!(to_event(&v, "Stop").unwrap().cwd, None, "an oversized cwd is dropped, not cut");
     }
 
     #[test]

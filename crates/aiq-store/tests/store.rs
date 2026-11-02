@@ -46,6 +46,7 @@ fn seed(s: &mut Store) {
     )
     .unwrap();
     decide(s, "d1", "c1", "show_ready", "ok", 10);
+    s.insert_folder_rule("/ep", "set_aside", "template", "live", 10).unwrap();
     s.set_setting("daily_cap", "5", 10).unwrap();
     s.insert_delivery("c1", "claude-code", "s", Now { utc_ms: 20, offset_min: 0 }).unwrap();
     s.insert_open("c1", "cli", 30).unwrap();
@@ -71,13 +72,13 @@ fn decide(s: &Store, did: &str, cid: &str, outcome: &str, reason: &str, at: i64)
 }
 
 #[test]
-fn open_creates_latest_schema_version_2() {
+fn open_creates_latest_schema_version_4() {
     let (_d, s) = open();
-    assert_eq!(s.user_version().unwrap(), 2);
+    assert_eq!(s.user_version().unwrap(), 4);
 }
 
 #[test]
-fn v1_store_migrates_to_v2_keeping_data() {
+fn v1_store_migrates_to_latest_keeping_data() {
     let d = TempDir::new().unwrap();
     let p = d.path().join("aiq.db");
     {
@@ -86,8 +87,9 @@ fn v1_store_migrates_to_v2_keeping_data() {
         assert_eq!(s.user_version().unwrap(), 1);
     }
     let s = Store::open(&p).unwrap();
-    assert_eq!(s.user_version().unwrap(), 2);
+    assert_eq!(s.user_version().unwrap(), 4);
     assert_eq!(s.events_by_kind().unwrap(), vec![("prompt".to_string(), 1)]);
+    assert!(s.import_counts().unwrap().is_empty());
     s.insert_open("c1", "cli", 5).unwrap();
     assert!(s.opened("c1").unwrap() && !s.opened("c2").unwrap());
 }
@@ -104,6 +106,7 @@ fn fact_tables_reject_update_and_delete() {
         ("card_delivery", "delivered_utc_ms"),
         ("setting_change", "utc_ms"),
         ("card_open", "utc_ms"),
+        ("folder_rule", "utc_ms"),
     ] {
         let u = s.raw().execute(&format!("UPDATE {table} SET {col} = {col} + 1"), []);
         assert!(u.unwrap_err().to_string().contains(codes::STORE_APPEND_ONLY), "update {table}");
@@ -251,4 +254,31 @@ fn last_delivery_and_session_queries() {
     assert_eq!((id.as_str(), at), ("c1", 20));
     assert_eq!(s.prompts_after("claude-code", "s", 0).unwrap(), 1);
     assert_eq!(s.prompts_after("claude-code", "s", i64::MAX).unwrap(), 0);
+}
+
+#[test]
+fn folder_rule_newest_action_wins() {
+    let (_d, s) = open();
+    assert!(s.set_aside_folders().unwrap().is_empty());
+    s.insert_folder_rule("/ep", "set_aside", "template", "live", 1).unwrap();
+    s.insert_folder_rule("/b", "set_aside", "burst", "live", 2).unwrap();
+    assert_eq!(
+        s.set_aside_folders().unwrap(),
+        vec![("/b".to_string(), "burst".to_string(), 2), ("/ep".to_string(), "template".to_string(), 1)]
+    );
+    s.insert_folder_rule("/ep", "include", "person", "person", 3).unwrap();
+    assert_eq!(s.set_aside_folders().unwrap().len(), 1);
+    let now = s.folder_rules_now().unwrap();
+    assert_eq!((now["/ep"].as_str(), now["/b"].as_str()), ("include", "set_aside"));
+    s.insert_folder_rule("/ep", "set_aside", "burst", "live", 4).unwrap();
+    assert_eq!(s.set_aside_folders().unwrap()[0].0, "/ep");
+    assert!(s.insert_folder_rule("/x", "maybe", "r", "live", 5).is_err(), "action is checked");
+}
+
+#[test]
+fn session_known_after_first_event() {
+    let (_d, mut s) = open();
+    assert!(!s.session_known("claude-code", "s").unwrap());
+    s.insert_event(&ev("e1", "s", Some("x")), 1).unwrap();
+    assert!(s.session_known("claude-code", "s").unwrap() && !s.session_known("copilot-cli", "s").unwrap());
 }

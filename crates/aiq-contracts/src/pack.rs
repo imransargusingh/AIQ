@@ -12,7 +12,27 @@ pub struct PackV1 {
     pub idle_gap_min: u32,
     pub reprompt: RepromptParams,
     pub trigger: TriggerParams,
+    #[serde(default)]
+    pub automated: AutomatedParams,
     pub tips: Vec<Tip>,
+}
+
+/// The import spec's automated-session rule, live side (docs/specs/history-import.md, US-12). Defaults are
+/// the spec's tested values.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AutomatedParams {
+    pub burst_sessions: u32,
+    pub burst_min: u32,
+    pub template_sessions: u32,
+    pub template_window_h: u32,
+    pub template_chars: usize,
+}
+
+impl Default for AutomatedParams {
+    fn default() -> Self {
+        Self { burst_sessions: 50, burst_min: 30, template_sessions: 11, template_window_h: 24, template_chars: 200 }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -31,6 +51,10 @@ pub struct RepromptParams {
     pub min_word_len: usize,
     pub stop_words: Vec<String>,
     pub cues: Vec<String>,
+    /// Surfaces whose sessions are one stream for the Task rule. VS Code agent mode can start a new
+    /// Copilot session every turn (laptop probe run 2), so a reword loop there spans sessions.
+    #[serde(default)]
+    pub span_surfaces: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

@@ -2,12 +2,12 @@
 # Every number here is uncalibrated pack data; the real-data week tunes it (design: assume: lines).
 schema = "aiq.pack.v1"
 pack_id = "aiq.core"
-version = "bundled-2"
+version = "bundled-4"
 idle_gap_min = 30
 
 [reprompt]
 detector_id = "reprompt"
-detector_version = 1
+detector_version = 2
 opportunity_id = "reprompt"
 core_opportunity = true
 similarity = 0.6
@@ -24,6 +24,8 @@ stop_words = [
   "how", "why", "when", "which", "there", "here", "all", "any", "one", "into", "out", "up", "don't", "dont",
   "its", "it's", "been", "was", "were", "has", "have", "had", "them", "they", "he", "she",
 ]
+# VS Code agent mode can start a new Copilot session every turn: treat its sessions as one stream.
+span_surfaces = ["vscode"]
 cues = [
   "try again", "again", "still not working", "still doesn't work", "still does not work", "still broken",
   "still wrong", "that's wrong", "that is wrong", "that's not it", "not what i asked", "no, i meant",
@@ -36,6 +38,15 @@ in_moment_threshold = 0.75
 ready_expiry_min = 30
 default_daily_cap = 5
 quiet_min = 30
+
+# Automated sessions (import spec US-12): set aside a folder when a burst or a repeated first prompt shows
+# an app or script is driving the tool. Spec values, tested on Imran's history 2026-11-01.
+[automated]
+burst_sessions = 50
+burst_min = 30
+template_sessions = 11
+template_window_h = 24
+template_chars = 200
 
 [[tips]]
 tip_id = "reprompt.add-what-changed"

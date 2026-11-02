@@ -34,6 +34,7 @@ impl Env {
             .env("AIQ_HOME", self.home())
             .env("CLAUDE_CONFIG_DIR", self.claude())
             .env_remove("NO_COLOR")
+            .env_remove("CLAUDE_CODE_ENTRYPOINT") // tests may run inside Claude Code; set per test
             .current_dir(self.dir.path());
         c
     }
@@ -150,6 +151,28 @@ fn e2e_reword_three_times_one_card_second_run_held() {
     let id = text.rsplit("aiq show ").next().unwrap().split_whitespace().next().unwrap();
     let show = String::from_utf8(e.run(&["show", id], b"").stdout).unwrap();
     assert!(show.contains(BASE) && show.contains(R3) && show.contains("Status: shown"), "{show}");
+}
+
+#[test]
+fn e2e_headless_claude_runs_record_nothing() {
+    // Import spec rule NI / US-12: `claude -p` (entrypoint sdk-cli) is a program, not a person.
+    let mut e = Env::new();
+    e.start_core();
+    for (i, t) in ["summarize the repo", "summarize the repo again"].iter().enumerate() {
+        let p = json!({"session_id": "bot", "hook_event_name": "UserPromptSubmit", "prompt": t, "prompt_id": format!("b{i}"), "cwd": "/repo"});
+        let mut c = e.cmd(&["hook", "claude-code", "UserPromptSubmit"]);
+        c.env("CLAUDE_CODE_ENTRYPOINT", "sdk-cli").stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+        let mut ch = c.spawn().unwrap();
+        ch.stdin.take().unwrap().write_all(p.to_string().as_bytes()).unwrap();
+        let o = ch.wait_with_output().unwrap();
+        assert!(o.status.success() && o.stdout.is_empty() && o.stderr.is_empty());
+    }
+    e.prompt("me", "a prompt of my own", "m1");
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !e.status().contains("1 prompt") && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert!(e.status().contains("Events stored: 1 prompt"), "{}", e.status());
 }
 
 #[test]
@@ -520,4 +543,34 @@ fn e2e_uninstall_after_user_edit_strips_only_aiq() {
     let after: Value = serde_json::from_str(&std::fs::read_to_string(settings(&e)).unwrap()).unwrap();
     assert_eq!(after["theme"], "dark");
     assert_eq!(after["hooks"], json!({"Stop": [{"hooks": [{"type": "command", "command": "notify-send done"}]}]}));
+}
+
+#[test]
+fn e2e_import_dry_run_then_import_status_and_forget_imported() {
+    let e = Env::new();
+    let dir = e.claude().join("projects").join("C--repos-a");
+    std::fs::create_dir_all(&dir).unwrap();
+    let rows = [
+        json!({"type": "user", "entrypoint": "cli", "cwd": "/repos/a", "timestamp": "2026-10-20T10:00:00Z",
+               "message": {"content": "fix the failing test"}}),
+        json!({"type": "assistant", "timestamp": "2026-10-20T10:01:00Z",
+               "message": {"content": [{"type": "tool_use", "id": "t1", "name": "Edit", "input": {"file_path": "a.rs"}}]}}),
+    ];
+    let body: String = rows.iter().map(|r| format!("{r}\n")).collect();
+    std::fs::write(dir.join("s1.jsonl"), body).unwrap();
+    let copilot = e.dir.path().join("copilot");
+    let run = |args: &[&str]| {
+        let o = e.cmd(args).env("COPILOT_HOME", &copilot).stdin(Stdio::null()).output().unwrap();
+        assert!(o.status.success(), "{args:?}: {}", String::from_utf8_lossy(&o.stderr));
+        String::from_utf8_lossy(&o.stdout).into_owned()
+    };
+    let dry = run(&["import", "--dry-run"]);
+    assert!(dry.contains("Dry run") && dry.contains("Claude Code: 1 sessions found, 1 imported"), "{dry}");
+    assert!(!run(&["status"]).contains("Imported history"));
+    let done = run(&["import"]);
+    assert!(done.contains("Import finished."), "{done}");
+    assert!(run(&["status"]).contains("Imported history: 1 sessions, 0 set aside"));
+    assert!(run(&["import"]).contains("0 imported, 0 set aside as automated, 1 unchanged"));
+    assert!(run(&["forget", "--imported", "--yes"]).contains("Deleted 1 imported sessions."));
+    assert!(!run(&["status"]).contains("Imported history"));
 }

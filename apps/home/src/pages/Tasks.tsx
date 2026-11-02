@@ -1,0 +1,108 @@
+// Tasks (spec US-H3 Tasks page). Until the job classifier and the rung judge exist, this lists tasks (the
+// Task rule: one session, split at 30 idle minutes), not task types, each "Not judged yet" (design G3).
+import { useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { NOT_CLASSIFIED, folderName, jobOf, jobOptions, plural, rungLabel, sortTasks, toolName, when, type Dir, type SortKey } from "../format";
+import { Banners, Chip, Title, type Ctx } from "../ui";
+
+const COLS: { key: SortKey; label: string; right?: boolean }[] = [
+  { key: "when", label: "Started" },
+  { key: "tool", label: "Tool" },
+  { key: "prompts", label: "Prompts", right: true },
+];
+
+export function Tasks(ctx: Ctx) {
+  const { snap } = ctx;
+  const [sort, setSort] = useState<{ key: SortKey; dir: Dir }>({ key: "when", dir: -1 });
+  const [job, setJob] = useState("All");
+  const [sel, setSel] = useState(0);
+  const body = useRef<HTMLTableSectionElement>(null);
+  const { options, dropdown } = jobOptions(snap.tasks);
+  const rows = useMemo(
+    () => sortTasks(snap.tasks.filter((t) => job === "All" || jobOf(t) === job), sort.key, sort.dir),
+    [snap.tasks, job, sort],
+  );
+
+  const onKey = (e: KeyboardEvent) => {
+    const move = e.key === "j" || e.key === "ArrowDown" ? 1 : e.key === "k" || e.key === "ArrowUp" ? -1 : 0;
+    if (!move || rows.length === 0) return;
+    e.preventDefault();
+    const n = Math.min(rows.length - 1, Math.max(0, sel + move));
+    setSel(n);
+    body.current?.querySelectorAll<HTMLElement>("tr")[n]?.focus();
+  };
+
+  const flip = (key: SortKey) => setSort((s) => ({ key, dir: s.key === key ? ((-s.dir) as Dir) : key === "tool" ? 1 : -1 }));
+
+  return (
+    <div className="page wide">
+      <Banners {...ctx} />
+      <header className="head">
+        <div className="group">
+          <Title>Tasks</Title>
+          <p className="mute">
+            {plural(snap.home.tasks_in_window, "task")} in the last {snap.home.window_days} days. AIQ doesn't classify or judge tasks yet, so each one shows as not judged.
+          </p>
+        </div>
+        {snap.tasks.length > 0 && (
+          <div className="row">
+            <span className="meta" id="joblbl">Job</span>
+            {dropdown ? (
+              <select className="input" aria-labelledby="joblbl" value={job} onChange={(e) => setJob(e.target.value)}>
+                {options.map((o) => (
+                  <option key={o}>{o}</option>
+                ))}
+              </select>
+            ) : (
+              <div className="seg" role="group" aria-labelledby="joblbl">
+                {options.map((o) => (
+                  <button key={o} aria-pressed={job === o} onClick={() => setJob(o)}>{o}</button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </header>
+      {snap.tasks.length === 0 ? (
+        <div className="empty">
+          <b>No tasks yet.</b>
+          <span className="mute">A task shows here after you work with Claude Code, Copilot CLI or VS Code agent mode while AIQ is watching.</span>
+        </div>
+      ) : (
+        <div className="tablewrap">
+          <table aria-label="Tasks" onKeyDown={onKey}>
+            <thead>
+              <tr>
+                {COLS.map((c) => (
+                  <th key={c.key} className={c.right ? "r" : undefined} aria-sort={sort.key === c.key ? (sort.dir < 0 ? "descending" : "ascending") : "none"}>
+                    <button onClick={() => flip(c.key)}>
+                      {c.label}
+                      {sort.key === c.key ? (sort.dir < 0 ? " ↓" : " ↑") : ""}
+                    </button>
+                  </th>
+                ))}
+                <th>Folder</th>
+                <th>Job</th>
+                <th>Rung</th>
+              </tr>
+            </thead>
+            <tbody ref={body}>
+              {rows.map((t, i) => (
+                <tr key={t.task_id} tabIndex={i === sel ? 0 : -1} aria-selected={i === sel} onFocus={() => setSel(i)}>
+                  <td className="num">{when(t.first_ms, snap.now_ms, snap.offset_min)}</td>
+                  <td>
+                    {toolName(t.tool)} {t.origin === "imported" && <Chip>Imported</Chip>}
+                  </td>
+                  <td className="r num">{t.prompts}</td>
+                  <td title={t.folder ?? "Not recorded for tasks before this version"}>{folderName(t.folder)}</td>
+                  <td className="mute">{t.job ?? NOT_CLASSIFIED}</td>
+                  <td className="mute">{t.rung ? rungLabel(t.rung) : "Not judged yet"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {snap.tasks.length > 0 && <p className="meta">J and K move between rows. Select a column heading to sort.</p>}
+    </div>
+  );
+}

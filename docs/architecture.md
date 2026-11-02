@@ -162,7 +162,8 @@ B2 pack content → core; B3 core → backend; B4 store at rest; B5 core → the
 |---|---|---|---|---|---|---|
 | 1 Walking skeleton | Re-prompt detector (Opp. 1) fires in Claude Code and a card shows as a `systemMessage` at Stop | Claude Code hook collector, core ingest, store, one T0 detector, trigger engine with budget, CLI renderer | Pack = bundled unsigned file; Job classifier returns *Unclassified*; no rung model | Rephrase a prompt 3 times in Claude Code; see one card; second qualifying event in the session is held | E2E: scripted hook payloads → expected card / hold; core killed → hook still exits 0 in ≤ 50 ms | Every later slice |
 | 2 | Same loop on Copilot CLI and VS Code; budget shared across surfaces | One user-level Copilot collector (hooks, exec form; CLI and VS Code agent sessions), Copilot CLI status-line renderer (Imran, 2026-11-01), VS Code extension (notification + status bar) | Same as 1 | Trigger on Claude Code, then on Copilot CLI in the same session: second is held; the Copilot tip appears in the status line | E2E per surface + cross-surface budget test | Parity rule |
-| 3 | Feedback and Habit tracks (US-4, US-5) | Feedback controls on all surfaces, ranking, D5 tracker, milestone card | Clock is injectable for 14-day windows | Mark "don't show again"; it never returns | Property tests on D5 rule incl. boundary set | Coaching history |
+| 3 | AIQ home app as read views (spec aiq-home; re-ordered by Imran 2026-11-01, design `docs/design/aiq-home-app.md`) | Tauri + React app over the local store (read-only); pause, settings, delete everything through the core | Rung judge absent: judge-fed views say "not judged yet" | Laptop: Imran's real data on every page; keyboard and screen-reader pass | UI e2e + axe in light, dark, high contrast; fixture contract test | Feedback, habits and judge views have a home |
+| 3b | Feedback and Habit tracks (US-4, US-5) | Feedback controls on all surfaces, ranking, D5 tracker, milestone card | Clock is injectable for 14-day windows | Mark "don't show again"; it never returns | Property tests on D5 rule incl. boundary set | Coaching history |
 | 4 | Jobs and the two alpha job packs (D7, Opp. 2, 3, 5) | T0 Job classifier, signed pack pipeline, WASM sandbox | Rung model still stubbed | PM-preset user coding gets coding tips | Golden set of labelled Tasks; classifier agreement target | Rung model integration |
 | 5 | Slow path (Opp. 4, 6) via the rung model | Judge calls through the person's own account (ADR-0007) | — | Delegation-fit tip at next pause | Rung-model evals (from its spec) | Alpha |
 | 6 | Status page, pause, export, delete (privacy controls) | Tauri status page | — | Delete all; capture log empty | E2E delete leaves no rows and no spool | Private alpha |
@@ -191,9 +192,9 @@ B2 pack content → core; B3 core → backend; B4 store at rest; B5 core → the
 ## Status & next action
 | | |
 |---|---|
-| **Completed** | Draft architecture, ADRs 0001–0006, threat model and privacy review; Phase 0 spike (GO); Phase 1 Claude Code slice (PRs #5, #7–#9); Phase 2 design and build (Copilot CLI status line, VS Code extension, cross-surface quiet period; PR #14) |
-| **Remaining** | Phase 2 laptop check and merge; Phases 3–6 |
-| **Best next action** | Phase 2 laptop check of the real build, merge PR #14, then `/design-slice` for Phase 3 |
+| **Completed** | Draft architecture, ADRs 0001–0006, threat model and privacy review; Phase 0 spike (GO); Phase 1 Claude Code slice (PRs #5, #7–#9); Phase 2 design and build (Copilot CLI status line, VS Code extension, cross-surface quiet period; PR #14); `aiq import` slice 1 (PR #15); Phase 3 AIQ home design and build |
+| **Remaining** | Phase 2 VS Code laptop check; Phase 3 laptop check and merge; Phases 3b–6 |
+| **Best next action** | Laptop check of AIQ home (Phase 3), then `/design-slice` for feedback and habits (3b) or the rung judge (5) |
 
 ## Gate record
 `GATE define-architecture · 2026-10-31 · Enterprise, Distributed Systems, Security & Identity, Data & Persistence, SRE, Patterns, Simplifier (all seats played by Claude in one session; not independent) · verdict: pass with conditions`

@@ -5,12 +5,15 @@
 use aiq_contracts::codes;
 use aiq_domain::clock::{Now, local_day};
 use rusqlite::{Connection, OptionalExtension, params};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 pub const SCHEMA_V1: &str = include_str!("schema_v1.sql");
 pub const SCHEMA_V2: &str = include_str!("schema_v2.sql");
+pub const SCHEMA_V3: &str = include_str!("schema_v3.sql");
+pub const SCHEMA_V4: &str = include_str!("schema_v4.sql");
 /// Migration N takes the store from `user_version` N to N+1, in one transaction.
-pub const MIGRATIONS: &[&str] = &[SCHEMA_V1, SCHEMA_V2];
+pub const MIGRATIONS: &[&str] = &[SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4];
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StoreError {
@@ -55,6 +58,57 @@ pub struct NewEvent<'a> {
     pub prompt_chars: Option<i64>,
     pub payload_meta: &'a str,
     pub text: Option<&'a str>,
+}
+
+/// One imported source session and its events (history import, schema v3).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ImportedSession {
+    pub tool: String,
+    pub source_session_id: String,
+    pub source_mtime_ms: i64,
+    pub folder: String,
+    pub started_utc_ms: Option<i64>,
+    pub human_turns: u32,
+    pub non_interactive: Option<bool>,
+    /// Stable hash of the normalised first prompt (the automated rule's template signal).
+    pub template_key: Option<i64>,
+    /// `imported`, `automated` or `error`.
+    pub outcome: String,
+    pub why: String,
+    pub events: Vec<ImportedEvent>,
+}
+
+/// What an earlier run stored about one source session: enough to re-apply the automated rule
+/// without re-reading the file.
+#[derive(Debug, Clone, PartialEq)]
+pub struct KnownImport {
+    pub tool: String,
+    pub source_session_id: String,
+    pub source_mtime_ms: i64,
+    pub folder: String,
+    pub started_utc_ms: Option<i64>,
+    pub human_turns: u32,
+    pub non_interactive: Option<bool>,
+    pub template_key: Option<i64>,
+    pub outcome: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ImportedEvent {
+    /// `prompt` or `stop`.
+    pub kind: String,
+    pub ts_utc_ms: Option<i64>,
+    pub text: Option<String>,
+    pub actions: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ImportRunCounts {
+    pub found: u64,
+    pub imported: u64,
+    pub automated: u64,
+    pub unchanged: u64,
+    pub errors: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -121,11 +175,32 @@ impl Store {
     pub fn open_with(path: &Path, migrations: &[&str]) -> Result<Self> {
         create_user_only(path).map_err(|e| StoreError { code: codes::STORE_OPEN, detail: e.to_string() })?;
         let conn = Connection::open(path).map_err(err(codes::STORE_OPEN))?;
-        conn.execute_batch("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;")
+        conn.execute_batch("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 5000;")
             .map_err(err(codes::STORE_OPEN))?;
         let mut s = Self { conn, path: path.to_owned() };
         s.migrate(migrations)?;
         Ok(s)
+    }
+
+    /// Open an existing store for reading only (AIQ home, `aiq status`, import counts): never creates the
+    /// file, no migration, no writes.
+    /// `query_only` guards against a write even if a query tried one. WAL lets this read while the core writes.
+    pub fn open_read_only(path: &Path) -> Result<Self> {
+        use rusqlite::OpenFlags;
+        let flags = OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX | OpenFlags::SQLITE_OPEN_URI;
+        let conn = Connection::open_with_flags(path, flags).map_err(err(codes::STORE_OPEN))?;
+        conn.busy_timeout(std::time::Duration::from_secs(1)).map_err(err(codes::STORE_OPEN))?;
+        conn.execute_batch("PRAGMA query_only = ON;").map_err(err(codes::STORE_OPEN))?;
+        Ok(Self { conn, path: path.to_owned() })
+    }
+
+    /// The table exists (a store written by an older AIQ may not have every table yet).
+    pub fn has_table(&self, name: &str) -> Result<bool> {
+        self.conn
+            .query_row("SELECT EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1)", [name], |r| {
+                r.get(0)
+            })
+            .map_err(err(codes::STORE_OPEN))
     }
 
     pub fn path(&self) -> &Path {
@@ -358,6 +433,64 @@ impl Store {
             .map_err(err(codes::STORE_OPEN))
     }
 
+    pub fn insert_folder_rule(
+        &self,
+        folder: &str,
+        action: &str,
+        reason: &str,
+        source: &str,
+        now_ms: i64,
+    ) -> Result<()> {
+        self.conn
+            .execute(
+                "INSERT INTO folder_rule (folder, action, reason, source, utc_ms) VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![folder, action, reason, source, now_ms],
+            )
+            .map(|_| ())
+            .map_err(err(codes::STORE_WRITE))
+    }
+
+    /// Folders set aside now: the newest rule per folder is `set_aside`. (folder, reason, utc_ms), newest first.
+    pub fn set_aside_folders(&self) -> Result<Vec<(String, String, i64)>> {
+        let mut st = self
+            .conn
+            .prepare(
+                "SELECT folder, reason, utc_ms FROM folder_rule r WHERE action = 'set_aside' AND rule_id = \
+                 (SELECT MAX(rule_id) FROM folder_rule WHERE folder = r.folder) ORDER BY rule_id DESC",
+            )
+            .map_err(err(codes::STORE_OPEN))?;
+        let rows = st
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .map_err(err(codes::STORE_OPEN))?
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(err(codes::STORE_OPEN))?;
+        Ok(rows)
+    }
+
+    /// Every folder's current rule: the newest action per folder (`set_aside` or `include`).
+    pub fn folder_rules_now(&self) -> Result<HashMap<String, String>> {
+        let mut st = self
+            .conn
+            .prepare(
+                "SELECT folder, action FROM folder_rule r WHERE rule_id = \
+                 (SELECT MAX(rule_id) FROM folder_rule WHERE folder = r.folder)",
+            )
+            .map_err(err(codes::STORE_OPEN))?;
+        let rows = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?))).map_err(err(codes::STORE_OPEN))?;
+        rows.collect::<std::result::Result<_, _>>().map_err(err(codes::STORE_OPEN))
+    }
+
+    /// The store already holds events for this session.
+    pub fn session_known(&self, surface: &str, session: &str) -> Result<bool> {
+        self.conn
+            .query_row(
+                "SELECT EXISTS (SELECT 1 FROM surface_session WHERE surface = ?1 AND surface_session_id = ?2)",
+                params![surface, session],
+                |r| r.get(0),
+            )
+            .map_err(err(codes::STORE_OPEN))
+    }
+
     pub fn insert_open(&self, card_id: &str, surface: &str, now_ms: i64) -> Result<()> {
         self.conn
             .execute(
@@ -516,14 +649,135 @@ impl Store {
         rows.collect::<std::result::Result<_, _>>().map_err(err(codes::STORE_OPEN))
     }
 
+    /// Every source session an earlier run stored.
+    pub fn known_imports(&self) -> Result<Vec<KnownImport>> {
+        let mut st = self
+            .conn
+            .prepare(
+                "SELECT tool, source_session_id, source_mtime_ms, folder, started_utc_ms, human_turns, non_interactive,
+                        template_key, outcome
+                 FROM import_session",
+            )
+            .map_err(err(codes::STORE_OPEN))?;
+        let rows = st
+            .query_map([], |r| {
+                Ok(KnownImport {
+                    tool: r.get(0)?,
+                    source_session_id: r.get(1)?,
+                    source_mtime_ms: r.get(2)?,
+                    folder: r.get(3)?,
+                    started_utc_ms: r.get(4)?,
+                    human_turns: r.get(5)?,
+                    non_interactive: r.get(6)?,
+                    template_key: r.get(7)?,
+                    outcome: r.get(8)?,
+                })
+            })
+            .map_err(err(codes::STORE_OPEN))?;
+        rows.collect::<std::result::Result<_, _>>().map_err(err(codes::STORE_OPEN))
+    }
+
+    /// Write one source session and its events, replacing what an earlier run stored for it.
+    pub fn put_import_session(&mut self, run_id: &str, s: &ImportedSession) -> Result<()> {
+        let tx = self.conn.transaction().map_err(err(codes::STORE_WRITE))?;
+        tx.execute(
+            "DELETE FROM import_session WHERE tool = ?1 AND source_session_id = ?2",
+            params![s.tool, s.source_session_id],
+        )
+        .map_err(err(codes::STORE_WRITE))?;
+        tx.execute(
+            "INSERT INTO import_session (tool, source_session_id, source_mtime_ms, run_id, folder, started_utc_ms,
+                                         human_turns, non_interactive, template_key, outcome, why)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            params![
+                s.tool,
+                s.source_session_id,
+                s.source_mtime_ms,
+                run_id,
+                s.folder,
+                s.started_utc_ms,
+                s.human_turns,
+                s.non_interactive,
+                s.template_key,
+                s.outcome,
+                s.why
+            ],
+        )
+        .map_err(err(codes::STORE_WRITE))?;
+        for (i, e) in s.events.iter().enumerate() {
+            tx.execute(
+                "INSERT INTO import_event (tool, source_session_id, seq, kind, ts_utc_ms, text, actions)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![s.tool, s.source_session_id, i as i64, e.kind, e.ts_utc_ms, e.text, e.actions],
+            )
+            .map_err(err(codes::STORE_WRITE))?;
+        }
+        tx.commit().map_err(err(codes::STORE_WRITE))
+    }
+
+    pub fn insert_import_run(
+        &self,
+        run_id: &str,
+        started_ms: i64,
+        finished_ms: i64,
+        c: &ImportRunCounts,
+    ) -> Result<()> {
+        self.conn
+            .execute(
+                "INSERT INTO import_run (run_id, started_utc_ms, finished_utc_ms, found, imported, automated, unchanged,
+                                         errors, aiq_version)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                params![
+                    run_id,
+                    started_ms,
+                    finished_ms,
+                    c.found as i64,
+                    c.imported as i64,
+                    c.automated as i64,
+                    c.unchanged as i64,
+                    c.errors as i64,
+                    env!("CARGO_PKG_VERSION")
+                ],
+            )
+            .map(|_| ())
+            .map_err(err(codes::STORE_WRITE))
+    }
+
+    /// Imported sessions now held, by (tool, outcome).
+    pub fn import_counts(&self) -> Result<Vec<(String, String, u64)>> {
+        let mut st = self
+            .conn
+            .prepare("SELECT tool, outcome, count(*) FROM import_session GROUP BY tool, outcome ORDER BY tool, outcome")
+            .map_err(err(codes::STORE_OPEN))?;
+        let rows = st
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get::<_, i64>(2)? as u64)))
+            .map_err(err(codes::STORE_OPEN))?;
+        rows.collect::<std::result::Result<_, _>>().map_err(err(codes::STORE_OPEN))
+    }
+
+    pub fn last_import_ms(&self) -> Result<Option<i64>> {
+        self.conn
+            .query_row("SELECT max(finished_utc_ms) FROM import_run", [], |r| r.get(0))
+            .map_err(err(codes::STORE_OPEN))
+    }
+
+    /// Delete everything history import stored (US-8). Live capture is untouched.
+    pub fn forget_imported(&mut self) -> Result<u64> {
+        let tx = self.conn.transaction().map_err(err(codes::STORE_WRITE))?;
+        tx.execute("DELETE FROM import_event", []).map_err(err(codes::STORE_WRITE))?;
+        let n = tx.execute("DELETE FROM import_session", []).map_err(err(codes::STORE_WRITE))?;
+        tx.execute("DELETE FROM import_run", []).map_err(err(codes::STORE_WRITE))?;
+        tx.commit().map_err(err(codes::STORE_WRITE))?;
+        Ok(n as u64)
+    }
+
     /// Bytes on disk for the store, including the WAL.
     pub fn size_bytes(&self) -> u64 {
         let wal = PathBuf::from(format!("{}-wal", self.path.display()));
         [self.path.as_path(), wal.as_path()].iter().filter_map(|p| std::fs::metadata(p).ok()).map(|m| m.len()).sum()
     }
 
-    /// Raw connection for tests that must attack the schema directly.
-    #[doc(hidden)]
+    /// Raw connection: read models (AIQ home) and tests that must attack the schema directly.
     pub fn raw(&self) -> &Connection {
         &self.conn
     }

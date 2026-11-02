@@ -49,6 +49,11 @@ pub enum Request {
     Forget {
         token: String,
     },
+    /// "Include them": the person says a folder AIQ set aside as automated is their own work.
+    IncludeFolder {
+        token: String,
+        folder: String,
+    },
 }
 
 impl Request {
@@ -61,7 +66,8 @@ impl Request {
             | Request::TipLine { token, .. }
             | Request::TakeCardAny { token, .. }
             | Request::Setting { token, .. }
-            | Request::Forget { token } => token,
+            | Request::Forget { token }
+            | Request::IncludeFolder { token, .. } => token,
         }
     }
 }
@@ -95,6 +101,9 @@ pub struct StatusReply {
     pub decisions: Vec<(String, String, u64)>,
     pub store_bytes: u64,
     pub core_counters: Vec<(String, u64)>,
+    /// Folders whose sessions AIQ ignores as automated, newest first: (folder, reason).
+    #[serde(default)]
+    pub automated_folders: Vec<(String, String)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

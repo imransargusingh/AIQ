@@ -18,6 +18,10 @@ pub struct EventV1 {
     /// RFC 3339 UTC, client clock.
     pub ts: String,
     pub collector_version: String,
+    /// The host's working folder for the session (Phase 2 follow-up: the automated-session rule is per
+    /// folder). Not stored with the event; only a folder that is set aside is kept.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cwd: Option<String>,
     #[serde(flatten)]
     pub body: EventBody,
 }
@@ -79,6 +83,7 @@ mod tests {
             seq: None,
             ts: "2026-10-31T12:00:00Z".into(),
             collector_version: "0.1.0".into(),
+            cwd: None,
             body: EventBody::Prompt(PromptPayload {
                 text: Some("fix it".into()),
                 chars: 6,
