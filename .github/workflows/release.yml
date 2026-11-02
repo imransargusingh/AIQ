@@ -148,6 +148,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cd dist && sha256sum -c SHA256SUMS && cd ..
+          # A rebuild replaces an older DRAFT of the same version; a published release is never touched.
+          gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq '.[] | select(.draft and .tag_name == "v${{ needs.windows.outputs.version }}") | .id' |
+            while read -r id; do gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$id"; echo "Replaced older draft $id"; done
           gh release create "v${{ needs.windows.outputs.version }}" dist/* --repo "$GITHUB_REPOSITORY" --draft --target "$GITHUB_SHA" \
             --title "AIQ ${{ needs.windows.outputs.version }}" \
             --notes "Private alpha build. Unzip, then run install.ps1 (see README.txt). Check the zip against SHA256SUMS."
