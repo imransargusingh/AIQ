@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Kind Of Task</title><style>
+:root { color-scheme: light dark; --bg:#f7f5ef; --panel:#fff; --text:#20201d;
+  --muted:#66645f; --line:#d9d5ca; --accent:#3157a4; --code:#f0eee7; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#171816; --panel:#20221f; --text:#f2f1eb; --muted:#b8b6ae;
+    --line:#3d403a; --accent:#8fb0ff; --code:#292c27; }
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text);
+  font:16px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif; }
+main { width:min(920px,calc(100% - 32px)); margin:32px auto; padding:40px;
+  background:var(--panel); border:1px solid var(--line); border-radius:12px; }
+h1,h2,h3,h4,h5,h6 { line-height:1.2; margin:1.5em 0 .55em; }
+h1 { margin-top:0; font-size:2.2rem; } h2 { border-bottom:1px solid var(--line); padding-bottom:.3em; }
+a { color:var(--accent); } code { background:var(--code); padding:.12em .35em; border-radius:4px; }
+pre { overflow:auto; padding:16px; background:var(--code); border-radius:8px; }
+pre code { padding:0; } blockquote { margin:1em 0; padding:.2em 1em; color:var(--muted);
+  border-left:4px solid var(--line); }
+table { width:100%; border-collapse:collapse; margin:1em 0; display:block; overflow:auto; }
+th,td { padding:.55em .75em; border:1px solid var(--line); text-align:left; vertical-align:top; }
+th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); }
+.source { color:var(--muted); font-size:.9rem; margin-bottom:2rem; }
+@media (max-width:640px) { main { width:100%; margin:0; padding:24px 18px; border:0; border-radius:0; } }
+</style></head><body><main><div class="source">Rendered from kind-of-task.md</div><h1>Design: kind-of-task accuracy</h1>
+<p>Started without waiting, under Imran&#x27;s standing rule. Cloud-only; it changes no rule anyone sees yet.</p>
+<h2>Goal state</h2>
+<table><thead><tr><th></th><th></th></tr></thead><tbody><tr><td><strong>Goal</strong></td><td>Kind of task agrees with an independent reading at least 8 in 10, so coaching names the right kind</td></tr><tr><td><strong>Done when</strong></td><td>(this change) every kind miss in a check is explained from data, and the report shows each candidate rule&#x27;s agreement before and after; (next) one fix is chosen from those numbers, or none</td></tr><tr><td><strong>Not in scope</strong></td><td>No-job rules (no-job-tasks design); new kinds or packs; rung and fact rules</td></tr><tr><td><strong>Tier</strong></td><td>T1 (no schema change, no judge version bump, no new model calls)</td></tr></tbody></table>
+<h2>Grounding</h2>
+<p>Measured on Imran&#x27;s laptop (check runs 01a19ca2 and 01a19ce8, 2026-11-02, recorded in the rung-judge design):</p>
+<ul><li>Kind, where the job matched: 15 of 18 (same-model reader), then <strong>14 of 17 (63-93%)</strong> with a different</li></ul>
+<p>model: ask_research 9 of 11, code_change 3 of 4, write_doc 2 of 2. Six misses in 35 checks, three kinds of job. Too few to name one weak kind.</p>
+<ul><li>The second run printed <strong>confident kind 14 of 18</strong> while kind was 14 of 17. A subset can&#x27;t be larger.</li></ul>
+<p>Cause (verified in code, <code>check::agreement</code>): confident kind also scored tasks whose <em>job</em> differed. Every judgment with a pack job was confident, so the extra 1 is the one confident job miss.</p>
+<ul><li>The merge (<code>rung::place</code>) keeps a kind only if both runs agree and both are at 0.7 or more. Otherwise</li></ul>
+<p>it stores <strong>`other`</strong>. The second reader always picks a specific kind. So a fallback <code>other</code> counts as a miss even when both runs leaned to the reader&#x27;s kind.</p>
+<ul><li><strong>Not measured:</strong> how many of the six misses were fallback <code>other</code> and how many were a different named</li></ul>
+<p>kind. The store keeps only the merged kind and the lower confidence, not each run&#x27;s pick.</p>
+<h2>Possible causes (Inferred until T1 is measured)</h2>
+<table><thead><tr><th>Cause</th><th>What it looks like</th><th>Fix it points to</th></tr></thead><tbody><tr><td>K-a Fallback: runs differ</td><td>Run 1 says <code>how_to</code>, run 2 says <code>explain</code>; stored <code>other</code></td><td>Tie-break rule K1, or sharper definitions</td></tr><tr><td>K-b Fallback: not confident</td><td>Both runs say <code>find</code>, one at 0.6; stored <code>other</code></td><td>Lower bar K2</td></tr><tr><td>K-c Named the wrong kind</td><td>Judge and reader both confident, different kinds</td><td>Definitions in the prompt (T5)</td></tr></tbody></table>
+<p>Overlaps in the list that could drive K-a and K-c (Inferred from the labels, not from data): <code>explain</code> appears under both code_change and ask_research; ask_research <code>how_to</code> vs <code>explain</code> vs <code>troubleshoot</code>; <code>find</code> vs <code>research</code> vs <code>analyse</code>; code_change <code>fix_bug</code> vs <code>build_fix</code>.</p>
+<h2>Decisions</h2>
+<table><thead><tr><th>#</th><th>Question</th><th>Decision</th><th>Why</th></tr></thead><tbody><tr><td>T1</td><td>How do we learn the cause?</td><td>The judgment&#x27;s <code>read</code> JSON gains <code>type_runs</code> (each run&#x27;s kind and confidence). No version bump, so nothing is judged again; new judgments carry it</td><td>Measure, don&#x27;t infer. Re-judging old tasks would cost premium requests for a measurement that new tasks give free</td></tr><tr><td>T2</td><td>How is a fallback explained?</td><td><code>rung::kind_other_cause</code>: both said other, runs differed, not confident, not on the job&#x27;s list, one run. A test proves it matches the merge rule case by case. Old judgments fall back to what the stored confidence can say</td><td>Derived, never stored</td></tr><tr><td>T3</td><td>Which rules are measured?</td><td><strong>K1:</strong> runs named different kinds; take the more confident listed kind if it is at 0.7 or more and at least 0.1 ahead. <strong>K2:</strong> both runs name the same kind at 0.5 or more. Each only replaces a fallback <code>other</code></td><td>Cheap and deterministic. Neither runs live</td></tr><tr><td>T4</td><td>What does the report show?</td><td>Under kind: kind pooled over <strong>all</strong> check runs, each fallback <code>other</code> by cause, each named miss as &quot;job: judge kind read as reader kind&quot;, and per rule &quot;gives a kind to n; before -&gt; after&quot;</td><td>One run has about three misses; pooling gives the cause a chance to show. Before/after is the number a fix is judged by</td></tr><tr><td>T5</td><td>Not yet</td><td>Re-wording kind definitions in the prompt waits for T4&#x27;s numbers: only if named misses (K-c) dominate. It changes the rubric, so every task would be judged again</td><td>Pick the fix from the cause</td></tr><tr><td>T6</td><td>Bar for making a rule live</td><td>Same as no-job N3: a different-model reader agrees at least 8 of 10 after the rule and at least 10 checked</td><td>A wrong kind means wrong coaching</td></tr><tr><td>T7</td><td>Confident-kind count</td><td>Compared only where the job matched, the same base as kind</td><td>One definition of one quantity</td></tr></tbody></table>
+<h2>Change surfaces (E7)</h2>
+<table><thead><tr><th>Surface</th><th>Change</th></tr></thead><tbody><tr><td>Domain</td><td><code>rung::TypeRun</code>, <code>KindOther</code>, <code>kind_other_cause</code>, <code>candidate_type</code>, <code>KIND_CANDIDATE_RULES</code>; <code>check::agreement</code> confident-kind base</td></tr><tr><td>Store</td><td><code>Store::check_runs</code> (read only)</td></tr><tr><td>Runner</td><td>The judgment&#x27;s <code>read.type_runs</code>; <code>--check-report</code> adds the pooled kind lines</td></tr><tr><td>Contracts, schema, UI, coaching</td><td>None</td></tr></tbody></table>
+<h2>Run plan</h2>
+<ol><li>Merge. The judge thread installs it with the next laptop upgrade.</li><li><code>aiq judge --check-report</code> right away: pooled kind and the fallback split from stored confidence. No premium requests.</li><li>After a few days of new judgments, the next <code>aiq judge --check</code> scores K1 and K2 before and after.</li><li>Choose K1, K2, T5 or none against T6, and record it here and in the rung-judge accuracy table.</li></ol>
+<h2>Questions for Imran</h2>
+<p>None. Cause and fix are settled from data.</p>
+<h2>Gate record</h2>
+<p><code>GATE design-slice · 2026-11-02 · Simplifier, Test Architect, Data &amp; Persistence (seats played by Claude; not independent) · pass</code></p>
+<ul><li>Simplifier: one JSON field, no bump, no re-judge, no live rule.</li><li>Test Architect: cause matches the merge rule in a table test; rules unit-tested; a runner test proves the runs are recorded and the report pools two check runs and shows before -&gt; after; confident-kind base has its own test.</li><li>Data &amp; Persistence: <code>read</code> is the judgment&#x27;s own JSON; cause and rule results are derived.</li></ul>
+<h2>Status and next action</h2>
+<table><thead><tr><th></th><th></th></tr></thead><tbody><tr><td><strong>Completed</strong></td><td>Design; measurement build</td></tr><tr><td><strong>Remaining</strong></td><td>Laptop upgrade; new judgments; a check; pick a fix</td></tr><tr><td><strong>Best next action</strong></td><td>Install, then run <code>aiq judge --check-report</code> (free)</td></tr></tbody></table></main></body></html>

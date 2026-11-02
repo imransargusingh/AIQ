@@ -1350,6 +1350,34 @@ impl Store {
             .map_err(err(codes::STORE_OPEN))
     }
 
+    /// Every check run, oldest first (the kind-of-task report pools them; design kind-of-task T4).
+    pub fn check_runs(&self) -> Result<Vec<CheckRunRow>> {
+        if !self.has_table("judge_check_run")? {
+            return Ok(vec![]);
+        }
+        let mut st = self
+            .conn
+            .prepare(
+                "SELECT run_id, seed, requested, sample, started_utc_ms, check_version FROM judge_check_run
+                 ORDER BY started_utc_ms, rowid",
+            )
+            .map_err(err(codes::STORE_OPEN))?;
+        let rows = st
+            .query_map([], |r| {
+                let sample: String = r.get(3)?;
+                Ok(CheckRunRow {
+                    run_id: r.get(0)?,
+                    seed: r.get::<_, i64>(1)? as u64,
+                    requested: r.get(2)?,
+                    sample: serde_json::from_str(&sample).unwrap_or_default(),
+                    started_utc_ms: r.get(4)?,
+                    check_version: r.get(5)?,
+                })
+            })
+            .map_err(err(codes::STORE_OPEN))?;
+        rows.collect::<std::result::Result<Vec<_>, _>>().map_err(err(codes::STORE_OPEN))
+    }
+
     /// Every check of one run, in check order.
     pub fn checks_of_run(&self, run_id: &str) -> Result<Vec<CheckRow>> {
         if !self.has_table("judge_check")? {
