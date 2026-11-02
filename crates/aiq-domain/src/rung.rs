@@ -9,10 +9,11 @@ use aiq_contracts::judge::{ActionSummary, Fact, Response};
 pub const FACT_SET_VERSION: &str = "fs1";
 pub const RUBRIC_VERSION: &str = "r1";
 /// j2: the answer names a task type (design coaching-from-rungs D1); j1 judgments are re-judged lazily.
-pub const JUDGE_VERSION: &str = "j3";
-/// Judgments of this version stay current unless their job was unclassified: j3 only added the Ask or
-/// research pack, so only tasks no pack covered need judging again.
-pub const JUDGE_VERSION_KEPT: &str = "j2";
+/// j3 added the Ask or research pack; j4 records each run's job pick (design no-job-tasks).
+pub const JUDGE_VERSION: &str = "j4";
+/// Judgments of these versions stay current unless their job was unclassified: j3 and j4 change nothing
+/// for a task that got a pack job, so only tasks with no job need judging again.
+pub const JUDGE_VERSIONS_KEPT: [&str; 2] = ["j2", "j3"];
 /// A model fact below this confidence counts as unknown (D10: the spike's correct facts sat at 0.5–0.6).
 pub const FACT_THRESHOLD: f64 = 0.6;
 /// Job below this confidence is Unclassified (spike: 100% precision at 0.7).
@@ -839,6 +840,78 @@ pub struct Placement {
     pub blockers: Vec<String>,
 }
 
+/// One run's job pick, as kept in a judgment's `read.job_runs` (design no-job-tasks N1).
+#[derive(Debug, Clone, PartialEq)]
+pub struct JobRun {
+    pub job: String,
+    pub confidence: f64,
+}
+
+/// Why a judgment has no pack job (design no-job-tasks). Derived from the recorded runs, never stored.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum NoJob {
+    /// Every run said `other` with enough confidence: the judge thinks no pack fits.
+    AllOther,
+    /// Runs named different jobs.
+    Disagree,
+    /// Runs agreed on a pack job but at least one was below the job bar.
+    LowConfidence,
+    /// Only one run answered.
+    OneRun,
+}
+
+impl NoJob {
+    pub fn words(self) -> &'static str {
+        match self {
+            NoJob::AllOther => "both runs said other",
+            NoJob::Disagree => "the two runs named different jobs",
+            NoJob::LowConfidence => "both runs named a pack job, but not confidently",
+            NoJob::OneRun => "only one run answered",
+        }
+    }
+}
+
+/// The cause, or None when the runs give a pack job (or there are none).
+pub fn no_job_cause(runs: &[JobRun]) -> Option<NoJob> {
+    let first = runs.first()?;
+    if runs.len() < 2 {
+        return (!PACK_JOBS.contains(&first.job.as_str()) || first.confidence < JOB_THRESHOLD).then_some(NoJob::OneRun);
+    }
+    if runs.iter().any(|r| r.job != first.job) {
+        return Some(NoJob::Disagree);
+    }
+    if !PACK_JOBS.contains(&first.job.as_str()) {
+        return Some(NoJob::AllOther);
+    }
+    runs.iter().any(|r| r.confidence < JOB_THRESHOLD).then_some(NoJob::LowConfidence)
+}
+
+/// Candidate rules for giving a no-job task a pack job (design no-job-tasks R1-R2). Each returns the job it
+/// would give, or None. Measured against the second reading before any becomes the rule.
+pub fn candidate_job(rule: &str, runs: &[JobRun]) -> Option<String> {
+    let packs: Vec<&JobRun> = runs.iter().filter(|r| PACK_JOBS.contains(&r.job.as_str())).collect();
+    match rule {
+        // R1: one run names a pack job confidently and every other run says `other`.
+        "R1" => match packs.as_slice() {
+            [one] if one.confidence >= JOB_THRESHOLD && runs.iter().all(|r| r.job == one.job || r.job == "other") => {
+                Some(one.job.clone())
+            }
+            _ => None,
+        },
+        // R2: every run names the same pack job, at a lower bar of 0.5.
+        "R2" => (runs.len() >= 2
+            && packs.len() == runs.len()
+            && packs.iter().all(|r| r.job == packs[0].job && r.confidence >= 0.5))
+        .then(|| packs[0].job.clone()),
+        _ => None,
+    }
+}
+
+pub const CANDIDATE_RULES: [(&str, &str); 2] = [
+    ("R1", "one run names a pack job confidently, the other says other"),
+    ("R2", "both runs name the same pack job, confidence 0.5 or more"),
+];
+
 /// Merge two runs into one judgment. `same_job_recent` counts this person's tasks of the same job in the last
 /// 30 days (F11), for the Factory repetition rule. Runs must be non-empty.
 pub fn place(runs: &[Response], log: &LogFacts, same_job_recent: u32) -> (Facts, Placement) {
@@ -1214,6 +1287,31 @@ mod tests {
         let (_, p) = place(&[r.clone(), r], &agent_edit_log(), 0);
         assert_eq!(p.current, 2);
         assert!(p.uncertain);
+    }
+
+    fn jr(job: &str, c: f64) -> JobRun {
+        JobRun { job: job.into(), confidence: c }
+    }
+
+    #[test]
+    fn no_job_cause_names_why_and_none_when_a_pack_job_holds() {
+        assert_eq!(no_job_cause(&[jr("other", 0.9), jr("other", 0.8)]), Some(NoJob::AllOther));
+        assert_eq!(no_job_cause(&[jr("ask_research", 0.9), jr("other", 0.8)]), Some(NoJob::Disagree));
+        assert_eq!(no_job_cause(&[jr("ask_research", 0.9), jr("ask_research", 0.6)]), Some(NoJob::LowConfidence));
+        assert_eq!(no_job_cause(&[jr("other", 0.9)]), Some(NoJob::OneRun));
+        assert_eq!(no_job_cause(&[jr("code_change", 0.9), jr("code_change", 0.7)]), None);
+        assert_eq!(no_job_cause(&[]), None);
+    }
+
+    #[test]
+    fn candidate_rules_only_give_a_pack_job() {
+        assert_eq!(candidate_job("R1", &[jr("ask_research", 0.8), jr("other", 0.9)]).as_deref(), Some("ask_research"));
+        assert_eq!(candidate_job("R1", &[jr("ask_research", 0.6), jr("other", 0.9)]), None, "not confident");
+        assert_eq!(candidate_job("R1", &[jr("ask_research", 0.9), jr("code_change", 0.9)]), None, "two packs");
+        assert_eq!(candidate_job("R2", &[jr("write_doc", 0.55), jr("write_doc", 0.6)]).as_deref(), Some("write_doc"));
+        assert_eq!(candidate_job("R2", &[jr("write_doc", 0.4), jr("write_doc", 0.6)]), None);
+        assert_eq!(candidate_job("R2", &[jr("other", 0.9), jr("other", 0.9)]), None);
+        assert_eq!(candidate_job("R9", &[jr("write_doc", 0.9)]), None);
     }
 
     #[test]
