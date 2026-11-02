@@ -313,7 +313,7 @@ Agreement with the second reading (Inferred; 90% Wilson intervals):
 
 | Measure | Result |
 |---|---|
-| Job, all 30 | 20 of 30 (52-79%), **under-counted**: the report compared the judge's `unclassified` with the grader's `other`, which can never match. All 10 misses were no-job judgments; confident judgments agree 20 of 20 (88-100%). Fixed in the follow-up build; re-running `--check-report` recomputes without new calls |
+| Job, all 30 | 25 of 30 (70-92%) after the fix in PR #38. The first report said 20 of 30 because it compared the judge's `unclassified` with the grader's `other`, which can never match. Confident judgments agree 20 of 20 (88-100%). Where the judge gave no job (10), the second reader said other 5, ask_research 4, code_change 1. Recomputed on the laptop at 15:14Z with no new calls |
 | Kind of task, where job matched | 15 of 18 (65-93%): ask_research 10 of 10, code_change 2 of 4, write_doc 3 of 4 |
 | Rung exact / within one | 29 of 30 / 29 of 30; confident only 19 of 20 |
 | Model's own rung exact | 29 of 30 |
@@ -326,7 +326,8 @@ Agreement with the second reading (Inferred; 90% Wilson intervals):
 
 What it tells us:
 - The **no-job bucket** (35% of judged tasks) is the largest gap in coverage, and it is never coached.
-  The follow-up report shows which job the second reader gives those tasks.
+  In the sample, the second reader put half of those tasks in a pack job (ask_research 4 of 10, code_change
+  1 of 10). So the judge is too cautious about Ask or research, not only meeting work outside every pack.
 - **F6 can't be seen in transcripts.** Two independent readings now agree (25 of 30 here, 9 of 15 in
   PR #27). Asking a model harder will not fix that. F6 needs a log floor (for example, the person ran or
   opened the output) or should stop gating rungs for research and Q&A.

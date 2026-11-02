@@ -190,8 +190,15 @@ not checked; report before any run). `cargo test --workspace`, fmt and clippy gr
 
 - **K5:** check calls do **not** count against the daily judge budget. The check is one command the person
   runs, `--dry-run` shows the count and cost first, and counting it would starve background judging that day.
-- **K3:** Copilot grader uses the judge's model unless `check-copilot-model` is set. The report says when grader
-  and judge are the same model, and that agreement then reads high.
+- **K3 (revised 2026-11-02 after the first run):** the second reader is a different model from the **same
+  provider** (Imran). The first run used the judge's model on 29 of 30 because no Copilot model was set.
+  Copilot CLI lists no model ids, so AIQ tries `gpt-6-astra`, then `claude-sonnet-5.5`, then `gpt-5.6-sol`.
+  It skips any model the judge used. When Copilot answers "from --model flag is not available", AIQ moves
+  to the next model for the rest of the run. That refusal takes about 8 s, measured. If no candidate is
+  offered, Copilot picks the model itself. `check-copilot-model` overrides all of this. Claude Code stays
+  `opus`, and the judge defaults to `sonnet`. Ids measured on Imran's laptop: `recentModelIds`, and a
+  sealed `--model claude-sonnet-5.5` call that answered as that model. His plan sets Sol as the default but
+  does not lock it. The report still flags a same-model reading.
 - **N2 (repeat stability):** deferred. It needs a second judge run on the sample; add it once the first
   numbers show whether it matters.
 - **K6b (pause a kind under 8 of 10) and the Home "Judge check" card:** deferred until the first real run.
