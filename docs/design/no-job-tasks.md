@@ -107,6 +107,35 @@ The report then splits "the second reading said" by cause. One run of 30, at abo
 - what the C1 tasks are: a pack the judge misses, which points to R3, or `other`, which points to coverage
 - whether R2 clears the bar on C3
 
+## Result of the no-job check (run 01a19d99, build 762a61c, 2026-11-02 18:55Z, measured)
+
+`aiq judge --check --no-job` read 30 tasks with no job, spread by cause. The second readers were
+`gpt-6-astra` and `claude-opus-5-5`, neither of them the judge's model. Cost: Claude Code $0.08 and about
+29 Copilot requests. Agreement is Inferred: two models, no person.
+
+| Cause (store: 101 of 473 with no job) | In store | Second reading of the sampled ones |
+|---|---|---|
+| C1 both runs said `other` | 76 | **other 18 of 18** |
+| C3 agreed on a pack job, not confidently | 18 | ask_research 5, code_change 1, other 1 |
+| C2 the runs named different jobs | 7 | ask_research 3, write_doc 1, other 1 |
+
+| Rule | Tasks it gives a job | Second reading agreed |
+|---|---|---|
+| R1 | 3 of 101 | 1 of 2 (12-88%) |
+| R2 | 18 of 101 | 4 of 7 (29-81%) |
+
+**Decisions (2026-11-02):**
+- **C1 is right, not a miss.** A different model also called all 18 sampled tasks `other`. That rules out
+  rewording the prompt (R3): both readers agree these tasks fit none of the three packs. They stay
+  uncoached, which is the designed behaviour. About 76 of 473, or 16% of Imran's judged tasks, are work
+  outside every pack.
+- **No rule goes live.** R2 agrees 4 of 7 and R1 1 of 2, both below the N3 bar of 8 of 10. R4, a third run
+  for the 25 C2 and C3 tasks, isn't worth it: that is about 5% of tasks, and they would cost an extra call
+  each.
+- **What would change the coverage:** a fourth pack for whatever the C1 tasks are. Nobody knows what they
+  are yet, and the second reader only says `other`. Finding out needs a short private label per task, kept
+  on the device. Built as N6 below.
+
 ## N6: what the "both said other" tasks are (built 2026-11-02)
 
 `aiq judge --survey-other [--sample n] [--dry-run]` takes a seeded random sample, 30 by default, of
@@ -136,6 +165,6 @@ None. The cause and the rule are both settled from data.
 
 | | |
 |---|---|
-| **Completed** | Design; measurement build; cause measured (C1 75 of 100) |
-| **Remaining** | Laptop re-judge and a check; pick a rule |
-| **Best next action** | Upgrade the laptop, then run `aiq judge --check --no-job` once background judging has finished |
+| **Completed** | Design; measurement build; cause measured; no-job check run; decisions above |
+| **Remaining** | Survey run on the laptop; fourth-pack decision |
+| **Best next action** | Imran runs `aiq judge --survey-other`; the fourth-pack decision goes to him with those counts |
