@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { api, type SettingKey } from "../api";
 import type { Settings as S } from "../types";
-import { jobName, plural } from "../format";
+import { jobName, plural, when } from "../format";
 import { AccuracyPaused, Banners, Title, type Ctx } from "../ui";
 
 const STAYS: { v: S["copilot_tip_stays"]; label: string; note?: string }[] = [
@@ -18,6 +18,11 @@ const NEXT: { v: S["next_rung_tips"]; label: string; note?: string }[] = [
   { v: "off", label: "Off" },
 ];
 
+const UPDATE: { v: "auto" | "ask"; label: string; note?: string }[] = [
+  { v: "auto", label: "Update automatically, when AIQ home is closed", note: "Default" },
+  { v: "ask", label: "Tell me first" },
+];
+
 /** Daily judge caps offered as buttons; any other 0-500 value is set with `aiq config`. */
 const JUDGE_CAPS = [20, 50, 100, 200];
 
@@ -26,6 +31,13 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
   const [msg, setMsg] = useState<string | null>(null);
   const down = !snap.status.core;
   const st = snap.settings;
+  const up = snap.update;
+  const goBack = async () => {
+    const r = await api.runUpdate("rollback");
+    const m = r.ok ? "Going back to the previous version. AIQ home closes and opens again." : r.message;
+    setMsg(r.ok ? null : m);
+    announce(m);
+  };
   // The habit a tip names, from the kinds of task or habits AIQ knows; else the tip's own id.
   const tipName = (tipId: string) => {
     const move = tipId.replace(/^next_rung\./, "");
@@ -229,12 +241,48 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
         </p>
       </section>
 
+      <section className="card" aria-labelledby="st6">
+        <div className="head">
+          <h2 id="st6">Updates</h2>
+          <span className="chip">AIQ {up.running}</span>
+        </div>
+        {up.supported ? (
+          <>
+            <fieldset className="group" style={{ border: 0, padding: 0, margin: 0 }} disabled={down}>
+              <legend className="sr">When a newer AIQ is out</legend>
+              {UPDATE.map((o) => (
+                <label className="opt" key={o.v}>
+                  <input type="radio" name="update" checked={up.mode === o.v} onChange={() => change("update", o.v, `Updates: ${o.label.toLowerCase()}.`)} />
+                  <span>
+                    {o.label} {o.note && <span className="meta">· {o.note}</span>}
+                  </span>
+                </label>
+              ))}
+            </fieldset>
+            <span className="meta">
+              {up.checked_ms != null ? `Last checked ${when(up.checked_ms, snap.now_ms, snap.offset_min)}.` : "Not checked yet."}
+              {up.check_error ? " That check didn't reach GitHub; AIQ tries again in a day." : ""} AIQ asks GitHub once a day whether a newer
+              version is out, checks the download's fingerprint, and keeps the version before so you can go back. Nothing about you is sent.
+            </span>
+            {up.can_rollback && (
+              <div className="row">
+                <button className="btn" onClick={goBack}>
+                  Go back to the previous version
+                </button>
+              </div>
+            )}
+          </>
+        ) : (
+          <p className="mute">This copy of AIQ wasn't installed from a release, so it doesn't update itself.</p>
+        )}
+      </section>
+
       <section className="card" aria-labelledby="st4">
         <div className="head">
           <h2 id="st4">Sharing</h2>
           <span className="chip">Off · nothing leaves this computer</span>
         </div>
-        <p className="mute">AIQ home makes no network calls. Nothing is shared.</p>
+        <p className="mute">AIQ home makes no network calls. Nothing is shared. The once-a-day update check sends nothing about you.</p>
       </section>
 
       <section className="card" aria-labelledby="st5">

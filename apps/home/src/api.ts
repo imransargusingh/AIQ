@@ -1,8 +1,8 @@
-// The bridge to the Tauri shell (apps/home/src-tauri). Ten commands; nothing else leaves the page.
+// The bridge to the Tauri shell (apps/home/src-tauri). Twelve commands; nothing else leaves the page.
 // Outside Tauri (the UI tests) a fixture stands in, set on window by the test before the page loads.
 import type { Outcome, Snapshot, TaskDetail } from "./types";
 
-export type SettingKey = "daily_cap" | "copilot_tip_stays" | "next_rung_tips" | "judge_daily_tasks" | `keep_on.${string}`;
+export type SettingKey = "daily_cap" | "copilot_tip_stays" | "next_rung_tips" | "judge_daily_tasks" | "update" | `keep_on.${string}`;
 /** The reasons the core accepts (crates/aiq-core/src/coaching.rs FLAG_REASONS). */
 export type FlagReason = "evidence_wrong" | "not_useful" | "blocked" | "other";
 
@@ -41,6 +41,7 @@ function fixture<T>(cmd: string, args: Record<string, unknown>): Promise<T> {
       else {
         if (args.key === "daily_cap") s.settings.daily_cap = Number(args.value);
         if (args.key === "judge_daily_tasks") s.settings.judge_daily_tasks = Number(args.value);
+        if (args.key === "update") s.update.mode = args.value as Snapshot["update"]["mode"];
         if (args.key === "copilot_tip_stays") s.settings.copilot_tip_stays = args.value as Snapshot["settings"]["copilot_tip_stays"];
         const keep = String(args.key).startsWith("keep_on.") ? s.settings.accuracy_paused.find((p) => `keep_on.${p.scope}` === args.key) : undefined;
         if (String(args.key).startsWith("keep_on.") && !keep) {
@@ -107,6 +108,10 @@ function fixture<T>(cmd: string, args: Record<string, unknown>): Promise<T> {
       for (const t of s.setup.tools) if (t.present) t.hooked = true;
       out = { ok: true, changed: ["C:\\Users\\you\\.copilot\\hooks\\aiq.json"] };
       break;
+    case "run_update":
+      // The real shell closes the window after replying; the fixture only records the call.
+      out = f.fail?.includes(cmd) ? { ok: false, message: "Could not start: updates run only for AIQ installed with install.ps1 on Windows." } : { ok: true };
+      break;
     case "finish_setup":
       s.setup.done = true;
       out = s;
@@ -134,4 +139,6 @@ export const api = {
   tipOn: (tipId: string) => invoke<Outcome>("tip_on", { tipId }),
   /** Settings' per-tip switch: turn a tip off before it shows (same as "Don't show this again"). */
   tipOff: (tipId: string) => invoke<Outcome>("tip_off", { tipId }),
+  /** Install the waiting update, or go back to the previous version; AIQ home closes and reopens. */
+  runUpdate: (action: "install" | "rollback") => invoke<Outcome>("run_update", { action }),
 };

@@ -691,6 +691,43 @@ await test("Accuracy pause (K6b): Home and Settings say why, Keep showing and Le
   await none.context().close();
 });
 
+await test("auto-update: Home's one line, Install now and Go back, the Settings switch (design auto-update U5)", async () => {
+  const none = await open("full");
+  assert.equal(await none.getByTestId("update-line").count(), 0, "nothing waiting: no line");
+  await none.context().close();
+  const waiting = (s) => Object.assign(s.update, { note: "waiting", available: "v0.2.0", blocked: "AIQ home is open" });
+  const home = await open("full", { edit: waiting });
+  assert.equal((await home.getByTestId("update-line").innerText()).split("\n")[0], "AIQ 0.2.0 is ready. It installs by itself when you close AIQ home.");
+  await home.getByRole("button", { name: "Install now" }).click();
+  await home.waitForFunction(() => document.querySelector("[data-testid=update-line]")?.textContent.includes("AIQ home closes and opens again"));
+  const calls = await home.evaluate(() => window.__AIQ_FIXTURE__.calls.filter((c) => c.cmd === "run_update").map((c) => c.args));
+  assert.deepEqual(calls, [{ action: "install" }]);
+  assert.deepEqual(await axe(home), []);
+  await home.context().close();
+  const ask = await open("empty", { edit: (s) => (waiting(s), (s.update.mode = "ask")) });
+  assert.match(await ask.getByTestId("update-line").innerText(), /AIQ 0\.2\.0 is ready to install\./);
+  await ask.context().close();
+  const applied = (s) => Object.assign(s.update, { note: "applied", from: "0.0.9", at_ms: s.now_ms - 3_600_000 });
+  const done = await open("full", { edit: applied });
+  assert.match(await done.getByTestId("update-line").innerText(), /AIQ updated itself to 0\.1\.0 \(Today .+\)\. Your data and settings are kept\./);
+  await done.getByRole("button", { name: "Go back to 0.0.9" }).click();
+  const back = await done.evaluate(() => window.__AIQ_FIXTURE__.calls.filter((c) => c.cmd === "run_update").map((c) => c.args));
+  assert.deepEqual(back, [{ action: "rollback" }]);
+  await done.context().close();
+  const st = await open("full", { hash: "#settings" });
+  assert.equal(await st.getByRole("radio", { name: /Update automatically/ }).isChecked(), true);
+  await st.getByRole("radio", { name: "Tell me first" }).check();
+  await st.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Updates: tell me first.");
+  const set = await st.evaluate(() => window.__AIQ_FIXTURE__.calls.filter((c) => c.cmd === "set_setting").map((c) => c.args));
+  assert.deepEqual(set, [{ key: "update", value: "ask" }]);
+  assert.deepEqual(await axe(st), []);
+  await st.context().close();
+  const dev = await open("full", { hash: "#settings", edit: (s) => (s.update.supported = false) });
+  assert.match(await dev.locator("main").innerText(), /wasn't installed from a release, so it doesn't update itself/);
+  assert.equal(await dev.getByRole("radio", { name: "Tell me first" }).count(), 0);
+  await dev.context().close();
+});
+
 await browser.close();
 server.close();
 const failed = results.filter((r) => r[1] !== "pass").length;

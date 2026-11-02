@@ -533,5 +533,19 @@
     "habits": [],
     "habits_imported": true,
     "untyped": 2
+  },
+  "update": {
+    "supported": true,
+    "mode": "auto",
+    "running": "0.1.0",
+    "note": "none",
+    "available": null,
+    "blocked": null,
+    "from": null,
+    "at_ms": null,
+    "message": null,
+    "checked_ms": 1793530800000,
+    "check_error": null,
+    "can_rollback": true
   }
 }

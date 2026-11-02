@@ -1,5 +1,5 @@
 // Small shared pieces: banners, dialog with focus trap, skeletons, chips.
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api } from "./api";
 import type { Snapshot } from "./types";
 import { when } from "./format";
@@ -75,6 +75,61 @@ export function Banners({ snap, togglePause, refresh }: Pick<Ctx, "snap" | "togg
         </div>
       )}
     </>
+  );
+}
+
+/** Home's one line about updates (design auto-update U5): a version waiting, installed, failed or left. */
+export function UpdateLine({ snap, announce }: Pick<Ctx, "snap" | "announce">) {
+  const u = snap.update;
+  const [msg, setMsg] = useState<string | null>(null);
+  if (!u.supported || u.note === "none") return null;
+  const run = async (action: "install" | "rollback") => {
+    const r = await api.runUpdate(action);
+    const m = r.ok ? (action === "install" ? "Installing the update. AIQ home closes and opens again." : "Going back. AIQ home closes and opens again.") : r.message;
+    setMsg(m);
+    announce(m);
+  };
+  const at = u.at_ms != null ? when(u.at_ms, snap.now_ms, snap.offset_min) : "";
+  const ver = (v: string | null) => (v ?? "").replace(/^v/, "");
+  let text: ReactNode;
+  let action: ReactNode = null;
+  if (u.note === "waiting") {
+    text =
+      u.mode === "auto" ? (
+        <>AIQ {ver(u.available)} is ready. It installs by itself when you close AIQ home.</>
+      ) : (
+        <>AIQ {ver(u.available)} is ready to install.</>
+      );
+    action = (
+      <button className="btn" onClick={() => run("install")}>
+        Install now
+      </button>
+    );
+  } else if (u.note === "applied") {
+    text = (
+      <>
+        AIQ updated itself to {u.running} ({at}). Your data and settings are kept.
+      </>
+    );
+    if (u.can_rollback)
+      action = (
+        <button className="btn" onClick={() => run("rollback")}>
+          Go back to {u.from ?? "the previous version"}
+        </button>
+      );
+  } else if (u.note === "failed") {
+    text = <>AIQ couldn't install an update, so it kept {u.running}{u.message ? ` (${u.message})` : ""}. It tries again tomorrow.</>;
+  } else {
+    text = <>You went back to AIQ {u.running}. AIQ won't install {u.from ?? "that version"} again by itself; a newer one still installs.</>;
+  }
+  return (
+    <div className="banner" data-testid="update-line">
+      <div className="grow">
+        {text}
+        {msg && <span className="meta"> {msg}</span>}
+      </div>
+      {action}
+    </div>
   );
 }
 

@@ -5,7 +5,7 @@
 import { useState } from "react";
 import { KindList, judgedBy, pct } from "../coach";
 import { RUNGS, day, folderName, plural, rungLabel, sentence, toolName, topPlaces, when } from "../format";
-import { AccuracyPaused, Banners, Title, type Ctx } from "../ui";
+import { AccuracyPaused, Banners, Title, UpdateLine, type Ctx } from "../ui";
 
 export function Home(ctx: Ctx) {
   const { snap, go } = ctx;
@@ -16,6 +16,7 @@ export function Home(ctx: Ctx) {
     return (
       <div className="page">
         <Banners {...ctx} />
+        <UpdateLine {...ctx} />
         <header className="group">
           <Title>AIQ is watching quietly</Title>
           <p className="mute">Keep working as usual. Patterns show after about 10 tasks of the same kind. Tips can start sooner.</p>
@@ -45,6 +46,7 @@ export function Home(ctx: Ctx) {
   return (
     <div className="page">
       <Banners {...ctx} />
+      <UpdateLine {...ctx} />
       <AccuracyPaused {...ctx} />
       <Title sr>Home</Title>
       <section
