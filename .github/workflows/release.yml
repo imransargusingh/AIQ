@@ -3,7 +3,8 @@ name: release
 # Private-alpha design A1: one Windows zip (aiq.exe, aiq-home.exe, install.ps1, README.txt) plus SHA256SUMS.
 # A version tag v* builds it, smoke-tests install.ps1 on the runner, and attaches both files to a DRAFT
 # GitHub release: nothing is public until a person presses Publish. workflow_dispatch builds and tests the
-# zip as a workflow artifact only, with no release at all.
+# zip as a workflow artifact only, or, with draft_release on, also a draft release v<version> targeting that commit
+# (GitHub creates the tag only when the draft is published).
 on:
   push:
     tags: ["v*"]
@@ -13,6 +14,11 @@ on:
       - "crates/aiq/src/install.rs"
       - ".github/workflows/release.yml"
   workflow_dispatch:
+    inputs:
+      draft_release:
+        description: "Also make a DRAFT release v<Cargo version> from this commit (the tag is created only when someone presses Publish)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -126,7 +132,7 @@ jobs:
           retention-days: 14
 
   draft-release:
-    if: github.ref_type == 'tag'
+    if: github.ref_type == 'tag' || inputs.draft_release
     needs: windows
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -142,6 +148,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cd dist && sha256sum -c SHA256SUMS && cd ..
-          gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --draft \
+          gh release create "v${{ needs.windows.outputs.version }}" dist/* --repo "$GITHUB_REPOSITORY" --draft --target "$GITHUB_SHA" \
             --title "AIQ ${{ needs.windows.outputs.version }}" \
             --notes "Private alpha build. Unzip, then run install.ps1 (see README.txt). Check the zip against SHA256SUMS."
