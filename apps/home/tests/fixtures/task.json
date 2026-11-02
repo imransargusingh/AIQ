@@ -7,8 +7,31 @@
     "last_ms": 1793362140000,
     "prompts": 3,
     "origin": "live",
-    "job": null,
-    "rung": null
+    "job": "code_change",
+    "rung": 2,
+    "judgment": {
+      "judged_ms": 1793523600000,
+      "state": "judged",
+      "current": 2,
+      "potential": 3,
+      "ceiling": 5,
+      "current_confidence": 0.85,
+      "potential_confidence": 0.85,
+      "job": "code_change",
+      "coachable": true,
+      "evidence": [
+        "You gave the agent the goal and the error type to use.",
+        "You checked the diff before keeping it <b>bold</b>."
+      ],
+      "gap": "Hand the agent the whole change with the tests it must pass, and let it run them.",
+      "blockers": [],
+      "provider": "claude-code",
+      "model": "claude-sonnet-5-5",
+      "read_prompts": 3,
+      "read_chars": 160,
+      "read_actions": true,
+      "versions": "fs1 · r1 · j1"
+    }
   },
   "prompts": [
     {

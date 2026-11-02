@@ -1,11 +1,16 @@
-//! Start `aiq core` fully detached, so it survives the hook's process tree ending (spike S3b).
+//! Start `aiq core` (or the background judge) fully detached, so it survives the parent's process tree
+//! ending (spike S3b).
 use std::process::{Command, Stdio};
 
 pub fn core_detached() -> std::io::Result<()> {
+    detached(&["core"])
+}
+
+pub fn detached(args: &[&str]) -> std::io::Result<()> {
     let exe = std::env::current_exe()?;
     let mk = || {
         let mut c = Command::new(&exe);
-        c.arg("core").stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+        c.args(args).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
         c
     };
     #[cfg(windows)]

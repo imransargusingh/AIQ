@@ -14,6 +14,10 @@ impl Now {
     pub fn local_day(&self) -> i64 {
         local_day(self.utc_ms, self.offset_min)
     }
+    /// UTC time of the start of today in local time.
+    pub fn local_midnight_utc_ms(&self) -> i64 {
+        self.local_day() * DAY_MS - self.offset_min as i64 * 60_000
+    }
 }
 
 pub trait Clock {
@@ -81,6 +85,15 @@ mod tests {
         assert_eq!(c.now(), Now { utc_ms: 1_500, offset_min: 0 });
         c.set(7, 60);
         assert_eq!(c.now(), Now { utc_ms: 7, offset_min: 60 });
+    }
+
+    #[test]
+    fn local_midnight_is_the_start_of_the_local_day() {
+        let n = Now { utc_ms: 10 * DAY_MS + 3_600_000, offset_min: 120 };
+        assert_eq!(n.local_midnight_utc_ms(), 10 * DAY_MS - 7_200_000);
+        assert_eq!(local_day(n.local_midnight_utc_ms(), 120), n.local_day());
+        let w = Now { utc_ms: 10 * DAY_MS + 3_600_000, offset_min: -300 };
+        assert_eq!(w.local_midnight_utc_ms(), 9 * DAY_MS + 300 * 60_000);
     }
 
     #[test]

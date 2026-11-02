@@ -13,7 +13,31 @@
   "home": {
     "window_days": 30,
     "tasks_in_window": 7,
-    "judged": 0,
+    "judged": 3,
+    "uncertain": 1,
+    "rungs": [
+      0,
+      1,
+      1,
+      0,
+      0
+    ],
+    "most_common_rung": 2,
+    "next_steps": [
+      {
+        "task_id": "019000000001-0000-7000-8000-000000000000",
+        "job": "code_change",
+        "current": 2,
+        "potential": 3,
+        "gap": "Hand the agent the whole change with the tests it must pass, and let it run them."
+      }
+    ],
+    "judge_today": {
+      "tasks": 3,
+      "calls": 6,
+      "failed_calls": 0,
+      "cost_usd": 0.04
+    },
     "imported_in_window": 1,
     "weeks": [
       {
@@ -57,7 +81,7 @@
   },
   "tasks": [
     {
-      "task_id": "019000000016-0000-7000-8000-000000000000",
+      "task_id": "019000000018-0000-7000-8000-000000000000",
       "tool": "copilot-cli",
       "folder": "c:\\users\\imran\\source\\repos\\foresight",
       "first_ms": 1793532600000,
@@ -65,7 +89,8 @@
       "prompts": 1,
       "origin": "live",
       "job": null,
-      "rung": null
+      "rung": null,
+      "judgment": null
     },
     {
       "task_id": "019000000001-0000-7000-8000-000000000000",
@@ -75,11 +100,34 @@
       "last_ms": 1793362140000,
       "prompts": 3,
       "origin": "live",
-      "job": null,
-      "rung": null
+      "job": "code_change",
+      "rung": 2,
+      "judgment": {
+        "judged_ms": 1793523600000,
+        "state": "judged",
+        "current": 2,
+        "potential": 3,
+        "ceiling": 5,
+        "current_confidence": 0.85,
+        "potential_confidence": 0.85,
+        "job": "code_change",
+        "coachable": true,
+        "evidence": [
+          "You gave the agent the goal and the error type to use.",
+          "You checked the diff before keeping it <b>bold</b>."
+        ],
+        "gap": "Hand the agent the whole change with the tests it must pass, and let it run them.",
+        "blockers": [],
+        "provider": "claude-code",
+        "model": "claude-sonnet-5-5",
+        "read_prompts": 3,
+        "read_chars": 160,
+        "read_actions": true,
+        "versions": "fs1 · r1 · j1"
+      }
     },
     {
-      "task_id": "019000000010-0000-7000-8000-000000000000",
+      "task_id": "019000000012-0000-7000-8000-000000000000",
       "tool": "copilot-cli",
       "folder": "c:\\users\\imran\\source\\repos\\foresight",
       "first_ms": 1792759560000,
@@ -87,21 +135,45 @@
       "prompts": 1,
       "origin": "live",
       "job": null,
-      "rung": null
+      "rung": null,
+      "judgment": null
     },
     {
-      "task_id": "019000000008-0000-7000-8000-000000000000",
+      "task_id": "019000000009-0000-7000-8000-000000000000",
       "tool": "copilot-cli",
       "folder": "c:\\users\\imran\\source\\repos\\foresight",
       "first_ms": 1792756800000,
       "last_ms": 1792756800000,
       "prompts": 1,
       "origin": "live",
-      "job": null,
-      "rung": null
+      "job": "unclassified",
+      "rung": 1,
+      "judgment": {
+        "judged_ms": 1793527200000,
+        "state": "uncertain",
+        "current": 1,
+        "potential": 2,
+        "ceiling": 5,
+        "current_confidence": 0.85,
+        "potential_confidence": 0.85,
+        "job": "unclassified",
+        "coachable": false,
+        "evidence": [
+          "You asked for a spec in one line.",
+          "Not Directed: AIQ couldn't tell whether the output was checked before use."
+        ],
+        "gap": "Give the agent the audience, goal and constraints.",
+        "blockers": [],
+        "provider": "copilot-cli",
+        "model": "claude-sonnet-5-5",
+        "read_prompts": 3,
+        "read_chars": 160,
+        "read_actions": true,
+        "versions": "fs1 · r1 · j1"
+      }
     },
     {
-      "task_id": "019000000011-0000-7000-8000-000000000000",
+      "task_id": "019000000013-0000-7000-8000-000000000000",
       "tool": "vscode",
       "folder": null,
       "first_ms": 1792152000000,
@@ -109,10 +181,11 @@
       "prompts": 2,
       "origin": "live",
       "job": null,
-      "rung": null
+      "rung": null,
+      "judgment": null
     },
     {
-      "task_id": "019000000013-0000-7000-8000-000000000000",
+      "task_id": "019000000015-0000-7000-8000-000000000000",
       "tool": "claude-code",
       "folder": "c:\\users\\imran\\source\\repos\\aiq",
       "first_ms": 1791806400000,
@@ -120,7 +193,8 @@
       "prompts": 1,
       "origin": "live",
       "job": null,
-      "rung": null
+      "rung": null,
+      "judgment": null
     },
     {
       "task_id": "import:copilot-cli:imp1:0",
@@ -130,13 +204,35 @@
       "last_ms": 1791374700000,
       "prompts": 2,
       "origin": "imported",
-      "job": null,
-      "rung": null
+      "job": "write_doc",
+      "rung": 3,
+      "judgment": {
+        "judged_ms": 1793530800000,
+        "state": "right_rung",
+        "current": 3,
+        "potential": 3,
+        "ceiling": 5,
+        "current_confidence": 0.85,
+        "potential_confidence": 0.85,
+        "job": "write_doc",
+        "coachable": false,
+        "evidence": [
+          "You handed the agent the whole plan with what done looks like."
+        ],
+        "gap": "",
+        "blockers": [],
+        "provider": "copilot-cli",
+        "model": "claude-sonnet-5-5",
+        "read_prompts": 3,
+        "read_chars": 160,
+        "read_actions": true,
+        "versions": "fs1 · r1 · j1"
+      }
     }
   ],
   "tips": [
     {
-      "card_id": "019000000018-0000-7000-8000-000000000000",
+      "card_id": "019000000020-0000-7000-8000-000000000000",
       "tool": "copilot-cli",
       "delivered_ms": 1793533200000,
       "noticed": "You reworded the same request 3 times in this task.",
@@ -160,10 +256,10 @@
     "turn_ends": 2,
     "imported_sessions": 1,
     "imported_events": 6,
-    "store_bytes": 139264,
+    "store_bytes": 172032,
     "items": [
       {
-        "event_id": "019000000016-0000-7000-8000-000000000000",
+        "event_id": "019000000018-0000-7000-8000-000000000000",
         "ts_ms": 1793532600000,
         "tool": "copilot-cli",
         "kind": "prompt",
@@ -203,7 +299,7 @@
         "deleted": false
       },
       {
-        "event_id": "019000000015-0000-7000-8000-000000000000",
+        "event_id": "019000000017-0000-7000-8000-000000000000",
         "ts_ms": 1793275200000,
         "tool": "claude-code",
         "kind": "prompt",
@@ -211,7 +307,7 @@
         "deleted": false
       },
       {
-        "event_id": "019000000010-0000-7000-8000-000000000000",
+        "event_id": "019000000012-0000-7000-8000-000000000000",
         "ts_ms": 1792759560000,
         "tool": "copilot-cli",
         "kind": "prompt",
@@ -219,7 +315,7 @@
         "deleted": false
       },
       {
-        "event_id": "019000000009-0000-7000-8000-000000000000",
+        "event_id": "019000000011-0000-7000-8000-000000000000",
         "ts_ms": 1792756860000,
         "tool": "copilot-cli",
         "kind": "stop",
@@ -227,7 +323,7 @@
         "deleted": false
       },
       {
-        "event_id": "019000000008-0000-7000-8000-000000000000",
+        "event_id": "019000000009-0000-7000-8000-000000000000",
         "ts_ms": 1792756800000,
         "tool": "copilot-cli",
         "kind": "prompt",
@@ -235,7 +331,7 @@
         "deleted": false
       },
       {
-        "event_id": "019000000012-0000-7000-8000-000000000000",
+        "event_id": "019000000014-0000-7000-8000-000000000000",
         "ts_ms": 1792152180000,
         "tool": "vscode",
         "kind": "prompt",
@@ -243,7 +339,7 @@
         "deleted": false
       },
       {
-        "event_id": "019000000011-0000-7000-8000-000000000000",
+        "event_id": "019000000013-0000-7000-8000-000000000000",
         "ts_ms": 1792152000000,
         "tool": "vscode",
         "kind": "prompt",
@@ -251,7 +347,7 @@
         "deleted": false
       },
       {
-        "event_id": "019000000013-0000-7000-8000-000000000000",
+        "event_id": "019000000015-0000-7000-8000-000000000000",
         "ts_ms": 1791806400000,
         "tool": "claude-code",
         "kind": "prompt",
@@ -259,7 +355,7 @@
         "deleted": true
       },
       {
-        "event_id": "019000000014-0000-7000-8000-000000000000",
+        "event_id": "019000000016-0000-7000-8000-000000000000",
         "ts_ms": 1790078400000,
         "tool": "claude-code",
         "kind": "prompt",
@@ -272,7 +368,9 @@
   },
   "settings": {
     "daily_cap": 3,
-    "copilot_tip_stays": "next-prompt"
+    "copilot_tip_stays": "next-prompt",
+    "judge": "off",
+    "judge_daily_tasks": 50
   },
   "setup": {
     "done": true,

@@ -1,9 +1,9 @@
 // Task detail (spec US-H4; design aiq-home-deferred-pages E8): one task's facts and its prompts in order.
-// The rung judge isn't built yet, so the rung, what it read and the next step say "Not judged yet" in the
-// places they will fill.
+// The judgment (design rung-judge) shows the rung, why, one next step and what was read; until the task is
+// judged it says so. Model-written text renders as plain text only (TR-5).
 import { useEffect, useState } from "react";
 import { api } from "../api";
-import { NOT_CLASSIFIED, clock, folderName, plural, rungLabel, toolName, when } from "../format";
+import { clock, folderName, jobName, plural, rungLabel, stateLabel, toolName, when } from "../format";
 import type { TaskDetail } from "../types";
 import { Banners, Chip, Content, Sk, Title, preview, type Ctx } from "../ui";
 
@@ -88,6 +88,7 @@ export function Task(ctx: Ctx & { taskId: string }) {
   }
 
   const { task: t, prompts } = st.d;
+  const j = t.judgment;
   const first = prompts.find((p) => p.text)?.text;
   const minutes = Math.round((t.last_ms - t.first_ms) / 60_000);
   return (
@@ -105,17 +106,42 @@ export function Task(ctx: Ctx & { taskId: string }) {
         </p>
       </header>
 
-      <div className="empty">
-        <b>No next step yet: AIQ doesn't judge tasks yet.</b>
-        <span className="mute">
-          When it does, this shows which rung the task is on today and why, the facts the judge read from it, one next step that would let the agent
-          do more, and a starter prompt to copy.
-        </span>
-        <div className="row">
-          <Chip>Rung: {t.rung ? rungLabel(t.rung) : "Not judged yet"}</Chip>
-          <Chip>Job: {t.job ?? NOT_CLASSIFIED}</Chip>
+      {j ? (
+        <section className="card group" aria-labelledby="jd">
+          <h2 id="jd">How this task was done</h2>
+          <div className="row">
+            <Chip>Rung: {rungLabel(j.current)}</Chip>
+            {stateLabel(j.state) && <Chip>{stateLabel(j.state)}</Chip>}
+            <Chip>Job: {jobName(j.job)}</Chip>
+          </div>
+          {j.state === "uncertain" && <p className="mute">AIQ isn't sure about this one, so it won't coach on it.</p>}
+          <ul className="evidence">
+            {j.evidence.map((e, i) => (
+              <li key={i}>{e}</li>
+            ))}
+          </ul>
+          {j.potential > j.current && j.gap && (
+            <p>
+              <b>Next step ({rungLabel(j.current)} → {rungLabel(j.potential)}):</b> {j.gap}
+            </p>
+          )}
+          {j.blockers.length > 0 && <p className="mute">Outside your control: {j.blockers.join(" ")}</p>}
+          <p className="meta">
+            Judged {when(j.judged_ms, snap.now_ms, snap.offset_min)} by your {toolName(j.provider)}
+            {j.model && <> ({j.model})</>}. It read {plural(j.read_prompts, "prompt")}, {plural(j.read_chars, "character")}
+            {j.read_actions ? " and a summary of the agent's actions" : ""}.
+          </p>
+        </section>
+      ) : (
+        <div className="empty">
+          <b>Not judged yet.</b>
+          <span className="mute">
+            {snap.settings.judge === "auto"
+              ? "AIQ judges finished tasks in the background, through your own Claude Code or Copilot CLI."
+              : "Run aiq judge once to start; it shows what it sends first."}
+          </span>
         </div>
-      </div>
+      )}
 
       <section className="group" aria-labelledby="tp">
         <h2 id="tp">Your prompts in this task</h2>

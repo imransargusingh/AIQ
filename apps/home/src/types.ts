@@ -26,6 +26,13 @@ export interface Home {
   window_days: number;
   tasks_in_window: number;
   judged: number;
+  /** Judged Uncertain: shown, never coached, not in `rungs`. */
+  uncertain: number;
+  /** Judged, not-Uncertain tasks per current rung; index 0 = Assisted. */
+  rungs: [number, number, number, number, number];
+  most_common_rung: number | null;
+  next_steps: NextStep[];
+  judge_today: JudgeToday;
   imported_in_window: number;
   weeks: { start_ms: number; tasks: number }[];
   by_tool: [string, number][];
@@ -41,8 +48,48 @@ export interface TaskRow {
   last_ms: number;
   prompts: number;
   origin: "live" | "imported";
+  /** code_change, write_doc or unclassified once judged. */
   job: string | null;
   rung: number | null;
+  judgment: TaskJudgment | null;
+}
+
+/** One task's current judgment. Model-written text (evidence, gap, blockers) is plain text: render as text only. */
+export interface TaskJudgment {
+  judged_ms: number;
+  state: "judged" | "uncertain" | "right_rung" | "blocked";
+  current: number;
+  potential: number;
+  ceiling: number;
+  current_confidence: number;
+  potential_confidence: number;
+  job: string;
+  coachable: boolean;
+  evidence: string[];
+  gap: string;
+  blockers: string[];
+  provider: "claude-code" | "copilot-cli";
+  model: string | null;
+  read_prompts: number;
+  read_chars: number;
+  read_actions: boolean;
+  versions: string;
+}
+
+export interface NextStep {
+  task_id: string;
+  job: string;
+  current: number;
+  potential: number;
+  gap: string;
+}
+
+export interface JudgeToday {
+  tasks: number;
+  calls: number;
+  failed_calls: number;
+  /** Sum the tool reported; null = not recorded (Copilot reports none). */
+  cost_usd: number | null;
 }
 
 export interface TipRow {
@@ -79,6 +126,8 @@ export interface Item {
 export interface Settings {
   daily_cap: number;
   copilot_tip_stays: "next-prompt" | "two-prompts-or-5-min" | "until-opened";
+  judge: "auto" | "off";
+  judge_daily_tasks: number;
 }
 
 /** A command's answer: done, or a sentence the person can act on. */

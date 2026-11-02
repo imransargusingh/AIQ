@@ -5,4 +5,5 @@ pub mod card;
 pub mod codes;
 pub mod event;
 pub mod frames;
+pub mod judge;
 pub mod pack;

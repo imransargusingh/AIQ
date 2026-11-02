@@ -72,9 +72,9 @@ fn decide(s: &Store, did: &str, cid: &str, outcome: &str, reason: &str, at: i64)
 }
 
 #[test]
-fn open_creates_latest_schema_version_4() {
+fn open_creates_latest_schema_version_5() {
     let (_d, s) = open();
-    assert_eq!(s.user_version().unwrap(), 4);
+    assert_eq!(s.user_version().unwrap(), 5);
 }
 
 #[test]
@@ -87,7 +87,7 @@ fn v1_store_migrates_to_latest_keeping_data() {
         assert_eq!(s.user_version().unwrap(), 1);
     }
     let s = Store::open(&p).unwrap();
-    assert_eq!(s.user_version().unwrap(), 4);
+    assert_eq!(s.user_version().unwrap(), 5);
     assert_eq!(s.events_by_kind().unwrap(), vec![("prompt".to_string(), 1)]);
     assert!(s.import_counts().unwrap().is_empty());
     s.insert_open("c1", "cli", 5).unwrap();
@@ -286,4 +286,92 @@ fn session_known_after_first_event() {
     assert!(!s.session_known("claude-code", "s").unwrap());
     s.insert_event(&ev("e1", "s", Some("x")), 1).unwrap();
     assert!(s.session_known("claude-code", "s").unwrap() && !s.session_known("copilot-cli", "s").unwrap());
+}
+
+fn judgment(id: &str, task: &str, origin: &str, at: i64, rung: u8) -> JudgmentRow {
+    JudgmentRow {
+        judgment_id: id.into(),
+        task_id: task.into(),
+        origin: origin.into(),
+        provider: "claude-code".into(),
+        model: Some("m".into()),
+        judged_utc_ms: at,
+        job: "code_change".into(),
+        job_confidence: 0.9,
+        model_rung: rung,
+        current_rung: rung,
+        current_confidence: 0.8,
+        potential_rung: rung,
+        potential_confidence: 0.8,
+        ceiling_rung: 5,
+        state: "right_rung".into(),
+        coachable: false,
+        facts: "{}".into(),
+        evidence: r#"["e"]"#.into(),
+        gap: String::new(),
+        blockers: "[]".into(),
+        placement: "[]".into(),
+        read: "{}".into(),
+        call_ids: "[]".into(),
+        fact_set_version: "fs1".into(),
+        rubric_version: "r1".into(),
+        judge_version: "j1".into(),
+    }
+}
+
+fn call<'a>(id: &'a str, task: &'a str, at: i64, outcome: &'a str) -> NewJudgeCall<'a> {
+    NewJudgeCall {
+        call_id: id,
+        task_id: task,
+        run: 1,
+        provider: "claude-code",
+        model: None,
+        started_utc_ms: at,
+        latency_ms: 10,
+        outcome,
+        code: None,
+        input_chars: 100,
+        tool_session_id: None,
+        cost_usd: Some(0.01),
+        tokens_in: None,
+        tokens_out: None,
+    }
+}
+
+#[test]
+fn judgments_are_versioned_append_only_and_the_newest_is_current() {
+    let (_d, s) = open();
+    s.insert_judgment(&judgment("j1", "t1", "live", 10, 2)).unwrap();
+    s.insert_judgment(&judgment("j2", "t1", "live", 20, 3)).unwrap();
+    s.insert_judgment(&judgment("j3", "t2", "imported", 15, 1)).unwrap();
+    let cur = s.current_judgments().unwrap();
+    assert_eq!(cur.len(), 2);
+    assert_eq!(cur["t1"].judgment_id, "j2");
+    assert_eq!(cur["t1"].current_rung, 3);
+    let e = s.raw().execute("UPDATE judgment SET current_rung = 5", []).unwrap_err();
+    assert!(e.to_string().contains(codes::STORE_APPEND_ONLY));
+    // Invariants the schema itself holds: potential within one rung, evidence never empty.
+    let mut bad = judgment("j4", "t3", "live", 1, 2);
+    bad.potential_rung = 4;
+    assert!(s.insert_judgment(&bad).is_err());
+    let mut bad = judgment("j5", "t3", "live", 1, 2);
+    bad.evidence = "[]".into();
+    assert!(s.insert_judgment(&bad).is_err());
+}
+
+#[test]
+fn judge_calls_are_read_back_by_time_and_forget_imported_takes_imported_judgments() {
+    let (_d, mut s) = open();
+    s.insert_judge_call(&call("c1", "e1", 100, "ok")).unwrap();
+    s.insert_judge_call(&call("c2", "import:copilot-cli:s:0", 200, "timeout")).unwrap();
+    let calls = s.judge_calls_since(150).unwrap();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].outcome, "timeout");
+    assert!(s.raw().execute("UPDATE judge_call SET outcome = 'ok'", []).is_err());
+    s.insert_judgment(&judgment("j1", "e1", "live", 1, 2)).unwrap();
+    s.insert_judgment(&judgment("j2", "import:copilot-cli:s:0", "imported", 1, 2)).unwrap();
+    s.forget_imported().unwrap();
+    let cur = s.current_judgments().unwrap();
+    assert_eq!(cur.keys().collect::<Vec<_>>(), vec!["e1"]);
+    assert_eq!(s.judge_calls_since(0).unwrap().len(), 1);
 }

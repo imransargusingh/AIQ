@@ -192,9 +192,9 @@ B2 pack content → core; B3 core → backend; B4 store at rest; B5 core → the
 ## Status & next action
 | | |
 |---|---|
-| **Completed** | Draft architecture, ADRs 0001–0006, threat model and privacy review; Phase 0 spike (GO); Phase 1 Claude Code slice (PRs #5, #7–#9); Phase 2 design and build (Copilot CLI status line, VS Code extension, cross-surface quiet period; PR #14); `aiq import` slice 1 (PR #15); Phase 3 AIQ home design and build |
-| **Remaining** | Phase 2 VS Code laptop check; Phase 3 laptop check and merge; Phases 3b–6 |
-| **Best next action** | Laptop check of AIQ home (Phase 3), then `/design-slice` for feedback and habits (3b) or the rung judge (5) |
+| **Completed** | Draft architecture, ADRs 0001–0006, threat model and privacy review; Phase 0 spike (GO); Phase 1 Claude Code slice (PRs #5, #7–#9); Phase 2 design and build (Copilot CLI status line, VS Code extension, cross-surface quiet period; PR #14); `aiq import` slice 1 (PR #15); Phase 3 AIQ home design and build (PRs #19, #20); rung judge slice 1 design and build (Phases 4–5 core: `aiq judge` through the person's own `claude -p` / `copilot -p`, design `docs/design/rung-judge.md`) |
+| **Remaining** | Phase 2 VS Code laptop check; rung judge laptop check (Copilot path first) and eval rerun on real tasks; Phases 3b and 6; Factory facts (F9) |
+| **Best next action** | Laptop check of the rung judge on real Copilot tasks, then `/design-slice` for feedback and habits (3b) |
 
 ## Gate record
 `GATE define-architecture · 2026-10-31 · Enterprise, Distributed Systems, Security & Identity, Data & Persistence, SRE, Patterns, Simplifier (all seats played by Claude in one session; not independent) · verdict: pass with conditions`

@@ -501,7 +501,10 @@ impl<C: Clock> Service<C> {
                 Ok(n) if n <= MAX_DAILY_CAP => n.to_string(),
                 _ => return Err(format!("daily-cap must be a whole number from 0 to {MAX_DAILY_CAP}")),
             },
-            _ => return Err(format!("unknown setting {key}")),
+            _ => match aiq_domain::rung::validate_setting(key, value) {
+                Some(v) => v?,
+                None => return Err(format!("unknown setting {key}")),
+            },
         };
         self.store.set_setting(key, &v, self.clock.now().utc_ms).map_err(|e| {
             self.counters.inc(e.code);

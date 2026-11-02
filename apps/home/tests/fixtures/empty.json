@@ -14,6 +14,22 @@
     "window_days": 30,
     "tasks_in_window": 0,
     "judged": 0,
+    "uncertain": 0,
+    "rungs": [
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "most_common_rung": null,
+    "next_steps": [],
+    "judge_today": {
+      "tasks": 0,
+      "calls": 0,
+      "failed_calls": 0,
+      "cost_usd": null
+    },
     "imported_in_window": 0,
     "weeks": [
       {
@@ -52,7 +68,9 @@
   },
   "settings": {
     "daily_cap": 5,
-    "copilot_tip_stays": "next-prompt"
+    "copilot_tip_stays": "next-prompt",
+    "judge": "off",
+    "judge_daily_tasks": 50
   },
   "setup": {
     "done": true,

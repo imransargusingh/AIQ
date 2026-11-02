@@ -12,6 +12,19 @@ export const RUNGS: { name: string; means: string }[] = [
 /** Rung names first, numbers second (spec H4): "Directed (2)". */
 export const rungLabel = (rung: number) => `${RUNGS[rung - 1].name} (${rung})`;
 
+const JOBS: Record<string, string> = { code_change: "Code a change", write_doc: "Write a spec or doc", unclassified: "Unclassified" };
+/** The job a task was judged to be. */
+export const jobName = (j: string | null) => (j ? JOBS[j] ?? j : "Not judged yet");
+
+const STATES: Record<string, string> = {
+  judged: "",
+  uncertain: "Uncertain",
+  right_rung: "Right rung",
+  blocked: "Capped by a blocker",
+};
+/** The text label every non-default judgment state carries (spec: never by colour alone). */
+export const stateLabel = (s: string) => STATES[s] ?? s;
+
 const TOOLS: Record<string, string> = { "claude-code": "Claude Code", "copilot-cli": "Copilot CLI", vscode: "VS Code" };
 export const toolName = (t: string) => TOOLS[t] ?? t;
 
@@ -79,7 +92,7 @@ export function sortTasks(tasks: TaskRow[], key: SortKey, dir: Dir): TaskRow[] {
 }
 
 export const NOT_CLASSIFIED = "Not classified yet";
-export const jobOf = (t: TaskRow) => t.job ?? NOT_CLASSIFIED;
+export const jobOf = (t: TaskRow) => (t.job ? jobName(t.job) : NOT_CLASSIFIED);
 
 /** Job filter options: "All" plus each job present. Buttons up to 4 jobs, a dropdown beyond (spec). */
 export function jobOptions(tasks: TaskRow[]): { options: string[]; dropdown: boolean } {

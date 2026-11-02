@@ -437,7 +437,7 @@ pub struct Report {
 }
 
 /// Session ids AIQ's own judge started (`~/.aiq/judge-sessions.txt`, US-11); never imported.
-fn judge_ids(paths: &Paths) -> HashSet<String> {
+pub(crate) fn judge_ids(paths: &Paths) -> HashSet<String> {
     std::fs::read_to_string(paths.data.join("judge-sessions.txt"))
         .map(|s| s.lines().map(|l| l.trim().to_owned()).filter(|l| !l.is_empty()).collect())
         .unwrap_or_default()
@@ -609,7 +609,7 @@ pub fn render(rep: &Report, dry_run: bool) -> String {
     out
 }
 
-fn tool_home(var: &str, dir: &str) -> PathBuf {
+pub(crate) fn tool_home(var: &str, dir: &str) -> PathBuf {
     std::env::var_os(var).filter(|v| !v.is_empty()).map(PathBuf::from).unwrap_or_else(|| home_dir().join(dir))
 }
 
@@ -620,7 +620,7 @@ fn home_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("."))
 }
 
-fn open_store(paths: &Paths) -> Result<Store, ExitCode> {
+pub(crate) fn open_store(paths: &Paths) -> Result<Store, ExitCode> {
     let _ = paths.ensure_dirs();
     Store::open(&paths.db()).map_err(|e| {
         eprintln!("Could not open AIQ's store ({}): {}", e.code, e.detail);
