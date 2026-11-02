@@ -26,8 +26,6 @@ pub const CALL_TIMEOUT: Duration = Duration::from_secs(120);
 /// Back-off after the Nth failed call of a task (D8); the task is given up after `GIVE_UP` failed calls.
 const BACKOFF_MS: [i64; 5] = [3_600_000, 6 * 3_600_000, DAY_MS, DAY_MS, DAY_MS];
 const GIVE_UP: usize = 6;
-/// A lock older than this belongs to a run that died.
-const STALE_LOCK: Duration = Duration::from_secs(30 * 60);
 const LOG_MAX: u64 = 256 * 1024;
 const CLAUDE: &str = "claude-code";
 const COPILOT: &str = "copilot-cli";
@@ -884,37 +882,45 @@ pub fn run(r: &Run<'_>) -> Result<Report, String> {
 
 // ------------------------------------------------------------------ lock
 
-struct Lock(PathBuf);
+/// One judge run at a time, across processes: an OS lock on `judge.lock`, held for the whole run and released
+/// by the OS when the run ends or dies, so a long run is never taken for dead. (Before 2026-11-02 the lock was
+/// a file whose age said "dead" after 30 min; with the 500-a-day cap, runs went longer, a second and third
+/// `judge --auto` started, and 114 tasks were judged twice, measured from judge.log.) Same pattern as core.lock.
+struct Lock {
+    _held: std::fs::File,
+}
 
 impl Lock {
     fn take(path: PathBuf) -> Option<Self> {
-        let fresh = |p: &Path| {
-            std::fs::metadata(p)
-                .and_then(|m| m.modified())
-                .ok()
-                .and_then(|t| t.elapsed().ok())
-                .is_some_and(|e| e < STALE_LOCK)
-        };
-        for _ in 0..2 {
-            match std::fs::OpenOptions::new().write(true).create_new(true).open(&path) {
-                Ok(mut f) => {
-                    let _ = writeln!(f, "{}", std::process::id());
-                    return Some(Lock(path));
-                }
-                Err(_) if !fresh(&path) => {
-                    let _ = std::fs::remove_file(&path);
-                }
-                Err(_) => return None,
-            }
-        }
-        None
+        let f = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(&path).ok()?;
+        f.try_lock().ok()?;
+        Some(Lock { _held: f })
     }
 }
 
-impl Drop for Lock {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.0);
+/// True while a judge run holds the lock (the core's kicker asks before starting one).
+fn judge_running(path: &Path) -> bool {
+    Lock::take(path.to_path_buf()).is_none()
+}
+
+/// Files a judge run killed mid-call left in `judge-work` (they hold the prompt text of the task being judged):
+/// usage files always, Copilot homes unless the person keeps judge sessions. Called only while holding the lock,
+/// so no live call owns them.
+fn sweep_judge_work(paths: &Paths, keep_sessions: bool) -> usize {
+    let Ok(rd) = std::fs::read_dir(paths.data.join("judge-work")) else { return 0 };
+    let mut n = 0;
+    for e in rd.flatten() {
+        let name = e.file_name().to_string_lossy().into_owned();
+        let gone = if name.starts_with("usage-") && name.ends_with(".json") {
+            std::fs::remove_file(e.path()).is_ok()
+        } else if name.starts_with("copilot-") && !keep_sessions {
+            std::fs::remove_dir_all(e.path()).is_ok()
+        } else {
+            false
+        };
+        n += usize::from(gone);
     }
+    n
 }
 
 pub fn lock_path(paths: &Paths) -> PathBuf {
@@ -956,11 +962,7 @@ pub fn start_background(paths: Paths) {
                 .ok()
                 .and_then(|s| s.setting(rung::SETTING_JUDGE).ok().flatten())
                 .is_some_and(|v| v == "auto");
-            let busy = std::fs::metadata(lock_path(&paths))
-                .and_then(|m| m.modified())
-                .ok()
-                .and_then(|t| t.elapsed().ok())
-                .is_some_and(|e| e < STALE_LOCK);
+            let busy = judge_running(&lock_path(&paths));
             if on && !busy && !aiq_core::control::is_paused(&paths) {
                 let _ = crate::spawn::detached(&["judge", "--auto"]);
             }
@@ -1038,6 +1040,14 @@ pub fn cli(args: &[&str]) -> ExitCode {
         }
         return ExitCode::SUCCESS;
     };
+    let swept = sweep_judge_work(&paths, set.keep_copilot_sessions);
+    if swept > 0 {
+        let _ = bounded_append(
+            &paths.data.join("judge.log"),
+            &format!("swept {swept} left by an interrupted run"),
+            LOG_MAX,
+        );
+    }
     if !auto && set.mode.is_none() {
         println!("{DISCLOSURE}\n");
         let _ = store.set_setting(rung::SETTING_JUDGE, "auto", n.utc_ms);
@@ -1580,6 +1590,7 @@ fn check_cli(args: &[&str], paths: &Paths, store: &Store) -> ExitCode {
     };
     let get = |k: &str| store.setting(k).ok().flatten();
     let set = settings(store);
+    sweep_judge_work(paths, set.keep_copilot_sessions);
     let (mut claude, copilot) = providers(paths, &set);
     claude.model = get(rung::SETTING_CHECK_CLAUDE_MODEL).unwrap_or_else(|| CHECK_CLAUDE_DEFAULT.into());
     // Models the judge itself answered with, so the second reader can avoid them.
@@ -1633,6 +1644,42 @@ mod tests {
 
     const MIN: i64 = 60_000;
     const NOW: i64 = 100 * DAY_MS;
+
+    #[test]
+    fn one_run_holds_the_lock_however_long_it_runs_and_frees_it_when_it_ends() {
+        let d = TempDir::new().unwrap();
+        let p = d.path().join("judge.lock");
+        let first = Lock::take(p.clone()).unwrap();
+        // The file's age no longer matters: an hour-old lock file of a live run still holds.
+        std::fs::File::options()
+            .write(true)
+            .open(&p)
+            .unwrap()
+            .set_modified(SystemTime::now() - Duration::from_secs(3600))
+            .unwrap();
+        assert!(judge_running(&p) && Lock::take(p.clone()).is_none(), "a second run does not start");
+        drop(first);
+        assert!(!judge_running(&p), "free once the run ends (or dies: the OS releases it)");
+        assert!(Lock::take(p).is_some());
+    }
+
+    #[test]
+    fn sweep_removes_what_an_interrupted_call_left_and_respects_keep() {
+        let d = TempDir::new().unwrap();
+        let paths = Paths::at(d.path());
+        let work = d.path().join("judge-work");
+        let fill = || {
+            std::fs::create_dir_all(work.join("copilot-a/session-state")).unwrap();
+            std::fs::write(work.join("usage-a.json"), "{}").unwrap();
+            std::fs::write(work.join("notes.txt"), "x").unwrap();
+        };
+        fill();
+        assert_eq!(sweep_judge_work(&paths, true), 1, "kept sessions stay");
+        assert!(work.join("copilot-a").exists() && !work.join("usage-a.json").exists());
+        fill();
+        assert_eq!(sweep_judge_work(&paths, false), 2);
+        assert!(!work.join("copilot-a").exists() && work.join("notes.txt").exists());
+    }
 
     /// Answers every call with `answer` (or `fail`), and records what it was sent.
     struct Fake {

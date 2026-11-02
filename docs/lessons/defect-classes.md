@@ -141,3 +141,18 @@ summary: >-
 - **Control:** the record file now carries `experimental_absent`; unit test
   `feature_record_keeps_absent_through_its_file`. Records written before the fix read as before, so they
   never remove a setting AIQ did not add. Rung: automated control.
+
+### DC-011 — A liveness signal written once and read as "still alive"
+- **Signature:** `judge.lock` was written when a run started and never touched again; the run was taken for
+  dead once the file was 30 minutes old. With the judge cap raised to 500 a day, runs went longer, the core's
+  kicker started a second and third `aiq judge --auto`, each deleted the "stale" lock, and the first run's
+  Drop then deleted the second's. 114 tasks were judged twice (measured from judge.log, 2026-11-02).
+- **Why it survives:** runs were short while the cap was 50–100; no test held a lock past its stale age.
+- **Instances:** 2026-11-02, `judge.rs` `Lock` and `start_background`.
+- **Sweep:** other cross-process locks: `core.lock` already uses an OS lock (`File::try_lock`);
+  `core-start.lock` likewise (paths.rs). No other file-age liveness check in `crates/` (`grep modified()`:
+  only import's source mtime, which is change detection, not liveness).
+- **Control:** the judge lock is now an OS lock released by the OS when the run ends or dies, the pattern
+  `core.lock` uses. Test `one_run_holds_the_lock_however_long_it_runs_and_frees_it_when_it_ends` ages the
+  file an hour and still sees the run hold it. A killed run's leftovers in `judge-work` (prompt text) are
+  swept when the next run takes the lock (`sweep_removes_what_an_interrupted_call_left_and_respects_keep`).
