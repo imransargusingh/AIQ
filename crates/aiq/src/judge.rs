@@ -446,7 +446,7 @@ fn current_version(j: &JudgmentRow) -> bool {
     j.fact_set_version == rung::FACT_SET_VERSION
         && j.rubric_version == rung::RUBRIC_VERSION
         && (j.judge_version == rung::JUDGE_VERSION
-            || (j.judge_version == rung::JUDGE_VERSION_KEPT && j.job != "unclassified"))
+            || (rung::JUDGE_VERSIONS_KEPT.contains(&j.judge_version.as_str()) && j.job != "unclassified"))
 }
 
 /// Tasks to judge now, best first: closed, not judged at the current versions, not waiting out a retry,
@@ -733,6 +733,8 @@ pub fn judge_task(
         // Log facts for coaching (design coaching-from-rungs): re-prompts, and those that corrected the agent.
         "reprompts": log.reprompts,
         "corrections": rung::corrections(turns, reprompt),
+        // Each run's job pick, so a missing job can be explained from data (design no-job-tasks N1).
+        "job_runs": runs.iter().map(|r| json!({"job": r.job, "confidence": r.job_confidence})).collect::<Vec<_>>(),
     });
     let row = JudgmentRow {
         judgment_id: uuid::Uuid::now_v7().to_string(),
@@ -1323,6 +1325,18 @@ pub fn run_check(
     Ok(rep)
 }
 
+/// Each run's job pick, when the judgment recorded them (judge j4 on).
+fn job_runs(j: &JudgmentRow) -> Option<Vec<rung::JobRun>> {
+    let v: Value = serde_json::from_str(&j.read).ok()?;
+    v.get("job_runs")?
+        .as_array()?
+        .iter()
+        .map(|r| {
+            Some(rung::JobRun { job: r.get("job")?.as_str()?.to_owned(), confidence: r.get("confidence")?.as_f64()? })
+        })
+        .collect()
+}
+
 fn judge_view(j: &JudgmentRow) -> aiq_domain::check::JudgeView {
     let facts = aiq_contracts::judge::parse_stored_facts(&j.facts);
     aiq_domain::check::JudgeView {
@@ -1358,6 +1372,16 @@ pub fn check_report(store: &Store) -> aiq_store::Result<String> {
         "  No job (judge said other, or its two runs disagreed; never coached): {} of {}\n",
         no_job.k, no_job.n
     );
+    // Why each no-job judgment has none (design no-job-tasks N1; recorded from judge j4 on).
+    let mut why: std::collections::BTreeMap<&str, u32> = Default::default();
+    for j in judged.values().filter(|j| j.job == "unclassified") {
+        let cause = job_runs(j).map(|r| rung::no_job_cause(&r).map_or("no cause found", |c| c.words()));
+        *why.entry(cause.unwrap_or("not recorded yet (judged before AIQ kept each run's pick)")).or_default() += 1;
+    }
+    if !why.is_empty() {
+        let w: Vec<String> = why.iter().map(|(k, v)| format!("{k} {v}")).collect();
+        o += &format!("    Why: {}\n", w.join("; "));
+    }
     for (job, c) in &jobs {
         o += &format!("  Uncertain, {job}: {} of {}\n", c.k, c.n);
     }
@@ -1408,6 +1432,14 @@ pub fn check_report(store: &Store) -> aiq_store::Result<String> {
     }
     let ag = agreement(&pairs);
     let failed = checks.len() - pairs.len();
+    // The second reading's job per task, for the no-job candidate rules below.
+    let grader_job: HashMap<&str, String> = checks
+        .iter()
+        .filter_map(|c| {
+            let a = serde_json::from_str::<aiq_contracts::check::CheckAnswer>(c.answer.as_deref()?).ok()?;
+            Some((c.task_id.as_str(), a.job))
+        })
+        .collect();
     o += &format!(
         "\nChecked by a second model, not by you (Inferred). Run {}: {} of {} sampled tasks read{}.\n",
         &run.run_id[..8.min(run.run_id.len())],
@@ -1425,6 +1457,27 @@ pub fn check_report(store: &Store) -> aiq_store::Result<String> {
         let picks: Vec<String> = ag.no_job_read_as.iter().map(|(j, n)| format!("{j} {n}")).collect();
         let total: u32 = ag.no_job_read_as.values().sum();
         o += &format!("    Where the judge gave no job ({total}), the second reading said: {}\n", picks.join(", "));
+    }
+    // Candidate rules for no-job tasks (design no-job-tasks R1-R2): measured here, not in use.
+    let no_job_rows: Vec<&JudgmentRow> = judged.values().filter(|j| j.job == "unclassified").collect();
+    if no_job_rows.iter().any(|j| job_runs(j).is_some()) {
+        o += "  Rules AIQ could use for tasks with no job (not in use; measured on your judgments):\n";
+        for (rule, words) in rung::CANDIDATE_RULES {
+            let mut gives = 0u32;
+            let mut agree = Count::default();
+            for j in &no_job_rows {
+                let Some(job) = job_runs(j).and_then(|r| rung::candidate_job(rule, &r)) else { continue };
+                gives += 1;
+                if let Some(g) = grader_job.get(j.task_id.as_str()) {
+                    agree.add(*g == job);
+                }
+            }
+            o += &format!(
+                "    {rule} ({words}): gives a job to {gives} of {}; second reading agreed {}\n",
+                no_job_rows.len(),
+                agree.show()
+            );
+        }
     }
     o += &format!("  Kind of task (where the job matched): {}\n", ag.task_type.show());
     for (job, c) in &ag.task_type_by_job {
@@ -1922,15 +1975,15 @@ mod tests {
         };
         let tasks = vec![row("new", 3_000), row("uncovered", 1_000), row("old_doc", 2_000)];
         let judged: HashMap<String, JudgmentRow> = [
-            ("uncovered".to_owned(), j("unclassified", rung::JUDGE_VERSION_KEPT)),
+            ("uncovered".to_owned(), j("unclassified", rung::JUDGE_VERSIONS_KEPT[1])),
             ("old_doc".to_owned(), j("write_doc", "j1")),
         ]
         .into();
         let q = queue(&tasks, &judged, &[], NOW, 30 * MIN, None);
         let ids: Vec<&str> = q.iter().map(|t| t.task_id.as_str()).collect();
         assert_eq!(ids, vec!["uncovered", "new", "old_doc"]);
-        assert!(current_version(&j("code_change", rung::JUDGE_VERSION_KEPT)));
-        assert!(!current_version(&j("unclassified", rung::JUDGE_VERSION_KEPT)), "Ask or research may cover it now");
+        assert!(current_version(&j("code_change", rung::JUDGE_VERSIONS_KEPT[1])));
+        assert!(!current_version(&j("unclassified", rung::JUDGE_VERSIONS_KEPT[1])), "Ask or research may cover it now");
         // DC-009: the check compares "no pack job" in the grader's word, `other`.
         assert_eq!(judge_view(&j("unclassified", rung::JUDGE_VERSION)).job, "other");
         assert_eq!(judge_view(&j("code_change", rung::JUDGE_VERSION)).job, "code_change");
@@ -2181,6 +2234,27 @@ mod tests {
         assert!(rep.contains("Job: 4 of 4"), "{rep}");
         assert!(rep.contains("F6: none checked; can't settle 4"), "{rep}");
         assert!(rep.contains("Uncertain, code_change"), "{rep}");
+    }
+
+    #[test]
+    fn no_job_judgments_record_each_runs_pick_and_the_report_explains_them() {
+        let e = env();
+        let mut judge = Fake::ok(1);
+        if let Some(a) = judge.answer.as_mut() {
+            a["job"] = json!("other");
+            a["task_type"] = json!("other");
+        }
+        go(&e, &judge, &judge, None);
+        let judged = e.store.current_judgments().unwrap();
+        assert!(judged.values().all(|j| j.job == "unclassified"), "{judged:?}");
+        let runs = job_runs(judged.values().next().unwrap()).unwrap();
+        assert_eq!(runs.len(), 2);
+        assert_eq!(rung::no_job_cause(&runs), Some(rung::NoJob::AllOther));
+        let g = grader("ask_research", "explain", 1);
+        run_check(&e.store, &e.paths, &e.homes, &g, &g, NOW, 30, 1).unwrap();
+        let rep = check_report(&e.store).unwrap();
+        assert!(rep.contains("Why: both runs said other 4"), "{rep}");
+        assert!(rep.contains("R1 (") && rep.contains("gives a job to 0 of 4"), "{rep}");
     }
 
     #[test]

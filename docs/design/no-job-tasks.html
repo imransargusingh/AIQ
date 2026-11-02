@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>No Job Tasks</title><style>
+:root { color-scheme: light dark; --bg:#f7f5ef; --panel:#fff; --text:#20201d;
+  --muted:#66645f; --line:#d9d5ca; --accent:#3157a4; --code:#f0eee7; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#171816; --panel:#20221f; --text:#f2f1eb; --muted:#b8b6ae;
+    --line:#3d403a; --accent:#8fb0ff; --code:#292c27; }
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text);
+  font:16px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif; }
+main { width:min(920px,calc(100% - 32px)); margin:32px auto; padding:40px;
+  background:var(--panel); border:1px solid var(--line); border-radius:12px; }
+h1,h2,h3,h4,h5,h6 { line-height:1.2; margin:1.5em 0 .55em; }
+h1 { margin-top:0; font-size:2.2rem; } h2 { border-bottom:1px solid var(--line); padding-bottom:.3em; }
+a { color:var(--accent); } code { background:var(--code); padding:.12em .35em; border-radius:4px; }
+pre { overflow:auto; padding:16px; background:var(--code); border-radius:8px; }
+pre code { padding:0; } blockquote { margin:1em 0; padding:.2em 1em; color:var(--muted);
+  border-left:4px solid var(--line); }
+table { width:100%; border-collapse:collapse; margin:1em 0; display:block; overflow:auto; }
+th,td { padding:.55em .75em; border:1px solid var(--line); text-align:left; vertical-align:top; }
+th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); }
+.source { color:var(--muted); font-size:.9rem; margin-bottom:2rem; }
+@media (max-width:640px) { main { width:100%; margin:0; padding:24px 18px; border:0; border-radius:0; } }
+</style></head><body><main><div class="source">Rendered from no-job-tasks.md</div><h1>Design: tasks the judge gives no job</h1>
+<p>Produced with AI-Forward <code>/design-slice</code>, then <code>/implement</code> for the measurement step. Started without waiting, under Imran&#x27;s standing rule: it is cloud-only and changes no rule anyone sees yet.</p>
+<h2>Goal state</h2>
+<table><thead><tr><th></th><th></th></tr></thead><tbody><tr><td><strong>Goal</strong></td><td>Fewer of Imran&#x27;s tasks left with no job, without giving tasks the wrong job</td></tr><tr><td><strong>Done when</strong></td><td>(this change) the cause of every new no-job judgment is recorded, and the report shows what each candidate rule would change; (next) one rule is chosen from those numbers, or none</td></tr><tr><td><strong>Not in scope</strong></td><td>New packs; tuning the type or rung rules; F6 (separate gap)</td></tr><tr><td><strong>Tier</strong></td><td>T1 (judge version bump, no schema change)</td></tr></tbody></table>
+<h2>Grounding (measured on Imran&#x27;s laptop, 2026-11-02, check run 01a19ca2)</h2>
+<ul><li><strong>No job: 70 of 200</strong> current judgments (35%). Every judgment with a pack job was confident (0</li></ul>
+<p>Uncertain among 130). So all of Imran&#x27;s Uncertain tasks are no-job tasks.</p>
+<ul><li>The rule (rung-judge design): the job needs both runs to agree, both at confidence 0.7 or more, and a</li></ul>
+<p>job that has a pack. Otherwise the task is <code>unclassified</code>.</p>
+<ul><li>Second reading of the 10 no-job tasks in the sample: other 5, ask_research 4, code_change 1. On 29 of</li></ul>
+<p>the 30 tasks, though, the second reader was the judge&#x27;s own model. PR #40 now picks a different model.</p>
+<ul><li><strong>Not measured:</strong> which part of the rule fails. Before this change, AIQ kept only the lower of the two</li></ul>
+<p>runs&#x27; job confidences, not each run&#x27;s pick.</p>
+<h2>Possible causes (Inferred until N1 is measured)</h2>
+<table><thead><tr><th>Cause</th><th>What it would look like</th><th>Fix it would point to</th></tr></thead><tbody><tr><td>C1 Both runs say <code>other</code></td><td>The judge sees no pack fit (for example, a quick question)</td><td>Prompt wording for Ask or research (R3), or the task really is outside every pack</td></tr><tr><td>C2 The runs disagree</td><td>One run says a pack job, the other says <code>other</code> or another pack</td><td>A tie-break rule (R1) or a third run (R4)</td></tr><tr><td>C3 Agreed, but not confident</td><td>Both runs name the same pack job, one is below 0.7</td><td>A lower bar (R2)</td></tr></tbody></table>
+<h2>Decisions</h2>
+<table><thead><tr><th>#</th><th>Question</th><th>Decision</th><th>Why</th></tr></thead><tbody><tr><td>N1</td><td>How do we learn the cause?</td><td>The judgment&#x27;s <code>read</code> JSON gains <code>job_runs</code> (each run&#x27;s job and confidence). Judge version <strong>j4</strong>. Only no-job judgments of j2/j3 are judged again, and those go first in the queue. No schema change</td><td>Measure, don&#x27;t infer. The re-judge costs 2 calls per no-job task (about 140 calls for Imran&#x27;s 70, under his 100-task daily cap; guessed from the counts)</td></tr><tr><td>N2</td><td>Which rules are measured?</td><td><strong>R1:</strong> one run names a pack job at 0.7 or more, and the other says <code>other</code>. <strong>R2:</strong> both runs name the same pack job at 0.5 or more. The report shows, for each: how many no-job tasks it would give a job, and how often the second reading agrees</td><td>Both rules are cheap and deterministic. Neither runs live</td></tr><tr><td>N3</td><td>Bar for making a rule live</td><td>The second reading <strong>by a different model</strong> agrees on at least 8 of 10, with at least 10 checked. Agreement on confident judgments must not drop</td><td>The same bar as the coaching self-check. A wrong job means wrong coaching, which is worse than none</td></tr><tr><td>N4</td><td>Not yet</td><td>R3 (re-word the Ask or research job in the prompt) and R4 (a third run as tie-break, one more call) wait for N1. R3 if C1 dominates, R4 if C2 does and R1 fails the bar</td><td>Pick the fix from the cause, not before</td></tr></tbody></table>
+<h2>Change surfaces (E7)</h2>
+<table><thead><tr><th>Surface</th><th>Change</th></tr></thead><tbody><tr><td>Domain</td><td><code>rung::JobRun</code>, <code>NoJob</code>, <code>no_job_cause</code>, <code>candidate_job</code>, <code>CANDIDATE_RULES</code>; judge version j4, <code>JUDGE_VERSIONS_KEPT</code> j2 and j3</td></tr><tr><td>Runner</td><td>The judgment&#x27;s <code>read.job_runs</code>; <code>--check-report</code> adds &quot;Why&quot; under No job, plus one line per rule</td></tr><tr><td>Store, contracts, UI</td><td>None</td></tr></tbody></table>
+<h2>Run plan</h2>
+<ol><li>Merge. The laptop thread sends the upgrade line.</li><li>Background judging re-judges the no-job tasks first. Allow about a day at Imran&#x27;s cap.</li><li><code>aiq judge --check</code> (new sample, different second reader), then <code>aiq judge --check-report</code>.</li><li>Pick R1, R2, R3, R4 or none against N3, and record it here.</li></ol>
+<h2>Questions for Imran</h2>
+<p>None. The cause and the rule are both settled from data.</p>
+<h2>Gate record</h2>
+<p><code>GATE design-slice · 2026-11-02 · Simplifier, Test Architect, Data &amp; Persistence (seats played by Claude; not independent) · pass</code></p>
+<ul><li>Simplifier: measure first, and switch no rule on yet. Adding a field to <code>read</code> is cheaper than a column.</li><li>Test Architect: the cause and both rules are unit-tested. The runner test checks that the runs are recorded and that the report explains them.</li><li>Data &amp; Persistence: <code>read</code> is the judgment&#x27;s own JSON, and the cause is derived from it, not stored.</li></ul>
+<h2>Status and next action</h2>
+<table><thead><tr><th></th><th></th></tr></thead><tbody><tr><td><strong>Completed</strong></td><td>Design; measurement build</td></tr><tr><td><strong>Remaining</strong></td><td>Laptop re-judge and a check; pick a rule</td></tr><tr><td><strong>Best next action</strong></td><td>Upgrade the laptop, wait for re-judging, then run <code>aiq judge --check</code></td></tr></tbody></table></main></body></html>
