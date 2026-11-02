@@ -436,6 +436,26 @@
         "job": "ask_research"
       },
       {
+        "tip_id": "next_rung.brief_run",
+        "habit": "Say what should run, where, and what must not break",
+        "job": "run_ship"
+      },
+      {
+        "tip_id": "next_rung.check_running",
+        "habit": "Check it really runs before you move on",
+        "job": "run_ship"
+      },
+      {
+        "tip_id": "next_rung.hand_over_run",
+        "habit": "Hand over the whole run with a done check and a stop",
+        "job": "run_ship"
+      },
+      {
+        "tip_id": "next_rung.let_agent_run",
+        "habit": "Let the agent run the commands",
+        "job": "run_ship"
+      },
+      {
         "tip_id": "next_rung.written_brief",
         "habit": "Give the agent a written brief or instructions file",
         "job": "any"
