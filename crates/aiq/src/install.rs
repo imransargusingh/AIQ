@@ -296,6 +296,44 @@ pub fn uninstall(yes: bool) -> ExitCode {
     ExitCode::SUCCESS
 }
 
+/// `aiq install` with no tool named: connect every supported tool found on this computer that AIQ
+/// isn't hooked into yet (Imran, 2026-11-02: "Why isn't this done automatically when AIQ is
+/// installed?"). Each tool's own install runs unchanged: it shows the change, keeps a backup, and
+/// asks unless `--yes`. AIQ home's first-run setup runs this with `--yes`.
+pub fn install_found(yes: bool) -> ExitCode {
+    let tools = aiq_core::tools::found();
+    let todo: Vec<_> = tools.iter().filter(|t| t.present && !t.hooked).collect();
+    for t in tools.iter().filter(|t| t.hooked) {
+        println!("{} is already connected.", tool_name(t.tool));
+    }
+    if todo.is_empty() {
+        if tools.iter().all(|t| !t.present) {
+            println!(
+                "No supported AI tool found (Claude Code, GitHub Copilot). Install one, then run aiq install again."
+            );
+        }
+        return ExitCode::SUCCESS;
+    }
+    let mut failed = false;
+    for t in todo {
+        println!("\n{}:", tool_name(t.tool));
+        let code = match t.tool {
+            "claude-code" => install(yes),
+            _ => crate::install_copilot::install(yes),
+        };
+        failed |= code != ExitCode::SUCCESS;
+        println!("Undo: aiq uninstall {}", t.tool);
+    }
+    if failed { ExitCode::from(1) } else { ExitCode::SUCCESS }
+}
+
+fn tool_name(tool: &str) -> &'static str {
+    match tool {
+        "claude-code" => "Claude Code",
+        _ => "GitHub Copilot",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

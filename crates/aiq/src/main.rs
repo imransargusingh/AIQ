@@ -20,6 +20,7 @@ use std::process::ExitCode;
 const HELP: &str = "AIQ — private coaching for how you work with AI agents.
 
 Usage:
+  aiq install [--yes]                 Connect every AI tool found here (Claude Code, Copilot); shows each change first
   aiq install claude-code [--yes]     Add AIQ's hooks to ~/.claude/settings.json (shows the change first)
   aiq uninstall claude-code [--yes]   Remove only AIQ's hooks
   aiq status                          What AIQ is doing, cards today, store size, hook times
@@ -59,6 +60,7 @@ fn main() -> ExitCode {
     match a.as_slice() {
         ["hook", host, event, ..] => hook::run(host, event),
         ["core", ..] => cli::core(),
+        ["install"] | ["install", "--yes" | "-y"] => install::install_found(yes),
         ["install", "claude-code", ..] => install::install(yes),
         ["uninstall", "claude-code", ..] => install::uninstall(yes),
         ["install", "copilot", ..] => install_copilot::install(yes),

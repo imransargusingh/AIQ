@@ -325,3 +325,33 @@ fn e2e_install_copilot_invalid_settings_refused_untouched() {
     assert_eq!(std::fs::read_to_string(e.copilot().join("settings.json")).unwrap(), "{ not json");
     assert!(!e.copilot().join("hooks").join("aiq.json").exists());
 }
+
+#[test]
+fn e2e_install_with_no_tool_connects_every_tool_found_and_names_the_undo() {
+    let e = Env::new();
+    let claude = e.home().parent().unwrap().join("claude");
+    // Nothing found: says so and changes nothing.
+    let o = e.run(&["install", "--yes"], b"");
+    assert!(o.status.success());
+    assert!(String::from_utf8_lossy(&o.stdout).contains("No supported AI tool found"));
+    assert!(!e.copilot().exists() && !claude.exists());
+
+    // Both tools present (their folders exist): both get AIQ's hooks.
+    std::fs::create_dir_all(e.copilot()).unwrap();
+    std::fs::create_dir_all(&claude).unwrap();
+    let o = e.run(&["install", "--yes"], b"");
+    let out = String::from_utf8_lossy(&o.stdout).to_string();
+    assert!(o.status.success(), "{out}\n{}", String::from_utf8_lossy(&o.stderr));
+    assert!(e.copilot().join("hooks").join("aiq.json").exists());
+    let s: Value = serde_json::from_str(&std::fs::read_to_string(claude.join("settings.json")).unwrap()).unwrap();
+    assert!(aiq_core::tools::claude_has_aiq(&s));
+    assert!(out.contains("Undo: aiq uninstall claude-code") && out.contains("Undo: aiq uninstall copilot"), "{out}");
+
+    // Run again: nothing left to connect.
+    let again = String::from_utf8_lossy(&e.run(&["install", "--yes"], b"").stdout).to_string();
+    assert!(
+        again.contains("Claude Code is already connected.") && again.contains("GitHub Copilot is already connected."),
+        "{again}"
+    );
+    assert!(!again.contains("Undo:"), "{again}");
+}

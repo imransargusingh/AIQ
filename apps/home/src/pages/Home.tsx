@@ -21,7 +21,7 @@ export function Home(ctx: Ctx) {
           <p className="mute">Keep working as usual. Patterns show after about 10 tasks of the same kind. Tips can start sooner.</p>
         </header>
         <div className="card" style={{ maxWidth: 520 }}>
-          <p>AIQ watches Claude Code, Copilot CLI and VS Code agent mode once they're set up with <code>aiq install</code>.</p>
+          <p>AIQ watches Claude Code, Copilot CLI and VS Code agent mode once they're connected. Setup connects the ones it finds, or run <code>aiq install</code>.</p>
           <p className="meta">
             <button className="btnlink" onClick={() => go("data")}>See what AIQ has captured</button>
           </p>

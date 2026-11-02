@@ -1,4 +1,4 @@
-// The bridge to the Tauri shell (apps/home/src-tauri). Nine commands; nothing else leaves the page.
+// The bridge to the Tauri shell (apps/home/src-tauri). Ten commands; nothing else leaves the page.
 // Outside Tauri (the UI tests) a fixture stands in, set on window by the test before the page loads.
 import type { Outcome, Snapshot, TaskDetail } from "./types";
 
@@ -9,7 +9,7 @@ export type FlagReason = "evidence_wrong" | "not_useful" | "blocked" | "other";
 declare global {
   interface Window {
     __TAURI_INTERNALS__?: unknown;
-    __AIQ_FIXTURE__?: { snapshot: Snapshot; task?: TaskDetail; calls: { cmd: string; args: unknown }[] };
+    __AIQ_FIXTURE__?: { snapshot: Snapshot; task?: TaskDetail; calls: { cmd: string; args: unknown }[]; fail?: string[] };
   }
 }
 
@@ -88,6 +88,14 @@ function fixture<T>(cmd: string, args: Record<string, unknown>): Promise<T> {
       s.settings.tips_off = s.settings.tips_off.filter((t) => t !== args.tipId);
       out = { ok: true };
       break;
+    case "connect_tools":
+      if (f.fail?.includes(cmd)) {
+        out = { ok: false, message: "AIQ couldn't connect your tools. Could not write the settings file. Run aiq install in a terminal to see why." };
+        break;
+      }
+      for (const t of s.setup.tools) if (t.present) t.hooked = true;
+      out = { ok: true };
+      break;
     case "finish_setup":
       s.setup.done = true;
       out = s;
@@ -106,6 +114,8 @@ export const api = {
   task: (taskId: string) => invoke<TaskDetail | null>("task", { taskId }),
   forgetItem: (eventId: string) => invoke<Outcome>("forget_item", { eventId }),
   finishSetup: () => invoke<Snapshot>("finish_setup"),
+  /** Connect every tool found but not hooked yet (runs `aiq install --yes`). */
+  connectTools: () => invoke<Outcome>("connect_tools"),
   /** "This doesn't fit" (flag, with a reason) or its undo, for one kind of task's next step. */
   guidanceFlag: (job: string, taskType: string, moveId: string, action: "flag" | "undo", reason: FlagReason | null) =>
     invoke<Outcome>("guidance_flag", { job, taskType, moveId, action, reason }),
