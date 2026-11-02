@@ -101,6 +101,13 @@ suggests a next step. To do that, it asks an AI model to read the task.
 - **Your account's rules apply.** On a work account, your organisation's policies, logging and
   retention cover these calls, as they cover anything else you send through that tool. The provider
   sees the same kind of content it already saw when you did the task.
+- **Quick kind label of a new task.** While judging is on, when AIQ can't tell from your own past
+  tasks what kind of task you just started, it sends **that task's first prompt** (secrets removed, cut
+  to 4,000 characters) once to the same tool, sealed the same way, with a small model (Claude Code:
+  `haiku`). The answer is only a job and a kind of task, so a tip can show when your turn ends. One call
+  per new task, at most 20 a day by default (`aiq config set kind-label-daily <n>`, 0 to 500). On
+  Copilot each label is one premium request. Turn labels off and keep judging:
+  `aiq config set kind-label off`.
 - **Accuracy check, only when you run it.** `aiq judge --check` asks a second model, through the same
   sign-in, to re-read a sample of tasks so AIQ can measure how often the two agree. It also uses your
   plan; `--dry-run` shows the cost first.
@@ -151,6 +158,7 @@ suggests a next step. To do that, it asks an AI model to read the task.
 | Delete everything | `aiq forget --all` |
 | Stop judging | AIQ home **Settings > Rung model**, or `aiq config set judge off` |
 | Judge fewer tasks a day | `aiq config set judge-daily-tasks <n>` |
+| Stop quick kind labels | `aiq config set kind-label off` (judging off stops them too) |
 | Fewer tips | `aiq config set daily-cap <n>` (default 5 a day), or turn one tip off |
 | Be asked before updates | `aiq config set update ask` |
 | Stop the daily update check | Settings, **Don't check for updates**, or `aiq config set update off` |
@@ -181,7 +189,7 @@ the Start menu shortcut it added.
 
 ---
 
-*Where each statement comes from:* `docs/adr/0007-rung-judge-via-own-account.md` (judge),
+*Where each statement comes from:* `docs/adr/0007-rung-judge-via-own-account.md` (judge), `docs/design/kind-label.md` (kind label),
 `docs/design/auto-update.md` (updates), `docs/design/private-alpha.md` (install, export, uninstall,
 help report), `docs/notes/note-20261031-encryption-deferred.md` (no encryption),
 `docs/security/privacy-review.md`, and the code on main (`crates/aiq/src/judge.rs`, `main.rs`,

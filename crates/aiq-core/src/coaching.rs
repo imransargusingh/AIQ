@@ -163,7 +163,11 @@ pub struct Cache {
     pub neighbours: Vec<Neighbour>,
     pub rows: Vec<TypeRow>,
     pub habits: Vec<Habit>,
+    /// D10 self-check of word guesses (`type_guess.method = words`) against the later judgment.
     pub check: GuessCheck,
+    /// The same self-check of labels (`method = label`), held to the same bar separately, so a weak word guess
+    /// never turns labels off, nor the other way round.
+    pub label_check: GuessCheck,
     pub feedback: Vec<Feedback>,
     /// Share of judged, typed tasks in the window whose type is `other` (the list's fit, design assume line).
     pub other_share: Option<f64>,
@@ -200,10 +204,16 @@ impl Cache {
         let habits = coach::habits(&tasks, &pack.moves, now.utc_ms, now.offset_min, p);
         let guesses = store.type_guesses()?;
         let by_id: BTreeMap<&str, &JudgedTask> = tasks.iter().map(|t| (t.task_id.as_str(), t)).collect();
-        let check = coach::check_guesses(
-            guesses.iter().map(|g| (g.task_id.as_str(), g.job.as_str(), g.task_type.as_str())),
-            &by_id,
-        );
+        let check_of = |method: &str| {
+            coach::check_guesses(
+                guesses
+                    .iter()
+                    .filter(|g| g.method == method)
+                    .map(|g| (g.task_id.as_str(), g.job.as_str(), g.task_type.as_str())),
+                &by_id,
+            )
+        };
+        let (check, label_check) = (check_of("words"), check_of(aiq_domain::label::METHOD));
         let typed: Vec<&JudgedTask> =
             tasks.iter().filter(|t| t.first_ms >= since && !t.uncertain() && t.kind().is_some()).collect();
         let other = typed.iter().filter(|t| t.task_type.as_deref() == Some("other")).count();
@@ -218,6 +228,7 @@ impl Cache {
             rows,
             habits,
             check,
+            label_check,
             feedback: feedback(store)?,
             pauses: verdicts(&readings(store)?).into_iter().filter(|v| v.paused).collect(),
         })
@@ -241,13 +252,27 @@ impl Cache {
             .find(|v| !kept_on(store, v))
     }
 
-    /// Next-rung tips are on now: off when the person turned them off, or (auto) AIQ's self-check did.
-    pub fn tips_on(&self, mode: &str, pack: &PackV1) -> bool {
-        match mode {
-            "off" => false,
-            "on" => true,
-            _ => !self.check.auto_off(&pack.coach),
-        }
+    /// Next-step tips are on now, from word guesses or (when labels can run) from labels.
+    pub fn tips_on(&self, mode: &str, pack: &PackV1, labels_enabled: bool) -> bool {
+        self.words_on(mode, pack) || (labels_enabled && self.labels_on(mode, pack))
+    }
+
+    /// Tips from word guesses: off when the person turned tips off, or (auto) AIQ's self-check of word guesses did.
+    pub fn words_on(&self, mode: &str, pack: &PackV1) -> bool {
+        on(mode, &self.check, pack)
+    }
+
+    /// Tips from labels: the same rule over the labels' own self-check.
+    pub fn labels_on(&self, mode: &str, pack: &PackV1) -> bool {
+        on(mode, &self.label_check, pack)
+    }
+}
+
+fn on(mode: &str, check: &GuessCheck, pack: &PackV1) -> bool {
+    match mode {
+        "off" => false,
+        "on" => true,
+        _ => !check.auto_off(&pack.coach),
     }
 }
 
@@ -336,4 +361,54 @@ pub fn record_flag(
             utc_ms: now_ms,
         })
         .map_err(|e| e.code.to_string())
+}
+
+/// Today's kind labels and their self-check, counted from stored rows (design kind-label).
+pub fn label_status(store: &Store, cache: &Cache, now: Now) -> Result<aiq_contracts::frames::LabelStatus, StoreError> {
+    use aiq_domain::label;
+    let rows = store.kind_labels_since(now.local_midnight_utc_ms())?;
+    let mut ms: Vec<u64> = rows.iter().map(|r| r.latency_ms.max(0) as u64).collect();
+    ms.sort_unstable();
+    let ok: Vec<_> = rows.iter().filter(|r| r.outcome == "ok").collect();
+    let confident = ok
+        .iter()
+        .filter(|r| {
+            label::accept(&label::Label {
+                job: r.job.clone().unwrap_or_default(),
+                job_confidence: r.job_confidence.unwrap_or(0.0),
+                task_type: r.task_type.clone().unwrap_or_default(),
+                task_type_confidence: r.task_type_confidence.unwrap_or(0.0),
+            })
+            .is_some()
+        })
+        .count();
+    Ok(aiq_contracts::frames::LabelStatus {
+        enabled: labels_enabled(store),
+        today: rows.len() as u32,
+        daily: daily_labels(store),
+        answered: ok.len() as u32,
+        confident: confident as u32,
+        median_ms: (!ms.is_empty()).then(|| ms[ms.len() / 2]),
+        checked: cache.label_check.checked,
+        right: cache.label_check.right,
+    })
+}
+
+/// The daily label budget (setting `kind_label_daily`, default `label::DEFAULT_DAILY`).
+pub fn daily_labels(store: &Store) -> u32 {
+    store
+        .setting(aiq_domain::label::SETTING_LABEL_DAILY)
+        .ok()
+        .flatten()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(aiq_domain::label::DEFAULT_DAILY)
+}
+
+/// Labels can run by the person's settings: background judging is on and labels are not turned off.
+pub fn labels_enabled(store: &Store) -> bool {
+    let get = |k: &str| store.setting(k).ok().flatten();
+    aiq_domain::label::enabled(
+        get(aiq_domain::rung::SETTING_JUDGE).as_deref(),
+        get(aiq_domain::label::SETTING_LABEL).as_deref(),
+    )
 }
