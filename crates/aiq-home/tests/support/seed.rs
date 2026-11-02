@@ -199,6 +199,8 @@ impl Seed {
                 fact_set_version: "fs1".into(),
                 rubric_version: "r1".into(),
                 judge_version: "j1".into(),
+                task_type: None,
+                task_type_confidence: None,
             })
             .unwrap();
     }

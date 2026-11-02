@@ -637,6 +637,7 @@ pub fn judge_task(
     turns: &[Turn],
     actions_known: bool,
     judged: &HashMap<String, JudgmentRow>,
+    reprompt: &aiq_contracts::pack::RepromptParams,
 ) -> aiq_store::Result<(Option<Judged>, Vec<CallResult>)> {
     let log = rung::log_facts(turns, actions_known);
     let fence = format!("AIQ-QUOTE-{}", uuid::Uuid::new_v4().simple());
@@ -720,6 +721,9 @@ pub fn judge_task(
         "actions": turns.iter().any(|t| t.actions.is_some()),
         "keys": t.members.iter().map(|(k, _)| k).collect::<Vec<_>>(),
         "sent_chars": rung::SYSTEM.len() + user.len(),
+        // Log facts for coaching (design coaching-from-rungs): re-prompts, and those that corrected the agent.
+        "reprompts": log.reprompts,
+        "corrections": rung::corrections(turns, reprompt),
     });
     let row = JudgmentRow {
         judgment_id: uuid::Uuid::now_v7().to_string(),
@@ -748,6 +752,8 @@ pub fn judge_task(
         fact_set_version: rung::FACT_SET_VERSION.into(),
         rubric_version: rung::RUBRIC_VERSION.into(),
         judge_version: rung::JUDGE_VERSION.into(),
+        task_type: p.task_type.clone(),
+        task_type_confidence: p.task_type.as_ref().map(|_| p.task_type_confidence),
     };
     store.insert_judgment(&row)?;
     Ok((Some(Judged { row }), results))
@@ -811,7 +817,7 @@ pub fn run(r: &Run<'_>) -> Result<Report, String> {
         }
         let provider = if name == CLAUDE { r.claude } else { r.copilot };
         let (j, results) =
-            judge_task(r.store, r.paths, provider, name, t, &turns, known, &judged_now).map_err(|e| e.to_string())?;
+            judge_task(r.store, r.paths, provider, name, t, &turns, known, &judged_now, &pack.reprompt).map_err(|e| e.to_string())?;
         allowed -= 1;
         rep.budget_left = rep.budget_left.saturating_sub(1);
         rep.cost_usd += results.iter().filter_map(|c| c.cost_usd).sum::<f64>();
@@ -1147,7 +1153,7 @@ mod tests {
             let n = json!({"value": false, "confidence": 0.9});
             Fake {
                 answer: Some(json!({
-                    "job": "code_change", "job_confidence": 0.9,
+                    "job": "code_change", "job_confidence": 0.9, "task_type": "fix_bug", "task_type_confidence": 0.9,
                     "f4_goal_context_constraints": f, "f5_reprompts_added_information": f, "f6_output_checked": f,
                     "f7_written_brief": n, "f12_step_by_step": n, "f13_whole_outcome_handed_over": f, "fit": f,
                     "current_rung": rung, "current_confidence": 0.9, "potential_rung": rung + 1,
