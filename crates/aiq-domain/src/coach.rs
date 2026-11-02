@@ -486,12 +486,15 @@ pub struct Habit {
     /// Set when the newest observed day moved the state (for the banners).
     pub moved_to: Option<HabitState>,
     pub moved_ms: Option<i64>,
+    /// That move was back from Adopted to Tried (a lapse), not a first use.
+    pub moved_back: bool,
 }
 
 /// Replay one habit's observations (task time, seen) with coaching-loop D5: Tried after one use; Adopted when
 /// seen in more than half of at least `habit_min` eligible tasks over `habit_days`; back to Tried when a
 /// later window has enough eligible tasks and half or fewer show it. Changes only on observed days.
-pub fn replay(obs: &[(i64, bool)], p: &CoachParams, offset_min: i32) -> (HabitState, Option<(HabitState, i64)>) {
+/// The last move is (new state, time, moved back from Adopted).
+pub fn replay(obs: &[(i64, bool)], p: &CoachParams, offset_min: i32) -> (HabitState, Option<(HabitState, i64, bool)>) {
     let day = |ms: i64| (ms + offset_min as i64 * 60_000).div_euclid(DAY_MS);
     let mut o: Vec<(i64, bool)> = obs.to_vec();
     o.sort();
@@ -513,7 +516,7 @@ pub fn replay(obs: &[(i64, bool)], p: &CoachParams, offset_min: i32) -> (HabitSt
         }
         if state != before {
             let at = window.iter().map(|(t, _)| *t).max().unwrap_or(0);
-            last_move = Some((state, at));
+            last_move = Some((state, at, before == HabitState::Adopted));
         }
     }
     (state, last_move)
@@ -541,8 +544,9 @@ pub fn habits(tasks: &[JudgedTask], moves: &[MoveDef], now_ms: i64, offset_min: 
                 state,
                 eligible: win.len() as u32,
                 seen: win.iter().filter(|(_, s)| *s).count() as u32,
-                moved_to: moved.map(|(s, _)| s),
-                moved_ms: moved.map(|(_, t)| t),
+                moved_to: moved.map(|(s, _, _)| s),
+                moved_ms: moved.map(|(_, t, _)| t),
+                moved_back: moved.is_some_and(|(_, _, back)| back),
             });
         }
     }
@@ -898,7 +902,8 @@ mod tests {
         let lapse = [(d(0), true), (d(1), true), (d(2), true), (d(20), false), (d(21), true), (d(22), false)];
         let (s, moved) = replay(&lapse, &p, 0);
         assert_eq!(s, HabitState::Tried);
-        assert_eq!(moved.map(|m| m.0), Some(HabitState::Tried));
+        assert_eq!(moved.map(|m| (m.0, m.2)), Some((HabitState::Tried, true)), "a lapse, not a first use");
+        assert_eq!(replay(&[(d(0), true)], &p, 0).1.map(|m| m.2), Some(false), "first use is not a lapse");
         // Adopted, then only 2 eligible later: stays Adopted.
         let quiet = [(d(0), true), (d(1), true), (d(2), true), (d(20), false), (d(21), false)];
         assert_eq!(replay(&quiet, &p, 0).0, HabitState::Adopted);

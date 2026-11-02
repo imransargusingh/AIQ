@@ -23,15 +23,6 @@
       0
     ],
     "most_common_rung": 2,
-    "next_steps": [
-      {
-        "task_id": "019000000001-0000-7000-8000-000000000000",
-        "job": "code_change",
-        "current": 2,
-        "potential": 3,
-        "gap": "Hand the agent the whole change with the tests it must pass, and let it run them."
-      }
-    ],
     "judge_today": {
       "tasks": 3,
       "calls": 6,
@@ -111,6 +102,8 @@
         "current_confidence": 0.85,
         "potential_confidence": 0.85,
         "job": "code_change",
+        "task_type": null,
+        "task_type_label": null,
         "coachable": true,
         "evidence": [
           "You gave the agent the goal and the error type to use.",
@@ -157,6 +150,8 @@
         "current_confidence": 0.85,
         "potential_confidence": 0.85,
         "job": "unclassified",
+        "task_type": null,
+        "task_type_label": null,
         "coachable": false,
         "evidence": [
           "You asked for a spec in one line.",
@@ -215,6 +210,8 @@
         "current_confidence": 0.85,
         "potential_confidence": 0.85,
         "job": "write_doc",
+        "task_type": null,
+        "task_type_label": null,
         "coachable": false,
         "evidence": [
           "You handed the agent the whole plan with what done looks like."
@@ -256,7 +253,7 @@
     "turn_ends": 2,
     "imported_sessions": 1,
     "imported_events": 6,
-    "store_bytes": 172032,
+    "store_bytes": 196608,
     "items": [
       {
         "event_id": "019000000018-0000-7000-8000-000000000000",
@@ -370,7 +367,13 @@
     "daily_cap": 3,
     "copilot_tip_stays": "next-prompt",
     "judge": "off",
-    "judge_daily_tasks": 50
+    "judge_daily_tasks": 50,
+    "next_rung_tips": "auto",
+    "next_rung_on": true,
+    "guess_checked": 0,
+    "guess_right": 0,
+    "guess_auto_off": false,
+    "tips_off": []
   },
   "setup": {
     "done": true,
@@ -388,5 +391,44 @@
         "install": "aiq install copilot"
       }
     ]
+  },
+  "coaching": {
+    "split": {
+      "tasks": 2,
+      "finished": 0,
+      "could": 0,
+      "needs": 2,
+      "uncertain": 1
+    },
+    "split_min": 10,
+    "rule": "A task counts as finished when it was judged Delegated or higher and you sent no re-prompt correcting the agent.",
+    "weeks": [
+      {
+        "start_ms": 1791115200000,
+        "tasks": 1,
+        "finished": 0
+      },
+      {
+        "start_ms": 1791720000000,
+        "tasks": 0,
+        "finished": 0
+      },
+      {
+        "start_ms": 1792324800000,
+        "tasks": 0,
+        "finished": 0
+      },
+      {
+        "start_ms": 1792929600000,
+        "tasks": 1,
+        "finished": 0
+      }
+    ],
+    "week_min": 3,
+    "opportunities": [],
+    "kinds": [],
+    "habits": [],
+    "habits_imported": true,
+    "untyped": 2
   }
 }

@@ -131,6 +131,8 @@ pub struct HabitRow {
     pub seen: u32,
     pub moved_to: Option<&'static str>,
     pub moved_ms: Option<i64>,
+    /// The move was back from Adopted to Tried.
+    pub moved_back: bool,
 }
 
 /// First-run setup (design aiq-home-deferred-pages E5–E7).
@@ -824,6 +826,7 @@ fn coaching(
             seen: h.seen,
             moved_to: h.moved_to.map(|m| m.as_str()),
             moved_ms: h.moved_ms,
+            moved_back: h.moved_back,
         })
         .collect();
     c.habits_imported = judged.iter().any(|t| !t.live);

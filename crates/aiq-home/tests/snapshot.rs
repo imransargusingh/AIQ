@@ -234,46 +234,6 @@ fn setup_done_follows_the_flag() {
 }
 
 /// A coaching judgment: Delegated, the person ran the checks (the kind coaches the step-3 moves).
-fn coach_row(task_id: &str, task_type: &str, current: u8, state: &str, corrections: u32) -> aiq_store::JudgmentRow {
-    let facts = r#"{"F1":{"value":true,"confidence":1.0,"source":"log","disputed":false},
-      "F4":{"value":true,"confidence":0.9,"source":"model","disputed":false},
-      "F6":{"value":true,"confidence":0.9,"source":"model","disputed":false},
-      "F7":{"value":false,"confidence":0.9,"source":"model","disputed":false},
-      "F8":{"value":false,"confidence":1.0,"source":"log","disputed":false},
-      "F12":{"value":false,"confidence":0.9,"source":"model","disputed":false},
-      "F13":{"value":true,"confidence":0.9,"source":"model","disputed":false},
-      "F3":{"value":"person","source":"log"}}"#;
-    aiq_store::JudgmentRow {
-        judgment_id: format!("j-{task_id}"),
-        task_id: task_id.into(),
-        origin: "live".into(),
-        provider: "copilot-cli".into(),
-        model: None,
-        judged_utc_ms: NOW - MIN,
-        job: "code_change".into(),
-        job_confidence: 0.9,
-        model_rung: current,
-        current_rung: current,
-        current_confidence: 0.85,
-        potential_rung: if state == "judged" { current + 1 } else { current },
-        potential_confidence: 0.85,
-        ceiling_rung: 5,
-        state: state.into(),
-        coachable: state == "judged",
-        facts: facts.into(),
-        evidence: r#"["The agent wrote the tests."]"#.into(),
-        gap: "Give the agent <b>a brief</b>.".into(),
-        blockers: "[]".into(),
-        placement: "[]".into(),
-        read: format!(r#"{{"prompts":2,"reprompts":1,"corrections":{corrections}}}"#),
-        call_ids: "[]".into(),
-        fact_set_version: "fs1".into(),
-        rubric_version: "r1".into(),
-        judge_version: "j2".into(),
-        task_type: Some(task_type.into()),
-        task_type_confidence: Some(0.9),
-    }
-}
 
 #[test]
 fn coaching_split_kinds_habits_and_settings_derive_from_judgments() {
@@ -293,11 +253,11 @@ fn coaching_split_kinds_habits_and_settings_derive_from_judgments() {
     }
     for (i, id) in ids.iter().enumerate() {
         let row = match i {
-            0..=5 => coach_row(id, "tests", 3, "judged", 0),       // finished
-            6 => coach_row(id, "tests", 3, "judged", 1),           // corrected: could finish (tests coaches 3 → 4)
-            7 | 8 => coach_row(id, "fix_bug", 1, "right_rung", 0), // needs you
-            9 => coach_row(id, "fix_bug", 1, "right_rung", 0),
-            _ => coach_row(id, "tests", 3, "uncertain", 0), // left out
+            0..=5 => coach_row(id, "code_change", "tests", 3, "judged", 0), // finished
+            6 => coach_row(id, "code_change", "tests", 3, "judged", 1), // corrected: could finish (tests coaches 3 → 4)
+            7 | 8 => coach_row(id, "code_change", "fix_bug", 1, "right_rung", 0), // needs you
+            9 => coach_row(id, "code_change", "fix_bug", 1, "right_rung", 0),
+            _ => coach_row(id, "code_change", "tests", 3, "uncertain", 0), // left out
         };
         sd.store.insert_judgment(&row).unwrap();
     }

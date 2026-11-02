@@ -1,7 +1,7 @@
 // Settings (spec US-H7): tips a day and how long a Copilot CLI tip stays, written through the core.
 // Quiet hours, tip types, preset, judge and sharing wait for their phases; they say so.
 import { useState } from "react";
-import { api } from "../api";
+import { api, type SettingKey } from "../api";
 import type { Settings as S } from "../types";
 import { plural } from "../format";
 import { Banners, Title, type Ctx } from "../ui";
@@ -12,12 +12,36 @@ const STAYS: { v: S["copilot_tip_stays"]; label: string; note?: string }[] = [
   { v: "until-opened", label: "Until you open it" },
 ];
 
+const NEXT: { v: S["next_rung_tips"]; label: string; note?: string }[] = [
+  { v: "auto", label: "On, unless AIQ's guesses are often wrong", note: "Default" },
+  { v: "on", label: "Always on" },
+  { v: "off", label: "Off" },
+];
+
 export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: boolean) => void }) {
   const { snap, announce, refresh, singleKeys, setSingleKeys } = ctx;
   const [msg, setMsg] = useState<string | null>(null);
   const down = !snap.status.core;
+  const st = snap.settings;
+  // The habit a tip names, from the kinds of task or habits AIQ knows; else the tip's own id.
+  const tipName = (tipId: string) => {
+    const move = tipId.replace(/^next_rung\./, "");
+    const k = snap.coaching.kinds.find((x) => x.next?.move_id === move);
+    return k?.next?.habit ?? snap.coaching.habits.find((h) => h.move_id === move)?.name ?? tipId;
+  };
+  const tipOn = async (tipId: string) => {
+    const r = await api.tipOn(tipId);
+    if (r.ok) {
+      setMsg(null);
+      announce(`${tipName(tipId)}: tip turned back on.`);
+      refresh();
+    } else {
+      setMsg(r.message);
+      announce(r.message);
+    }
+  };
 
-  const change = async (key: "daily_cap" | "copilot_tip_stays", value: string, done: string) => {
+  const change = async (key: SettingKey, value: string, done: string) => {
     const r = await api.setSetting(key, value);
     if (r.ok) {
       setMsg(null);
@@ -70,6 +94,51 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
           ))}
           <span className="meta">Every tip stays in Habits and tips.</span>
         </fieldset>
+        <fieldset className="group" style={{ border: 0, padding: 0, margin: 0 }} disabled={down}>
+          <legend style={{ padding: 0, marginBottom: "var(--s2)" }}>Next-step tips, for the kinds of task you repeat</legend>
+          {NEXT.map((n) => (
+            <label className="opt" key={n.v}>
+              <input
+                type="radio"
+                name="nextrung"
+                checked={st.next_rung_tips === n.v}
+                onChange={() => change("next_rung_tips", n.v, `Next-step tips: ${n.label.toLowerCase()}.`)}
+              />
+              <span>
+                {n.label} {n.note && <span className="meta">· {n.note}</span>}
+              </span>
+            </label>
+          ))}
+        </fieldset>
+        {st.guess_auto_off && st.next_rung_tips === "auto" ? (
+          <div className="banner" role="status">
+            <div className="grow">
+              AIQ guessed the kind of task right {st.guess_right} of {st.guess_checked} times, so it stopped these tips.
+            </div>
+            <button className="btn" disabled={down} onClick={() => change("next_rung_tips", "on", "Next-step tips are back on.")}>
+              Turn back on
+            </button>
+          </div>
+        ) : (
+          <span className="meta">
+            {st.guess_checked > 0
+              ? `AIQ checks its guesses of the kind of task against the judge: right ${st.guess_right} of ${st.guess_checked} times so far. Below 8 in 10, it stops these tips by itself.`
+              : "AIQ checks its guesses of the kind of task against the judge. Below 8 in 10 right, it stops these tips by itself."}
+          </span>
+        )}
+        {st.tips_off.length > 0 && (
+          <div className="group">
+            <span id="toff">Tips you turned off</span>
+            <ul aria-labelledby="toff" style={{ listStyle: "none", margin: 0, padding: 0 }} className="group">
+              {st.tips_off.map((t) => (
+                <li className="row" key={t} style={{ justifyContent: "space-between" }}>
+                  <span>{tipName(t)}</span>
+                  <button className="btn" onClick={() => tipOn(t)}>Turn back on</button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </section>
 
       <section className="card" aria-labelledby="st2">

@@ -11,6 +11,7 @@ export interface Snapshot {
   data: Data;
   settings: Settings;
   setup: Setup;
+  coaching: Coaching;
 }
 
 export interface Status {
@@ -31,7 +32,6 @@ export interface Home {
   /** Judged, not-Uncertain tasks per current rung; index 0 = Assisted. */
   rungs: [number, number, number, number, number];
   most_common_rung: number | null;
-  next_steps: NextStep[];
   judge_today: JudgeToday;
   imported_in_window: number;
   weeks: { start_ms: number; tasks: number }[];
@@ -74,14 +74,67 @@ export interface TaskJudgment {
   read_chars: number;
   read_actions: boolean;
   versions: string;
+  task_type: string | null;
+  task_type_label: string | null;
 }
 
-export interface NextStep {
-  task_id: string;
+/** Coaching from rung results (design coaching-from-rungs). Every number is derived from judgments. */
+export interface Coaching {
+  split: { tasks: number; finished: number; could: number; needs: number; uncertain: number };
+  /** The split shows with at least this many judged, not-Uncertain tasks. */
+  split_min: number;
+  /** The rule shown under "Tasks agents finished". */
+  rule: string;
+  weeks: { start_ms: number; tasks: number; finished: number }[];
+  week_min: number;
+  /** At most 3 kinds of task with a next step, ranked. */
+  opportunities: KindRow[];
+  kinds: KindRow[];
+  habits: HabitRow[];
+  habits_imported: boolean;
+  /** Judged before kinds of task existed. */
+  untyped: number;
+}
+
+export type KindState = "coach" | "too_few" | "right_rung" | "blocked" | "not_sure" | "flagged";
+
+export interface KindRow {
   job: string;
-  current: number;
-  potential: number;
-  gap: string;
+  task_type: string;
+  label: string;
+  tasks: number;
+  uncertain: number;
+  per_week: number;
+  today: number | null;
+  potential: number | null;
+  state: KindState;
+  next: MoveOut | null;
+  ranked_last: boolean;
+  last_task_id: string | null;
+  /** The judge's own words: plain text only (TR-5). */
+  last_gap: string | null;
+  task_ids: string[];
+}
+
+export interface MoveOut {
+  move_id: string;
+  habit: string;
+  why: string;
+  try_this: string;
+  starter: string;
+}
+
+export interface HabitRow {
+  job: string;
+  move_id: string;
+  name: string;
+  state: "not_yet" | "tried" | "adopted";
+  eligible: number;
+  seen: number;
+  moved_to: "tried" | "adopted" | null;
+  moved_ms: number | null;
+  /** The move was back from Adopted to Tried. */
+  moved_back: boolean;
 }
 
 export interface JudgeToday {
@@ -128,6 +181,14 @@ export interface Settings {
   copilot_tip_stays: "next-prompt" | "two-prompts-or-5-min" | "until-opened";
   judge: "auto" | "off";
   judge_daily_tasks: number;
+  next_rung_tips: "auto" | "on" | "off";
+  /** Next-step tips may show now. */
+  next_rung_on: boolean;
+  guess_checked: number;
+  guess_right: number;
+  guess_auto_off: boolean;
+  /** Tips turned off with "Don't show this again". */
+  tips_off: string[];
 }
 
 /** A command's answer: done, or a sentence the person can act on. */

@@ -45,6 +45,15 @@ fn main() {
     p.status.read_ms = 12;
     write(&out, "paused", &p);
 
+    // Coaching from rung results: kinds of task with next steps, habits, the split (design coaching-from-rungs).
+    let coached = Paths::at(&tmp.join("coaching"));
+    seed::coaching(&coached);
+    aiq_core::control::finish_setup(&coached).unwrap();
+    let mut c = aiq_home::snapshot(&coached, &pack, now);
+    c.status.core = true;
+    c.status.read_ms = 12;
+    write(&out, "coaching", &c);
+
     let empty = Paths::at(&tmp.join("empty"));
     let mut e = aiq_home::snapshot(&empty, &pack, now);
     e.status.core = true;

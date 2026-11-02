@@ -72,10 +72,10 @@ const pages = [
 ];
 
 await test("contract: fixtures are aiq.home.v1 snapshots from the Rust read model", async () => {
-  for (const f of ["full", "down", "paused", "empty", "first-run"]) {
+  for (const f of ["full", "down", "paused", "empty", "first-run", "coaching"]) {
     const s = JSON.parse(readFileSync(join(fixtures, `${f}.json`), "utf8"));
     assert.equal(s.schema, "aiq.home.v1");
-    for (const k of ["status", "home", "tasks", "tips", "data", "settings", "setup"]) assert.ok(k in s, `${f}: ${k}`);
+    for (const k of ["status", "home", "tasks", "tips", "data", "settings", "setup", "coaching"]) assert.ok(k in s, `${f}: ${k}`);
     assert.equal(s.setup.done, f !== "first-run", f);
   }
   const t = JSON.parse(readFileSync(join(fixtures, "task.json"), "utf8"));
@@ -96,22 +96,35 @@ for (const theme of ["light", "dark", "contrast"]) {
   });
 }
 
+for (const theme of ["light", "dark", "contrast"]) {
+  await test(`coaching: every page and a kind of task have no axe violations (${theme})`, async () => {
+    for (const [id] of [...pages, ["kind/code_change/tests"], ["kind/code_change/fix_bug"]]) {
+      const page = await open("coaching", { theme: theme === "light" ? undefined : theme, hash: `#${id}` });
+      const v = await axe(page);
+      assert.deepEqual(v, [], `${id}: ${v.join("; ")}`);
+      assert.deepEqual(page.errors, []);
+      if (shots) await page.screenshot({ path: join(shots, `coaching-${id.replaceAll("/", "-")}-${theme}.png`), fullPage: true });
+      await page.context().close();
+    }
+  });
+}
+
 await test("forced colours (Windows high contrast) has no axe violations", async () => {
   const page = await open("full", { forced: true });
   assert.deepEqual(await axe(page), []);
   await page.context().close();
 });
 
-await test("Home shows judged rungs and next steps, and only measured counts", async () => {
+await test("Home shows judged rungs, progress toward the split, and only measured counts", async () => {
   const page = await open("full");
   const t = await page.locator("main").innerText();
-  assert.match(t, /Tasks agents finished\s+Not judged yet/);
+  assert.match(t, /Tasks agents finished\s+Not enough judged tasks yet/);
+  assert.match(t, /2 of 10 judged tasks needed to show what agents finished \(1 AIQ isn't sure about don't count\)/);
   assert.match(t, /7 tasks in the last 30 days · 1 imported task/);
-  assert.doesNotMatch(t, /\d+%/, "no percentages: kept rate is not judged yet");
+  assert.doesNotMatch(t, /\d+%/, "no percentages under 10 judged tasks");
   assert.match(t, /Your most common rung\s+Directed \(2\)\s+3 tasks judged in 30 days/);
   assert.match(t, /\(1 uncertain not counted\)/);
-  assert.match(t, /Next steps[\s\S]*Hand the agent the whole change with the tests it must pass/);
-  assert.match(t, /Directed \(2\) → Delegated \(3\)/);
+  assert.match(t, /Where agents could do more\s+[^\n]*\n+Next steps show once AIQ knows the kind of each task/);
   for (const r of ["Assisted (1)", "Directed (2)", "Delegated (3)", "Orchestrated (4)", "Factory (5)"]) assert.ok(t.includes(r), r);
   assert.equal(await page.locator(".wk-col").count(), 4);
   // Rung rows expand to say what the rung means.
@@ -472,6 +485,126 @@ await test("delete one prompt: names it, focus on Cancel, deleted text everywher
   const calls = await page.evaluate(() => window.__AIQ_FIXTURE__.calls.filter((c) => c.cmd === "forget_item").map((c) => Object.keys(c.args)));
   assert.deepEqual(calls, [["eventId"]]);
   await page.context().close();
+});
+
+await test("coaching Home: finished and could be, the rule, uncertain left out, top kinds with a next step", async () => {
+  const page = await open("coaching");
+  const t = await page.locator("main").innerText();
+  assert.match(t, /Tasks agents finished\s+33%\s+could be 67%/);
+  assert.equal(await page.getByRole("img", { name: "Agents finished 33%, could be 67%" }).count(), 1);
+  assert.match(t, /Of 15 judged tasks: 5 finished by agents, 5 could be, 5 need you\. 1 task AIQ isn't sure about is left out\./);
+  assert.match(t, /A task counts as finished when it was judged Delegated or higher and you sent no re-prompt correcting the agent\./);
+  assert.match(t, /Judged by your Copilot CLI/);
+  const rows = page.getByRole("list", { name: "Kinds of task with a next step" }).getByRole("listitem");
+  assert.equal(await rows.count(), 2);
+  const first = await rows.first().innerText();
+  assert.match(first, /Writing tests[\s\S]*Delegated \(3\) → Orchestrated \(4\)[\s\S]*7 tasks · 1\.6 a week[\s\S]*Next step: Give the agent a written brief or instructions file/);
+  assert.ok(!(await page.locator("main").innerHTML()).includes("Give the agent <b>"), "judge text is not on Home");
+  // A week with fewer than 3 judged tasks says so instead of a share.
+  assert.ok((await page.locator(".wk-col").first().getAttribute("aria-label")).includes("too few judged tasks to say"));
+  await rows.first().getByRole("button").click();
+  await page.waitForSelector("main h1:text('Writing tests')");
+  assert.ok(page.url().endsWith("#kind/code_change/tests"));
+  await page.context().close();
+});
+
+await test("kind of task: the pack's step, copy starter, judge words as text, This doesn't fit with a reason, Undo", async () => {
+  const page = await open("coaching", { hash: "#kind/code_change/tests" });
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin: base });
+  const t = await page.locator("main").innerText();
+  assert.match(t, /Next step: Give the agent a written brief or instructions file/);
+  assert.match(t, /1 task AIQ isn't sure about is left out of this\./);
+  assert.match(t, /For your last task\s+Give the agent <b>a brief<\/b>\./, "model text rendered literally");
+  assert.equal(await page.locator("main b:text('a brief')").count(), 0);
+  const starter = await page.locator("pre.starter").innerText();
+  assert.ok(starter.length > 0 && /</.test(starter), "starter has placeholders");
+  await page.getByRole("button", { name: "Copy starter" }).click();
+  await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent?.startsWith("Starter copied."));
+  await page.getByRole("button", { name: "This doesn't fit" }).click();
+  const stop = page.getByRole("button", { name: "Stop suggesting it" });
+  assert.equal(await stop.isDisabled(), true, "a reason is required");
+  await page.getByLabel("The step isn't useful for this work").check();
+  await stop.click();
+  await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent?.startsWith("AIQ won't suggest this step for Writing tests"));
+  await page.waitForSelector("main h2:text('You flagged this step')");
+  await page.getByRole("button", { name: "Undo" }).click();
+  await page.waitForSelector("main h2:text('Next step: Give the agent a written brief or instructions file')");
+  const calls = await page.evaluate(() => window.__AIQ_FIXTURE__.calls.filter((c) => c.cmd === "guidance_flag").map((c) => c.args));
+  assert.deepEqual(calls, [
+    { job: "code_change", taskType: "tests", moveId: "written_brief", action: "flag", reason: "not_useful" },
+    { job: "code_change", taskType: "tests", moveId: "written_brief", action: "undo", reason: null },
+  ]);
+  // Other states say why there is no step; an unknown kind has a way back.
+  const fix = await open("coaching", { hash: "#kind/code_change/fix_bug" });
+  assert.match(await fix.locator("main").innerText(), /This is the right rung for this task\./);
+  assert.equal(await fix.getByRole("button", { name: "This doesn't fit" }).count(), 0);
+  await fix.context().close();
+  const few = await open("coaching", { hash: "#kind/code_change/refactor" });
+  assert.match(await few.locator("main").innerText(), /AIQ isn't sure yet/);
+  await few.context().close();
+  const none = await open("coaching", { hash: "#kind/code_change/deps" });
+  assert.match(await none.locator("main").innerText(), /Kind of task not found[\s\S]*Back to Tasks/);
+  await none.context().close();
+  await page.context().close();
+});
+
+await test("Tasks: kinds of task listed with their state; job column names the kind", async () => {
+  const page = await open("coaching", { hash: "#tasks" });
+  const kinds = await page.getByRole("list", { name: "Kinds of task" }).innerText();
+  for (const k of ["Writing tests", "Writing a spec or PRD", "Fixing a bug or failing test", "Right rung", "Refactoring or cleaning up", "Too few tasks yet"]) assert.ok(kinds.includes(k), k);
+  assert.match(await page.locator("tbody").innerText(), /Code a change · Writing tests/);
+  await page.context().close();
+});
+
+await test("Habits: words for each state, seen in n of m, banners, imported footnote", async () => {
+  const page = await open("coaching", { hash: "#tips" });
+  const t = await page.locator("main").innerText();
+  assert.ok(!t.includes("Habit tracking comes in a later version"));
+  assert.match(t, /Give the agent a written brief or instructions file\s+Not yet\s+Seen in 0 of 6 tasks in 14 days/);
+  assert.match(t, /Hand over the whole task with a done test\s+Adopted\s+Seen in 6 of 6 tasks in 14 days/);
+  const banners = await page.locator(".banner.info").count();
+  assert.ok(banners >= 1 && banners <= 3, `one to three banners, got ${banners}`);
+  assert.match(t, /You adopted a habit:/);
+  assert.ok(!t.includes("Includes tasks AIQ imported"), "no imported tasks in this fixture");
+  const imp = await open("coaching", { hash: "#tips", edit: (s) => (s.coaching.habits_imported = true) });
+  assert.match(await imp.locator("main").innerText(), /Includes tasks AIQ imported from your history\./);
+  await imp.context().close();
+  const lapse = await open("coaching", {
+    hash: "#tips",
+    edit: (s) => {
+      s.coaching.habits = [{ ...s.coaching.habits[0], state: "tried", moved_to: "tried", moved_ms: s.now_ms - 86_400_000, moved_back: true, seen: 1, eligible: 4 }];
+    },
+  });
+  assert.match(await lapse.locator("main").innerText(), /Back to Tried: .* You did it in 1 of 4 recent tasks where it fits\./);
+  await lapse.context().close();
+  const empty = await open("empty", { hash: "#tips" });
+  assert.match(await empty.locator("main").innerText(), /No habits to show yet\./);
+  await empty.context().close();
+  await page.context().close();
+});
+
+await test("Settings: next-step tips auto/on/off, AIQ's self-check stop with Turn back on, tips turned off", async () => {
+  const page = await open("coaching", { hash: "#settings" });
+  assert.equal(await page.getByLabel(/On, unless AIQ's guesses are often wrong/).isChecked(), true);
+  await page.getByLabel("Off", { exact: true }).check();
+  await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Next-step tips: off.");
+  const off = page.getByRole("list", { name: "Tips you turned off" });
+  assert.match(await off.innerText(), /Ask the agent to run the tests itself/);
+  await off.getByRole("button", { name: "Turn back on" }).click();
+  await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent?.endsWith("tip turned back on."));
+  assert.equal(await page.getByRole("list", { name: "Tips you turned off" }).count(), 0);
+  const calls = await page.evaluate(() => window.__AIQ_FIXTURE__.calls.filter((c) => ["set_setting", "tip_on"].includes(c.cmd)).map((c) => c.args));
+  assert.deepEqual(calls, [{ key: "next_rung_tips", value: "off" }, { tipId: "next_rung.agent_checks" }]);
+  await page.context().close();
+  const stopped = await open("coaching", {
+    hash: "#settings",
+    edit: (s) => Object.assign(s.settings, { guess_checked: 10, guess_right: 7, guess_auto_off: true, next_rung_on: false }),
+  });
+  assert.match(await stopped.locator("main").innerText(), /AIQ guessed the kind of task right 7 of 10 times, so it stopped these tips\./);
+  await stopped.getByRole("button", { name: "Turn back on" }).first().click();
+  await stopped.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Next-step tips are back on.");
+  assert.deepEqual(await axe(stopped), []);
+  await stopped.context().close();
 });
 
 await browser.close();

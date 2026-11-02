@@ -1,0 +1,1249 @@
+{
+  "schema": "aiq.home.v1",
+  "now_ms": 1793534400000,
+  "offset_min": 0,
+  "status": {
+    "core": true,
+    "paused": false,
+    "store_found": true,
+    "last_event_ms": 1793422980000,
+    "read_ms": 12,
+    "error": null
+  },
+  "home": {
+    "window_days": 30,
+    "tasks_in_window": 16,
+    "judged": 16,
+    "uncertain": 1,
+    "rungs": [
+      3,
+      6,
+      6,
+      0,
+      0
+    ],
+    "most_common_rung": 2,
+    "judge_today": {
+      "tasks": 0,
+      "calls": 0,
+      "failed_calls": 0,
+      "cost_usd": null
+    },
+    "imported_in_window": 0,
+    "weeks": [
+      {
+        "start_ms": 1791115200000,
+        "tasks": 0
+      },
+      {
+        "start_ms": 1791720000000,
+        "tasks": 6
+      },
+      {
+        "start_ms": 1792324800000,
+        "tasks": 5
+      },
+      {
+        "start_ms": 1792929600000,
+        "tasks": 5
+      }
+    ],
+    "by_tool": [
+      [
+        "copilot-cli",
+        16
+      ]
+    ],
+    "set_aside": [],
+    "tips_today": 0
+  },
+  "tasks": [
+    {
+      "task_id": "019000000001-0000-7000-8000-000000000000",
+      "tool": "copilot-cli",
+      "folder": "c:\\users\\imran\\source\\repos\\aiq",
+      "first_ms": 1793422800000,
+      "last_ms": 1793422800000,
+      "prompts": 1,
+      "origin": "live",
+      "job": "code_change",
+      "rung": 3,
+      "judgment": {
+        "judged_ms": 1793534340000,
+        "state": "judged",
+        "current": 3,
+        "potential": 4,
+        "ceiling": 5,
+        "current_confidence": 0.85,
+        "potential_confidence": 0.85,
+        "job": "code_change",
+        "task_type": "tests",
+        "task_type_label": "Writing tests",
+        "coachable": true,
+        "evidence": [
+          "The agent wrote the tests."
+        ],
+        "gap": "Give the agent <b>a brief</b>.",
+        "blockers": [],
+        "provider": "copilot-cli",
+        "model": null,
+        "read_prompts": 2,
+        "read_chars": 0,
+        "read_actions": false,
+        "versions": "fs1 · r1 · j2"
+      }
+    },
+    {
+      "task_id": "019000000003-0000-7000-8000-000000000000",
+      "tool": "copilot-cli",
+      "folder": "c:\\users\\imran\\source\\repos\\aiq",
+      "first_ms": 1793311200000,
+      "last_ms": 1793311200000,
+      "prompts": 1,
+      "origin": "live",
+      "job": "code_change",
+      "rung": 3,
+      "judgment": {
+        "judged_ms": 1793534340000,
+        "state": "judged",
+        "current": 3,
+        "potential": 4,
+        "ceiling": 5,
+        "current_confidence": 0.85,
+        "potential_confidence": 0.85,
+        "job": "code_change",
+        "task_type": "tests",
+        "task_type_label": "Writing tests",
+        "coachable": true,
+        "evidence": [
+          "The agent wrote the tests."
+        ],
+        "gap": "Give the agent <b>a brief</b>.",
+        "blockers": [],
+        "provider": "copilot-cli",
+        "model": null,
+        "read_prompts": 2,
+        "read_chars": 0,
+        "read_actions": false,
+        "versions": "fs1 · r1 · j2"
+      }
+    },
+    {
+      "task_id": "019000000005-0000-7000-8000-000000000000",
+      "tool": "copilot-cli",
+      "folder": "c:\\users\\imran\\source\\repos\\aiq",
+      "first_ms": 1793199600000,
+      "last_ms": 1793199600000,
+      "prompts": 1,
+      "origin": "live",
+      "job": "code_change",
+      "rung": 3,
+      "judgment": {
+        "judged_ms": 1793534340000,
+        "state": "judged",
+        "current": 3,
+        "potential": 4,
+        "ceiling": 5,
+        "current_confidence": 0.85,
+        "potential_confidence": 0.85,
+        "job": "code_change",
+        "task_type": "tests",
+        "task_type_label": "Writing tests",
+        "coachable": true,
+        "evidence": [
+          "The agent wrote the tests."
+        ],
+        "gap": "Give the agent <b>a brief</b>.",
+        "blockers": [],
+        "provider": "copilot-cli",
+        "model": null,
+        "read_prompts": 2,
+        "read_chars": 0,
+        "read_actions": false,
+        "versions": "fs1 · r1 · j2"
+      }
+    },
+    {
+      "task_id": "019000000007-0000-7000-8000-000000000000",
+      "tool": "copilot-cli",
+      "folder": "c:\\users\\imran\\source\\repos\\aiq",
+      "first_ms": 1793088000000,
+      "last_ms": 1793088000000,
+      "prompts": 1,
+      "origin": "live",
+      "job": "code_change",
+      "rung": 3,
+      "judgment": {
+        "judged_ms": 1793534340000,
+        "state": "judged",
+        "current": 3,
+        "potential": 4,
+        "ceiling": 5,
+        "current_confidence": 0.85,
+        "potential_confidence": 0.85,
+        "job": "code_change",
+        "task_type": "tests",
+        "task_type_label": "Writing tests",
+        "coachable": true,
+        "evidence": [
+          "The agent wrote the tests."
+        ],
+        "gap": "Give the agent <b>a brief</b>.",
+        "blockers": [],
+        "provider": "copilot-cli",
+        "model": null,
+        "read_prompts": 2,
+        "read_chars": 0,
+        "read_actions": false,
+        "versions": "fs1 · r1 · j2"
+      }
+    },
+    {
+      "task_id": "019000000009-0000-7000-8000-000000000000",
+      "tool": "copilot-cli",
+      "folder": "c:\\users\\imran\\source\\repos\\aiq",
+      "first_ms": 1792976400000,
+      "last_ms": 1792976400000,
+      "prompts": 1,
+      "origin": "live",
+      "job": "code_change",
+      "rung": 3,
+      "judgment": {
+        "judged_ms": 1793534340000,
+        "state": "judged",
+        "current": 3,
+        "potential": 4,
+        "ceiling": 5,
+        "current_confidence": 0.85,
+        "potential_confidence": 0.85,
+        "job": "code_change",
+        "task_type": "tests",
+        "task_type_label": "Writing tests",
+        "coachable": true,
+        "evidence": [
+          "The agent wrote the tests."
+        ],
+        "gap": "Give the agent <b>a brief</b>.",
+        "blockers": [],
+        "provider": "copilot-cli",
+        "model": null,
+        "read_prompts": 2,
+        "read_chars": 0,
+        "read_actions": false,
+        "versions": "fs1 · r1 · j2"
+      }
+    },
+    {
+      "task_id": "019000000011-0000-7000-8000-000000000000",
+      "tool": "copilot-cli",
+      "folder": "c:\\users\\imran\\source\\repos\\aiq",
+      "first_ms": 1792864800000,
+      "last_ms": 1792864800000,
+      "prompts": 1,
+      "origin": "live",
+      "job": "code_change",
+      "rung": 3,
+      "judgment": {
+        "judged_ms": 1793534340000,
+        "state": "judged",
+        "current": 3,
+        "potential": 4,
+        "ceiling": 5,
+        "current_confidence": 0.85,
+        "potential_confidence": 0.85,
+        "job": "code_change",
+        "task_type": "tests",
+        "task_type_label": "Writing tests",
+        "coachable": true,
+        "evidence": [
+          "The agent wrote the tests."
+        ],
+        "gap": "Give the agent <b>a brief</b>.",
+        "blockers": [],
+        "provider": "copilot-cli",
+        "model": null,
+        "read_prompts": 2,
+        "read_chars": 0,
+        "read_actions": false,
+        "versions": "fs1 · r1 · j2"
+      }
+    },
+    {
+      "task_id": "019000000013-0000-7000-8000-000000000000",
+      "tool": "copilot-cli",
+      "folder": "c:\\users\\imran\\source\\repos\\aiq",
+      "first_ms": 1792753200000,
+      "last_ms": 1792753200000,
+      "prompts": 1,
+      "origin": "live",
+      "job": "code_change",
+      "rung": 3,
+      "judgment": {
+        "judged_ms": 1793534340000,
+        "state": "uncertain",
+        "current": 3,
+        "potential": 3,
+        "ceiling": 5,
+        "current_confidence": 0.85,
+        "potential_confidence": 0.85,
+        "job": "code_change",
+        "task_type": "tests",
+        "task_type_label": "Writing tests",
+        "coachable": false,
+        "evidence": [
+          "The agent wrote the tests."
+        ],
+        "gap": "Give the agent <b>a brief</b>.",
+        "blockers": [],
+        "provider": "copilot-cli",
+        "model": null,
+        "read_prompts": 2,
+        "read_chars": 0,
+        "read_actions": false,
+        "versions": "fs1 · r1 · j2"
+      }
+    },
+    {
+      "task_id": "019000000015-0000-7000-8000-000000000000",
+      "tool": "copilot-cli",
+      "folder": "c:\\users\\imran\\source\\repos\\aiq",
+      "first_ms": 1792641600000,
+      "last_ms": 1792641600000,
+      "prompts": 1,
+      "origin": "live",
+      "job": "write_doc",
+      "rung": 2,
+      "judgment": {
+        "judged_ms": 1793534340000,
+        "state": "judged",
+        "current": 2,
+        "potential": 3,
+        "ceiling": 5,
+        "current_confidence": 0.85,
+        "potential_confidence": 0.85,
+        "job": "write_doc",
+        "task_type": "spec",
+        "task_type_label": "Writing a spec or PRD",
+        "coachable": true,
+        "evidence": [
+          "The agent wrote the tests."
+        ],
+        "gap": "Give the agent <b>a brief</b>.",
+        "blockers": [],
+        "provider": "copilot-cli",
+        "model": null,
+        "read_prompts": 2,
+        "read_chars": 0,
+        "read_actions": false,
+        "versions": "fs1 · r1 · j2"
+      }
+    },
+    {
+      "task_id": "019000000017-0000-7000-8000-000000000000",
+      "tool": "copilot-cli",
+      "folder": "c:\\users\\imran\\source\\repos\\aiq",
+      "first_ms": 1792530000000,
+      "last_ms": 1792530000000,
+      "prompts": 1,
+      "origin": "live",
+      "job": "write_doc",
+      "rung": 2,
+      "judgment": {
+        "judged_ms": 1793534340000,
+        "state": "judged",
+        "current": 2,
+        "potential": 3,
+        "ceiling": 5,
+        "current_confidence": 0.85,
+        "potential_confidence": 0.85,
+        "job": "write_doc",
+        "task_type": "spec",
+        "task_type_label": "Writing a spec or PRD",
+        "coachable": true,
+        "evidence": [
+          "The agent wrote the tests."
+        ],
+        "gap": "Give the agent <b>a brief</b>.",
+        "blockers": [],
+        "provider": "copilot-cli",
+        "model": null,
+        "read_prompts": 2,
+        "read_chars": 0,
+        "read_actions": false,
+        "versions": "fs1 · r1 · j2"
+      }
+    },
+    {
+      "task_id": "019000000019-0000-7000-8000-000000000000",
+      "tool": "copilot-cli",
+      "folder": "c:\\users\\imran\\source\\repos\\aiq",
+      "first_ms": 1792418400000,
+      "last_ms": 1792418400000,
+      "prompts": 1,
+      "origin": "live",
+      "job": "write_doc",
+      "rung": 2,
+      "judgment": {
+        "judged_ms": 1793534340000,
+        "state": "judged",
+        "current": 2,
+        "potential": 3,
+        "ceiling": 5,
+        "current_confidence": 0.85,
+        "potential_confidence": 0.85,
+        "job": "write_doc",
+        "task_type": "spec",
+        "task_type_label": "Writing a spec or PRD",
+        "coachable": true,
+        "evidence": [
+          "The agent wrote the tests."
+        ],
+        "gap": "Give the agent <b>a brief</b>.",
+        "blockers": [],
+        "provider": "copilot-cli",
+        "model": null,
+        "read_prompts": 2,
+        "read_chars": 0,
+        "read_actions": false,
+        "versions": "fs1 · r1 · j2"
+      }
+    },
+    {
+      "task_id": "019000000021-0000-7000-8000-000000000000",
+      "tool": "copilot-cli",
+      "folder": "c:\\users\\imran\\source\\repos\\aiq",
+      "first_ms": 1792306800000,
+      "last_ms": 1792306800000,
+      "prompts": 1,
+      "origin": "live",
+      "job": "write_doc",
+      "rung": 2,
+      "judgment": {
+        "judged_ms": 1793534340000,
+        "state": "judged",
+        "current": 2,
+        "potential": 3,
+        "ceiling": 5,
+        "current_confidence": 0.85,
+        "potential_confidence": 0.85,
+        "job": "write_doc",
+        "task_type": "spec",
+        "task_type_label": "Writing a spec or PRD",
+        "coachable": true,
+        "evidence": [
+          "The agent wrote the tests."
+        ],
+        "gap": "Give the agent <b>a brief</b>.",
+        "blockers": [],
+        "provider": "copilot-cli",
+        "model": null,
+        "read_prompts": 2,
+        "read_chars": 0,
+        "read_actions": false,
+        "versions": "fs1 · r1 · j2"
+      }
+    },
+    {
+      "task_id": "019000000023-0000-7000-8000-000000000000",
+      "tool": "copilot-cli",
+      "folder": "c:\\users\\imran\\source\\repos\\aiq",
+      "first_ms": 1792195200000,
+      "last_ms": 1792195200000,
+      "prompts": 1,
+      "origin": "live",
+      "job": "code_change",
+      "rung": 1,
+      "judgment": {
+        "judged_ms": 1793534340000,
+        "state": "right_rung",
+        "current": 1,
+        "potential": 1,
+        "ceiling": 5,
+        "current_confidence": 0.85,
+        "potential_confidence": 0.85,
+        "job": "code_change",
+        "task_type": "fix_bug",
+        "task_type_label": "Fixing a bug or failing test",
+        "coachable": false,
+        "evidence": [
+          "The agent wrote the tests."
+        ],
+        "gap": "Give the agent <b>a brief</b>.",
+        "blockers": [],
+        "provider": "copilot-cli",
+        "model": null,
+        "read_prompts": 2,
+        "read_chars": 0,
+        "read_actions": false,
+        "versions": "fs1 · r1 · j2"
+      }
+    },
+    {
+      "task_id": "019000000025-0000-7000-8000-000000000000",
+      "tool": "copilot-cli",
+      "folder": "c:\\users\\imran\\source\\repos\\aiq",
+      "first_ms": 1792083600000,
+      "last_ms": 1792083600000,
+      "prompts": 1,
+      "origin": "live",
+      "job": "code_change",
+      "rung": 1,
+      "judgment": {
+        "judged_ms": 1793534340000,
+        "state": "right_rung",
+        "current": 1,
+        "potential": 1,
+        "ceiling": 5,
+        "current_confidence": 0.85,
+        "potential_confidence": 0.85,
+        "job": "code_change",
+        "task_type": "fix_bug",
+        "task_type_label": "Fixing a bug or failing test",
+        "coachable": false,
+        "evidence": [
+          "The agent wrote the tests."
+        ],
+        "gap": "Give the agent <b>a brief</b>.",
+        "blockers": [],
+        "provider": "copilot-cli",
+        "model": null,
+        "read_prompts": 2,
+        "read_chars": 0,
+        "read_actions": false,
+        "versions": "fs1 · r1 · j2"
+      }
+    },
+    {
+      "task_id": "019000000027-0000-7000-8000-000000000000",
+      "tool": "copilot-cli",
+      "folder": "c:\\users\\imran\\source\\repos\\aiq",
+      "first_ms": 1791972000000,
+      "last_ms": 1791972000000,
+      "prompts": 1,
+      "origin": "live",
+      "job": "code_change",
+      "rung": 1,
+      "judgment": {
+        "judged_ms": 1793534340000,
+        "state": "right_rung",
+        "current": 1,
+        "potential": 1,
+        "ceiling": 5,
+        "current_confidence": 0.85,
+        "potential_confidence": 0.85,
+        "job": "code_change",
+        "task_type": "fix_bug",
+        "task_type_label": "Fixing a bug or failing test",
+        "coachable": false,
+        "evidence": [
+          "The agent wrote the tests."
+        ],
+        "gap": "Give the agent <b>a brief</b>.",
+        "blockers": [],
+        "provider": "copilot-cli",
+        "model": null,
+        "read_prompts": 2,
+        "read_chars": 0,
+        "read_actions": false,
+        "versions": "fs1 · r1 · j2"
+      }
+    },
+    {
+      "task_id": "019000000029-0000-7000-8000-000000000000",
+      "tool": "copilot-cli",
+      "folder": "c:\\users\\imran\\source\\repos\\aiq",
+      "first_ms": 1791860400000,
+      "last_ms": 1791860400000,
+      "prompts": 1,
+      "origin": "live",
+      "job": "code_change",
+      "rung": 2,
+      "judgment": {
+        "judged_ms": 1793534340000,
+        "state": "judged",
+        "current": 2,
+        "potential": 3,
+        "ceiling": 5,
+        "current_confidence": 0.85,
+        "potential_confidence": 0.85,
+        "job": "code_change",
+        "task_type": "refactor",
+        "task_type_label": "Refactoring or cleaning up",
+        "coachable": true,
+        "evidence": [
+          "The agent wrote the tests."
+        ],
+        "gap": "Give the agent <b>a brief</b>.",
+        "blockers": [],
+        "provider": "copilot-cli",
+        "model": null,
+        "read_prompts": 2,
+        "read_chars": 0,
+        "read_actions": false,
+        "versions": "fs1 · r1 · j2"
+      }
+    },
+    {
+      "task_id": "019000000031-0000-7000-8000-000000000000",
+      "tool": "copilot-cli",
+      "folder": "c:\\users\\imran\\source\\repos\\aiq",
+      "first_ms": 1791748800000,
+      "last_ms": 1791748800000,
+      "prompts": 1,
+      "origin": "live",
+      "job": "code_change",
+      "rung": 2,
+      "judgment": {
+        "judged_ms": 1793534340000,
+        "state": "judged",
+        "current": 2,
+        "potential": 3,
+        "ceiling": 5,
+        "current_confidence": 0.85,
+        "potential_confidence": 0.85,
+        "job": "code_change",
+        "task_type": "refactor",
+        "task_type_label": "Refactoring or cleaning up",
+        "coachable": true,
+        "evidence": [
+          "The agent wrote the tests."
+        ],
+        "gap": "Give the agent <b>a brief</b>.",
+        "blockers": [],
+        "provider": "copilot-cli",
+        "model": null,
+        "read_prompts": 2,
+        "read_chars": 0,
+        "read_actions": false,
+        "versions": "fs1 · r1 · j2"
+      }
+    }
+  ],
+  "tips": [],
+  "data": {
+    "events": 32,
+    "prompts": 16,
+    "turn_ends": 16,
+    "imported_sessions": 0,
+    "imported_events": 0,
+    "store_bytes": 221184,
+    "items": [
+      {
+        "event_id": "019000000002-0000-7000-8000-000000000000",
+        "ts_ms": 1793422980000,
+        "tool": "copilot-cli",
+        "kind": "stop",
+        "text": null,
+        "deleted": false
+      },
+      {
+        "event_id": "019000000001-0000-7000-8000-000000000000",
+        "ts_ms": 1793422800000,
+        "tool": "copilot-cli",
+        "kind": "prompt",
+        "text": "write unit tests for the parser",
+        "deleted": false
+      },
+      {
+        "event_id": "019000000004-0000-7000-8000-000000000000",
+        "ts_ms": 1793311380000,
+        "tool": "copilot-cli",
+        "kind": "stop",
+        "text": null,
+        "deleted": false
+      },
+      {
+        "event_id": "019000000003-0000-7000-8000-000000000000",
+        "ts_ms": 1793311200000,
+        "tool": "copilot-cli",
+        "kind": "prompt",
+        "text": "add tests for the date helpers",
+        "deleted": false
+      },
+      {
+        "event_id": "019000000006-0000-7000-8000-000000000000",
+        "ts_ms": 1793199780000,
+        "tool": "copilot-cli",
+        "kind": "stop",
+        "text": null,
+        "deleted": false
+      },
+      {
+        "event_id": "019000000005-0000-7000-8000-000000000000",
+        "ts_ms": 1793199600000,
+        "tool": "copilot-cli",
+        "kind": "prompt",
+        "text": "cover the import path with tests",
+        "deleted": false
+      },
+      {
+        "event_id": "019000000008-0000-7000-8000-000000000000",
+        "ts_ms": 1793088180000,
+        "tool": "copilot-cli",
+        "kind": "stop",
+        "text": null,
+        "deleted": false
+      },
+      {
+        "event_id": "019000000007-0000-7000-8000-000000000000",
+        "ts_ms": 1793088000000,
+        "tool": "copilot-cli",
+        "kind": "prompt",
+        "text": "write tests for the settings page",
+        "deleted": false
+      },
+      {
+        "event_id": "019000000010-0000-7000-8000-000000000000",
+        "ts_ms": 1792976580000,
+        "tool": "copilot-cli",
+        "kind": "stop",
+        "text": null,
+        "deleted": false
+      },
+      {
+        "event_id": "019000000009-0000-7000-8000-000000000000",
+        "ts_ms": 1792976400000,
+        "tool": "copilot-cli",
+        "kind": "prompt",
+        "text": "tests for the hook timeout",
+        "deleted": false
+      },
+      {
+        "event_id": "019000000012-0000-7000-8000-000000000000",
+        "ts_ms": 1792864980000,
+        "tool": "copilot-cli",
+        "kind": "stop",
+        "text": null,
+        "deleted": false
+      },
+      {
+        "event_id": "019000000011-0000-7000-8000-000000000000",
+        "ts_ms": 1792864800000,
+        "tool": "copilot-cli",
+        "kind": "prompt",
+        "text": "add unit tests for the store",
+        "deleted": false
+      },
+      {
+        "event_id": "019000000014-0000-7000-8000-000000000000",
+        "ts_ms": 1792753380000,
+        "tool": "copilot-cli",
+        "kind": "stop",
+        "text": null,
+        "deleted": false
+      },
+      {
+        "event_id": "019000000013-0000-7000-8000-000000000000",
+        "ts_ms": 1792753200000,
+        "tool": "copilot-cli",
+        "kind": "prompt",
+        "text": "test this",
+        "deleted": false
+      },
+      {
+        "event_id": "019000000016-0000-7000-8000-000000000000",
+        "ts_ms": 1792641780000,
+        "tool": "copilot-cli",
+        "kind": "stop",
+        "text": null,
+        "deleted": false
+      },
+      {
+        "event_id": "019000000015-0000-7000-8000-000000000000",
+        "ts_ms": 1792641600000,
+        "tool": "copilot-cli",
+        "kind": "prompt",
+        "text": "draft the spec for the export page",
+        "deleted": false
+      },
+      {
+        "event_id": "019000000018-0000-7000-8000-000000000000",
+        "ts_ms": 1792530180000,
+        "tool": "copilot-cli",
+        "kind": "stop",
+        "text": null,
+        "deleted": false
+      },
+      {
+        "event_id": "019000000017-0000-7000-8000-000000000000",
+        "ts_ms": 1792530000000,
+        "tool": "copilot-cli",
+        "kind": "prompt",
+        "text": "write the PRD for sharing",
+        "deleted": false
+      },
+      {
+        "event_id": "019000000020-0000-7000-8000-000000000000",
+        "ts_ms": 1792418580000,
+        "tool": "copilot-cli",
+        "kind": "stop",
+        "text": null,
+        "deleted": false
+      },
+      {
+        "event_id": "019000000019-0000-7000-8000-000000000000",
+        "ts_ms": 1792418400000,
+        "tool": "copilot-cli",
+        "kind": "prompt",
+        "text": "spec the onboarding flow",
+        "deleted": false
+      },
+      {
+        "event_id": "019000000022-0000-7000-8000-000000000000",
+        "ts_ms": 1792306980000,
+        "tool": "copilot-cli",
+        "kind": "stop",
+        "text": null,
+        "deleted": false
+      },
+      {
+        "event_id": "019000000021-0000-7000-8000-000000000000",
+        "ts_ms": 1792306800000,
+        "tool": "copilot-cli",
+        "kind": "prompt",
+        "text": "write a spec for tip history",
+        "deleted": false
+      },
+      {
+        "event_id": "019000000024-0000-7000-8000-000000000000",
+        "ts_ms": 1792195380000,
+        "tool": "copilot-cli",
+        "kind": "stop",
+        "text": null,
+        "deleted": false
+      },
+      {
+        "event_id": "019000000023-0000-7000-8000-000000000000",
+        "ts_ms": 1792195200000,
+        "tool": "copilot-cli",
+        "kind": "prompt",
+        "text": "why does login fail on Safari",
+        "deleted": false
+      },
+      {
+        "event_id": "019000000026-0000-7000-8000-000000000000",
+        "ts_ms": 1792083780000,
+        "tool": "copilot-cli",
+        "kind": "stop",
+        "text": null,
+        "deleted": false
+      },
+      {
+        "event_id": "019000000025-0000-7000-8000-000000000000",
+        "ts_ms": 1792083600000,
+        "tool": "copilot-cli",
+        "kind": "prompt",
+        "text": "the parser test fails, fix it",
+        "deleted": false
+      },
+      {
+        "event_id": "019000000028-0000-7000-8000-000000000000",
+        "ts_ms": 1791972180000,
+        "tool": "copilot-cli",
+        "kind": "stop",
+        "text": null,
+        "deleted": false
+      },
+      {
+        "event_id": "019000000027-0000-7000-8000-000000000000",
+        "ts_ms": 1791972000000,
+        "tool": "copilot-cli",
+        "kind": "prompt",
+        "text": "fix the crash on empty input",
+        "deleted": false
+      },
+      {
+        "event_id": "019000000030-0000-7000-8000-000000000000",
+        "ts_ms": 1791860580000,
+        "tool": "copilot-cli",
+        "kind": "stop",
+        "text": null,
+        "deleted": false
+      },
+      {
+        "event_id": "019000000029-0000-7000-8000-000000000000",
+        "ts_ms": 1791860400000,
+        "tool": "copilot-cli",
+        "kind": "prompt",
+        "text": "clean up the CLI module",
+        "deleted": false
+      },
+      {
+        "event_id": "019000000032-0000-7000-8000-000000000000",
+        "ts_ms": 1791748980000,
+        "tool": "copilot-cli",
+        "kind": "stop",
+        "text": null,
+        "deleted": false
+      },
+      {
+        "event_id": "019000000031-0000-7000-8000-000000000000",
+        "ts_ms": 1791748800000,
+        "tool": "copilot-cli",
+        "kind": "prompt",
+        "text": "split the service file",
+        "deleted": false
+      }
+    ],
+    "items_capped": false,
+    "location": "C:\\Users\\you\\.aiq"
+  },
+  "settings": {
+    "daily_cap": 5,
+    "copilot_tip_stays": "next-prompt",
+    "judge": "off",
+    "judge_daily_tasks": 50,
+    "next_rung_tips": "auto",
+    "next_rung_on": true,
+    "guess_checked": 0,
+    "guess_right": 0,
+    "guess_auto_off": false,
+    "tips_off": [
+      "next_rung.agent_checks"
+    ]
+  },
+  "setup": {
+    "done": true,
+    "tools": [
+      {
+        "tool": "claude-code",
+        "hooked": true,
+        "present": true,
+        "install": "aiq install claude-code"
+      },
+      {
+        "tool": "copilot",
+        "hooked": false,
+        "present": true,
+        "install": "aiq install copilot"
+      }
+    ]
+  },
+  "coaching": {
+    "split": {
+      "tasks": 15,
+      "finished": 5,
+      "could": 5,
+      "needs": 5,
+      "uncertain": 1
+    },
+    "split_min": 10,
+    "rule": "A task counts as finished when it was judged Delegated or higher and you sent no re-prompt correcting the agent.",
+    "weeks": [
+      {
+        "start_ms": 1791115200000,
+        "tasks": 0,
+        "finished": 0
+      },
+      {
+        "start_ms": 1791720000000,
+        "tasks": 6,
+        "finished": 0
+      },
+      {
+        "start_ms": 1792324800000,
+        "tasks": 4,
+        "finished": 1
+      },
+      {
+        "start_ms": 1792929600000,
+        "tasks": 5,
+        "finished": 4
+      }
+    ],
+    "week_min": 3,
+    "opportunities": [
+      {
+        "job": "code_change",
+        "task_type": "tests",
+        "label": "Writing tests",
+        "tasks": 7,
+        "uncertain": 1,
+        "per_week": 1.6,
+        "today": 3,
+        "potential": 4,
+        "state": "coach",
+        "next": {
+          "move_id": "written_brief",
+          "habit": "Give the agent a written brief or instructions file",
+          "why": "a written brief or instructions file carries the context every time, so the agent can plan alone.",
+          "try_this": "save the goal, rules and checks for this kind of task in a file and point the agent at it.",
+          "starter": "Read <brief or instructions file>. Plan the steps, do them, and check each one against the brief."
+        },
+        "ranked_last": false,
+        "last_task_id": "019000000001-0000-7000-8000-000000000000",
+        "last_gap": "Give the agent <b>a brief</b>.",
+        "task_ids": [
+          "019000000001-0000-7000-8000-000000000000",
+          "019000000003-0000-7000-8000-000000000000",
+          "019000000005-0000-7000-8000-000000000000",
+          "019000000007-0000-7000-8000-000000000000",
+          "019000000009-0000-7000-8000-000000000000",
+          "019000000011-0000-7000-8000-000000000000",
+          "019000000013-0000-7000-8000-000000000000"
+        ]
+      },
+      {
+        "job": "write_doc",
+        "task_type": "spec",
+        "label": "Writing a spec or PRD",
+        "tasks": 4,
+        "uncertain": 0,
+        "per_week": 0.9,
+        "today": 2,
+        "potential": 3,
+        "state": "coach",
+        "next": {
+          "move_id": "hand_over_doc",
+          "habit": "Ask for the whole draft with what done means",
+          "why": "asking for the whole draft with what done means lets the agent keep it consistent.",
+          "try_this": "ask for the complete draft and say what a finished one must contain.",
+          "starter": "Write the whole <doc>. Done means it covers <sections> for <reader>. Then list what you were unsure of."
+        },
+        "ranked_last": false,
+        "last_task_id": "019000000015-0000-7000-8000-000000000000",
+        "last_gap": "Give the agent <b>a brief</b>.",
+        "task_ids": [
+          "019000000015-0000-7000-8000-000000000000",
+          "019000000017-0000-7000-8000-000000000000",
+          "019000000019-0000-7000-8000-000000000000",
+          "019000000021-0000-7000-8000-000000000000"
+        ]
+      }
+    ],
+    "kinds": [
+      {
+        "job": "code_change",
+        "task_type": "tests",
+        "label": "Writing tests",
+        "tasks": 7,
+        "uncertain": 1,
+        "per_week": 1.6,
+        "today": 3,
+        "potential": 4,
+        "state": "coach",
+        "next": {
+          "move_id": "written_brief",
+          "habit": "Give the agent a written brief or instructions file",
+          "why": "a written brief or instructions file carries the context every time, so the agent can plan alone.",
+          "try_this": "save the goal, rules and checks for this kind of task in a file and point the agent at it.",
+          "starter": "Read <brief or instructions file>. Plan the steps, do them, and check each one against the brief."
+        },
+        "ranked_last": false,
+        "last_task_id": "019000000001-0000-7000-8000-000000000000",
+        "last_gap": "Give the agent <b>a brief</b>.",
+        "task_ids": [
+          "019000000001-0000-7000-8000-000000000000",
+          "019000000003-0000-7000-8000-000000000000",
+          "019000000005-0000-7000-8000-000000000000",
+          "019000000007-0000-7000-8000-000000000000",
+          "019000000009-0000-7000-8000-000000000000",
+          "019000000011-0000-7000-8000-000000000000",
+          "019000000013-0000-7000-8000-000000000000"
+        ]
+      },
+      {
+        "job": "write_doc",
+        "task_type": "spec",
+        "label": "Writing a spec or PRD",
+        "tasks": 4,
+        "uncertain": 0,
+        "per_week": 0.9,
+        "today": 2,
+        "potential": 3,
+        "state": "coach",
+        "next": {
+          "move_id": "hand_over_doc",
+          "habit": "Ask for the whole draft with what done means",
+          "why": "asking for the whole draft with what done means lets the agent keep it consistent.",
+          "try_this": "ask for the complete draft and say what a finished one must contain.",
+          "starter": "Write the whole <doc>. Done means it covers <sections> for <reader>. Then list what you were unsure of."
+        },
+        "ranked_last": false,
+        "last_task_id": "019000000015-0000-7000-8000-000000000000",
+        "last_gap": "Give the agent <b>a brief</b>.",
+        "task_ids": [
+          "019000000015-0000-7000-8000-000000000000",
+          "019000000017-0000-7000-8000-000000000000",
+          "019000000019-0000-7000-8000-000000000000",
+          "019000000021-0000-7000-8000-000000000000"
+        ]
+      },
+      {
+        "job": "code_change",
+        "task_type": "fix_bug",
+        "label": "Fixing a bug or failing test",
+        "tasks": 3,
+        "uncertain": 0,
+        "per_week": 0.7,
+        "today": 1,
+        "potential": null,
+        "state": "right_rung",
+        "next": null,
+        "ranked_last": false,
+        "last_task_id": "019000000023-0000-7000-8000-000000000000",
+        "last_gap": "Give the agent <b>a brief</b>.",
+        "task_ids": [
+          "019000000023-0000-7000-8000-000000000000",
+          "019000000025-0000-7000-8000-000000000000",
+          "019000000027-0000-7000-8000-000000000000"
+        ]
+      },
+      {
+        "job": "code_change",
+        "task_type": "refactor",
+        "label": "Refactoring or cleaning up",
+        "tasks": 2,
+        "uncertain": 0,
+        "per_week": 0.5,
+        "today": 2,
+        "potential": null,
+        "state": "too_few",
+        "next": null,
+        "ranked_last": false,
+        "last_task_id": "019000000029-0000-7000-8000-000000000000",
+        "last_gap": "Give the agent <b>a brief</b>.",
+        "task_ids": [
+          "019000000029-0000-7000-8000-000000000000",
+          "019000000031-0000-7000-8000-000000000000"
+        ]
+      }
+    ],
+    "habits": [
+      {
+        "job": "code_change",
+        "move_id": "brief",
+        "name": "Give the agent the goal, context and limits up front",
+        "state": "adopted",
+        "eligible": 6,
+        "seen": 6,
+        "moved_to": "adopted",
+        "moved_ms": 1791972000000,
+        "moved_back": false
+      },
+      {
+        "job": "code_change",
+        "move_id": "check_code",
+        "name": "Check the diff or run the tests before using the result",
+        "state": "adopted",
+        "eligible": 6,
+        "seen": 6,
+        "moved_to": "adopted",
+        "moved_ms": 1791972000000,
+        "moved_back": false
+      },
+      {
+        "job": "code_change",
+        "move_id": "hand_over",
+        "name": "Hand over the whole task with a done test",
+        "state": "adopted",
+        "eligible": 6,
+        "seen": 6,
+        "moved_to": "adopted",
+        "moved_ms": 1791972000000,
+        "moved_back": false
+      },
+      {
+        "job": "code_change",
+        "move_id": "let_agent_edit",
+        "name": "Let the agent make the edits",
+        "state": "adopted",
+        "eligible": 6,
+        "seen": 6,
+        "moved_to": "adopted",
+        "moved_ms": 1791972000000,
+        "moved_back": false
+      },
+      {
+        "job": "code_change",
+        "move_id": "written_brief",
+        "name": "Give the agent a written brief or instructions file",
+        "state": "not_yet",
+        "eligible": 6,
+        "seen": 0,
+        "moved_to": null,
+        "moved_ms": null,
+        "moved_back": false
+      },
+      {
+        "job": "code_change",
+        "move_id": "agent_checks",
+        "name": "Ask the agent to run the tests itself",
+        "state": "not_yet",
+        "eligible": 6,
+        "seen": 0,
+        "moved_to": null,
+        "moved_ms": null,
+        "moved_back": false
+      },
+      {
+        "job": "code_change",
+        "move_id": "split_and_check",
+        "name": "Split the work with an automated check between steps",
+        "state": "not_yet",
+        "eligible": 6,
+        "seen": 0,
+        "moved_to": null,
+        "moved_ms": null,
+        "moved_back": false
+      },
+      {
+        "job": "write_doc",
+        "move_id": "brief",
+        "name": "Give the agent the goal, context and limits up front",
+        "state": "adopted",
+        "eligible": 3,
+        "seen": 3,
+        "moved_to": "adopted",
+        "moved_ms": 1792530000000,
+        "moved_back": false
+      },
+      {
+        "job": "write_doc",
+        "move_id": "check_sources",
+        "name": "Check drafted claims against a source",
+        "state": "adopted",
+        "eligible": 3,
+        "seen": 3,
+        "moved_to": "adopted",
+        "moved_ms": 1792530000000,
+        "moved_back": false
+      },
+      {
+        "job": "write_doc",
+        "move_id": "hand_over_doc",
+        "name": "Ask for the whole draft with what done means",
+        "state": "not_yet",
+        "eligible": 3,
+        "seen": 0,
+        "moved_to": null,
+        "moved_ms": null,
+        "moved_back": false
+      },
+      {
+        "job": "write_doc",
+        "move_id": "written_brief",
+        "name": "Give the agent a written brief or instructions file",
+        "state": "not_yet",
+        "eligible": 3,
+        "seen": 0,
+        "moved_to": null,
+        "moved_ms": null,
+        "moved_back": false
+      },
+      {
+        "job": "write_doc",
+        "move_id": "split_and_check",
+        "name": "Split the work with an automated check between steps",
+        "state": "not_yet",
+        "eligible": 3,
+        "seen": 0,
+        "moved_to": null,
+        "moved_ms": null,
+        "moved_back": false
+      }
+    ],
+    "habits_imported": false,
+    "untyped": 0
+  }
+}

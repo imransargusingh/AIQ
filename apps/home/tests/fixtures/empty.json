@@ -23,7 +23,6 @@
       0
     ],
     "most_common_rung": null,
-    "next_steps": [],
     "judge_today": {
       "tasks": 0,
       "calls": 0,
@@ -70,7 +69,13 @@
     "daily_cap": 5,
     "copilot_tip_stays": "next-prompt",
     "judge": "off",
-    "judge_daily_tasks": 50
+    "judge_daily_tasks": 50,
+    "next_rung_tips": "auto",
+    "next_rung_on": true,
+    "guess_checked": 0,
+    "guess_right": 0,
+    "guess_auto_off": false,
+    "tips_off": []
   },
   "setup": {
     "done": true,
@@ -88,5 +93,44 @@
         "install": "aiq install copilot"
       }
     ]
+  },
+  "coaching": {
+    "split": {
+      "tasks": 0,
+      "finished": 0,
+      "could": 0,
+      "needs": 0,
+      "uncertain": 0
+    },
+    "split_min": 10,
+    "rule": "A task counts as finished when it was judged Delegated or higher and you sent no re-prompt correcting the agent.",
+    "weeks": [
+      {
+        "start_ms": 1791115200000,
+        "tasks": 0,
+        "finished": 0
+      },
+      {
+        "start_ms": 1791720000000,
+        "tasks": 0,
+        "finished": 0
+      },
+      {
+        "start_ms": 1792324800000,
+        "tasks": 0,
+        "finished": 0
+      },
+      {
+        "start_ms": 1792929600000,
+        "tasks": 0,
+        "finished": 0
+      }
+    ],
+    "week_min": 3,
+    "opportunities": [],
+    "kinds": [],
+    "habits": [],
+    "habits_imported": false,
+    "untyped": 0
   }
 }
