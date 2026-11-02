@@ -19,7 +19,7 @@ export interface Snapshot {
 export interface Update {
   /** False for a copy not installed with install.ps1: it never updates itself. */
   supported: boolean;
-  mode: "auto" | "ask";
+  mode: "auto" | "ask" | "off";
   running: string;
   note: "none" | "waiting" | "applied" | "failed" | "rolled_back";
   available: string | null;

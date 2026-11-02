@@ -35,7 +35,8 @@ do about it. Anything marked **Planned** is not in this version.
 - **Two things go out, both through tools you already use:**
   1. If you turn on judging, AIQ asks **your own** Copilot or Claude Code to judge your finished tasks.
      That uses your plan, and your employer's rules for that account apply.
-  2. Once a day AIQ asks GitHub whether a newer AIQ is out. It sends nothing about you.
+  2. Once a day AIQ asks GitHub whether a newer AIQ is out. It sends nothing about you, and you can
+     turn it off.
 - **You are in control.** Pause, export, delete or uninstall at any time. Uninstalling keeps your data
   until you delete it.
 
@@ -108,10 +109,14 @@ suggests a next step. To do that, it asks an AI model to read the task.
   any web request.
 - A download is installed only if its SHA-256 checksum matches the list published with the same
   release. It is installed when AIQ is idle and AIQ home is closed, and the previous version is kept.
-- In Settings choose **Update automatically** (the default) or **Tell me first**
-  (`aiq config set update ask`). **Go back to the previous version** undoes an update, and AIQ will not
-  reinstall that release by itself.
-- In this version there is no setting that stops the daily check itself.
+- In Settings choose **Update automatically** (the default), **Tell me first**
+  (`aiq config set update ask`) or **Don't check for updates** (`aiq config set update off`). With
+  checks off, AIQ makes no network call of its own; **Check for updates now** in Settings, or
+  `aiq update --now`, checks once when you ask.
+- **Go back to the previous version** undoes an update, and AIQ will not reinstall that release by
+  itself.
+- To see which version you have: AIQ home shows it at the bottom of the side panel and in Settings,
+  under Updates. In a terminal, run `aiq version` or `aiq update`.
 
 ### 3. Nothing else
 
@@ -145,6 +150,7 @@ suggests a next step. To do that, it asks an AI model to read the task.
 | Judge fewer tasks a day | `aiq config set judge-daily-tasks <n>` |
 | Fewer tips | `aiq config set daily-cap <n>` (default 5 a day), or turn one tip off |
 | Be asked before updates | `aiq config set update ask` |
+| Stop the daily update check | Settings, **Don't check for updates**, or `aiq config set update off` |
 | Remove AIQ from your tools | `aiq uninstall --all`. Your data stays; run `aiq forget --all` to delete it too |
 
 When AIQ connects to a tool, it adds its own hook file or hook entries, backs up any settings file it
@@ -163,7 +169,12 @@ the Start menu shortcut it added.
   as your use of them. Your plan's limits, your provider's terms and your employer's policies apply.
 - **This page can change.** Its history is kept in the AIQ repository. If a change affects what AIQ
   keeps or sends, the alpha group will be told before the version that makes it.
-- **Questions or problems:** contact the person who invited you to the alpha.
+- **Questions or problems:** contact imrans.
+- **The code is open.** Everything AIQ does is in its public repository,
+  <https://github.com/imransargusingh/AIQ>. You can read how it works, check any statement on this
+  page against the code, open an issue, or propose a change.
+- **License:** not chosen yet. It will be added to the repository and this page before AIQ goes
+  beyond the private alpha.
 
 ---
 

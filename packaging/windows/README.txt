@@ -20,7 +20,8 @@ Useful commands (in a new terminal):
 
 Updates: AIQ updates itself. Once a day it asks GitHub whether a newer release is out, checks the
 download's SHA-256, and installs it when AIQ home is closed. Your data and settings stay. Turn it to
-"Tell me first" in AIQ home's Settings, or: aiq config set update ask. See what it did: aiq update
+"Tell me first" or "Don't check for updates" in AIQ home's Settings, or: aiq config set update ask
+(or off). Your version: bottom of AIQ home's side panel, or aiq version. See what it did: aiq update
 
 Upgrade to the newest release yourself (checks the download's SHA-256, keeps the old version):
   powershell -ExecutionPolicy Bypass -File $env:USERPROFILE\.aiq\bin\upgrade.ps1

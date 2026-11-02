@@ -222,6 +222,7 @@ export function App() {
                   Tips today: {snap.home.tips_today} of {snap.settings.daily_cap}
                 </span>
                 {singleKeys && <span>P to {snap.status.paused ? "resume" : "pause"}</span>}
+                <span data-testid="app-version">AIQ {snap.update.running}</span>
               </>
             )}
           </div>
