@@ -43,10 +43,22 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <table><thead><tr><th>Surface</th><th>Change</th></tr></thead><tbody><tr><td>Domain</td><td><code>rung::JobRun</code>, <code>NoJob</code>, <code>no_job_cause</code>, <code>candidate_job</code>, <code>CANDIDATE_RULES</code>; judge version j4, <code>JUDGE_VERSIONS_KEPT</code> j2 and j3</td></tr><tr><td>Runner</td><td>The judgment&#x27;s <code>read.job_runs</code>; <code>--check-report</code> adds &quot;Why&quot; under No job, plus one line per rule</td></tr><tr><td>Store, contracts, UI</td><td>None</td></tr></tbody></table>
 <h2>Run plan</h2>
 <ol><li>Merge. The laptop thread sends the upgrade line.</li><li>Background judging re-judges the no-job tasks first. Allow about a day at Imran&#x27;s cap.</li><li><code>aiq judge --check</code> (new sample, different second reader), then <code>aiq judge --check-report</code>.</li><li>Pick R1, R2, R3, R4 or none against N3, and record it here.</li></ol>
+<h2>Cause, measured (Imran&#x27;s laptop, 2026-11-02 ~18:30Z, build 7434187)</h2>
+<p>Every no-job judgment has now been re-judged at j4. <strong>No job: 100 of 436</strong> current judgments. The count went up from 70 because more never-judged tasks have been judged since; about 23% of the new ones get no job. That share is the laptop thread&#x27;s figure, which I did not recompute.</p>
+<table><thead><tr><th>Cause</th><th>Count</th></tr></thead><tbody><tr><td>C1 both runs said <code>other</code></td><td><strong>75</strong></td></tr><tr><td>C3 agreed on a pack job, not confidently</td><td>18</td></tr><tr><td>C2 the runs named different jobs</td><td>7</td></tr></tbody></table>
+<p>The candidate rules, scored against the old check sample (run 01a19ce8):</p>
+<table><thead><tr><th>Rule</th><th>Tasks it gives a job</th><th>Agreed with the second reading</th></tr></thead><tbody><tr><td>R1</td><td>3 of 100</td><td>0 of 1</td></tr><tr><td>R2</td><td>18 of 100</td><td>1 of 2</td></tr></tbody></table>
+<p>What this means:</p>
+<ul><li>R1 can&#x27;t help: it covers only 3 tasks. R2 covers 18 but has only 2 checks behind it, far short of the</li></ul>
+<p>N3 bar. Neither goes live.</p>
+<ul><li>C1 dominates, so by N4 the fix is in the prompt (R3) or in coverage (a pack for whatever those tasks are).</li></ul>
+<p>Choosing between them needs to know what a different model calls the C1 tasks. In run 01a19ce8 it gave 4 of 9 no-job tasks Ask or research.</p>
+<p><strong>N5 (added):</strong> <code>aiq judge --check --no-job</code> samples only no-job judgments, spread across the three causes. The report then splits &quot;the second reading said&quot; by cause. One run of 30, at about 30 premium requests (worked out from one request per task), shows:</p>
+<ul><li>what the C1 tasks are: a pack the judge misses, which points to R3, or <code>other</code>, which points to coverage</li><li>whether R2 clears the bar on C3</li></ul>
 <h2>Questions for Imran</h2>
 <p>None. The cause and the rule are both settled from data.</p>
 <h2>Gate record</h2>
 <p><code>GATE design-slice · 2026-11-02 · Simplifier, Test Architect, Data &amp; Persistence (seats played by Claude; not independent) · pass</code></p>
 <ul><li>Simplifier: measure first, and switch no rule on yet. Adding a field to <code>read</code> is cheaper than a column.</li><li>Test Architect: the cause and both rules are unit-tested. The runner test checks that the runs are recorded and that the report explains them.</li><li>Data &amp; Persistence: <code>read</code> is the judgment&#x27;s own JSON, and the cause is derived from it, not stored.</li></ul>
 <h2>Status and next action</h2>
-<table><thead><tr><th></th><th></th></tr></thead><tbody><tr><td><strong>Completed</strong></td><td>Design; measurement build</td></tr><tr><td><strong>Remaining</strong></td><td>Laptop re-judge and a check; pick a rule</td></tr><tr><td><strong>Best next action</strong></td><td>Upgrade the laptop, wait for re-judging, then run <code>aiq judge --check</code></td></tr></tbody></table></main></body></html>
+<table><thead><tr><th></th><th></th></tr></thead><tbody><tr><td><strong>Completed</strong></td><td>Design; measurement build; cause measured (C1 75 of 100)</td></tr><tr><td><strong>Remaining</strong></td><td>Laptop re-judge and a check; pick a rule</td></tr><tr><td><strong>Best next action</strong></td><td>Upgrade the laptop, then run <code>aiq judge --check --no-job</code> once background judging has finished</td></tr></tbody></table></main></body></html>

@@ -42,7 +42,7 @@ Usage:
   aiq judge [--max <n>] [--only claude-code|copilot-cli] [--dry-run]
                                       Judge your finished tasks through your own Claude Code / Copilot CLI
                                       (--dry-run shows what would be sent, sends nothing)
-  aiq judge --check [--sample <n>] [--dry-run]
+  aiq judge --check [--sample <n>] [--no-job] [--dry-run]
                                       Check the judge: a second model reads n judged tasks blind (default 30)
                                       and AIQ reports how often they agree (--dry-run: sample and cost only)
   aiq judge --check-report            The latest check's numbers again, and what AIQ measured itself
