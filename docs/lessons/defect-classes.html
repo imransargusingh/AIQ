@@ -80,4 +80,24 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <ul><li><strong>Sweep:</strong> every default path AIQ derives (<code>Paths::from_env</code>, install&#x27;s backup and record, the copy of</li></ul>
 <p>the binary). Settings live in <code>%USERPROFILE%\.claude</code>, which is not redirected. No other AppData use.</p>
 <ul><li><strong>Control:</strong> the Windows default is <code>%USERPROFILE%\.aiq</code> via <code>windows_home</code>; unit test</li></ul>
-<p><code>windows_home_is_in_the_profile_not_appdata</code> and Windows-only <code>windows_default_paths_use_the_profile_home</code>. <code>aiq status</code> names the home and explains an <code>AIQ-API-AUTH</code> count, so a split is visible, not silent.</p></main></body></html>
+<p><code>windows_home_is_in_the_profile_not_appdata</code> and Windows-only <code>windows_default_paths_use_the_profile_home</code>. <code>aiq status</code> names the home and explains an <code>AIQ-API-AUTH</code> count, so a split is visible, not silent.</p>
+<h3>DC-008 — Non-ASCII in the CLI&#x27;s own output turns to mojibake in Windows PowerShell 5.1</h3>
+<ul><li><strong>Signature:</strong> <code>aiq judge --check-report</code> printed &quot;52–79%&quot;; Imran&#x27;s PowerShell 5.1 showed &quot;52ΓÇô79%&quot;.</li></ul>
+<p>The binary writes UTF-8, and the console decodes it with the OEM code page. The program can&#x27;t choose that page.</p>
+<ul><li><strong>Why it survives:</strong> Linux CI and the cloud terminal are UTF-8, and tests compare Rust strings, never</li></ul>
+<p>what a Windows console shows.</p>
+<ul><li><strong>Instances:</strong> 2026-11-02, laptop accuracy-check run (en dash in every interval). Sweep found the same in</li></ul>
+<p><code>aiq --help</code> (em dash), the tip feedback line (middle dot) and the judge&#x27;s consent text (arrows).</p>
+<ul><li><strong>Sweep:</strong> every non-test, non-comment line of <code>crates/aiq/src/*.rs</code> and <code>aiq-domain/src/check.rs</code>.</li></ul>
+<p>Tip lines rendered by Claude Code or Copilot are not in scope: those hosts render UTF-8.</p>
+<ul><li><strong>Control:</strong> <code>crates/aiq/tests/ascii_output.rs</code> fails on any non-ASCII character in that code. It was</li></ul>
+<p>seen failing red on the old help text.</p>
+<h3>DC-009 — A comparison between two answer vocabularies that can never match</h3>
+<ul><li><strong>Signature:</strong> the accuracy check compared the judge&#x27;s stored job <code>unclassified</code> with the grader&#x27;s</li></ul>
+<p><code>other</code>. These are two names for &quot;no pack job&quot;, so every no-job task counted as a miss: job agreement was 20 of 30, but it was 30 of 30 wherever the vocabularies overlapped.</p>
+<ul><li><strong>Why it survives:</strong> the unit tests built both sides from the same vocabulary. Only real data has</li></ul>
+<p>stored <code>unclassified</code> rows.</p>
+<ul><li><strong>Instances:</strong> 2026-11-02, run 01a19ca2 on Imran&#x27;s laptop.</li><li><strong>Sweep:</strong> the judge&#x27;s eval (<code>judge.rs</code>, which maps <code>unclassified</code> to <code>other</code>) already did this. The</li></ul>
+<p>check&#x27;s <code>judge_view</code> did not. No other place compares stored judgments with a model answer.</p>
+<ul><li><strong>Control:</strong> <code>judge_view</code> maps the stored value. Domain test</li></ul>
+<p><code>no_job_agrees_with_other_and_records_what_the_grader_picked</code> and the <code>judge_view</code> asserts in <code>only_unclassified_judgments_of_the_last_version_are_judged_again</code> cover it, and the report prints what the second reader said for no-job tasks.</p></main></body></html>

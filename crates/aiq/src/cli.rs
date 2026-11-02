@@ -297,7 +297,7 @@ pub fn render_show(r: &ShowReply) -> String {
             out += &format!("  {}. {}  {}  {}\n", i + 1, l.ts, l.tool, l.task_type);
         }
         out += &format!(
-            "\nWas this useful?  aiq helpful {id} · aiq not {id} · aiq snooze {id} · aiq off {id}\n",
+            "\nWas this useful?  aiq helpful {id} | aiq not {id} | aiq snooze {id} | aiq off {id}\n",
             id = c.card_id
         );
         return out;

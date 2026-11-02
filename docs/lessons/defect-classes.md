@@ -103,3 +103,28 @@ summary: >-
 - **Control:** the Windows default is `%USERPROFILE%\.aiq` via `windows_home`; unit test
   `windows_home_is_in_the_profile_not_appdata` and Windows-only `windows_default_paths_use_the_profile_home`.
   `aiq status` names the home and explains an `AIQ-API-AUTH` count, so a split is visible, not silent.
+
+### DC-008 — Non-ASCII in the CLI's own output turns to mojibake in Windows PowerShell 5.1
+- **Signature:** `aiq judge --check-report` printed "52–79%"; Imran's PowerShell 5.1 showed "52ΓÇô79%".
+  The binary writes UTF-8, and the console decodes it with the OEM code page. The program can't choose that page.
+- **Why it survives:** Linux CI and the cloud terminal are UTF-8, and tests compare Rust strings, never
+  what a Windows console shows.
+- **Instances:** 2026-11-02, laptop accuracy-check run (en dash in every interval). Sweep found the same in
+  `aiq --help` (em dash), the tip feedback line (middle dot) and the judge's consent text (arrows).
+- **Sweep:** every non-test, non-comment line of `crates/aiq/src/*.rs` and `aiq-domain/src/check.rs`.
+  Tip lines rendered by Claude Code or Copilot are not in scope: those hosts render UTF-8.
+- **Control:** `crates/aiq/tests/ascii_output.rs` fails on any non-ASCII character in that code. It was
+  seen failing red on the old help text.
+
+### DC-009 — A comparison between two answer vocabularies that can never match
+- **Signature:** the accuracy check compared the judge's stored job `unclassified` with the grader's
+  `other`. These are two names for "no pack job", so every no-job task counted as a miss: job agreement was
+  20 of 30, but it was 30 of 30 wherever the vocabularies overlapped.
+- **Why it survives:** the unit tests built both sides from the same vocabulary. Only real data has
+  stored `unclassified` rows.
+- **Instances:** 2026-11-02, run 01a19ca2 on Imran's laptop.
+- **Sweep:** the judge's eval (`judge.rs`, which maps `unclassified` to `other`) already did this. The
+  check's `judge_view` did not. No other place compares stored judgments with a model answer.
+- **Control:** `judge_view` maps the stored value. Domain test
+  `no_job_agrees_with_other_and_records_what_the_grader_picked` and the `judge_view` asserts in `only_unclassified_judgments_of_the_last_version_are_judged_again` cover it, and the report prints what the
+  second reader said for no-job tasks.

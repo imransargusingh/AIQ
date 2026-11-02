@@ -297,6 +297,41 @@ Not changed, measured there: F6 could not be settled from the transcript on 9 of
 Q&A tasks stay Assisted and Uncertain; F4 was right on 10 of 15 (constraints credited to requests that
 state none). Both are prompt or rubric work for the next slice.
 
+### Accuracy check on Imran's real tasks (`aiq judge --check`, run 01a19ca2, 2026-11-02)
+
+Measured on Imran's laptop (build 3e29b11): 30 of his 200 current judgments, seeded random sample,
+stratified by job; 30 of 30 read; Claude Code cost $0.05; about 6 minutes. Second reader:
+`gpt-6.1-sol` for the 29 Copilot tasks (his plan forces that model, so **grader and judge were the same
+model on 29 of 30**) and `claude-opus-5-5` for the one Claude Code task. Agreement is therefore mostly
+**self-consistency on a fuller excerpt, not an independent check** (Inferred, and weak evidence).
+
+Measured from the store alone (exact): 70 of 200 judgments (35%) have **no job** (both runs said
+`other`, or the runs disagreed); every judgment with a pack job was confident: ask_research 0 of 85
+Uncertain, code_change 0 of 32, write_doc 0 of 13. Tip answers: none yet. Live kind-guess hits: none checked.
+
+Agreement with the second reading (Inferred; 90% Wilson intervals):
+
+| Measure | Result |
+|---|---|
+| Job, all 30 | 20 of 30 (52-79%), **under-counted**: the report compared the judge's `unclassified` with the grader's `other`, which can never match. All 10 misses were no-job judgments; confident judgments agree 20 of 20 (88-100%). Fixed in the follow-up build; re-running `--check-report` recomputes without new calls |
+| Kind of task, where job matched | 15 of 18 (65-93%): ask_research 10 of 10, code_change 2 of 4, write_doc 3 of 4 |
+| Rung exact / within one | 29 of 30 / 29 of 30; confident only 19 of 20 |
+| Model's own rung exact | 29 of 30 |
+| F4 goal, context, constraints | 27 of 29 |
+| F5 re-prompts add information | 29 of 29 |
+| F6 output checked | 4 of 4, **can't settle 25 of 30** (matches PR #27: 9 of 15) |
+| F7 written brief | 29 of 30 |
+| F12 step by step | 26 of 27 |
+| F13 whole outcome handed over | 26 of 28 |
+
+What it tells us:
+- The **no-job bucket** (35% of judged tasks) is the largest gap in coverage, and it is never coached.
+  The follow-up report shows which job the second reader gives those tasks.
+- **F6 can't be seen in transcripts.** Two independent readings now agree (25 of 30 here, 9 of 15 in
+  PR #27). Asking a model harder will not fix that. F6 needs a log floor (for example, the person ran or
+  opened the output) or should stop gating rungs for research and Q&A.
+- Code and doc kinds are small samples (4 each). Their intervals are too wide to act on.
+
 ## Conformance notes
 
 - LOA C1 (tier): the judge client is T3; every call row records provider, model and tier implicitly by

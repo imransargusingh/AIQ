@@ -972,8 +972,8 @@ pub fn start_background(paths: Paths) {
 const DISCLOSURE: &str = "AIQ judges each task you finish with AI: the rung it was done at and the next step.
 What is sent: the task's prompts and a summary of what the agent did (tools, files, commands). Never your
 own edits or diffs. Where: only to the tool that already saw the task, through your own sign-in:
-  Claude Code tasks → your Claude Code (`claude -p`, no tools, no hooks, no saved session)
-  Copilot tasks     → your Copilot CLI (no tools, none of your plugins or MCP servers; it runs in AIQ's
+  Claude Code tasks -> your Claude Code (`claude -p`, no tools, no hooks, no saved session)
+  Copilot tasks     -> your Copilot CLI (no tools, none of your plugins or MCP servers; it runs in AIQ's
                       own folder, which AIQ deletes after each call unless you keep them:
                       aiq config set judge-copilot-sessions keep)
 Judge calls use your plan's usage (two calls per task). A work account's admin policies, logging and
@@ -1278,7 +1278,8 @@ pub fn run_check(
 fn judge_view(j: &JudgmentRow) -> aiq_domain::check::JudgeView {
     let facts = aiq_contracts::judge::parse_stored_facts(&j.facts);
     aiq_domain::check::JudgeView {
-        job: j.job.clone(),
+        // "unclassified" is the judge saying "no pack job"; the grader says that as "other".
+        job: if j.job == "unclassified" { "other".to_owned() } else { j.job.clone() },
         task_type: j.task_type.clone(),
         current_rung: j.current_rung,
         model_rung: j.model_rung,
@@ -1298,9 +1299,17 @@ pub fn check_report(store: &Store) -> aiq_store::Result<String> {
     // N1: Uncertain rate per job (measured).
     o += "Measured from your data (exact, no second model):\n";
     let mut jobs: std::collections::BTreeMap<&str, Count> = Default::default();
+    let mut no_job = Count::default();
     for j in judged.values() {
-        jobs.entry(j.job.as_str()).or_default().add(j.state == "uncertain");
+        no_job.add(j.job == "unclassified");
+        if j.job != "unclassified" {
+            jobs.entry(j.job.as_str()).or_default().add(j.state == "uncertain");
+        }
     }
+    o += &format!(
+        "  No job (judge said other, or its two runs disagreed; never coached): {} of {}\n",
+        no_job.k, no_job.n
+    );
     for (job, c) in &jobs {
         o += &format!("  Uncertain, {job}: {} of {}\n", c.k, c.n);
     }
@@ -1364,6 +1373,11 @@ pub fn check_report(store: &Store) -> aiq_store::Result<String> {
         );
     }
     o += &format!("  Job: {}\n", ag.job.show());
+    if !ag.no_job_read_as.is_empty() {
+        let picks: Vec<String> = ag.no_job_read_as.iter().map(|(j, n)| format!("{j} {n}")).collect();
+        let total: u32 = ag.no_job_read_as.values().sum();
+        o += &format!("    Where the judge gave no job ({total}), the second reading said: {}\n", picks.join(", "));
+    }
     o += &format!("  Kind of task (where the job matched): {}\n", ag.task_type.show());
     for (job, c) in &ag.task_type_by_job {
         o += &format!("    {job}: {}\n", c.show());
@@ -1854,6 +1868,9 @@ mod tests {
         assert_eq!(ids, vec!["uncovered", "new", "old_doc"]);
         assert!(current_version(&j("code_change", rung::JUDGE_VERSION_KEPT)));
         assert!(!current_version(&j("unclassified", rung::JUDGE_VERSION_KEPT)), "Ask or research may cover it now");
+        // DC-009: the check compares "no pack job" in the grader's word, `other`.
+        assert_eq!(judge_view(&j("unclassified", rung::JUDGE_VERSION)).job, "other");
+        assert_eq!(judge_view(&j("code_change", rung::JUDGE_VERSION)).job, "code_change");
         assert!(current_version(&j("unclassified", rung::JUDGE_VERSION)));
         assert!(!current_version(&j("code_change", "j1")));
     }

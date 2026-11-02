@@ -17,7 +17,7 @@ mod statusline;
 
 use std::process::ExitCode;
 
-const HELP: &str = "AIQ — private coaching for how you work with AI agents.
+const HELP: &str = "AIQ - private coaching for how you work with AI agents.
 
 Usage:
   aiq install [--yes]                 Connect every AI tool found here (Claude Code, Copilot); shows each change first
