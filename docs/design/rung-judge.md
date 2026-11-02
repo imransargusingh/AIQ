@@ -324,6 +324,27 @@ Agreement with the second reading (Inferred; 90% Wilson intervals):
 | F12 step by step | 26 of 27 |
 | F13 whole outcome handed over | 26 of 28 |
 
+**Second run with a different model (run 01a19ce8, build 1806c59, 2026-11-02, measured):** 30 of 30
+read; second reader `gpt-6-astra` for the Copilot tasks and `claude-opus-5-5` for the Claude Code ones, so
+**no reading used the judge's own model**. A new random sample.
+
+| Measure | Same model (01a19ca2) | Different model (01a19ce8) |
+|---|---|---|
+| Job, all 30 | 25 of 30 | 24 of 30 (66-89%) |
+| Job, confident only | 20 of 20 | 20 of 21 (81-99%) |
+| Kind, where job matched | 15 of 18 | 14 of 17 (63-93%): ask_research 9/11, code_change 3/4, write_doc 2/2 |
+| Rung exact / within one | 29 / 29 of 30 | 27 / 28 of 30 (77-96% / 82-98%) |
+| Rung exact, confident only | 19 of 20 | 19 of 21 (75-97%) |
+| No-job tasks read as | other 5, ask_research 4, code_change 1 (of 10) | other 4, ask_research 4, code_change 1 (of 9) |
+| F4 / F5 / F7 | 27/29, 29/29, 29/30 | 25/29, 30/30, 30/30 |
+| F6 | 4/4, can't settle 25 | 4/4, can't settle 25 |
+| F12 / F13 | 26/27, 26/28 | 26/26, 28/29 |
+
+An independent model agrees almost as often as the judge's own model did. The judge is consistent, and
+it is not grading itself kindly (Inferred: two model readings, no person). It is weakest on kind of task
+(about 4 in 5, intervals reaching about 60%). That sits below the coaching bar of 8 of 10 for any single
+kind, but the sample is too small to name one kind.
+
 What it tells us:
 - The **no-job bucket** (35% of judged tasks) is the largest gap in coverage, and it is never coached.
   In the sample, the second reader put half of those tasks in a pack job (ask_research 4 of 10, code_change
