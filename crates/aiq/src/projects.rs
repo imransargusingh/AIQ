@@ -16,9 +16,13 @@ use serde_json::Value;
 use std::io::Read;
 use std::path::Path;
 
-/// Bytes of a transcript the live hook reads. The marker is on the first user records (measured: see
-/// `scan`), so the head is enough and the hook stays inside its time budget on multi-MB transcripts.
-pub const HEAD_BYTES: u64 = 256 * 1024;
+/// Bytes of a transcript the live prompt hook reads, so it stays inside its time budget on multi-MB
+/// transcripts: the marker the hook relies on is the session's first record, measured
+/// within the first 4 KB (11 of 11 live sessions); 32 KB leaves room for a long first prompt. Import keeps
+/// reading whole transcripts.
+/// assume: the first record stays within 32 KB. Confirm: a new Remote Control session shows as set aside in
+/// `aiq status`. If false: that live session is recorded as a task, not set aside (no data lost).
+pub const HOOK_HEAD_BYTES: u64 = 32 * 1024;
 
 /// True when this transcript record shows a Projects / Remote Control session.
 pub fn is_marker(r: &Value) -> bool {
@@ -79,13 +83,13 @@ mod tests {
     fn scan_reads_only_the_head_and_never_fails_loudly() {
         let d = tempfile::tempdir().unwrap();
         let p = d.path().join("t.jsonl");
-        assert!(!scan(&p, HEAD_BYTES), "missing file");
+        assert!(!scan(&p, HOOK_HEAD_BYTES), "missing file");
         let pad = json!({"type":"assistant","message":{"content":"x".repeat(1000)}}).to_string();
         let mark = json!({"type":"user","projectsUserTurn":true}).to_string();
         std::fs::write(&p, format!("{pad}\n{mark}\n")).unwrap();
-        assert!(scan(&p, HEAD_BYTES));
+        assert!(scan(&p, HOOK_HEAD_BYTES));
         assert!(!scan(&p, 500), "marker past the head is not read");
         std::fs::write(&p, format!("{pad}\nnot json \"peer\"\n")).unwrap();
-        assert!(!scan(&p, HEAD_BYTES));
+        assert!(!scan(&p, HOOK_HEAD_BYTES));
     }
 }
