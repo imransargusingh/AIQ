@@ -364,6 +364,34 @@ fn e2e_install_with_no_tool_connects_every_tool_found_and_names_the_undo() {
 }
 
 #[test]
+fn e2e_uninstall_all_puts_every_tool_back_and_keeps_the_data() {
+    let e = Env::new();
+    let claude = e.home().parent().unwrap().join("claude");
+    std::fs::create_dir_all(e.copilot()).unwrap();
+    std::fs::create_dir_all(&claude).unwrap();
+    let mine = r#"{"model":"opus"}"#;
+    std::fs::write(claude.join("settings.json"), mine).unwrap();
+    assert!(e.run(&["install", "--yes"], b"").status.success());
+    std::fs::create_dir_all(e.home()).unwrap();
+    std::fs::write(e.home().join("keep.txt"), "data").unwrap();
+
+    let o = e.run(&["uninstall", "--all", "--yes"], b"");
+    let out = String::from_utf8_lossy(&o.stdout).to_string();
+    assert!(o.status.success(), "{out}\n{}", String::from_utf8_lossy(&o.stderr));
+    assert_eq!(std::fs::read_to_string(claude.join("settings.json")).unwrap(), mine, "Claude settings byte for byte");
+    assert!(!e.copilot().join("hooks").join("aiq.json").exists());
+    let changed: Vec<&str> = out.lines().filter_map(|l| l.strip_prefix("Changed: ")).collect();
+    let want = [claude.join("settings.json"), e.copilot().join("hooks").join("aiq.json")];
+    assert_eq!(changed, want.iter().map(|p| p.to_str().unwrap()).collect::<Vec<_>>(), "{out}");
+    assert!(out.contains("Your data stays in") && out.contains("aiq forget --all"), "{out}");
+    assert!(e.home().join("keep.txt").exists(), "data kept");
+
+    // Again: nothing connected, nothing changed.
+    let again = String::from_utf8_lossy(&e.run(&["uninstall", "--all", "--yes"], b"").stdout).to_string();
+    assert!(again.contains("Nothing changed."), "{again}");
+}
+
+#[test]
 fn e2e_install_with_no_tool_adds_the_status_line_only_when_experimental_is_already_on() {
     let e = Env::new();
     std::fs::create_dir_all(e.copilot()).unwrap();
