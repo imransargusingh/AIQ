@@ -95,11 +95,11 @@ impl Count {
         let h = z * (p * (1.0 - p) / n + z * z / (4.0 * n * n)).sqrt() / d;
         Some(((c - h).max(0.0), (c + h).min(1.0)))
     }
-    /// "24 of 30 (66–89%)", or "none checked".
+    /// "24 of 30 (66-89%)", or "none checked".
     pub fn show(&self) -> String {
         match self.wilson() {
             None => "none checked".into(),
-            Some((lo, hi)) => format!("{} of {} ({:.0}–{:.0}%)", self.k, self.n, lo * 100.0, hi * 100.0),
+            Some((lo, hi)) => format!("{} of {} ({:.0}-{:.0}%)", self.k, self.n, lo * 100.0, hi * 100.0),
         }
     }
 }
@@ -107,6 +107,7 @@ impl Count {
 /// The judge's stored answer for one task, as the check compares it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct JudgeView {
+    /// The judge's job; `other` when it gave none (stored as `unclassified`), so it compares with the grader's.
     pub job: String,
     pub task_type: Option<String>,
     pub current_rung: u8,
@@ -143,6 +144,8 @@ pub struct Agreement {
     pub facts: BTreeMap<String, FactTally>,
     /// Kind of task (job/type the judge named) -> type agreement, for the later pause rule (K6b).
     pub by_kind: BTreeMap<(String, String), Count>,
+    /// Where the judge gave no pack job (`other`): the job the second reading picked, and how often.
+    pub no_job_read_as: BTreeMap<String, u32>,
 }
 
 /// Compare each judged task with its second reading.
@@ -151,6 +154,9 @@ pub fn agreement(pairs: &[(JudgeView, CheckAnswer)]) -> Agreement {
     for (j, c) in pairs {
         let job_ok = j.job == c.job;
         a.job.add(job_ok);
+        if j.job == "other" {
+            *a.no_job_read_as.entry(c.job.clone()).or_default() += 1;
+        }
         let rung_ok = j.current_rung == c.current_rung;
         a.rung_exact.add(rung_ok);
         a.rung_within_one.add(j.current_rung.abs_diff(c.current_rung) <= 1);
@@ -236,7 +242,7 @@ mod tests {
         assert_eq!(lo, 0.0);
         assert!(hi > 0.1 && hi < 0.25);
         assert_eq!(Count::default().wilson(), None);
-        assert_eq!(Count { k: 24, n: 30 }.show(), "24 of 30 (66–89%)");
+        assert_eq!(Count { k: 24, n: 30 }.show(), "24 of 30 (66-89%)");
     }
 
     fn judge(job: &str, ty: &str, rung: u8, uncertain: bool, f6: Option<bool>) -> JudgeView {
@@ -290,5 +296,21 @@ mod tests {
         let f6 = a.facts["F6"];
         assert_eq!((f6.agree.k, f6.agree.n, f6.cant_settle, f6.judge_unknown), (0, 1, 1, 1));
         assert_eq!(a.by_kind[&("code_change".to_owned(), "fix_bug".to_owned())], Count { k: 0, n: 1 });
+        assert!(a.no_job_read_as.is_empty());
+    }
+
+    #[test]
+    fn no_job_agrees_with_other_and_records_what_the_grader_picked() {
+        let mut none = judge("other", "x", 1, true, None);
+        none.task_type = None;
+        let pairs = vec![
+            (none.clone(), grader("other", "other", 1, None, None)),
+            (none, grader("ask_research", "explain", 1, None, None)),
+        ];
+        let a = agreement(&pairs);
+        assert_eq!((a.job.k, a.job.n), (1, 2));
+        assert_eq!(a.task_type.n, 0, "no type to compare when the judge gave no job");
+        assert_eq!(a.no_job_read_as.get("other"), Some(&1));
+        assert_eq!(a.no_job_read_as.get("ask_research"), Some(&1));
     }
 }
