@@ -63,6 +63,19 @@ pub fn folder_key(cwd: &str) -> String {
     k
 }
 
+/// A short, stable tag for a folder (FNV-1a 32-bit of `folder_key`, 8 hex digits) for the hook's timing log,
+/// so `aiq status` can leave out runs from set-aside folders without the log holding folder paths.
+/// None when there is no folder. Two folders sharing a tag is about 1 in 4 billion per pair; the cost of one
+/// is that a person's own runs drop out of the hook figures, and the left-out count shows it.
+pub fn folder_tag(cwd: &str) -> Option<String> {
+    let k = folder_key(cwd);
+    if k.is_empty() {
+        return None;
+    }
+    let h = k.bytes().fold(0x811c_9dc5_u32, |h, b| (h ^ u32::from(b)).wrapping_mul(0x0100_0193));
+    Some(format!("{h:08x}"))
+}
+
 /// Rule AIQ: a folder AIQ's own checks and probes run in, `<temp>\aiq-*` (or below it), e.g.
 /// `%TEMP%\aiq-phase2-check` or `%TEMP%\aiq-copilot-probe-3glkf9fj\run0`. Those sessions are tests of AIQ, not
 /// the person's work, and carry no other marker (Copilot CLI 1.0.104 `session.start` has none; the probes
@@ -215,6 +228,16 @@ impl Guard {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn folder_tag_matches_folder_key_not_spelling() {
+        let t = folder_tag(r"C:\Repos\Tacit\").unwrap();
+        assert_eq!(t.len(), 8);
+        assert_eq!(folder_tag(r"c:/repos/tacit"), Some(t.clone()), "same folder, other spelling");
+        assert_eq!(folder_tag(&folder_key(r"C:\Repos\Tacit")), Some(t.clone()), "a stored folder key tags the same");
+        assert_ne!(folder_tag(r"c:\repos\tacit2"), Some(t));
+        assert_eq!(folder_tag("  "), None);
+    }
 
     fn p() -> AutomatedParams {
         AutomatedParams {

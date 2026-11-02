@@ -159,7 +159,14 @@ pub fn status() -> ExitCode {
     if spooled > 0 {
         out += &format!("Queued while the core was down: {spooled} events\n");
     }
-    out += &hook_time_lines(&paths);
+    let aside: Vec<String> = reply
+        .iter()
+        .flat_map(|s| &s.automated_folders)
+        .filter_map(|(f, _)| aiq_domain::automated::folder_tag(f))
+        .collect();
+    let text = std::fs::read_to_string(paths.hook_timings()).unwrap_or_default();
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    out += &hook_time_lines(&text, now, &aside);
     let errs = hook_error_counts(&paths);
     if !errs.is_empty() {
         out += &format!("Hook notes: {}\n", errs.join(", "));
@@ -206,9 +213,34 @@ pub fn hook_phase_lines(text: &str, now: u64) -> String {
         .collect()
 }
 
-/// p50 / p95 in-process hook time per event, from the hook's own timing log.
-fn hook_time_lines(paths: &Paths) -> String {
-    let text = std::fs::read_to_string(paths.hook_timings()).unwrap_or_default();
+/// Hook outcomes where AIQ did no work for a person: a headless `claude -p` / Agent SDK run (`automated`)
+/// and AIQ's own judge calls (`internal`). Their time is the host's stdin wait, not AIQ's.
+const NOT_A_PERSON: [&str; 2] = ["automated", "internal"];
+
+/// Splits the timing log into the runs that count against AIQ's hook budget and the number left out: runs
+/// with a `NOT_A_PERSON` outcome, and runs whose folder tag is one AIQ sets aside (automated folders,
+/// Projects / Remote Control folders, AIQ's own check folders; `aside` holds their `folder_tag`s).
+/// Lines from builds before the tag are kept unless their outcome says otherwise.
+pub fn split_hook_runs<'a>(text: &'a str, aside: &[String]) -> (Vec<&'a str>, usize) {
+    let mut left_out = 0;
+    let kept = text
+        .lines()
+        .filter(|l| {
+            let outcome = l.split_whitespace().nth(2).unwrap_or("");
+            let dir = l.split_whitespace().find_map(|w| w.strip_prefix("dir="));
+            let out = NOT_A_PERSON.contains(&outcome) || dir.is_some_and(|d| aside.iter().any(|a| a == d));
+            left_out += usize::from(out);
+            !out
+        })
+        .collect();
+    (kept, left_out)
+}
+
+/// p50 / p95 in-process hook time per event, from the hook's own timing log, over the runs that count
+/// against AIQ's budget, plus one line naming how many runs were left out.
+pub fn hook_time_lines(text: &str, now: u64, aside: &[String]) -> String {
+    let (kept, left_out) = split_hook_runs(text, aside);
+    let text = kept.join("\n");
     let mut by: std::collections::BTreeMap<&str, Vec<u64>> = Default::default();
     let mut host: Vec<u64> = Vec::new();
     for l in text.lines() {
@@ -234,7 +266,6 @@ fn hook_time_lines(paths: &Paths) -> String {
             format!("Hook time in-process, {ev}: p50 {p50:.1} ms, p95 {p95:.1} ms ({} runs)\n", v.len())
         })
         .collect();
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
     out += &hook_phase_lines(&text, now);
     if !host.is_empty() {
         let (p50, p95) = pct(&mut host);
@@ -242,6 +273,12 @@ fn hook_time_lines(paths: &Paths) -> String {
             "Copilot's own start-up before AIQ's hook runs: p50 {p50:.0} ms, p95 {p95:.0} ms ({} runs; not counted \
              against AIQ's budget)\n",
             host.len()
+        );
+    }
+    if left_out > 0 {
+        out += &format!(
+            "Hook times leave out {left_out} runs from sessions AIQ sets aside (automated sessions and AIQ's own \
+             checks)\n"
         );
     }
     out
@@ -523,6 +560,30 @@ mod tests {
             out,
             "  UserPromptSubmit, last 24 h (2 runs), p95 by phase: reading input 390.0 ms, preparing 5.0 ms, sending 7.0 ms\n"
         );
+    }
+
+    #[test]
+    fn hook_times_leave_out_set_aside_runs_and_say_how_many() {
+        let now = 100_000;
+        let tacit = aiq_domain::automated::folder_tag(r"c:\repos\tacit").unwrap();
+        let text = format!(
+            "UserPromptSubmit 1000 sent read_us=400 prep_us=300 dir=0000beef at=99000 v=0.1.0\n\
+             UserPromptSubmit 495000 automated read_us=495000 at=99100 v=0.1.0\n\
+             UserPromptSubmit 900000 internal read_us=900000 at=99200 v=0.1.0\n\
+             UserPromptSubmit 300000 sent host_ms=900 read_us=290000 prep_us=300 dir={tacit} at=99300 v=0.1.0\n\
+             statusline 2000 none\n"
+        );
+        let out = hook_time_lines(&text, now, &[tacit]);
+        assert_eq!(
+            out,
+            "Hook time in-process, UserPromptSubmit: p50 1.0 ms, p95 1.0 ms (1 runs)\n\
+             Hook time in-process, statusline: p50 2.0 ms, p95 2.0 ms (1 runs)\n  \
+             UserPromptSubmit, last 24 h (1 runs), p95 by phase: reading input 0.4 ms, preparing 0.3 ms, sending 0.3 ms\n\
+             Hook times leave out 3 runs from sessions AIQ sets aside (automated sessions and AIQ's own checks)\n"
+        );
+        // Core not running: no folder list, so only the outcome rule applies; nothing left out says nothing.
+        assert!(hook_time_lines(&text, now, &[]).contains("leave out 2 runs"));
+        assert!(!hook_time_lines("Stop 200 no-card\n", now, &[]).contains("leave out"));
     }
 
     #[test]
