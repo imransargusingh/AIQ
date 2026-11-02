@@ -140,6 +140,54 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <ul><li><strong>The best combination uses facts in both directions.</strong> The model places the rung, and guardrails</li></ul>
 <p>lower it at rung 3. Log- and repo-verifiable facts for Orchestrated and Factory set a <em>floor</em> that can raise the rung. That scored 0.88 exact and 0.98 within one, versus 0.82 and 0.94 for the holistic judge alone.</p>
 <ul><li><strong>Caveats.</strong></li><li>This variant was designed after seeing these results, on the same data.</li><li>The F9 reuse counts are simulated, so the rung 5 gain depends on repo metadata existing.</li><li>Treat it as the hypothesis for the fact check to confirm, not as a result.</li></ul>
+<h3>Fact check on real sessions (2026-11-01, Imran&#x27;s laptop)</h3>
+<p>Run with <code>prototypes/phase0-spike/fact_check.py</code> on sessions already on the device, instead of a week of new ones (history-import spec, PR #13). Two changes came from Imran during the run: sample only the last 3 days (facts about sessions from weeks ago can&#x27;t be checked from memory), and let a stronger model check the facts so the person sees only what it cannot settle.</p>
+<ul><li>Sessions: Copilot CLI 6,260 (5,871 set aside as automated), Claude Code 649 (618 set aside).</li></ul>
+<p>24 hand-run sessions in the last 3 days; 6 sampled (5 Copilot, 1 Claude Code); 30 facts, 3 per type.</p>
+<ul><li>Fact reader: Haiku through the same provider (<code>copilot -p</code> / <code>claude -p</code>), 9-23 s per task.</li><li>Grader: Opus through the same provider, given a fuller transcript, 7-48 s per task. It settled</li></ul>
+<p>all 30 facts; none needed the person.</p>
+<table><thead><tr><th>Fact</th><th>Right</th><th>Wrong</th><th>Precision</th></tr></thead><tbody><tr><td>job, F1, F3, F7, F8, F4, F12</td><td>3 each</td><td>0</td><td>100%</td></tr><tr><td>F5 re-prompts added information</td><td>1</td><td>2</td><td>33%</td></tr><tr><td>F6 output checked before use</td><td>2</td><td>1</td><td>67%</td></tr><tr><td>F13 whole outcome handed over</td><td>2</td><td>1</td><td>67%</td></tr><tr><td>All</td><td>26</td><td>4</td><td>87%</td></tr></tbody></table>
+<p>Confidence: <strong>Inferred.</strong> The grader is another model, not a person, and 3 items per fact is too few for per-fact rates. The grader marking F6 settled every time is suspect, because F6 can depend on what the person did outside the session. Next: re-run with more sessions (e.g. 15) to firm up F5, F6 and F13, and check whether the fact reader&#x27;s F5 and F13 definitions need tightening.</p>
+<h3>Fact check rerun: 15 Copilot CLI sessions (2026-11-02)</h3>
+<p>Goal: firm up the three weak facts from the first run (F5, F6, F13) with more tasks, mostly Copilot CLI, because target users mostly use Copilot. Verdicts per fact and task, with reasons and no prompt text, are in <code>prototypes/phase0-spike/results/fact-check-2026-11-02.json</code>.</p>
+<p><strong>Method.</strong> Same as the first run, with three differences, all forced by the rules for this run (read-only on the laptop, start no programs there):</p>
+<ul><li><strong>Sessions.</strong> 15 hand-typed Copilot CLI sessions from the last 60 days, copied read-only. Not a</li></ul>
+<p>random sample: picked from the 101 sessions outside set-aside folders (the automated-session folder rule, AIQ&#x27;s judge and temp folders, the judge-session list), favouring sessions with follow-up prompts and leaving out logs over about 25 MB. One repeated session was dropped. Every one of the 15 is real work; none is an AIQ test prompt. <strong>No Claude Code sessions</strong>: <code>~/.claude</code> is a protected folder for folder access, so it can&#x27;t be read from a cloud session.</p>
+<ul><li><strong>Fact reader.</strong> Haiku 5.5, given the spike&#x27;s own fact prompt and minimised excerpt, run in the</li></ul>
+<p>cloud session. Not the person&#x27;s <code>copilot -p</code> as in the product.</p>
+<ul><li><strong>Grader.</strong> Opus 5.5, given a fuller transcript (up to 40,000 characters instead of 18,000), with</li></ul>
+<p>the grader rules from <code>fact_check.py</code>. Two extra verdicts are counted apart from right and wrong: <em>can&#x27;t settle</em> (the transcript can&#x27;t show it) and <em>ambiguous</em> (the answer depends on how the fact is defined).</p>
+<ul><li><strong>Facts.</strong> All 10 facts on every task (150), not 5 per task. Log facts F1 and F3 were scored twice:</li></ul>
+<p>with the spike&#x27;s readers and with the rung judge&#x27;s rules in PR #24 (<code>aiq_domain::rung</code>).</p>
+<p><strong>Results</strong> (all counts measured on these 15 tasks; &quot;right&quot; is the grader&#x27;s verdict, not a person&#x27;s):</p>
+<table><thead><tr><th>Fact</th><th>Right</th><th>Wrong</th><th>Can&#x27;t settle</th><th>Ambiguous</th><th>Precision (settled)</th><th>First run</th></tr></thead><tbody><tr><td>job</td><td>15</td><td>0</td><td></td><td></td><td>100%</td><td>3/3</td></tr><tr><td>F4 goal, context and constraints</td><td>10</td><td>5</td><td></td><td></td><td>67%</td><td>3/3</td></tr><tr><td>F5 re-prompts added information</td><td>15</td><td>0</td><td></td><td></td><td>100%</td><td>1/3</td></tr><tr><td>F6 output checked before use</td><td>3</td><td>3</td><td>9</td><td></td><td>50%</td><td>2/3</td></tr><tr><td>F7 written brief given</td><td>15</td><td>0</td><td></td><td></td><td>100%</td><td>3/3</td></tr><tr><td>F12 step by step</td><td>15</td><td>0</td><td></td><td></td><td>100%</td><td>3/3</td></tr><tr><td>F13 whole outcome handed over</td><td>11</td><td>1</td><td></td><td>3</td><td>92%</td><td>2/3</td></tr><tr><td>Model facts, all</td><td>84</td><td>9</td><td>9</td><td>3</td><td>90%</td><td></td></tr><tr><td>F1 agent edits: spike / PR #24 rules</td><td>10 / 13</td><td>5 / 2</td><td></td><td></td><td>67% / 87%</td><td>3/3</td></tr><tr><td>F3 who ran checks: spike / PR #24 rules</td><td>13 / 13</td><td>2 / 2</td><td></td><td></td><td>87% / 87%</td><td>3/3</td></tr><tr><td>F8 sub-agents</td><td>15</td><td>0</td><td></td><td></td><td>100%</td><td>3/3</td></tr><tr><td>All, PR #24 log rules</td><td>125</td><td>13</td><td>9</td><td>3</td><td>91%</td><td>26/30</td></tr></tbody></table>
+<p>Job mix (measured): 11 <em>Other work</em> (research, questions, analysis), 2 <em>Code a change</em>, 2 <em>Write a spec or doc</em>. 13 of 15 tasks have follow-up prompts. 5 of 15 sessions hold more than one task; facts were judged per session, as in the first run.</p>
+<p><strong>What this says about the three weak facts.</strong></p>
+<ul><li><strong>F5 is fine now: 15/15.</strong> The first run&#x27;s 1/3 doesn&#x27;t recur. Caveat: most follow-ups here are new</li></ul>
+<p>questions, which the reader counts as &quot;added information&quot;; only 3 sessions have true retries (&quot;try again&quot;, a repeated prompt), and the reader got all 3 right.</p>
+<ul><li><strong>F6 can&#x27;t be read from Copilot CLI transcripts for most tasks: 9 of 15 can&#x27;t be settled.</strong> On the</li></ul>
+<p>6 that can, the reader is right on 3. Its misses go both ways: it credits checking where the person only reran the work, and misses it where the person tried the advice and pushed back. F6 is only readable when the agent runs checks or a follow-up shows the person tested or challenged the result.</p>
+<ul><li><strong>F13 is close: 11 right, 1 wrong, 3 ambiguous.</strong> The 3 ambiguous tasks list what to deliver but give</li></ul>
+<p>no checks. Whether that counts as &quot;done criteria&quot; is a definition question, not a reading error.</p>
+<ul><li><strong>New weak fact: F4 at 67%.</strong> All 5 misses credit &quot;constraints&quot; to requests that state a goal and</li></ul>
+<p>context but no limits, or score the first prompt on detail that came later.</p>
+<p><strong>Log-fact rules (PR #24).</strong> The spike&#x27;s readers miss Copilot&#x27;s <code>apply_patch</code> edits and <code>dotnet test</code> / Playwright runs; the PR #24 rules fix both. Two new faults in the PR #24 rules:</p>
+<ul><li><strong>F1 counts scratch scripts.</strong> The agent&#x27;s throwaway analysis scripts in the Copilot session folder</li></ul>
+<p>count as edits (2 of 15). A simple &quot;documents only&quot; rule for that folder would fail too: one agent wrote its deliverable Word document through a script.</p>
+<ul><li><strong>F3 matches check words anywhere in a command.</strong> It matches &quot;playwright&quot; inside a string and</li></ul>
+<p>&quot;pytest&quot; in a folder pattern (2 of 15). It would also miss <code>npm --prefix &lt;dir&gt; run test:e2e</code>.</p>
+<p><strong>Against the bar.</strong> The spec needs each model fact right on at least 90% of check tasks. F4 (67%) and F6 (50% of settled, 60% unsettled) fail. F13 passes only if the ambiguous tasks go its way. Job, F5, F7 and F12 pass. Confidence: <strong>Inferred.</strong> The grader is a model, not the person. The sample is 15 hand-picked tasks from one person, mostly research. The reader ran outside the person&#x27;s own Copilot.</p>
+<p><strong>Recommended changes</strong> (for the judge thread and the job packs):</p>
+<ol><li><strong>F6:</strong> treat it as unknown unless the log shows a check or a follow-up shows the person tested or</li></ol>
+<p>challenged the result. Don&#x27;t let an unknown F6 cap research tasks at Assisted: today the Directed guardrail needs F6 yes, and a low-confidence fact counts as not met.</p>
+<ol><li><strong>F4:</strong> define &quot;constraints&quot; in the reader prompt with yes and no examples, and score the first</li></ol>
+<p>prompt only.</p>
+<ol><li><strong>F13:</strong> decide whether a list of deliverables with no checks counts as done criteria, and add that</li></ol>
+<p>example to the reader prompt.</p>
+<ol><li><strong>PR #24 log rules:</strong> separate scratch work from deliverables for F1. Match check commands by</li></ol>
+<p>command words, not substrings, for F3.</p>
+<ol><li><strong>Packs:</strong> most of this person&#x27;s Copilot work is <em>Other work</em>, which the two alpha packs don&#x27;t</li></ol>
+<p>cover. Worth weighing before coaching ships.</p>
 <h2>What would change this verdict</h2>
 <ul><li><strong>Real sessions, checked by facts (the main gate).</strong> Follow the rung-model spec&#x27;s Q6, not a large</li></ul>
 <p>golden set. Collect one week of the team&#x27;s own Claude Code and Copilot CLI sessions on each person&#x27;s own machine. Each person confirms, for 20 to 30 of their own tasks:</p>
