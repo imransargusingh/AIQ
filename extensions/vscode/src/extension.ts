@@ -1,7 +1,7 @@
 // AIQ for VS Code (Phase 2 design, Exposed contract 6): status-bar item, a poll that shows a tip after a
 // Copilot agent turn ends, and Pause / Resume / Show tip. Notifications are non-modal and never take focus.
 import * as vscode from "vscode";
-import { Card, CoreClient, State, coreClient, detailsText, findExecutable, loadEndpoint, notificationText, pollOnce, runAiq, statusText } from "./core";
+import { Card, CoreClient, FEEDBACK_BUTTONS, State, coreClient, detailsText, findExecutable, loadEndpoint, notificationText, pollOnce, runAiq, statusText } from "./core";
 
 let timer: NodeJS.Timeout | undefined;
 
@@ -82,9 +82,14 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     show(r.state);
     if (r.card) {
       waiting = r.card;
-      void vscode.window.showInformationMessage(notificationText(r.card), "Details", "Pause AIQ").then((a) => {
-        if (a === "Details") void openDetails();
-        else if (a === "Pause AIQ") void setPaused(true);
+      const card = r.card;
+      const labels = FEEDBACK_BUTTONS.map(([label]) => label);
+      void vscode.window.showInformationMessage(notificationText(card), "Try this", ...labels).then(async (a) => {
+        if (a === "Try this") return openDetails();
+        const answer = FEEDBACK_BUTTONS.find(([label]) => label === a)?.[1];
+        if (!answer || !client) return; // dismissed: no answer recorded
+        const ok = await client.feedback(card.card_id, answer);
+        if (!ok) void vscode.window.showInformationMessage("AIQ isn't running, so your answer wasn't saved.");
       });
     }
     timer = setTimeout(tick, r.nextMs);
