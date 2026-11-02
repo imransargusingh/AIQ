@@ -38,7 +38,7 @@ check"). Builds on the rung judge, **PR #24 (branch `claude/project-thread-qydcm
 | | |
 |---|---|
 | **Goal** | A person sees, for each recurring kind of task, the next rung and the one move to get there, gets that move as a tip at the start of their next task of that kind (Copilot paths first), and sees honest numbers for "Tasks agents finished" and their habits |
-| **Done when** | This design, ADR-0008, rollups, index and audit entries are merged; `/implement` can build it without a new decision except the one question left to Imran (Q-A) |
+| **Done when** | This design, ADR-0008, rollups, index and audit entries are merged; `/implement` can build it without a new decision |
 | **Not in scope** | Building it; F2 (person's share of the final change) reader; F9 repo-reuse reader (Factory); weekly summary; team or aggregate views (never); VS Code `vscode.lm` judging; signed packs; revisiting the Claude credential decision (closed) |
 | **Tier** | T2 (new stored facts, new in-the-moment trigger, new judge field) |
 | **Fan-out cap** | 1 (one session, no sub-agents) |
@@ -65,7 +65,7 @@ Quoted from the specs and decisions it implements.
 | # | Drift | Settled as |
 |---|---|---|
 | C1 | aiq-home and the mockup count and rank **task types** ("Writing unit tests", "Reviewing pull requests"); the judge (PR #24) returns only a **job**. Nothing groups tasks into recurring kinds | The judge also returns a **task type from a fixed per-job list** in the pack (D1). Answer schema `aiq.judge.v2`; `judgment` gains `task_type` (schema v6, expand only) |
-| C2 | Kept task needs **F2**, which slice 1 of the judge cannot read (rung-judge J6: unknown) | Not settled by AIQ: it changes a definition Imran decided. **Question Q-A** to Imran, with a recommended interim rule. Until he answers, the design builds the recommendation behind one pack constant |
+| C2 | Kept task needs **F2**, which slice 1 of the judge cannot read (rung-judge J6: unknown) | **Decided by Imran 2026-11-02 (Q-A):** until F2 exists, a task counts as finished when judged Delegated or higher with no re-prompt correcting the agent; the rule is shown under the number. Switch to the 20% rule when F2 is built, behind pack constant `coach.kept_rule` |
 | C3 | The judge's `gap` is free model text. Tips must not carry model text (TR-5, injection), and habits need a stable identity to count | The coached **move** is derived on device from the judgment's facts: the next rung's unmet guardrail fact (D2). Pack-written text per move. The model's gap stays on the task detail as "For your last task: …" in plain text |
 | C4 | Opportunity 4 says "tip at the next pause", but a task is only judged after it closes (30-min idle gap, then the 10-minute judge cycle). The pause after the judged task has passed | The tip is shown at the **first pause of the next task of the same type** (D4): still in the moment, and when the move can still be used |
 | C5 | Phase 3b (feedback controls, habit tracker) was planned before the judge; its "eligible task" is defined per fast detector | Habits are defined over **judged facts**, one source for all habits (D6). Feedback tables are designed here (D8), so 3b and the coaching half of 5 ship as one slice |
@@ -179,7 +179,7 @@ No rung name or number appears on a card (coaching-loop Part C); rungs appear on
 | `coach.guess_check_min` / `coach.guess_precision` | 10 / 0.8 | D10; 0.8 mirrors the coaching bar |
 | `coach.move_cooldown_h` | 72 | D12 |
 | `coach.split_min` | 10 tasks | aiq-home US-H2 |
-| `coach.kept_rule` | `delegated_no_correction` | Q-A interim (below); `f2_share` once F2 exists |
+| `coach.kept_rule` | `delegated_no_correction` | Imran, 2026-11-02 (Q-A); `f2_share` once F2 exists |
 | `judge.task_type_threshold` | 0.7 | Same as the job threshold |
 
 ## Data model
@@ -415,7 +415,7 @@ pages in CI as in Phase 3.
 |---|---|---|---|
 | Q-A | AIQ can't yet measure how much of the final change you wrote yourself (F2), which your "Tasks agents finished" rule needs. Until it can, what should the headline count? | Home split, weekly columns | **Count a task as finished when it was judged Delegated or higher and you sent no re-prompt correcting the agent.** Show the rule under the number. Switch to your 20% rule when F2 is built, with a one-time note. Alternatives: hide the headline until F2 exists; or build F2 (a git diff after each agent turn) first |
 
-Everything else above is decided here and reversible.
+**Answered 2026-11-02:** Imran chose the recommendation ("Delegated+ with no correction"). Everything else above is decided here and reversible.
 
 ## Flagged risks
 
@@ -438,12 +438,12 @@ Everything else above is decided here and reversible.
 - **Patterns Expert ⇄ Simplifier:** nearest neighbour over existing features instead of a classifier or a second model call (Simplifier); a fixed task-type enum instead of free text (Patterns: controlled vocabulary). Both pass. Simplifier challenged `type_guess` as a table; kept because D10's self-check needs the guess history.
 - **UX & Accessibility:** every new state has text; no rung on cards. Pass.
 - **SRE:** guess latency, precision and auto-off are measured and visible. Pass.
-- **Condition:** Q-A answered by Imran before Home's headline ships; PR #24 merged first.
+- **Condition:** PR #24 merged first. (Q-A answered by Imran 2026-11-02.)
 
 ## Status and next action
 
 | | |
 |---|---|
 | **Completed** | Design for Phase 3b + the coaching half of Phase 5: task types, moves, next-rung tips, Home split and rows, habits, feedback |
-| **Remaining** | Imran's answer to Q-A; PR #24 merge; `/implement` of this design; F2 and F9 readers (later slices) |
+| **Remaining** | PR #24 merge; `/implement` of this design; F2 and F9 readers (later slices) |
 | **Best next action** | `/implement` after PR #24 merges, starting with `aiq_domain::coach` and the v2 judge field, then the core trigger on Copilot CLI |
