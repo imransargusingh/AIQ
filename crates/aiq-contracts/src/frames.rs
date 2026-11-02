@@ -54,6 +54,11 @@ pub enum Request {
         token: String,
         folder: String,
     },
+    /// Delete one prompt's text (AIQ home, Your data). The event itself stays.
+    ForgetItem {
+        token: String,
+        event_id: String,
+    },
 }
 
 impl Request {
@@ -67,7 +72,8 @@ impl Request {
             | Request::TakeCardAny { token, .. }
             | Request::Setting { token, .. }
             | Request::Forget { token }
-            | Request::IncludeFolder { token, .. } => token,
+            | Request::IncludeFolder { token, .. }
+            | Request::ForgetItem { token, .. } => token,
         }
     }
 }

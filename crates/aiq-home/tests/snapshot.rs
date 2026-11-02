@@ -181,3 +181,53 @@ fn items_are_capped_counts_exact_and_read_is_fast() {
     // Debug builds are slower than release; the design's 150 ms budget is checked with headroom.
     assert!(p95 <= 600, "snapshot p95 {p95} ms");
 }
+
+/// Task detail (design aiq-home-deferred-pages E8, E9): the same task as the list, with its prompts in order.
+#[test]
+fn task_detail_lists_the_tasks_prompts_live_and_imported() {
+    let d = tempfile::tempdir().unwrap();
+    let p = Paths::at(d.path());
+    standard(&p, true);
+    let pack = BundledPack.load().unwrap();
+    let s = snap(&p);
+    let cc1 = s.tasks.iter().find(|t| t.tool == "claude-code" && t.prompts == 3).unwrap();
+    let det = aiq_home::task_detail(&p, &pack, now(), &cc1.task_id).unwrap();
+    assert_eq!(&det.task, cc1);
+    let texts: Vec<_> = det.prompts.iter().map(|x| x.text.as_deref().unwrap()).collect();
+    assert_eq!(
+        texts,
+        vec![
+            "refactor the login handler to return typed errors",
+            "refactor login handler so it returns typed errors",
+            "please refactor the login handler, typed errors returned"
+        ]
+    );
+    assert!(det.prompts.windows(2).all(|w| w[0].ts_ms < w[1].ts_ms));
+
+    // Deleted text: the prompt stays, marked deleted.
+    let gone = s.tasks.iter().find(|t| t.first_ms == NOW - 20 * DAY).unwrap();
+    let det = aiq_home::task_detail(&p, &pack, now(), &gone.task_id).unwrap();
+    assert_eq!((det.prompts.len(), det.prompts[0].text.is_none(), det.prompts[0].deleted), (1, true, true));
+
+    // Imported: text from the import tables.
+    let imp = s.tasks.iter().find(|t| t.origin == "imported").unwrap();
+    let det = aiq_home::task_detail(&p, &pack, now(), &imp.task_id).unwrap();
+    let texts: Vec<_> = det.prompts.iter().map(|x| x.text.as_deref().unwrap()).collect();
+    assert_eq!(texts, vec!["plan the migration", "go"]);
+
+    assert!(aiq_home::task_detail(&p, &pack, now(), "no-such-task").is_none());
+    // The snapshot never carries prompt ids or text per task.
+    let json = serde_json::to_string(&s).unwrap();
+    assert!(!json.contains("members"));
+}
+
+#[test]
+fn setup_done_follows_the_flag() {
+    let d = tempfile::tempdir().unwrap();
+    let p = Paths::at(d.path());
+    assert!(!snap(&p).setup.done);
+    aiq_core::control::finish_setup(&p).unwrap();
+    let s = snap(&p);
+    assert!(s.setup.done);
+    assert_eq!(s.setup.tools.iter().map(|t| t.tool).collect::<Vec<_>>(), vec!["claude-code", "copilot"]);
+}

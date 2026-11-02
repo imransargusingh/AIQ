@@ -1,9 +1,10 @@
-// Your data (spec US-H6): everything captured, newest first; Pause; Delete everything (typed `forget`).
-// Delete one item and older-than wait for Phase 6 (design D1).
-import { useState } from "react";
+// Your data (spec US-H6): everything captured, newest first; Pause; delete one prompt's text (design
+// aiq-home-deferred-pages E1–E4); Delete everything (typed `forget`). Older-than waits for a later phase.
+import { useRef, useState } from "react";
 import { api } from "../api";
 import { bytes, clock, plural, toolName, when } from "../format";
-import { Banners, Dialog, Title, type Ctx } from "../ui";
+import type { Item } from "../types";
+import { Banners, Content, Dialog, Title, preview, type Ctx } from "../ui";
 
 export function Data(ctx: Ctx) {
   const { snap, announce, togglePause, refresh } = ctx;
@@ -12,6 +13,25 @@ export function Data(ctx: Ctx) {
   const [typed, setTyped] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [deletedAt, setDeletedAt] = useState<number | null>(null);
+  const [one, setOne] = useState<Item | null>(null);
+  const [oneErr, setOneErr] = useState<string | null>(null);
+  const table = useRef<HTMLTableElement>(null);
+
+  const closeOne = () => {
+    setOne(null);
+    setOneErr(null);
+  };
+  const delOne = async () => {
+    if (!one) return;
+    const r = await api.forgetItem(one.event_id);
+    if (r.ok) {
+      closeOne();
+      announce("Prompt deleted. Its text is gone from this computer.");
+      refresh();
+      // The Delete button that opened the dialog goes away with the text; keep focus on the table.
+      requestAnimationFrame(() => table.current?.focus());
+    } else setOneErr(r.message);
+  };
 
   const close = () => {
     setConfirm(false);
@@ -74,13 +94,16 @@ export function Data(ctx: Ctx) {
       </div>
       {d.items.length > 0 && (
         <div className="tablewrap">
-          <table aria-label="Captured events, newest first">
+          <table aria-label="Captured events, newest first" ref={table} tabIndex={-1}>
             <thead>
               <tr>
                 <th>When</th>
                 <th>Tool</th>
                 <th>Kind</th>
                 <th>Content</th>
+                <th>
+                  <span className="sr">Delete</span>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -91,6 +114,13 @@ export function Data(ctx: Ctx) {
                   <td>{i.kind === "prompt" ? "Prompt" : "Turn ended"}</td>
                   <td className={i.text ? "wrap" : "mute"}>
                     {i.text ? <Content text={i.text} /> : i.deleted ? "Text deleted" : i.kind === "prompt" ? "No text captured" : "—"}
+                  </td>
+                  <td>
+                    {i.kind === "prompt" && i.text != null && (
+                      <button className="btn small" aria-label={`Delete prompt from ${when(i.ts_ms, snap.now_ms, snap.offset_min)}`} onClick={() => setOne(i)}>
+                        Delete
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -103,6 +133,31 @@ export function Data(ctx: Ctx) {
         {d.imported_sessions > 0 && <>Imported sessions ({plural(d.imported_events, "turn")}) are counted above, not listed. </>}
         Stored in {d.location}. Read in {snap.status.read_ms} ms.
       </p>
+
+      {one && one.text != null && (
+        <Dialog label="Delete this prompt?" onClose={closeOne}>
+          <div className="dialog">
+            <h2>Delete this prompt?</h2>
+            <p className="quote">{preview(one.text, 160)}</p>
+            <p className="meta">
+              {toolName(one.tool)} · {when(one.ts_ms, snap.now_ms, snap.offset_min)}
+            </p>
+            <p>
+              AIQ deletes this prompt's text from this computer. It keeps only that a prompt was sent, when, and from which tool and folder, so
+              your task counts stay right. This can't be undone.
+            </p>
+            {oneErr && (
+              <p className="errtext" role="alert">
+                {oneErr}
+              </p>
+            )}
+            <div className="row" style={{ justifyContent: "flex-end" }}>
+              <button className="btn" data-autofocus onClick={closeOne}>Cancel</button>
+              <button className="btn danger" onClick={delOne}>Delete prompt</button>
+            </div>
+          </div>
+        </Dialog>
+      )}
 
       {confirm && (
         <Dialog label="Delete everything AIQ stored?" onClose={close}>
@@ -134,19 +189,5 @@ export function Data(ctx: Ctx) {
         </Dialog>
       )}
     </div>
-  );
-}
-
-/** Prompts can be many KB; show a preview and keep the full text one click (or Enter) away. */
-const PREVIEW = 280;
-function Content({ text }: { text: string }) {
-  if (text.length <= PREVIEW) return <>{text}</>;
-  return (
-    <details>
-      <summary>
-        {text.slice(0, PREVIEW).trimEnd()}… <span className="mute">({text.length.toLocaleString("en-GB")} characters, show all)</span>
-      </summary>
-      <span className="rest">{text.slice(PREVIEW)}</span>
-    </details>
   );
 }

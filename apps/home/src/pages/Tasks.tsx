@@ -24,6 +24,11 @@ export function Tasks(ctx: Ctx) {
   );
 
   const onKey = (e: KeyboardEvent) => {
+    if (e.key === "Enter" && rows[sel] && (e.target as HTMLElement).tagName === "TR") {
+      e.preventDefault();
+      ctx.openTask(rows[sel].task_id);
+      return;
+    }
     const move = e.key === "j" || e.key === "ArrowDown" ? 1 : e.key === "k" || e.key === "ArrowUp" ? -1 : 0;
     if (!move || rows.length === 0) return;
     e.preventDefault();
@@ -89,8 +94,20 @@ export function Tasks(ctx: Ctx) {
             </thead>
             <tbody ref={body}>
               {rows.map((t, i) => (
-                <tr key={t.task_id} tabIndex={i === sel ? 0 : -1} aria-selected={i === sel} onFocus={() => setSel(i)}>
-                  <td className="num">{when(t.first_ms, snap.now_ms, snap.offset_min)}</td>
+                <tr key={t.task_id} tabIndex={i === sel ? 0 : -1} aria-selected={i === sel} onFocus={() => setSel(i)} onClick={() => ctx.openTask(t.task_id)}>
+                  <td className="num">
+                    <a
+                      href={`#task/${encodeURIComponent(t.task_id)}`}
+                      tabIndex={-1}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        ctx.openTask(t.task_id);
+                      }}
+                    >
+                      {when(t.first_ms, snap.now_ms, snap.offset_min)}
+                    </a>
+                  </td>
                   <td>
                     {toolName(t.tool)} {t.origin === "imported" && <Chip>Imported</Chip>}
                   </td>
@@ -113,7 +130,7 @@ export function Tasks(ctx: Ctx) {
           </table>
         </div>
       )}
-      {snap.tasks.length > 0 && <p className="meta">J and K move between rows. Select a column heading to sort.</p>}
+      {snap.tasks.length > 0 && <p className="meta">J and K move between rows, Enter opens a task. Select a column heading to sort.</p>}
     </div>
   );
 }

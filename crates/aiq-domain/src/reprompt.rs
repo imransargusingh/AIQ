@@ -547,6 +547,8 @@ pub(crate) mod tests {
         );
         let ids: Vec<(&str, u32)> = tasks.iter().map(|t| (t.task_id.as_str(), t.prompts)).collect();
         assert_eq!(ids, vec![("a", 2), ("d", 2), ("f", 1), ("c", 1)]);
+        let members: Vec<&str> = tasks[1].members.iter().map(|(id, _)| id.as_str()).collect();
+        assert_eq!(members, vec!["d", "e"]);
         assert_eq!(tasks[0].last_ms, 30 * MIN);
     }
 

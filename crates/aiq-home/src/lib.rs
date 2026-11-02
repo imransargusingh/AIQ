@@ -17,6 +17,9 @@ use serde::Serialize;
 use std::collections::BTreeSet;
 use std::time::Instant;
 
+mod detail;
+pub use detail::{TaskDetail, TaskPromptText, task_detail};
+
 pub const SCHEMA: &str = "aiq.home.v1";
 /// Home's window (spec Q3).
 pub const WINDOW_DAYS: i64 = 30;
@@ -38,6 +41,15 @@ pub struct Snapshot {
     pub tips: Vec<TipRow>,
     pub data: Data,
     pub settings: Settings,
+    pub setup: Setup,
+}
+
+/// First-run setup (design aiq-home-deferred-pages E5–E7).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Setup {
+    /// The person finished setup once; AIQ home then opens on Home.
+    pub done: bool,
+    pub tools: Vec<aiq_core::tools::ToolFound>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -252,6 +264,7 @@ pub fn snapshot(paths: &Paths, pack: &PackV1, now: Now) -> Snapshot {
     let started = Instant::now();
     let mut s = empty(paths, pack, now);
     s.status.paused = aiq_core::control::is_paused(paths);
+    s.setup = Setup { done: aiq_core::control::setup_done(paths), tools: aiq_core::tools::found() };
     let db = paths.db();
     if db.exists() {
         s.status.store_found = true;
@@ -326,6 +339,7 @@ fn empty(paths: &Paths, pack: &PackV1, now: Now) -> Snapshot {
             judge: "off".into(),
             judge_daily_tasks: aiq_domain::rung::DEFAULT_DAILY_TASKS,
         },
+        setup: Setup { done: false, tools: vec![] },
     }
 }
 

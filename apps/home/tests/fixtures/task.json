@@ -1,0 +1,57 @@
+{
+  "task": {
+    "task_id": "019000000001-0000-7000-8000-000000000000",
+    "tool": "claude-code",
+    "folder": "c:\\users\\imran\\source\\repos\\aiq",
+    "first_ms": 1793361600000,
+    "last_ms": 1793362140000,
+    "prompts": 3,
+    "origin": "live",
+    "job": "code_change",
+    "rung": 2,
+    "judgment": {
+      "judged_ms": 1793523600000,
+      "state": "judged",
+      "current": 2,
+      "potential": 3,
+      "ceiling": 5,
+      "current_confidence": 0.85,
+      "potential_confidence": 0.85,
+      "job": "code_change",
+      "coachable": true,
+      "evidence": [
+        "You gave the agent the goal and the error type to use.",
+        "You checked the diff before keeping it <b>bold</b>."
+      ],
+      "gap": "Hand the agent the whole change with the tests it must pass, and let it run them.",
+      "blockers": [],
+      "provider": "claude-code",
+      "model": "claude-sonnet-5-5",
+      "read_prompts": 3,
+      "read_chars": 160,
+      "read_actions": true,
+      "versions": "fs1 · r1 · j1"
+    }
+  },
+  "prompts": [
+    {
+      "event_id": "019000000001-0000-7000-8000-000000000000",
+      "ts_ms": 1793361600000,
+      "text": "refactor the login handler to return typed errors",
+      "deleted": false
+    },
+    {
+      "event_id": "019000000002-0000-7000-8000-000000000000",
+      "ts_ms": 1793361840000,
+      "text": "refactor login handler so it returns typed errors",
+      "deleted": false
+    },
+    {
+      "event_id": "019000000003-0000-7000-8000-000000000000",
+      "ts_ms": 1793362140000,
+      "text": "please refactor the login handler, typed errors returned",
+      "deleted": false
+    }
+  ],
+  "read_ms": 9
+}

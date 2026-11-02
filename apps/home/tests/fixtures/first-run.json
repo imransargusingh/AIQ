@@ -1,0 +1,92 @@
+{
+  "schema": "aiq.home.v1",
+  "now_ms": 1793534400000,
+  "offset_min": 0,
+  "status": {
+    "core": true,
+    "paused": false,
+    "store_found": false,
+    "last_event_ms": null,
+    "read_ms": 0,
+    "error": null
+  },
+  "home": {
+    "window_days": 30,
+    "tasks_in_window": 0,
+    "judged": 0,
+    "uncertain": 0,
+    "rungs": [
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "most_common_rung": null,
+    "next_steps": [],
+    "judge_today": {
+      "tasks": 0,
+      "calls": 0,
+      "failed_calls": 0,
+      "cost_usd": null
+    },
+    "imported_in_window": 0,
+    "weeks": [
+      {
+        "start_ms": 1791115200000,
+        "tasks": 0
+      },
+      {
+        "start_ms": 1791720000000,
+        "tasks": 0
+      },
+      {
+        "start_ms": 1792324800000,
+        "tasks": 0
+      },
+      {
+        "start_ms": 1792929600000,
+        "tasks": 0
+      }
+    ],
+    "by_tool": [],
+    "set_aside": [],
+    "tips_today": 0
+  },
+  "tasks": [],
+  "tips": [],
+  "data": {
+    "events": 0,
+    "prompts": 0,
+    "turn_ends": 0,
+    "imported_sessions": 0,
+    "imported_events": 0,
+    "store_bytes": 0,
+    "items": [],
+    "items_capped": false,
+    "location": "C:\\Users\\you\\.aiq"
+  },
+  "settings": {
+    "daily_cap": 5,
+    "copilot_tip_stays": "next-prompt",
+    "judge": "off",
+    "judge_daily_tasks": 50
+  },
+  "setup": {
+    "done": false,
+    "tools": [
+      {
+        "tool": "claude-code",
+        "hooked": true,
+        "present": true,
+        "install": "aiq install claude-code"
+      },
+      {
+        "tool": "copilot",
+        "hooked": false,
+        "present": true,
+        "install": "aiq install copilot"
+      }
+    ]
+  }
+}

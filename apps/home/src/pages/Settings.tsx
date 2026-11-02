@@ -110,6 +110,14 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
         </div>
         <p className="mute">AIQ home makes no network calls. Nothing is shared.</p>
       </section>
+
+      <section className="card" aria-labelledby="st5">
+        <div className="head">
+          <h2 id="st5">Setup</h2>
+          <button className="btn" onClick={() => ctx.go("setup")}>Run setup again</button>
+        </div>
+        <p className="mute">See which tools AIQ is connected to, and go through the privacy and tips steps again.</p>
+      </section>
     </div>
   );
 }

@@ -20,17 +20,10 @@ pub const HOOK_TIMEOUT_S: u64 = 5;
 /// AIQ's own part of a Copilot hook (Imran, 2026-11-01): Copilot's start-up is measured, not counted.
 const HOOK_BUDGET_MS: u128 = 100;
 
-pub fn copilot_home() -> PathBuf {
-    if let Some(d) = std::env::var_os("COPILOT_HOME").filter(|v| !v.is_empty()) {
-        return PathBuf::from(d);
-    }
-    let home =
-        std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).map(PathBuf::from).unwrap_or_default();
-    home.join(".copilot")
-}
+pub use aiq_core::tools::copilot_home;
 
 pub fn hook_file(home: &Path) -> PathBuf {
-    home.join("hooks").join("aiq.json")
+    aiq_core::tools::copilot_hook_file(home)
 }
 
 pub fn hooks_json(exe: &str) -> Value {
