@@ -10,6 +10,7 @@ on:
   pull_request:
     paths:
       - "packaging/**"
+      - "crates/aiq/src/install.rs"
       - ".github/workflows/release.yml"
   workflow_dispatch:
 
@@ -105,6 +106,19 @@ jobs:
           if ($LASTEXITCODE -ne 0) { Write-Error 'rollback failed'; exit 1 }
           & (Join-Path $env:USERPROFILE '.aiq\bin\aiq.exe') version
           Get-Content (Join-Path $env:USERPROFILE '.aiq\upgrade-log.txt')
+      - name: Smoke test - uninstall --all removes hooks, user PATH entry and shortcut, keeps the data
+        shell: pwsh
+        run: |
+          $bin = Join-Path $env:USERPROFILE '.aiq\bin'
+          & (Join-Path $bin 'aiq.exe') install --yes
+          & (Join-Path $bin 'aiq.exe') uninstall --all --yes
+          if ($LASTEXITCODE -ne 0) { Write-Error 'uninstall --all failed'; exit 1 }
+          if ([Environment]::GetEnvironmentVariable('Path', 'User') -split ';' -contains $bin) { Write-Error 'user PATH entry left behind'; exit 1 }
+          if (Test-Path (Join-Path ([Environment]::GetFolderPath('Programs')) 'AIQ.lnk')) { Write-Error 'shortcut left behind'; exit 1 }
+          if (Test-Path (Join-Path $env:USERPROFILE '.copilot\hooks\aiq.json')) { Write-Error 'Copilot hook left behind'; exit 1 }
+          if (-not (Test-Path (Join-Path $env:USERPROFILE '.aiq\upgrade-log.txt'))) { Write-Error 'data folder touched'; exit 1 }
+          $again = & (Join-Path $bin 'aiq.exe') uninstall --all --yes
+          if (-not ($again -match 'Nothing changed')) { Write-Error "second run changed something: $again"; exit 1 }
       - uses: actions/upload-artifact@v4
         with:
           name: aiq-release-windows-x64
