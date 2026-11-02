@@ -367,8 +367,12 @@ fn e2e_install_with_no_tool_connects_every_tool_found_and_names_the_undo() {
     assert!(!again.contains("Undo:"), "{again}");
     assert!(again.contains("Judging is already on"), "{again}");
 
-    // The person turns judging off: a later install keeps it off.
-    assert!(e.run(&["config", "set", "judge", "off"], b"").status.success());
+    // The person turns judging off: a later install keeps it off. Written to the store directly, because
+    // `aiq config set` starts a core this test would not stop (on Windows it then locks aiq.exe).
+    let store = aiq_store::Store::open(&e.home().join("aiq.db")).unwrap();
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64;
+    store.set_setting("judge", "off", now + 1_000).unwrap();
+    drop(store);
     let off = String::from_utf8_lossy(&e.run(&["install", "--yes"], b"").stdout).to_string();
     assert!(off.contains("Judging stays off, as you set it."), "{off}");
 }
