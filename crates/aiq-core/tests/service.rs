@@ -114,7 +114,11 @@ impl H {
             self.clock.now().utc_ms,
             EventBody::Stop(StopPayload { stop_hook_active: false, prompt_id: prompt_id.map(str::to_owned) }),
         );
-        self.svc().take_card(&e, None, true)
+        let c = self.svc().take_card(&e, None, true);
+        if let Some(c) = &c {
+            self.svc().card_shown(&c.card_id, "claude-code", session); // the hook printed it
+        }
+        c
     }
     fn reprompt_run(&mut self, session: &str) -> String {
         for t in [BASE, R1, R2] {
@@ -146,7 +150,11 @@ impl H {
         let id = self.id();
         let body = EventBody::Stop(StopPayload { stop_hook_active: false, prompt_id: None });
         let e = ev_on("copilot-cli", &id, session, self.clock.now().utc_ms, body);
-        self.svc().take_card(&e, None, true)
+        let c = self.svc().take_card(&e, None, true);
+        if let Some(c) = &c {
+            self.svc().card_shown(&c.card_id, "copilot-cli", session); // the hook printed it
+        }
+        c
     }
     fn cp_run(&mut self, session: &str) {
         for t in [BASE, R1, R2, R3] {
@@ -341,6 +349,78 @@ fn stop_hook_active_never_delivers() {
     );
     assert!(h.svc().take_card(&e, None, true).is_none());
     assert!(h.stop("s", Some(&pid)).is_some());
+}
+
+// ------------------------------------------------------------------ hand-over confirmed by the hook (DC-022)
+
+fn cc_stop_event(h: &mut H, session: &str, pid: &str) -> EventV1 {
+    let id = h.id();
+    ev(
+        &id,
+        session,
+        h.clock.now().utc_ms,
+        EventBody::Stop(StopPayload { stop_hook_active: false, prompt_id: Some(pid.to_owned()) }),
+    )
+}
+
+#[test]
+fn a_taken_tip_counts_as_shown_only_once_the_hook_says_it_printed_it() {
+    let mut h = H::new();
+    let pid = h.reprompt_run("s");
+    let e = cc_stop_event(&mut h, "s", &pid);
+    let c = h.svc().take_card(&e, None, true).expect("handed over");
+    assert!(!h.svc().store().delivered_in_session("claude-code", "s").unwrap(), "not shown yet");
+    let e = cc_stop_event(&mut h, "s", &pid);
+    assert!(h.svc().take_card(&e, None, true).is_none(), "never handed to two hooks at once");
+    h.svc().card_shown(&c.card_id, "claude-code", "s");
+    assert!(h.svc().store().delivered_in_session("claude-code", "s").unwrap(), "shown once printed");
+    h.svc().card_shown(&c.card_id, "claude-code", "s");
+    assert!(h.svc().status().core_counters.iter().any(|(k, n)| k == codes::CARD_SHOWN_UNKNOWN && *n == 1));
+    assert_eq!(h.svc().status().cards_today, 1, "counted once");
+}
+
+#[test]
+fn a_tip_the_hook_never_confirms_is_ready_again_and_never_counted() {
+    let mut h = H::new();
+    let pid = h.reprompt_run("s");
+    let e = cc_stop_event(&mut h, "s", &pid);
+    let first = h.svc().take_card(&e, None, true).expect("handed over");
+    h.clock.advance(aiq_core::service::HANDOVER_CONFIRM_MS - 1);
+    let e = cc_stop_event(&mut h, "s", &pid);
+    assert!(h.svc().take_card(&e, None, true).is_none(), "still waiting for the first hook");
+    h.clock.advance(1);
+    let again = h.stop("s", Some(&pid)).expect("ready again for the next turn end");
+    assert_eq!(again.card_id, first.card_id);
+    let st = h.svc().status();
+    assert!(st.core_counters.iter().any(|(k, n)| k == codes::CARD_UNCONFIRMED && *n == 1), "{:?}", st.core_counters);
+    assert_eq!(st.cards_today, 1, "the unconfirmed hand-over never counted");
+}
+
+#[test]
+fn a_tip_handed_back_is_ready_at_once_and_a_late_confirmation_still_counts() {
+    let mut h = H::new();
+    let pid = h.reprompt_run("s");
+    let e = cc_stop_event(&mut h, "s", &pid);
+    let c = h.svc().take_card(&e, None, true).expect("handed over");
+    h.svc().hand_back(&c.card_id);
+    let e = cc_stop_event(&mut h, "s", &pid);
+    let c = h.svc().take_card(&e, None, true).expect("ready at once");
+    h.clock.advance(aiq_core::service::HANDOVER_CONFIRM_MS * 2);
+    h.svc().card_shown(&c.card_id, "claude-code", "s");
+    assert!(h.svc().store().delivered_in_session("claude-code", "s").unwrap(), "printed late: still the truth");
+}
+
+#[test]
+fn a_tip_being_printed_holds_other_sessions_as_the_quiet_period_does() {
+    let mut h = H::new();
+    let pid = h.reprompt_run("a");
+    let pid_b = h.reprompt_run("b");
+    let e = cc_stop_event(&mut h, "a", &pid);
+    let c = h.svc().take_card(&e, None, true).expect("handed over");
+    assert!(h.svc().store().ready_card("claude-code", "b").unwrap().is_some(), "b has a tip of its own");
+    let e = cc_stop_event(&mut h, "b", &pid_b);
+    assert!(h.svc().take_card(&e, None, true).is_none(), "one tip at a time");
+    h.svc().card_shown(&c.card_id, "claude-code", "a");
 }
 
 #[test]
