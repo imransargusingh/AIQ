@@ -556,6 +556,8 @@ await test("coaching Home: finished and could be, the rule, uncertain left out, 
   assert.match(t, /47% could move up a rung, most often to Delegated \(3\)\./);
   assert.match(t, /A task counts as finished when it was judged Delegated or higher and you sent no re-prompt correcting the agent\./);
   assert.match(t, /Judged by your Copilot CLI/);
+  // The weekly chart says what its two shades mean (dark = agents finished, light = the rest).
+  assert.match(t, /Tasks each week\s+Finished by agents\s+Other tasks/);
   const rows = page.getByRole("list", { name: "Kinds of task with a next step" }).getByRole("listitem");
   assert.equal(await rows.count(), 2);
   const first = await rows.first().innerText();
