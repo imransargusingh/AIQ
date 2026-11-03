@@ -39,6 +39,10 @@ pub struct Service<C: Clock> {
     classifier: Box<dyn JobClassifier + Send>,
     counters: Arc<Counters>,
     guard: Guard,
+    /// The first prompt of each session the automated rule holds back, in memory only, so a person's session in
+    /// a set-aside folder is recorded whole when its second prompt arrives (H ≥ 2). Never written to disk unless
+    /// that happens. Bounded: on overflow all are dropped, and those sessions are recorded from their second prompt.
+    held: std::collections::HashMap<(String, String), EventV1>,
     /// Folder keys where a claude.ai Projects / Remote Control session was set aside (rule RC), so
     /// "Include them" can be offered there although no folder rule exists. In memory; bounded.
     projects_folders: std::collections::HashSet<String>,
@@ -48,12 +52,45 @@ pub struct Service<C: Clock> {
     coach: Option<coaching::Cache>,
     /// AIQ-COACH-GUESS-LOW is logged once per core run.
     guess_low_logged: bool,
+    /// Starts a background label of a new task's first prompt (`aiq label`); None in tests and without a model.
+    label_requester: Option<LabelRequester>,
     /// Copilot's home, for its session logs. None (tests, unless set): mid-turn messages are not read.
     copilot_home: Option<std::path::PathBuf>,
     /// How far each live Copilot session's log has been read (bounded; a forgotten session is read again
     /// from the start, and stable event ids make that store nothing twice).
     log_offsets: std::collections::HashMap<String, u64>,
 }
+
+/// A new task whose kind the word guess could not name: label its first prompt in the background.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LabelRequest {
+    pub task_id: String,
+    pub surface: String,
+    pub session: String,
+    pub requested_ms: i64,
+}
+
+pub type LabelRequester = Box<dyn Fn(LabelRequest) + Send>;
+
+/// A task's kind, from a word guess or a label, with what it rests on.
+struct Kind<'a> {
+    job: &'a str,
+    task_type: &'a str,
+    score: f64,
+    evidence: &'a [String],
+}
+
+/// What the automated rule says about one live event.
+enum Gate {
+    Record,
+    /// Record nothing (an app or script's session, or a first prompt held back), and the rule that said so.
+    Skip(&'static str),
+    /// Record this held first prompt, then the event: a person's second prompt in a held session.
+    Rescue(Box<EventV1>),
+}
+
+/// First prompts held back at once (each a few KB at most, in memory).
+const MAX_HELD: usize = 1024;
 
 /// Rule RC per session: a settled answer, or how many reads found the head not yet written.
 #[derive(Debug, Clone, Copy)]
@@ -107,10 +144,12 @@ impl<C: Clock> Service<C> {
             classifier: Box::new(AlwaysUnclassified),
             counters,
             guard: Guard::new(),
+            held: Default::default(),
             projects_folders: Default::default(),
             rc_checked: Default::default(),
             coach: None,
             guess_low_logged: false,
+            label_requester: None,
             copilot_home: None,
             log_offsets: Default::default(),
         };
@@ -138,6 +177,11 @@ impl<C: Clock> Service<C> {
     /// Where Copilot keeps its session logs (`tools::copilot_home`); the core process sets it at start.
     pub fn set_copilot_home(&mut self, home: std::path::PathBuf) {
         self.copilot_home = Some(home);
+    }
+
+    /// Wire the background labeller (the `aiq` binary does; must return at once, never wait on a model).
+    pub fn set_label_requester(&mut self, f: LabelRequester) {
+        self.label_requester = Some(f);
     }
 
     pub fn engine(&self) -> &Engine {
@@ -207,20 +251,31 @@ impl<C: Clock> Service<C> {
             self.counters.inc(codes::INGEST_SHAPE);
             return Ok(());
         }
-        if let Some(reason) = self.automated(ev)? {
-            self.counters.inc(codes::INGEST_AUTOMATED);
-            // One line per dropped event, so a lost prompt can be traced to its rule (2026-11-03: six first
-            // prompts of hand-typed VS Code sessions were dropped and nothing said why). No text, no path.
-            info!(
-                trace_id = trace_id.unwrap_or(""),
-                aiq.reason = reason,
-                aiq.surface = ev.surface.as_str(),
-                aiq.kind = ev.kind(),
-                aiq.dir = ev.cwd.as_deref().and_then(aiq_domain::automated::folder_tag).unwrap_or_default(),
-                "event set aside"
-            );
-            return Ok(()); // an app or script drove this session: record nothing (import spec US-12)
+        match self.automated(ev)? {
+            Gate::Skip(reason) => {
+                self.counters.inc(codes::INGEST_AUTOMATED);
+                // One line per skipped event, so a lost prompt can be traced to its rule (2026-11-03: six first
+                // prompts of hand-typed VS Code sessions were dropped and nothing said why). No text, no path.
+                info!(
+                    trace_id = trace_id.unwrap_or(""),
+                    aiq.reason = reason,
+                    aiq.surface = ev.surface.as_str(),
+                    aiq.kind = ev.kind(),
+                    aiq.dir = ev.cwd.as_deref().and_then(aiq_domain::automated::folder_tag).unwrap_or_default(),
+                    "event set aside"
+                );
+                return Ok(()); // an app or script drove this session: record nothing (import spec US-12)
+            }
+            // A person in a held session: record its first prompt (no tip now, it is late), then this one.
+            Gate::Rescue(first) => self.record(&first, trace_id, false)?,
+            Gate::Record => {}
         }
+        self.record(ev, trace_id, true)
+    }
+
+    /// Store one event and run the detectors. `tips`: false for a held first prompt recorded late, which
+    /// must not raise a card.
+    fn record(&mut self, ev: &EventV1, trace_id: Option<&str>, tips: bool) -> Result<(), StoreError> {
         let now = self.clock.now().utc_ms;
         let ts = parse_rfc3339_ms(&ev.ts).unwrap_or(now);
         // Security review S2: the hook already removed secrets; this pass covers spool lines written by an
@@ -286,6 +341,9 @@ impl<C: Clock> Service<C> {
             )
         };
         let new_task = self.engine.task_id(&ev.surface, &ev.surface_session_id) == Some(ev.event_id.as_str());
+        if !tips {
+            return Ok(());
+        }
         if let Some(sig) = sig {
             self.on_signal(&ev.surface, &ev.surface_session_id, &sig, trace_id)?;
         }
@@ -414,7 +472,8 @@ impl<C: Clock> Service<C> {
         trace_id: Option<&str>,
         started: std::time::Instant,
     ) -> Result<(), StoreError> {
-        if !cache.tips_on(mode, pack) {
+        let (words_on, labels_on) = (cache.words_on(mode, pack), cache.labels_on(mode, pack) && self.labels_enabled());
+        if !words_on && !labels_on {
             if !self.guess_low_logged {
                 self.guess_low_logged = true;
                 self.counters.inc(codes::COACH_GUESS_LOW);
@@ -422,17 +481,23 @@ impl<C: Clock> Service<C> {
                     error.code = codes::COACH_GUESS_LOW,
                     checked = cache.check.checked,
                     right = cache.check.right,
+                    label_checked = cache.label_check.checked,
+                    label_right = cache.label_check.right,
                     "next-rung tips turned off by AIQ's self-check"
                 );
             }
             return Ok(());
         }
         let words = features(text, &pack.reprompt).words;
-        let Some(g) = coach::guess_type(&words, &cache.neighbours, &pack.coach) else {
+        let guess = if words_on { coach::guess_type(&words, &cache.neighbours, &pack.coach) } else { None };
+        let Some(g) = guess else {
+            // No word match: ask the small model in the background (design kind-label). The core never waits on
+            // a model (C9); the answer comes back as `on_kind_label`, before the turn's Stop in most turns.
+            let asked = labels_on && self.request_label(surface, session, task_id);
             info!(
                 ms = started.elapsed().as_millis() as u64,
                 neighbours = cache.neighbours.len(),
-                coach.outcome = "no_guess",
+                coach.outcome = if asked { "label_requested" } else { "no_guess" },
                 "coach.guess"
             );
             return Ok(());
@@ -447,7 +512,126 @@ impl<C: Clock> Service<C> {
             similarity: g.similarity,
             neighbours: g.neighbours.clone(),
             utc_ms: now.utc_ms,
+            method: "words".into(),
         })?;
+        let kind = Kind { job: &g.job, task_type: &g.task_type, score: g.similarity, evidence: &g.neighbours };
+        self.decide_kind(cache, pack, mode, surface, session, task_id, kind, "words", trace_id, started)
+    }
+
+    /// Labels can run: a labeller is wired, background judging is on and labels are not turned off.
+    fn labels_enabled(&self) -> bool {
+        self.label_requester.is_some() && coaching::labels_enabled(&self.store)
+    }
+
+    /// Ask for a label of this new task's first prompt (labels are enabled). True when asked.
+    fn request_label(&mut self, surface: &str, session: &str, task_id: &str) -> bool {
+        let Some(req) = self.label_requester.as_ref() else { return false };
+        if !matches!(surface, "claude-code" | "copilot-cli" | "vscode") {
+            return false;
+        }
+        self.counters.inc(codes::COACH_LABEL_REQUESTED);
+        req(LabelRequest {
+            task_id: task_id.to_owned(),
+            surface: surface.to_owned(),
+            session: session.to_owned(),
+            requested_ms: self.clock.now().utc_ms,
+        });
+        true
+    }
+
+    /// A label for `task_id` was stored (`aiq label` says so): decide on a next-step tip from it, exactly as from
+    /// a word guess. Dropped when the session has moved to another task, the task already has a guess, the label
+    /// is not confident, or AIQ's self-check turned labels off.
+    pub fn on_kind_label(&mut self, task_id: &str) -> Result<(), StoreError> {
+        let started = std::time::Instant::now();
+        let mode = coaching::mode(&self.store);
+        if mode == "off" || self.paused() {
+            return Ok(());
+        }
+        let Some(l) = self.store.kind_labels_of(task_id)?.into_iter().rev().find(|l| l.outcome == "ok") else {
+            return Ok(());
+        };
+        let outcome = |o: &str| {
+            info!(
+                ms = started.elapsed().as_millis() as u64,
+                latency_ms = l.latency_ms,
+                coach.outcome = o,
+                "coach.label"
+            )
+        };
+        if self.engine.task_id(&l.surface, &l.surface_session_id) != Some(task_id) {
+            outcome("label_task_moved_on");
+            return Ok(());
+        }
+        if self.store.has_type_guess(task_id)? {
+            return Ok(()); // already decided (a repeated notice)
+        }
+        let label = aiq_domain::label::Label {
+            job: l.job.clone().unwrap_or_default(),
+            job_confidence: l.job_confidence.unwrap_or(0.0),
+            task_type: l.task_type.clone().unwrap_or_default(),
+            task_type_confidence: l.task_type_confidence.unwrap_or(0.0),
+        };
+        let Some((job, task_type)) = aiq_domain::label::accept(&label) else {
+            outcome("label_not_confident");
+            return Ok(());
+        };
+        let pack = self.pack.clone();
+        self.coach_cache()?;
+        let cache = self.coach.take().expect("built above");
+        let r = (|| {
+            if !cache.labels_on(&mode, &pack) {
+                outcome("label_self_check_off");
+                return Ok(());
+            }
+            let score = label.job_confidence.min(label.task_type_confidence);
+            self.store.insert_type_guess(&aiq_store::TypeGuessRow {
+                guess_id: new_id(),
+                task_id: task_id.to_owned(),
+                surface: l.surface.clone(),
+                job: job.to_owned(),
+                task_type: task_type.to_owned(),
+                similarity: score,
+                neighbours: vec![],
+                utc_ms: self.clock.now().utc_ms,
+                method: aiq_domain::label::METHOD.into(),
+            })?;
+            let evidence = [format!("label:{}", l.model.as_deref().unwrap_or(&l.provider))];
+            let kind = Kind { job, task_type, score, evidence: &evidence };
+            self.decide_kind(
+                &cache,
+                &pack,
+                &mode,
+                &l.surface,
+                &l.surface_session_id,
+                task_id,
+                kind,
+                "label",
+                None,
+                started,
+            )
+        })();
+        self.coach = Some(cache);
+        r
+    }
+
+    /// The next-step decision for a task whose kind is known (from words or a label): the kind's coached move,
+    /// the accuracy pause (K6b), the person's answers, cooldown and habit, then the trigger engine.
+    #[allow(clippy::too_many_arguments)]
+    fn decide_kind(
+        &mut self,
+        cache: &coaching::Cache,
+        pack: &aiq_contracts::pack::PackV1,
+        mode: &str,
+        surface: &str,
+        session: &str,
+        task_id: &str,
+        g: Kind<'_>,
+        method: &str,
+        trace_id: Option<&str>,
+        started: std::time::Instant,
+    ) -> Result<(), StoreError> {
+        let now = self.clock.now();
         let row = cache
             .rows
             .iter()
@@ -458,7 +642,8 @@ impl<C: Clock> Service<C> {
         }) else {
             info!(
                 ms = started.elapsed().as_millis() as u64,
-                similarity = g.similarity,
+                similarity = g.score,
+                method,
                 coach.outcome = "not_coachable",
                 "coach.guess"
             );
@@ -504,8 +689,8 @@ impl<C: Clock> Service<C> {
                 detector_version: coach::DETECTOR_VERSION,
                 opportunity_id: coach::OPPORTUNITY,
                 reprompt_count: 0,
-                score: g.similarity,
-                evidence: &g.neighbours,
+                score: g.score,
+                evidence: g.evidence,
                 job: Job::Named(job),
                 core_opportunity: false,
                 threshold,
@@ -516,7 +701,8 @@ impl<C: Clock> Service<C> {
         )?;
         info!(
             ms = started.elapsed().as_millis() as u64,
-            similarity = g.similarity,
+            similarity = g.score,
+            method,
             coach.outcome = "decided",
             "coach.guess"
         );
@@ -552,9 +738,9 @@ impl<C: Clock> Service<C> {
         v
     }
 
-    /// The automated-session rule, live side. Some(reason): record nothing for this event; the
-    /// reason names the rule (`projects`, `aiq-check`, `session`, `folder`, `template`, `burst`).
-    fn automated(&mut self, ev: &EventV1) -> Result<Option<&'static str>, StoreError> {
+    /// The automated-session rule, live side. A skip names its rule (`projects`, `aiq-check`, `session`,
+    /// `folder`, `template`, `burst`) for the log.
+    fn automated(&mut self, ev: &EventV1) -> Result<Gate, StoreError> {
         let (surface, session) = (ev.surface.as_str(), ev.surface_session_id.as_str());
         if ev.projects || self.projects_session(ev) {
             // Rule RC: Claude's own Projects / Remote Control session, every event, unless included.
@@ -563,7 +749,7 @@ impl<C: Clock> Service<C> {
                 if self.projects_folders.len() < 1024 && !k.is_empty() && self.projects_folders.insert(k) {
                     info!(aiq.reason = "projects", "Projects session set aside");
                 }
-                return Ok(Some("projects"));
+                return Ok(Gate::Skip("projects"));
             }
         }
         if let Some(k) = ev.cwd.as_deref().filter(|c| is_aiq_check_folder(c)).map(folder_key) {
@@ -571,19 +757,19 @@ impl<C: Clock> Service<C> {
             // set-aside rule once, so `aiq status` lists it and `aiq include` brings it back.
             match self.store.folder_rules_now()?.get(&k).map(String::as_str) {
                 Some("include") => {}
-                Some(_) => return Ok(Some("aiq-check")),
+                Some(_) => return Ok(Gate::Skip("aiq-check")),
                 None => {
                     self.store.insert_folder_rule(&k, "set_aside", "aiq-check", "live", self.clock.now().utc_ms)?;
                     info!(aiq.reason = "aiq-check", "folder set aside: AIQ's own checks");
-                    return Ok(Some("aiq-check"));
+                    return Ok(Gate::Skip("aiq-check"));
                 }
             }
         }
         let EventBody::Prompt(p) = &ev.body else {
-            return Ok(self.guard.is_ignored(surface, session).then_some("session"));
+            return Ok(if self.guard.is_ignored(surface, session) { Gate::Skip("session") } else { Gate::Record });
         };
         if !self.guard.is_ignored(surface, session) && self.store.session_known(surface, session)? {
-            return Ok(None); // not a first prompt, and not a session being ignored
+            return Ok(Gate::Record); // not a first prompt, and not a session being ignored
         }
         let set_aside = match ev.cwd.as_deref().map(folder_key) {
             Some(k) if !k.is_empty() => self.store.set_aside_folders()?.iter().any(|(f, _, _)| *f == k),
@@ -600,12 +786,23 @@ impl<C: Clock> Service<C> {
             set_aside,
             now,
         );
-        let Verdict::Ignore { reason, new_folder } = verdict else { return Ok(None) };
+        let key = (surface.to_owned(), session.to_owned());
+        let (reason, new_folder) = match verdict {
+            Verdict::Record => return Ok(Gate::Record),
+            Verdict::Rescued => {
+                return Ok(self.held.remove(&key).map_or(Gate::Record, |e| Gate::Rescue(Box::new(e))));
+            }
+            Verdict::Ignore { reason, new_folder } => (reason, new_folder),
+        };
+        if self.held.len() >= MAX_HELD {
+            self.held.clear();
+        }
+        self.held.insert(key, ev.clone());
         if let Some(folder) = new_folder {
             self.store.insert_folder_rule(&folder, "set_aside", reason.as_str(), "live", now)?;
             info!(aiq.reason = reason.as_str(), "folder set aside: automated sessions");
         }
-        Ok(Some(reason.as_str()))
+        Ok(Gate::Skip(reason.as_str()))
     }
 
     /// Folders whose sessions AIQ ignores now, newest first: (folder, reason).
@@ -890,7 +1087,10 @@ impl<C: Clock> Service<C> {
                 _ => return Err(format!("daily-cap must be a whole number from 0 to {MAX_DAILY_CAP}")),
             },
             k if k.starts_with(coaching::SETTING_KEEP_ON) => self.keep_on_value(k, value)?,
-            _ => match aiq_domain::rung::validate_setting(key, value).or_else(|| coach::validate_setting(key, value)) {
+            _ => match aiq_domain::rung::validate_setting(key, value)
+                .or_else(|| coach::validate_setting(key, value))
+                .or_else(|| aiq_domain::label::validate_setting(key, value))
+            {
                 Some(v) => v?,
                 None => return Err(format!("unknown setting {key}")),
             },
@@ -965,7 +1165,7 @@ impl<C: Clock> Service<C> {
             coach: self.coach.as_ref().map(|c| {
                 let mode = coaching::mode(&self.store);
                 CoachStatus {
-                    tips_on: c.tips_on(&mode, &self.pack),
+                    tips_on: c.tips_on(&mode, &self.pack, self.labels_enabled()),
                     mode,
                     checked: c.check.checked,
                     right: c.check.right,
@@ -973,6 +1173,7 @@ impl<C: Clock> Service<C> {
                     other_pct: c.other_share.map(|x| (x * 100.0).round() as u32),
                     cache_ms: c.build_ms,
                     accuracy_paused: coaching::paused_scopes(&self.store, &c.pauses),
+                    labels: coaching::label_status(&self.store, c, self.clock.now()).ok(),
                 }
             }),
         }

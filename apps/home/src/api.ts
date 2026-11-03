@@ -1,4 +1,4 @@
-// The bridge to the Tauri shell (apps/home/src-tauri). Twelve commands; nothing else leaves the page.
+// The bridge to the Tauri shell (apps/home/src-tauri). Sixteen commands; nothing else leaves the page.
 // Outside Tauri (the UI tests) a fixture stands in, set on window by the test before the page loads.
 import type { Outcome, Snapshot, TaskDetail } from "./types";
 
@@ -116,6 +116,29 @@ function fixture<T>(cmd: string, args: Record<string, unknown>): Promise<T> {
       // The real shell closes the window after replying; the fixture only records the call.
       out = f.fail?.includes(cmd) ? { ok: false, message: "Could not start: updates run only for AIQ installed with install.ps1 on Windows." } : { ok: true };
       break;
+    case "disconnect_tool": {
+      const t = s.setup.tools.find((x) => x.tool === args.tool);
+      if (!t || !t.hooked) out = { ok: false, message: "Not changed: AIQ isn't connected to that tool.", changed: [] };
+      else {
+        t.hooked = false;
+        out = { ok: true, changed: [t.tool === "copilot" ? "C:\\Users\\you\\.copilot\\hooks\\aiq.json" : "C:\\Users\\you\\.claude\\settings.json"] };
+      }
+      break;
+    }
+    case "include_folder":
+      if (!s.status.core) out = { ok: false, message: "AIQ isn't running, so this can't change right now. It starts with your next prompt in Claude Code or Copilot." };
+      else if (!s.home.set_aside.some((x) => x.folder === args.folder)) out = { ok: false, message: "Not changed: that folder isn't set aside." };
+      else {
+        s.home.set_aside = s.home.set_aside.filter((x) => x.folder !== args.folder);
+        out = { ok: true };
+      }
+      break;
+    case "judge_preview":
+      out = { ok: true, text: "AIQ judges each task you finish with AI.\n\n1 task is waiting to be judged. Nothing was sent.\n\nThe next task would be sent to your Copilot CLI like this:\n\n<task>refactor the login handler</task>" };
+      break;
+    case "open_privacy":
+      out = { ok: true };
+      break;
     case "finish_setup":
       s.setup.done = true;
       out = s;
@@ -143,6 +166,14 @@ export const api = {
   tipOn: (tipId: string) => invoke<Outcome>("tip_on", { tipId }),
   /** Settings' per-tip switch: turn a tip off before it shows (same as "Don't show this again"). */
   tipOff: (tipId: string) => invoke<Outcome>("tip_off", { tipId }),
+  /** Settings' Disconnect: `aiq uninstall <tool> --yes`, which restores the tool's settings from AIQ's backup. */
+  disconnectTool: (tool: "claude-code" | "copilot") => invoke<{ ok: boolean; message?: string; changed: string[] }>("disconnect_tool", { tool }),
+  /** Home's Include: AIQ watches a folder it set aside as automated again. */
+  includeFolder: (folder: string) => invoke<Outcome>("include_folder", { folder }),
+  /** What judging would send for the next task (`aiq judge --dry-run`). Nothing is sent. */
+  judgePreview: () => invoke<{ ok: boolean; text: string }>("judge_preview"),
+  /** Open the privacy page in the default browser (a fixed address). */
+  openPrivacy: () => invoke<Outcome>("open_privacy"),
   /** Install the waiting update or go back (AIQ home closes and reopens), or check now (it stays open). */
   runUpdate: (action: "install" | "rollback" | "check") => invoke<Outcome>("run_update", { action }),
 };

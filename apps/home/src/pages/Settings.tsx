@@ -45,6 +45,36 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
     setMsg(r.ok ? null : m);
     announce(m);
   };
+  const [preview, setPreview] = useState<string | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+  const showPreview = async () => {
+    setPreviewing(true);
+    try {
+      const r = await api.judgePreview();
+      setPreview(r.text);
+      announce(r.ok ? "Showing what judging would send. Nothing was sent." : "AIQ couldn't make the preview.");
+    } catch (e) {
+      setPreview(String((e as Error)?.message ?? e));
+    }
+    setPreviewing(false);
+  };
+  const [changedFiles, setChangedFiles] = useState<string[]>([]);
+  const TOOL_NAME = { "claude-code": "Claude Code", copilot: "GitHub Copilot" } as const;
+  const disconnect = async (tool: "claude-code" | "copilot") => {
+    const r = await api.disconnectTool(tool);
+    setChangedFiles(r.changed);
+    const m = r.ok ? `Disconnected ${TOOL_NAME[tool]}. AIQ no longer sees its prompts.` : (r.message ?? "AIQ couldn't disconnect it.");
+    setMsg(r.ok ? null : m);
+    announce(m);
+    refresh();
+  };
+  const privacy = async () => {
+    const r = await api.openPrivacy();
+    if (!r.ok) {
+      setMsg(r.message);
+      announce(r.message);
+    }
+  };
   // The habit a tip names, from the kinds of task or habits AIQ knows; else the tip's own id.
   const tipName = (tipId: string) => {
     const move = tipId.replace(/^next_rung\./, "");
@@ -159,7 +189,7 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
         )}
         <AccuracyPaused {...ctx} />
         {st.next_rung_tips === "auto" && st.accuracy_paused.length === 0 && (
-          <span className="meta">AIQ also pauses the tips for a job or kind of task by itself when an accuracy check (aiq judge --check) agrees with its judge under 8 in 10.</span>
+          <span className="meta">AIQ also pauses the tips for a job or kind of task by itself when an accuracy check finds a second model agrees with its judge less than 8 in 10 times.</span>
         )}
         {st.next_tips.length > 0 && (
           <details className="group">
@@ -233,7 +263,7 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
 
       <section className="card" aria-labelledby="st3">
         <div className="head">
-          <h2 id="st3">Rung model</h2>
+          <h2 id="st3">Judging</h2>
           <span className="chip">{snap.settings.judge === "auto" ? "Judging in the background" : "Off"}</span>
         </div>
         <p className="mute">
@@ -280,10 +310,21 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
           {snap.home.judge_today.failed_calls > 0 && <>, {snap.home.judge_today.failed_calls} failed</>}
           {snap.home.judge_today.cost_usd !== null && <>, ${snap.home.judge_today.cost_usd.toFixed(2)} reported by Claude Code</>}.
         </p>
-        <p className="meta">
-          In a terminal: <code>aiq config set judge {snap.settings.judge === "auto" ? "off" : "auto"}</code> · see what would be sent:{" "}
-          <code>aiq judge --dry-run</code>
-        </p>
+        <div className="row">
+          <button className="btn" onClick={showPreview} disabled={previewing} aria-expanded={preview != null}>
+            {previewing ? "Making the preview…" : "See what would be sent"}
+          </button>
+          {preview != null && (
+            <button className="btn" onClick={() => setPreview(null)}>
+              Hide
+            </button>
+          )}
+        </div>
+        {preview != null && (
+          <pre className="preview" tabIndex={0} aria-label="What judging would send for the next task. Nothing was sent.">
+            {preview}
+          </pre>
+        )}
       </section>
 
       <section className="card" aria-labelledby="st6">
@@ -339,9 +380,12 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
       <section className="card" aria-labelledby="st4">
         <div className="head">
           <h2 id="st4">Sharing</h2>
-          <span className="chip">Off · nothing leaves this computer</span>
+          <span className="chip">Off · only you see your data</span>
         </div>
-        <p className="mute">AIQ home makes no network calls. Nothing is shared. The once-a-day update check sends nothing about you.</p>
+        <p className="mute">AIQ shares nothing with anyone. Only two things leave this computer: judge calls, through your own Claude Code or Copilot (see Judging), and the update check, which sends nothing about you (see Updates).</p>
+        <p className="meta">
+          <button className="btnlink" onClick={privacy}>Read the privacy page</button> (opens in your browser)
+        </p>
       </section>
 
       <section className="card" aria-labelledby="st5">
@@ -349,7 +393,30 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
           <h2 id="st5">Setup</h2>
           <button className="btn" onClick={() => ctx.go("setup")}>Run setup again</button>
         </div>
-        <p className="mute">See which tools AIQ is connected to, and go through the privacy and tips steps again.</p>
+        <ul className="group" aria-label="Tools AIQ watches" style={{ listStyle: "none", margin: 0, padding: 0 }}>
+          {snap.setup.tools.filter((t) => t.present).map((t) => (
+            <li className="row" key={t.tool} style={{ justifyContent: "space-between" }}>
+              <span>
+                <b>{TOOL_NAME[t.tool]}</b> · {t.hooked ? "connected" : "not connected"}
+              </span>
+              {t.hooked && (
+                <button className="btn" onClick={() => disconnect(t.tool)} aria-label={`Disconnect ${TOOL_NAME[t.tool]}`}>
+                  Disconnect
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+        {changedFiles.length > 0 && (
+          <ul className="meta" aria-label="Files AIQ changed">
+            {changedFiles.map((p) => (
+              <li key={p}>
+                <code>{p}</code>
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="mute">Disconnect puts the tool's settings back as they were. Run setup again to connect a tool, or go through the privacy and tips steps again.</p>
       </section>
     </div>
   );

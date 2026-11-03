@@ -7,4 +7,5 @@ pub mod codes;
 pub mod event;
 pub mod frames;
 pub mod judge;
+pub mod label;
 pub mod pack;
