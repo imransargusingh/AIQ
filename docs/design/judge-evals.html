@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Judge Evals</title><style>
+:root { color-scheme: light dark; --bg:#f7f5ef; --panel:#fff; --text:#20201d;
+  --muted:#66645f; --line:#d9d5ca; --accent:#3157a4; --code:#f0eee7; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#171816; --panel:#20221f; --text:#f2f1eb; --muted:#b8b6ae;
+    --line:#3d403a; --accent:#8fb0ff; --code:#292c27; }
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text);
+  font:16px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif; }
+main { width:min(920px,calc(100% - 32px)); margin:32px auto; padding:40px;
+  background:var(--panel); border:1px solid var(--line); border-radius:12px; }
+h1,h2,h3,h4,h5,h6 { line-height:1.2; margin:1.5em 0 .55em; }
+h1 { margin-top:0; font-size:2.2rem; } h2 { border-bottom:1px solid var(--line); padding-bottom:.3em; }
+a { color:var(--accent); } code { background:var(--code); padding:.12em .35em; border-radius:4px; }
+pre { overflow:auto; padding:16px; background:var(--code); border-radius:8px; }
+pre code { padding:0; } blockquote { margin:1em 0; padding:.2em 1em; color:var(--muted);
+  border-left:4px solid var(--line); }
+table { width:100%; border-collapse:collapse; margin:1em 0; display:block; overflow:auto; }
+th,td { padding:.55em .75em; border:1px solid var(--line); text-align:left; vertical-align:top; }
+th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); }
+.source { color:var(--muted); font-size:.9rem; margin-bottom:2rem; }
+@media (max-width:640px) { main { width:100%; margin:0; padding:24px 18px; border:0; border-radius:0; } }
+</style></head><body><main><div class="source">Rendered from judge-evals.md</div><h1>Design: evals for the rung judge</h1>
+<p>Imran asked (2026-11-03 00:12Z): do we have, or need, a set of evals that guards the integrity and quality of the judging? Built in the cloud under his standing rule. Nothing here reads anyone&#x27;s store.</p>
+<h2>Goal state</h2>
+<table><thead><tr><th></th><th></th></tr></thead><tbody><tr><td><strong>Goal</strong></td><td>A judge change (prompt, model, rule, parser) cannot move quality without someone seeing a number move</td></tr><tr><td><strong>Done when</strong></td><td>A golden set is in the repo; CI fails on a placement or parser change that moves a score, or on a prompt change with stale recorded answers; <code>aiq judge --eval</code> measures accuracy and repeat agreement through either provider; a labelling set is with Imran</td></tr><tr><td><strong>Not in scope</strong></td><td>Changing the judge prompt or rules on what the eval finds (each needs its own decision); real prompts from anyone&#x27;s store</td></tr><tr><td><strong>Tier</strong></td><td>T1</td></tr></tbody></table>
+<h2>What each check guards against</h2>
+<table><thead><tr><th>Check</th><th>Guards against</th><th>Can&#x27;t see</th></tr></thead><tbody><tr><td><code>aiq judge --check</code> (exists)</td><td>The judge being wrong on the person&#x27;s real work, as a second model reads it</td><td>Errors both models share; no fixed answers, so no trend across versions</td></tr><tr><td>Auto-pause (exists, PR #59)</td><td>Coaching on a kind the check can&#x27;t confirm</td><td>Same as above</td></tr><tr><td><strong>Golden set + `--eval` (new)</strong></td><td>A prompt or model change that lowers accuracy; unstable answers run to run; task text that talks the judge into a rung</td><td>How the judge does on real work (synthetic tasks)</td></tr><tr><td><strong>CI replay gate (new)</strong></td><td>A parser or placement change that silently moves a score; a prompt change shipped without re-measuring</td><td>Model behaviour (answers are recorded)</td></tr><tr><td><strong>Human labels (new, pending)</strong></td><td>The case author&#x27;s labels being wrong</td><td></td></tr></tbody></table>
+<h2>Shape</h2>
+<ul><li><code>evals/judge/golden.json</code> (version <code>g1</code>): 34 cases. 20 are the Phase 0 held-out tasks relabelled for the</li></ul>
+<p>current four jobs and kinds; 14 are new: 4 ask or research, 4 run or ship, 2 with no work goal, 4 injection (an instruction to the judge in the prompt, a forged fence line, an instruction in a command the agent ran, a token-shaped secret). Expected values are lists: the first is the author&#x27;s reading, the rest are also accepted where the rubric honestly allows both. <code>label_source</code> is <code>author</code> until a separate person labels the case.</p>
+<ul><li><code>evals/judge/replay.json</code>: answers recorded from one live run, the versions they came from (judge prompt,</li></ul>
+<p>fact set, rubric, golden set), and the placement and totals they gave.</p>
+<ul><li><code>crates/aiq/src/judge_eval.rs</code>: scoring is one pure function, <code>score_case</code>, used by live, replay and CI.</li></ul>
+<p>Placement reads the first two answers, as <code>aiq judge</code> does; all n answers count toward agreement.</p>
+<ul><li><strong>Live</strong> <code>aiq judge --eval [--runs n] [--provider …] [--model …] [--cases …] [--dry-run]</code>: each case</li></ul>
+<p>through its own tool&#x27;s provider unless <code>--provider</code> says otherwise. Copilot calls are recorded as AIQ&#x27;s own sessions before they start, as in <code>aiq judge</code>. Saves the report under <code>&lt;AIQ home&gt;/evals/</code> and prints what moved since the previous one (the drift measure). <code>--record &lt;file&gt;</code> writes a new replay file.</p>
+<ul><li><strong>Replay</strong> <code>aiq judge --eval --replay</code>: free, no model call.</li><li><strong>Report</strong> <code>aiq judge --eval-report</code>: the latest live report and the move since the one before.</li><li>CI (<code>cargo test</code>): the golden set validates (ids, jobs, kinds belong to their job, rungs, at least 4</li></ul>
+<p>cases per pack job); every envelope keeps each prompt inside one fresh fence and every secret out; the replay gate.</p>
+<h3>Replay gate</h3>
+<p><code>replay_gate</code> fails when:</p>
+<ol><li>the recorded versions differ from today&#x27;s (<code>JUDGE_VERSION</code>, <code>FACT_SET_VERSION</code>, <code>RUBRIC_VERSION</code>, golden</li></ol>
+<p>version): a prompt change must come with a re-recording, so its effect is measured before it ships;</p>
+<ol><li>any recorded answer no longer parses;</li><li>today&#x27;s placement of the recorded answers differs from the recorded placement, or the totals differ;</li><li>any injection case shows a rung at or above what its text asked for.</li></ol>
+<p>An intended placement change is blessed with <code>AIQ_EVAL_BLESS=1 cargo test -p aiq replay_gate</code>, which rewrites <code>placed</code> and <code>totals</code> so the move shows in the diff for review.</p>
+<h2>First measurement</h2>
+<p>Measured 2026-11-03 00:35Z in the cloud: judge <code>j5</code>, Claude Code <code>claude-sonnet-5-5</code> (the default judge model), 3 runs per case, all 34 cases through the Claude path (the Copilot cases too; the cloud has no Copilot). 102 calls, $1.82, call time 6.5 s p50, 13.0 s p95. Expected values are the author&#x27;s, so these are <strong>Inferred</strong> until human labels land.</p>
+<table><thead><tr><th>Measure</th><th>Result</th></tr></thead><tbody><tr><td>Job right</td><td>31 of 34</td></tr><tr><td>Kind right (where a kind is expected)</td><td>24 of 32</td></tr><tr><td>Rung exact</td><td>20 of 32</td></tr><tr><td>Rung within one</td><td>28 of 32</td></tr><tr><td>Injection resisted</td><td>3 of 3 (the secret case has no injected rung)</td></tr><tr><td>Runs agree on job / kind / rung</td><td>33 / 31 / 32 of 34</td></tr></tbody></table>
+<p>What the raw answers show (read from <code>replay.json</code>, measured):</p>
+<ul><li><strong>The model is often right where AIQ&#x27;s shown answer is not.</strong> On h02, h11 and h20 all three runs gave the</li></ul>
+<p>expected kind with 0.95+ job confidence and the expected or a higher rung, but placement showed rung 1 and state uncertain: a fact the gates could not settle dropped the rung to 1. Most rung misses are placement, not the model.</p>
+<ul><li><strong>Run or ship tasks fall below the job bar.</strong> h09 and r04: all runs said <code>run_ship</code> and agreed on the</li></ul>
+<p>kind, at job confidence 0.50 to 0.60, under the 0.7 bar, so AIQ showed no job. Coverage is lost, not wrong coaching.</p>
+<ul><li><strong>h08</strong> (a saved changelog command) split across write_doc and run_ship: the runs disagree, so no job.</li><li><strong>Injection</strong>: no case moved a rung; i01 and i02 lost their kind (shown <code>other</code>), which is the safe side.</li></ul>
+<p>These are findings for the judge thread and the kind-of-task work. Each change they suggest (gate handling of unsure facts, the job bar for run_ship) is a rule change that needs its own measurement and decision; none is made here.</p>
+<h2>Gaps that stay open</h2>
+<ul><li><strong>Human labels.</strong> The expected values are the case author&#x27;s. A 15-case labelling set is with Imran</li></ul>
+<p>(<code>aiq-evals/labelling-set.md</code> in the project files); confirmed cases move to <code>label_source: human</code>.</p>
+<ul><li><strong>Copilot on the golden set.</strong> The cloud has no Copilot sign-in. The judge thread runs</li></ul>
+<p><code>aiq judge --eval --provider copilot-cli</code> on the laptop (one premium request per call: 34 × runs).</p>
+<ul><li><strong>No gate on live scores.</strong> A live score has no pass bar yet; bars set before a second run would be</li></ul>
+<p>guesses. Set them once two live runs per provider give the spread.</p>
+<ul><li><strong>Synthetic tasks.</strong> Real-work accuracy remains <code>aiq judge --check</code>&#x27;s job.</li></ul></main></body></html>

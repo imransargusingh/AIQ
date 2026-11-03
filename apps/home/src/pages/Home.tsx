@@ -149,6 +149,15 @@ export function Home(ctx: Ctx) {
             <button className="btnlink" onClick={() => go("tasks")}>See which</button>
           </p>
           <figure className="wk" role="group" aria-label={ready ? "Tasks and tasks agents finished each week, last 4 weeks" : "Tasks each week, last 4 weeks"}>
+            <figcaption className="wk-key">
+              Tasks each week
+              {ready && (
+                <>
+                  <span><i className="sw fin" aria-hidden="true" />Finished by agents</span>
+                  <span><i className="sw rest" aria-hidden="true" />Other tasks</span>
+                </>
+              )}
+            </figcaption>
             <div className="wk-y" aria-hidden="true">
               {[0, max].map((t, i) => (
                 <span key={i} style={{ top: `${i === 0 ? 100 : 0}%` }}>{t}</span>
@@ -172,7 +181,7 @@ export function Home(ctx: Ctx) {
                     <i
                       style={{
                         flex: `${w.tasks - (few ? 0 : fin)} 1 0`,
-                        background: ready ? "color-mix(in srgb,var(--primary) 35%,var(--surface))" : "var(--primary)",
+                        background: ready ? "var(--wk-rest)" : "var(--primary)",
                         minHeight: w.tasks - (few ? 0 : fin) ? 18 : 0,
                         color: ready ? "var(--ink)" : undefined,
                       }}
