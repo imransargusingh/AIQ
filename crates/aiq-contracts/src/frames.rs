@@ -109,9 +109,12 @@ pub struct SpoolLine {
     pub event: EventV1,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct TakeCardReply {
     pub card: Option<CardV1>,
+    /// The person turned the tip highlight off (setting `tip_highlight`): render without colour.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub plain: bool,
 }
 
 /// Status-line reply: the full card, or only the id of a card that is waiting to be opened, or neither.
@@ -119,6 +122,9 @@ pub struct TakeCardReply {
 pub struct TipLineReply {
     pub card: Option<CardV1>,
     pub waiting_card_id: Option<String>,
+    /// As `TakeCardReply::plain`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub plain: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]

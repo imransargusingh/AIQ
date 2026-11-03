@@ -20,7 +20,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     item.text = t.text;
     item.tooltip = t.tooltip;
     item.accessibilityInformation = { label: t.label };
-    item.backgroundColor = t.highlight ? new vscode.ThemeColor("statusBarItem.warningBackground") : undefined;
+    item.backgroundColor = t.highlight && !waiting?.plain ? new vscode.ThemeColor("statusBarItem.warningBackground") : undefined;
     item.show();
   };
 

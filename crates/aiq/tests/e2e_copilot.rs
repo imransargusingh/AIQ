@@ -69,7 +69,8 @@ impl Env {
     }
     fn hook(&self, event: &str, payload: Value) -> Output {
         let o = self.run(&["hook", "copilot", event], payload.to_string().as_bytes());
-        assert!(o.status.success() && o.stdout.is_empty() && o.stderr.is_empty(), "Copilot hooks never print");
+        assert!(o.status.success() && o.stderr.is_empty(), "Copilot hooks never write stderr");
+        assert!(event == "agentStop" || o.stdout.is_empty(), "only agentStop may print (the tip)");
         o
     }
     fn prompt(&self, session: &str, text: &str) {
@@ -79,12 +80,14 @@ impl Env {
             json!({"sessionId": session, "timestamp": ts, "cwd": "/repo", "prompt": text}),
         );
     }
-    fn agent_stop(&self, session: &str) {
+    /// The agentStop hook's stdout: empty, or the one progress line with the tip.
+    fn agent_stop(&self, session: &str) -> String {
         let ts = chrono_ms();
-        self.hook(
+        let o = self.hook(
             "agentStop",
             json!({"sessionId": session, "timestamp": ts, "stopReason": "end_turn", "transcriptPath": "/t"}),
         );
+        String::from_utf8(o.stdout).unwrap()
     }
     fn statusline(&self, session: Option<&str>) -> String {
         let payload = session.map_or(json!({"cwd": "/repo"}), |s| json!({"session": {"id": s}, "cwd": "/repo"}));
@@ -119,7 +122,16 @@ fn e2e_copilot_reword_tip_in_status_line_after_turn_then_clears_on_next_prompt()
     e.start_core();
     e.reprompt_run("c1", 0);
     assert_eq!(e.statusline(Some("c1")), "", "no tip while the agent works");
-    e.agent_stop("c1");
+    let out = e.agent_stop("c1");
+    assert_eq!(out.lines().count(), 1, "one progress line: {out}");
+    let v: Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(v.as_object().unwrap().len(), 2, "only type and message: {out}");
+    assert_eq!(v["type"], "progress");
+    let msg = v["message"].as_str().unwrap();
+    assert!(msg.starts_with("AIQ tip: you've reworded this request 3 times") && msg.contains("Try this: "), "{msg}");
+    for t in TEXTS {
+        assert!(!msg.contains(t), "the tip never quotes prompt text");
+    }
     e.wait_for("1 stop");
     let line = e.statusline(Some("c1"));
     assert!(
@@ -174,6 +186,37 @@ fn e2e_copilot_tip_stays_until_opened_setting() {
     let id = line.trim().rsplit("aiq show ").next().unwrap();
     assert!(String::from_utf8(e.run(&["show", id], b"").stdout).unwrap().contains(TEXTS[0]));
     assert_eq!(e.statusline(Some("c1")), "", "opened: gone");
+}
+
+#[test]
+fn e2e_copilot_tip_in_chat_off_leaves_it_to_the_status_line() {
+    let mut e = Env::new();
+    e.start_core();
+    assert!(e.run(&["config", "set", "copilot-tip-in-chat", "off"], b"").status.success());
+    assert!(!e.run(&["config", "set", "copilot-tip-in-chat", "maybe"], b"").status.success());
+    e.reprompt_run("c1", 0);
+    assert_eq!(e.agent_stop("c1"), "", "off: nothing in the conversation");
+    e.wait_for("1 stop");
+    assert!(e.statusline(Some("c1")).starts_with("AIQ tip: you've reworded"), "the status line still shows it");
+}
+
+#[test]
+fn e2e_tip_highlight_off_renders_plain_even_with_colour_allowed() {
+    let mut e = Env::new();
+    e.start_core();
+    assert!(e.run(&["config", "set", "tip-highlight", "off"], b"").status.success());
+    e.reprompt_run("c1", 0);
+    let mut c = e.cmd(&["hook", "copilot", "agentStop"]);
+    c.env_remove("NO_COLOR");
+    let o = e.run_with(c, json!({"sessionId": "c1", "stopReason": "end_turn"}).to_string().as_bytes());
+    let out = String::from_utf8(o.stdout).unwrap();
+    assert!(out.contains("AIQ tip:") && !out.contains("\\u001b") && !out.contains('\u{1b}'), "{out}");
+    e.wait_for("1 stop");
+    let mut c = e.cmd(&["statusline", "copilot"]);
+    c.env_remove("NO_COLOR");
+    let line =
+        String::from_utf8(e.run_with(c, json!({"session": {"id": "c1"}}).to_string().as_bytes()).stdout).unwrap();
+    assert!(line.starts_with("AIQ tip:") && !line.contains('\u{1b}'), "{line}");
 }
 
 #[test]

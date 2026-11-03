@@ -361,6 +361,10 @@ pub struct Item {
 pub struct Settings {
     pub daily_cap: u32,
     pub copilot_tip_stays: &'static str,
+    /// Where tips show; each true unless the person set it "off" (core `SWITCH_SETTINGS`).
+    pub copilot_tip_in_chat: bool,
+    pub tip_popup: bool,
+    pub tip_highlight: bool,
     /// auto (judge new tasks in the background) or off. "off" until `aiq install` connects a tool or the person first runs `aiq judge`.
     pub judge: String,
     pub judge_daily_tasks: u32,
@@ -466,6 +470,9 @@ fn empty(paths: &Paths, pack: &PackV1, now: Now) -> Snapshot {
         settings: Settings {
             daily_cap: pack.trigger.default_daily_cap,
             copilot_tip_stays: TipStays::NextPrompt.as_str(),
+            copilot_tip_in_chat: true,
+            tip_popup: true,
+            tip_highlight: true,
             judge: "off".into(),
             judge_daily_tasks: aiq_domain::rung::DEFAULT_DAILY_TASKS,
             next_rung_tips: "auto".into(),
@@ -530,6 +537,10 @@ fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()>
         if let Some(t) = store.setting("copilot_tip_stays").ok().flatten().and_then(|v| TipStays::parse(&v)) {
             s.settings.copilot_tip_stays = t.as_str();
         }
+        let off = |k: &str| store.setting(k).ok().flatten().as_deref() == Some("off");
+        s.settings.copilot_tip_in_chat = !off(aiq_core::service::SETTING_COPILOT_TIP_IN_CHAT);
+        s.settings.tip_popup = !off(aiq_core::service::SETTING_TIP_POPUP);
+        s.settings.tip_highlight = !off(aiq_core::service::SETTING_TIP_HIGHLIGHT);
         if let Some(m) = store.setting(aiq_core::update::SETTING_UPDATE).ok().flatten()
             && aiq_core::update::validate_mode(&m).is_ok()
         {

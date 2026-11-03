@@ -572,7 +572,7 @@ pub fn render_accuracy_paused(p: &[aiq_contracts::frames::PausedScope]) -> Strin
     out
 }
 
-/// `aiq config set <name> <value>`: `daily-cap` or `copilot-tip-stays`.
+/// `aiq config set <name> <value>`: one of the settings listed in the unknown-setting message.
 pub fn config_set(name: &str, value: &str) -> ExitCode {
     let keep_on = name.strip_prefix("keep-on.").map(|s| format!("keep_on.{s}"));
     let (key, done) = match name {
@@ -587,12 +587,16 @@ pub fn config_set(name: &str, value: &str) -> ExitCode {
         "judge-copilot-model" => ("judge_copilot_model", format!("Copilot judge model: {value}.")),
         "judge-copilot-sessions" => ("judge_copilot_sessions", format!("Copilot judge sessions: {value}.")),
         "next-rung-tips" => ("next_rung_tips", format!("Next-step tips: {value}.")),
+        "copilot-tip-in-chat" => ("copilot_tip_in_chat", format!("Copilot CLI tip in the conversation: {value}.")),
+        "tip-popup" => ("tip_popup", format!("Windows pop-up for tips: {value}.")),
+        "tip-highlight" => ("tip_highlight", format!("Tip highlight: {value}.")),
         "check-claude-model" => ("check_claude_model", format!("Accuracy check, Claude model: {value}.")),
         "check-copilot-model" => ("check_copilot_model", format!("Accuracy check, Copilot model: {value}.")),
         "update" => ("update", format!("Updates: {value}.")),
         _ => {
             println!(
-                "Unknown setting {name}. Settings: daily-cap, copilot-tip-stays, judge, judge-daily-tasks, \
+                "Unknown setting {name}. Settings: daily-cap, copilot-tip-stays, copilot-tip-in-chat, tip-popup, \
+                 tip-highlight, judge, judge-daily-tasks, \
                  judge-claude-model, judge-copilot-model, judge-copilot-sessions, next-rung-tips, check-claude-model, \
                  check-copilot-model, update, keep-on.<job or job/kind>."
             );

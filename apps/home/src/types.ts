@@ -217,6 +217,10 @@ export interface Item {
 export interface Settings {
   daily_cap: number;
   copilot_tip_stays: "next-prompt" | "two-prompts-or-5-min" | "until-opened";
+  /** Where tips show; each on unless the person turned it off. */
+  copilot_tip_in_chat: boolean;
+  tip_popup: boolean;
+  tip_highlight: boolean;
   judge: "auto" | "off";
   judge_daily_tasks: number;
   next_rung_tips: "auto" | "on" | "off";
