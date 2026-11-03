@@ -299,12 +299,32 @@ fn ready_card_waits_for_unseen_prompt_then_delivers() {
     assert!(h.stop("s", Some(&pid)).is_some());
 }
 
+// The expiry window runs from the turn's end (laptop 2026-11-03: a 37-minute Copilot turn lost its tip
+// 5 minutes before it ended).
 #[test]
-fn ready_card_expires_after_30_minutes() {
+fn a_long_turn_keeps_its_card_until_the_turn_ends() {
     let mut h = H::new();
     let pid = h.reprompt_run("s");
+    h.clock.advance(37 * MIN);
+    assert!(h.stop("s", Some(&pid)).is_some());
+}
+
+#[test]
+fn ready_card_expires_30_minutes_after_its_turn_ends() {
+    let mut h = H::new();
+    let pid = h.reprompt_run("s");
+    assert!(h.stop("s", Some("p-not-yet-arrived")).is_none()); // the turn ended; the card waits
     h.clock.advance(31 * MIN);
     assert!(h.stop("s", Some(&pid)).is_none());
+    assert_eq!(h.decisions(), vec![d("drop", "expired", 1)]);
+}
+
+#[test]
+fn ready_card_with_no_turn_end_expires_after_4_hours() {
+    let mut h = H::new();
+    h.reprompt_run("s");
+    h.clock.advance(4 * 60 * MIN + MIN);
+    h.svc().expire_stale().unwrap();
     assert_eq!(h.decisions(), vec![d("drop", "expired", 1)]);
 }
 

@@ -1033,9 +1033,16 @@ impl Store {
             .next())
     }
 
-    /// Show-ready cards decided before `before_ms` and still undelivered (to expire).
-    pub fn stale_ready(&self, before_ms: i64) -> Result<Vec<ReadyCard>> {
-        self.ready_rows("AND d.utc_ms < ?1", &[&before_ms])
+    /// Show-ready cards still undelivered whose turn ended (the session's first stop received after the
+    /// decision) before `ended_before_ms`, or that were decided before `decided_before_ms` with no turn
+    /// end seen. Both times are core-clock (`received_utc_ms`, `utc_ms`).
+    pub fn stale_ready(&self, ended_before_ms: i64, decided_before_ms: i64) -> Result<Vec<ReadyCard>> {
+        self.ready_rows(
+            "AND (d.utc_ms < ?2 OR (SELECT min(e.received_utc_ms) FROM event e
+                   WHERE e.surface = d.surface AND e.surface_session_id = d.surface_session_id
+                     AND e.kind = 'stop' AND e.received_utc_ms >= d.utc_ms) < ?1)",
+            &[&ended_before_ms, &decided_before_ms],
+        )
     }
 
     pub fn delivered_in_session(&self, surface: &str, session: &str) -> Result<bool> {
