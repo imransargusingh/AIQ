@@ -194,4 +194,15 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <ul><li><strong>Instances:</strong> 2026-11-03, Copilot eval on the laptop (68 premium requests): 4 of 6 rung misses.</li><li><strong>Sweep:</strong> every command in golden g1 (<code>jq</code> over <code>steps[].command</code>): r04&#x27;s <code>pre-commit run</code> was missed too</li></ul>
 <p>(added); r02&#x27;s <code>sha256sum -c</code> is still not a check (left: the model placed r02 right from the text). Same class elsewhere: any log fact rendered as trusted (<code>agent edited files</code>, <code>sub-agents</code>, <code>spec named</code>) is an allow-list too.</p>
 <ul><li><strong>Control:</strong> fact set fs2 (linters, script names, test-name arguments); test</li></ul>
-<p><code>checks_are_read_as_command_lines_not_substrings</code> holds the four g1 commands and six near-misses; the Copilot eval runs on both providers before a fact-set change ships. Rule: a &quot;trusted&quot; device fact must say what it could not see, or be tested against every command in the golden set.</p></main></body></html>
+<p><code>checks_are_read_as_command_lines_not_substrings</code> holds the four g1 commands and six near-misses; the Copilot eval runs on both providers before a fact-set change ships. Rule: a &quot;trusted&quot; device fact must say what it could not see, or be tested against every command in the golden set.</p>
+<h3>DC-021 — A reader that ends a turn at an event the tool writes more than once per turn</h3>
+<ul><li><strong>Signature:</strong> the Copilot import reader closed a prompt&#x27;s turn at the first main-line <code>assistant.turn_end</code>.</li></ul>
+<p>Copilot writes one after each model round, so every tool call after the first round was dropped until the next prompt. Measured 2026-11-03 on Imran&#x27;s store (DC-020&#x27;s sweep): 2 prompts lost 248 tool calls.</p>
+<ul><li><strong>Why it survives:</strong> the fixture wrote one <code>turn_end</code> per prompt, the shape its author expected; the live reader</li></ul>
+<p>resets at each prompt and never read <code>turn_end</code>, so the two paths disagreed silently. And a reader fix alone reaches nothing already imported: unchanged files are never read again.</p>
+<ul><li><strong>Instances:</strong> <code>read_copilot</code> since <code>aiq import</code> was built; also the judge&#x27;s live-task path, which reads the</li></ul>
+<p>same function.</p>
+<ul><li><strong>Sweep:</strong> every reader that ends a unit on a tool&#x27;s marker (<code>grep -rn &quot;turn_end\|turn_start&quot; crates</code>): only</li></ul>
+<p><code>read_copilot</code>. Claude&#x27;s reader ends at the next prompt or end of file, as does the live reader.</p>
+<ul><li><strong>Control:</strong> a turn runs to the next prompt or the end of the file; test</li></ul>
+<p><code>copilot_reader_keeps_every_round_of_a_prompt_past_its_first_turn_end</code> (several rounds, a sub-agent&#x27;s own turn end, red on the old reader). <code>COPILOT_READER</code> is stored in the settings: a run with a different version reads every Copilot session again once (<code>a_new_copilot_reader_reads_unchanged_sessions_again_once</code>). Rule: a turn ends where the person acts, never at a marker the tool may repeat; any change to what a reader stores raises its reader version.</p></main></body></html>
