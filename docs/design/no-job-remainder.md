@@ -2,7 +2,7 @@
 id: design-no-job-remainder
 title: "Design note: the 51 tasks still without a job"
 type: design
-status: proposed
+status: accepted
 owner: "Imran"
 phase: "5"
 tags: [design, rung-model, judge, coaching, pack]
@@ -15,8 +15,8 @@ summary: >-
   After the Run or ship it pack, 51 of 476 judged tasks have no job. They are two different groups. 31 are
   work no pack fits (chat tests, planning, brainstorming, odds and ends): no group is big enough for a
   fifth pack, and they already get no tips. 20 are pack tasks the judge read without confidence: that is a
-  rule question (R2), not a pack. Recommendation: no fifth pack and no catch-all; confirm with one survey
-  and one check on the laptop.
+  rule question (R2), not a pack. Measured on the laptop 2026-11-03: no kind reaches the bar and R2 agrees
+  7 of 15, so no fifth pack, no catch-all, and R2 stays off.
 ---
 
 # Design note: the 51 tasks still without a job
@@ -115,6 +115,45 @@ aiq judge --check-report
 - If R2 agrees at least 8 of 10 with at least 10 checked: propose switching R2 on (Imran's card).
 - If not: R2 stays off, and these 20 stay uncoached (about 4% of tasks).
 
+## Result (Imran's laptop, build 444dcda, 2026-11-03 ~00:00Z, check run 01a19eb3)
+
+Counts are measured. The kinds and the second readings are Inferred: model readings, no person checked.
+
+**Reading 1, survey.** 22 tasks were eligible, not 31, and all 22 answered. The gap of 9 is not explained
+here (likely tasks the survey's task list does not include; not checked).
+
+| Kind | Of 22 | Example labels |
+|---|---|---|
+| chat_or_test | 8 | casual greeting; minimal test prompt; agent retry request |
+| other | 7 | full page screenshot capture; photo background editing; resume interrupted work |
+| plan_or_manage | 4 | manage team actions; plan execution; work status check |
+| analyze_data | 1 | enrich organizational spreadsheet |
+| review_feedback | 1 | review process feedback |
+| set_up_tools | 1 | network access recovery |
+
+- No coachable kind reaches 10. The largest, plan_or_manage, has 4. **No fifth pack (L1).**
+- operate_systems is 0 and set_up_tools 1, below the 4 that would point to run_ship missing tasks. run_ship
+  wording stays as it is.
+- 15 of 22 are chat tests or odds and ends with no habit to coach.
+
+**Reading 2, check of every no-job task.** 43 of 43 eligible were read, second readers claude-opus-5-5 and gpt-6-astra (no job now 52 of 477: C1 31, C3 17,
+C2 4).
+
+| Cause | Second reading |
+|---|---|
+| C1 both said other | other 22 of 22 |
+| C3 agreed, not confident | other 8, ask_research 5, run_ship 3, code_change 1 |
+| C2 runs differed | write_doc 2, code_change 1, other 1 |
+
+| Rule | Gives a job to | Second reading agreed |
+|---|---|---|
+| R1 | 0 of 52 | none checked |
+| R2 | 15 of 52 | **7 of 15** (90%: 28-67%) |
+
+- R2 is far below 8 of 10. **R2 stays off (L3).** Half the C3 tasks the second reader calls `other`, so
+  the judge's low confidence there is mostly right.
+- C1 is confirmed as work outside every pack, now 40 of 40 across both checks.
+
 ## Decisions
 
 | # | Question | Decision | Why |
@@ -127,7 +166,7 @@ aiq judge --check-report
 
 | | |
 |---|---|
-| **Completed** | Grouped the 51 by cause; recommendation and decision bars set; readings written |
-| **Remaining** | Readings 1 and 2 on the laptop (the judge thread runs them) |
-| **Best next action** | Run reading 1, then reading 2, and record both results here |
-| **Imran's decision** | Only if a reading clears a bar: a fifth pack, or switching R2 on |
+| **Completed** | Grouped by cause; bars set; both readings run; no bar cleared |
+| **Remaining** | None. No-job tasks stay `unclassified`, with no tips |
+| **Best next action** | None now. Re-run the survey only if no-job tasks grow past about 20% of judged tasks |
+| **Imran's decision** | None needed: no reading cleared a bar |
