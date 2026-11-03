@@ -54,6 +54,12 @@ if (Test-Path $up) {
     Copy-Item -Force $up (Join-Path $bin 'upgrade.ps1')
     Write-Host "Copied: $(Join-Path $bin 'upgrade.ps1')"
 }
+# Copies keep the zip's "downloaded from the internet" mark. Running install.cmd was the person's yes, so take
+# the mark off the installed files: otherwise Windows can stop every later launch of AIQ home (Start menu,
+# update relaunch) on an "Open File - Security Warning" prompt, and a hidden launch would wait on it forever
+# (CI runner, 2026-11-03, measured: with the mark kept, the auto-update step hung 35 min where it starts
+# aiq-home.exe; that the prompt caused it is Inferred, and this smoke test now proves the fix or not).
+Get-ChildItem -File $bin | Where-Object { $_.Name -in 'aiq.exe', 'aiq-home.exe', 'upgrade.ps1' } | Unblock-File
 
 # 2. User PATH. SetEnvironmentVariable at User scope writes HKCU\Environment and tells running programs.
 $record = @{ path_added = $false; shortcut = $null }
