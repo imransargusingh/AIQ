@@ -6,9 +6,12 @@
 //! - **B, burst**: `burst_sessions`+ sessions started in the folder within `burst_min` minutes.
 //! - **T, template**: the normalized first prompt matches `template_sessions`+ sessions in the folder
 //!   within `template_window_h` hours.
-//! - **F, folder prior**: once B or T fires, the folder is set aside (persisted by the caller), and every
-//!   later session there is judged automated at its first prompt.
-//! - **H ≤ 1**: a set-aside session that sends a second prompt is a person, so AIQ records it from then on.
+//! - **F, folder prior**: the folder is set aside (persisted by the caller) only on folder-level evidence: a
+//!   burst, or a template whose sessions are at least `FOLDER_SHARE` of the folder's recent sessions. Then every
+//!   later session there is held at its first prompt. A template in a folder a person also works in sets aside
+//!   only the matching sessions.
+//! - **H ≤ 1**: a set-aside session that sends a second prompt is a person, so AIQ records it from then on,
+//!   first prompt included (`Verdict::Rescued`: the caller kept the held first prompt in memory).
 //!
 //! The windows hold only start times and an in-memory hash of the normalized first prompt; no prompt text.
 //! `simplify:` sessions before the rule fires in a new folder (at most `template_sessions - 1` for T,
@@ -22,6 +25,12 @@ use std::hash::{Hash, Hasher};
 
 const MAX_STARTS_PER_FOLDER: usize = 4096;
 const MAX_TRACKED_SESSIONS: usize = 10_000;
+/// A template sets its folder aside only when its sessions are at least this share of the folder's sessions in
+/// the window, the same bar as the import's folder prior. Below it, a person works there too.
+/// assume: an app folder is over 80% app runs. Measured on Imran's laptop 2026-11-03: executive_presence 99%,
+/// foresight 91%, AIQ's temp checks 100%; tacit 59% (9 of 22 sessions a person's). If false for some folder:
+/// only its matching sessions are set aside, which is the safe side.
+pub const FOLDER_SHARE: f64 = 0.8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Reason {
@@ -44,6 +53,8 @@ impl Reason {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Verdict {
     Record,
+    /// Record this prompt, after the session's held first prompt: a set-aside session sent a second prompt.
+    Rescued,
     /// Record nothing. `new_folder` is Some when this prompt made the folder set aside (persist it).
     Ignore {
         reason: Reason,
@@ -136,6 +147,19 @@ fn digits_replaced(w: &str) -> String {
     s
 }
 
+/// The share of the window's sessions whose first-prompt template has `min`+ sessions in the window.
+fn template_share(q: &VecDeque<(i64, Option<u64>)>, min: usize) -> f64 {
+    if q.is_empty() {
+        return 0.0;
+    }
+    let mut n: HashMap<u64, usize> = HashMap::new();
+    for h in q.iter().filter_map(|(_, h)| *h) {
+        *n.entry(h).or_default() += 1;
+    }
+    let in_template = q.iter().filter(|(_, h)| h.is_some_and(|h| n[&h] >= min)).count();
+    in_template as f64 / q.len() as f64
+}
+
 fn hash(s: &str) -> u64 {
     let mut h = DefaultHasher::new();
     s.hash(&mut h);
@@ -177,9 +201,9 @@ impl Guard {
     ) -> Verdict {
         let key = (surface.to_owned(), session.to_owned());
         if self.ignored.remove(&key) {
-            // A second prompt: H ≥ 2, so a person is driving this session. Record from now on.
+            // A second prompt: H ≥ 2, so a person is driving this session. Record from now on, first prompt too.
             self.seen.insert(key);
-            return Verdict::Record;
+            return Verdict::Rescued;
         }
         if known_session || !self.seen.insert(key.clone()) {
             return Verdict::Record;
@@ -208,8 +232,10 @@ impl Guard {
             (false, true) => Reason::Burst,
             _ => return Verdict::Record,
         };
+        // Folder-level evidence: a burst is app volume by itself; a template must be most of the folder's sessions.
+        let folder_level = burst || template_share(&starts.q, p.template_sessions as usize) >= FOLDER_SHARE;
         self.ignore(key);
-        Verdict::Ignore { reason, new_folder: Some(folder) }
+        Verdict::Ignore { reason, new_folder: folder_level.then_some(folder) }
     }
 
     /// A stop (or any non-prompt event) of a session whose prompts are being ignored is ignored too.
@@ -321,6 +347,53 @@ mod tests {
     }
 
     #[test]
+    fn template_in_a_folder_a_person_also_works_in_sets_aside_only_its_sessions() {
+        // tacit's shape (measured 2026-11-03): a person's sessions next to an app's repeated prompt.
+        let mut g = Guard::new();
+        for i in 0..5 {
+            let t = format!("my own question {}", "q".repeat(i + 1));
+            let v = g.on_prompt(&p(), "copilot-cli", &format!("me{i}"), Some("/tacit"), Some(&t), false, false, 0);
+            assert_eq!(v, Verdict::Record);
+        }
+        for i in 0..11 {
+            let v = g.on_prompt(
+                &p(),
+                "copilot-cli",
+                &format!("app{i}"),
+                Some("/tacit"),
+                Some(&format!("distil session {i}")),
+                false,
+                false,
+                (i + 1) * MIN,
+            );
+            if i < 10 {
+                assert_eq!(v, Verdict::Record, "app {i}: before the template shows");
+            } else {
+                // 11 of 16 window sessions (69%) are the template: below the folder bar.
+                assert_eq!(v, Verdict::Ignore { reason: Reason::Template, new_folder: None });
+            }
+        }
+        // Enough app runs to pass 80% of the window: now the folder is set aside.
+        let mut folder = None;
+        for i in 11..30 {
+            if let Verdict::Ignore { new_folder: Some(f), .. } = g.on_prompt(
+                &p(),
+                "copilot-cli",
+                &format!("app{i}"),
+                Some("/tacit"),
+                Some(&format!("distil session {i}")),
+                false,
+                false,
+                (i + 1) * MIN,
+            ) {
+                folder.get_or_insert((i, f));
+            }
+        }
+        // 20 template of 25 = 80%: the 20th app run (i = 19) is the first at the bar.
+        assert_eq!(folder, Some((19, "/tacit".to_owned())));
+    }
+
+    #[test]
     fn burst_of_unique_prompts_sets_folder_aside_on_the_fiftieth() {
         let mut g = Guard::new();
         for i in 0..49 {
@@ -355,7 +428,8 @@ mod tests {
         assert!(g.is_ignored("copilot-cli", "h1"));
         assert_eq!(
             g.on_prompt(&p(), "copilot-cli", "h1", Some("/ep"), Some("and more"), false, true, MIN),
-            Verdict::Record
+            Verdict::Rescued,
+            "the caller records the held first prompt, then this one"
         );
         assert!(!g.is_ignored("copilot-cli", "h1"));
         assert_eq!(

@@ -35,6 +35,10 @@ pub struct Service<C: Clock> {
     classifier: Box<dyn JobClassifier + Send>,
     counters: Arc<Counters>,
     guard: Guard,
+    /// The first prompt of each session the automated rule holds back, in memory only, so a person's session in
+    /// a set-aside folder is recorded whole when its second prompt arrives (H ≥ 2). Never written to disk unless
+    /// that happens. Bounded: on overflow all are dropped, and those sessions are recorded from their second prompt.
+    held: std::collections::HashMap<(String, String), EventV1>,
     /// Folder keys where a claude.ai Projects / Remote Control session was set aside (rule RC), so
     /// "Include them" can be offered there although no folder rule exists. In memory; bounded.
     projects_folders: std::collections::HashSet<String>,
@@ -45,6 +49,18 @@ pub struct Service<C: Clock> {
     /// AIQ-COACH-GUESS-LOW is logged once per core run.
     guess_low_logged: bool,
 }
+
+/// What the automated rule says about one live event.
+enum Gate {
+    Record,
+    /// Record nothing (an app or script's session, or a first prompt held back).
+    Skip,
+    /// Record this held first prompt, then the event: a person's second prompt in a held session.
+    Rescue(Box<EventV1>),
+}
+
+/// First prompts held back at once (each a few KB at most, in memory).
+const MAX_HELD: usize = 1024;
 
 /// Rule RC per session: a settled answer, or how many reads found the head not yet written.
 #[derive(Debug, Clone, Copy)]
@@ -98,6 +114,7 @@ impl<C: Clock> Service<C> {
             classifier: Box::new(AlwaysUnclassified),
             counters,
             guard: Guard::new(),
+            held: Default::default(),
             projects_folders: Default::default(),
             rc_checked: Default::default(),
             coach: None,
@@ -187,10 +204,21 @@ impl<C: Clock> Service<C> {
             self.counters.inc(codes::INGEST_SHAPE);
             return Ok(());
         }
-        if self.automated(ev)? {
-            self.counters.inc(codes::INGEST_AUTOMATED);
-            return Ok(()); // an app or script drove this session: record nothing (import spec US-12)
+        match self.automated(ev)? {
+            Gate::Skip => {
+                self.counters.inc(codes::INGEST_AUTOMATED);
+                return Ok(()); // an app or script drove this session: record nothing (import spec US-12)
+            }
+            // A person in a held session: record its first prompt (no tip now, it is late), then this one.
+            Gate::Rescue(first) => self.record(&first, trace_id, false)?,
+            Gate::Record => {}
         }
+        self.record(ev, trace_id, true)
+    }
+
+    /// Store one event and run the detectors. `tips`: false for a held first prompt recorded late, which
+    /// must not raise a card.
+    fn record(&mut self, ev: &EventV1, trace_id: Option<&str>, tips: bool) -> Result<(), StoreError> {
         let now = self.clock.now().utc_ms;
         let ts = parse_rfc3339_ms(&ev.ts).unwrap_or(now);
         // Security review S2: the hook already removed secrets; this pass covers spool lines written by an
@@ -256,6 +284,9 @@ impl<C: Clock> Service<C> {
             )
         };
         let new_task = self.engine.task_id(&ev.surface, &ev.surface_session_id) == Some(ev.event_id.as_str());
+        if !tips {
+            return Ok(());
+        }
         if let Some(sig) = sig {
             self.on_signal(&ev.surface, &ev.surface_session_id, &sig, trace_id)?;
         }
@@ -457,8 +488,8 @@ impl<C: Clock> Service<C> {
         v
     }
 
-    /// The automated-session rule, live side. True: record nothing for this event.
-    fn automated(&mut self, ev: &EventV1) -> Result<bool, StoreError> {
+    /// The automated-session rule, live side.
+    fn automated(&mut self, ev: &EventV1) -> Result<Gate, StoreError> {
         let (surface, session) = (ev.surface.as_str(), ev.surface_session_id.as_str());
         if ev.projects || self.projects_session(ev) {
             // Rule RC: Claude's own Projects / Remote Control session, every event, unless included.
@@ -467,7 +498,7 @@ impl<C: Clock> Service<C> {
                 if self.projects_folders.len() < 1024 && !k.is_empty() && self.projects_folders.insert(k) {
                     info!(aiq.reason = "projects", "Projects session set aside");
                 }
-                return Ok(true);
+                return Ok(Gate::Skip);
             }
         }
         if let Some(k) = ev.cwd.as_deref().filter(|c| is_aiq_check_folder(c)).map(folder_key) {
@@ -475,17 +506,19 @@ impl<C: Clock> Service<C> {
             // set-aside rule once, so `aiq status` lists it and `aiq include` brings it back.
             match self.store.folder_rules_now()?.get(&k).map(String::as_str) {
                 Some("include") => {}
-                Some(_) => return Ok(true),
+                Some(_) => return Ok(Gate::Skip),
                 None => {
                     self.store.insert_folder_rule(&k, "set_aside", "aiq-check", "live", self.clock.now().utc_ms)?;
                     info!(aiq.reason = "aiq-check", "folder set aside: AIQ's own checks");
-                    return Ok(true);
+                    return Ok(Gate::Skip);
                 }
             }
         }
-        let EventBody::Prompt(p) = &ev.body else { return Ok(self.guard.is_ignored(surface, session)) };
+        let EventBody::Prompt(p) = &ev.body else {
+            return Ok(if self.guard.is_ignored(surface, session) { Gate::Skip } else { Gate::Record });
+        };
         if !self.guard.is_ignored(surface, session) && self.store.session_known(surface, session)? {
-            return Ok(false); // not a first prompt, and not a session being ignored
+            return Ok(Gate::Record); // not a first prompt, and not a session being ignored
         }
         let set_aside = match ev.cwd.as_deref().map(folder_key) {
             Some(k) if !k.is_empty() => self.store.set_aside_folders()?.iter().any(|(f, _, _)| *f == k),
@@ -502,12 +535,23 @@ impl<C: Clock> Service<C> {
             set_aside,
             now,
         );
-        let Verdict::Ignore { reason, new_folder } = verdict else { return Ok(false) };
+        let key = (surface.to_owned(), session.to_owned());
+        let (reason, new_folder) = match verdict {
+            Verdict::Record => return Ok(Gate::Record),
+            Verdict::Rescued => {
+                return Ok(self.held.remove(&key).map_or(Gate::Record, |e| Gate::Rescue(Box::new(e))));
+            }
+            Verdict::Ignore { reason, new_folder } => (reason, new_folder),
+        };
+        if self.held.len() >= MAX_HELD {
+            self.held.clear();
+        }
+        self.held.insert(key, ev.clone());
         if let Some(folder) = new_folder {
             self.store.insert_folder_rule(&folder, "set_aside", reason.as_str(), "live", now)?;
             info!(aiq.reason = reason.as_str(), "folder set aside: automated sessions");
         }
-        Ok(true)
+        Ok(Gate::Skip)
     }
 
     /// Folders whose sessions AIQ ignores now, newest first: (folder, reason).
