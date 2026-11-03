@@ -1112,9 +1112,8 @@ pub fn project_names<'a>(
     let keys: BTreeSet<&str> = keys.collect();
     // Blank parts (a path ending in a separator or a space) are skipped, and a key with no named part shows
     // itself, so a name is never blank (laptop 2026-11-03: one row of 7 tasks showed no name).
-    let parts = |k: &str| {
-        k.split(['\\', '/']).map(str::trim).filter(|p| !p.is_empty()).map(str::to_owned).collect::<Vec<_>>()
-    };
+    let parts =
+        |k: &str| k.split(['\\', '/']).map(str::trim).filter(|p| !p.is_empty()).map(str::to_owned).collect::<Vec<_>>();
     let last = |k: &str| parts(k).last().cloned().unwrap_or_else(|| k.trim().to_owned());
     let mut seen: std::collections::BTreeMap<String, u32> = Default::default();
     for k in keys.iter().filter(|k| !k.trim().is_empty()) {
