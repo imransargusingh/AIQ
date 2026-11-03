@@ -275,6 +275,19 @@ that app's runs too. "Include them" is `aiq include <folder>` for both; the next
 imports the folder's sessions. Sessions set aside only because they were non-interactive starts
 (`claude -p`) or by the folder prior set no folder rule, so a person's own work in that folder stays
 watched live.
+**Folder rules need folder-level evidence (2026-11-03, Imran chose "narrow the rule").** The import writes
+a folder rule only when over 80% of the folder's sessions are set aside one by one; live, a burst sets the
+folder aside, and a template only when its sessions are at least 80% of the folder's recent sessions. In a
+folder a person also works in, only the matching sessions are set aside. A folder rule never removes a
+session that passed on its own: the task list (AIQ home and the judge) counts every imported session the
+import kept, and every live session with two or more prompts. Live, a set-aside folder's first prompt is
+held in memory; when the session sends a second prompt it is a person's (H ≥ 2), and the held first
+prompt is recorded too (no tip for it). Because the verdict is read per session, sessions already
+imported come back on the next start without a re-import. Laptop measurement that prompted it (read-only,
+2026-11-03): about 309 imported tasks and 8 live VS Code tasks in executive_presence (99% automated, 40
+kept), foresight (91%, 59 kept) and tacit (59%, 9 kept) were dropped by their folder rules; 6 live
+first prompts in foresight were lost. Fixture (`a_persons_sessions_count_in_app_folders_…`): tasks 2
+before, 16 after; tacit's shape gets no folder rule.
 Laptop run (2026-11-01, slice-1 build before this change, **Verified**, counts only): 650 Claude Code
 and 6,520 Copilot CLI sessions found, 333 imported, 6,495 set aside; 17-21 s per run; store 4.45 MB.
 Not yet: grouping into tasks, job classification and judging (waits for the rung judge), the
