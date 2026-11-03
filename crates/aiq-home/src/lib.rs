@@ -102,6 +102,10 @@ pub struct SplitOut {
     pub could: u32,
     pub needs: u32,
     pub uncertain: u32,
+    /// Not finished, with a next step at least one rung up (aiq-domain coach::Split::up).
+    pub up: u32,
+    /// The rung those next steps reach most often.
+    pub up_to: Option<u8>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
@@ -841,8 +845,15 @@ fn coaching(
     let rows = coach::type_rows(&judged, &pack.moves, &flags, now.utc_ms, p);
     let c = &mut s.coaching;
     let sp = coach::split(&judged, &rows, now.utc_ms - WINDOW_DAYS * DAY_MS, now.utc_ms + 1);
-    c.split =
-        SplitOut { tasks: sp.tasks, finished: sp.finished, could: sp.could, needs: sp.needs, uncertain: sp.uncertain };
+    c.split = SplitOut {
+        tasks: sp.tasks,
+        finished: sp.finished,
+        could: sp.could,
+        needs: sp.needs,
+        uncertain: sp.uncertain,
+        up: sp.up,
+        up_to: sp.up_to,
+    };
     for w in c.weeks.iter_mut() {
         let ws = coach::split(&judged, &rows, w.start_ms, w.start_ms + 7 * DAY_MS);
         (w.tasks, w.finished) = (ws.tasks, ws.finished);
