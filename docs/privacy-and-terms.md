@@ -52,9 +52,12 @@ When you use a connected tool, AIQ records:
   on your computer when the agent stops. Settings > What AIQ records turns this off.
 - **When things happened**: when you sent a prompt, when the agent stopped, which tool, and the folder
   you worked in.
-- **A summary of what the agent did** in each turn: which tools it used, which files it touched and
-  which commands it ran. AIQ reads this from your tools' own history files on your computer. It does
-  not store the agent's replies or your file contents.
+- **A summary of what the agent did** in each turn. For past sessions (`aiq import`): which tools it
+  used, which files it touched and which commands it ran. For live turns: counts only (tool calls by
+  tool name, commands, files and helper agents), with no command text or file names. AIQ reads this
+  from your tools' own history files on your computer when the agent stops, and only reads them. It
+  does not store the agent's replies or your file contents. Settings > What AIQ records turns the
+  live counts off.
 - **Past sessions**, if you run `aiq import` (the installer starts it once). It reads your Claude
   Code and Copilot CLI history from this computer. Runs that look automated (a script or app driving
   the tool) are set aside; `aiq include <folder>` brings a folder back.

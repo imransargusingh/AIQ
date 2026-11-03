@@ -50,6 +50,8 @@ Usage:
                                       turns them off itself if it guesses the kind of task wrong)
   aiq config set copilot-mid-turn <on|off>  Count Copilot messages you send while the agent is working
                                       (read from Copilot's own history file on this computer)
+  aiq config set agent-actions <on|off>  Count what the agent did in each turn: tool calls, commands,
+                                      files, sub-agents (counts only, read from the tool's own log)
   aiq config set keep-on.<job or job/type> <on|auto>  Keep next-step tips showing for a job or kind the
                                       accuracy check paused (auto: AIQ decides again)
   aiq tips                            Each next-step tip, whether it is on, and how often it would show

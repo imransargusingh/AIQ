@@ -250,6 +250,8 @@ export interface Settings {
   judge_daily_tasks: number;
   /** Read Copilot's own history file for messages sent while the agent works. */
   copilot_mid_turn: "on" | "off";
+  /** At each turn's end, count what the agent did (tool calls, commands, files, sub-agents). */
+  agent_actions: "on" | "off";
   next_rung_tips: "auto" | "on" | "off";
   /** Next-step tips may show now. */
   next_rung_on: boolean;

@@ -10,11 +10,7 @@
 //! message typed while the agent works shows in AIQ home's Your data. If false: those messages are missed, as
 //! before (nothing else changes).
 use serde_json::Value;
-use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
-
-/// Most bytes one `agentStop` reads; a longer backlog is read at the next ones.
-pub const MAX_READ_BYTES: u64 = 16 * 1024 * 1024;
 
 /// A message the person typed into a session's main line (not a sub-agent's).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -50,25 +46,11 @@ pub fn session_log(copilot_home: &Path, session: &str) -> Option<PathBuf> {
     ok.then(|| copilot_home.join("session-state").join(session).join("events.jsonl"))
 }
 
-/// Steering messages in the file from byte `from` on, and the offset to read from next time. Only whole lines
-/// are taken (a line still being written waits for the next read); at most `MAX_READ_BYTES` are read.
+/// Steering messages in the file from byte `from` on, and the offset to read from next time (whole lines only,
+/// at most `agent_actions::MAX_READ_BYTES`). The core reads them with the turn's actions (`agent_actions::read_since`).
 pub fn steering_since(path: &Path, from: u64) -> std::io::Result<(Vec<Typed>, u64)> {
-    let mut f = std::fs::File::open(path)?;
-    let len = f.metadata()?.len();
-    let from = if from > len { 0 } else { from }; // a shorter file was replaced: start again
-    f.seek(SeekFrom::Start(from))?;
-    let mut buf = Vec::new();
-    f.take(MAX_READ_BYTES.min(len - from)).read_to_end(&mut buf)?;
-    let whole = buf.iter().rposition(|b| *b == b'\n').map_or(0, |i| i + 1);
-    let out = buf[..whole]
-        .split(|b| *b == b'\n')
-        // Cheap filter first: most lines are tool output, and only a steering message carries the word.
-        .filter(|l| l.windows(10).any(|w| w == b"\"steering\""))
-        .filter_map(|l| serde_json::from_slice::<Value>(l).ok())
-        .filter_map(|v| typed_message(&v))
-        .filter(|t| t.delivery == "steering" && !t.text.trim().is_empty())
-        .collect();
-    Ok((out, from + whole as u64))
+    let r = crate::agent_actions::read_since(path, from, crate::agent_actions::LogKind::Copilot)?;
+    Ok((r.steering, r.next))
 }
 
 /// A stable event id for a message read from the log, so reading the same line again stores nothing new.

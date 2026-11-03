@@ -285,7 +285,7 @@
     "turn_ends": 2,
     "imported_sessions": 1,
     "imported_events": 6,
-    "store_bytes": 237568,
+    "store_bytes": 258048,
     "items": [
       {
         "event_id": "019000000018-0000-7000-8000-000000000000",
@@ -404,6 +404,7 @@
     "judge": "off",
     "judge_daily_tasks": 50,
     "copilot_mid_turn": "on",
+    "agent_actions": "on",
     "next_rung_tips": "auto",
     "next_rung_on": true,
     "guess_checked": 0,

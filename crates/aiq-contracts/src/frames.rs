@@ -149,6 +149,26 @@ pub struct StatusReply {
     /// Next-rung tips and AIQ's self-check of its type guesses (coaching-from-rungs D10).
     #[serde(default)]
     pub coach: Option<CoachStatus>,
+    /// Live agent actions read at each turn's end (design live-agent-actions). None with an older core.
+    #[serde(default)]
+    pub agent_actions: Option<ActionsStatus>,
+}
+
+/// Live agent actions since local midnight, counted from stored rows (measured).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct ActionsStatus {
+    /// The `agent_actions` switch.
+    pub enabled: bool,
+    /// Turns read today, and of those, turns AIQ could not read ("not recorded").
+    pub turns: u32,
+    pub not_recorded: u32,
+    /// Why turns were not recorded today: (reason, turns).
+    #[serde(default)]
+    pub why: Vec<(String, u32)>,
+    /// Read cost per turn today: 95th percentile and largest, ms; and the largest read, bytes. None with no turn.
+    pub p95_ms: Option<u64>,
+    pub max_ms: Option<u64>,
+    pub max_bytes: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
