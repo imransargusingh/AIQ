@@ -128,6 +128,9 @@ pub struct TakeCardReply {
 pub struct TipLineReply {
     pub card: Option<CardV1>,
     pub waiting_card_id: Option<String>,
+    /// No tip: where the open task is heading, one plain line (design live-rung-trend D). Older cores omit it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trend: Option<String>,
     /// As `TakeCardReply::plain`.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub plain: bool,

@@ -93,8 +93,8 @@ its own reader for an undocumented format; a field-names-only shape check comes 
 
 **Step 2: C and D.** C, a "Right now" card at the top of Home while a task is open: a step line of the estimated
 rung after each turn, the rung the task could reach, and the tip at the turn it applies to. D, the same trend in
-the existing status-line tip. Both are an estimate until the task ends; the judge's rung replaces it. Both
-change what people see while they work, so they need Imran's go after step 1.
+the existing status-line tip. Both are an estimate until the task ends; the judge's rung replaces it. Imran gave
+the go on 2026-11-03 ("build C and D"); built as designed in `docs/design/live-rung-trend.md`.
 
 **Step 3: goals inside a task.** The judge marks where the goal changes, in the same call it already makes, and
 names a kind per part; stored as append-only segment rows, never by rewriting tasks. Before it goes live,

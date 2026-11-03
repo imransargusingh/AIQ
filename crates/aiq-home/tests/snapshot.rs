@@ -437,3 +437,38 @@ fn a_renamed_project_keeps_its_name_and_an_empty_name_goes_back() {
     Seed::new(&p).setting(&format!("project_name.{AIQ}"), "", NOW - DAY);
     assert_eq!(names(&snap(&p)), vec![(aiq_home::NO_FOLDER.into(), false), ("aiq".into(), false)]);
 }
+
+/// Design live-rung-trend C: the open task's estimate after each turn, from recorded actions only.
+#[test]
+fn live_trend_reads_the_open_task_turn_by_turn() {
+    let d = tempfile::tempdir().unwrap();
+    let p = Paths::at(d.path());
+    coaching(&p);
+    open_task(&p);
+    let s = snap(&p);
+    let l = s.live.as_ref().expect("a task is open");
+    assert_eq!((l.trend.surface.as_str(), l.trend.prompts, l.trend.working), ("copilot-cli", 5, true));
+    // Turn 1 only read files (Assisted); turn 2 edited from a full brief (Delegated); turn 3 is the third prompt
+    // (Directed); turn 4 was not recorded, so it adds nothing and the estimate stays.
+    let rungs: Vec<Option<u8>> = l.trend.steps.iter().map(|x| x.rung).collect();
+    assert_eq!(rungs, [Some(1), Some(3), Some(2), Some(2)]);
+    assert_eq!(l.trend.unrecorded, [4]);
+    assert_eq!((l.trend.rung, l.trend.could), (Some(2), Some(3)), "could reach comes from the spec kind's row");
+    assert_eq!(l.kind, Some("Writing a spec or PRD"));
+    assert_eq!(l.trend.tip.as_ref().map(|t| t.turn), Some(3));
+    assert!(s.tasks.iter().any(|t| t.task_id == l.task_id), "opens a task the list has");
+    let json = serde_json::to_string(l).unwrap();
+    assert!(!json.contains("tighten the wording") && !json.contains("Write the spec"), "no prompt text in the card");
+}
+
+#[test]
+fn live_trend_goes_when_the_task_ends_or_is_switched_off() {
+    let d = tempfile::tempdir().unwrap();
+    let p = Paths::at(d.path());
+    coaching(&p);
+    let mut seed = open_task(&p);
+    let later = Now { utc_ms: NOW + 31 * MIN, offset_min: 0 };
+    assert!(snapshot(&p, &BundledPack.load().unwrap(), later).live.is_none(), "idle gap passed: the task ended");
+    seed.setting("live_trend", "off", NOW - MIN);
+    assert!(snap(&p).live.is_none());
+}

@@ -859,6 +859,30 @@ mod tests {
     /// re-record), and today's parser and placement must give exactly the recorded answers' scores. A rule
     /// change that moves a score fails here; bless an intended move with `AIQ_EVAL_BLESS=1 cargo test -p aiq
     /// replay_gate`, which rewrites `placed` and `totals` in evals/judge/replay.json for review in the diff.
+    /// The live trend's last estimate against the golden set's labelled rungs (design live-rung-trend T1).
+    /// Measured 2026-11-03: exact 22/32, within one 29/32, higher than the label 4/32 (the judge's replay: 23/32
+    /// and 29/32). A rule change that does worse fails here.
+    #[test]
+    fn trend_matches_golden() {
+        let (mut exact, mut within, mut high, mut none, mut n) = (0, 0, 0, 0, 0);
+        for c in golden().cases {
+            let Some(want) = c.expect.rung.clone() else { continue };
+            n += 1;
+            let (steps, _) = aiq_domain::trend::trend(&turns(&c.steps), c.expect.job.first().map(String::as_str));
+            let Some(got) = steps.last().and_then(|s| s.rung) else {
+                none += 1;
+                continue;
+            };
+            exact += want.contains(&got) as u32;
+            within += want.iter().any(|w| w.abs_diff(got) <= 1) as u32;
+            high += want.iter().all(|w| got > *w) as u32;
+            println!("{} want {:?} got {}", c.id, want, got);
+        }
+        println!("trend vs golden: exact {exact}/{n}, within one {within}/{n}, higher {high}/{n}, none {none}/{n}");
+        assert_eq!(none, 0);
+        assert!(exact >= 22 && within >= 29 && high <= 4, "exact {exact}, within one {within}, higher {high} of {n}");
+    }
+
     #[test]
     fn replay_gate() {
         let rec: Value = serde_json::from_str(REPLAY).unwrap();

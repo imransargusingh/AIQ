@@ -314,6 +314,20 @@ pub struct TurnActionRow {
     pub utc_ms: i64,
 }
 
+/// One live event of a session with what the trend needs (`Store::session_events`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct SessionEvent {
+    pub event_id: String,
+    pub kind: String,
+    pub ts_utc_ms: i64,
+    pub text: Option<String>,
+    /// A stop's `turn_action.outcome` (recorded, not_recorded); None when no row exists.
+    pub action_outcome: Option<String>,
+    /// JSON {tool name: calls}, when recorded.
+    pub tools: Option<String>,
+    pub subagents: Option<i64>,
+}
+
 /// One answer to a tip (schema v6 `tip_feedback`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct TipFeedbackRow {
@@ -691,6 +705,37 @@ impl Store {
                     bytes_read: r.get(11)?,
                     read_ms: r.get(12)?,
                     utc_ms: r.get(13)?,
+                })
+            })
+            .map_err(err(codes::STORE_OPEN))?;
+        rows.collect::<rusqlite::Result<_>>().map_err(err(codes::STORE_OPEN))
+    }
+
+    /// A session's live events at or after `since_ms`, oldest first, each prompt with its text (None when
+    /// deleted or never stored) and each stop with its turn's recorded actions (None before v9, or when no row
+    /// was written). The live rung trend reads this (design live-rung-trend T2).
+    pub fn session_events(&self, surface: &str, session: &str, since_ms: i64) -> Result<Vec<SessionEvent>> {
+        let actions =
+            if self.has_table("turn_action")? { "a.outcome, a.tools, a.subagents" } else { "NULL, NULL, NULL" };
+        let join =
+            if self.has_table("turn_action")? { "LEFT JOIN turn_action a ON a.stop_event_id = e.event_id" } else { "" };
+        let sql = format!(
+            "SELECT e.event_id, e.kind, e.ts_utc_ms, t.text, {actions}
+             FROM event e LEFT JOIN content t ON t.event_id = e.event_id {join}
+             WHERE e.surface = ?1 AND e.surface_session_id = ?2 AND e.ts_utc_ms >= ?3
+             ORDER BY e.ts_utc_ms, e.event_id"
+        );
+        let mut st = self.conn.prepare(&sql).map_err(err(codes::STORE_OPEN))?;
+        let rows = st
+            .query_map(params![surface, session, since_ms], |r| {
+                Ok(SessionEvent {
+                    event_id: r.get(0)?,
+                    kind: r.get(1)?,
+                    ts_utc_ms: r.get(2)?,
+                    text: r.get(3)?,
+                    action_outcome: r.get(4)?,
+                    tools: r.get(5)?,
+                    subagents: r.get(6)?,
                 })
             })
             .map_err(err(codes::STORE_OPEN))?;

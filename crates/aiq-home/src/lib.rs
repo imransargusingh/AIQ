@@ -13,6 +13,7 @@ use aiq_domain::clock::{DAY_MS, Now, deliveries_counted_today};
 use aiq_domain::reprompt::{TaskPrompt, TaskSpan, split_tasks};
 use aiq_domain::tipline::TipStays;
 use aiq_store::Store;
+use rusqlite::OptionalExtension;
 use serde::Serialize;
 use std::collections::BTreeSet;
 use std::time::Instant;
@@ -58,6 +59,20 @@ pub struct Snapshot {
     pub update: aiq_core::update::View,
     /// One row per project with a task in the window, most room to grow first (design project-filter).
     pub projects: Vec<Project>,
+    /// The open task's live rung trend (design live-rung-trend C): the newest live session whose last event is
+    /// within the idle gap. None when no task is open, its first turn has not ended, or the person turned it off.
+    pub live: Option<Live>,
+}
+
+/// The Right now card: the core's trend for the open task, with what Home adds (its task id, kind name).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Live {
+    #[serde(flatten)]
+    pub trend: aiq_core::live_trend::LiveTrend,
+    /// The task in `tasks` (opens its page). A session the list leaves out (set aside, automated) shows no card.
+    pub task_id: String,
+    /// The first-prompt label's kind, in words.
+    pub kind: Option<&'static str>,
 }
 
 /// One project: the tasks whose session ran in one folder (design project-filter P1–P5b). Its numbers run the
@@ -401,6 +416,8 @@ pub struct Settings {
     pub copilot_tip_in_chat: bool,
     pub tip_popup: bool,
     pub tip_highlight: bool,
+    /// Show where the open task is heading (design live-rung-trend); default on.
+    pub live_trend: bool,
     /// auto (judge new tasks in the background) or off. "off" until `aiq install` connects a tool or the person first runs `aiq judge`.
     pub judge: String,
     pub judge_daily_tasks: u32,
@@ -514,6 +531,7 @@ fn empty(paths: &Paths, pack: &PackV1, now: Now) -> Snapshot {
             copilot_tip_in_chat: true,
             tip_popup: true,
             tip_highlight: true,
+            live_trend: true,
             judge: "off".into(),
             judge_daily_tasks: aiq_domain::rung::DEFAULT_DAILY_TASKS,
             copilot_mid_turn: "on".into(),
@@ -547,6 +565,7 @@ fn empty(paths: &Paths, pack: &PackV1, now: Now) -> Snapshot {
         },
         update: aiq_core::update::view(paths, None, now.utc_ms),
         projects: vec![],
+        live: None,
     }
 }
 
@@ -585,6 +604,7 @@ fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()>
         s.settings.copilot_tip_in_chat = !off(aiq_core::service::SETTING_COPILOT_TIP_IN_CHAT);
         s.settings.tip_popup = !off(aiq_core::service::SETTING_TIP_POPUP);
         s.settings.tip_highlight = !off(aiq_core::service::SETTING_TIP_HIGHLIGHT);
+        s.settings.live_trend = !off(aiq_core::service::SETTING_LIVE_TREND);
         if let Some(m) = store.setting(aiq_core::update::SETTING_UPDATE).ok().flatten()
             && aiq_core::update::validate_mode(&m).is_ok()
         {
@@ -636,6 +656,9 @@ fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()>
     }
     coaching(store, pack, now, &tasks, &judgments, s)?;
     s.tasks = tasks;
+    if s.settings.live_trend {
+        s.live = live(store, pack, now.utc_ms, s)?;
+    }
 
     // Tips: delivered cards in the last 90 days, newest first; tips today counted as the trigger engine counts.
     s.home.tips_today = deliveries_counted_today(store.delivery_days().map_err(|e| e.to_string())?, now.local_day());
@@ -716,6 +739,45 @@ fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()>
             q(c.query_row("SELECT count(*) FROM import_event", [], |r| r.get::<_, i64>(0)))? as u64;
     }
     Ok(())
+}
+
+/// The newest live session's open task, with "could reach" from the kinds rows (the same rows Home shows).
+fn live(store: &Store, pack: &PackV1, now_ms: i64, s: &Snapshot) -> R<Option<Live>> {
+    let gap = pack.idle_gap_min as i64 * 60_000;
+    let newest: Option<(String, String)> = q(store
+        .raw()
+        .query_row(
+            "SELECT surface, surface_session_id FROM event WHERE ts_utc_ms >= ?1
+             ORDER BY ts_utc_ms DESC, event_id DESC LIMIT 1",
+            [now_ms - gap],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .optional())?;
+    let Some((surface, session)) = newest else { return Ok(None) };
+    let Some(mut t) =
+        aiq_core::live_trend::open_task(store, &surface, &session, now_ms, gap).map_err(|e| e.to_string())?
+    else {
+        return Ok(None);
+    };
+    if t.steps.is_empty() {
+        return Ok(None); // the first turn has not ended: nothing to show yet, so no empty card
+    }
+    let row =
+        s.coaching.kinds.iter().find(|k| Some(&k.job) == t.job.as_ref() && Some(&k.task_type) == t.task_type.as_ref());
+    t.could = row.and_then(|k| k.potential).filter(|p| t.rung.is_some_and(|r| *p > r));
+    let Some(task_id) = s
+        .tasks
+        .iter()
+        .find(|x| x.origin == "live" && x.tool == t.surface && x.members.iter().any(|(_, ms)| *ms == t.first_ms))
+        .map(|x| x.task_id.clone())
+    else {
+        return Ok(None);
+    };
+    let kind = match (t.job.as_deref(), t.task_type.as_deref()) {
+        (Some(j), Some(ty)) => aiq_contracts::judge::task_type_label(j, ty),
+        _ => None,
+    };
+    Ok(Some(Live { trend: t, task_id, kind }))
 }
 
 /// Every task whose first prompt is at or after `since_ms`, live and imported, newest first. A session's own

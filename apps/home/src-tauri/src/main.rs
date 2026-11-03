@@ -96,6 +96,7 @@ fn allowed_setting(key: &str) -> bool {
             | "judge_daily_tasks"
             | "copilot_mid_turn"
             | "agent_actions"
+            | "live_trend"
             | "update"
     )
         || key.starts_with("keep_on.")
@@ -516,6 +517,7 @@ mod tests {
         assert!(allowed_setting("judge_daily_tasks"));
         assert!(allowed_setting("copilot_mid_turn"));
         assert!(allowed_setting("agent_actions"));
+        assert!(allowed_setting("live_trend"));
         assert!(allowed_setting("update"));
         assert!(!allowed_setting("paused"));
         assert!(!allowed_setting("anything"));

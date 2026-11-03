@@ -320,3 +320,25 @@ li+li>.kindrow{border-top:1px solid var(--hairline)}
 .dv-axis .dv-track span{position:absolute;transform:translateX(-50%);font:var(--t-caption);color:var(--ink-mute);white-space:nowrap}
 [data-theme="contrast"] .dv-task{border-color:var(--ink)}
 @media (forced-colors:active){.dv-task{forced-color-adjust:none;border:1px solid CanvasText}.dv-tick{background:CanvasText}}
+
+/* Right now card on Home (design live-rung-trend C): the open task's estimate after each turn. */
+.rn .head{display:flex;justify-content:space-between;align-items:baseline;gap:var(--s3);flex-wrap:wrap}
+.rn h2{margin:0}
+.rn-head{margin:var(--s2) 0}
+.rn-scroll{overflow-x:auto}
+.rn-trace{display:block}
+.rn-grid{stroke:var(--hairline)}
+.rn-ax{font-size:11px;fill:var(--ink-mute)}
+.rn-line{fill:none;stroke:var(--ink);stroke-width:2;stroke-linejoin:round}
+.rn-pt{fill:var(--surface);stroke:var(--ink);stroke-width:2}
+.rn-last{fill:var(--primary);stroke:var(--primary)}
+.rn-none,.rn-pt.rn-unrec{fill:var(--surface);stroke:var(--ink-mute);stroke-dasharray:2 2}
+.rn-could{stroke:var(--primary);stroke-width:1.5;stroke-dasharray:4 4}
+.rn-could-t{font-size:11px;fill:var(--primary)}
+.rn-tipline{stroke:var(--warning);stroke-width:1.5}
+.rn-tipbox{fill:#f9f1a5;stroke:var(--warning)}
+.rn-tiptext{font-size:10px;font-weight:700;fill:#000}
+.rn-tip{margin:var(--s2) 0}
+.rn-badge{background:#f9f1a5;color:#000;font-weight:700;padding:0 4px;border-radius:3px}
+.rn-why{list-style:none;padding:0;margin:var(--s2) 0;display:grid;gap:2px}
+@media (forced-colors:active){.rn-line,.rn-pt,.rn-could{stroke:CanvasText}.rn-last{fill:Highlight}.rn-tipbox,.rn-badge{forced-color-adjust:none}}

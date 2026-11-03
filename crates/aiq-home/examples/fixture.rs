@@ -30,6 +30,16 @@ fn main() {
     s.status.read_ms = 12; // fixed, so screenshots and tests do not churn
     write(&out, "full", &s);
 
+    // A task open right now: the Right now card on Home (design live-rung-trend C).
+    let live = Paths::at(&tmp.join("live"));
+    seed::coaching(&live);
+    seed::open_task(&live);
+    aiq_core::control::finish_setup(&live).unwrap();
+    let mut l = aiq_home::snapshot(&live, &pack, now);
+    l.status.core = true;
+    l.status.read_ms = 12;
+    write(&out, "live", &l);
+
     // Task detail of the newest Claude Code task (three prompts, a tip fired on it).
     let id = &s.tasks.iter().find(|t| t.tool == "claude-code" && t.prompts == 3).unwrap().task_id;
     let mut det = aiq_home::task_detail(&full, &pack, now, id).unwrap();

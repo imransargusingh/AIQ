@@ -227,8 +227,13 @@ fn writer_loop(mut svc: Service<SystemClock>, rx: Receiver<Cmd>, paths: &Paths, 
             Cmd::TipLine { surface, session, reply } => {
                 let plain = !svc.switch_on(SETTING_TIP_HIGHLIGHT);
                 let r = match svc.tip_line(&surface, session.as_deref()) {
-                    Some(TipLineOut::Full(c)) => TipLineReply { card: Some(c), waiting_card_id: None, plain },
-                    Some(TipLineOut::Waiting(id)) => TipLineReply { card: None, waiting_card_id: Some(id), plain },
+                    Some(TipLineOut::Full(c)) => {
+                        TipLineReply { card: Some(c), waiting_card_id: None, trend: None, plain }
+                    }
+                    Some(TipLineOut::Waiting(id)) => {
+                        TipLineReply { card: None, waiting_card_id: Some(id), trend: None, plain }
+                    }
+                    Some(TipLineOut::Trend(t)) => TipLineReply { trend: Some(t), plain, ..Default::default() },
                     None => TipLineReply::default(),
                 };
                 let _ = reply.send(r);

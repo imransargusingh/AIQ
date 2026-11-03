@@ -77,6 +77,30 @@ impl Seed {
         id
     }
 
+    /// The turn ended by `stop_id` had these actions recorded live (schema v9 `turn_action`); `tools` None writes
+    /// a not-recorded row.
+    pub fn turn_action(&mut self, stop_id: &str, surface: &str, session: &str, at: i64, tools: Option<&[(&str, i64)]>) {
+        let row = aiq_store::TurnActionRow {
+            stop_event_id: stop_id.into(),
+            surface: surface.into(),
+            surface_session_id: session.into(),
+            ts_utc_ms: at,
+            outcome: if tools.is_some() { "recorded" } else { "not_recorded" }.into(),
+            why: tools.is_none().then(|| "read_error".into()),
+            tool_calls: tools.map(|t| t.iter().map(|(_, n)| n).sum()),
+            commands: tools.map(|_| 0),
+            files: tools.map(|_| 0),
+            subagents: tools.map(|_| 0),
+            tools: tools.map(|t| {
+                serde_json::Value::Object(t.iter().map(|(k, n)| (k.to_string(), (*n).into())).collect()).to_string()
+            }),
+            bytes_read: 100,
+            read_ms: 1,
+            utc_ms: at,
+        };
+        self.store.insert_turn_action(&row).unwrap();
+    }
+
     /// The person deleted this prompt's text (the content row goes; the event stays).
     pub fn delete_text(&mut self, event_id: &str) {
         self.store.raw().execute("DELETE FROM content WHERE event_id = ?1", [event_id]).unwrap();
@@ -460,4 +484,53 @@ pub fn progress(paths: &Paths) {
         s.stop("copilot-cli", &format!("p{i}"), at + 3 * MIN);
         s.store.insert_judgment(&coach_row(&id, job, ty, *cur, state, 0)).unwrap();
     }
+}
+
+/// A task open right now (design live-rung-trend): Copilot CLI, five prompts in the last 22 minutes, labelled
+/// Write a spec, the agent editing from turn 2, turn 4 not recorded, a tip delivered after turn 3, and the agent
+/// still on prompt 5.
+pub fn open_task(paths: &Paths) -> Seed {
+    let mut s = Seed::new(paths);
+    s.n = 10_000; // after the standard seed's ids
+    let (now, sv, se) = (NOW, "copilot-cli", "live1");
+    let first = "Write the spec for CSV export from the report page. Context: ops want one file per day; the \
+                 handler is in web/report/export.ts. Keep the column order unchanged.";
+    let at = |m: i64| now - 22 * MIN + m * MIN;
+    let p1 = s.prompt(sv, se, at(0), Some(AIQ), first);
+    s.store
+        .insert_kind_label(&aiq_store::KindLabelRow {
+            label_id: "lbl-live1".into(),
+            task_id: p1,
+            surface: sv.into(),
+            surface_session_id: se.into(),
+            provider: "copilot-cli".into(),
+            model: None,
+            outcome: "ok".into(),
+            job: Some("write_doc".into()),
+            job_confidence: Some(0.9),
+            task_type: Some("spec".into()),
+            task_type_confidence: Some(0.85),
+            requested_utc_ms: at(0),
+            started_utc_ms: at(0),
+            latency_ms: 900,
+            tokens_in: None,
+            tokens_out: None,
+            cost_usd: None,
+            utc_ms: at(0) + 900,
+        })
+        .unwrap();
+    let x = s.stop(sv, se, at(2));
+    s.turn_action(&x, sv, se, at(2), Some(&[("view", 3), ("grep", 1)]));
+    s.prompt(sv, se, at(4), Some(AIQ), "ok, draft it in docs/specs/export.md");
+    let x = s.stop(sv, se, at(8));
+    s.turn_action(&x, sv, se, at(8), Some(&[("view", 1), ("apply_patch", 2)]));
+    s.prompt(sv, se, at(10), Some(AIQ), "add the file name rule");
+    let x = s.stop(sv, se, at(12));
+    s.turn_action(&x, sv, se, at(12), Some(&[("apply_patch", 1)]));
+    s.tip(sv, se, at(12), vec!["3 prompts".into()], false);
+    s.prompt(sv, se, at(15), Some(AIQ), "and the header row");
+    let x = s.stop(sv, se, at(17));
+    s.turn_action(&x, sv, se, at(17), None);
+    s.prompt(sv, se, at(21), Some(AIQ), "tighten the wording");
+    s
 }

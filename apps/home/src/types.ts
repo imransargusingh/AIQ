@@ -15,6 +15,35 @@ export interface Snapshot {
   update: Update;
   /** One row per project with a task in the window, most room to grow first (design project-filter). */
   projects: Project[];
+  /** The open task's live rung trend (design live-rung-trend C); null when no task is open or it is off. */
+  live: Live | null;
+}
+
+/** Mirrors crates/aiq-core `live_trend::LiveTrend` plus Home's task id and kind name. An estimate from what the
+ * agent did; the judge's rung replaces it when the task ends. */
+export interface Live {
+  surface: string;
+  session: string;
+  first_ms: number;
+  last_ms: number;
+  prompts: number;
+  /** The agent is working on the last prompt. */
+  working: boolean;
+  job: string | null;
+  task_type: string | null;
+  steps: { turn: number; at_ms: number; rung: number | null; recorded: boolean }[];
+  rung: number | null;
+  could: number | null;
+  did_turns: number[];
+  /** The work counted is looking things up (an answer or run job), not edits. */
+  did_is_lookup: boolean;
+  /** The first prompt had room for a goal and context; null when its text is gone. */
+  brief: boolean | null;
+  unrecorded: number[];
+  subagents: number;
+  tip: { card_id: string; turn: number; try_this: string } | null;
+  task_id: string;
+  kind: string | null;
 }
 
 /** One project: tasks whose session ran in one folder (crates/aiq-home `Project`, design project-filter). */
@@ -246,6 +275,8 @@ export interface Settings {
   copilot_tip_in_chat: boolean;
   tip_popup: boolean;
   tip_highlight: boolean;
+  /** Show where the open task is heading: Home's Right now card and the Copilot CLI status line. */
+  live_trend: boolean;
   judge: "auto" | "off";
   judge_daily_tasks: number;
   /** Read Copilot's own history file for messages sent while the agent works. */

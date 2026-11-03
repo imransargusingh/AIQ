@@ -1406,3 +1406,34 @@ fn copilot_turn_actions_come_from_the_session_log_and_respect_set_aside_and_paus
     stop(&mut h, "copilot-cli", "");
     assert_eq!(turn_rows(&mut h).len(), 1);
 }
+
+/// Design live-rung-trend D: with no tip to show, the Copilot CLI status line names where the open task is
+/// heading, from the actions recorded at each turn end. Off switch and the end of the task clear it.
+#[test]
+fn status_line_shows_the_live_trend_between_tips() {
+    let mut h = H::new();
+    let home = TempDir::new().unwrap();
+    h.svc().set_copilot_home(home.path().to_owned());
+    let log = home.path().join("session-state").join("t-1").join("events.jsonl");
+    std::fs::create_dir_all(log.parent().unwrap()).unwrap();
+    let brief = "Add a --since flag to the export command. Context: export dumps the whole timetable and ops want \
+                 one day; keep the CSV columns unchanged and reject bad dates";
+    let patch = "*** Begin Patch\n*** Update File: src/export.rs\n*** End Patch";
+    std::fs::write(
+        &log,
+        cc_lines(&[
+            serde_json::json!({"type":"user.message","data":{"content":brief,"delivery":"idle"}}),
+            serde_json::json!({"type":"tool.execution_start","data":{"toolName":"apply_patch","arguments":patch}}),
+        ]),
+    )
+    .unwrap();
+    h.cp_send("t-1", brief);
+    assert_eq!(h.tip("t-1"), None, "the agent is on its first turn: no estimate yet");
+    h.cp_stop("t-1");
+    assert_eq!(h.tip("t-1"), Some(TipLineOut::Trend("AIQ: heading for Delegated (3) so far · turn 1".into())));
+    h.svc().set("live_trend", "off").unwrap();
+    assert_eq!(h.tip("t-1"), None);
+    h.svc().set("live_trend", "on").unwrap();
+    h.clock.advance(31 * MIN);
+    assert_eq!(h.tip("t-1"), None, "idle gap passed: the task ended");
+}
