@@ -57,6 +57,12 @@ pub fn set_setting(paths: &Paths, key: &str, value: &str, timeout: Duration) -> 
     ok_reply(ask(paths, timeout, |token| Request::Setting { token, key: key.into(), value: value.into() }))
 }
 
+/// "Include them" (AIQ home's Set aside list, `aiq include`): a folder AIQ set aside as automated is the
+/// person's own work. Through the core only, as it holds the set-aside list in memory.
+pub fn include_folder(paths: &Paths, folder: &str, timeout: Duration) -> Result<(), ControlError> {
+    ok_reply(ask(paths, timeout, |token| Request::IncludeFolder { token, folder: folder.into() }))
+}
+
 /// Delete everything AIQ stored: through the core when it runs, else by deleting the files.
 pub fn forget_all(paths: &Paths, timeout: Duration) -> Result<(), ControlError> {
     match ok_reply(ask(paths, timeout, |token| Request::Forget { token })) {

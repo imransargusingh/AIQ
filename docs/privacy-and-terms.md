@@ -82,7 +82,7 @@ suggests a next step. To do that, it asks an AI model to read the task.
 
 - **On from install, easy to turn off.** When installing AIQ connects your tools (`install.ps1` or AIQ
   home's first-run setup), it turns judging on and prints what is sent, where, the daily cap and how to
-  undo it. Turn it off any time: the switch in AIQ home **Settings > Rung model**, or
+  undo it. Turn it off any time: the switch in AIQ home **Settings > Judging**, or
   `aiq config set judge off`. If you turned it off, installing again keeps it off. `aiq judge --dry-run`
   shows what would be sent and sends nothing.
 - **What is sent:** the task's prompts (with secrets removed) and the summary of what the agent did
@@ -149,7 +149,7 @@ suggests a next step. To do that, it asks an AI model to read the task.
 | Delete one prompt | AIQ home, **Your data** |
 | Delete only imported history | `aiq forget --imported` |
 | Delete everything | `aiq forget --all` |
-| Stop judging | AIQ home **Settings > Rung model**, or `aiq config set judge off` |
+| Stop judging | AIQ home **Settings > Judging**, or `aiq config set judge off` |
 | Judge fewer tasks a day | `aiq config set judge-daily-tasks <n>` |
 | Fewer tips | `aiq config set daily-cap <n>` (default 5 a day), or turn one tip off |
 | Be asked before updates | `aiq config set update ask` |

@@ -3,12 +3,18 @@
 // on Tasks but never counted on a rung or in the split here. Until a task is judged it says so; nothing is
 // guessed. Model-written text renders as plain text only (TR-5).
 import { useState } from "react";
+import { api } from "../api";
 import { KindList, ProgressList, judgedBy, pct } from "../coach";
 import { RUNGS, day, folderName, plural, rungLabel, sentence, toolName, topPlaces, when } from "../format";
 import { AccuracyPaused, Banners, Title, UpdateLine, type Ctx } from "../ui";
 
 export function Home(ctx: Ctx) {
-  const { snap, go } = ctx;
+  const { snap, go, announce, refresh } = ctx;
+  const include = async (folder: string) => {
+    const r = await api.includeFolder(folder);
+    announce(r.ok ? `AIQ will watch sessions in ${folderName(folder)} again.` : r.message);
+    if (r.ok) refresh();
+  };
   const h = snap.home;
   const [open, setOpen] = useState<number | null>(null);
 
@@ -22,9 +28,10 @@ export function Home(ctx: Ctx) {
           <p className="mute">Keep working as usual. Patterns show after about 10 tasks of the same kind. Tips can start sooner.</p>
         </header>
         <div className="card" style={{ maxWidth: 520 }}>
-          <p>AIQ watches Claude Code, Copilot CLI and VS Code agent mode once they're connected. Setup connects the ones it finds, or run <code>aiq install</code>.</p>
+          <p>AIQ watches Claude Code, Copilot CLI and VS Code agent mode once they're connected. Setup connects the ones it finds.</p>
           <p className="meta">
-            <button className="btnlink" onClick={() => go("data")}>See what AIQ has captured</button>
+            <button className="btnlink" onClick={() => go("data")}>See what AIQ has captured</button> ·{" "}
+            <button className="btnlink" onClick={() => go("setup")}>See which tools are connected</button>
           </p>
         </div>
       </div>
@@ -52,7 +59,7 @@ export function Home(ctx: Ctx) {
       <section
         className="mainrung"
         role="img"
-        aria-label={`Your most common rung: ${mc ? rungLabel(mc) : "not judged yet"}. The ladder runs Assisted, Directed, Delegated, Orchestrated, Factory.`}
+        aria-label={`Your most common rung: ${mc ? `${rungLabel(mc)}. ${RUNGS[mc - 1].means}` : "not judged yet"}. The ladder runs Assisted, Directed, Delegated, Orchestrated, Factory.`}
       >
         <div className="lbl" aria-hidden="true">
           <span className="mute">Your most common rung</span>
@@ -64,6 +71,7 @@ export function Home(ctx: Ctx) {
           <span className="meta">
             {h.judged > 0 ? `${plural(h.judged, "task")} judged in ${h.window_days} days` : "No task judged yet"}
           </span>
+          {mc && <span className="meta means">{RUNGS[mc - 1].means}</span>}
         </div>
         <div className="scale" aria-hidden="true">
           {RUNGS.map((_, i) => (
@@ -77,19 +85,26 @@ export function Home(ctx: Ctx) {
           <h2 id="kr" className="mute" style={{ fontWeight: 400 }}>Tasks agents finished</h2>
           {ready ? (
             <>
-              <div className="hl" role="img" aria-label={`Agents finished ${f}%, could be ${fc}%`}>
+              <div className="hl" role="img" aria-label={sp.could > 0 ? `Agents finished ${f}%, could be ${fc}%` : `Agents finished ${f}%`}>
                 <span style={{ font: "var(--t-display)" }} aria-hidden="true">{f}%</span>
-                <span className="of" aria-hidden="true">
-                  could be <b>{fc}%</b>
-                </span>
+                {sp.could > 0 && (
+                  <span className="of" aria-hidden="true">
+                    could be <b>{fc}%</b>
+                  </span>
+                )}
               </div>
               <div className="splitbar" aria-hidden="true">
                 <i style={{ width: `${f}%`, background: "var(--primary)" }} />
-                <i style={{ width: `${fc - f}%`, background: "color-mix(in srgb,var(--primary) 35%,var(--surface))" }} />
+                {sp.could > 0 && <i style={{ width: `${fc - f}%`, background: "color-mix(in srgb,var(--primary) 35%,var(--surface))" }} />}
               </div>
               <p className="meta">
-                Of {plural(sp.tasks, "judged task")}: {sp.finished} finished by agents, {sp.could} could be, {sp.needs} need you.
+                Of {plural(sp.tasks, "judged task")}: {sp.finished} finished by agents,{sp.could > 0 ? ` ${sp.could} could be,` : ""} {sp.needs} need you.
                 {sp.uncertain > 0 && <> {plural(sp.uncertain, "task")} AIQ isn't sure about {sp.uncertain === 1 ? "is" : "are"} left out.</>}
+              </p>
+              <p className="mute">
+                {sp.could > 0
+                  ? `"Could be" adds the tasks of kinds whose next step would let agents finish them.`
+                  : "No kind of task is one step from agents finishing it yet. The next steps below move your tasks up a rung first."}
               </p>
               <p className="mute">{c.rule}</p>
             </>
@@ -100,11 +115,16 @@ export function Home(ctx: Ctx) {
               </div>
               <p className="mute">
                 {h.judged > 0
-                  ? `${sp.tasks} of ${c.split_min} judged tasks needed to show what agents finished${sp.uncertain > 0 ? ` (${sp.uncertain} AIQ isn't sure about don't count)` : ""}.`
+                  ? `${sp.tasks} of ${c.split_min} judged tasks needed to show what agents finished${sp.uncertain > 0 ? ` (${plural(sp.uncertain, "task")} AIQ isn't sure about ${sp.uncertain === 1 ? "doesn't" : "don't"} count)` : ""}.`
                   : snap.settings.judge === "auto"
                     ? "AIQ judges your finished tasks in the background, through your own Claude Code or Copilot CLI."
-                    : "AIQ hasn't judged any tasks yet. Run aiq judge once to start; it shows what it sends first."}
+                    : "Judging is off, so AIQ can't place your tasks on a rung."}
               </p>
+              {h.judged === 0 && snap.settings.judge !== "auto" && (
+                <p className="meta">
+                  <button className="btnlink" onClick={() => go("settings")}>Turn judging on in Settings</button>
+                </p>
+              )}
               {h.judged > 0 && (
                 <progress max={c.split_min} value={Math.min(sp.tasks, c.split_min)} aria-label={`${sp.tasks} of ${c.split_min} judged tasks`} />
               )}
@@ -304,10 +324,13 @@ export function Home(ctx: Ctx) {
                 <span className="meta">
                   {f.reason === "burst" ? "many sessions started at once" : f.reason === "template" ? "the same first prompt over and over" : f.reason}
                 </span>
+                <button className="btn" disabled={!snap.status.core} onClick={() => include(f.folder)} aria-label={`Include ${folderName(f.folder)}`}>
+                  Include
+                </button>
               </div>
             ))
           )}
-          {h.set_aside.length > 0 && <p className="meta">If that is your own work: <code>aiq include "folder"</code></p>}
+          {h.set_aside.length > 0 && <p className="meta">If a folder is your own work, select Include and AIQ watches its sessions again.</p>}
         </section>
         <section className="group" aria-labelledby="rt">
           <h2 id="rt">Recent tips</h2>
