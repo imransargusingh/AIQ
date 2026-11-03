@@ -1002,6 +1002,77 @@ fn aiq_check_folder_sessions_record_nothing_until_included() {
     assert_eq!(h.prompts(), 2, "included: recorded");
 }
 
+/// Copilot fires no hook for a message typed while the agent works (`delivery = "steering"`, 7 of 7 on
+/// Imran's laptop, 2026-11-03). The core reads it from Copilot's own session log at agentStop.
+#[test]
+fn copilot_mid_turn_messages_are_read_from_the_session_log_once() {
+    let mut h = H::new();
+    let home = TempDir::new().unwrap();
+    h.svc().set_copilot_home(home.path().to_owned());
+    let log = home.path().join("session-state").join("sess-1").join("events.jsonl");
+    std::fs::create_dir_all(log.parent().unwrap()).unwrap();
+    let line = |delivery: &str, text: &str, ms: i64| {
+        serde_json::json!({"type":"user.message","timestamp":format_rfc3339_ms(ms),
+            "data":{"content":text,"delivery":delivery}})
+        .to_string()
+            + "\n"
+    };
+    let t = h.clock.now().utc_ms;
+    // The hook sent the idle prompt; the steering one only reached the log; a secret goes before storing.
+    h.cp_send("sess-1", "fix the flaky login test");
+    let body = line("idle", "fix the flaky login test", t + MIN)
+        + &line(
+            "steering",
+            "also run the whole suite, token ghp_abcdefghijklmnopqrstuvwxyz0123456789",
+            t + MIN + 5_000,
+        );
+    std::fs::write(&log, &body).unwrap();
+    h.cp_stop("sess-1");
+    assert_eq!(h.prompts(), 2, "hook prompt + the mid-turn message, the idle one not twice");
+    let st = h.svc().status();
+    assert!(st.core_counters.iter().any(|(k, n)| k == codes::INGEST_MID_TURN && *n == 1));
+    let stored: Vec<String> = h
+        .svc()
+        .store()
+        .raw()
+        .prepare("SELECT c.text FROM event e JOIN content c USING (event_id) ORDER BY e.ts_utc_ms")
+        .unwrap()
+        .query_map([], |r| r.get(0))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect();
+    assert_eq!(stored[0], "fix the flaky login test");
+    assert!(stored[1].starts_with("also run the whole suite") && !stored[1].contains("ghp_"), "{}", stored[1]);
+    // Next stop: nothing new in the log, nothing new stored. After a restart the log is read from the start
+    // again, and the stable ids store nothing twice.
+    h.cp_stop("sess-1");
+    h.restart();
+    h.svc().set_copilot_home(home.path().to_owned());
+    h.cp_stop("sess-1");
+    assert_eq!(h.prompts(), 2);
+    // Off switch: a new mid-turn message is left alone.
+    h.svc().set("copilot_mid_turn", "off").unwrap();
+    std::fs::write(&log, body + &line("steering", "and update the docs", t + 2 * MIN)).unwrap();
+    h.cp_stop("sess-1");
+    assert_eq!(h.prompts(), 2);
+    assert!(h.svc().set("copilot_mid_turn", "sometimes").is_err());
+    h.svc().set("copilot_mid_turn", "on").unwrap();
+    h.cp_stop("sess-1");
+    assert_eq!(h.prompts(), 3);
+}
+
+#[test]
+fn copilot_mid_turn_missing_log_counts_and_records_the_stop() {
+    let mut h = H::new();
+    let home = TempDir::new().unwrap();
+    h.svc().set_copilot_home(home.path().to_owned());
+    h.cp_send("sess-2", "hello");
+    h.cp_stop("sess-2");
+    let st = h.svc().status();
+    assert!(st.core_counters.iter().any(|(k, n)| k == codes::INGEST_LOG_READ && *n == 1));
+    assert_eq!(st.events_by_kind.iter().find(|(k, _)| k == "stop").map(|(_, n)| *n), Some(1));
+}
+
 fn record_popups(h: &mut H) -> Arc<std::sync::Mutex<Vec<String>>> {
     let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
     let s = seen.clone();
@@ -1080,4 +1151,32 @@ fn switch_settings_default_on() {
         h.svc().set(k, "off").unwrap();
         assert!(!h.svc().switch_on(k), "{k}");
     }
+}
+
+/// A Copilot CLI stop the hook waits on (`take_card`) never reads the log on the hook's clock; the core reads
+/// it after the reply (`after_stop`).
+#[test]
+fn copilot_mid_turn_read_waits_until_after_the_stop_reply() {
+    let mut h = H::new();
+    let home = TempDir::new().unwrap();
+    h.svc().set_copilot_home(home.path().to_owned());
+    let log = home.path().join("session-state").join("sess-3").join("events.jsonl");
+    std::fs::create_dir_all(log.parent().unwrap()).unwrap();
+    h.cp_send("sess-3", "first");
+    let ts = format_rfc3339_ms(h.clock.now().utc_ms + 1_000);
+    let line =
+        serde_json::json!({"type":"user.message","timestamp":ts,"data":{"content":"steer","delivery":"steering"}});
+    std::fs::write(&log, format!("{line}\n")).unwrap();
+    let id = h.id();
+    let stop = ev_on(
+        "copilot-cli",
+        &id,
+        "sess-3",
+        h.clock.now().utc_ms,
+        EventBody::Stop(StopPayload { stop_hook_active: false, prompt_id: None }),
+    );
+    let _ = h.svc().take_card(&stop, None, true);
+    assert_eq!(h.prompts(), 1, "nothing read while the hook waits");
+    h.svc().after_stop(&stop, None);
+    assert_eq!(h.prompts(), 2);
 }

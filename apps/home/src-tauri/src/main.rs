@@ -94,6 +94,7 @@ fn allowed_setting(key: &str) -> bool {
             | "next_rung_tips"
             | "judge"
             | "judge_daily_tasks"
+            | "copilot_mid_turn"
             | "update"
     )
         || key.starts_with("keep_on.")
@@ -483,6 +484,7 @@ mod tests {
         assert!(allowed_setting("next_rung_tips"));
         assert!(allowed_setting("tip_popup") && allowed_setting("copilot_tip_in_chat") && allowed_setting("tip_highlight"));
         assert!(allowed_setting("judge_daily_tasks"));
+        assert!(allowed_setting("copilot_mid_turn"));
         assert!(allowed_setting("update"));
         assert!(!allowed_setting("paused"));
         assert!(!allowed_setting("anything"));

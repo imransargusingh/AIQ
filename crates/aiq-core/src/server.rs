@@ -134,8 +134,9 @@ pub fn run_with(paths: &Paths, labeller: Option<crate::service::LabelRequester>)
     let started = (|| {
         let pack = BundledPack.load().map_err(|d| CoreError { code: codes::STORE_OPEN, detail: d })?;
         let store = Store::open(&paths.db()).map_err(|e| CoreError { code: e.code, detail: e.detail })?;
-        let svc = Service::new(store, pack, SystemClock, counters.clone())
+        let mut svc = Service::new(store, pack, SystemClock, counters.clone())
             .map_err(|e| CoreError { code: e.code, detail: e.detail })?;
+        svc.set_copilot_home(crate::tools::copilot_home());
         Ok::<_, CoreError>(svc)
     })();
     let mut svc = match started {
@@ -209,6 +210,7 @@ fn writer_loop(mut svc: Service<SystemClock>, rx: Receiver<Cmd>, paths: &Paths, 
                 let fresh = received.elapsed() <= Duration::from_millis(wait_ms);
                 let card = svc.take_card(&event, trace_id.as_deref(), fresh);
                 let _ = reply.send(TakeCardReply { card, plain: !svc.switch_on(SETTING_TIP_HIGHLIGHT) });
+                svc.after_stop(&event, trace_id.as_deref());
             }
             Cmd::Status { reply } => {
                 let _ = reply.send(svc.status());

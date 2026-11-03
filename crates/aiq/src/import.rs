@@ -88,9 +88,7 @@ impl From<&KnownImport> for RuleInput {
 
 // ------------------------------------------------------------------ readers
 
-fn ts_ms(v: &Value) -> Option<i64> {
-    v.as_str().and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok()).map(|d| d.timestamp_millis())
-}
+use aiq_core::copilot_log::ts_ms;
 
 /// Imported text (a prompt or a command) as stored: secrets removed (security review S2), then cut to `max` bytes.
 fn clean_text(raw: &str, max: usize) -> String {
@@ -233,7 +231,10 @@ pub fn read_copilot(path: &Path, id: &str, mtime_ms: i64) -> std::io::Result<Par
                 }
                 p.started_ms = p.started_ms.or(ts_ms(&d["startTime"])).or(ts);
             }
-            Some("user.message") if main && matches!(d["delivery"].as_str(), Some("idle" | "steering")) => {
+            Some("user.message")
+                if aiq_core::copilot_log::typed_message(&e)
+                    .is_some_and(|t| matches!(t.delivery.as_str(), "idle" | "steering")) =>
+            {
                 if open {
                     p.events.push(ImportedEvent {
                         kind: "stop".into(),

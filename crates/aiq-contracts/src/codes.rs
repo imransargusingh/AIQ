@@ -10,6 +10,12 @@ pub const INGEST_SHAPE: &str = "AIQ-INGEST-SHAPE";
 pub const INGEST_BACKPRESSURE: &str = "AIQ-INGEST-BACKPRESSURE";
 /// A prompt or stop of an automated session (import spec US-12): recorded nothing.
 pub const INGEST_AUTOMATED: &str = "AIQ-INGEST-AUTOMATED";
+/// A Copilot message typed while the agent was working, read from Copilot's own session log because no hook
+/// fires for it (`copilot_log`). A count, not an error.
+pub const INGEST_MID_TURN: &str = "AIQ-INGEST-MID-TURN";
+/// Copilot's session log could not be read at agentStop (missing file, locked). A count; nothing is lost but
+/// that read's mid-turn messages.
+pub const INGEST_LOG_READ: &str = "AIQ-INGEST-LOG-READ";
 /// A secret (API key, token, private key, password value) removed from a stored prompt (security review S2).
 /// A count, not an error.
 pub const INGEST_SECRET_REMOVED: &str = "AIQ-INGEST-SECRET-REMOVED";
@@ -53,6 +59,8 @@ pub const ALL: &[&str] = &[
     INGEST_SHAPE,
     INGEST_BACKPRESSURE,
     INGEST_AUTOMATED,
+    INGEST_MID_TURN,
+    INGEST_LOG_READ,
     INGEST_SECRET_REMOVED,
     DELIVERY_CONFLICT,
     STORE_OPEN,

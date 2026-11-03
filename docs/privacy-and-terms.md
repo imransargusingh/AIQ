@@ -47,7 +47,9 @@ When you use a connected tool, AIQ records:
 
 - **Your prompts**, as you typed them. Before storing a prompt, AIQ replaces common secret shapes
   (API keys, access tokens, private keys, connection strings) with `[secret removed]`. It cannot catch
-  every secret, so avoid pasting them.
+  every secret, so avoid pasting them. This includes Copilot messages you send while the agent is
+  still working: Copilot doesn't pass those to AIQ, so AIQ reads them from Copilot's own history file
+  on your computer when the agent stops. Settings > What AIQ records turns this off.
 - **When things happened**: when you sent a prompt, when the agent stopped, which tool, and the folder
   you worked in.
 - **A summary of what the agent did** in each turn: which tools it used, which files it touched and

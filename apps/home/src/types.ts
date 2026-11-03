@@ -244,6 +244,8 @@ export interface Settings {
   tip_highlight: boolean;
   judge: "auto" | "off";
   judge_daily_tasks: number;
+  /** Read Copilot's own history file for messages sent while the agent works. */
+  copilot_mid_turn: "on" | "off";
   next_rung_tips: "auto" | "on" | "off";
   /** Next-step tips may show now. */
   next_rung_on: boolean;

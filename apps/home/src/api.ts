@@ -2,7 +2,7 @@
 // Outside Tauri (the UI tests) a fixture stands in, set on window by the test before the page loads.
 import type { Outcome, Snapshot, TaskDetail } from "./types";
 
-export type SettingKey = "daily_cap" | "copilot_tip_stays" | "copilot_tip_in_chat" | "tip_popup" | "tip_highlight" | "next_rung_tips" | "judge" | "judge_daily_tasks" | "update" | `keep_on.${string}` | `project_name.${string}`;
+export type SettingKey = "daily_cap" | "copilot_tip_stays" | "copilot_tip_in_chat" | "tip_popup" | "tip_highlight" | "next_rung_tips" | "judge" | "judge_daily_tasks" | "copilot_mid_turn" | "update" | `keep_on.${string}` | `project_name.${string}`;
 /** The reasons the core accepts (crates/aiq-core/src/coaching.rs FLAG_REASONS). */
 export type FlagReason = "evidence_wrong" | "not_useful" | "blocked" | "other";
 
@@ -42,6 +42,7 @@ function fixture<T>(cmd: string, args: Record<string, unknown>): Promise<T> {
         if (args.key === "daily_cap") s.settings.daily_cap = Number(args.value);
         if (args.key === "judge") s.settings.judge = args.value as Snapshot["settings"]["judge"];
         if (args.key === "judge_daily_tasks") s.settings.judge_daily_tasks = Number(args.value);
+        if (args.key === "copilot_mid_turn") s.settings.copilot_mid_turn = args.value as Snapshot["settings"]["copilot_mid_turn"];
         if (args.key === "update") s.update.mode = args.value as Snapshot["update"]["mode"];
         if (args.key === "copilot_tip_stays") s.settings.copilot_tip_stays = args.value as Snapshot["settings"]["copilot_tip_stays"];
         if (args.key === "copilot_tip_in_chat" || args.key === "tip_popup" || args.key === "tip_highlight") s.settings[args.key] = args.value === "on";
