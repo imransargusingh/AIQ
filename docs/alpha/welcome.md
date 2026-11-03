@@ -56,7 +56,7 @@ things do go out:
 
 | What | Where it goes | What it costs you | Turn it off |
 |---|---|---|---|
-| **Judging your finished tasks.** On from install. AIQ sends the task's prompts (secrets removed) and a summary of what the agent did. Never your files or diffs. | Only to the tool that did the task, through **your own** sign-in, in a sealed call with no tools, plugins or MCP servers. | Two calls per task, at most 50 tasks a day by default. On Copilot each call counts against your plan's premium requests. | AIQ home **Settings > Rung model**, or `aiq config set judge off` |
+| **Judging your finished tasks.** On from install. AIQ sends the task's prompts (secrets removed) and a summary of what the agent did. Never your files or diffs. | Only to the tool that did the task, through **your own** sign-in, in a sealed call with no tools, plugins or MCP servers. | Two calls per task, at most 50 tasks a day by default. On Copilot each call counts against your plan's premium requests. | AIQ home **Settings > Judging**, or `aiq config set judge off` |
 | **A quick label of a new task.** Only while judging is on, and only when AIQ can't tell the kind of task from your past ones. It sends that task's first prompt once (secrets removed). | Same tool, same sign-in, sealed the same way, with a small model. | At most 20 a day by default. On Copilot each label is one premium request. | `aiq config set kind-label off` (judging off stops it too) |
 | **A daily update check.** | GitHub's public release page. It sends nothing about you. | Nothing. | Settings **Don't check for updates**, or `aiq config set update off` |
 
