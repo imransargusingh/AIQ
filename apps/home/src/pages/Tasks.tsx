@@ -2,9 +2,9 @@
 // with its judged job and rung, or "Not judged yet" (design rung-judge). States other than a plain judgment
 // carry a text label (Uncertain, Right rung, Capped by a blocker), never colour alone.
 import { useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { jobOf, jobOptions, plural, rungLabel, sortTasks, stateLabel, toolName, when, type Dir, type SortKey } from "../format";
+import { jobOf, jobOptions, plural, sortTasks, stateLabel, toolName, when, type Dir, type SortKey } from "../format";
 import { KindList } from "../coach";
-import { Banners, Chip, ProjectPicker, Title, type Ctx } from "../ui";
+import { Banners, Chip, ProjectPicker, Rung, Title, type Ctx } from "../ui";
 import { projectName, projectOf } from "../project";
 import { DayView } from "./DayView";
 
@@ -112,7 +112,9 @@ export function Tasks(ctx: Ctx) {
                 ))}
                 <th>Project</th>
                 <th>Job and kind</th>
-                <th>Rung</th>
+                <th>
+                  <span className="rung" title="How much of the task you handed to the agent, from Assisted (1) to Factory (5). Hover a rung to see what it means.">Rung</span>
+                </th>
               </tr>
             </thead>
             <tbody ref={body}>
@@ -143,7 +145,7 @@ export function Tasks(ctx: Ctx) {
                   <td className={t.judgment ? undefined : "mute"}>
                     {t.judgment ? (
                       <>
-                        {rungLabel(t.judgment.current)}
+                        <Rung r={t.judgment.current} />
                         {stateLabel(t.judgment.state) && <> <Chip>{stateLabel(t.judgment.state)}</Chip></>}
                       </>
                     ) : (

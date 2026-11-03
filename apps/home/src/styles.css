@@ -161,6 +161,9 @@ kbd{font:var(--t-caption);border:1px solid var(--ink-mute);border-radius:var(--r
 .scale>span{display:flex;flex-direction:column;gap:var(--s2);font:var(--t-caption);color:var(--ink-mute);text-align:center}
 .scale>span::before{content:"";display:block;height:8px;border-radius:var(--r-sm);background:var(--canvas-soft);border:1px solid var(--hairline)}
 .scale>span.on{color:var(--ink);font-weight:600}
+.scale>span{cursor:help}
+/* A rung name you can hover for its meaning: a quiet dotted underline says so. */
+.rung{text-decoration:underline dotted var(--ink-mute);text-underline-offset:3px;cursor:help}
 .scale>span.on::before{height:12px;margin-top:-2px;background:var(--primary);border-color:var(--primary)}
 .track{display:block;position:relative;height:16px;background:var(--canvas-soft);border-radius:var(--r-sm)}
 .track .now{position:absolute;inset:0 auto 0 0;border-radius:var(--r-sm)}

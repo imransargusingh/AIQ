@@ -6,7 +6,7 @@ import { useState } from "react";
 import { api } from "../api";
 import { KindList, ProgressList, judgedBy, pct } from "../coach";
 import { RUNGS, day, folderName, plural, rungLabel, sentence, toolName, when } from "../format";
-import { AccuracyPaused, Banners, ProjectPicker, Title, UpdateLine, type Ctx } from "../ui";
+import { AccuracyPaused, Banners, ProjectPicker, Rung, Title, UpdateLine, type Ctx } from "../ui";
 import type { Project } from "../types";
 
 export function Home(ctx: Ctx) {
@@ -81,7 +81,7 @@ export function Home(ctx: Ctx) {
         </div>
         <div className="scale" aria-hidden="true">
           {RUNGS.map((_, i) => (
-            <span key={i} className={mc === i + 1 ? "on" : undefined}>{rungLabel(i + 1)}</span>
+            <span key={i} className={mc === i + 1 ? "on" : undefined} title={RUNGS[i].means}>{rungLabel(i + 1)}</span>
           ))}
         </div>
       </section>
@@ -105,7 +105,7 @@ export function Home(ctx: Ctx) {
               </div>
               {sp.up > 0 && sp.up_to != null && (
                 <p>
-                  <b>{pct(sp.up, sp.tasks)}%</b> could move up a rung, most often to {rungLabel(sp.up_to)}.
+                  <b>{pct(sp.up, sp.tasks)}%</b> could move up a rung, most often to <Rung r={sp.up_to} />.
                 </p>
               )}
               <p className="meta">
@@ -416,7 +416,7 @@ function Projects(ctx: Ctx) {
                     ))}
                   </td>
                   <td className="r num">{p.tasks_in_window}</td>
-                  <td className={p.most_common_rung ? undefined : "mute"}>{p.most_common_rung ? rungLabel(p.most_common_rung) : "Not judged yet"}</td>
+                  <td className={p.most_common_rung ? undefined : "mute"}>{p.most_common_rung ? <Rung r={p.most_common_rung} /> : "Not judged yet"}</td>
                   <td className={`r num${enough ? "" : " mute"}`}>{enough ? `${pct(sp.finished, sp.tasks)}%` : p.judged > 0 ? "Too few judged" : "—"}</td>
                   <td className={`r num${enough ? "" : " mute"}`}>
                     {enough ? `${sp.up} (${pct(sp.up, sp.tasks)}%)` : p.judged > 0 ? "Too few judged" : "—"}
