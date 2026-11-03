@@ -2,7 +2,11 @@
 // Outside Tauri (the UI tests) a fixture stands in, set on window by the test before the page loads.
 import type { Outcome, Snapshot, TaskDetail } from "./types";
 
+<<<<<<< HEAD
 export type SettingKey = "daily_cap" | "copilot_tip_stays" | "next_rung_tips" | "judge" | "judge_daily_tasks" | "copilot_mid_turn" | "update" | `keep_on.${string}`;
+=======
+export type SettingKey = "daily_cap" | "copilot_tip_stays" | "next_rung_tips" | "judge" | "judge_daily_tasks" | "update" | `keep_on.${string}` | `project_name.${string}`;
+>>>>>>> origin/main
 /** The reasons the core accepts (crates/aiq-core/src/coaching.rs FLAG_REASONS). */
 export type FlagReason = "evidence_wrong" | "not_useful" | "blocked" | "other";
 
@@ -51,6 +55,11 @@ function fixture<T>(cmd: string, args: Record<string, unknown>): Promise<T> {
           break;
         }
         if (keep) keep.kept_on = args.value === "on";
+        if (String(args.key).startsWith("project_name.")) {
+          const p = s.projects.find((x) => `project_name.${x.key}` === args.key);
+          const v = String(args.value).trim();
+          if (p) [p.name, p.renamed] = v ? [v, true] : [p.key.split(/[\\/]/).filter(Boolean).pop() ?? p.key, false];
+        }
         if (args.key === "next_rung_tips") {
           s.settings.next_rung_tips = args.value as Snapshot["settings"]["next_rung_tips"];
           s.settings.next_rung_on = args.value === "on" || (args.value === "auto" && !s.settings.guess_auto_off);

@@ -30,6 +30,23 @@ pub const MAX_DAILY_CAP: u32 = 50;
 /// working, which fire no hook (`copilot_log`).
 pub const SETTING_COPILOT_MID_TURN: &str = "copilot_mid_turn";
 const MAX_LOG_OFFSETS: usize = 4096;
+/// `project_name.<folder key>`: the name the person gave a project in AIQ home (design project-filter P2).
+pub const SETTING_PROJECT_NAME: &str = "project_name.";
+/// Longest project name kept, in characters.
+pub const MAX_PROJECT_NAME: usize = 60;
+
+/// Validate a project rename: a folder key (1–1024 bytes, as the hooks keep `cwd`) and a name of at most
+/// `MAX_PROJECT_NAME` characters with no control characters. Empty (after trimming) means "AIQ names it".
+fn project_name(folder: &str, value: &str) -> Result<String, String> {
+    if folder.is_empty() || folder.len() > 1024 {
+        return Err("name a project folder".into());
+    }
+    let v = value.trim();
+    if v.chars().count() > MAX_PROJECT_NAME || v.chars().any(char::is_control) {
+        return Err(format!("a project name is up to {MAX_PROJECT_NAME} characters, on one line"));
+    }
+    Ok(v.to_owned())
+}
 
 pub struct Service<C: Clock> {
     store: Store,
@@ -1087,6 +1104,7 @@ impl<C: Clock> Service<C> {
                 _ => return Err(format!("daily-cap must be a whole number from 0 to {MAX_DAILY_CAP}")),
             },
             k if k.starts_with(coaching::SETTING_KEEP_ON) => self.keep_on_value(k, value)?,
+            k if k.starts_with(SETTING_PROJECT_NAME) => project_name(&k[SETTING_PROJECT_NAME.len()..], value)?,
             _ => match aiq_domain::rung::validate_setting(key, value)
                 .or_else(|| coach::validate_setting(key, value))
                 .or_else(|| aiq_domain::label::validate_setting(key, value))
@@ -1266,4 +1284,18 @@ fn cap(s: &str, max: usize) -> String {
         i -= 1;
     }
     s[..i].to_owned()
+}
+
+#[cfg(test)]
+mod project_name_tests {
+    use super::*;
+
+    #[test]
+    fn project_names_are_short_one_line_and_blank_resets() {
+        assert_eq!(project_name(r"c:\repos\aiq", "  AI coach ").unwrap(), "AI coach");
+        assert_eq!(project_name(r"c:\repos\aiq", "   ").unwrap(), "");
+        assert!(project_name(r"c:\repos\aiq", &"x".repeat(MAX_PROJECT_NAME + 1)).is_err());
+        assert!(project_name(r"c:\repos\aiq", "two\nlines").is_err());
+        assert!(project_name("", "name").is_err());
+    }
 }

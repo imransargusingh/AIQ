@@ -34,6 +34,10 @@ pub const FINISHED_RULE: &str =
     "A task counts as finished when it was judged Delegated or higher and you sent no re-prompt correcting the agent.";
 /// Home shows at most this many kinds of task with a next step (aiq-home US-H3).
 pub const OPPORTUNITY_ROWS: usize = 3;
+/// A project's name the person chose: setting `project_name.<folder key>` (design project-filter P2).
+pub const PROJECT_NAME: &str = aiq_core::service::SETTING_PROJECT_NAME;
+/// The project of tasks with no folder recorded (design project-filter P1).
+pub const NO_FOLDER: &str = "Folder not recorded";
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Snapshot {
@@ -51,6 +55,28 @@ pub struct Snapshot {
     pub coaching: Coaching,
     /// Auto-update (design auto-update U5): the switch and the one line Home shows.
     pub update: aiq_core::update::View,
+    /// One row per project with a task in the window, most room to grow first (design project-filter).
+    pub projects: Vec<Project>,
+}
+
+/// One project: the tasks whose session ran in one folder (design project-filter P1–P5b). Its numbers run the
+/// same rules as Home's over this project's tasks only (P5).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Project {
+    /// The folder key the tasks carry (`TaskRow.folder`); "" for tasks with no folder recorded.
+    pub key: String,
+    pub name: String,
+    /// The person chose the name (setting `project_name.<key>`); false when AIQ named it from the folder.
+    pub renamed: bool,
+    pub tasks_in_window: u32,
+    pub judged: u32,
+    pub uncertain: u32,
+    pub rungs: [u32; 5],
+    pub most_common_rung: Option<u8>,
+    pub imported_in_window: u32,
+    pub weeks: Vec<Week>,
+    pub by_tool: Vec<(String, u32)>,
+    pub coaching: Coaching,
 }
 
 /// Home's split, the kinds of task, the habits (design coaching-from-rungs D3, D6, D9; aiq-home H2–H4).
@@ -411,6 +437,7 @@ pub fn snapshot(paths: &Paths, pack: &PackV1, now: Now) -> Snapshot {
             s.tips = e2.tips;
             s.data = e2.data;
             s.coaching = e2.coaching;
+            s.projects = e2.projects;
             s.status.error = Some(format!("{}: {e}", codes::HOME_STORE_READ));
         }
     }
@@ -503,6 +530,7 @@ fn empty(paths: &Paths, pack: &PackV1, now: Now) -> Snapshot {
             ..Default::default()
         },
         update: aiq_core::update::view(paths, None, now.utc_ms),
+        projects: vec![],
     }
 }
 
@@ -569,19 +597,11 @@ fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()>
             t.attach(j);
         }
     }
-    s.home.tasks_in_window = tasks.len() as u32;
-    for t in &tasks {
-        if let Some(j) = &t.judgment {
-            s.home.judged += 1;
-            if j.state == "uncertain" {
-                s.home.uncertain += 1;
-            } else {
-                s.home.rungs[(j.current.clamp(1, 5) - 1) as usize] += 1;
-            }
-        }
-    }
-    let top = s.home.rungs.iter().copied().max().unwrap_or(0);
-    s.home.most_common_rung = (top > 0).then(|| s.home.rungs.iter().position(|&n| n == top).unwrap() as u8 + 1);
+    let all = tally(tasks.iter(), &s.home.weeks);
+    let h = &mut s.home;
+    (h.tasks_in_window, h.judged, h.uncertain, h.rungs, h.most_common_rung) =
+        (all.tasks, all.judged, all.uncertain, all.rungs, all.most_common_rung);
+    (h.imported_in_window, h.weeks, h.by_tool) = (all.imported, all.weeks, all.by_tool);
     {
         let calls = store.judge_calls_since(now.local_midnight_utc_ms()).map_err(|e| e.to_string())?;
         let t = &mut s.home.judge_today;
@@ -591,18 +611,6 @@ fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()>
         let costs: Vec<f64> = calls.iter().filter_map(|c| c.cost_usd).collect();
         t.cost_usd = (!costs.is_empty()).then(|| costs.iter().sum());
     }
-    s.home.imported_in_window = tasks.iter().filter(|t| t.origin == "imported").count() as u32;
-    for w in s.home.weeks.iter_mut() {
-        let end = w.start_ms + 7 * DAY_MS;
-        w.tasks = tasks.iter().filter(|t| t.first_ms >= w.start_ms && t.first_ms < end).count() as u32;
-    }
-    let mut by: std::collections::BTreeMap<&str, u32> = Default::default();
-    for t in &tasks {
-        *by.entry(t.tool.as_str()).or_default() += 1;
-    }
-    let mut by: Vec<(String, u32)> = by.into_iter().map(|(k, n)| (k.to_owned(), n)).collect();
-    by.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-    s.home.by_tool = by;
     coaching(store, pack, now, &tasks, &judgments, s)?;
     s.tasks = tasks;
 
@@ -801,7 +809,8 @@ fn row(t: TaskSpan, folder: Option<String>, origin: &'static str) -> TaskRow {
     TaskRow {
         task_id: t.task_id,
         tool: t.surface,
-        folder,
+        // An imported Copilot CLI session with no `cwd` carries "(none)": no folder (design project-filter P1).
+        folder: folder.filter(|f| !f.is_empty() && f != "(none)"),
         first_ms: t.first_ms,
         last_ms: t.last_ms,
         prompts: t.prompts,
@@ -825,11 +834,153 @@ fn coaching(
 ) -> R<()> {
     use aiq_domain::coach;
     let e = |e: aiq_store::StoreError| e.to_string();
-    let judged: Vec<coach::JudgedTask> = tasks
+    let feedback = aiq_core::coaching::feedback(store).map_err(e)?;
+    let flags = aiq_core::coaching::flags(store).map_err(e)?;
+    let all: Vec<&TaskRow> = tasks.iter().collect();
+    let judged = judged_tasks(&all, judgments);
+    coach_view(pack, now, &judged, judgments, &feedback, &flags, &mut s.coaching);
+
+    // Projects (design project-filter): the same tally and coaching over each folder's tasks.
+    let names = project_names(
+        tasks.iter().map(|t| t.folder.as_deref().unwrap_or("")),
+        &store.settings_with_prefix(PROJECT_NAME).map_err(e)?,
+    );
+    let mut by_project: std::collections::BTreeMap<&str, Vec<&TaskRow>> = Default::default();
+    for t in tasks {
+        by_project.entry(t.folder.as_deref().unwrap_or("")).or_default().push(t);
+    }
+    let blank = s.coaching.clone();
+    let mut projects: Vec<Project> = by_project
+        .into_iter()
+        .map(|(key, ts)| {
+            let t = tally(ts.iter().copied(), &s.home.weeks);
+            let pj = judged_tasks(&ts, judgments);
+            let mut c = Coaching {
+                split_min: blank.split_min,
+                week_min: blank.week_min,
+                rule: blank.rule,
+                ..Default::default()
+            };
+            c.progress_days = blank.progress_days;
+            c.progress_min = blank.progress_min;
+            c.weeks = blank.weeks.iter().map(|w| WeekSplit { tasks: 0, finished: 0, ..*w }).collect();
+            coach_view(pack, now, &pj, judgments, &feedback, &flags, &mut c);
+            let (name, renamed) = names.get(key).cloned().unwrap_or_else(|| (NO_FOLDER.to_owned(), false));
+            Project {
+                key: key.to_owned(),
+                name,
+                renamed,
+                tasks_in_window: t.tasks,
+                judged: t.judged,
+                uncertain: t.uncertain,
+                rungs: t.rungs,
+                most_common_rung: t.most_common_rung,
+                imported_in_window: t.imported,
+                weeks: t.weeks,
+                by_tool: t.by_tool,
+                coaching: c,
+            }
+        })
+        .collect();
+    // Most room to grow first (P5b): projects with enough judged tasks to say, then tasks that could move up a
+    // rung (the same `split.up` Home shows), then the lower rung, then more tasks, then the name.
+    projects.sort_by(|a, b| {
+        let few = |p: &Project| p.coaching.split.tasks < p.coaching.split_min;
+        few(a)
+            .cmp(&few(b))
+            .then_with(|| b.coaching.split.up.cmp(&a.coaching.split.up))
+            .then_with(|| a.most_common_rung.unwrap_or(9).cmp(&b.most_common_rung.unwrap_or(9)))
+            .then_with(|| b.tasks_in_window.cmp(&a.tasks_in_window))
+            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+    });
+    s.projects = projects;
+
+    // Settings: next-rung tips and the self-check, from the same facts the core reads.
+    let p = &pack.coach;
+    let mode = aiq_core::coaching::mode(store);
+    let by_id: std::collections::BTreeMap<&str, &coach::JudgedTask> =
+        judged.iter().map(|t| (t.task_id.as_str(), t)).collect();
+    let guesses = store.type_guesses().map_err(e)?;
+    let check = coach::check_guesses(
+        guesses.iter().map(|g| (g.task_id.as_str(), g.job.as_str(), g.task_type.as_str())),
+        &by_id,
+    );
+    let st = &mut s.settings;
+    st.guess_checked = check.checked;
+    st.guess_right = check.right;
+    st.guess_auto_off = check.auto_off(p);
+    st.next_rung_on = match mode.as_str() {
+        "off" => false,
+        "on" => true,
+        _ => !st.guess_auto_off,
+    };
+    st.next_rung_tips = mode;
+    let mut off: Vec<String> = feedback.iter().map(|f| f.tip_id.clone()).collect::<BTreeSet<_>>().into_iter().collect();
+    off.retain(|t| coach::tip_pref(&feedback, t, now.utc_ms, p) == coach::TipPref::Off);
+    st.tips_off = off;
+    let readings = aiq_core::coaching::readings(store).map_err(e)?;
+    let paused: Vec<_> = aiq_domain::check::verdicts(&readings).into_iter().filter(|v| v.paused).collect();
+    st.accuracy_paused = aiq_core::coaching::paused_scopes(store, &paused);
+    Ok(())
+}
+
+/// Home's counts over some tasks (all of them, or one project's): one definition for both (DM: derive, don't
+/// store twice).
+struct Tally {
+    tasks: u32,
+    judged: u32,
+    uncertain: u32,
+    rungs: [u32; 5],
+    most_common_rung: Option<u8>,
+    imported: u32,
+    weeks: Vec<Week>,
+    by_tool: Vec<(String, u32)>,
+}
+
+fn tally<'a>(tasks: impl Iterator<Item = &'a TaskRow>, weeks: &[Week]) -> Tally {
+    let mut t = Tally {
+        tasks: 0,
+        judged: 0,
+        uncertain: 0,
+        rungs: [0; 5],
+        most_common_rung: None,
+        imported: 0,
+        weeks: weeks.iter().map(|w| Week { start_ms: w.start_ms, tasks: 0 }).collect(),
+        by_tool: vec![],
+    };
+    let mut by: std::collections::BTreeMap<&str, u32> = Default::default();
+    for r in tasks {
+        t.tasks += 1;
+        if let Some(j) = &r.judgment {
+            t.judged += 1;
+            if j.state == "uncertain" {
+                t.uncertain += 1;
+            } else {
+                t.rungs[(j.current.clamp(1, 5) - 1) as usize] += 1;
+            }
+        }
+        t.imported += u32::from(r.origin == "imported");
+        if let Some(w) = t.weeks.iter_mut().find(|w| r.first_ms >= w.start_ms && r.first_ms < w.start_ms + 7 * DAY_MS) {
+            w.tasks += 1;
+        }
+        *by.entry(r.tool.as_str()).or_default() += 1;
+    }
+    let top = t.rungs.iter().copied().max().unwrap_or(0);
+    t.most_common_rung = (top > 0).then(|| t.rungs.iter().position(|&n| n == top).unwrap() as u8 + 1);
+    t.by_tool = by.into_iter().map(|(k, n)| (k.to_owned(), n)).collect();
+    t.by_tool.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    t
+}
+
+fn judged_tasks<'a>(
+    tasks: &[&'a TaskRow],
+    judgments: &'a std::collections::HashMap<String, aiq_store::JudgmentRow>,
+) -> Vec<aiq_domain::coach::JudgedTask> {
+    tasks
         .iter()
         .filter_map(|t| {
             let j = judgments.get(&t.task_id)?;
-            Some(coach::JudgedTask::new(
+            Some(aiq_domain::coach::JudgedTask::new(
                 &t.task_id,
                 t.origin == "live",
                 &t.tool,
@@ -844,13 +995,23 @@ fn coaching(
                 aiq_contracts::judge::parse_read(&j.read),
             ))
         })
-        .collect();
-    let feedback = aiq_core::coaching::feedback(store).map_err(e)?;
-    let flags = aiq_core::coaching::flags(store).map_err(e)?;
+        .collect()
+}
+
+/// The split, kinds, next steps, habits and progress over these judged tasks, into `c`.
+fn coach_view(
+    pack: &PackV1,
+    now: Now,
+    judged: &[aiq_domain::coach::JudgedTask],
+    judgments: &std::collections::HashMap<String, aiq_store::JudgmentRow>,
+    feedback: &[aiq_domain::coach::Feedback],
+    flags: &[aiq_domain::coach::Flag],
+    c: &mut Coaching,
+) {
+    use aiq_domain::coach;
     let p = &pack.coach;
-    let rows = coach::type_rows(&judged, &pack.moves, &flags, now.utc_ms, p);
-    let c = &mut s.coaching;
-    let sp = coach::split(&judged, &rows, now.utc_ms - WINDOW_DAYS * DAY_MS, now.utc_ms + 1);
+    let rows = coach::type_rows(judged, &pack.moves, flags, now.utc_ms, p);
+    let sp = coach::split(judged, &rows, now.utc_ms - WINDOW_DAYS * DAY_MS, now.utc_ms + 1);
     c.split = SplitOut {
         tasks: sp.tasks,
         finished: sp.finished,
@@ -861,7 +1022,7 @@ fn coaching(
         up_to: sp.up_to,
     };
     for w in c.weeks.iter_mut() {
-        let ws = coach::split(&judged, &rows, w.start_ms, w.start_ms + 7 * DAY_MS);
+        let ws = coach::split(judged, &rows, w.start_ms, w.start_ms + 7 * DAY_MS);
         (w.tasks, w.finished) = (ws.tasks, ws.finished);
     }
     c.untyped = judged.iter().filter(|t| !t.uncertain() && t.task_type.is_none()).count() as u32;
@@ -890,16 +1051,16 @@ fn coaching(
             ranked_last: r
                 .move_id
                 .as_deref()
-                .is_some_and(|m| coach::ranked_last(&feedback, &flags, &r.job, m, now.utc_ms, p)),
+                .is_some_and(|m| coach::ranked_last(feedback, flags, &r.job, m, now.utc_ms, p)),
             last_task_id: r.task_ids.first().cloned(),
             last_gap: last.map(|j| j.gap.clone()).filter(|g| !g.is_empty()),
             task_ids: r.task_ids.clone(),
         }
     };
     c.opportunities =
-        coach::opportunities(&rows, &feedback, &flags, now.utc_ms, p, OPPORTUNITY_ROWS).into_iter().map(kind).collect();
+        coach::opportunities(&rows, feedback, flags, now.utc_ms, p, OPPORTUNITY_ROWS).into_iter().map(kind).collect();
     c.kinds = rows.iter().map(kind).collect();
-    c.habits = coach::habits(&judged, &pack.moves, now.utc_ms, now.offset_min, p)
+    c.habits = coach::habits(judged, &pack.moves, now.utc_ms, now.offset_min, p)
         .into_iter()
         .map(|h| HabitRow {
             job: h.job,
@@ -914,7 +1075,7 @@ fn coaching(
         })
         .collect();
     c.habits_imported = judged.iter().any(|t| !t.live);
-    c.progress = coach::progress(&judged, now.utc_ms, p)
+    c.progress = coach::progress(judged, now.utc_ms, p)
         .into_iter()
         .map(|r| ProgressRow {
             job: r.job,
@@ -928,31 +1089,70 @@ fn coaching(
             trend: r.trend.as_str(),
         })
         .collect();
+}
 
-    // Settings: next-rung tips and the self-check, from the same facts the core reads.
-    let mode = aiq_core::coaching::mode(store);
-    let by_id: std::collections::BTreeMap<&str, &coach::JudgedTask> =
-        judged.iter().map(|t| (t.task_id.as_str(), t)).collect();
-    let guesses = store.type_guesses().map_err(e)?;
-    let check = coach::check_guesses(
-        guesses.iter().map(|g| (g.task_id.as_str(), g.job.as_str(), g.task_type.as_str())),
-        &by_id,
-    );
-    let st = &mut s.settings;
-    st.guess_checked = check.checked;
-    st.guess_right = check.right;
-    st.guess_auto_off = check.auto_off(p);
-    st.next_rung_on = match mode.as_str() {
-        "off" => false,
-        "on" => true,
-        _ => !st.guess_auto_off,
-    };
-    st.next_rung_tips = mode;
-    let mut off: Vec<String> = feedback.iter().map(|f| f.tip_id.clone()).collect::<BTreeSet<_>>().into_iter().collect();
-    off.retain(|t| coach::tip_pref(&feedback, t, now.utc_ms, p) == coach::TipPref::Off);
-    st.tips_off = off;
-    let readings = aiq_core::coaching::readings(store).map_err(e)?;
-    let paused: Vec<_> = aiq_domain::check::verdicts(&readings).into_iter().filter(|v| v.paused).collect();
-    st.accuracy_paused = aiq_core::coaching::paused_scopes(store, &paused);
-    Ok(())
+/// Each folder key's project name and whether the person chose it (design project-filter P2): the person's
+/// name (`project_name.<key>` setting, not empty) wins; else the folder's last part; folders that share a last
+/// part show their parent too. "" (no folder recorded) is named `NO_FOLDER`.
+pub fn project_names<'a>(
+    keys: impl Iterator<Item = &'a str>,
+    renames: &[(String, String)],
+) -> std::collections::BTreeMap<String, (String, bool)> {
+    let keys: BTreeSet<&str> = keys.collect();
+    let parts = |k: &str| k.split(['\\', '/']).filter(|p| !p.is_empty()).map(str::to_owned).collect::<Vec<_>>();
+    let last = |k: &str| parts(k).last().cloned().unwrap_or_else(|| k.to_owned());
+    let mut seen: std::collections::BTreeMap<String, u32> = Default::default();
+    for k in keys.iter().filter(|k| !k.is_empty()) {
+        *seen.entry(last(k).to_lowercase()).or_default() += 1;
+    }
+    let chosen: std::collections::BTreeMap<&str, &str> = renames
+        .iter()
+        .filter_map(|(k, v)| Some((k.strip_prefix(PROJECT_NAME)?, v.trim())))
+        .filter(|(_, v)| !v.is_empty())
+        .collect();
+    keys.into_iter()
+        .map(|k| {
+            let named = if let Some(v) = chosen.get(k) {
+                ((*v).to_owned(), true)
+            } else if k.is_empty() {
+                (NO_FOLDER.to_owned(), false)
+            } else if seen.get(&last(k).to_lowercase()).copied().unwrap_or(0) > 1 {
+                let p = parts(k);
+                let sep = if k.contains('\\') { "\\" } else { "/" };
+                (p[p.len().saturating_sub(2)..].join(sep), false)
+            } else {
+                (last(k), false)
+            };
+            (k.to_owned(), named)
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod project_tests {
+    use super::*;
+
+    #[test]
+    fn names_come_from_the_folder_and_shared_last_parts_show_their_parent() {
+        let keys = [r"c:\work\api", r"c:\oss\api", r"c:\repos\foresight", "/home/me/aiq", ""];
+        let n = project_names(keys.iter().copied(), &[]);
+        let got = |k: &str| n[k].0.clone();
+        assert_eq!(got(r"c:\work\api"), r"work\api");
+        assert_eq!(got(r"c:\oss\api"), r"oss\api");
+        assert_eq!(got(r"c:\repos\foresight"), "foresight");
+        assert_eq!(got("/home/me/aiq"), "aiq");
+        assert_eq!(got(""), NO_FOLDER);
+        assert!(n.values().all(|(_, renamed)| !renamed));
+    }
+
+    #[test]
+    fn the_persons_name_wins_and_blank_means_automatic() {
+        let renames = vec![
+            (format!("{PROJECT_NAME}c:\\repos\\foresight"), "Strategy".to_owned()),
+            (format!("{PROJECT_NAME}c:\\repos\\aiq"), "  ".to_owned()),
+        ];
+        let n = project_names([r"c:\repos\foresight", r"c:\repos\aiq"].into_iter(), &renames);
+        assert_eq!(n[r"c:\repos\foresight"], ("Strategy".to_owned(), true));
+        assert_eq!(n[r"c:\repos\aiq"], ("aiq".to_owned(), false));
+    }
 }

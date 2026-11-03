@@ -1130,6 +1130,16 @@ impl Store {
             .map_err(err(codes::STORE_OPEN))
     }
 
+    /// Every current setting whose key starts with `prefix` (exact, not a LIKE pattern), as (key, value).
+    pub fn settings_with_prefix(&self, prefix: &str) -> Result<Vec<(String, String)>> {
+        let mut st = self
+            .conn
+            .prepare("SELECT key, value FROM current_setting WHERE substr(key, 1, length(?1)) = ?1 ORDER BY key")
+            .map_err(err(codes::STORE_OPEN))?;
+        let rows = st.query_map([prefix], |r| Ok((r.get(0)?, r.get(1)?))).map_err(err(codes::STORE_OPEN))?;
+        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(err(codes::STORE_OPEN))
+    }
+
     pub fn set_setting(&self, key: &str, value: &str, now_ms: i64) -> Result<()> {
         self.conn
             .execute("INSERT INTO setting_change (key, value, utc_ms) VALUES (?1, ?2, ?3)", params![key, value, now_ms])
