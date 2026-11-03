@@ -568,6 +568,13 @@ fn transcript(homes: &Homes, tool: &str, session: &str) -> Option<import::Parsed
     }
 }
 
+/// `import:{tool}:{source session id}:{seq}`, as the task list names imported prompts. Session ids may hold `:`.
+fn import_key(id: &str) -> Option<(&str, &str, i64)> {
+    let (tool, rest) = id.strip_prefix("import:")?.split_once(':')?;
+    let (sid, seq) = rest.rsplit_once(':')?;
+    Some((tool, sid, seq.parse().ok()?))
+}
+
 /// The task's turns (prompt text and the agent's actions after it) and whether actions were available.
 /// Text the person deleted is skipped; an empty result means there is nothing left to judge.
 pub fn task_turns(store: &Store, homes: &Homes, t: &TaskRow) -> aiq_store::Result<(Vec<Turn>, bool)> {
@@ -604,7 +611,18 @@ pub fn task_turns(store: &Store, homes: &Homes, t: &TaskRow) -> aiq_store::Resul
     }
     let mut turns = Vec::new();
     for (id, at) in &t.members {
-        let text: Option<String> = c.query_row("SELECT text FROM content WHERE event_id = ?1", [id], |r| r.get(0)).ok();
+        // A live session's prompts the hooks missed come from its imported copy (aiq-home twins.rs).
+        let text: Option<String> = match import_key(id) {
+            Some((tool, sid, seq)) => c
+                .query_row(
+                    "SELECT text FROM import_event WHERE tool = ?1 AND source_session_id = ?2 AND seq = ?3",
+                    rusqlite::params![tool, sid, seq],
+                    |r| r.get(0),
+                )
+                .ok()
+                .flatten(),
+            None => c.query_row("SELECT text FROM content WHERE event_id = ?1", [id], |r| r.get(0)).ok(),
+        };
         if let Some(text) = text.filter(|t| !t.trim().is_empty()) {
             turns.push(Turn { at_ms: *at, prompt: text, actions: None });
         }
@@ -2274,6 +2292,47 @@ mod tests {
             only,
         })
         .unwrap()
+    }
+
+    #[test]
+    fn a_session_held_live_and_imported_is_judged_once_with_every_prompt() {
+        let e = env();
+        // VS Code session sv, imported from Copilot's log: its copy of v1 (2 s later) and a prompt the hook missed.
+        let mut store = Store::open(&e.paths.db()).unwrap();
+        let at = NOW - 2 * 60 * MIN;
+        let ev = |ts: i64, text: &str| ImportedEvent {
+            kind: "prompt".into(),
+            ts_utc_ms: Some(ts),
+            text: Some(text.into()),
+            actions: None,
+        };
+        let session = ImportedSession {
+            tool: "copilot-cli".into(),
+            source_session_id: "sv".into(),
+            source_mtime_ms: 1,
+            folder: "/repo".into(),
+            started_utc_ms: Some(at),
+            human_turns: 2,
+            non_interactive: None,
+            template_key: None,
+            outcome: "imported".into(),
+            why: String::new(),
+            events: vec![ev(at + 2_000, "refactor the parser"), ev(at + 5 * MIN, "keep the old API")],
+        };
+        store.put_import_session("run2", &session).unwrap();
+        let pack = aiq_core::pack::parse(aiq_core::pack::BUNDLED_TOML).unwrap();
+        let tasks = aiq_home::tasks(&store, &pack, 0).unwrap();
+        let v: Vec<&TaskRow> = tasks.iter().filter(|t| t.session == "sv").collect();
+        assert_eq!(v.len(), 1, "one task, not one per copy");
+        assert_eq!((v[0].task_id.as_str(), v[0].prompts), ("v1", 2));
+        let (turns, _) = task_turns(&store, &e.homes, v[0]).unwrap();
+        let prompts: Vec<&str> = turns.iter().map(|t| t.prompt.as_str()).collect();
+        assert_eq!(prompts, ["refactor the parser", "keep the old API"]);
+        let judge = Fake::ok(2);
+        go(&e, &judge, &judge, None);
+        let judged = e.store.current_judgments().unwrap();
+        assert_eq!(judged.len(), 4, "three live tasks and one imported; the second copy of sv is not judged");
+        assert!(judged.keys().all(|k| !k.starts_with("import:copilot-cli:sv")));
     }
 
     #[test]

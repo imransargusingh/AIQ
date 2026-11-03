@@ -80,6 +80,50 @@ fn tasks_follow_the_task_rule_window_and_set_aside() {
 }
 
 #[test]
+fn a_session_captured_live_and_imported_is_one_task() {
+    let d = tempfile::tempdir().unwrap();
+    let p = Paths::at(d.path());
+    let mut s = Seed::new(&p);
+    let t0 = NOW - 2 * DAY;
+    // VS Code agent mode: the hooks saw two prompts; Copilot's own log (imported) also holds the one typed while
+    // the agent worked, and its copies of the other two land 2-3 s later.
+    let v1 = s.prompt("vscode", "S", t0, Some(AIQ), "fix the build");
+    s.prompt("vscode", "S", t0 + 10 * MIN, Some(AIQ), "now the tests");
+    s.imported_session(
+        "copilot-cli",
+        "S",
+        AIQ,
+        "imported",
+        &[
+            (t0 + 2_500, "fix the build"),
+            (t0 + 5 * MIN, "use the other runner"),
+            (t0 + 10 * MIN + 3_000, "now the tests"),
+        ],
+    );
+    // Claude Code: the same session twice, nothing extra.
+    let c1 = s.prompt("claude-code", "C", t0 + DAY, Some(AIQ), "write the spec");
+    s.imported_session("claude-code", "C", AIQ, "imported", &[(t0 + DAY + 1_000, "write the spec")]);
+    // Imported only (before live capture began): a task as before.
+    s.imported_session("claude-code", "OLD", AIQ, "imported", &[(t0 - DAY, "an older session")]);
+    let snap = snap(&p);
+    assert!(snap.status.error.is_none(), "{:?}", snap.status.error);
+    let shape: Vec<(&str, &str, u32, &str)> =
+        snap.tasks.iter().map(|t| (t.task_id.as_str(), t.tool.as_str(), t.prompts, t.origin)).collect();
+    assert_eq!(
+        shape,
+        vec![
+            (c1.as_str(), "claude-code", 1, "live"),
+            (v1.as_str(), "vscode", 3, "live"),
+            ("import:claude-code:OLD:0", "claude-code", 1, "imported"),
+        ]
+    );
+    let merged = &snap.tasks[1];
+    assert_eq!(merged.members[1].0, "import:copilot-cli:S:2", "the prompt only the import holds joins in order");
+    assert_eq!(merged.folder.as_deref(), Some(AIQ));
+    assert_eq!(snap.home.tasks_in_window, 3);
+}
+
+#[test]
 fn tips_settings_and_data() {
     let d = tempfile::tempdir().unwrap();
     let p = Paths::at(d.path());

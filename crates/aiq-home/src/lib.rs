@@ -18,6 +18,7 @@ use std::collections::BTreeSet;
 use std::time::Instant;
 
 mod detail;
+mod twins;
 pub use detail::{TaskDetail, TaskPromptText, task_detail};
 
 pub const SCHEMA: &str = "aiq.home.v1";
@@ -725,36 +726,97 @@ pub fn tasks(store: &Store, pack: &PackV1, since_ms: i64) -> Result<Vec<TaskRow>
     task_list(store, pack, since_ms, &aside)
 }
 
+/// A live prompt: event id, surface, session, time, folder, text.
+type LiveRow = (String, String, String, i64, Option<String>, Option<String>);
+/// An imported prompt: key, tool, session, folder key, time, text.
+type ImportRow = (String, String, String, String, i64, Option<String>);
+
 fn task_list(store: &Store, pack: &PackV1, window_start: i64, aside: &BTreeSet<&str>) -> R<Vec<TaskRow>> {
     let c = store.raw();
     let gap = pack.idle_gap_min as i64 * 60_000;
     let span = &pack.reprompt.span_surfaces;
-    // Live tasks. Read from one idle gap before the window so a Task that started just before it is whole.
-    let mut rows: Vec<(String, String, String, i64, Option<String>)> = Vec::new();
+    // Live prompts. Read from one idle gap before the window so a Task that started just before it is whole.
+    let mut rows: Vec<LiveRow> = Vec::new();
     {
         let mut st = q(c.prepare(
-            "SELECT e.event_id, e.surface, e.surface_session_id, e.ts_utc_ms, json_extract(e.payload_meta, '$.folder')
+            "SELECT e.event_id, e.surface, e.surface_session_id, e.ts_utc_ms, json_extract(e.payload_meta, '$.folder'),
+                    t.text
              FROM event e LEFT JOIN content t ON t.event_id = e.event_id
              WHERE e.kind = 'prompt' AND e.ts_utc_ms >= ?1 AND (t.text IS NULL OR trim(t.text) != '')
              ORDER BY e.ts_utc_ms, e.event_id",
         ))?;
-        let it =
-            q(st.query_map([window_start - gap], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))))?;
+        let it = q(st.query_map([window_start - gap], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?))
+        }))?;
         for row in it {
             rows.push(q(row)?);
         }
     }
+    // Imported prompts (`aiq import`, schema v4). A store from before v4 has no import tables.
+    let mut imp: Vec<ImportRow> = Vec::new();
+    if store.has_table("import_session").map_err(|e| e.to_string())?
+        && store.has_table("import_event").map_err(|e| e.to_string())?
+    {
+        let mut st = q(c.prepare(
+            "SELECT s.tool, s.source_session_id, s.folder, e.seq, e.ts_utc_ms, e.text
+             FROM import_event e JOIN import_session s ON s.tool = e.tool AND s.source_session_id = e.source_session_id
+             WHERE s.outcome = 'imported' AND e.kind = 'prompt' AND e.ts_utc_ms IS NOT NULL AND e.ts_utc_ms >= ?1
+               AND (e.text IS NULL OR trim(e.text) != '')
+             ORDER BY e.ts_utc_ms, s.source_session_id, e.seq",
+        ))?;
+        let it = q(st.query_map([window_start - gap], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, i64>(3)?,
+                r.get::<_, i64>(4)?,
+                r.get::<_, Option<String>>(5)?,
+            ))
+        }))?;
+        for r in it {
+            let (tool, sid, folder, seq, ts, text) = q(r)?;
+            imp.push((format!("import:{tool}:{sid}:{seq}"), tool, sid, folder_key(&folder), ts, text));
+        }
+    }
+    // A session both captured live and imported is one session: its imported prompts that have a live twin are
+    // left out, and the rest join the live stream (twins.rs).
+    let fates = twins::fates(
+        &rows
+            .iter()
+            .map(|(_, s, sid, ts, _, t)| twins::Copy { tool: s, session: sid, utc_ms: *ts, text: t.as_deref() })
+            .collect::<Vec<_>>(),
+        &imp.iter()
+            .map(|(_, tool, sid, _, ts, t)| twins::Copy { tool, session: sid, utc_ms: *ts, text: t.as_deref() })
+            .collect::<Vec<_>>(),
+    );
+    // Live stream: (event id, surface, session, time, folder).
+    let mut stream: Vec<(&str, &str, &str, i64, Option<&str>)> =
+        rows.iter().map(|(id, s, sid, ts, f, _)| (id.as_str(), s.as_str(), sid.as_str(), *ts, f.as_deref())).collect();
+    let mut alone: Vec<&ImportRow> = Vec::new();
+    for (p, fate) in imp.iter().zip(&fates) {
+        match *fate {
+            twins::Fate::Alone => alone.push(p),
+            twins::Fate::Twin => {}
+            twins::Fate::Extra(j) => {
+                let f = rows[j].4.as_deref().or(Some(p.3.as_str()).filter(|f| !f.is_empty()));
+                stream.push((p.0.as_str(), rows[j].1.as_str(), rows[j].2.as_str(), p.4, f));
+            }
+        }
+    }
+    stream.sort_by(|a, b| a.3.cmp(&b.3).then_with(|| a.0.cmp(b.0)));
+
     let folder_of: std::collections::BTreeMap<&str, Option<&str>> =
-        rows.iter().map(|(id, _, _, _, f)| (id.as_str(), f.as_deref())).collect();
+        stream.iter().map(|(id, _, _, _, f)| (*id, *f)).collect();
     let mut prompts_in: std::collections::BTreeMap<(&str, &str), u32> = std::collections::BTreeMap::new();
-    for (_, surface, session, _, _) in &rows {
-        *prompts_in.entry((surface.as_str(), session.as_str())).or_default() += 1;
+    for (_, surface, session, _, _) in &stream {
+        *prompts_in.entry((surface, session)).or_default() += 1;
     }
     // Live tasks of one-prompt sessions in set-aside folders: (surface, session) of their first prompt.
     let session_of: std::collections::BTreeMap<&str, (&str, &str)> =
-        rows.iter().map(|(id, surface, session, _, _)| (id.as_str(), (surface.as_str(), session.as_str()))).collect();
+        stream.iter().map(|(id, surface, session, _, _)| (*id, (*surface, *session))).collect();
     let live = split_tasks(
-        rows.iter().map(|(id, surface, session, ts, _)| TaskPrompt { event_id: id, surface, session, utc_ms: *ts }),
+        stream.iter().map(|(id, surface, session, ts, _)| TaskPrompt { event_id: id, surface, session, utc_ms: *ts }),
         span,
         gap,
     );
@@ -771,48 +833,22 @@ fn task_list(store: &Store, pack: &PackV1, window_start: i64, aside: &BTreeSet<&
         })
         .collect();
 
-    // Imported tasks (`aiq import`, schema v4). A store from before v4 has no import tables.
-    if store.has_table("import_session").map_err(|e| e.to_string())?
-        && store.has_table("import_event").map_err(|e| e.to_string())?
-    {
-        let mut st = q(c.prepare(
-            "SELECT s.tool, s.source_session_id, s.folder, e.seq, e.ts_utc_ms
-             FROM import_event e JOIN import_session s ON s.tool = e.tool AND s.source_session_id = e.source_session_id
-             WHERE s.outcome = 'imported' AND e.kind = 'prompt' AND e.ts_utc_ms IS NOT NULL AND e.ts_utc_ms >= ?1
-               AND (e.text IS NULL OR trim(e.text) != '')
-             ORDER BY e.ts_utc_ms, s.source_session_id, e.seq",
-        ))?;
-        let it = q(st.query_map([window_start - gap], |r| {
-            Ok((
-                r.get::<_, String>(0)?,
-                r.get::<_, String>(1)?,
-                r.get::<_, String>(2)?,
-                r.get::<_, i64>(3)?,
-                r.get::<_, i64>(4)?,
-            ))
-        }))?;
-        let mut imp: Vec<(String, String, String, String, i64)> = Vec::new();
-        for r in it {
-            let (tool, sid, folder, seq, ts) = q(r)?;
-            imp.push((format!("import:{tool}:{sid}:{seq}"), tool, sid, folder_key(&folder), ts));
-        }
-        let folder_of: std::collections::BTreeMap<&str, &str> =
-            imp.iter().map(|(id, _, _, f, _)| (id.as_str(), f.as_str())).collect();
-        // Imported sessions never span: each source session is its own stream.
-        let spans = split_tasks(
-            imp.iter().map(|(id, tool, sid, _, ts)| TaskPrompt {
-                event_id: id,
-                surface: tool,
-                session: sid,
-                utc_ms: *ts,
-            }),
-            &[],
-            gap,
-        );
-        for t in spans {
-            let f = folder_of.get(t.task_id.as_str()).map(|f| f.to_string()).filter(|f| !f.is_empty());
-            tasks.push(row(t, f, "imported"));
-        }
+    // Imported-only sessions never span: each source session is its own stream.
+    let folder_of: std::collections::BTreeMap<&str, &str> =
+        alone.iter().map(|(id, _, _, f, _, _)| (id.as_str(), f.as_str())).collect();
+    let spans = split_tasks(
+        alone.iter().map(|(id, tool, sid, _, ts, _)| TaskPrompt {
+            event_id: id,
+            surface: tool,
+            session: sid,
+            utc_ms: *ts,
+        }),
+        &[],
+        gap,
+    );
+    for t in spans {
+        let f = folder_of.get(t.task_id.as_str()).map(|f| f.to_string()).filter(|f| !f.is_empty());
+        tasks.push(row(t, f, "imported"));
     }
 
     tasks.retain(|t| t.first_ms >= window_start);
