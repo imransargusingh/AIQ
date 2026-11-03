@@ -323,3 +323,29 @@ summary: >-
   reads every Copilot session again once (`a_new_copilot_reader_reads_unchanged_sessions_again_once`). Rule: a
   turn ends where the person acts, never at a marker the tool may repeat; any change to what a reader stores
   raises its reader version.
+
+### DC-022 — A tip handed over on a deadline the hook has already passed, recorded as shown
+- **Signature:** `e2e_claude_code_card_then_copilot_run_held_by_quiet_period` failed once on the Windows runner
+  (PR #112, 2026-11-03): the Claude Code Stop hook printed no card. Reproduced on a loaded 4-core Linux box
+  (suite run 150 times beside 16 busy loops): 16 runs missed the card at the first turn end. Hook outcome
+  `no-card` 13 (the core's 30 ms window had passed; the card stayed show-ready) and `stop-timeout` 3 (the hook's
+  55 ms wait ran out). In 1 of those 3 the core had already recorded the card as shown: the tip was lost, but it
+  still counts against the daily cap and starts the quiet period. With the test fixed to retry a safe miss, 10
+  of a further 150 loaded runs hit the lost case.
+- **Why it survives:** the hook and the core each keep their own clock. The core starts its 30 ms when it reads
+  the frame; the hook starts its 55 ms before it connects. A slow connect or a slow reply moves the core's window
+  past the hook's deadline, and nothing tells the core the hook gave up. On a quiet laptop both finish in a few
+  ms. The tests asserted the card at the first turn end, a timing property, so a safe miss and a lost card
+  failed the same way.
+- **Instances:** the Claude Code Stop hook and the Copilot CLI agentStop hook (same `TakeCard` path). For
+  Copilot CLI the status line still shows a card marked shown, so a lost chat line is softer there.
+- **Sweep:** every hook-side wait on a core reply (`grep -n "ipc::request(" crates/aiq/src`): only `TakeCard`
+  records state when it replies; ingests send no reply; status-line `TipLine` is the same shape but a missed
+  refresh is retried by Copilot about once a second (handled in DC-016's test).
+- **Control (tests):** `Env::stop_until_card` in `crates/aiq/tests/e2e_copilot.rs` ends the turn again after a
+  miss, as the product does, and fails if a miss left the card anything but show-ready; its failure message
+  carries `aiq status` and `hook-timings.log`, so the next CI failure names the hook outcome. A lost card still
+  fails.
+- **Control (product): open.** The hand-over needs one clock: the hook sends its own deadline, or the core marks
+  a card shown only after the hook confirms it printed. That changes which tips users see; it waits on Imran's
+  decision.
