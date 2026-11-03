@@ -33,7 +33,13 @@
       "read_chars": 160,
       "read_actions": true,
       "versions": "fs1 · r1 · j1"
-    }
+    },
+    "session": "cc1",
+    "prompt_ms": [
+      1793361600000,
+      1793361840000,
+      1793362140000
+    ]
   },
   "prompts": [
     {
