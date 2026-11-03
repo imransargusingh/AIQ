@@ -51,7 +51,7 @@ fn inner(paths: &Paths) -> &'static str {
     };
     let text = match serde_json::from_str::<TipLineReply>(&line) {
         Ok(TipLineReply { card: Some(c), .. }) => render_status_line(&c, crate::hook::color_allowed()),
-        Ok(TipLineReply { waiting_card_id: Some(id), .. }) => render_waiting_marker(&id),
+        Ok(TipLineReply { waiting_card_id: Some(id), .. }) => render_waiting_marker(&id, crate::hook::color_allowed()),
         _ => return if has_session { "none" } else { "none-no-session" },
     };
     let mut out = std::io::stdout().lock();
