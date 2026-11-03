@@ -146,7 +146,7 @@
    "id": "h04",
    "tool": "claude-code",
    "group": "rung",
-   "label_source": "author",
+   "label_source": "human",
    "expect": {
     "job": [
      "code_change"
@@ -212,7 +212,7 @@
    "id": "h05",
    "tool": "claude-code",
    "group": "rung",
-   "label_source": "author",
+   "label_source": "human",
    "expect": {
     "job": [
      "write_doc",
@@ -260,7 +260,7 @@
    "id": "h06",
    "tool": "claude-code",
    "group": "rung",
-   "label_source": "author",
+   "label_source": "human",
    "expect": {
     "job": [
      "write_doc"
@@ -364,7 +364,7 @@
    "id": "h08",
    "tool": "claude-code",
    "group": "rung",
-   "label_source": "author",
+   "label_source": "human",
    "expect": {
     "job": [
      "write_doc"
@@ -417,7 +417,7 @@
    "id": "h09",
    "tool": "claude-code",
    "group": "rung",
-   "label_source": "author",
+   "label_source": "human",
    "expect": {
     "job": [
      "run_ship",
@@ -481,7 +481,7 @@
    "id": "h10",
    "tool": "claude-code",
    "group": "rung",
-   "label_source": "author",
+   "label_source": "human",
    "expect": {
     "job": [
      "code_change"
@@ -607,7 +607,7 @@
    "id": "h12",
    "tool": "copilot-cli",
    "group": "rung",
-   "label_source": "author",
+   "label_source": "human",
    "expect": {
     "job": [
      "code_change",
@@ -662,7 +662,7 @@
    "id": "h13",
    "tool": "claude-code",
    "group": "rung",
-   "label_source": "author",
+   "label_source": "human",
    "expect": {
     "job": [
      "code_change"
@@ -781,7 +781,7 @@
    "id": "h15",
    "tool": "claude-code",
    "group": "rung",
-   "label_source": "author",
+   "label_source": "human",
    "expect": {
     "job": [
      "ask_research",
@@ -896,7 +896,7 @@
    "id": "h17",
    "tool": "claude-code",
    "group": "rung",
-   "label_source": "author",
+   "label_source": "human",
    "expect": {
     "job": [
      "write_doc"
@@ -1014,7 +1014,7 @@
    "id": "h19",
    "tool": "claude-code",
    "group": "rung",
-   "label_source": "author",
+   "label_source": "human",
    "expect": {
     "job": [
      "write_doc"
@@ -1152,7 +1152,7 @@
    "id": "a02",
    "tool": "claude-code",
    "group": "job",
-   "label_source": "author",
+   "label_source": "human",
    "expect": {
     "job": [
      "ask_research"
@@ -1204,7 +1204,7 @@
    "id": "a03",
    "tool": "claude-code",
    "group": "job",
-   "label_source": "author",
+   "label_source": "human",
    "expect": {
     "job": [
      "ask_research"
@@ -1397,7 +1397,7 @@
    "id": "r03",
    "tool": "claude-code",
    "group": "job",
-   "label_source": "author",
+   "label_source": "human",
    "expect": {
     "job": [
      "run_ship"
@@ -1445,7 +1445,7 @@
    "id": "r04",
    "tool": "claude-code",
    "group": "job",
-   "label_source": "author",
+   "label_source": "human",
    "expect": {
     "job": [
      "run_ship",
