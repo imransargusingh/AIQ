@@ -93,7 +93,7 @@ pub trait Provider {
 }
 
 /// Find a program on PATH the way Windows does for a bare name: `.exe` first, then `.cmd`.
-fn find_exe(name: &str) -> Option<PathBuf> {
+pub(crate) fn find_exe(name: &str) -> Option<PathBuf> {
     let exts: &[&str] = if cfg!(windows) { &[".exe", ".cmd", ".bat"] } else { &[""] };
     let path = std::env::var_os("PATH")?;
     for dir in std::env::split_paths(&path) {
@@ -178,6 +178,27 @@ fn short(s: &str) -> String {
     aiq_contracts::judge::plain(s, 300)
 }
 
+/// The model that did the work in a per-model usage map. Claude Code adds a small helper call on another model
+/// (measured 2026-11-03: a sealed `claude -p --model sonnet` call listed claude-haiku-5-5 and claude-sonnet-5-5),
+/// and the map's keys come back sorted, so the first key named the helper. The judge model is the one that cost
+/// most, else wrote most.
+/// assume: Copilot's `modelMetrics` entries carry neither `costUSD` nor `outputTokens` (shape not recorded);
+/// then every weight is 0 and this keeps the first key, as before. A laptop usage file would confirm it.
+fn main_model(m: &serde_json::Map<String, Value>) -> Option<String> {
+    let weight = |v: &Value| {
+        let n = |k: &str| v.get(k).and_then(Value::as_f64);
+        (n("costUSD").unwrap_or(0.0), n("outputTokens").unwrap_or(0.0))
+    };
+    let mut best: Option<(&String, (f64, f64))> = None;
+    for (k, v) in m {
+        let w = weight(v);
+        if best.is_none_or(|(_, bw)| w.partial_cmp(&bw) == Some(std::cmp::Ordering::Greater)) {
+            best = Some((k, w));
+        }
+    }
+    best.map(|(k, _)| k.clone())
+}
+
 /// The person's own Claude Code, headless and sealed (ADR-0007; spec TR-10).
 pub struct ClaudeCli {
     pub exe: Option<PathBuf>,
@@ -249,7 +270,7 @@ impl Provider for ClaudeCli {
             let v: Vec<i64> = k.iter().filter_map(|k| u.get(*k).and_then(Value::as_i64)).collect();
             (!v.is_empty()).then(|| v.iter().sum())
         };
-        let model = d["modelUsage"].as_object().and_then(|m| m.keys().next().cloned());
+        let model = d["modelUsage"].as_object().and_then(main_model);
         let mut res = CallResult {
             outcome: Outcome::Error(String::new()),
             model,
@@ -380,7 +401,7 @@ impl Provider for CopilotCli {
             Ok(r) => r,
             Err(e) => return CallResult::failed(Outcome::Error(e.to_string()), 0),
         };
-        let model = u["modelMetrics"].as_object().and_then(|m| m.keys().next().cloned()).or_else(|| self.model.clone());
+        let model = u["modelMetrics"].as_object().and_then(main_model).or_else(|| self.model.clone());
         let mut res = CallResult {
             outcome: Outcome::Error(String::new()),
             model,
@@ -1055,6 +1076,10 @@ pub fn cli(args: &[&str]) -> ExitCode {
     if only.is_some_and(|o| o != "claude-code" && o != "copilot-cli") {
         eprintln!("--only takes claude-code or copilot-cli.");
         return ExitCode::from(2);
+    }
+    if args.iter().any(|a| *a == "--eval" || *a == "--eval-report") {
+        // Synthetic golden tasks only; never reads or writes the store, so it runs while AIQ is paused too.
+        return crate::judge_eval::cli(args, &paths);
     }
     if aiq_core::control::is_paused(&paths) {
         if !auto {
@@ -2809,125 +2834,20 @@ mod tests {
     }
 
     #[test]
-    fn check_report_before_any_check_says_how_to_start() {
-        let e = env();
-        assert!(check_report(&e.store).unwrap().contains("No accuracy check yet"));
-    }
-}
-
-/// Measured accuracy on the Phase 0 held-out tasks (each written at a known rung), through the real
-/// `claude -p` on this machine. Costs real usage, so it runs only on request:
-/// `AIQ_JUDGE_EVAL=prototypes/phase0-spike/data/heldout_scenarios.json cargo test -p aiq --bin aiq judge_eval -- --ignored --nocapture`
-/// `AIQ_JUDGE_EVAL_CACHE=<file>` saves the model's answers on the first run and replays them after, so a
-/// change to placement is measured on the same answers at no cost.
-#[cfg(test)]
-mod eval {
-    use super::*;
-    use std::collections::BTreeMap;
-
-    fn turns(steps: &[Value]) -> Vec<Turn> {
-        let mut out: Vec<Turn> = Vec::new();
-        for (i, s) in steps.iter().enumerate() {
-            match s["kind"].as_str() {
-                Some("user") | Some("command") => out.push(Turn {
-                    at_ms: i as i64,
-                    prompt: s["text"].as_str().or(s["command"].as_str()).unwrap_or("").to_owned(),
-                    actions: Some(ActionSummary::default()),
-                }),
-                Some("tool") => {
-                    if let Some(t) = out.last_mut() {
-                        let a = t.actions.get_or_insert_with(ActionSummary::default);
-                        let name = s["tool"].as_str().unwrap_or("?");
-                        *a.tools.entry(name.to_owned()).or_default() += 1;
-                        if let Some(p) = s["path"].as_str() {
-                            a.files.push(p.to_owned());
-                        }
-                        if let Some(c) = s["command"].as_str() {
-                            a.commands.push(c.to_owned());
-                        }
-                        if name == "Task" {
-                            a.subagents += 1;
-                        }
-                    }
-                }
-                _ => {}
-            }
-        }
-        out
+    fn the_judge_model_is_the_one_that_did_the_work_not_the_first_key() {
+        let m = json!({
+            "claude-haiku-5-5": {"outputTokens": 19, "costUSD": 0.000139},
+            "claude-sonnet-5-5": {"outputTokens": 77, "costUSD": 0.016582}
+        });
+        assert_eq!(main_model(m.as_object().unwrap()).as_deref(), Some("claude-sonnet-5-5"));
+        let one = json!({"gpt-6.1-sol": {}});
+        assert_eq!(main_model(one.as_object().unwrap()).as_deref(), Some("gpt-6.1-sol"));
+        assert_eq!(main_model(json!({}).as_object().unwrap()), None);
     }
 
     #[test]
-    #[ignore = "calls the real claude -p; set AIQ_JUDGE_EVAL"]
-    fn judge_eval() {
-        let path = std::env::var("AIQ_JUDGE_EVAL").expect("AIQ_JUDGE_EVAL=<heldout_scenarios.json>");
-        let model = std::env::var("AIQ_JUDGE_MODEL").unwrap_or_else(|_| rung::DEFAULT_CLAUDE_MODEL.into());
-        let cases: Vec<Value> = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
-        let p = ClaudeCli { exe: find_exe("claude"), model, scratch: std::env::temp_dir() };
-        let schema = response_schema();
-        let cache_path = std::env::var("AIQ_JUDGE_EVAL_CACHE").ok();
-        let mut cache: BTreeMap<String, Vec<Value>> = cache_path
-            .as_ref()
-            .and_then(|f| std::fs::read_to_string(f).ok())
-            .map(|s| serde_json::from_str(&s).unwrap())
-            .unwrap_or_default();
-        let (mut exact, mut within, mut job_ok, mut n, mut cost, mut ms) = (0, 0, 0, 0, 0.0, Vec::new());
-        let mut rows = Vec::new();
-        for c in &cases {
-            let t = turns(c["steps"].as_array().unwrap());
-            let log = rung::log_facts(&t, true);
-            let user = rung::envelope("claude-code", &t, &log, &format!("AIQ-QUOTE-{}", uuid::Uuid::new_v4().simple()));
-            let id = c["id"].as_str().unwrap().to_owned();
-            let answers = cache.entry(id).or_insert_with(|| {
-                let mut got = Vec::new();
-                for _ in 0..2 {
-                    let r = p.call(&CallReq { system: rung::SYSTEM, user: &user, schema: &schema, session_id: "" });
-                    cost += r.cost_usd.unwrap_or(0.0);
-                    ms.push(r.latency_ms);
-                    if let Outcome::Ok(v) = r.outcome {
-                        got.push(v);
-                    }
-                }
-                got
-            });
-            let runs: Vec<Response> = answers.iter().filter_map(|v| parse_response(v.clone()).ok()).collect();
-            if runs.is_empty() {
-                rows.push(format!("{} no answer", c["id"]));
-                continue;
-            }
-            let (_, pl) = rung::place(&runs, &log, 0);
-            let want = c["rung"].as_u64().unwrap() as u8;
-            let want_job = c["job"].as_str().unwrap();
-            let got_job = if pl.job == "unclassified" { "other" } else { pl.job.as_str() };
-            n += 1;
-            exact += (pl.current == want) as u32;
-            within += (pl.current.abs_diff(want) <= 1) as u32;
-            // The held-out labels predate the Ask or research pack (j3): their "other" covers questions.
-            let other_ok = want_job == "other" && ["other", rung::ANSWER_JOB].contains(&runs[0].job.as_str());
-            job_ok += (got_job == want_job || other_ok) as u32;
-            rows.push(format!(
-                "{} want {} got {} (model {}) state {} job {}/{}",
-                c["id"],
-                want,
-                pl.current,
-                pl.model_rung,
-                pl.state.as_str(),
-                want_job,
-                runs[0].job
-            ));
-            rows.extend(pl.notes.iter().map(|n| format!("    {n}")));
-        }
-        if let Some(f) = &cache_path {
-            std::fs::write(f, serde_json::to_string(&cache).unwrap()).unwrap();
-        }
-        ms.sort();
-        let pct = |q: usize| ms.get((ms.len().max(1) - 1) * q / 100).map_or("replayed".to_owned(), |m| m.to_string());
-        for r in &rows {
-            println!("{r}");
-        }
-        println!(
-            "EVAL n={n} exact={exact} within_one={within} job={job_ok} cost_usd={cost:.3} call_ms_p50={} p95={}",
-            pct(50),
-            pct(95)
-        );
+    fn check_report_before_any_check_says_how_to_start() {
+        let e = env();
+        assert!(check_report(&e.store).unwrap().contains("No accuracy check yet"));
     }
 }

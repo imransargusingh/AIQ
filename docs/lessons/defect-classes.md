@@ -187,3 +187,18 @@ summary: >-
 - **Control:** `decode_log` reads UTF-16 LE/BE and UTF-8 with or without a BOM. Test
   `upgrade_logs_are_read_in_the_encodings_powershell_writes` builds the bytes PowerShell writes. Rule: a
   parser of a file another program writes is tested on that program's bytes, not on a pasted line.
+
+### DC-014 — The first key of a JSON map taken as the one that matters
+- **Signature:** a sealed `claude -p --model sonnet` judge call recorded its model as `claude-haiku-5-5`.
+  Claude Code adds a small helper call on another model, so `modelUsage` lists two models, and
+  `serde_json`'s map sorts keys, so `keys().next()` named the helper.
+- **Why it survives:** with one model in the map the first key is right; a short probe call lists one model,
+  only a real judge-sized call lists two. Nothing reads the recorded model back against the setting.
+- **Instances:** 2026-11-03, found by the first `aiq judge --eval` run in the cloud (report showed
+  claude-haiku-5-5; replayed by hand: haiku 19 output tokens $0.0001, sonnet 77 tokens $0.017).
+  `judge.rs` Claude path, and the same code on Copilot's `modelMetrics`.
+- **Sweep:** `grep -rn "keys().next()" crates`: the two judge sites only.
+- **Control:** `main_model` picks the entry that cost most, else wrote most; test
+  `the_judge_model_is_the_one_that_did_the_work_not_the_first_key`. Copilot's entry shape is not recorded,
+  so there it still keeps the first key (marked `assume:` in the code). Rule: never read meaning from a
+  JSON map's key order.
