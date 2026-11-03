@@ -86,6 +86,7 @@ async fn pause(on: bool) -> Result<Snapshot, String> {
 fn allowed_setting(key: &str) -> bool {
     matches!(key, "daily_cap" | "copilot_tip_stays" | "next_rung_tips" | "judge" | "judge_daily_tasks" | "update")
         || key.starts_with("keep_on.")
+        || key.starts_with(aiq_home::PROJECT_NAME)
 }
 
 #[tauri::command]

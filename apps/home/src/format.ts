@@ -99,16 +99,3 @@ export function jobOptions(tasks: TaskRow[]): { options: string[]; dropdown: boo
   const jobs = [...new Set(tasks.map(jobOf))].sort();
   return { options: ["All", ...jobs], dropdown: jobs.length > 4 };
 }
-
-/** Where the person uses agents most: folder and tool, by number of tasks. */
-export function topPlaces(tasks: TaskRow[], max = 3): { folder: string | null; tool: string; tasks: number; prompts: number }[] {
-  const m = new Map<string, { folder: string | null; tool: string; tasks: number; prompts: number }>();
-  for (const t of tasks) {
-    const k = `${t.folder ?? ""}|${t.tool}`;
-    const e = m.get(k) ?? { folder: t.folder, tool: t.tool, tasks: 0, prompts: 0 };
-    e.tasks += 1;
-    e.prompts += t.prompts;
-    m.set(k, e);
-  }
-  return [...m.values()].sort((a, b) => b.tasks - a.tasks || b.prompts - a.prompts).slice(0, max);
-}

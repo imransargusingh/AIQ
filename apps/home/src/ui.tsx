@@ -25,6 +25,39 @@ export interface Ctx {
   announce: (msg: string) => void;
   togglePause: () => void;
   refresh: () => void;
+  /** The project Home and Tasks show (a folder key, "" for no folder), or null for all (design project-filter P3). */
+  project: string | null;
+  setProject: (key: string | null) => void;
+}
+
+/** The picker's "All projects" value: a NUL can't be in any folder path, so no project key equals it. */
+const ALL = "\u0000";
+
+/** The Project picker at the top of Home and Tasks (design project-filter P3). Hidden with one project or none. */
+export function ProjectPicker({ snap, project, setProject }: Pick<Ctx, "snap" | "project" | "setProject">) {
+  if (snap.projects.length < 2) return null;
+  const shown = project !== null && snap.projects.some((p) => p.key === project) ? project : null;
+  return (
+    <div className="row projpick">
+      <label className="meta" htmlFor="projsel">Project</label>
+      <select
+        id="projsel"
+        className="input"
+        value={shown === null ? ALL : shown}
+        onChange={(e) => setProject(e.target.value === ALL ? null : e.target.value)}
+      >
+        <option value={ALL}>All projects</option>
+        {snap.projects.map((p) => (
+          <option key={p.key} value={p.key}>
+            {p.name} ({p.tasks_in_window})
+          </option>
+        ))}
+      </select>
+      {shown !== null && (
+        <button className="btnlink" onClick={() => setProject(null)}>Show all projects</button>
+      )}
+    </div>
+  );
 }
 
 /** The page title takes focus on every page change, so a screen reader says where the person is. */

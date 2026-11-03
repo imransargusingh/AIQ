@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Project Filter</title><style>
+:root { color-scheme: light dark; --bg:#f7f5ef; --panel:#fff; --text:#20201d;
+  --muted:#66645f; --line:#d9d5ca; --accent:#3157a4; --code:#f0eee7; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#171816; --panel:#20221f; --text:#f2f1eb; --muted:#b8b6ae;
+    --line:#3d403a; --accent:#8fb0ff; --code:#292c27; }
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text);
+  font:16px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif; }
+main { width:min(920px,calc(100% - 32px)); margin:32px auto; padding:40px;
+  background:var(--panel); border:1px solid var(--line); border-radius:12px; }
+h1,h2,h3,h4,h5,h6 { line-height:1.2; margin:1.5em 0 .55em; }
+h1 { margin-top:0; font-size:2.2rem; } h2 { border-bottom:1px solid var(--line); padding-bottom:.3em; }
+a { color:var(--accent); } code { background:var(--code); padding:.12em .35em; border-radius:4px; }
+pre { overflow:auto; padding:16px; background:var(--code); border-radius:8px; }
+pre code { padding:0; } blockquote { margin:1em 0; padding:.2em 1em; color:var(--muted);
+  border-left:4px solid var(--line); }
+table { width:100%; border-collapse:collapse; margin:1em 0; display:block; overflow:auto; }
+th,td { padding:.55em .75em; border:1px solid var(--line); text-align:left; vertical-align:top; }
+th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); }
+.source { color:var(--muted); font-size:.9rem; margin-bottom:2rem; }
+@media (max-width:640px) { main { width:100%; margin:0; padding:24px 18px; border:0; border-radius:0; } }
+</style></head><body><main><div class="source">Rendered from project-filter.md</div><h1>Design: filter tasks by project</h1>
+<p>Imran, 2026-11-03: <em>&quot;Users might work differently in different projects/context and this would help them better understand in which scenarios they have more/less opportunity to leverage AI further. What would that look like in the UI?&quot;</em></p>
+<h2>Goal state</h2>
+<table><thead><tr><th></th><th></th></tr></thead><tbody><tr><td><strong>Goal</strong></td><td>A person can see their numbers for one project, and see which project has the most room to grow</td></tr><tr><td><strong>Done when</strong></td><td>Home and Tasks filter by project; Home compares projects; names are automatic with an easy rename</td></tr><tr><td><strong>Not in scope</strong></td><td>Grouping a repo&#x27;s subfolders into one project (P7, next step); tips filtered by project (P6)</td></tr><tr><td><strong>Tier</strong></td><td>T1 (new read-model shape and one new setting key)</td></tr></tbody></table>
+<h2>What the store knows today (measured from the code)</h2>
+<p>Every task already carries the folder it ran in. Checked in the code on 2026-11-03, not on Imran&#x27;s store:</p>
+<table><thead><tr><th>Source</th><th>Folder recorded</th><th>Where</th></tr></thead><tbody><tr><td>Claude Code hook</td><td>Yes, the hook&#x27;s <code>cwd</code></td><td><code>crates/aiq/src/hook.rs</code> <code>cwd_of</code>, stored as <code>payload_meta.folder</code> by <code>crates/aiq-core/src/service.rs</code></td></tr><tr><td>Copilot CLI hook</td><td>Yes, <code>cwd</code></td><td>same path</td></tr><tr><td>VS Code agent hook</td><td>Yes, <code>cwd</code></td><td>same path</td></tr><tr><td>Imported Claude Code</td><td>Yes, the transcript&#x27;s <code>cwd</code> (falls back to the project folder slug)</td><td><code>crates/aiq/src/import.rs</code> <code>read_claude</code></td></tr><tr><td>Imported Copilot CLI</td><td>Yes when the session&#x27;s start record has <code>cwd</code>, else <code>(none)</code></td><td><code>crates/aiq/src/import.rs</code></td></tr></tbody></table>
+<p>The folder is normalised (<code>folder_key</code>: Windows paths lower-cased, trailing slash dropped), so the same folder always groups together. <strong>No git remote or repo root is stored.</strong> So today AIQ can group by folder, not by repo. A session started in <code>repo\src</code> is a different project from one started in <code>repo</code>.</p>
+<p>Not measured: how many of Imran&#x27;s tasks have a folder, and how many folders there are. Earlier laptop reads name at least AIQ, Foresight, executive_presence and tacit as folders with tasks. The judge thread can read the per-folder counts from the new Home table after the next install; it is a read of numbers the app now shows, no extra script.</p>
+<h2>Decisions</h2>
+<p><strong>P1. A project is the folder a session ran in.</strong> No manual tagging (Imran&#x27;s rule: no burden on users). Tasks with no folder (some imported Copilot sessions, <code>(none)</code>) form one row, &quot;Folder not recorded&quot;, so the counts always add up to All projects.</p>
+<p><strong>P2. AIQ names it; one click renames it.</strong> The name is the folder&#x27;s last part (<code>…\repos\Foresight</code> → &quot;Foresight&quot;). When two folders share a last part, both show their parent too (<code>work\api</code>, <code>oss\api</code>). A <strong>Rename</strong> button on the project&#x27;s row saves <code>project_name.&lt;folder&gt;</code> as a setting (append-only, like every setting); an empty name goes back to the automatic one. The full path shows on hover.</p>
+<p><strong>P3. One Project picker, top of Home and Tasks.</strong> A dropdown, not a chip row: a person can have dozens of folders, and a chip row of 30 wraps into noise. Default &quot;All projects&quot;. The choice carries between Home and Tasks so moving pages keeps the view. It resets when the app restarts (no hidden state to forget about).</p>
+<p><strong>P4. What the picker changes.</strong> Everything on Home that is about the person&#x27;s tasks:</p>
+<table><thead><tr><th>Changes with the picker</th><th>Stays the same (and says so)</th></tr></thead><tbody><tr><td>Most common rung and the rung scale</td><td>Your latest tip, Recent tips (P6)</td></tr><tr><td>Tasks agents finished, &quot;could be&quot;, the weekly chart</td><td>Set aside folders</td></tr><tr><td>Is each kind of task moving up?</td><td>Judging today</td></tr><tr><td>Where agents could do more</td><td></td></tr><tr><td>How you work with agents (rung shares)</td><td></td></tr><tr><td>Tasks page list</td><td></td></tr></tbody></table>
+<p><strong>P5. Project numbers use the same rules on the project&#x27;s tasks only.</strong> The split, the kind rows and the progress rows run the same functions over that project&#x27;s judged tasks. So a kind of task with 12 tasks over all projects but 3 in one project shows &quot;too few to say&quot; in that project. That is honest (3 tasks are too few to coach on) but it means a small project shows fewer next steps than All projects. The alternative (borrow the all-projects verdict for each kind) would show advice the project&#x27;s own tasks don&#x27;t support.</p>
+<p><strong>P5b. &quot;Your projects&quot; compares them.</strong> A table on Home, under All projects only, one row per project with a task in the last 30 days:</p>
+<table><thead><tr><th>Project</th><th>Tasks</th><th>Most common rung</th><th>Agents finished</th><th>With a next step</th></tr></thead><tbody><tr><td>Foresight</td><td>48</td><td>Assisted</td><td>0%</td><td>31 (65%)</td></tr><tr><td>AIQ</td><td>120</td><td>Directed</td><td>4%</td><td>22 (18%)</td></tr><tr><td>tacit</td><td>6</td><td>Assisted</td><td>too few</td><td>too few</td></tr></tbody></table>
+<p><em>(Numbers above are illustrative, not measured.)</em></p>
+<p>&quot;With a next step&quot; counts judged tasks whose kind of task has a next step in that project: the tasks that could move up a rung. The rows are ranked by it, most first, so the top row is &quot;where you have the most room to use agents more&quot;. Projects with fewer judged tasks than the split minimum show &quot;too few&quot; and go last. Selecting a row sets the picker to that project.</p>
+<p><strong>P6. Tips are not filtered yet.</strong> A tip is stored against a session, not a task, and the snapshot does not join tips to folders. Filtering tips needs that join; it is cheap but separate. Until then the tip cards say nothing about projects and stay visible.</p>
+<p><strong>P7. Next step, not built: a repo is one project.</strong> The core could record the repo root (walk up to <code>.git</code>) and the remote name once per session at capture time, so subfolders of one repo group together and the name can be <code>owner/repo</code>. That is a store change on the hot path (the 100 ms hook budget), so it waits for a measured need: if Imran&#x27;s table shows the same repo split over several rows.</p>
+<h2>Interaction with the folder set-aside rule (PR #87)</h2>
+<p>Set-aside folders never become projects: their tasks are not tasks. PR #87 counts a person&#x27;s sessions in a set-aside folder (two or more prompts) as tasks again; those tasks appear under that folder&#x27;s project like any other. So a folder can appear both in &quot;Set aside&quot; and in &quot;Your projects&quot;. That is correct (the folder has both automated sessions and the person&#x27;s own) and the table counts only the person&#x27;s tasks.</p>
+<h2>Layout question for Imran</h2>
+<p>One judgement call is on a card in the thread: <strong>dropdown at the top of Home and Tasks (built) vs a separate Projects page.</strong> Recommendation: the dropdown plus the table on Home, because the question &quot;where do I have more room?&quot; is answered on the page people already open, and the filter reuses every Home section instead of a second copy of them.</p>
+<h2>Test plan</h2>
+<ul><li>Rust: a seeded store with two folders and one task with no folder: project rows add up to All projects,</li></ul>
+<p>names come from the folder, a rename setting wins, duplicate last parts get their parent, scoped split and rungs match a hand count.</p>
+<ul><li>UI e2e: picker present on Home and Tasks; choosing a project changes the headline and the task list;</li></ul>
+<p>selecting a table row sets the picker; rename saves through <code>set_setting</code>; axe stays clean.</p></main></body></html>
