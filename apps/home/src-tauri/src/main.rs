@@ -97,6 +97,7 @@ fn allowed_setting(key: &str) -> bool {
             | "update"
     )
         || key.starts_with("keep_on.")
+        || key.starts_with(aiq_home::PROJECT_NAME)
 }
 
 #[tauri::command]

@@ -842,6 +842,47 @@ await test("no terminal needed: Include a set-aside folder, Disconnect a tool, s
   await st.context().close();
 });
 
+await test("projects: Your projects ranks folders, the picker scopes Home and Tasks, rename saves", async () => {
+  const page = await open("coaching");
+  const table = page.getByRole("table", { name: "Your projects" });
+  const rows = table.locator("tbody tr");
+  assert.equal(await rows.count(), 2);
+  assert.match(await rows.nth(0).innerText(), /aiq[\s\S]*12[\s\S]*Delegated \(3\)[\s\S]*45%[\s\S]*3 \(27%\)/);
+  assert.match(await rows.nth(1).innerText(), /foresight[\s\S]*4[\s\S]*Directed \(2\)[\s\S]*Too few judged/);
+  // Selecting a name scopes Home: the headline, the note, and no table.
+  await page.getByRole("button", { name: "Show foresight only" }).click();
+  await page.waitForSelector("[data-testid=project-note]");
+  const t = await page.locator("main").innerText();
+  assert.match(t, /Showing foresight only\. Tips and Set aside cover all projects\./);
+  assert.match(t, /Not enough judged tasks yet/);
+  assert.equal(await page.getByRole("table", { name: "Your projects" }).count(), 0);
+  assert.equal(await page.getByLabel("Project").inputValue(), "c:\\users\\imran\\source\\repos\\foresight");
+  assert.deepEqual(await axe(page), []);
+  // The choice carries to Tasks: only foresight's four tasks.
+  await page.locator("nav a", { hasText: "Tasks" }).click();
+  await page.waitForSelector("table[aria-label=Tasks]");
+  assert.equal(await page.locator("table[aria-label=Tasks] tbody tr").count(), 4);
+  assert.match(await page.locator("main").innerText(), /4 tasks in the last 30 days/);
+  await page.getByRole("button", { name: "Show all projects" }).click();
+  assert.equal(await page.locator("table[aria-label=Tasks] tbody tr").count(), 16);
+  await page.context().close();
+
+  const r = await open("coaching");
+  await r.getByRole("button", { name: "Rename aiq" }).click();
+  await r.getByLabel("New name for aiq").fill("AI coach");
+  await r.getByRole("button", { name: "Save" }).click();
+  await r.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Renamed to AI coach.");
+  const set = await r.evaluate(() => window.__AIQ_FIXTURE__.calls.filter((c) => c.cmd === "set_setting").map((c) => c.args));
+  assert.deepEqual(set, [{ key: "project_name.c:\\users\\imran\\source\\repos\\aiq", value: "AI coach" }]);
+  await r.context().close();
+
+  // One project: no picker, no table.
+  const solo = await open("full", { edit: (s) => (s.projects = s.projects.slice(0, 1)) });
+  assert.equal(await solo.getByLabel("Project").count(), 0);
+  assert.equal(await solo.getByRole("table", { name: "Your projects" }).count(), 0);
+  await solo.context().close();
+});
+
 await browser.close();
 server.close();
 const failed = results.filter((r) => r[1] !== "pass").length;

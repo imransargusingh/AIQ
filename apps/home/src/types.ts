@@ -13,6 +13,26 @@ export interface Snapshot {
   setup: Setup;
   coaching: Coaching;
   update: Update;
+  /** One row per project with a task in the window, most room to grow first (design project-filter). */
+  projects: Project[];
+}
+
+/** One project: tasks whose session ran in one folder (crates/aiq-home `Project`, design project-filter). */
+export interface Project {
+  /** The folder key the tasks carry (`TaskRow.folder`); "" for tasks with no folder recorded. */
+  key: string;
+  name: string;
+  /** The person chose the name; false when AIQ named it from the folder. */
+  renamed: boolean;
+  tasks_in_window: number;
+  judged: number;
+  uncertain: number;
+  rungs: [number, number, number, number, number];
+  most_common_rung: number | null;
+  imported_in_window: number;
+  weeks: { start_ms: number; tasks: number }[];
+  by_tool: [string, number][];
+  coaching: Coaching;
 }
 
 /** Auto-update (crates/aiq-core/src/update.rs `View`, design auto-update U5). */

@@ -339,3 +339,57 @@ fn progress_compares_each_kinds_typical_rung_over_two_14_day_halves() {
     assert!(es.coaching.progress.is_empty());
     assert_eq!((es.coaching.progress_days, es.coaching.progress_min), (14, 3));
 }
+
+#[test]
+fn projects_split_home_by_folder_and_add_up() {
+    let d = tempfile::tempdir().unwrap();
+    let p = Paths::at(d.path());
+    coaching(&p);
+    let s = snap(&p);
+    assert!(s.status.error.is_none(), "{:?}", s.status.error);
+    let rows: Vec<(&str, &str, u32, u32, u32, bool)> = s
+        .projects
+        .iter()
+        .map(|x| {
+            (x.key.as_str(), x.name.as_str(), x.tasks_in_window, x.coaching.split.up, x.coaching.split.tasks, x.renamed)
+        })
+        .collect();
+    // aiq: 12 tasks, 11 judged sure (one Uncertain); 3 could move up a rung (the tests task with a correction
+    // and the 2 refactors; the other tests tasks are finished). foresight: the 4 specs, all one rung from
+    // Delegated, but under the split minimum (10), so it ranks after aiq.
+    assert_eq!(rows, vec![(AIQ, "aiq", 12, 3, 11, false), (FORESIGHT, "foresight", 4, 4, 4, false)]);
+    // The projects add up to Home.
+    let sum = |f: &dyn Fn(&aiq_home::Project) -> u32| s.projects.iter().map(f).sum::<u32>();
+    assert_eq!(sum(&|x| x.tasks_in_window), s.home.tasks_in_window);
+    assert_eq!(sum(&|x| x.judged), s.home.judged);
+    for r in 0..5 {
+        assert_eq!(sum(&|x| x.rungs[r]), s.home.rungs[r], "rung {}", r + 1);
+    }
+    assert_eq!(sum(&|x| x.coaching.split.tasks), s.coaching.split.tasks);
+    // Same rules on the project's tasks only: foresight's one kind is the spec, with its next step.
+    let f = &s.projects[1];
+    assert_eq!(f.most_common_rung, Some(2));
+    let kinds: Vec<(&str, &str)> = f.coaching.kinds.iter().map(|k| (k.task_type.as_str(), k.state)).collect();
+    assert_eq!(kinds, vec![("spec", "coach")]);
+    assert_eq!(f.coaching.opportunities.len(), 1);
+    assert_eq!(f.weeks.iter().map(|w| w.tasks).sum::<u32>(), 4);
+}
+
+#[test]
+fn a_renamed_project_keeps_its_name_and_an_empty_name_goes_back() {
+    let d = tempfile::tempdir().unwrap();
+    let p = Paths::at(d.path());
+    let mut s = Seed::new(&p);
+    s.prompt("claude-code", "a", NOW - DAY, Some(AIQ), "fix the build");
+    s.prompt("vscode", "b", NOW - 2 * DAY, None, "explain this");
+    s.setting(&format!("project_name.{AIQ}"), "AI coach", NOW - 3 * DAY);
+    drop(s);
+    let names = |s: &aiq_home::Snapshot| -> Vec<(String, bool)> {
+        let mut v: Vec<_> = s.projects.iter().map(|x| (x.name.clone(), x.renamed)).collect();
+        v.sort();
+        v
+    };
+    assert_eq!(names(&snap(&p)), vec![("AI coach".into(), true), (aiq_home::NO_FOLDER.into(), false)]);
+    Seed::new(&p).setting(&format!("project_name.{AIQ}"), "", NOW - DAY);
+    assert_eq!(names(&snap(&p)), vec![(aiq_home::NO_FOLDER.into(), false), ("aiq".into(), false)]);
+}
