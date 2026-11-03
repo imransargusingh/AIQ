@@ -16,6 +16,9 @@ pub const INGEST_MID_TURN: &str = "AIQ-INGEST-MID-TURN";
 /// Copilot's session log could not be read at agentStop (missing file, locked). A count; nothing is lost but
 /// that read's mid-turn messages.
 pub const INGEST_LOG_READ: &str = "AIQ-INGEST-LOG-READ";
+/// A live turn whose agent actions AIQ could not read from the tool's log (no log, read error, a line that
+/// did not parse, more than 16 MB waiting). Stored as "not recorded", never guessed.
+pub const INGEST_ACTIONS_NOT_RECORDED: &str = "AIQ-INGEST-ACTIONS-NOT-RECORDED";
 /// A secret (API key, token, private key, password value) removed from a stored prompt (security review S2).
 /// A count, not an error.
 pub const INGEST_SECRET_REMOVED: &str = "AIQ-INGEST-SECRET-REMOVED";
@@ -61,6 +64,7 @@ pub const ALL: &[&str] = &[
     INGEST_AUTOMATED,
     INGEST_MID_TURN,
     INGEST_LOG_READ,
+    INGEST_ACTIONS_NOT_RECORDED,
     INGEST_SECRET_REMOVED,
     DELIVERY_CONFLICT,
     STORE_OPEN,

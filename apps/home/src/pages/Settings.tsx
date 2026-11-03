@@ -281,6 +281,25 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
           Copilot doesn't tell AIQ about these, so AIQ reads them from Copilot's own history file on this computer when the agent
           stops. Nothing leaves your computer.
         </span>
+        <div className="row" style={{ justifyContent: "space-between" }}>
+          <span id="actions">What the agent did in each turn</span>
+          <button
+            className="switch"
+            role="switch"
+            aria-checked={st.agent_actions === "on"}
+            aria-labelledby="actions"
+            disabled={down}
+            onClick={() =>
+              st.agent_actions === "on"
+                ? change("agent_actions", "off", "AIQ no longer records what the agent did in each turn.")
+                : change("agent_actions", "on", "AIQ records what the agent did in each turn.")
+            }
+          />
+        </div>
+        <span className="meta">
+          Counts only: tool calls, commands, files and helper agents, read from the tool's own history file when the agent
+          stops. No command text or file names. Nothing leaves your computer.
+        </span>
       </section>
 
       <section className="card" aria-labelledby="st2">

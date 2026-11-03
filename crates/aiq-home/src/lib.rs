@@ -400,6 +400,8 @@ pub struct Settings {
     pub judge_daily_tasks: u32,
     /// on or off: read Copilot's own history file for messages sent while the agent works (no hook fires).
     pub copilot_mid_turn: String,
+    /// on or off: read the tool's own log at each turn's end and store what the agent did, as counts.
+    pub agent_actions: String,
     /// auto, on or off.
     pub next_rung_tips: String,
     /// Next-rung tips may show now (off by the setting, or by AIQ's self-check under auto).
@@ -509,6 +511,7 @@ fn empty(paths: &Paths, pack: &PackV1, now: Now) -> Snapshot {
             judge: "off".into(),
             judge_daily_tasks: aiq_domain::rung::DEFAULT_DAILY_TASKS,
             copilot_mid_turn: "on".into(),
+            agent_actions: "on".into(),
             next_rung_tips: "auto".into(),
             next_rung_on: true,
             guess_checked: 0,
@@ -589,6 +592,9 @@ fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()>
         }
         if let Some(v) = store.setting(aiq_core::service::SETTING_COPILOT_MID_TURN).ok().flatten() {
             s.settings.copilot_mid_turn = v;
+        }
+        if let Some(v) = store.setting(aiq_core::service::SETTING_AGENT_ACTIONS).ok().flatten() {
+            s.settings.agent_actions = v;
         }
     }
 

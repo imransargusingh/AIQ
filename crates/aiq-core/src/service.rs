@@ -32,8 +32,13 @@ pub const SETTING_COPILOT_TIP_STAYS: &str = "copilot_tip_stays";
 pub const SETTING_COPILOT_TIP_IN_CHAT: &str = "copilot_tip_in_chat";
 pub const SETTING_TIP_POPUP: &str = "tip_popup";
 pub const SETTING_TIP_HIGHLIGHT: &str = "tip_highlight";
-pub const SWITCH_SETTINGS: [&str; 4] =
-    [SETTING_COPILOT_TIP_IN_CHAT, SETTING_TIP_POPUP, SETTING_TIP_HIGHLIGHT, SETTING_COPILOT_MID_TURN];
+pub const SWITCH_SETTINGS: [&str; 5] = [
+    SETTING_COPILOT_TIP_IN_CHAT,
+    SETTING_TIP_POPUP,
+    SETTING_TIP_HIGHLIGHT,
+    SETTING_COPILOT_MID_TURN,
+    SETTING_AGENT_ACTIONS,
+];
 /// Surfaces whose tip shows in a terminal, where a pop-up helps when the person has looked away. VS Code
 /// shows its own notification, so it gets no pop-up.
 pub const POPUP_SURFACES: [&str; 2] = ["claude-code", "copilot-cli"];
@@ -44,6 +49,9 @@ pub const MAX_DAILY_CAP: u32 = 50;
 /// `on` (default) or `off`: read Copilot's own session log at agentStop for messages typed while the agent was
 /// working, which fire no hook (`copilot_log`).
 pub const SETTING_COPILOT_MID_TURN: &str = "copilot_mid_turn";
+/// `on` (default) or `off`: at each turn's end, read the new part of the tool's own log and store what the agent
+/// did as counts (`agent_actions`, schema v9 `turn_action`). Imran 2026-11-03 "Let's do it", after the downsides.
+pub const SETTING_AGENT_ACTIONS: &str = "agent_actions";
 const MAX_LOG_OFFSETS: usize = 4096;
 /// Copilot CLI's surface name (the hook client uses the same constant).
 pub const COPILOT_CLI: &str = "copilot-cli";
@@ -123,6 +131,14 @@ enum Gate {
     Skip(&'static str),
     /// Record this held first prompt, then the event: a person's second prompt in a held session.
     Rescue(Box<EventV1>),
+}
+
+/// One turn's read of the tool's log: the actions, or why they are not recorded; and what the read cost.
+struct TurnRead {
+    acts: Option<crate::agent_actions::Actions>,
+    why: Option<&'static str>,
+    bytes: u64,
+    ms: u64,
 }
 
 /// First prompts held back at once (each a few KB at most, in memory).
@@ -282,13 +298,16 @@ impl<C: Clock> Service<C> {
         // An async stop (VS Code, or a Copilot CLI stop that reached the core by the spool): read the turn's
         // mid-turn messages first, since they were typed before it. A stop the hook waits on (`take_card`)
         // reads them after its reply instead (`after_stop`), off the hook's clock.
-        self.mid_turn_messages(ev, trace_id);
+        let turn = self.read_turn_log(ev, trace_id);
         self.ingest_event(ev, trace_id);
+        self.record_turn_actions(ev, turn, trace_id);
     }
 
-    /// The work after a stop's reply is sent: Copilot messages typed while the agent worked.
+    /// The work after a stop's reply is sent: Copilot messages typed while the agent worked, and what the agent
+    /// did in the turn.
     pub fn after_stop(&mut self, ev: &EventV1, trace_id: Option<&str>) {
-        self.mid_turn_messages(ev, trace_id);
+        let turn = self.read_turn_log(ev, trace_id);
+        self.record_turn_actions(ev, turn, trace_id);
     }
 
     fn ingest_event(&mut self, ev: &EventV1, trace_id: Option<&str>) {
@@ -409,37 +428,74 @@ impl<C: Clock> Service<C> {
         Ok(())
     }
 
-    /// Copilot messages typed while the agent was working fire no hook; read them from the new part of the
-    /// session's own log and ingest each as a prompt. Off the hook's clock: the Copilot hook does not wait for
-    /// the core. Stable event ids and a same-text check keep a message the hook did send from counting twice.
-    fn mid_turn_messages(&mut self, ev: &EventV1, trace_id: Option<&str>) {
-        if !matches!(ev.body, EventBody::Stop(_)) || !matches!(ev.surface.as_str(), "copilot-cli" | "vscode") {
-            return;
+    /// At a stop, read the new part of the tool's own log, read-only and off the hook's clock (the hook never
+    /// opens it: ~0.4 s on Imran's laptop, measured 2026-11-02). Copilot messages typed while the agent was working
+    /// fire no hook, so each is ingested as a prompt here (stable event ids and a same-text check keep a message
+    /// the hook did send from counting twice). The turn's actions are returned for `record_turn_actions`, which
+    /// stores them once the stop itself is stored. None: nothing to read (not a stop, paused, both switches off).
+    fn read_turn_log(&mut self, ev: &EventV1, trace_id: Option<&str>) -> Option<TurnRead> {
+        if !matches!(ev.body, EventBody::Stop(_)) || self.paused() {
+            return None;
         }
-        let Some(path) =
-            self.copilot_home.as_deref().and_then(|h| crate::copilot_log::session_log(h, &ev.surface_session_id))
-        else {
-            return;
+        use crate::agent_actions::{LogKind, read_since, tail_start};
+        let (kind, path) = match ev.surface.as_str() {
+            "claude-code" => (LogKind::Claude, ev.transcript.as_deref().map(std::path::PathBuf::from)),
+            // Copilot CLI and VS Code agent mode (Copilot target) write the same session log.
+            COPILOT_CLI | "vscode" => (
+                LogKind::Copilot,
+                Some(crate::copilot_log::session_log(self.copilot_home.as_deref()?, &ev.surface_session_id)?),
+            ),
+            _ => return None,
         };
-        if !self.switch_on(SETTING_COPILOT_MID_TURN) {
-            return;
+        let mid_turn = kind == LogKind::Copilot && self.switch_on(SETTING_COPILOT_MID_TURN);
+        let actions = self.switch_on(SETTING_AGENT_ACTIONS);
+        if !mid_turn && !actions {
+            return None;
         }
+        let not_recorded = |why: &'static str, bytes: u64, ms: u64| {
+            actions.then_some(TurnRead { acts: None, why: Some(why), bytes, ms })
+        };
+        let Some(path) = path else { return not_recorded("no_log", 0, 0) }; // an older hook sent no transcript
         let key = format!("{}/{}", ev.surface, ev.surface_session_id);
-        let from = self.log_offsets.get(&key).copied().unwrap_or(0);
+        let known = self.log_offsets.get(&key).copied();
         let started = std::time::Instant::now();
-        let (found, next) = match crate::copilot_log::steering_since(&path, from) {
+        let read = read_since(&path, known.unwrap_or_else(|| tail_start(&path)), kind);
+        let ms = started.elapsed().as_millis() as u64;
+        let read = match read {
             Ok(r) => r,
-            Err(_) => {
+            Err(e) => {
                 self.counters.inc(codes::INGEST_LOG_READ);
-                return;
+                let why = if e.kind() == std::io::ErrorKind::NotFound { "no_log" } else { "read_error" };
+                return not_recorded(why, 0, ms);
             }
         };
         if self.log_offsets.len() >= MAX_LOG_OFFSETS {
             self.log_offsets.clear();
         }
-        self.log_offsets.insert(key, next);
+        self.log_offsets.insert(key, read.next);
+        if mid_turn {
+            self.store_mid_turn(ev, &read.steering, trace_id);
+        }
+        if !actions {
+            return None;
+        }
+        // Never a guess: a turn read only in part is "not recorded".
+        let why = if read.capped {
+            Some("too_large")
+        } else if read.bad_lines > 0 {
+            Some("unparsed")
+        } else if known.is_none() && !read.saw_prompt {
+            Some("no_start") // first read since the core started, and the turn began before the part read
+        } else {
+            None
+        };
+        Some(TurnRead { acts: why.is_none().then_some(read.actions), why, bytes: read.bytes, ms })
+    }
+
+    /// Ingest Copilot messages typed into the running turn, read from its log.
+    fn store_mid_turn(&mut self, ev: &EventV1, found: &[crate::copilot_log::Typed], trace_id: Option<&str>) {
         let mut stored = 0;
-        for t in &found {
+        for t in found {
             let clean = aiq_domain::secrets::redact(&t.text).0;
             let text = cap(&clean, aiq_contracts::event::MAX_PROMPT_BYTES);
             if self.store.prompt_text_seen(&ev.surface, &ev.surface_session_id, &text).unwrap_or(false) {
@@ -464,14 +520,74 @@ impl<C: Clock> Service<C> {
                 self.counters.inc(codes::INGEST_MID_TURN);
             }
         }
-        info!(
-            trace_id = trace_id.unwrap_or(""),
-            found = found.len(),
-            stored,
-            bytes = next - from.min(next),
-            ms = started.elapsed().as_millis() as u64,
-            "copilot.mid_turn"
-        );
+        info!(trace_id = trace_id.unwrap_or(""), found = found.len(), stored, "copilot.mid_turn");
+    }
+
+    /// Store the turn's actions as one `turn_action` row, keyed by its stop: counts and tool names only. Only for
+    /// a stop the store kept (a set-aside or paused session records nothing). A replayed stop stores nothing.
+    fn record_turn_actions(&mut self, ev: &EventV1, turn: Option<TurnRead>, trace_id: Option<&str>) {
+        let Some(t) = turn else { return };
+        if !self.store.has_event(&ev.event_id).unwrap_or(false) {
+            return;
+        }
+        let now = self.clock.now().utc_ms;
+        let n = |x: u32| Some(i64::from(x));
+        let a = t.acts.as_ref();
+        let row = aiq_store::TurnActionRow {
+            stop_event_id: ev.event_id.clone(),
+            surface: ev.surface.clone(),
+            surface_session_id: ev.surface_session_id.clone(),
+            ts_utc_ms: parse_rfc3339_ms(&ev.ts).unwrap_or(now),
+            outcome: if a.is_some() { "recorded" } else { "not_recorded" }.into(),
+            why: t.why.map(str::to_owned),
+            tool_calls: a.and_then(|a| n(a.tool_calls())),
+            commands: a.and_then(|a| n(a.commands_run)),
+            files: a.and_then(|a| n(a.files.len() as u32)),
+            subagents: a.and_then(|a| n(a.subagents)),
+            tools: a.map(|a| serde_json::to_string(&a.tools).unwrap_or_default()),
+            bytes_read: t.bytes as i64,
+            read_ms: t.ms as i64,
+            utc_ms: now,
+        };
+        match self.store.insert_turn_action(&row) {
+            Ok(true) => {
+                if t.why.is_some() {
+                    self.counters.inc(codes::INGEST_ACTIONS_NOT_RECORDED);
+                }
+                info!(
+                    trace_id = trace_id.unwrap_or(""),
+                    aiq.surface = ev.surface.as_str(),
+                    outcome = row.outcome.as_str(),
+                    why = t.why.unwrap_or(""),
+                    tool_calls = row.tool_calls.unwrap_or(0),
+                    bytes = t.bytes,
+                    ms = t.ms,
+                    "agent.actions"
+                );
+            }
+            Ok(false) => {}
+            Err(e) => self.fail(e),
+        }
+    }
+
+    /// Live agent actions today, for `aiq status`: counted from stored rows.
+    fn actions_status(&self) -> aiq_contracts::frames::ActionsStatus {
+        let rows = self.store.turn_actions_since(self.clock.now().local_midnight_utc_ms()).unwrap_or_default();
+        let mut ms: Vec<u64> = rows.iter().map(|r| r.read_ms.max(0) as u64).collect();
+        ms.sort_unstable();
+        let mut why = std::collections::BTreeMap::<String, u32>::new();
+        for r in rows.iter().filter(|r| r.outcome != "recorded") {
+            *why.entry(r.why.clone().unwrap_or_default()).or_default() += 1;
+        }
+        aiq_contracts::frames::ActionsStatus {
+            enabled: self.switch_on(SETTING_AGENT_ACTIONS),
+            turns: rows.len() as u32,
+            not_recorded: why.values().sum(),
+            why: why.into_iter().collect(),
+            p95_ms: (!ms.is_empty()).then(|| ms[((ms.len() * 95).div_ceil(100)).saturating_sub(1)]),
+            max_ms: ms.last().copied(),
+            max_bytes: rows.iter().map(|r| r.bytes_read.max(0) as u64).max(),
+        }
     }
 
     /// The coaching cache, rebuilt when the store's coaching facts changed or it is an hour old.
@@ -1228,6 +1344,7 @@ impl<C: Clock> Service<C> {
                 );
                 f
             },
+            agent_actions: Some(self.actions_status()),
             coach: self.coach.as_ref().map(|c| {
                 let mode = coaching::mode(&self.store);
                 CoachStatus {

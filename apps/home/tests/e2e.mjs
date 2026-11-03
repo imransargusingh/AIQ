@@ -204,6 +204,20 @@ await test("Settings: a switch for Copilot messages sent while the agent works, 
   await page.context().close();
 });
 
+await test("Settings: a switch for what the agent did in each turn, on by default, counts only", async () => {
+  const page = await open("full", { hash: "#settings" });
+  const sw = page.getByRole("switch", { name: "What the agent did in each turn" });
+  assert.equal(await sw.getAttribute("aria-checked"), "true");
+  assert.ok((await page.locator("main").innerText()).includes("No command text or file names."));
+  await sw.click();
+  await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent?.includes("what the agent did"));
+  assert.equal(await sw.getAttribute("aria-checked"), "false");
+  const calls = await page.evaluate(() => window.__AIQ_FIXTURE__.calls);
+  assert.ok(calls.some((c) => c.cmd === "set_setting" && c.args?.key === "agent_actions" && c.args?.value === "off"), JSON.stringify(calls));
+  assert.deepEqual(await axe(page), []);
+  await page.context().close();
+});
+
 await test("keyboard: single-key shortcuts can be turned off", async () => {
   const page = await open("full", { hash: "#settings" });
   await page.getByRole("switch", { name: /Single-key shortcuts/ }).click();
