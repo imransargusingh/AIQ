@@ -30,8 +30,10 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <h2>Install (Windows, about two minutes, no admin rights)</h2>
 <ol><li>Download <code>aiq-0.1.0-windows-x64.zip</code> from</li></ol>
 <p>&lt;https://github.com/imransargusingh/AIQ/releases/latest&gt; and unzip it anywhere.</p>
-<ol><li>In a normal PowerShell window, in that folder, run:</li></ol>
+<ol><li>Double-click <code>install.cmd</code> in that folder. A window shows each step and waits for you to close it.</li></ol>
+<p>If you prefer a terminal, run this in a normal PowerShell window in that folder:</p>
 <pre><code>   powershell -ExecutionPolicy Bypass -File .\install.ps1</code></pre>
+<p>Typing <code>.\install.ps1</code> on its own does not work: Windows refuses it because the script is not signed.</p>
 <p>That is all. AIQ connects to the AI tools it finds, lists every file it changed, reads your past sessions on this computer, turns on judging (below) and opens AIQ home. There is nothing to set up.</p>
 <p>The program files are not code-signed yet, so Windows or your company&#x27;s device rules may warn you. Check your employer&#x27;s rules before installing on a work computer.</p>
 <p><strong>To undo it fully:</strong> <code>aiq uninstall --all</code> takes AIQ out of every tool and removes its PATH entry and Start menu shortcut. Your AIQ data stays until you also run <code>aiq forget --all</code>.</p>

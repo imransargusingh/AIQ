@@ -2,8 +2,9 @@ AIQ: a private coach for how you work with AI agents (GitHub Copilot, Claude Cod
 
 Install (no admin rights needed):
   1. Unzip this folder anywhere.
-  2. In a normal PowerShell window, in this folder, run:
+  2. Double-click install.cmd. (Or, in a normal PowerShell window in this folder:
        powershell -ExecutionPolicy Bypass -File .\install.ps1
+     Running .\install.ps1 on its own is refused because the script is not signed.)
   3. AIQ connects to the AI tools it finds, lists every file it changed, turns on judging of your
      finished tasks (stop it in AIQ home's Settings, or: aiq config set judge off), and opens AIQ home.
 

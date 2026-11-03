@@ -34,11 +34,15 @@ step. Only you see any of this. There is no manager view, no team view and no AI
 
 1. Download `aiq-0.1.0-windows-x64.zip` from
    <https://github.com/imransargusingh/AIQ/releases/latest> and unzip it anywhere.
-2. In a normal PowerShell window, in that folder, run:
+2. Double-click `install.cmd` in that folder. A window shows each step and waits for you to close it.
+
+   If you prefer a terminal, run this in a normal PowerShell window in that folder:
 
    ```
    powershell -ExecutionPolicy Bypass -File .\install.ps1
    ```
+
+   Typing `.\install.ps1` on its own does not work: Windows refuses it because the script is not signed.
 
 That is all. AIQ connects to the AI tools it finds, lists every file it changed, reads your past
 sessions on this computer, turns on judging (below) and opens AIQ home. There is nothing to set up.

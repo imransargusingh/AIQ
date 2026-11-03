@@ -1,5 +1,6 @@
 # AIQ per-user install for Windows (private-alpha design A3). No admin rights; refuses to run elevated.
 #
+#   install.cmd (double-click)                                        the same, for people who don't use a terminal
 #   powershell -ExecutionPolicy Bypass -File .\install.ps1            install from the unzipped release
 #   powershell -ExecutionPolicy Bypass -File .\install.ps1 -NoLaunch  same, without starting import or AIQ home
 #
