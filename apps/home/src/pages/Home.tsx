@@ -5,8 +5,9 @@
 import { useState } from "react";
 import { api } from "../api";
 import { KindList, ProgressList, judgedBy, pct } from "../coach";
-import { RUNGS, day, folderName, plural, rungLabel, sentence, toolName, topPlaces, when } from "../format";
-import { AccuracyPaused, Banners, Title, UpdateLine, type Ctx } from "../ui";
+import { RUNGS, day, folderName, plural, rungLabel, sentence, toolName, when } from "../format";
+import { AccuracyPaused, Banners, ProjectPicker, Title, UpdateLine, type Ctx } from "../ui";
+import type { Project } from "../types";
 
 export function Home(ctx: Ctx) {
   const { snap, go, announce, refresh } = ctx;
@@ -40,7 +41,6 @@ export function Home(ctx: Ctx) {
 
   const max = Math.max(1, ...h.weeks.map((w) => w.tasks));
   const latest = snap.tips[0];
-  const places = topPlaces(snap.tasks);
   const mc = h.most_common_rung;
   const onRung = h.rungs.reduce((a, b) => a + b, 0);
   const rungMax = Math.max(1, ...h.rungs);
@@ -50,12 +50,19 @@ export function Home(ctx: Ctx) {
   const f = pct(sp.finished, sp.tasks);
   const fc = pct(sp.finished + sp.could, sp.tasks);
   const by = judgedBy(snap.tasks);
+  const one = ctx.project === null ? undefined : snap.projects.find((p) => p.key === ctx.project);
   return (
     <div className="page">
       <Banners {...ctx} />
       <UpdateLine {...ctx} />
       <AccuracyPaused {...ctx} />
       <Title sr>Home</Title>
+      <ProjectPicker {...ctx} />
+      {one && (
+        <p className="meta" data-testid="project-note">
+          Showing {one.name} only. Tips and Set aside cover all projects.
+        </p>
+      )}
       <section
         className="mainrung"
         role="img"
@@ -265,27 +272,7 @@ export function Home(ctx: Ctx) {
         )}
       </section>
 
-      <section className="group" aria-labelledby="opps">
-        <div className="head">
-          <h2 id="opps">Where you use agents most</h2>
-          <button className="btnlink" onClick={() => go("tasks")}>All tasks</button>
-        </div>
-        <div className="list">
-          {places.map((p) => (
-            <div className="opp" key={`${p.folder}|${p.tool}`}>
-              <div className="group" style={{ gap: "var(--s2)" }}>
-                <span className="name" title={p.folder ?? undefined}>{p.folder ? folderName(p.folder) : "Folder not recorded"}</span>
-                <span className="row">
-                  <span className="chip">{toolName(p.tool)}</span>
-                </span>
-              </div>
-              <span className="freq num">
-                {plural(p.tasks, "task")} · {plural(p.prompts, "prompt")}
-              </span>
-            </div>
-          ))}
-        </div>
-      </section>
+      {!one && snap.projects.length > 1 && <Projects {...ctx} />}
 
       <section className="group" aria-labelledby="rg">
         <div className="head">
@@ -360,5 +347,119 @@ export function Home(ctx: Ctx) {
         </section>
       </div>
     </div>
+  );
+}
+
+/** "Your projects" (design project-filter P5b): one row per project, most room to grow first. Selecting a name
+ * shows that project; Rename keeps a name the person chose (empty goes back to the folder's name). */
+function Projects(ctx: Ctx) {
+  const { snap, setProject, announce, refresh } = ctx;
+  const [editing, setEditing] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
+  const min = snap.coaching.split_min;
+  const save = async (p: Project) => {
+    const r = await api.setSetting(`project_name.${p.key}`, draft);
+    announce(r.ok ? (draft.trim() ? `Renamed to ${draft.trim()}.` : "AIQ names this project from its folder again.") : r.message);
+    if (r.ok) {
+      setEditing(null);
+      refresh();
+    }
+  };
+  return (
+    <section className="group" aria-labelledby="pj">
+      <div className="head">
+        <h2 id="pj">Your projects</h2>
+        <span className="meta">
+          A project is the folder you worked in. Most tasks that could move up a rung first. Counts are measured; rungs are the judge's reading.
+        </span>
+      </div>
+      <div className="tablewrap">
+        <table aria-label="Your projects">
+          <thead>
+            <tr>
+              <th>Project</th>
+              <th className="r">Tasks</th>
+              <th>Most common rung</th>
+              <th className="r">Agents finished</th>
+              <th className="r">Could move up a rung</th>
+              <th><span className="sr">Rename</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            {snap.projects.map((p) => {
+              const sp = p.coaching.split;
+              const enough = sp.tasks >= min;
+              return (
+                <tr key={p.key}>
+                  <td title={p.key || "Tasks from before AIQ recorded the folder, or from tools that don't send it"}>
+                    {editing === p.key ? (
+                      <form
+                        className="row"
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          save(p);
+                        }}
+                      >
+                        <input
+                          className="input"
+                          aria-label={`New name for ${p.name}`}
+                          maxLength={60}
+                          value={draft}
+                          placeholder={folderName(p.key)}
+                          autoFocus
+                          onChange={(e) => setDraft(e.target.value)}
+                          onKeyDown={(e) => e.key === "Escape" && setEditing(null)}
+                        />
+                        <button className="btn pri" type="submit" disabled={!snap.status.core}>Save</button>
+                        <button className="btn" type="button" onClick={() => setEditing(null)}>Cancel</button>
+                      </form>
+                    ) : (
+                      <button
+                        className="btnlink"
+                        aria-label={`Show ${p.name} only`}
+                        onClick={() => {
+                          setProject(p.key);
+                          // Back to the top, on the picker, so the person sees the whole page change.
+                          requestAnimationFrame(() => document.getElementById("projsel")?.focus());
+                        }}
+                      >
+                        {p.name}
+                      </button>
+                    )}{" "}
+                    {p.by_tool.map(([t]) => (
+                      <span className="chip" key={t}>{toolName(t)}</span>
+                    ))}
+                  </td>
+                  <td className="r num">{p.tasks_in_window}</td>
+                  <td className={p.most_common_rung ? undefined : "mute"}>{p.most_common_rung ? rungLabel(p.most_common_rung) : "Not judged yet"}</td>
+                  <td className={`r num${enough ? "" : " mute"}`}>{enough ? `${pct(sp.finished, sp.tasks)}%` : p.judged > 0 ? "Too few judged" : "—"}</td>
+                  <td className={`r num${enough ? "" : " mute"}`}>
+                    {enough ? `${sp.up} (${pct(sp.up, sp.tasks)}%)` : p.judged > 0 ? "Too few judged" : "—"}
+                  </td>
+                  <td>
+                    {p.key !== "" && editing !== p.key && (
+                      <button
+                        className="btnlink"
+                        disabled={!snap.status.core}
+                        aria-label={`Rename ${p.name}`}
+                        onClick={() => {
+                          setEditing(p.key);
+                          setDraft(p.renamed ? p.name : "");
+                        }}
+                      >
+                        Rename
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className="meta">
+        "Could move up a rung" counts judged tasks not finished by agents where the judge sees a next step at least one rung up. A project needs {min} judged tasks before AIQ shows its numbers.
+      </p>
+    </section>
   );
 }

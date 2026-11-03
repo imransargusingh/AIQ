@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bytes, folderName, jobName, jobOf, jobOptions, plural, rungLabel, sentence, sortTasks, stateLabel, topPlaces, when } from "./format";
+import { bytes, folderName, jobName, jobOf, jobOptions, plural, rungLabel, sentence, sortTasks, stateLabel, when } from "./format";
 import type { TaskRow } from "./types";
 
 const t = (over: Partial<TaskRow>): TaskRow => ({
@@ -52,10 +52,6 @@ describe("format", () => {
     expect(jobOptions([t({})])).toEqual({ options: ["All", "Not classified yet"], dropdown: false });
     const many = ["a", "b", "c", "d", "e"].map((j) => t({ job: j }));
     expect(jobOptions(many).dropdown).toBe(true);
-  });
-  it("ranks places by tasks", () => {
-    const rows = [t({ folder: "f1" }), t({ folder: "f2" }), t({ folder: "f2" })];
-    expect(topPlaces(rows)[0]).toMatchObject({ folder: "f2", tasks: 2 });
   });
   it("capitalises tip text shown on its own", () => {
     expect(sentence("you've reworded this")).toBe("You've reworded this");

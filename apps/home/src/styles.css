@@ -192,7 +192,7 @@ tbody tr[aria-selected="true"] td:first-child{box-shadow:inset 3px 0 var(--prima
 .selmark{display:inline-block;width:16px;color:var(--primary);font-weight:700}
 tbody tr:focus-visible{outline:2px solid var(--focus-ring);outline-offset:-2px}
 td.clip{max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:var(--t-mono)}
-.tablewrap{background:var(--surface);border:1px solid var(--hairline);border-radius:var(--r-md);overflow-x:auto}
+.tablewrap{position:relative;background:var(--surface);border:1px solid var(--hairline);border-radius:var(--r-md);overflow-x:auto}
 .starter{font:var(--t-mono);background:var(--canvas-soft);border-radius:var(--r-sm);padding:var(--s4);white-space:pre-wrap}
 .opt{display:flex;gap:var(--s3);align-items:flex-start;min-height:36px;padding:var(--s3) var(--s4);border:1px solid var(--hairline);border-radius:var(--r-sm);cursor:pointer;background:var(--surface)}
 .opt:has(input:checked){border-color:var(--primary)}

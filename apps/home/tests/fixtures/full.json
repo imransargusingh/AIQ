@@ -552,5 +552,262 @@
     "checked_ms": 1793530800000,
     "check_error": null,
     "can_rollback": true
-  }
+  },
+  "projects": [
+    {
+      "key": "c:\\users\\imran\\source\\repos\\aiq",
+      "name": "aiq",
+      "renamed": false,
+      "tasks_in_window": 2,
+      "judged": 1,
+      "uncertain": 0,
+      "rungs": [
+        0,
+        1,
+        0,
+        0,
+        0
+      ],
+      "most_common_rung": 2,
+      "imported_in_window": 0,
+      "weeks": [
+        {
+          "start_ms": 1791115200000,
+          "tasks": 0
+        },
+        {
+          "start_ms": 1791720000000,
+          "tasks": 1
+        },
+        {
+          "start_ms": 1792324800000,
+          "tasks": 0
+        },
+        {
+          "start_ms": 1792929600000,
+          "tasks": 1
+        }
+      ],
+      "by_tool": [
+        [
+          "claude-code",
+          2
+        ]
+      ],
+      "coaching": {
+        "split": {
+          "tasks": 1,
+          "finished": 0,
+          "could": 0,
+          "needs": 1,
+          "uncertain": 0,
+          "up": 1,
+          "up_to": 3
+        },
+        "split_min": 10,
+        "rule": "A task counts as finished when it was judged Delegated or higher and you sent no re-prompt correcting the agent.",
+        "weeks": [
+          {
+            "start_ms": 1791115200000,
+            "tasks": 0,
+            "finished": 0
+          },
+          {
+            "start_ms": 1791720000000,
+            "tasks": 0,
+            "finished": 0
+          },
+          {
+            "start_ms": 1792324800000,
+            "tasks": 0,
+            "finished": 0
+          },
+          {
+            "start_ms": 1792929600000,
+            "tasks": 1,
+            "finished": 0
+          }
+        ],
+        "week_min": 3,
+        "opportunities": [],
+        "kinds": [],
+        "habits": [],
+        "habits_imported": false,
+        "untyped": 1,
+        "progress": [],
+        "progress_days": 14,
+        "progress_min": 3
+      }
+    },
+    {
+      "key": "c:\\users\\imran\\source\\repos\\foresight",
+      "name": "foresight",
+      "renamed": false,
+      "tasks_in_window": 4,
+      "judged": 2,
+      "uncertain": 1,
+      "rungs": [
+        0,
+        0,
+        1,
+        0,
+        0
+      ],
+      "most_common_rung": 3,
+      "imported_in_window": 1,
+      "weeks": [
+        {
+          "start_ms": 1791115200000,
+          "tasks": 1
+        },
+        {
+          "start_ms": 1791720000000,
+          "tasks": 0
+        },
+        {
+          "start_ms": 1792324800000,
+          "tasks": 2
+        },
+        {
+          "start_ms": 1792929600000,
+          "tasks": 1
+        }
+      ],
+      "by_tool": [
+        [
+          "copilot-cli",
+          4
+        ]
+      ],
+      "coaching": {
+        "split": {
+          "tasks": 1,
+          "finished": 0,
+          "could": 0,
+          "needs": 1,
+          "uncertain": 1,
+          "up": 0,
+          "up_to": null
+        },
+        "split_min": 10,
+        "rule": "A task counts as finished when it was judged Delegated or higher and you sent no re-prompt correcting the agent.",
+        "weeks": [
+          {
+            "start_ms": 1791115200000,
+            "tasks": 1,
+            "finished": 0
+          },
+          {
+            "start_ms": 1791720000000,
+            "tasks": 0,
+            "finished": 0
+          },
+          {
+            "start_ms": 1792324800000,
+            "tasks": 0,
+            "finished": 0
+          },
+          {
+            "start_ms": 1792929600000,
+            "tasks": 0,
+            "finished": 0
+          }
+        ],
+        "week_min": 3,
+        "opportunities": [],
+        "kinds": [],
+        "habits": [],
+        "habits_imported": true,
+        "untyped": 1,
+        "progress": [],
+        "progress_days": 14,
+        "progress_min": 3
+      }
+    },
+    {
+      "key": "",
+      "name": "Folder not recorded",
+      "renamed": false,
+      "tasks_in_window": 1,
+      "judged": 0,
+      "uncertain": 0,
+      "rungs": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "most_common_rung": null,
+      "imported_in_window": 0,
+      "weeks": [
+        {
+          "start_ms": 1791115200000,
+          "tasks": 0
+        },
+        {
+          "start_ms": 1791720000000,
+          "tasks": 1
+        },
+        {
+          "start_ms": 1792324800000,
+          "tasks": 0
+        },
+        {
+          "start_ms": 1792929600000,
+          "tasks": 0
+        }
+      ],
+      "by_tool": [
+        [
+          "vscode",
+          1
+        ]
+      ],
+      "coaching": {
+        "split": {
+          "tasks": 0,
+          "finished": 0,
+          "could": 0,
+          "needs": 0,
+          "uncertain": 0,
+          "up": 0,
+          "up_to": null
+        },
+        "split_min": 10,
+        "rule": "A task counts as finished when it was judged Delegated or higher and you sent no re-prompt correcting the agent.",
+        "weeks": [
+          {
+            "start_ms": 1791115200000,
+            "tasks": 0,
+            "finished": 0
+          },
+          {
+            "start_ms": 1791720000000,
+            "tasks": 0,
+            "finished": 0
+          },
+          {
+            "start_ms": 1792324800000,
+            "tasks": 0,
+            "finished": 0
+          },
+          {
+            "start_ms": 1792929600000,
+            "tasks": 0,
+            "finished": 0
+          }
+        ],
+        "week_min": 3,
+        "opportunities": [],
+        "kinds": [],
+        "habits": [],
+        "habits_imported": false,
+        "untyped": 0,
+        "progress": [],
+        "progress_days": 14,
+        "progress_min": 3
+      }
+    }
+  ]
 }

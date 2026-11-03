@@ -254,5 +254,6 @@
     "checked_ms": 1793530800000,
     "check_error": null,
     "can_rollback": true
-  }
+  },
+  "projects": []
 }
