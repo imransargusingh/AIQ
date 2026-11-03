@@ -187,8 +187,18 @@ impl<C: Clock> Service<C> {
             self.counters.inc(codes::INGEST_SHAPE);
             return Ok(());
         }
-        if self.automated(ev)? {
+        if let Some(reason) = self.automated(ev)? {
             self.counters.inc(codes::INGEST_AUTOMATED);
+            // One line per dropped event, so a lost prompt can be traced to its rule (2026-11-03: six first
+            // prompts of hand-typed VS Code sessions were dropped and nothing said why). No text, no path.
+            info!(
+                trace_id = trace_id.unwrap_or(""),
+                aiq.reason = reason,
+                aiq.surface = ev.surface.as_str(),
+                aiq.kind = ev.kind(),
+                aiq.dir = ev.cwd.as_deref().and_then(aiq_domain::automated::folder_tag).unwrap_or_default(),
+                "event set aside"
+            );
             return Ok(()); // an app or script drove this session: record nothing (import spec US-12)
         }
         let now = self.clock.now().utc_ms;
@@ -457,8 +467,9 @@ impl<C: Clock> Service<C> {
         v
     }
 
-    /// The automated-session rule, live side. True: record nothing for this event.
-    fn automated(&mut self, ev: &EventV1) -> Result<bool, StoreError> {
+    /// The automated-session rule, live side. Some(reason): record nothing for this event; the
+    /// reason names the rule (`projects`, `aiq-check`, `session`, `folder`, `template`, `burst`).
+    fn automated(&mut self, ev: &EventV1) -> Result<Option<&'static str>, StoreError> {
         let (surface, session) = (ev.surface.as_str(), ev.surface_session_id.as_str());
         if ev.projects || self.projects_session(ev) {
             // Rule RC: Claude's own Projects / Remote Control session, every event, unless included.
@@ -467,7 +478,7 @@ impl<C: Clock> Service<C> {
                 if self.projects_folders.len() < 1024 && !k.is_empty() && self.projects_folders.insert(k) {
                     info!(aiq.reason = "projects", "Projects session set aside");
                 }
-                return Ok(true);
+                return Ok(Some("projects"));
             }
         }
         if let Some(k) = ev.cwd.as_deref().filter(|c| is_aiq_check_folder(c)).map(folder_key) {
@@ -475,17 +486,19 @@ impl<C: Clock> Service<C> {
             // set-aside rule once, so `aiq status` lists it and `aiq include` brings it back.
             match self.store.folder_rules_now()?.get(&k).map(String::as_str) {
                 Some("include") => {}
-                Some(_) => return Ok(true),
+                Some(_) => return Ok(Some("aiq-check")),
                 None => {
                     self.store.insert_folder_rule(&k, "set_aside", "aiq-check", "live", self.clock.now().utc_ms)?;
                     info!(aiq.reason = "aiq-check", "folder set aside: AIQ's own checks");
-                    return Ok(true);
+                    return Ok(Some("aiq-check"));
                 }
             }
         }
-        let EventBody::Prompt(p) = &ev.body else { return Ok(self.guard.is_ignored(surface, session)) };
+        let EventBody::Prompt(p) = &ev.body else {
+            return Ok(self.guard.is_ignored(surface, session).then_some("session"));
+        };
         if !self.guard.is_ignored(surface, session) && self.store.session_known(surface, session)? {
-            return Ok(false); // not a first prompt, and not a session being ignored
+            return Ok(None); // not a first prompt, and not a session being ignored
         }
         let set_aside = match ev.cwd.as_deref().map(folder_key) {
             Some(k) if !k.is_empty() => self.store.set_aside_folders()?.iter().any(|(f, _, _)| *f == k),
@@ -502,12 +515,12 @@ impl<C: Clock> Service<C> {
             set_aside,
             now,
         );
-        let Verdict::Ignore { reason, new_folder } = verdict else { return Ok(false) };
+        let Verdict::Ignore { reason, new_folder } = verdict else { return Ok(None) };
         if let Some(folder) = new_folder {
             self.store.insert_folder_rule(&folder, "set_aside", reason.as_str(), "live", now)?;
             info!(aiq.reason = reason.as_str(), "folder set aside: automated sessions");
         }
-        Ok(true)
+        Ok(Some(reason.as_str()))
     }
 
     /// Folders whose sessions AIQ ignores now, newest first: (folder, reason).
