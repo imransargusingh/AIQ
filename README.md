@@ -21,7 +21,8 @@ At most one card per Claude Code session, at most 5 a day (your setting).
 
 A version tag builds `aiq-<version>-windows-x64.zip` and `SHA256SUMS` and attaches them to a **draft**
 GitHub release (`.github/workflows/release.yml`); nothing is public until someone presses Publish. Unzip, then
-run `powershell -ExecutionPolicy Bypass -File .\install.ps1` in a normal (not administrator) window. It copies
+double-click `install.cmd`, or run `powershell -ExecutionPolicy Bypass -File .\install.ps1` in a normal (not
+administrator) window. Running `.\install.ps1` directly is refused because the script is unsigned. It copies
 both exes to `%USERPROFILE%\.aiq\bin`, adds that folder to your user PATH, adds an AIQ Start menu shortcut,
 connects every AI tool it finds and lists each file it changed, then starts `aiq import` and opens AIQ home.
 The script is `packaging/windows/install.ps1`. Before inviting anyone, point them to

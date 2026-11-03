@@ -460,3 +460,4 @@
 "/docs/ai-forward-pack/templates/ui-capability-guide.template.html" text=auto eol=lf
 "/docs/ai-forward-pack/templates/ui-guide-hub.template.md" text=auto eol=lf
 "/docs/ai-forward-pack/templates/ui-review.template.md" text=auto eol=lf
+*.cmd text eol=crlf
