@@ -12,6 +12,7 @@ mod import;
 mod install;
 mod install_copilot;
 mod judge;
+mod judge_eval;
 mod spawn;
 mod statusline;
 
@@ -58,6 +59,11 @@ Usage:
   aiq judge --check-report            The latest check's numbers again, and what AIQ measured itself
   aiq judge --survey-other [--sample <n>] [--dry-run]
                                       What kind of work your tasks with no job are (counts and generic labels only)
+  aiq judge --eval [--runs <n>] [--provider claude-code|copilot-cli] [--dry-run]
+                                      Score the judge on AIQ's fixed set of made-up tasks with known answers,
+                                      n runs each (default 2): accuracy and whether runs agree (no data of yours)
+  aiq judge --eval --replay           The same score from answers recorded in the repo (free, no model call)
+  aiq judge --eval-report             The latest eval again, and what moved since the one before
   aiq config set judge <auto|off>     Judge new tasks in the background (aiq install turns it on)
   aiq config set judge-daily-tasks <n>  Most tasks judged per day (0-500, default 50)
   aiq config set judge-copilot-sessions <delete|keep>  Delete AIQ's own Copilot judge sessions (default)
