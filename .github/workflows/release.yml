@@ -85,10 +85,10 @@ jobs:
           New-Item -ItemType Directory -Force (Join-Path $env:USERPROFILE '.copilot') | Out-Null
           # install.cmd is what people double-click; it must run install.ps1 even with Mark-of-the-Web on the files.
           Get-ChildItem $un | ForEach-Object { Set-Content -Path $_.FullName -Stream Zone.Identifier -Value "[ZoneTransfer]`r`nZoneId=3" }
-          # Reproduce a typical laptop: RemoteSigned for this user, so a downloaded unsigned install.ps1 is refused when run directly.
+          # Reproduce a typical laptop: RemoteSigned for this user, so a downloaded unsigned install.ps1 is refused when run directly (UnauthorizedAccess, as on Imran's laptop).
           Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
           $direct = powershell -NoProfile -Command "& '$(Join-Path $un 'install.ps1')' -NoLaunch -AllowElevated" 2>&1 | Out-String
-          if ($direct -notmatch 'not digitally signed') { Write-Error "expected the direct run to be refused, got: $direct"; exit 1 }
+          if ($direct -notmatch 'UnauthorizedAccess') { Write-Error "expected the direct run to be refused, got: $direct"; exit 1 }
           $env:AIQ_NO_PAUSE = '1'
           cmd /c (Join-Path $un 'install.cmd') -NoLaunch -AllowElevated
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
