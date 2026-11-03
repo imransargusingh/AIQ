@@ -22,9 +22,10 @@ export function Home(ctx: Ctx) {
           <p className="mute">Keep working as usual. Patterns show after about 10 tasks of the same kind. Tips can start sooner.</p>
         </header>
         <div className="card" style={{ maxWidth: 520 }}>
-          <p>AIQ watches Claude Code, Copilot CLI and VS Code agent mode once they're connected. Setup connects the ones it finds, or run <code>aiq install</code>.</p>
+          <p>AIQ watches Claude Code, Copilot CLI and VS Code agent mode once they're connected. Setup connects the ones it finds.</p>
           <p className="meta">
-            <button className="btnlink" onClick={() => go("data")}>See what AIQ has captured</button>
+            <button className="btnlink" onClick={() => go("data")}>See what AIQ has captured</button> ·{" "}
+            <button className="btnlink" onClick={() => go("setup")}>See which tools are connected</button>
           </p>
         </div>
       </div>
@@ -52,7 +53,7 @@ export function Home(ctx: Ctx) {
       <section
         className="mainrung"
         role="img"
-        aria-label={`Your most common rung: ${mc ? rungLabel(mc) : "not judged yet"}. The ladder runs Assisted, Directed, Delegated, Orchestrated, Factory.`}
+        aria-label={`Your most common rung: ${mc ? `${rungLabel(mc)}. ${RUNGS[mc - 1].means}` : "not judged yet"}. The ladder runs Assisted, Directed, Delegated, Orchestrated, Factory.`}
       >
         <div className="lbl" aria-hidden="true">
           <span className="mute">Your most common rung</span>
@@ -64,6 +65,7 @@ export function Home(ctx: Ctx) {
           <span className="meta">
             {h.judged > 0 ? `${plural(h.judged, "task")} judged in ${h.window_days} days` : "No task judged yet"}
           </span>
+          {mc && <span className="meta means">{RUNGS[mc - 1].means}</span>}
         </div>
         <div className="scale" aria-hidden="true">
           {RUNGS.map((_, i) => (
@@ -100,11 +102,16 @@ export function Home(ctx: Ctx) {
               </div>
               <p className="mute">
                 {h.judged > 0
-                  ? `${sp.tasks} of ${c.split_min} judged tasks needed to show what agents finished${sp.uncertain > 0 ? ` (${sp.uncertain} AIQ isn't sure about don't count)` : ""}.`
+                  ? `${sp.tasks} of ${c.split_min} judged tasks needed to show what agents finished${sp.uncertain > 0 ? ` (${plural(sp.uncertain, "task")} AIQ isn't sure about ${sp.uncertain === 1 ? "doesn't" : "don't"} count)` : ""}.`
                   : snap.settings.judge === "auto"
                     ? "AIQ judges your finished tasks in the background, through your own Claude Code or Copilot CLI."
-                    : "AIQ hasn't judged any tasks yet. Run aiq judge once to start; it shows what it sends first."}
+                    : "Judging is off, so AIQ can't place your tasks on a rung."}
               </p>
+              {h.judged === 0 && snap.settings.judge !== "auto" && (
+                <p className="meta">
+                  <button className="btnlink" onClick={() => go("settings")}>Turn judging on in Settings</button>
+                </p>
+              )}
               {h.judged > 0 && (
                 <progress max={c.split_min} value={Math.min(sp.tasks, c.split_min)} aria-label={`${sp.tasks} of ${c.split_min} judged tasks`} />
               )}

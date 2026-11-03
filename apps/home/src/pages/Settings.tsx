@@ -159,7 +159,7 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
         )}
         <AccuracyPaused {...ctx} />
         {st.next_rung_tips === "auto" && st.accuracy_paused.length === 0 && (
-          <span className="meta">AIQ also pauses the tips for a job or kind of task by itself when an accuracy check (aiq judge --check) agrees with its judge under 8 in 10.</span>
+          <span className="meta">AIQ also pauses the tips for a job or kind of task by itself when an accuracy check finds a second model agrees with its judge less than 8 in 10 times.</span>
         )}
         {st.next_tips.length > 0 && (
           <details className="group">
@@ -210,7 +210,7 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
 
       <section className="card" aria-labelledby="st3">
         <div className="head">
-          <h2 id="st3">Rung model</h2>
+          <h2 id="st3">Judging</h2>
           <span className="chip">{snap.settings.judge === "auto" ? "Judging in the background" : "Off"}</span>
         </div>
         <p className="mute">
@@ -316,9 +316,9 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
       <section className="card" aria-labelledby="st4">
         <div className="head">
           <h2 id="st4">Sharing</h2>
-          <span className="chip">Off · nothing leaves this computer</span>
+          <span className="chip">Off · only you see your data</span>
         </div>
-        <p className="mute">AIQ home makes no network calls. Nothing is shared. The once-a-day update check sends nothing about you.</p>
+        <p className="mute">AIQ shares nothing with anyone. Only two things leave this computer: judge calls, through your own Claude Code or Copilot (see Judging), and the update check, which sends nothing about you (see Updates).</p>
       </section>
 
       <section className="card" aria-labelledby="st5">

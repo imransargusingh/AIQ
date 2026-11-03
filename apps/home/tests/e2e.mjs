@@ -119,7 +119,7 @@ await test("Home shows judged rungs, progress toward the split, and only measure
   const page = await open("full");
   const t = await page.locator("main").innerText();
   assert.match(t, /Tasks agents finished\s+Not enough judged tasks yet/);
-  assert.match(t, /2 of 10 judged tasks needed to show what agents finished \(1 AIQ isn't sure about don't count\)/);
+  assert.match(t, /2 of 10 judged tasks needed to show what agents finished \(1 task AIQ isn't sure about doesn't count\)/);
   assert.match(t, /7 tasks in the last 30 days · 1 imported task/);
   assert.doesNotMatch(t, /\d+%/, "no percentages under 10 judged tasks");
   assert.match(t, /Your most common rung\s+Directed \(2\)\s+3 tasks judged in 30 days/);
