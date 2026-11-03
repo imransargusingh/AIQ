@@ -81,7 +81,11 @@
       "origin": "live",
       "job": null,
       "rung": null,
-      "judgment": null
+      "judgment": null,
+      "session": "cp2",
+      "prompt_ms": [
+        1793532600000
+      ]
     },
     {
       "task_id": "019000000001-0000-7000-8000-000000000000",
@@ -117,7 +121,13 @@
         "read_chars": 160,
         "read_actions": true,
         "versions": "fs1 · r1 · j1"
-      }
+      },
+      "session": "cc1",
+      "prompt_ms": [
+        1793361600000,
+        1793361840000,
+        1793362140000
+      ]
     },
     {
       "task_id": "019000000012-0000-7000-8000-000000000000",
@@ -129,7 +139,11 @@
       "origin": "live",
       "job": null,
       "rung": null,
-      "judgment": null
+      "judgment": null,
+      "session": "cp1",
+      "prompt_ms": [
+        1792759560000
+      ]
     },
     {
       "task_id": "019000000009-0000-7000-8000-000000000000",
@@ -165,7 +179,11 @@
         "read_chars": 160,
         "read_actions": true,
         "versions": "fs1 · r1 · j1"
-      }
+      },
+      "session": "cp1",
+      "prompt_ms": [
+        1792756800000
+      ]
     },
     {
       "task_id": "019000000013-0000-7000-8000-000000000000",
@@ -177,7 +195,12 @@
       "origin": "live",
       "job": null,
       "rung": null,
-      "judgment": null
+      "judgment": null,
+      "session": "v1",
+      "prompt_ms": [
+        1792152000000,
+        1792152180000
+      ]
     },
     {
       "task_id": "019000000015-0000-7000-8000-000000000000",
@@ -189,7 +212,11 @@
       "origin": "live",
       "job": null,
       "rung": null,
-      "judgment": null
+      "judgment": null,
+      "session": "cc2",
+      "prompt_ms": [
+        1791806400000
+      ]
     },
     {
       "task_id": "import:copilot-cli:imp1:0",
@@ -224,7 +251,12 @@
         "read_chars": 160,
         "read_actions": true,
         "versions": "fs1 · r1 · j1"
-      }
+      },
+      "session": "imp1",
+      "prompt_ms": [
+        1791374400000,
+        1791374700000
+      ]
     }
   ],
   "tips": [
@@ -253,7 +285,7 @@
     "turn_ends": 2,
     "imported_sessions": 1,
     "imported_events": 6,
-    "store_bytes": 237568,
+    "store_bytes": 258048,
     "items": [
       {
         "event_id": "019000000018-0000-7000-8000-000000000000",
@@ -371,6 +403,8 @@
     "tip_highlight": true,
     "judge": "off",
     "judge_daily_tasks": 50,
+    "copilot_mid_turn": "on",
+    "agent_actions": "on",
     "next_rung_tips": "auto",
     "next_rung_on": true,
     "guess_checked": 0,

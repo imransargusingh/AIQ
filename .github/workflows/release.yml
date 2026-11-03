@@ -1,6 +1,6 @@
 name: release
 
-# Private-alpha design A1: one Windows zip (aiq.exe, aiq-home.exe, install.ps1, README.txt) plus SHA256SUMS.
+# Private-alpha design A1: one Windows zip (aiq.exe, aiq-home.exe, install.cmd, install.ps1, README.txt) plus SHA256SUMS.
 # A version tag v* builds it, smoke-tests install.ps1 on the runner, and attaches both files to a DRAFT
 # GitHub release: nothing is public until a person presses Publish. workflow_dispatch builds and tests the
 # zip as a workflow artifact only, or, with draft_release on, also a draft release v<version> targeting that commit
@@ -69,25 +69,34 @@ jobs:
           $v = '${{ steps.version.outputs.version }}'
           $stage = Join-Path $env:RUNNER_TEMP "aiq-$v-windows-x64"
           New-Item -ItemType Directory -Force $stage | Out-Null
-          Copy-Item target/release/aiq.exe, apps/home/src-tauri/target/release/aiq-home.exe, packaging/windows/install.ps1, packaging/windows/upgrade.ps1, packaging/windows/README.txt $stage
+          Copy-Item target/release/aiq.exe, apps/home/src-tauri/target/release/aiq-home.exe, packaging/windows/install.cmd, packaging/windows/install.ps1, packaging/windows/upgrade.ps1, packaging/windows/README.txt $stage
           New-Item -ItemType Directory -Force dist | Out-Null
           $zip = "dist/aiq-$v-windows-x64.zip"
           Compress-Archive -Path "$stage/*" -DestinationPath $zip
           $h = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
           "$h  aiq-$v-windows-x64.zip" | Set-Content -Encoding ascii dist/SHA256SUMS
           Get-Content dist/SHA256SUMS
-      - name: Smoke test - install.ps1 from the zip on this runner, then uninstall
+      - name: Smoke test - install.cmd (double-click path) from the zip on this runner, then uninstall
         shell: pwsh
         run: |
           $v = '${{ steps.version.outputs.version }}'
           $un = Join-Path $env:RUNNER_TEMP 'unzipped'
           Expand-Archive "dist/aiq-$v-windows-x64.zip" $un
           New-Item -ItemType Directory -Force (Join-Path $env:USERPROFILE '.copilot') | Out-Null
-          powershell -ExecutionPolicy Bypass -File (Join-Path $un 'install.ps1') -NoLaunch -AllowElevated
+          # install.cmd is what people double-click; it must run install.ps1 even with Mark-of-the-Web on the files.
+          Get-ChildItem $un | ForEach-Object { Set-Content -Path $_.FullName -Stream Zone.Identifier -Value "[ZoneTransfer]`r`nZoneId=3" }
+          # Reproduce a typical laptop: RemoteSigned for this user, so a downloaded unsigned install.ps1 is refused when run directly (UnauthorizedAccess, as on Imran's laptop).
+          Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
+          $direct = powershell -NoProfile -Command "& '$(Join-Path $un 'install.ps1')' -NoLaunch -AllowElevated" 2>&1 | Out-String
+          if ($direct -notmatch 'UnauthorizedAccess') { Write-Error "expected the direct run to be refused, got: $direct"; exit 1 }
+          $env:AIQ_NO_PAUSE = '1'
+          cmd /c (Join-Path $un 'install.cmd') -NoLaunch -AllowElevated
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $bin = Join-Path $env:USERPROFILE '.aiq\bin'
           foreach ($f in 'aiq.exe', 'aiq-home.exe') { if (-not (Test-Path (Join-Path $bin $f))) { Write-Error "missing $f"; exit 1 } }
           if (-not ([Environment]::GetEnvironmentVariable('Path', 'User') -split ';' -contains $bin)) { Write-Error 'user PATH not set'; exit 1 }
+          if (-not (Select-String -Quiet -Path (Join-Path $env:USERPROFILE '.aiq\upgrade-log.txt') -Pattern 'Z Installed AIQ ')) { Write-Error 'install wrote no upgrade-log line'; exit 1 }
+          foreach ($f in 'aiq.exe', 'aiq-home.exe', 'upgrade.ps1') { if (Get-Item (Join-Path $bin $f) -Stream Zone.Identifier -ErrorAction SilentlyContinue) { Write-Error "$f still marked as downloaded"; exit 1 } }
           if (-not (Test-Path (Join-Path ([Environment]::GetFolderPath('Programs')) 'AIQ.lnk'))) { Write-Error 'no shortcut'; exit 1 }
           if (-not (Test-Path (Join-Path $env:USERPROFILE '.copilot\hooks\aiq.json'))) { Write-Error 'Copilot not connected'; exit 1 }
           & (Join-Path $bin 'aiq.exe') version
@@ -210,4 +219,4 @@ jobs:
             while read -r id; do gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$id"; echo "Replaced older draft $id"; done
           gh release create "v${{ needs.windows.outputs.version }}" dist/* --repo "$GITHUB_REPOSITORY" --draft --target "$GITHUB_SHA" \
             --title "AIQ ${{ needs.windows.outputs.version }}" \
-            --notes "Private alpha build. Unzip, then run install.ps1 (see README.txt). Check the zip against SHA256SUMS."
+            --notes "Private alpha build. Unzip, then double-click install.cmd (see README.txt). Check the zip against SHA256SUMS."

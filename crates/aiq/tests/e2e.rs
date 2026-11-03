@@ -595,3 +595,18 @@ fn e2e_import_dry_run_then_import_status_and_forget_imported() {
     assert!(run(&["forget", "--imported", "--yes"]).contains("Deleted 1 imported sessions."));
     assert!(!run(&["status"]).contains("Imported history"));
 }
+
+#[test]
+fn e2e_spooled_frame_goes_in_at_the_next_command_not_the_idle_tick() {
+    // A hook whose send missed while the core was busy spools; the core must take it in before its next
+    // command, because a steady stream of commands keeps the 30 s idle tick from ever firing.
+    let down = Env::new();
+    assert!(down.stop("s", "p0").status.success());
+    let spooled = std::fs::read(down.home().join("spool.jsonl")).unwrap();
+    let mut e = Env::new();
+    e.start_core();
+    std::fs::write(e.home().join("spool.jsonl"), spooled).unwrap();
+    let st = e.status();
+    assert!(st.contains("1 stop"), "taken in at the very next command: {st}");
+    assert!(!e.home().join("spool.jsonl").exists());
+}

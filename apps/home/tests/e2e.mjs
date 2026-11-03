@@ -120,7 +120,8 @@ await test("Home shows judged rungs, progress toward the split, and only measure
   const t = await page.locator("main").innerText();
   assert.match(t, /Tasks agents finished\s+Not enough judged tasks yet/);
   assert.match(t, /2 of 10 judged tasks needed to show what agents finished \(1 task AIQ isn't sure about doesn't count\)/);
-  assert.match(t, /7 tasks in the last 30 days · 1 imported task/);
+  await page.getByText("How AIQ counts").click();
+  assert.match(await page.locator("details.how").innerText(), /7 tasks in the last 30 days · 1 imported task/);
   assert.doesNotMatch(t, /\d+%/, "no percentages under 10 judged tasks");
   assert.match(t, /Your most common rung\s+Directed \(2\)\s+3 tasks judged in 30 days/);
   assert.match(t, /\(1 uncertain not counted\)/);
@@ -188,6 +189,32 @@ await test("keyboard: G-letter navigation, P pause, Ctrl+K palette", async () =>
   assert.equal(await page.locator("dialog[open]").count(), 0);
   const calls = await page.evaluate(() => window.__AIQ_FIXTURE__.calls.map((c) => c.cmd));
   assert.deepEqual(calls.filter((c) => c === "pause").length, 2);
+  await page.context().close();
+});
+
+await test("Settings: a switch for Copilot messages sent while the agent works, on by default", async () => {
+  const page = await open("full", { hash: "#settings" });
+  const sw = page.getByRole("switch", { name: "Copilot messages you send while the agent is still working" });
+  assert.equal(await sw.getAttribute("aria-checked"), "true");
+  assert.ok((await page.locator("main").innerText()).includes("Nothing leaves your computer."));
+  await sw.click();
+  await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent?.startsWith("AIQ no longer records"));
+  assert.equal(await sw.getAttribute("aria-checked"), "false");
+  assert.deepEqual(await axe(page), []);
+  await page.context().close();
+});
+
+await test("Settings: a switch for what the agent did in each turn, on by default, counts only", async () => {
+  const page = await open("full", { hash: "#settings" });
+  const sw = page.getByRole("switch", { name: "What the agent did in each turn" });
+  assert.equal(await sw.getAttribute("aria-checked"), "true");
+  assert.ok((await page.locator("main").innerText()).includes("No command text or file names."));
+  await sw.click();
+  await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent?.includes("what the agent did"));
+  assert.equal(await sw.getAttribute("aria-checked"), "false");
+  const calls = await page.evaluate(() => window.__AIQ_FIXTURE__.calls);
+  assert.ok(calls.some((c) => c.cmd === "set_setting" && c.args?.key === "agent_actions" && c.args?.value === "off"), JSON.stringify(calls));
+  assert.deepEqual(await axe(page), []);
   await page.context().close();
 });
 
@@ -329,6 +356,50 @@ await test("empty store: teaching empty states, no errors", async () => {
     if (shots) await page.screenshot({ path: join(shots, `${id}-empty.png`) });
     await page.context().close();
   }
+});
+
+await test("Tasks Day view: a row per session, rung named on hover and focus, Enter opens the task, no axe violations", async () => {
+  // Three sessions on one day, from the fixture's own tasks moved onto the newest task's day.
+  const page = await open("full", {
+    hash: "#tasks",
+    edit: (s) => {
+      const base = Math.max(...s.tasks.map((t) => t.first_ms));
+      const day0 = base - (base % 86_400_000);
+      s.tasks.forEach((t, i) => {
+        const first = day0 + (8 + i) * 3_600_000;
+        t.prompt_ms = t.prompt_ms.map((p) => first + (p - t.first_ms));
+        t.last_ms = first + (t.last_ms - t.first_ms);
+        t.first_ms = first;
+      });
+    },
+  });
+  await page.getByRole("button", { name: "Day", exact: true }).click();
+  const lanes = page.getByRole("listitem");
+  assert.ok((await lanes.count()) >= 3, "one row per session");
+  assert.equal(await page.locator("table[aria-label=Tasks]").count(), 0, "the list is replaced by the Day view");
+  // Row summary on focus: tool, folder, time span, tasks, prompts.
+  const name = page.locator(".dv-name").first();
+  await name.focus();
+  const tip = name.locator(".tip");
+  assert.ok(await tip.isVisible(), "row summary shows on focus");
+  assert.match(await tip.innerText(), /session in .+\n.*\d+ tasks? · \d+ prompts?/s);
+  // A judged block names its rung in words.
+  const judged = page.locator(".dv-task:not(.dv-none)").first();
+  await judged.focus();
+  assert.match(await judged.locator(".tip").innerText(), /\((\d)\)/);
+  assert.match((await judged.getAttribute("aria-label")) ?? "", /Open task$/);
+  assert.deepEqual(await axe(page), []);
+  await page.keyboard.press("Enter");
+  await page.waitForSelector("main h1");
+  assert.ok(page.url().includes("#task/"), "Enter on a block opens its task");
+  assert.deepEqual(page.errors, []);
+  await page.context().close();
+  // Narrow window: the chart scrolls inside its own box, never the page.
+  const narrow = await open("full", { hash: "#tasks", width: 720, height: 520 });
+  await narrow.getByRole("button", { name: "Day", exact: true }).click();
+  const over = await narrow.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  assert.ok(over <= 0, `Day view overflows the page by ${over}px`);
+  await narrow.context().close();
 });
 
 await test("narrow window (720x520) has no horizontal page scroll", async () => {
@@ -560,11 +631,14 @@ await test("coaching Home: finished and could be, the rule, uncertain left out, 
   const t = await page.locator("main").innerText();
   assert.match(t, /Tasks agents finished\s+33%\s+could be 67%/);
   assert.equal(await page.getByRole("img", { name: "Agents finished 33%, could be 67%" }).count(), 1);
-  assert.match(t, /Of 15 judged tasks: 5 finished by agents, 5 could be, 5 need you\. 1 task AIQ isn't sure about is left out\./);
-  assert.match(t, /"Could be" adds the tasks of kinds whose next step would let agents finish them\./);
-  assert.match(t, /47% could move up a rung, most often to Delegated \(3\)\./);
-  assert.match(t, /A task counts as finished when it was judged Delegated or higher and you sent no re-prompt correcting the agent\./);
-  assert.match(t, /Judged by your Copilot CLI/);
+  // Outcome first, then the measured counts on one line; how it is counted stays folded away until asked for.
+  assert.match(t, /47% could move up a rung, most often to Delegated \(3\)\.\s+5 of 15 judged tasks finished by agents · 5 could be · 5 need you · 1 unsure, not counted/);
+  assert.ok(!t.includes("A task counts as finished"), "the rule is folded away");
+  await page.getByText("How AIQ counts").click();
+  const how = await page.locator("details.how").innerText();
+  assert.match(how, /A task counts as finished when it was judged Delegated or higher and you sent no re-prompt correcting the agent\./);
+  assert.match(how, /"Could be" adds the tasks of kinds whose next step would let agents finish them\./);
+  assert.match(how, /Judged by your Copilot CLI/);
   // The weekly chart says what its two shades mean (dark = agents finished, light = the rest).
   assert.match(t, /Tasks each week\s+Finished by agents\s+Other tasks/);
   const rows = page.getByRole("list", { name: "Kinds of task with a next step" }).getByRole("listitem");
@@ -810,8 +884,7 @@ await test("Home drops 'could be' when no kind of task is one step from agents f
   const page = await open("coaching", { edit: (s) => { s.coaching.split = { ...s.coaching.split, finished: 1, could: 0, needs: 14, up: 13, up_to: 2 }; } });
   const t = await page.locator("main").innerText();
   assert.ok(!t.includes("could be"), "no 'could be' figure");
-  assert.match(t, /Of 15 judged tasks: 1 finished by agents, 14 need you\./);
-  assert.match(t, /No kind of task is one step from agents finishing it yet\./);
+  assert.match(t, /1 of 15 judged tasks finished by agents · 14 need you · 1 unsure, not counted/);
   assert.match(t, /87% could move up a rung, most often to Directed \(2\)\./);
   assert.equal(await page.getByRole("img", { name: "Agents finished 7%" }).count(), 1);
   await page.context().close();

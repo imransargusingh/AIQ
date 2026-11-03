@@ -36,11 +36,11 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <h2>What AIQ keeps on your computer</h2>
 <p>When you use a connected tool, AIQ records:</p>
 <ul><li><strong>Your prompts</strong>, as you typed them. Before storing a prompt, AIQ replaces common secret shapes</li></ul>
-<p>(API keys, access tokens, private keys, connection strings) with <code>[secret removed]</code>. It cannot catch every secret, so avoid pasting them.</p>
+<p>(API keys, access tokens, private keys, connection strings) with <code>[secret removed]</code>. It cannot catch every secret, so avoid pasting them. This includes Copilot messages you send while the agent is still working: Copilot doesn&#x27;t pass those to AIQ, so AIQ reads them from Copilot&#x27;s own history file on your computer when the agent stops. Settings &gt; What AIQ records turns this off.</p>
 <ul><li><strong>When things happened</strong>: when you sent a prompt, when the agent stopped, which tool, and the folder</li></ul>
 <p>you worked in.</p>
-<ul><li><strong>A summary of what the agent did</strong> in each turn: which tools it used, which files it touched and</li></ul>
-<p>which commands it ran. AIQ reads this from your tools&#x27; own history files on your computer. It does not store the agent&#x27;s replies or your file contents.</p>
+<ul><li><strong>A summary of what the agent did</strong> in each turn. For past sessions (<code>aiq import</code>): which tools it</li></ul>
+<p>used, which files it touched and which commands it ran. For live turns: counts only (tool calls by tool name, commands, files and helper agents), with no command text or file names. AIQ reads this from your tools&#x27; own history files on your computer when the agent stops, and only reads them. It does not store the agent&#x27;s replies or your file contents. Settings &gt; What AIQ records turns the live counts off.</p>
 <ul><li><strong>Past sessions</strong>, if you run <code>aiq import</code> (the installer starts it once). It reads your Claude</li></ul>
 <p>Code and Copilot CLI history from this computer. Runs that look automated (a script or app driving the tool) are set aside; <code>aiq include &lt;folder&gt;</code> brings a folder back.</p>
 <ul><li><strong>AIQ&#x27;s own results</strong>: tips shown, what you said about them, judgments of your tasks, and your</li></ul>

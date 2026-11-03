@@ -3,7 +3,7 @@ import { bytes, folderName, jobName, jobOf, jobOptions, plural, rungLabel, sente
 import type { TaskRow } from "./types";
 
 const t = (over: Partial<TaskRow>): TaskRow => ({
-  task_id: "x", tool: "claude-code", folder: null, first_ms: 0, last_ms: 0, prompts: 1, origin: "live", job: null, rung: null, judgment: null, ...over,
+  task_id: "x", tool: "claude-code", folder: null, first_ms: 0, last_ms: 0, prompts: 1, origin: "live", session: "s", prompt_ms: [], job: null, rung: null, judgment: null, ...over,
 });
 
 describe("format", () => {

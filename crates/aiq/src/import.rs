@@ -23,7 +23,6 @@ pub const COPILOT: &str = "copilot-cli";
 /// Folder prior: a folder over this share automated takes its remaining one-prompt sessions too.
 const FOLDER_PRIOR: f64 = 0.8;
 const MAX_TEXT: usize = 64 * 1024;
-const MAX_CMD: usize = 200;
 
 /// One source session, read into memory.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -88,62 +87,9 @@ impl From<&KnownImport> for RuleInput {
 
 // ------------------------------------------------------------------ readers
 
-fn ts_ms(v: &Value) -> Option<i64> {
-    v.as_str().and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok()).map(|d| d.timestamp_millis())
-}
+use aiq_core::copilot_log::ts_ms;
 
-/// Imported text (a prompt or a command) as stored: secrets removed (security review S2), then cut to `max` bytes.
-fn clean_text(raw: &str, max: usize) -> String {
-    let s = aiq_domain::secrets::redact(raw).0;
-    if s.len() <= max {
-        return s;
-    }
-    let mut i = max;
-    while !s.is_char_boundary(i) {
-        i -= 1;
-    }
-    s[..i].to_owned()
-}
-
-/// Per-turn summary of what the agent did: tool counts, files touched, commands run, sub-agents.
-#[derive(Default)]
-struct Actions {
-    tools: BTreeMap<String, u32>,
-    files: Vec<String>,
-    commands: Vec<String>,
-    subagents: u32,
-}
-
-impl Actions {
-    fn note(&mut self, name: &str, args: &Value) {
-        *self.tools.entry(name.to_owned()).or_default() += 1;
-        let path = ["file_path", "path", "notebook_path"].iter().find_map(|k| args.get(*k).and_then(Value::as_str));
-        if let Some(p) = path
-            && self.files.len() < 50
-            && !self.files.iter().any(|f| f == p)
-        {
-            self.files.push(p.to_owned());
-        }
-        if let Some(c) = args.get("command").and_then(Value::as_str)
-            && self.commands.len() < 30
-        {
-            self.commands.push(clean_text(c, MAX_CMD));
-        }
-        if matches!(name, "Task" | "Agent") {
-            self.subagents += 1;
-        }
-    }
-    fn take(&mut self) -> Option<String> {
-        if self.tools.is_empty() {
-            return None;
-        }
-        let a = std::mem::take(self);
-        Some(
-            serde_json::json!({"tools": a.tools, "files": a.files, "commands": a.commands, "subagents": a.subagents})
-                .to_string(),
-        )
-    }
-}
+use aiq_core::agent_actions::{Actions, clean_text};
 
 fn lines(path: &Path) -> std::io::Result<impl Iterator<Item = Value>> {
     let f = std::fs::File::open(path)?;
@@ -183,7 +129,7 @@ pub fn read_claude(path: &Path, id: &str, mtime_ms: i64, folder_slug: &str) -> s
                             kind: "stop".into(),
                             ts_utc_ms: last_ts,
                             text: None,
-                            actions: acts.take(),
+                            actions: acts.take_json(),
                         });
                     }
                     p.started_ms = p.started_ms.or(ts);
@@ -196,13 +142,7 @@ pub fn read_claude(path: &Path, id: &str, mtime_ms: i64, folder_slug: &str) -> s
                     open = true;
                 }
             }
-            Some("assistant") if open => {
-                for b in content.as_array().into_iter().flatten() {
-                    if b["type"] == "tool_use" {
-                        acts.note(b["name"].as_str().unwrap_or("?"), &b["input"]);
-                    }
-                }
-            }
+            Some("assistant") if open => aiq_core::agent_actions::claude_record(&r, &mut acts),
             _ => {}
         }
         if ts.is_some() {
@@ -210,7 +150,7 @@ pub fn read_claude(path: &Path, id: &str, mtime_ms: i64, folder_slug: &str) -> s
         }
     }
     if open {
-        p.events.push(ImportedEvent { kind: "stop".into(), ts_utc_ms: last_ts, text: None, actions: acts.take() });
+        p.events.push(ImportedEvent { kind: "stop".into(), ts_utc_ms: last_ts, text: None, actions: acts.take_json() });
     }
     Ok(p)
 }
@@ -233,13 +173,16 @@ pub fn read_copilot(path: &Path, id: &str, mtime_ms: i64) -> std::io::Result<Par
                 }
                 p.started_ms = p.started_ms.or(ts_ms(&d["startTime"])).or(ts);
             }
-            Some("user.message") if main && matches!(d["delivery"].as_str(), Some("idle" | "steering")) => {
+            Some("user.message")
+                if aiq_core::copilot_log::typed_message(&e)
+                    .is_some_and(|t| matches!(t.delivery.as_str(), "idle" | "steering")) =>
+            {
                 if open {
                     p.events.push(ImportedEvent {
                         kind: "stop".into(),
                         ts_utc_ms: last_ts,
                         text: None,
-                        actions: acts.take(),
+                        actions: acts.take_json(),
                     });
                 }
                 p.started_ms = p.started_ms.or(ts);
@@ -251,16 +194,16 @@ pub fn read_copilot(path: &Path, id: &str, mtime_ms: i64) -> std::io::Result<Par
                 });
                 open = true;
             }
-            Some("tool.execution_start") if main && open => {
-                let args = match &d["arguments"] {
-                    Value::String(s) => serde_json::from_str(s).unwrap_or(Value::Null),
-                    v => v.clone(),
-                };
-                acts.note(d["toolName"].as_str().unwrap_or("?"), &args);
+            Some("tool.execution_start" | "subagent.started") if open => {
+                aiq_core::agent_actions::copilot_record(&e, &mut acts)
             }
-            Some("subagent.started") if open => acts.subagents += 1,
             Some("assistant.turn_end") if main && open => {
-                p.events.push(ImportedEvent { kind: "stop".into(), ts_utc_ms: ts, text: None, actions: acts.take() });
+                p.events.push(ImportedEvent {
+                    kind: "stop".into(),
+                    ts_utc_ms: ts,
+                    text: None,
+                    actions: acts.take_json(),
+                });
                 open = false;
             }
             _ => {}
@@ -270,7 +213,7 @@ pub fn read_copilot(path: &Path, id: &str, mtime_ms: i64) -> std::io::Result<Par
         }
     }
     if open {
-        p.events.push(ImportedEvent { kind: "stop".into(), ts_utc_ms: last_ts, text: None, actions: acts.take() });
+        p.events.push(ImportedEvent { kind: "stop".into(), ts_utc_ms: last_ts, text: None, actions: acts.take_json() });
     }
     Ok(p)
 }

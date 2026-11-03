@@ -91,7 +91,11 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2"
-      }
+      },
+      "session": "k0",
+      "prompt_ms": [
+        1793422800000
+      ]
     },
     {
       "task_id": "019000000003-0000-7000-8000-000000000000",
@@ -126,7 +130,11 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2"
-      }
+      },
+      "session": "k1",
+      "prompt_ms": [
+        1793311200000
+      ]
     },
     {
       "task_id": "019000000005-0000-7000-8000-000000000000",
@@ -161,7 +169,11 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2"
-      }
+      },
+      "session": "k2",
+      "prompt_ms": [
+        1793199600000
+      ]
     },
     {
       "task_id": "019000000007-0000-7000-8000-000000000000",
@@ -196,7 +208,11 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2"
-      }
+      },
+      "session": "k3",
+      "prompt_ms": [
+        1793088000000
+      ]
     },
     {
       "task_id": "019000000009-0000-7000-8000-000000000000",
@@ -231,7 +247,11 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2"
-      }
+      },
+      "session": "k4",
+      "prompt_ms": [
+        1792976400000
+      ]
     },
     {
       "task_id": "019000000011-0000-7000-8000-000000000000",
@@ -266,7 +286,11 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2"
-      }
+      },
+      "session": "k5",
+      "prompt_ms": [
+        1792864800000
+      ]
     },
     {
       "task_id": "019000000013-0000-7000-8000-000000000000",
@@ -301,7 +325,11 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2"
-      }
+      },
+      "session": "k6",
+      "prompt_ms": [
+        1792753200000
+      ]
     },
     {
       "task_id": "019000000015-0000-7000-8000-000000000000",
@@ -336,7 +364,11 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2"
-      }
+      },
+      "session": "k7",
+      "prompt_ms": [
+        1792641600000
+      ]
     },
     {
       "task_id": "019000000017-0000-7000-8000-000000000000",
@@ -371,7 +403,11 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2"
-      }
+      },
+      "session": "k8",
+      "prompt_ms": [
+        1792530000000
+      ]
     },
     {
       "task_id": "019000000019-0000-7000-8000-000000000000",
@@ -406,7 +442,11 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2"
-      }
+      },
+      "session": "k9",
+      "prompt_ms": [
+        1792418400000
+      ]
     },
     {
       "task_id": "019000000021-0000-7000-8000-000000000000",
@@ -441,7 +481,11 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2"
-      }
+      },
+      "session": "k10",
+      "prompt_ms": [
+        1792306800000
+      ]
     },
     {
       "task_id": "019000000023-0000-7000-8000-000000000000",
@@ -476,7 +520,11 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2"
-      }
+      },
+      "session": "k11",
+      "prompt_ms": [
+        1792195200000
+      ]
     },
     {
       "task_id": "019000000025-0000-7000-8000-000000000000",
@@ -511,7 +559,11 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2"
-      }
+      },
+      "session": "k12",
+      "prompt_ms": [
+        1792083600000
+      ]
     },
     {
       "task_id": "019000000027-0000-7000-8000-000000000000",
@@ -546,7 +598,11 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2"
-      }
+      },
+      "session": "k13",
+      "prompt_ms": [
+        1791972000000
+      ]
     },
     {
       "task_id": "019000000029-0000-7000-8000-000000000000",
@@ -581,7 +637,11 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2"
-      }
+      },
+      "session": "k14",
+      "prompt_ms": [
+        1791860400000
+      ]
     },
     {
       "task_id": "019000000031-0000-7000-8000-000000000000",
@@ -616,7 +676,11 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2"
-      }
+      },
+      "session": "k15",
+      "prompt_ms": [
+        1791748800000
+      ]
     }
   ],
   "tips": [],
@@ -626,7 +690,7 @@
     "turn_ends": 16,
     "imported_sessions": 0,
     "imported_events": 0,
-    "store_bytes": 262144,
+    "store_bytes": 282624,
     "items": [
       {
         "event_id": "019000000002-0000-7000-8000-000000000000",
@@ -896,6 +960,8 @@
     "tip_highlight": true,
     "judge": "off",
     "judge_daily_tasks": 50,
+    "copilot_mid_turn": "on",
+    "agent_actions": "on",
     "next_rung_tips": "auto",
     "next_rung_on": true,
     "guess_checked": 0,

@@ -6,6 +6,7 @@ import { jobOf, jobOptions, plural, rungLabel, sortTasks, stateLabel, toolName, 
 import { KindList } from "../coach";
 import { Banners, Chip, ProjectPicker, Title, type Ctx } from "../ui";
 import { projectName, projectOf } from "../project";
+import { DayView } from "./DayView";
 
 const COLS: { key: SortKey; label: string; right?: boolean }[] = [
   { key: "when", label: "Started" },
@@ -18,6 +19,7 @@ export function Tasks(ctx: Ctx) {
   const [sort, setSort] = useState<{ key: SortKey; dir: Dir }>({ key: "when", dir: -1 });
   const [job, setJob] = useState("All");
   const [sel, setSel] = useState(0);
+  const [view, setView] = useState<"list" | "day">("list");
   const body = useRef<HTMLTableSectionElement>(null);
   const { options, dropdown } = jobOptions(snap.tasks);
   const rows = useMemo(
@@ -55,6 +57,10 @@ export function Tasks(ctx: Ctx) {
         </div>
         {snap.tasks.length > 0 && (
           <div className="row">
+            <div className="seg" role="group" aria-label="View">
+              <button aria-pressed={view === "list"} onClick={() => setView("list")}>List</button>
+              <button aria-pressed={view === "day"} onClick={() => setView("day")}>Day</button>
+            </div>
             <span className="meta" id="joblbl">Job</span>
             {dropdown ? (
               <select className="input" aria-labelledby="joblbl" value={job} onChange={(e) => setJob(e.target.value)}>
@@ -84,7 +90,9 @@ export function Tasks(ctx: Ctx) {
           <KindList label="Kinds of task" rows={snap.coaching.kinds} open={(k) => ctx.openKind(k.job, k.task_type)} />
         </section>
       )}
-      {snap.tasks.length === 0 ? (
+      {snap.tasks.length > 0 && view === "day" ? (
+        <DayView {...ctx} snap={{ ...snap, tasks: snap.tasks.filter((t) => job === "All" || jobOf(t) === job) }} />
+      ) : snap.tasks.length === 0 ? (
         <div className="empty">
           <b>No tasks yet.</b>
           <span className="mute">A task shows here after you work with Claude Code, Copilot CLI or VS Code agent mode while AIQ is watching.</span>
@@ -148,7 +156,7 @@ export function Tasks(ctx: Ctx) {
           </table>
         </div>
       )}
-      {snap.tasks.length > 0 && <p className="meta">J and K move between rows, Enter opens a task. Select a column heading to sort.</p>}
+      {snap.tasks.length > 0 && view === "list" && <p className="meta">J and K move between rows, Enter opens a task. Select a column heading to sort.</p>}
     </div>
   );
 }

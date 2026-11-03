@@ -1002,6 +1002,82 @@ fn aiq_check_folder_sessions_record_nothing_until_included() {
     assert_eq!(h.prompts(), 2, "included: recorded");
 }
 
+/// Copilot fires no hook for a message typed while the agent works (`delivery = "steering"`, 7 of 7 on
+/// Imran's laptop, 2026-11-03). The core reads it from Copilot's own session log at agentStop.
+#[test]
+fn copilot_mid_turn_messages_are_read_from_the_session_log_once() {
+    let mut h = H::new();
+    let home = TempDir::new().unwrap();
+    h.svc().set_copilot_home(home.path().to_owned());
+    let log = home.path().join("session-state").join("sess-1").join("events.jsonl");
+    std::fs::create_dir_all(log.parent().unwrap()).unwrap();
+    let line = |delivery: &str, text: &str, ms: i64| {
+        serde_json::json!({"type":"user.message","timestamp":format_rfc3339_ms(ms),
+            "data":{"content":text,"delivery":delivery}})
+        .to_string()
+            + "\n"
+    };
+    let t = h.clock.now().utc_ms;
+    // The hook sent the idle prompt; the steering one only reached the log; a secret goes before storing.
+    h.cp_send("sess-1", "fix the flaky login test");
+    let body = line("idle", "fix the flaky login test", t + MIN)
+        + &line(
+            "steering",
+            "also run the whole suite, token ghp_abcdefghijklmnopqrstuvwxyz0123456789",
+            t + MIN + 5_000,
+        );
+    std::fs::write(&log, &body).unwrap();
+    h.cp_stop("sess-1");
+    assert_eq!(h.prompts(), 2, "hook prompt + the mid-turn message, the idle one not twice");
+    let st = h.svc().status();
+    assert!(st.core_counters.iter().any(|(k, n)| k == codes::INGEST_MID_TURN && *n == 1));
+    let stored: Vec<String> = h
+        .svc()
+        .store()
+        .raw()
+        .prepare("SELECT c.text FROM event e JOIN content c USING (event_id) ORDER BY e.ts_utc_ms")
+        .unwrap()
+        .query_map([], |r| r.get(0))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect();
+    assert_eq!(stored[0], "fix the flaky login test");
+    assert!(stored[1].starts_with("also run the whole suite") && !stored[1].contains("ghp_"), "{}", stored[1]);
+    // Next stop: nothing new in the log, nothing new stored. After a restart the log is read from the start
+    // again, and the stable ids store nothing twice.
+    h.cp_stop("sess-1");
+    h.restart();
+    h.svc().set_copilot_home(home.path().to_owned());
+    h.cp_stop("sess-1");
+    assert_eq!(h.prompts(), 2);
+    // Off switch: a mid-turn message sent while it is off is never recorded, also after it is turned back on
+    // (the log is still read for the turn's actions, so the reader moves past it).
+    h.svc().set("copilot_mid_turn", "off").unwrap();
+    let body = body + &line("steering", "and update the docs", t + 2 * MIN);
+    std::fs::write(&log, &body).unwrap();
+    h.cp_stop("sess-1");
+    assert_eq!(h.prompts(), 2);
+    assert!(h.svc().set("copilot_mid_turn", "sometimes").is_err());
+    h.svc().set("copilot_mid_turn", "on").unwrap();
+    h.cp_stop("sess-1");
+    assert_eq!(h.prompts(), 2);
+    std::fs::write(&log, body + &line("steering", "and the changelog", t + 3 * MIN)).unwrap();
+    h.cp_stop("sess-1");
+    assert_eq!(h.prompts(), 3);
+}
+
+#[test]
+fn copilot_mid_turn_missing_log_counts_and_records_the_stop() {
+    let mut h = H::new();
+    let home = TempDir::new().unwrap();
+    h.svc().set_copilot_home(home.path().to_owned());
+    h.cp_send("sess-2", "hello");
+    h.cp_stop("sess-2");
+    let st = h.svc().status();
+    assert!(st.core_counters.iter().any(|(k, n)| k == codes::INGEST_LOG_READ && *n == 1));
+    assert_eq!(st.events_by_kind.iter().find(|(k, _)| k == "stop").map(|(_, n)| *n), Some(1));
+}
+
 fn record_popups(h: &mut H) -> Arc<std::sync::Mutex<Vec<String>>> {
     let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
     let s = seen.clone();
@@ -1080,4 +1156,188 @@ fn switch_settings_default_on() {
         h.svc().set(k, "off").unwrap();
         assert!(!h.svc().switch_on(k), "{k}");
     }
+}
+
+/// A Copilot CLI stop the hook waits on (`take_card`) never reads the log on the hook's clock; the core reads
+/// it after the reply (`after_stop`).
+#[test]
+fn copilot_mid_turn_read_waits_until_after_the_stop_reply() {
+    let mut h = H::new();
+    let home = TempDir::new().unwrap();
+    h.svc().set_copilot_home(home.path().to_owned());
+    let log = home.path().join("session-state").join("sess-3").join("events.jsonl");
+    std::fs::create_dir_all(log.parent().unwrap()).unwrap();
+    h.cp_send("sess-3", "first");
+    let ts = format_rfc3339_ms(h.clock.now().utc_ms + 1_000);
+    let line =
+        serde_json::json!({"type":"user.message","timestamp":ts,"data":{"content":"steer","delivery":"steering"}});
+    std::fs::write(&log, format!("{line}\n")).unwrap();
+    let id = h.id();
+    let stop = ev_on(
+        "copilot-cli",
+        &id,
+        "sess-3",
+        h.clock.now().utc_ms,
+        EventBody::Stop(StopPayload { stop_hook_active: false, prompt_id: None }),
+    );
+    let _ = h.svc().take_card(&stop, None, true);
+    assert_eq!(h.prompts(), 1, "nothing read while the hook waits");
+    h.svc().after_stop(&stop, None);
+    assert_eq!(h.prompts(), 2);
+}
+
+// ------------------------------------------------------------------ live agent actions (schema v9)
+
+fn turn_rows(h: &mut H) -> Vec<aiq_store::TurnActionRow> {
+    h.svc().store().turn_actions_since(0).unwrap()
+}
+
+/// A Claude Code turn as the hook sends it: the prompt and its Stop carry the transcript path; the Stop is taken
+/// (the hook waits for a card) and the transcript is read after the reply.
+fn cc_turn(h: &mut H, session: &str, transcript: &std::path::Path, text: &str) -> EventV1 {
+    let mut p = h.prompt(session, text);
+    p.transcript = Some(transcript.to_string_lossy().into_owned());
+    h.svc().ingest(&p, None);
+    let mut s = h.prompt(session, "unused");
+    s.body = EventBody::Stop(StopPayload { stop_hook_active: false, prompt_id: None });
+    s.transcript = p.transcript.clone();
+    h.svc().take_card(&s, None, true);
+    h.svc().after_stop(&s, None);
+    s
+}
+
+fn cc_lines(rows: &[serde_json::Value]) -> String {
+    rows.iter().map(|r| format!("{r}\n")).collect()
+}
+
+fn tool_use(name: &str, input: serde_json::Value) -> serde_json::Value {
+    serde_json::json!({"type":"assistant","message":{"content":[{"type":"tool_use","name":name,"input":input}]}})
+}
+
+/// Design live-agent-actions: at each Stop the core reads only the new part of the transcript and stores one
+/// counts-only row per turn. Command text and file names never reach the store.
+#[test]
+fn claude_code_turn_actions_are_counted_per_turn_without_command_text() {
+    let d = TempDir::new().unwrap();
+    let t = d.path().join("s.jsonl");
+    let mut body = cc_lines(&[
+        serde_json::json!({"type":"user","message":{"content":"fix the login test"}}),
+        tool_use("Read", serde_json::json!({"file_path":"src/secret_plan.rs"})),
+        tool_use("Edit", serde_json::json!({"file_path":"src/secret_plan.rs"})),
+        tool_use("Bash", serde_json::json!({"command":"cargo test --secret-flag"})),
+        tool_use("Task", serde_json::json!({"prompt":"review"})),
+    ]);
+    std::fs::write(&t, &body).unwrap();
+    let mut h = H::new();
+    let stop1 = cc_turn(&mut h, "s1", &t, "fix the login test");
+    let rows = turn_rows(&mut h);
+    assert_eq!(rows.len(), 1);
+    let r = &rows[0];
+    assert_eq!((r.outcome.as_str(), r.why.as_deref()), ("recorded", None));
+    assert_eq!(r.stop_event_id, stop1.event_id);
+    assert_eq!((r.tool_calls, r.commands, r.files, r.subagents), (Some(4), Some(1), Some(1), Some(1)));
+    assert_eq!(r.tools.as_deref(), Some(r#"{"Bash":1,"Edit":1,"Read":1,"Task":1}"#));
+    assert!(r.bytes_read > 0);
+    let dump: String = h
+        .svc()
+        .store()
+        .raw()
+        .prepare("SELECT * FROM turn_action")
+        .unwrap()
+        .query_map([], |row| Ok(format!("{:?}", (row.get::<_, String>(0)?, row.get::<_, Option<String>>(10)?))))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect();
+    assert!(!dump.contains("secret"), "no file names or command text: {dump}");
+    // The next turn counts only its own work.
+    body += &cc_lines(&[
+        serde_json::json!({"type":"user","message":{"content":"now the docs"}}),
+        tool_use("Write", serde_json::json!({"file_path":"README.md"})),
+    ]);
+    std::fs::write(&t, &body).unwrap();
+    cc_turn(&mut h, "s1", &t, "now the docs");
+    let rows = turn_rows(&mut h);
+    assert_eq!((rows.len(), rows[1].tool_calls, rows[1].tools.as_deref()), (2, Some(1), Some(r#"{"Write":1}"#)));
+    // A replayed stop stores nothing new.
+    h.svc().after_stop(&stop1, None);
+    assert_eq!(turn_rows(&mut h).len(), 2);
+}
+
+/// A turn AIQ cannot read is "not recorded" with a reason and a count, never a guess; the switch turns it off.
+#[test]
+fn unreadable_turns_are_not_recorded_and_the_switch_turns_reading_off() {
+    let d = TempDir::new().unwrap();
+    let mut h = H::new();
+    cc_turn(&mut h, "gone", &d.path().join("missing.jsonl"), "hello");
+    let bad = d.path().join("bad.jsonl");
+    std::fs::write(&bad, "{\"type\":\"user\",\"message\":{\"content\":\"hi\"}}\n{\"type\":\"user\", broken\n").unwrap();
+    cc_turn(&mut h, "bad", &bad, "hi");
+    let rows = turn_rows(&mut h);
+    let got: Vec<_> = rows.iter().map(|r| (r.outcome.as_str(), r.why.as_deref(), r.tool_calls)).collect();
+    assert_eq!(got, [("not_recorded", Some("no_log"), None), ("not_recorded", Some("unparsed"), None)]);
+    let st = h.svc().status();
+    assert!(st.core_counters.iter().any(|(k, n)| k == codes::INGEST_ACTIONS_NOT_RECORDED && *n == 2));
+    let a = st.agent_actions.unwrap();
+    assert_eq!((a.enabled, a.turns, a.not_recorded), (true, 2, 2));
+    assert_eq!(a.why, [("no_log".to_string(), 1), ("unparsed".to_string(), 1)]);
+    assert!(a.p95_ms.is_some() && a.max_bytes.is_some());
+    // Off: nothing read, nothing stored.
+    h.svc().set("agent_actions", "off").unwrap();
+    assert!(h.svc().set("agent_actions", "maybe").is_err());
+    cc_turn(&mut h, "gone", &d.path().join("missing.jsonl"), "again");
+    assert_eq!(turn_rows(&mut h).len(), 2);
+    assert!(!h.svc().status().agent_actions.unwrap().enabled);
+}
+
+/// Copilot CLI and VS Code agent mode share the session log; a set-aside session or a paused AIQ stores no row.
+#[test]
+fn copilot_turn_actions_come_from_the_session_log_and_respect_set_aside_and_pause() {
+    let mut h = H::new();
+    let home = TempDir::new().unwrap();
+    h.svc().set_copilot_home(home.path().to_owned());
+    let log = home.path().join("session-state").join("vs-1").join("events.jsonl");
+    std::fs::create_dir_all(log.parent().unwrap()).unwrap();
+    let patch = "*** Begin Patch\n*** Update File: a.py\n*** Add File: b.py\n*** End Patch";
+    let lines = cc_lines(&[
+        serde_json::json!({"type":"user.message","data":{"content":"add a parser","delivery":"idle"}}),
+        serde_json::json!({"type":"tool.execution_start","data":{"toolName":"apply_patch","arguments":patch}}),
+        serde_json::json!({"type":"tool.execution_start","data":{"toolName":"bash","arguments":"{\"command\":\"pytest\"}"}}),
+        serde_json::json!({"type":"subagent.started","agentId":"x","data":{}}),
+    ]);
+    std::fs::write(&log, &lines).unwrap();
+    let stop = |h: &mut H, surface: &str, session: &str| {
+        h.clock.advance(MIN);
+        let id = h.id();
+        let body = EventBody::Stop(StopPayload { stop_hook_active: false, prompt_id: None });
+        let e = ev_on(surface, &id, session, h.clock.now().utc_ms, body);
+        h.svc().ingest(&e, None);
+    };
+    h.clock.advance(MIN);
+    let id = h.id();
+    let p = ev_on(
+        "vscode",
+        &id,
+        "vs-1",
+        h.clock.now().utc_ms,
+        EventBody::Prompt(PromptPayload {
+            text: Some("add a parser".into()),
+            chars: 12,
+            prompt_id: None,
+            truncated: false,
+        }),
+    );
+    h.svc().ingest(&p, None);
+    stop(&mut h, "vscode", "vs-1");
+    let rows = turn_rows(&mut h);
+    assert_eq!(rows.len(), 1);
+    assert_eq!((rows[0].surface.as_str(), rows[0].tool_calls, rows[0].commands), ("vscode", Some(2), Some(1)));
+    assert_eq!((rows[0].files, rows[0].subagents), (Some(2), Some(1)), "apply_patch names two files");
+    // Paused: nothing stored.
+    h.svc().set("paused", "true").unwrap();
+    stop(&mut h, "vscode", "vs-1");
+    assert_eq!(turn_rows(&mut h).len(), 1);
+    h.svc().set("paused", "false").unwrap();
+    // A stop for a session AIQ never stored (its stop is set aside by the shape check) stores no row.
+    stop(&mut h, "copilot-cli", "");
+    assert_eq!(turn_rows(&mut h).len(), 1);
 }

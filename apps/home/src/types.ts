@@ -86,6 +86,10 @@ export interface TaskRow {
   last_ms: number;
   prompts: number;
   origin: "live" | "imported";
+  /** The tool's session the task's first prompt came from (Day view lanes). */
+  session: string;
+  /** Times of the task's prompts, in order (Day view ticks). */
+  prompt_ms: number[];
   /** code_change, write_doc, ask_research, run_ship or unclassified once judged. */
   job: string | null;
   rung: number | null;
@@ -244,6 +248,10 @@ export interface Settings {
   tip_highlight: boolean;
   judge: "auto" | "off";
   judge_daily_tasks: number;
+  /** Read Copilot's own history file for messages sent while the agent works. */
+  copilot_mid_turn: "on" | "off";
+  /** At each turn's end, count what the agent did (tool calls, commands, files, sub-agents). */
+  agent_actions: "on" | "off";
   next_rung_tips: "auto" | "on" | "off";
   /** Next-step tips may show now. */
   next_rung_on: boolean;

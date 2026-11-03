@@ -218,7 +218,59 @@ summary: >-
   pins h02, h11, h20 placements. Rule: a guardrail's fact bar is tuned per fact from eval data, and a lower
   bar needs a log fact to corroborate it.
 
-### DC-016 — A device fact that under-reads, labelled "trust this over the text", overrules what the text shows
+### DC-016 — Background work scheduled only on idle, starved by steady traffic
+- **Signature:** `e2e_copilot_tip_in_chat_off_leaves_it_to_the_status_line` failed once on the Windows
+  runner: one prompt's 20 ms send missed, the hook spooled it, and the core drains the spool only when its
+  command channel stays idle for 30 s. The test polls `aiq status` every 10 ms, so the idle tick never fired
+  and the prompt never arrived within the 10 s wait.
+- **Why it survives:** the idle tick looks like "every 30 s", and on a quiet laptop it is. Only steady traffic
+  (a poller, a busy session, a test) shows it is "30 s after the last command". A spool is rare, so the gap
+  only shows on a slow shared runner.
+- **Instances:** 2026-11-03, Windows CI, found by the Copilot capture thread (passed on re-run).
+- **Sweep:** `grep -n "recv_timeout(TICK)" crates`: the writer loop is the only idle-scheduled work; its tick
+  also prunes and expires stale cards (harmless to delay; left on the tick).
+- **Control:** the writer loop drains a non-empty spool before any command; test
+  `e2e_spooled_frame_goes_in_at_the_next_command_not_the_idle_tick` (red without the fix). Rule: work that
+  must happen soon is triggered by the event that makes it needed, never only by an idle timeout.
+
+### DC-017 — A desktop app that any launcher can open twice
+- **Signature:** 2026-11-03 02:11Z, two AIQ home windows open on the owner's laptop; he started neither the
+  second nor (knowingly) the first. Each launch of `aiq-home.exe` opened its own window, with its own reads
+  of the store and its own update button.
+- **Why it survives:** several launchers start AIQ home (install.ps1 first run, upgrade.ps1 `-Relaunch`
+  three times, the Start-menu shortcut, dev swap scripts) and each is right on its own. Nothing owned "is one
+  already open?", and a single tester rarely double-launches.
+- **Instances:** 2026-11-03, laptop, after the 21st dev build install (launcher of the second still being
+  traced on the laptop).
+- **Sweep:** `grep -rn "aiq-home.exe" packaging crates apps`: every launcher above goes through the exe, so one
+  guard in the exe covers them all.
+- **Control:** `tauri-plugin-single-instance`, registered first in `main()`: a second launch shows the open
+  window and exits, and the open window writes `second_launch cwd=...` to home.log. Test
+  `single_instance_guard_is_the_first_plugin`; CI's Windows job launches the exe twice and fails on two
+  processes. Rule: a per-user desktop app enforces one instance in the exe, never in each launcher.
+
+### DC-018 — One record reached by two capture paths, counted once per path
+- **Signature:** 2026-11-03, Imran's store: a session captured live by the hooks (`event`) and again by
+  `aiq import` (`import_event`) showed as two tasks, prompts 2–3 s apart. Both copies were judged (two premium
+  requests) and sometimes got different kinds. Measured read-only: 7 sessions held both ways, 805 tasks where
+  there were 785; 10 sessions' tasks judged twice.
+- **Why it survives:** each path is right on its own and keys its rows its own way (`event_id` vs
+  `import:<tool>:<session>:<seq>`), so no key collides. The overlap only exists once a person both runs the
+  hooks and imports history, and VS Code's live surface (`vscode`) differs from the file's tool
+  (`copilot-cli`), so even a session-id join by surface misses it.
+- **Instances:** 2026-11-02 reinstall + import (noted then, not fixed); measured 2026-11-03 by the
+  intent-sessions thread.
+- **Sweep:** every reader of `import_event`/`import_session` (`grep -rn "FROM import_" crates`): only the task
+  list builds tasks; the judge, task detail and kind label read prompts by the task list's member ids. Data-tab
+  counts (`imported_sessions`, `imported_events`) count stored rows, which is what they say.
+- **Control:** the task list joins the copies (`crates/aiq-home/src/twins.rs`): same session id across the
+  tool family, twins (within 30 s with the same text, or within 3 s) are one prompt, the rest are the union. Tests
+  `a_session_captured_live_and_imported_is_one_task` and
+  `a_session_held_live_and_imported_is_judged_once_with_every_prompt` (red without the fix). Rule: when a
+  second capture path writes the same thing, the one read model that builds the unit joins the paths before
+  counting; never count per path.
+
+### DC-019 — A device fact that under-reads, labelled "trust this over the text", overrules what the text shows
 - **Signature:** golden g1 h16, h17, a04, r03: the agent ran `lychee` + `markdownlint`, `scripts/check_brief.py`,
   `scripts/verify_refresh.py`, `scripts/rerun.sh <test>`. The check detector knew none of them, so the envelope
   said "checks run by: nobody". GPT Sol trusted it (as told), set F6 no at 0.86 to 0.98 and placed rung 1.

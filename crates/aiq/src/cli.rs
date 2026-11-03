@@ -180,6 +180,9 @@ fn status_text(paths: &Paths) -> (String, Vec<String>) {
                     out += &render_labels(l);
                 }
             }
+            if let Some(a) = &s.agent_actions {
+                out += &render_actions(a);
+            }
             if let Some((_, n)) = ignored {
                 out += &format!("Automated prompts ignored since the core started: {n}\n");
             }
@@ -311,7 +314,8 @@ pub const HOOK_BUDGET_MS: f64 = 100.0;
 
 /// Unix seconds of the last time the exes changed, from one upgrade log. Two writers, two line shapes and
 /// two places (`<home>\upgrade-log.txt` and `<home>\bin\upgrade-log.txt`; `status` reads both):
-/// `upgrade.ps1` writes `yyyy-mm-dd hh:mm:ssZ Upgraded AIQ…` / `… Rolled back to AIQ…` (lines where nothing
+/// `upgrade.ps1` writes `yyyy-mm-dd hh:mm:ssZ Upgraded AIQ…` / `… Rolled back to AIQ…`, `install.ps1` writes
+/// `… Installed AIQ…` (lines where nothing
 /// changed are skipped); the laptop's dev swapper writes `<RFC 3339 with offset> swapped aiq.exe (<n> bytes)`
 /// (measured 2026-11-02: `2026-11-02T14:00:57.7222903-08:00 swapped aiq.exe (5920768 bytes)`).
 /// assume: every exe change goes through one of the two. If false: the budget line says no upgrade is
@@ -320,7 +324,7 @@ pub fn last_upgrade(log: &str) -> Option<u64> {
     log.lines()
         .filter_map(|l| {
             let m = l.get(21..).unwrap_or("");
-            if m.starts_with("Upgraded AIQ") || m.starts_with("Rolled back to AIQ") {
+            if ["Upgraded AIQ", "Rolled back to AIQ", "Installed AIQ"].iter().any(|p| m.starts_with(p)) {
                 let t = chrono::NaiveDateTime::parse_from_str(l.get(..19)?, "%Y-%m-%d %H:%M:%S").ok()?;
                 return Some(t.and_utc().timestamp());
             }
@@ -553,6 +557,31 @@ pub fn include_folder(folder: &str) -> ExitCode {
     }
 }
 
+/// Live agent actions today (design live-agent-actions): turns read, turns not recorded and why, and what the
+/// reading cost per turn. All counted from stored rows.
+pub fn render_actions(a: &aiq_contracts::frames::ActionsStatus) -> String {
+    if !a.enabled {
+        return "What the agent did per turn: off (aiq config set agent-actions on)\n".into();
+    }
+    if a.turns == 0 {
+        return "What the agent did per turn: on, no turn read today\n".into();
+    }
+    let why: Vec<String> = a.why.iter().map(|(w, n)| format!("{w} {n}")).collect();
+    let missed = if a.not_recorded == 0 {
+        String::new()
+    } else {
+        format!(", not recorded {} ({})", a.not_recorded, why.join(", "))
+    };
+    format!(
+        "What the agent did per turn: {} turns read today{missed}. Reading cost per turn: p95 {} ms, max {} ms, \
+         largest read {} KB\n",
+        a.turns,
+        a.p95_ms.unwrap_or(0),
+        a.max_ms.unwrap_or(0),
+        a.max_bytes.unwrap_or(0).div_ceil(1024)
+    )
+}
+
 /// Jobs and kinds the accuracy check paused, and the one command that keeps each showing (design K6b).
 /// Kind labels (design kind-label): today's calls against the budget, and AIQ's own check of them.
 pub fn render_labels(l: &aiq_contracts::frames::LabelStatus) -> String {
@@ -609,6 +638,8 @@ pub fn config_set(name: &str, value: &str) -> ExitCode {
         "check-claude-model" => ("check_claude_model", format!("Accuracy check, Claude model: {value}.")),
         "check-copilot-model" => ("check_copilot_model", format!("Accuracy check, Copilot model: {value}.")),
         "update" => ("update", format!("Updates: {value}.")),
+        "copilot-mid-turn" => ("copilot_mid_turn", format!("Copilot messages sent while the agent works: {value}.")),
+        "agent-actions" => ("agent_actions", format!("What the agent did in each turn: {value}.")),
         "kind-label" => ("kind_label", format!("Kind-of-task labels: {value}.")),
         "kind-label-daily" => ("kind_label_daily", format!("Most kind labels per day: {value}.")),
         "kind-label-claude-model" => ("kind_label_claude_model", format!("Kind label, Claude model: {value}.")),
@@ -619,7 +650,7 @@ pub fn config_set(name: &str, value: &str) -> ExitCode {
                  tip-highlight, judge, judge-daily-tasks, \
                  judge-claude-model, judge-copilot-model, judge-copilot-sessions, next-rung-tips, check-claude-model, \
                  check-copilot-model, update, kind-label, kind-label-daily, kind-label-claude-model, kind-label-copilot-model, \
-                 keep-on.<job or job/kind>."
+                 copilot-mid-turn, agent-actions, keep-on.<job or job/kind>."
             );
             return ExitCode::from(2);
         }
@@ -843,6 +874,10 @@ mod tests {
              2026-11-02T14:30:00-08:00 swapped aiq-home.exe (100 bytes)\n"
         );
         assert_eq!(last_upgrade(&dev), Some(1_793_656_857)); // 2026-11-02 22:00:57Z
+        // install.ps1 (a release install or reinstall) also changes the exes: measured 2026-11-03, the
+        // laptop's budget window kept counting from an older dev swap after a 04:09Z install.
+        let installed = format!("{dev}2026-11-03 04:09:00Z Installed AIQ 0.1.0 (install.ps1).\n");
+        assert_eq!(last_upgrade(&installed), Some(1_793_678_940)); // 2026-11-03 04:09:00Z
     }
 
     #[test]
