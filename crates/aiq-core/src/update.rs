@@ -1,7 +1,7 @@
 //! Auto-update (design `docs/design/auto-update.md`). One mechanism: the installed `upgrade.ps1` does the
 //! network call, the checksum and the swap; this module decides *when*, starts it, and reads back its outcome
-//! (`update.json`) for `aiq update` and AIQ home. The core's kicker asks once an hour; a check runs at most once
-//! a day; a waiting update is applied only under "Update automatically", and only when AIQ is idle (the script
+//! (`update.json`) for `aiq update` and AIQ home. The core's kicker asks once an hour; a check runs once a day,
+//! or hourly after one failed or while AIQ home is open (`home_check_due`); a waiting update is applied only under "Update automatically", and only when AIQ is idle (the script
 //! decides idle, because only it sees the processes at the moment of the swap).
 use crate::paths::Paths;
 use crate::sysclock::parse_rfc3339_ms as parse_utc_ms;
@@ -15,12 +15,20 @@ use std::time::Duration;
 pub const SETTING_UPDATE: &str = "update";
 pub const MODES: [&str; 3] = ["auto", "ask", "off"];
 pub const DEFAULT_MODE: &str = "auto";
-/// A check is due once this long has passed since the last one, successful or not.
+/// A check is due once this long has passed since the last successful one.
 pub const CHECK_EVERY_MS: i64 = 24 * 3600 * 1000;
+/// The hourly cadence: after a check that failed (no release yet, no network, a proxy), and while AIQ home is
+/// open. Five minutes under an hour, so an hourly timer that fires a little early still finds it due.
+pub const HOURLY_MS: i64 = 55 * 60 * 1000;
 /// How long Home says "AIQ updated itself" after it did.
 pub const APPLIED_NOTE_MS: i64 = 7 * 24 * 3600 * 1000;
 const KICK_FIRST: Duration = Duration::from_secs(5 * 60);
 const KICK_EVERY: Duration = Duration::from_secs(3600);
+
+/// The person's stored choice; None (the default) when unset or the store can't be read.
+pub fn stored_mode(paths: &Paths) -> Option<String> {
+    aiq_store::Store::open_read_only(&paths.db()).ok().and_then(|s| s.setting(SETTING_UPDATE).ok().flatten())
+}
 
 pub fn validate_mode(value: &str) -> Result<String, String> {
     if MODES.contains(&value) { Ok(value.to_owned()) } else { Err("update must be auto, ask or off".into()) }
@@ -110,14 +118,28 @@ pub fn decide(now_ms: i64, st: &State, mode: Option<&str>) -> Option<Action> {
         return None;
     }
     let auto = mode.unwrap_or(DEFAULT_MODE) == "auto";
-    let due = st.checked_at.as_deref().and_then(parse_utc_ms).is_none_or(|t| now_ms - t >= CHECK_EVERY_MS);
-    if due {
+    if check_due(now_ms, st, CHECK_EVERY_MS) {
         Some(Action::Check { apply: auto })
     } else if auto && st.state.as_deref() == Some("waiting") {
         Some(Action::Apply)
     } else {
         None
     }
+}
+
+/// A check is due `every` after the last one, or an hour after one that failed (a 404 before the first release
+/// is published made the laptop wait a full day on 2026-11-03). Never checked, or an unreadable time: due.
+fn check_due(now_ms: i64, st: &State, every: i64) -> bool {
+    let wait = if st.check_error.is_some() { every.min(HOURLY_MS) } else { every };
+    st.checked_at.as_deref().and_then(parse_utc_ms).is_none_or(|t| now_ms - t >= wait)
+}
+
+/// AIQ home asks this when it opens and every hour while open, then starts a check (download, no install) when
+/// it says so: a person who keeps Home open sees a new release within the hour and can Install now, instead of
+/// waiting for the daily check. Not with updates off, and not while an update already waits (that would only
+/// download it again).
+pub fn home_check_due(now_ms: i64, st: &State, mode: Option<&str>) -> bool {
+    mode != Some("off") && st.state.as_deref() != Some("waiting") && check_due(now_ms, st, HOURLY_MS)
 }
 
 /// The script's arguments for one action. `wait_pid`: the caller about to exit (AIQ home, the CLI).
@@ -198,9 +220,7 @@ pub fn start_background(paths: Paths) {
     std::thread::spawn(move || {
         std::thread::sleep(KICK_FIRST);
         loop {
-            let mode = aiq_store::Store::open_read_only(&paths.db())
-                .ok()
-                .and_then(|s| s.setting(SETTING_UPDATE).ok().flatten());
+            let mode = stored_mode(&paths);
             let now = chrono::Utc::now().timestamp_millis();
             if let Some(action) = decide(now, &read_state(&paths), mode.as_deref()) {
                 match start(&paths, action, None, false) {
@@ -279,12 +299,32 @@ mod tests {
     }
 
     #[test]
-    fn checks_once_a_day_whatever_the_last_outcome() {
+    fn a_good_check_is_repeated_once_a_day() {
         let s = st(Some("current"), Some(T0));
         assert_eq!(decide(t0() + CHECK_EVERY_MS - 1, &s, None), None);
         assert_eq!(decide(t0() + CHECK_EVERY_MS, &s, None), Some(Action::Check { apply: true }));
         let unreadable = st(None, Some("yesterday"));
         assert_eq!(decide(t0(), &unreadable, None), Some(Action::Check { apply: true }));
+    }
+
+    #[test]
+    fn a_failed_check_is_retried_within_the_hour_not_the_next_day() {
+        let failed = State { check_error: Some("404".into()), ..st(None, Some(T0)) };
+        assert_eq!(decide(t0() + HOURLY_MS - 1, &failed, None), None);
+        assert_eq!(decide(t0() + HOURLY_MS, &failed, None), Some(Action::Check { apply: true }));
+        assert_eq!(decide(t0() + HOURLY_MS, &failed, Some("ask")), Some(Action::Check { apply: false }));
+        assert_eq!(decide(t0() + HOURLY_MS, &failed, Some("off")), None);
+    }
+
+    #[test]
+    fn home_checks_hourly_while_open_but_never_with_updates_off_or_one_waiting() {
+        assert!(home_check_due(t0(), &State::default(), None), "never checked");
+        let ok = st(Some("current"), Some(T0));
+        assert!(!home_check_due(t0() + HOURLY_MS - 1, &ok, None));
+        assert!(home_check_due(t0() + HOURLY_MS, &ok, None));
+        assert!(home_check_due(t0() + HOURLY_MS, &ok, Some("ask")));
+        assert!(!home_check_due(t0() + HOURLY_MS, &ok, Some("off")));
+        assert!(!home_check_due(t0() + CHECK_EVERY_MS, &st(Some("waiting"), Some(T0)), None));
     }
 
     #[test]

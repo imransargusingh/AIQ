@@ -17,6 +17,7 @@ import { Setup } from "./pages/Setup";
 import { Kind } from "./pages/Kind";
 
 const REFRESH_MS = 15_000;
+const UPDATE_ASK_MS = 3_600_000;
 const KEYS_PREF = "aiq.singleKeys";
 
 function readPref(): boolean {
@@ -116,6 +117,20 @@ export function App() {
       document.removeEventListener("visibilitychange", tick);
     };
   }, [refresh]);
+
+  // A newer AIQ shows on Home within the hour (design auto-update U5c): on open, hourly, and when the window
+  // gets focus, ask the shell to check. It checks only when one is due (an hour since the last, never with
+  // updates off), so this is cheap; the next snapshot read shows the line once the download is checked.
+  useEffect(() => {
+    const ask = () => void api.runUpdate("check_if_due").catch(() => undefined);
+    ask();
+    const t = setInterval(ask, UPDATE_ASK_MS);
+    window.addEventListener("focus", ask);
+    return () => {
+      clearInterval(t);
+      window.removeEventListener("focus", ask);
+    };
+  }, []);
 
   // First run: setup until the person finishes it once; re-run from Settings (#setup).
   const inSetup = !!snap && (!snap.setup.done || page === "setup");

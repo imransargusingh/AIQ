@@ -181,6 +181,7 @@ export const api = {
   judgePreview: () => invoke<{ ok: boolean; text: string }>("judge_preview"),
   /** Open the privacy page in the default browser (a fixed address). */
   openPrivacy: () => invoke<Outcome>("open_privacy"),
-  /** Install the waiting update or go back (AIQ home closes and reopens), or check now (it stays open). */
-  runUpdate: (action: "install" | "rollback" | "check") => invoke<Outcome>("run_update", { action }),
+  /** Install the waiting update or go back (AIQ home closes and reopens), or check now (it stays open);
+   * `check_if_due` checks only when an hour has passed since the last check (Home's own hourly ask). */
+  runUpdate: (action: "install" | "rollback" | "check" | "check_if_due") => invoke<Outcome>("run_update", { action }),
 };

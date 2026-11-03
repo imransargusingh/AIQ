@@ -222,6 +222,11 @@ fn status_text(paths: &Paths) -> (String, Vec<String>) {
     }
     out += &format!("Claude Code: {}\n", crate::install::status_line());
     out += &format!("Copilot: {}\n", crate::install_copilot::status_line());
+    let now_ms = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64);
+    let up = aiq_core::update::view(&paths, aiq_core::update::stored_mode(&paths).as_deref(), now_ms);
+    if let Some(l) = update_status_line(&up) {
+        out += &l;
+    }
     let spooled = std::fs::read_to_string(paths.spool()).map(|s| s.lines().count()).unwrap_or(0);
     if spooled > 0 {
         out += &format!("Queued while the core was down: {spooled} events\n");
@@ -1207,19 +1212,27 @@ mod tips_tests {
 pub fn update(rest: &[&str]) -> ExitCode {
     use aiq_core::update::{self, Action};
     let paths = Paths::from_env();
-    let mode = aiq_store::Store::open_read_only(&paths.db())
-        .ok()
-        .and_then(|s| s.setting(update::SETTING_UPDATE).ok().flatten());
+    let mode = update::stored_mode(&paths);
     let now = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64);
     let v = update::view(&paths, mode.as_deref(), now);
     if rest.contains(&"--now") {
-        // The script waits for this process to end, so it is not counted as AIQ being busy.
-        return match update::start(&paths, Action::Check { apply: true }, Some(std::process::id()), false) {
+        // The script waits for this process to end, so it is not counted as AIQ being busy. An update already
+        // downloaded is installed as it is, not downloaded again.
+        let action = if v.note == "waiting" { Action::Apply } else { Action::Check { apply: true } };
+        return match update::start(&paths, action, Some(std::process::id()), false) {
             Ok(()) => {
-                println!(
-                    "Checking for a newer AIQ now. If there is one, it installs as soon as AIQ is idle \
-                     (AIQ home closed). Run `aiq update` in a minute to see the result."
-                );
+                if action == Action::Apply {
+                    println!(
+                        "Installing AIQ {} as soon as AIQ is idle (AIQ home closed). Run `aiq update` in a minute \
+                         to see the result.",
+                        v.available.as_deref().unwrap_or("update").trim_start_matches('v')
+                    );
+                } else {
+                    println!(
+                        "Checking for a newer AIQ now. If there is one, it installs as soon as AIQ is idle \
+                         (AIQ home closed). Run `aiq update` in a minute to see the result."
+                    );
+                }
                 ExitCode::SUCCESS
             }
             Err(e) => {
@@ -1230,6 +1243,16 @@ pub fn update(rest: &[&str]) -> ExitCode {
     }
     print!("{}", update_text(&v, now));
     ExitCode::SUCCESS
+}
+
+/// `aiq status`'s one line about a newer AIQ, only while one is downloaded and waiting (design auto-update U6).
+fn update_status_line(v: &aiq_core::update::View) -> Option<String> {
+    if !v.supported || v.note != "waiting" {
+        return None;
+    }
+    let ver = v.available.as_deref().unwrap_or("A newer version").trim_start_matches('v');
+    let when = if v.mode == "auto" { " It installs when AIQ home is closed." } else { "" };
+    Some(format!("Update: AIQ {ver} is ready.{when} Install now: aiq update --now\n"))
 }
 
 fn update_text(v: &aiq_core::update::View, now: i64) -> String {
@@ -1258,7 +1281,7 @@ fn update_text(v: &aiq_core::update::View, now: i64) -> String {
         None => o.push_str("Not checked yet. The first check runs a few minutes after AIQ starts."),
     }
     if let Some(e) = &v.check_error {
-        o.push_str(&format!(" That check failed ({e}); it tries again in a day."));
+        o.push_str(&format!(" That check failed ({e}); it tries again within the hour."));
     }
     o.push('\n');
     let avail = v.available.as_deref().unwrap_or("A newer version");
@@ -1338,8 +1361,25 @@ mod update_tests {
     }
 
     #[test]
+    fn status_names_a_waiting_update_and_how_to_install_it() {
+        use super::update_status_line;
+        assert_eq!(update_status_line(&v()), None, "nothing waiting: no line");
+        let w = View { note: "waiting", available: Some("v0.1.1".into()), ..v() };
+        assert_eq!(
+            update_status_line(&w).as_deref(),
+            Some("Update: AIQ 0.1.1 is ready. It installs when AIQ home is closed. Install now: aiq update --now\n")
+        );
+        let ask = View { mode: "ask".into(), ..w.clone() };
+        assert_eq!(
+            update_status_line(&ask).as_deref(),
+            Some("Update: AIQ 0.1.1 is ready. Install now: aiq update --now\n")
+        );
+        assert_eq!(update_status_line(&View { supported: false, ..w }), None, "a dev copy never updates");
+    }
+
+    #[test]
     fn failed_check_says_when_it_retries() {
         let t = update_text(&View { checked_ms: Some(0), check_error: Some("404".into()), ..v() }, 0);
-        assert!(t.contains("That check failed (404); it tries again in a day."), "{t}");
+        assert!(t.contains("That check failed (404); it tries again within the hour."), "{t}");
     }
 }

@@ -403,24 +403,20 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
             ) : (
             <span className="meta">
               {up.checked_ms != null ? `Last checked ${when(up.checked_ms, snap.now_ms, snap.offset_min)}.` : "Not checked yet."}
-              {up.check_error ? " That check didn't reach GitHub; AIQ tries again in a day." : ""} AIQ asks GitHub once a day whether a newer
-              version is out, checks the download's fingerprint, and keeps the version before so you can go back. Nothing about you is sent.
+              {up.check_error ? " That check didn't reach GitHub; AIQ tries again within the hour." : ""} AIQ asks GitHub once a day, and every
+              hour while AIQ home is open, whether a newer version is out, checks the download's fingerprint, and keeps the version before so you can go back. Nothing about you is sent.
             </span>
             )}
-            {(up.mode === "off" || up.can_rollback) && (
-              <div className="row">
-                {up.mode === "off" && (
-                  <button className="btn" onClick={checkNow}>
-                    Check for updates now
-                  </button>
-                )}
+            <div className="row">
+                <button className="btn" onClick={checkNow}>
+                  Check for updates now
+                </button>
                 {up.can_rollback && (
                 <button className="btn" onClick={goBack}>
                   Go back to the previous version
                 </button>
                 )}
               </div>
-            )}
           </>
         ) : (
           <p className="mute">This copy of AIQ wasn't installed from a release, so it doesn't update itself.</p>
