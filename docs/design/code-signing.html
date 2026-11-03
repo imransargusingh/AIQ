@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Code Signing</title><style>
+:root { color-scheme: light dark; --bg:#f7f5ef; --panel:#fff; --text:#20201d;
+  --muted:#66645f; --line:#d9d5ca; --accent:#3157a4; --code:#f0eee7; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#171816; --panel:#20221f; --text:#f2f1eb; --muted:#b8b6ae;
+    --line:#3d403a; --accent:#8fb0ff; --code:#292c27; }
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text);
+  font:16px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif; }
+main { width:min(920px,calc(100% - 32px)); margin:32px auto; padding:40px;
+  background:var(--panel); border:1px solid var(--line); border-radius:12px; }
+h1,h2,h3,h4,h5,h6 { line-height:1.2; margin:1.5em 0 .55em; }
+h1 { margin-top:0; font-size:2.2rem; } h2 { border-bottom:1px solid var(--line); padding-bottom:.3em; }
+a { color:var(--accent); } code { background:var(--code); padding:.12em .35em; border-radius:4px; }
+pre { overflow:auto; padding:16px; background:var(--code); border-radius:8px; }
+pre code { padding:0; } blockquote { margin:1em 0; padding:.2em 1em; color:var(--muted);
+  border-left:4px solid var(--line); }
+table { width:100%; border-collapse:collapse; margin:1em 0; display:block; overflow:auto; }
+th,td { padding:.55em .75em; border:1px solid var(--line); text-align:left; vertical-align:top; }
+th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); }
+.source { color:var(--muted); font-size:.9rem; margin-bottom:2rem; }
+@media (max-width:640px) { main { width:100%; margin:0; padding:24px 18px; border:0; border-radius:0; } }
+</style></head><body><main><div class="source">Rendered from code-signing.md</div><h1>Design: code-signing the Windows build</h1>
+<p>Started without waiting, under Imran&#x27;s standing rule: it is cloud-only, and it buys nothing and creates no account. The alpha welcome note (PR #81) tells testers that <code>aiq.exe</code> and <code>aiq-home.exe</code> are not signed. Most alpha testers use managed work laptops, so this is a real install risk.</p>
+<h2>Decision (2026-11-03): deferred</h2>
+<p>Imran: &quot;why do we need to sign the build? This is an internal tool.&quot; So: <strong>no signing for now.</strong> Nothing is bought and no account is made. The alpha ships unsigned and the welcome note keeps its SmartScreen click-through text.</p>
+<p><strong>Revisit trigger:</strong> the G3 install on a managed laptop shows the unsigned exes or <code>install.ps1</code> <strong>blocked</strong> (app-control rule, Group Policy script policy, Smart App Control), not just warned. Then the recommendation below is the starting point, and the US/Canada and legal-name question goes back to Imran.</p>
+<h2>Recommendation if the trigger fires</h2>
+<p><strong>Recommendation: Azure Artifact Signing (formerly Trusted Signing), Basic tier, started when the trigger fires.</strong></p>
+<ul><li>It costs about <strong>$9.99 a month</strong> (about $120 a year) and needs no USB token. It signs from GitHub</li></ul>
+<p>Actions. <em>Source: Microsoft Learn &quot;Code signing options&quot;, updated 2026-08-29.</em></p>
+<ul><li>The slow part is the identity check: <strong>1 to 20 business days</strong>. <em>Source: Artifact Signing quickstart.</em></li></ul>
+<p>Signing would land 1 to 4 weeks after the trigger fires.</p>
+<ul><li>Signing does <strong>not</strong> remove the SmartScreen warning on day one. Reputation builds per certificate</li></ul>
+<p>over downloads (EV lost its instant pass in 2024). What signing does do: the warning names a publisher, the reputation carries over from release to release, and company rules that allow &quot;signed by a known publisher&quot; can let it through. <em>Source: Microsoft Learn; Eric Lawrence, &quot;Best practices for SmartScreen AppRep&quot; (2024-11-15).</em></p>
+<ul><li>Meanwhile, keep the welcome note&#x27;s click-through text. Gate G3 (a run on a managed laptop) tells us</li></ul>
+<p>whether unsigned is merely annoying or actually blocked. If it is blocked, signing becomes the alpha&#x27;s first task, as private-alpha A2 already says.</p>
+<p><strong>Imran: the one question is whether you can enrol as an individual.</strong> Individual enrolment is open only to people in the <strong>US or Canada</strong>. The certificate then shows <strong>your legal name</strong> as the publisher, taken from an Azure billing account of type Individual. If either is a problem (location, or your name on a side project while you work at Microsoft), the fallback is an OV certificate from a CA (below), which also shows your name, or forming a legal entity. <em>Source: Artifact Signing quickstart, identity validation section.</em></p>
+<h2>Options compared</h2>
+<table><thead><tr><th>Option</th><th>Cost</th><th>Lead time</th><th>SmartScreen</th><th>What it needs from Imran</th><th>Fit</th></tr></thead><tbody><tr><td><strong>Azure Artifact Signing (Basic)</strong></td><td>~$9.99/month, 5,000 signatures</td><td>1–20 business days identity check</td><td>Builds reputation over time; publisher shown</td><td>Azure subscription, billing account type Individual, government ID, portal steps (below)</td><td><strong>Recommended</strong></td></tr><tr><td><strong>OV certificate from a CA</strong> (DigiCert, Sectigo, SSL.com)</td><td>$150–300/year</td><td>Days (CA checks ID); key must be on a hardware token or the CA&#x27;s cloud HSM</td><td>Same as Artifact Signing</td><td>Buy cert, ID check, then either a token (cannot sign on a GitHub runner) or the CA&#x27;s paid cloud signing</td><td>Fallback if not eligible for Artifact Signing</td></tr><tr><td><strong>EV certificate</strong></td><td>$400+/year</td><td>As OV, stricter checks</td><td><strong>Same as OV since 2024</strong>, no instant pass</td><td>As OV, usually a registered business</td><td>Not worth it</td></tr><tr><td><strong>SignPath Foundation</strong> (free for open source)</td><td>Free</td><td>Their review</td><td>OV-level</td><td>An <strong>OSI-approved licence</strong> on every component, project already released, a public code-signing policy, manual approval per release</td><td><strong>Not eligible today</strong>: AIQ has no licence (privacy page says none chosen)</td></tr><tr><td><strong>Stay unsigned</strong>, document the click-through</td><td>Free</td><td>None</td><td>&quot;Unknown publisher&quot; warning; Microsoft&#x27;s page: &quot;enterprises may block entirely&quot;</td><td>Nothing</td><td>Fine for the first testers only if G3 shows no block</td></tr><tr><td>Self-signed</td><td>Free</td><td>None</td><td>&quot;Strong block for public users&quot;</td><td>—</td><td>Rejected</td></tr></tbody></table>
+<p>Costs, SmartScreen behaviour and the EV change are from Microsoft Learn &quot;Code signing options&quot; (2026-08-29). SignPath terms are from signpath.org/terms. Certificates from a CA now last at most <strong>460 days</strong> (from 2026-03-01), so an OV certificate is renewed yearly (DigiCert blog).</p>
+<h2>What I checked and what I assumed</h2>
+<p><strong>Read (documentation, 2026-11-02):</strong> Microsoft Learn code-signing options page; Artifact Signing quickstart and FAQ; <code>azure/artifact-signing-action</code> README; PowerShell <code>about_Execution_Policies</code>; SignPath Foundation terms; DigiCert on the 460-day limit; Lawrence on SmartScreen AppRep.</p>
+<p><strong>Read (this repo, main 444dcda):</strong> <code>.github/workflows/release.yml</code>, <code>packaging/windows/install.ps1</code>, <code>packaging/windows/upgrade.ps1</code>, <code>packaging/windows/README.txt</code>, <code>docs/design/private-alpha.md</code>, <code>docs/design/auto-update.md</code>.</p>
+<p><strong>Assumed, not checked</strong> (each says what would confirm it and what breaks if wrong):</p>
+<ul><li><code>assume:</code> Artifact Signing can sign <code>install.ps1</code> and <code>upgrade.ps1</code>. The FAQ says it signs &quot;all file</li></ul>
+<p>types that SignTool supports&quot; and does not name <code>.ps1</code>. Confirm: the first signed CI run, then <code>Get-AuthenticodeSignature</code> on the scripts. If wrong: only the exes are signed, and a laptop whose Group Policy requires signed scripts still cannot run <code>install.ps1</code>.</p>
+<ul><li><code>assume:</code> the alpha laptops do not enforce a Group Policy script policy. The docs say a Group Policy</li></ul>
+<p>execution policy <strong>overrides</strong> <code>-ExecutionPolicy Bypass</code>. Confirm: G3. If wrong: the README&#x27;s install command fails on those laptops, signed exes or not, until the scripts are signed.</p>
+<ul><li><code>assume:</code> Explorer&#x27;s &quot;Extract all&quot; passes the download mark to the unzipped exes, and <code>Copy-Item</code> in</li></ul>
+<p><code>install.ps1</code> keeps it, so SmartScreen checks <code>aiq-home.exe</code> when the installer opens it. Confirm: G3, or <code>Get-Item -Stream Zone.Identifier</code> on the installed exe. If wrong: SmartScreen never appears, and the only real risk is a company app-control rule.</p>
+<ul><li><code>assume:</code> auto-update downloads (<code>Invoke-WebRequest</code> in <code>upgrade.ps1</code>) carry no download mark, so</li></ul>
+<p>updates do not raise SmartScreen. The PowerShell docs say these tools &quot;may not mark&quot; files.</p>
+<ul><li>Unknown: what rules Microsoft-managed laptops apply to new apps. Only G3 on such a laptop answers it.</li></ul>
+<h2>Recommended option: the steps</h2>
+<h3>Imran&#x27;s steps (need money, an account or an ID; Claude does none of them)</h3>
+<ol><li>Confirm eligibility: in the US or Canada, and happy for your legal name to be the publisher.</li><li>In an Azure subscription you own, check the billing account is type <strong>Individual</strong>, with the name</li></ol>
+<p>and address on your government ID.</p>
+<ol><li>Register the <code>Microsoft.CodeSigning</code> resource provider.</li><li>Create an Artifact Signing account, <strong>Basic</strong> tier. Billing starts here and is not prorated.</li><li>Give yourself the <strong>Artifact Signing Identity Verifier</strong> role. Create a <strong>Public</strong> identity</li></ol>
+<p>validation (portal only). Wait 1–20 business days. Upload documents if asked (three tries).</p>
+<ol><li>Create a <strong>Public Trust</strong> certificate profile on that identity. Check &quot;Certificate subject preview&quot;.</li><li>Create an app registration (or user-assigned managed identity) with a <strong>federated credential</strong> for</li></ol>
+<p>GitHub environment <code>release</code> on <code>imransargusingh/AIQ</code>. Give it the <strong>Artifact Signing Certificate Profile Signer</strong> role on the profile.</p>
+<ol><li>In the repo, add environment <code>release</code> with yourself as <strong>required reviewer</strong>, and these values:</li></ol>
+<p><code>AZURE_CLIENT_ID</code>, <code>AZURE_TENANT_ID</code>, <code>AZURE_SUBSCRIPTION_ID</code> (secrets), and <code>SIGNING_ENDPOINT</code>, <code>SIGNING_ACCOUNT</code>, <code>SIGNING_PROFILE</code> (variables). No password or key goes into GitHub.</p>
+<p>Then tell the thread. The workflow change below is cloud work.</p>
+<h3>Change to <code>.github/workflows/release.yml</code></h3>
+<p>Only the <code>windows</code> job changes. Pull-request runs stay unsigned: forks get no secrets, and a PR run must not use the signing identity.</p>
+<ol><li>Job permissions: add <code>id-token: write</code> (OIDC for <code>azure/login</code>), keep <code>contents: read</code>.</li><li>Job environment: <code>release</code> on tag and manual draft runs only, so every signature waits for</li></ol>
+<p>Imran&#x27;s approval. <code>assume:</code> an expression such as <code>environment: ${{ github.event_name != &#x27;pull_request&#x27; &amp;&amp; &#x27;release&#x27; || &#x27;&#x27; }}</code> is accepted; confirm on the first run. If not, split signing into its own job that downloads the built files, signs them and re-uploads them before the zip step.</p>
+<ol><li>After &quot;Build aiq-home.exe&quot; and <strong>before &quot;Zip and checksum&quot;</strong>, add, with</li></ol>
+<p><code>if: github.event_name != &#x27;pull_request&#x27;</code>:</p>
+<ul><li><code>azure/login@v3</code> with the three IDs;</li><li><code>azure/artifact-signing-action@v2</code> with <code>endpoint</code>, <code>signing-account-name</code>,</li></ul>
+<p><code>certificate-profile-name</code> from the variables, <code>files</code> listing <code>target/release/aiq.exe</code>, <code>apps/home/src-tauri/target/release/aiq-home.exe</code>, <code>packaging/windows/install.ps1</code>, <code>packaging/windows/upgrade.ps1</code>, <code>file-digest: SHA256</code>, <code>timestamp-rfc3161: http://timestamp.acs.microsoft.com</code>, <code>timestamp-digest: SHA256</code>. Timestamping keeps the signature valid after the certificate expires.</p>
+<ol><li>Order matters: signing changes the file bytes, so it must come before the zip and <code>SHA256SUMS</code>.</li></ol>
+<p>Signing after would make every checksum wrong.</p>
+<ol><li>In the first smoke test, on signed runs, fail unless <code>Get-AuthenticodeSignature</code> reads <code>Valid</code> for</li></ol>
+<p>both installed exes, with the expected publisher name.</p>
+<ol><li><code>runs-on: windows-latest</code> already meets the action&#x27;s &quot;Windows runners only&quot; rule. <code>assume:</code></li></ol>
+<p>windows-latest is windows-2022 or windows-2025, the two the README lists. Pin <code>windows-2025</code> if not.</p>
+<h3><code>install.ps1</code> and auto-update</h3>
+<ul><li><strong>Checksum (PR #60, #69): no change.</strong> <code>SHA256SUMS</code> is made after signing, over the signed zip, so</li></ul>
+<p>the check in <code>upgrade.ps1</code> works as before.</p>
+<ul><li><strong>`install.ps1`: no change needed.</strong> Optional and not recommended now: an <code>Unblock-File</code> on the</li></ul>
+<p>copied exes would silence the very warning signing is meant to earn.</p>
+<ul><li><strong>Optional hardening, a later PR:</strong> before <code>-Apply</code> swaps the exes, <code>upgrade.ps1</code> checks that</li></ul>
+<p>each new exe&#x27;s signature is <code>Valid</code> and from the pinned publisher, and refuses otherwise (<code>AIQ-UPGRADE-SIGNATURE</code>). This narrows the residual risk in the private-alpha threat model: &quot;someone who controls the GitHub repo can publish both a bad zip and a matching checksum&quot;. With signing behind a required-reviewer environment, a repo takeover alone can no longer produce an update AIQ installs. Catch: <code>-Apply</code> runs the <strong>installed</strong> <code>upgrade.ps1</code>, so the check protects only from the release <em>after</em> the one that ships it, and it must allow the unsigned-to-signed step once.</p>
+<h2>If Imran is not eligible for Artifact Signing</h2>
+<p>Buy an OV certificate from a CA that offers cloud signing usable from GitHub Actions (for example DigiCert KeyLocker or SSL.com eSigner; prices vary, not checked). The workflow change is the same shape: a sign step before the zip, with that CA&#x27;s action or CLI in place of <code>azure/artifact-signing-action</code>. A USB-token certificate cannot sign on a hosted runner, so it would mean signing on Imran&#x27;s laptop by hand. Avoid that.</p>
+<h2>Not in scope</h2>
+<p>Buying, enrolling or creating any account; MSI, MSIX or winget packaging; macOS signing; choosing a licence (it would make SignPath possible, but that is a separate decision).</p></main></body></html>

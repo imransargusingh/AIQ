@@ -30,6 +30,8 @@ pub const EXPORT_WRITE: &str = "AIQ-EXPORT-WRITE";
 pub const COACH_GUESS_LOW: &str = "AIQ-COACH-GUESS-LOW";
 /// A next-step tip was held back because the accuracy check paused its job or kind (design K6b). A count.
 pub const COACH_ACCURACY_PAUSED: &str = "AIQ-COACH-ACCURACY-PAUSED";
+/// A new task's kind was not matched by words, so AIQ asked a small model to label it (design kind-label). A count.
+pub const COACH_LABEL_REQUESTED: &str = "AIQ-COACH-LABEL-REQUESTED";
 pub const JUDGE_MISSING: &str = "AIQ-JUDGE-MISSING";
 pub const JUDGE_SIGNIN: &str = "AIQ-JUDGE-SIGNIN";
 pub const JUDGE_SCHEMA: &str = "AIQ-JUDGE-SCHEMA";
@@ -40,6 +42,7 @@ pub const JUDGE_ERROR: &str = "AIQ-JUDGE-ERROR";
 pub const ALL: &[&str] = &[
     COACH_GUESS_LOW,
     COACH_ACCURACY_PAUSED,
+    COACH_LABEL_REQUESTED,
     HOOK_PARSE,
     HOOK_FOREIGN_HOST,
     HOOK_SPOOLED,

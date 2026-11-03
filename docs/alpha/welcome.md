@@ -51,6 +51,11 @@ and Start menu shortcut. Your AIQ data stays until you also run `aiq forget --al
 
 ## What leaves your computer
 
+**Please read this before you install.** Besides judging your finished tasks, AIQ 0.1.0 can send
+**the first prompt of a new task** once to a small model, through your own Copilot or Claude Code
+sign-in, so it can tell what kind of task you started and time a tip. It happens only while judging
+is on, and `aiq config set kind-label off` stops it.
+
 Your prompts are stored only on your computer, in `%USERPROFILE%\.aiq`. AIQ sends no telemetry. Three
 things do go out:
 

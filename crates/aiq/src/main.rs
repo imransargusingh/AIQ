@@ -12,6 +12,7 @@ mod import;
 mod install;
 mod install_copilot;
 mod judge;
+mod label;
 mod spawn;
 mod statusline;
 
@@ -61,6 +62,11 @@ Usage:
   aiq config set judge <auto|off>     Judge new tasks in the background (aiq install turns it on)
   aiq config set judge-daily-tasks <n>  Most tasks judged per day (0-500, default 50)
   aiq config set judge-copilot-sessions <delete|keep>  Delete AIQ's own Copilot judge sessions (default)
+  aiq config set kind-label <auto|off>  When word matching can't tell a new task's kind, a small model
+                                      names it from the first prompt, in the background (on while judging is on)
+  aiq config set kind-label-daily <n>  Most kind labels per day (0-500, default 20; one call each)
+  aiq label --eval [--sample <n>] [--only claude-code|copilot-cli] [--dry-run]
+                                      Measure kind labels against the judge on your judged tasks (stores nothing)
   aiq export [<folder>]               Copy everything AIQ stored to plain JSON files you can read
                                       (default: a new folder under AIQ's own folder)
   aiq forget --imported [--yes]       Delete only what aiq import added
@@ -107,6 +113,7 @@ fn main() -> ExitCode {
         ["import", rest @ ..] => import::cli(rest),
         ["export", rest @ ..] => export::cli(rest),
         ["judge", rest @ ..] => judge::cli(rest),
+        ["label", rest @ ..] => label::cli(rest),
         ["forget", "--imported", ..] | ["forget", _, "--imported", ..] => import::forget(yes),
         ["forget", "--all", ..] | ["forget", _, "--all", ..] => cli::forget_all(yes),
         ["version" | "--version" | "-V", ..] => {

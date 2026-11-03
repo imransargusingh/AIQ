@@ -253,7 +253,7 @@
     "turn_ends": 2,
     "imported_sessions": 1,
     "imported_events": 6,
-    "store_bytes": 221184,
+    "store_bytes": 237568,
     "items": [
       {
         "event_id": "019000000018-0000-7000-8000-000000000000",
@@ -501,7 +501,9 @@
       "finished": 0,
       "could": 0,
       "needs": 2,
-      "uncertain": 1
+      "uncertain": 1,
+      "up": 1,
+      "up_to": 3
     },
     "split_min": 10,
     "rule": "A task counts as finished when it was judged Delegated or higher and you sent no re-prompt correcting the agent.",
