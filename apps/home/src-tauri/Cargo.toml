@@ -2,7 +2,7 @@
 [package]
 name = "aiq-home-app"
 description = "AIQ home: the private desktop app. Reads the person's local store; changes go through the core."
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 rust-version = "1.89"
 license = "UNLICENSED"
