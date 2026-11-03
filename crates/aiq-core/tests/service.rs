@@ -1141,6 +1141,51 @@ fn popup_shows_once_per_terminal_delivery_and_obeys_its_switch() {
     assert!(seen.lock().unwrap().is_empty(), "off: no pop-up");
 }
 
+/// A VS Code turn that raises a tip, then ends.
+fn vscode_run(h: &mut H) {
+    for (i, t) in [BASE, R1, R2, R3].iter().enumerate() {
+        h.clock.advance(MIN);
+        let body = EventBody::Prompt(PromptPayload {
+            text: Some((*t).into()),
+            chars: t.len() as u64,
+            prompt_id: None,
+            truncated: false,
+        });
+        let e = ev_on("vscode", &format!("v{i}"), "v", h.clock.now().utc_ms, body);
+        h.svc().ingest(&e, None);
+    }
+    let stop = EventBody::Stop(StopPayload { stop_hook_active: false, prompt_id: None });
+    let e = ev_on("vscode", "vs", "v", h.clock.now().utc_ms, stop);
+    h.svc().ingest(&e, None);
+}
+
+// Imran, 2026-11-03: VS Code tips show in the Copilot CLI status line while the AIQ VS Code extension is
+// not asking for them (it was not installed on the laptop, so they never showed).
+#[test]
+fn vscode_tips_fall_back_to_the_status_line_without_the_extension() {
+    let mut h = H::new();
+    vscode_run(&mut h);
+    h.cp_send("c", "what does this function do?");
+    h.cp_stop("c");
+    let shown = full(h.tip("c"));
+    assert!(h.svc().take_card_any("vscode").is_none(), "shown once, on the status line");
+    assert_eq!(full(h.tip("c")).card_id, shown.card_id, "it stays until the line's next prompt");
+    h.cp_send("c", "thanks");
+    assert!(h.tip("c").is_none());
+}
+
+#[test]
+fn vscode_tips_stay_in_vscode_while_the_extension_asks() {
+    let mut h = H::new();
+    assert!(h.svc().take_card_any("vscode").is_none()); // the extension is polling
+    vscode_run(&mut h);
+    h.cp_send("c", "what does this function do?");
+    h.cp_stop("c");
+    assert!(h.tip("c").is_none(), "the extension asked within 10 minutes");
+    h.clock.advance(11 * MIN);
+    assert!(h.tip("c").is_some(), "no ask for 10 minutes: the status line shows it");
+}
+
 #[test]
 fn vscode_delivery_never_pops_up() {
     let mut h = H::new();

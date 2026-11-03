@@ -55,6 +55,11 @@ pub const SETTING_AGENT_ACTIONS: &str = "agent_actions";
 const MAX_LOG_OFFSETS: usize = 4096;
 /// Copilot CLI's surface name (the hook client uses the same constant).
 pub const COPILOT_CLI: &str = "copilot-cli";
+pub const VSCODE: &str = "vscode";
+/// The VS Code extension asks for a card every 2 s while VS Code is focused. With no ask for this long, VS
+/// Code tips show in the Copilot CLI status line instead (Imran, 2026-11-03: the extension was not
+/// installed on the laptop and its tips never showed).
+pub const VSCODE_FALLBACK_AFTER_MS: i64 = 10 * 60_000;
 
 /// `project_name.<folder key>`: the name the person gave a project in AIQ home (design project-filter P2).
 pub const SETTING_PROJECT_NAME: &str = "project_name.";
@@ -91,6 +96,8 @@ pub struct Service<C: Clock> {
     projects_folders: std::collections::HashSet<String>,
     /// Rule RC result per Claude Code session, read from its transcript head until settled (bounded).
     rc_checked: std::collections::HashMap<String, RcCheck>,
+    /// When the VS Code extension last asked for a card (core clock), in this core run.
+    vscode_asked_ms: Option<i64>,
     /// Coaching inputs derived from the store (design coaching-from-rungs); rebuilt when stale.
     coach: Option<coaching::Cache>,
     /// AIQ-COACH-GUESS-LOW is logged once per core run.
@@ -205,6 +212,7 @@ impl<C: Clock> Service<C> {
             held: Default::default(),
             projects_folders: Default::default(),
             rc_checked: Default::default(),
+            vscode_asked_ms: None,
             coach: None,
             guess_low_logged: false,
             popup: None,
@@ -1232,14 +1240,38 @@ impl<C: Clock> Service<C> {
         if self.store.last_event_kind(surface, &session)?.as_deref() != Some("stop") {
             return Ok(None); // mid-turn: a card never shows while the agent works
         }
-        let Some(ready) = self.store.ready_card(surface, &session)? else { return Ok(None) };
+        let ready = match self.store.ready_card(surface, &session)? {
+            Some(r) => Some(r),
+            None if surface == COPILOT_CLI && !self.vscode_extension_asking() => self.vscode_ready()?,
+            None => None,
+        };
+        let Some(ready) = ready else { return Ok(None) };
+        // A VS Code tip shown here is delivered to this status line's session, so its lifetime follows
+        // this session's prompts like the line's own tips.
         Ok(self.deliver(&ready.card_id, &ready.card_json, surface, &session)?.map(TipLineOut::Full))
+    }
+
+    fn vscode_extension_asking(&self) -> bool {
+        self.vscode_asked_ms.is_some_and(|t| self.clock.now().utc_ms - t < VSCODE_FALLBACK_AFTER_MS)
+    }
+
+    /// The oldest show-ready VS Code card whose turn has ended.
+    fn vscode_ready(&self) -> Result<Option<aiq_store::ReadyCard>, StoreError> {
+        for c in self.store.ready_cards_on(VSCODE)? {
+            if self.store.last_event_kind(VSCODE, &c.session)?.as_deref() == Some("stop") {
+                return Ok(Some(c));
+            }
+        }
+        Ok(None)
     }
 
     /// A renderer that cannot name its session (the VS Code extension): deliver the oldest show-ready
     /// card of the surface whose session's turn has ended.
     pub fn take_card_any(&mut self, surface: &str) -> Option<CardV1> {
         let _s = info_span!("core.take_card_any", aiq.surface = surface).entered();
+        if surface == VSCODE {
+            self.vscode_asked_ms = Some(self.clock.now().utc_ms);
+        }
         let r = (|| -> Result<Option<CardV1>, StoreError> {
             self.expire_stale()?;
             for c in self.store.ready_cards_on(surface)? {
