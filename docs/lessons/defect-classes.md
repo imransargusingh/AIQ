@@ -217,3 +217,21 @@ summary: >-
   test `a_hedged_yes_on_output_checked_counts_when_the_person_came_back_after_the_output`; the replay gate
   pins h02, h11, h20 placements. Rule: a guardrail's fact bar is tuned per fact from eval data, and a lower
   bar needs a log fact to corroborate it.
+
+### DC-016 — A device fact that under-reads, labelled "trust this over the text", overrules what the text shows
+- **Signature:** golden g1 h16, h17, a04, r03: the agent ran `lychee` + `markdownlint`, `scripts/check_brief.py`,
+  `scripts/verify_refresh.py`, `scripts/rerun.sh <test>`. The check detector knew none of them, so the envelope
+  said "checks run by: nobody". GPT Sol trusted it (as told), set F6 no at 0.86 to 0.98 and placed rung 1.
+- **Why it survives:** the detector is an allow-list tested on the commands its author thought of; Claude Sonnet
+  weighed the quoted commands and hid the gap, so only a second model exposed it. The spec's F3 already named
+  linters and evals.
+- **Instances:** 2026-11-03, Copilot eval on the laptop (68 premium requests): 4 of 6 rung misses.
+- **Sweep:** every command in golden g1 (`jq` over `steps[].command`): r02's `sha256sum -c` and r04's
+  `pre-commit run` are still not checks (left: r02 is a release check the model read correctly; pre-commit is
+  install-time). Same class elsewhere: any log fact rendered as trusted (`agent edited files`, `sub-agents`,
+  `spec named`) is an allow-list too.
+- **Control:** fact set fs2 (linters, script names, test-name arguments); test
+  `checks_are_read_as_command_lines_not_substrings` holds the four g1 commands and six near-misses; the Copilot
+  eval runs on both providers before a fact-set change ships. Rule: a "trusted" device fact must say what it
+  could not see, or be tested against every command in the golden set.
+
