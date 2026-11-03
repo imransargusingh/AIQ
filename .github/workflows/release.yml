@@ -213,6 +213,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cd dist && sha256sum -c SHA256SUMS && cd ..
+          tag="v${{ needs.windows.outputs.version }}"
+          rels=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100")
+          # Pressing Publish creates the tag, and the tag push runs this workflow again. Measured 2026-11-03: that
+          # run made a second DRAFT tagged v0.1.0 beside the published one. So: a draft whose tag already has a
+          # published release is a leftover and goes; a published release is never touched; no new draft for it.
+          published=$(jq -c '[.[] | select(.draft | not) | .tag_name]' <<<"$rels")
+          jq -r '.[] | select(.draft) | "\(.id) \(.tag_name)"' <<<"$rels" | while read -r id t; do
+            if jq -e --arg t "$t" 'index($t) != null' <<<"$published" >/dev/null; then
+              gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$id"; echo "Removed leftover draft $id ($t is already published)"
+            fi
+          done
+          if jq -e --arg t "$tag" 'index($t) != null' <<<"$published" >/dev/null; then
+            echo "$tag is already published; no draft made."; exit 0
+          fi
           # A rebuild replaces an older DRAFT of the same version; a published release is never touched.
           gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
             --jq '.[] | select(.draft and .tag_name == "v${{ needs.windows.outputs.version }}") | .id' |
