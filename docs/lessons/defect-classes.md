@@ -286,3 +286,21 @@ summary: >-
   eval runs on both providers before a fact-set change ships. Rule: a "trusted" device fact must say what it
   could not see, or be tested against every command in the golden set.
 
+
+### DC-021 — A reader that ends a turn at an event the tool writes more than once per turn
+- **Signature:** the Copilot import reader closed a prompt's turn at the first main-line `assistant.turn_end`.
+  Copilot writes one after each model round, so every tool call after the first round was dropped until the next
+  prompt. Measured 2026-11-03 on Imran's store (DC-020's sweep): 2 prompts lost 248 tool calls.
+- **Why it survives:** the fixture wrote one `turn_end` per prompt, the shape its author expected; the live reader
+  resets at each prompt and never read `turn_end`, so the two paths disagreed silently. And a reader fix alone
+  reaches nothing already imported: unchanged files are never read again.
+- **Instances:** `read_copilot` since `aiq import` was built; also the judge's live-task path, which reads the
+  same function.
+- **Sweep:** every reader that ends a unit on a tool's marker (`grep -rn "turn_end\|turn_start" crates`): only
+  `read_copilot`. Claude's reader ends at the next prompt or end of file, as does the live reader.
+- **Control:** a turn runs to the next prompt or the end of the file; test
+  `copilot_reader_keeps_every_round_of_a_prompt_past_its_first_turn_end` (several rounds, a sub-agent's own
+  turn end, red on the old reader). `COPILOT_READER` is stored in the settings: a run with a different version
+  reads every Copilot session again once (`a_new_copilot_reader_reads_unchanged_sessions_again_once`). Rule: a
+  turn ends where the person acts, never at a marker the tool may repeat; any change to what a reader stores
+  raises its reader version.
