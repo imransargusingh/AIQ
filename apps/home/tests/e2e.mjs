@@ -148,6 +148,8 @@ await test("screen readers hear clean names: nav, rung rows, skip link", async (
   const nav = await page.getByRole("navigation", { name: "AIQ" }).ariaSnapshot();
   assert.match(nav, /link "Home"/, nav);
   assert.equal(await page.getByRole("link", { name: "Home", exact: true }).getAttribute("aria-keyshortcuts"), "G H");
+  // The G-letter shortcuts still work but the nav shows no hint text (Imran 2026-11-02: "Get rid of the hints").
+  assert.doesNotMatch(await page.locator("nav.side a").allInnerTexts().then((t) => t.join("|")), /\bG [A-Z]\b/);
   for (const name of ["Factory (5), 0 tasks", "Directed (2), 1 task"]) {
     assert.equal(await page.getByRole("button", { name, exact: true }).count(), 1, name);
   }
