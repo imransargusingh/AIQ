@@ -89,6 +89,24 @@ impl Env {
         );
         String::from_utf8(o.stdout).unwrap()
     }
+    /// At a turn end the core offers a ready card for 30 ms (STOP_WAIT_MS) and the hook waits 55 ms. On a
+    /// loaded runner the hook can miss that window and print nothing; the card then stays show-ready for the
+    /// next turn end, as in the product (e2e_concurrent_stops_deliver_once). Measured 2026-11-03 on a loaded
+    /// 4-core runner: 16 of 150 suite runs missed the first turn end, hook outcome `no-card` 13 and
+    /// `stop-timeout` 3. So end the turn until the card prints, at most 5 times; every miss must keep the card
+    /// show-ready, so a lost card still fails. Returns the hook's stdout and how many turn ends it took.
+    fn stop_until_card(&self, stop: impl Fn() -> String) -> (String, usize) {
+        for n in 1..=5 {
+            let out = stop();
+            if !out.is_empty() {
+                return (out, n);
+            }
+            let st = self.status();
+            let timings = std::fs::read_to_string(self.home().join("hook-timings.log")).unwrap_or_default();
+            assert!(st.contains("show-ready"), "a turn end printed nothing and the card is gone:\n{st}\n{timings}");
+        }
+        panic!("no card in 5 turn ends: {}", self.status());
+    }
     fn statusline(&self, session: Option<&str>) -> String {
         let payload = session.map_or(json!({"cwd": "/repo"}), |s| json!({"session": {"id": s}, "cwd": "/repo"}));
         let o = self.run(&["statusline", "copilot"], payload.to_string().as_bytes());
@@ -122,7 +140,7 @@ fn e2e_copilot_reword_tip_in_status_line_after_turn_then_clears_on_next_prompt()
     e.start_core();
     e.reprompt_run("c1", 0);
     assert_eq!(e.statusline(Some("c1")), "", "no tip while the agent works");
-    let out = e.agent_stop("c1");
+    let (out, stops) = e.stop_until_card(|| e.agent_stop("c1"));
     assert_eq!(out.lines().count(), 1, "one progress line: {out}");
     let v: Value = serde_json::from_str(&out).unwrap();
     assert_eq!(v.as_object().unwrap().len(), 2, "only type and message: {out}");
@@ -132,7 +150,7 @@ fn e2e_copilot_reword_tip_in_status_line_after_turn_then_clears_on_next_prompt()
     for t in TEXTS {
         assert!(!msg.contains(t), "the tip never quotes prompt text");
     }
-    e.wait_for("1 stop");
+    e.wait_for(&format!("{stops} stop"));
     let line = e.statusline(Some("c1"));
     assert!(
         line.starts_with("AIQ tip: you've reworded this request 3 times without adding new details · aiq show "),
@@ -215,12 +233,14 @@ fn e2e_tip_highlight_off_renders_plain_even_with_colour_allowed() {
     e.start_core();
     assert!(e.run(&["config", "set", "tip-highlight", "off"], b"").status.success());
     e.reprompt_run("c1", 0);
-    let mut c = e.cmd(&["hook", "copilot", "agentStop"]);
-    c.env_remove("NO_COLOR");
-    let o = e.run_with(c, json!({"sessionId": "c1", "stopReason": "end_turn"}).to_string().as_bytes());
-    let out = String::from_utf8(o.stdout).unwrap();
+    let (out, stops) = e.stop_until_card(|| {
+        let mut c = e.cmd(&["hook", "copilot", "agentStop"]);
+        c.env_remove("NO_COLOR");
+        let o = e.run_with(c, json!({"sessionId": "c1", "stopReason": "end_turn"}).to_string().as_bytes());
+        String::from_utf8(o.stdout).unwrap()
+    });
     assert!(out.contains("AIQ tip:") && !out.contains("\\u001b") && !out.contains('\u{1b}'), "{out}");
-    e.wait_for("1 stop");
+    e.wait_for(&format!("{stops} stop"));
     let mut c = e.cmd(&["statusline", "copilot"]);
     c.env_remove("NO_COLOR");
     let line =
@@ -238,11 +258,12 @@ fn e2e_claude_code_card_then_copilot_run_held_by_quiet_period() {
     }
     e.wait_for("4 prompt");
     let stop = json!({"session_id": "cc", "hook_event_name": "Stop", "stop_hook_active": false, "prompt_id": "p3"});
-    let o = e.run(&["hook", "claude-code", "Stop"], stop.to_string().as_bytes());
-    assert!(!o.stdout.is_empty(), "Claude Code card shown");
+    let (_, stops) = e.stop_until_card(|| {
+        String::from_utf8(e.run(&["hook", "claude-code", "Stop"], stop.to_string().as_bytes()).stdout).unwrap()
+    });
     e.reprompt_run("c1", 4);
     e.agent_stop("c1");
-    e.wait_for("2 stop");
+    e.wait_for(&format!("{} stop", stops + 1));
     assert_eq!(e.statusline(Some("c1")), "");
     assert!(e.status().contains("1 hold (quiet_period)"), "{}", e.status());
 }
