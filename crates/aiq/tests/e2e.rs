@@ -610,3 +610,40 @@ fn e2e_spooled_frame_goes_in_at_the_next_command_not_the_idle_tick() {
     assert!(st.contains("1 stop"), "taken in at the very next command: {st}");
     assert!(!e.home().join("spool.jsonl").exists());
 }
+
+/// DC-022: a hook that took a tip and then never printed it (its wait ran out, or it died) must not use the tip
+/// up. Before the fix the core counted it as shown the moment it handed it over: lost, yet it blocked the next.
+#[test]
+fn e2e_a_tip_no_hook_says_it_printed_is_not_counted_and_comes_back() {
+    let mut e = Env::new();
+    e.start_core();
+    let pid = e.reprompt_run("s", 0);
+    let paths = aiq_core::paths::Paths::at(&e.home());
+    let token = aiq_core::ipc::read_token(&paths).unwrap();
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64;
+    let stop = json!({"schema": aiq_contracts::event::SCHEMA, "event_id": "gone-hook-stop", "surface": "claude-code",
+                      "surface_session_id": "s", "seq": null, "ts": aiq_core::sysclock::format_rfc3339_ms(now),
+                      "collector_version": "test", "kind": "stop",
+                      "payload": {"stop_hook_active": false, "prompt_id": pid}});
+    // A hook that takes the tip with a generous wait, then goes away without printing or confirming it.
+    let frame = json!({"op": "take_card", "token": token, "trace_id": null, "event": stop, "wait_ms": 2000});
+    let reply = aiq_core::ipc::request(&paths, &frame.to_string(), true, Duration::from_secs(3)).unwrap().unwrap();
+    assert!(reply.contains("\"card\":{"), "the tip was handed over: {reply}");
+    assert!(e.status().contains("Tips today: 0 of"), "not counted: nobody printed it");
+    assert!(e.stop("s", &pid).stdout.is_empty(), "held while the first hook may still confirm");
+    std::thread::sleep(Duration::from_millis(aiq_core::service::HANDOVER_CONFIRM_MS as u64 + 100));
+    // The next turn end gets it. A loaded runner may miss the core's 30 ms window: that miss keeps it ready.
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut out = e.stop("s", &pid).stdout;
+    while out.is_empty() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(200));
+        out = e.stop("s", &pid).stdout;
+    }
+    assert!(String::from_utf8(out).unwrap().contains("AIQ tip:"), "ready again: {}", e.status());
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !e.status().contains("Tips today: 1 of") && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let st = e.status();
+    assert!(st.contains("Tips today: 1 of") && st.contains("AIQ-CARD-UNCONFIRMED 1"), "{st}");
+}

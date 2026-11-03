@@ -20,6 +20,13 @@ pub enum Request {
         event: EventV1,
         wait_ms: u64,
     },
+    /// The turn-end hook printed the tip it took with `TakeCard` (DC-022). No reply.
+    Shown {
+        token: String,
+        card_id: String,
+        surface: String,
+        session: String,
+    },
     Status {
         token: String,
     },
@@ -93,6 +100,7 @@ impl Request {
         match self {
             Request::Ingest { token, .. }
             | Request::TakeCard { token, .. }
+            | Request::Shown { token, .. }
             | Request::Status { token }
             | Request::Show { token, .. }
             | Request::TipLine { token, .. }

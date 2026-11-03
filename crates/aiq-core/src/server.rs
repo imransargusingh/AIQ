@@ -69,6 +69,12 @@ pub enum Cmd {
         wait_ms: u64,
         reply: mpsc::Sender<TakeCardReply>,
     },
+    /// The turn-end hook printed the tip it took (DC-022).
+    Shown {
+        card_id: String,
+        surface: String,
+        session: String,
+    },
     Status {
         reply: mpsc::Sender<StatusReply>,
     },
@@ -215,9 +221,14 @@ fn writer_loop(mut svc: Service<SystemClock>, rx: Receiver<Cmd>, paths: &Paths, 
             Cmd::TakeCard { event, trace_id, received, wait_ms, reply } => {
                 let fresh = received.elapsed() <= Duration::from_millis(wait_ms);
                 let card = svc.take_card(&event, trace_id.as_deref(), fresh);
-                let _ = reply.send(TakeCardReply { card, plain: !svc.switch_on(SETTING_TIP_HIGHLIGHT) });
+                let id = card.as_ref().map(|c| c.card_id.clone());
+                let sent = reply.send(TakeCardReply { card, plain: !svc.switch_on(SETTING_TIP_HIGHLIGHT) });
+                if let (Err(_), Some(id)) = (sent, id) {
+                    svc.hand_back(&id); // the hook's wait ended before the reply: it will never print this tip
+                }
                 svc.after_stop(&event, trace_id.as_deref());
             }
+            Cmd::Shown { card_id, surface, session } => svc.card_shown(&card_id, &surface, &session),
             Cmd::Status { reply } => {
                 let _ = reply.send(svc.status());
             }
@@ -351,6 +362,11 @@ pub fn dispatch(req: Request, tx: &SyncSender<Cmd>, counters: &Counters, receive
             if let Err(TrySendError::Full(_)) = tx.try_send(Cmd::Ingest { event, trace_id }) {
                 counters.inc(codes::INGEST_BACKPRESSURE);
             }
+            Dispatch::NoReply
+        }
+        Request::Shown { card_id, surface, session, .. } => {
+            // Blocking: this connection's hook has already gone, and a lost note would show the tip again.
+            let _ = tx.send(Cmd::Shown { card_id, surface, session });
             Dispatch::NoReply
         }
         Request::TakeCard { event, trace_id, wait_ms, .. } => {

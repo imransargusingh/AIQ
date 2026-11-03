@@ -107,6 +107,9 @@ pub struct Service<C: Clock> {
     /// AIQ-COACH-GUESS-LOW is logged once per core run.
     guess_low_logged: bool,
     popup: Option<Popup>,
+    /// Tips handed to a turn-end hook that has not yet said it printed them (DC-022), by card id. In memory
+    /// only: a core restart forgets them, and those tips are ready again. Bounded by the daily cap.
+    handovers: std::collections::HashMap<String, Handover>,
     /// Starts a background label of a new task's first prompt (`aiq label`); None in tests and without a model.
     label_requester: Option<LabelRequester>,
     /// Copilot's home, for its session logs. None (tests, unless set): mid-turn messages are not read.
@@ -154,6 +157,20 @@ struct TurnRead {
 
 /// First prompts held back at once (each a few KB at most, in memory).
 const MAX_HELD: usize = 1024;
+/// A turn-end hook that took a tip confirms it printed it within this long, or the tip is ready again for the
+/// next turn end (DC-022). The confirmation normally lands within the hook's 20 ms send.
+/// assume: 5 s covers a hook delayed between print and confirm on a loaded machine (measured: hook runs took at
+/// most ~0.12 s on a loaded 4-core runner, 2026-11-03). If false: a printed tip whose confirmation comes later is
+/// still recorded (`card_shown` accepts a late one) but may also show once more at the next turn end.
+pub const HANDOVER_CONFIRM_MS: i64 = 5_000;
+
+/// A tip handed to a turn-end hook, waiting for the hook to say it printed it.
+struct Handover {
+    at_ms: i64,
+    surface: String,
+    session: String,
+    card_json: String,
+}
 
 /// A show-ready card whose turn end is never seen expires this long after its decision.
 /// assume: a turn ends within 4 h (longest measured on the laptop: 42 min, 2026-11-02). Confirm: no
@@ -222,6 +239,7 @@ impl<C: Clock> Service<C> {
             coach: None,
             guess_low_logged: false,
             popup: None,
+            handovers: std::collections::HashMap::new(),
             label_requester: None,
             copilot_home: None,
             log_offsets: Default::default(),
@@ -1076,16 +1094,20 @@ impl<C: Clock> Service<C> {
             },
             now.utc_ms,
         )?;
+        // A tip a hook is printing right now counts as shown, as at the hand-out (DC-022).
+        self.expire_handovers();
+        let printing = self.handovers.len() as u32;
         let input = DecideInput {
             paused: self.paused(),
             job: p.job,
             core_opportunity: p.core_opportunity,
             score: p.score,
             threshold: p.threshold,
-            delivered_in_session: self.store.delivered_in_session(surface, session)?,
-            in_quiet_period: self.quiet()?,
+            delivered_in_session: self.handovers.values().any(|h| h.surface == surface && h.session == session)
+                || self.store.delivered_in_session(surface, session)?,
+            in_quiet_period: printing > 0 || self.quiet()?,
             ready_in_session: self.store.ready_card(surface, session)?.is_some(),
-            deliveries_counted_today: self.counted_today()?,
+            deliveries_counted_today: self.counted_today()? + printing,
             daily_cap: self.daily_cap(),
             suppressed: p.suppressed,
         };
@@ -1172,7 +1194,93 @@ impl<C: Clock> Service<C> {
             return Ok(None); // the status line delivers it instead
         }
         let Some(ready) = self.store.ready_card(surface, session)? else { return Ok(None) };
-        self.deliver(&ready.card_id, &ready.card_json, surface, session)
+        self.hand_over(&ready.card_id, &ready.card_json, surface, session)
+    }
+
+    /// A turn-end hook takes the tip but it counts as shown only when the hook says it printed it
+    /// (`card_shown`): a hook that gave up waiting must not use up the tip (DC-022, measured 10 lost in 150
+    /// loaded test runs before this). Same budget checks as `deliver`.
+    fn hand_over(
+        &mut self,
+        card_id: &str,
+        card_json: &str,
+        surface: &str,
+        session: &str,
+    ) -> Result<Option<CardV1>, StoreError> {
+        if !self.may_hand_out(card_id, surface, session)? {
+            return Ok(None);
+        }
+        let h = Handover {
+            at_ms: self.clock.now().utc_ms,
+            surface: surface.to_owned(),
+            session: session.to_owned(),
+            card_json: card_json.to_owned(),
+        };
+        self.handovers.insert(card_id.to_owned(), h);
+        info!(aiq.outcome = "handed_over", aiq.surface = surface, "card handed to the hook");
+        Ok(serde_json::from_str(card_json).ok())
+    }
+
+    /// The turn-end hook printed the tip it took: record it as shown. A confirmation after the wait ran out is
+    /// still the truth and is recorded while the tip is still ready; anything else is counted and ignored.
+    pub fn card_shown(&mut self, card_id: &str, surface: &str, session: &str) {
+        let _s = info_span!("core.card_shown", aiq.surface = surface).entered();
+        let r = (|| -> Result<(), StoreError> {
+            let card_json = match self.handovers.remove(card_id) {
+                Some(h) if h.surface == surface && h.session == session => h.card_json,
+                Some(h) => {
+                    self.handovers.insert(card_id.to_owned(), h);
+                    self.counters.inc(codes::CARD_SHOWN_UNKNOWN);
+                    return Ok(());
+                }
+                None => match self.store.ready_card(surface, session)? {
+                    Some(r) if r.card_id == card_id => r.card_json,
+                    _ => {
+                        self.counters.inc(codes::CARD_SHOWN_UNKNOWN);
+                        return Ok(());
+                    }
+                },
+            };
+            self.record_delivery(card_id, &card_json, surface, session).map(|_| ())
+        })();
+        if let Err(e) = r {
+            self.fail(e);
+        }
+    }
+
+    /// The core could not pass a taken tip back to its hook (the hook's wait had ended): it is ready again now.
+    pub fn hand_back(&mut self, card_id: &str) {
+        if self.handovers.remove(card_id).is_some() {
+            self.counters.inc(codes::CARD_UNCONFIRMED);
+        }
+    }
+
+    /// Forget hand-overs whose hook never confirmed in time; each is counted, and its tip is ready again.
+    fn expire_handovers(&mut self) {
+        let now = self.clock.now().utc_ms;
+        let before = self.handovers.len();
+        self.handovers.retain(|_, h| now - h.at_ms < HANDOVER_CONFIRM_MS);
+        for _ in self.handovers.len()..before {
+            self.counters.inc(codes::CARD_UNCONFIRMED);
+        }
+    }
+
+    /// The budget (pause, one per session, quiet period, daily cap), with a tip a hook is printing right now
+    /// counted as shown, so no renderer gets a second tip while the first one's confirmation is on its way.
+    fn may_hand_out(&mut self, card_id: &str, surface: &str, session: &str) -> Result<bool, StoreError> {
+        self.expire_handovers();
+        if self.handovers.contains_key(card_id) {
+            return Ok(false);
+        }
+        let printing = self.handovers.len() as u32;
+        let in_session = self.handovers.values().any(|h| h.surface == surface && h.session == session);
+        Ok(may_deliver(
+            self.paused(),
+            in_session || self.store.delivered_in_session(surface, session)?,
+            printing > 0 || self.quiet()?,
+            self.counted_today()? + printing,
+            self.daily_cap(),
+        ))
     }
 
     /// Re-check the budget (pause, session, quiet period, daily cap) and record the hand-over in the
@@ -1184,16 +1292,20 @@ impl<C: Clock> Service<C> {
         surface: &str,
         session: &str,
     ) -> Result<Option<CardV1>, StoreError> {
-        let ok = may_deliver(
-            self.paused(),
-            self.store.delivered_in_session(surface, session)?,
-            self.quiet()?,
-            self.counted_today()?,
-            self.daily_cap(),
-        );
-        if !ok {
+        if !self.may_hand_out(card_id, surface, session)? {
             return Ok(None);
         }
+        self.record_delivery(card_id, card_json, surface, session)
+    }
+
+    /// Record the tip as shown and raise the Windows pop-up where it is on.
+    fn record_delivery(
+        &mut self,
+        card_id: &str,
+        card_json: &str,
+        surface: &str,
+        session: &str,
+    ) -> Result<Option<CardV1>, StoreError> {
         self.store.insert_delivery(card_id, surface, session, self.clock.now())?;
         info!(aiq.outcome = "delivered", aiq.surface = surface, "card delivered");
         let card: Option<CardV1> = serde_json::from_str(card_json).ok();

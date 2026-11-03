@@ -346,6 +346,13 @@ summary: >-
   miss, as the product does, and fails if a miss left the card anything but show-ready; its failure message
   carries `aiq status` and `hook-timings.log`, so the next CI failure names the hook outcome. A lost card still
   fails.
-- **Control (product): open.** The hand-over needs one clock: the hook sends its own deadline, or the core marks
-  a card shown only after the hook confirms it printed. That changes which tips users see; it waits on Imran's
-  decision.
+- **Control (product):** a tip handed to a turn-end hook is held in the core (`Service::hand_over`) and counts as
+  shown only when the hook sends `Shown` after printing it (`card_shown`). A hook that never confirms within
+  `HANDOVER_CONFIRM_MS` (5 s), or whose reply the core could not pass back (`hand_back`), leaves the tip ready for
+  the next turn end, counted as `AIQ-CARD-UNCONFIRMED`. While a tip is being printed, it counts as shown for the
+  budget, both at hand-out and at the decision. No store change. Tests: `a_tip_the_hook_never_confirms_is_ready_
+  again_and_never_counted` and three others in `crates/aiq-core/tests/service.rs`;
+  `e2e_a_tip_no_hook_says_it_printed_is_not_counted_and_comes_back` (red on the old code). Measured with
+  `loaded-repro.sh`, 150 loaded runs: 0 lost tips (was 10). Card-printing Stop hook, 40 unloaded runs: p95
+  1.43 ms before, 1.78 ms after. Rule: a hand-over across two processes is complete only when the receiver says
+  so; a sender's own record of "sent" is a reservation.

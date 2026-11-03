@@ -93,10 +93,16 @@ impl Env {
     /// loaded runner the hook can miss that window and print nothing; the card then stays show-ready for the
     /// next turn end, as in the product (e2e_concurrent_stops_deliver_once). Measured 2026-11-03 on a loaded
     /// 4-core runner: 16 of 150 suite runs missed the first turn end, hook outcome `no-card` 13 and
-    /// `stop-timeout` 3. So end the turn until the card prints, at most 5 times; every miss must keep the card
-    /// show-ready, so a lost card still fails. Returns the hook's stdout and how many turn ends it took.
+    /// `stop-timeout` 3. When the hook gave up after the core handed the card over, the card is held for that
+    /// hook's confirmation for HANDOVER_CONFIRM_MS, then ready again (DC-022). So end the turn until the card
+    /// prints, for up to twice that hold; every miss must keep the card show-ready, so a lost card still fails.
+    /// Returns the hook's stdout and how many turn ends it took.
     fn stop_until_card(&self, stop: impl Fn() -> String) -> (String, usize) {
-        for n in 1..=5 {
+        let hold = Duration::from_millis(aiq_core::service::HANDOVER_CONFIRM_MS as u64);
+        let deadline = Instant::now() + 2 * hold;
+        let mut n = 0;
+        while Instant::now() < deadline {
+            n += 1;
             let out = stop();
             if !out.is_empty() {
                 return (out, n);
@@ -104,8 +110,29 @@ impl Env {
             let st = self.status();
             let timings = std::fs::read_to_string(self.home().join("hook-timings.log")).unwrap_or_default();
             assert!(st.contains("show-ready"), "a turn end printed nothing and the card is gone:\n{st}\n{timings}");
+            std::thread::sleep(Duration::from_millis(250));
         }
-        panic!("no card in 5 turn ends: {}", self.status());
+        panic!("no card in {n} turn ends over {:?}: {}", 2 * hold, self.status());
+    }
+    /// The status line where a tip is expected. Copilot refreshes it about once a second, and one refresh may
+    /// miss the 80 ms budget on a loaded runner (Windows CI, 2026-11-03), so look as Copilot does: a few
+    /// refreshes over up to 3 s.
+    fn tip_line(&self, session: &str, colour: bool) -> String {
+        let read = || {
+            let mut c = self.cmd(&["statusline", "copilot"]);
+            if colour {
+                c.env_remove("NO_COLOR");
+            }
+            let p = json!({"session": {"id": session}, "cwd": "/repo"});
+            String::from_utf8(self.run_with(c, p.to_string().as_bytes()).stdout).unwrap()
+        };
+        let deadline = Instant::now() + Duration::from_secs(3);
+        let mut line = read();
+        while line.is_empty() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(200));
+            line = read();
+        }
+        line
     }
     fn statusline(&self, session: Option<&str>) -> String {
         let payload = session.map_or(json!({"cwd": "/repo"}), |s| json!({"session": {"id": s}, "cwd": "/repo"}));
@@ -151,7 +178,8 @@ fn e2e_copilot_reword_tip_in_status_line_after_turn_then_clears_on_next_prompt()
         assert!(!msg.contains(t), "the tip never quotes prompt text");
     }
     e.wait_for(&format!("{stops} stop"));
-    let line = e.statusline(Some("c1"));
+    e.wait_for("Tips today: 1 of"); // the hook's "printed" note is its own send, after the turn end (DC-022)
+    let line = e.tip_line("c1", false);
     assert!(
         line.starts_with("AIQ tip: you've reworded this request 3 times without adding new details · aiq show "),
         "{line}"
@@ -160,7 +188,7 @@ fn e2e_copilot_reword_tip_in_status_line_after_turn_then_clears_on_next_prompt()
     for t in TEXTS {
         assert!(!line.contains(t), "the tip never quotes prompt text");
     }
-    assert_eq!(e.statusline(Some("c1")), line, "refresh keeps it");
+    assert_eq!(e.tip_line("c1", false), line, "refresh keeps it");
     assert_eq!(e.statusline(Some("c2")), "", "another session never sees it");
     e.prompt("c1", "thanks, now add a test for the empty case");
     e.wait_for("5 prompt");
@@ -195,12 +223,13 @@ fn e2e_copilot_tip_stays_until_opened_setting() {
     assert!(e.run(&["config", "set", "copilot-tip-stays", "until-opened"], b"").status.success());
     assert!(!e.run(&["config", "set", "copilot-tip-stays", "forever"], b"").status.success());
     e.reprompt_run("c1", 0);
-    e.agent_stop("c1");
-    e.wait_for("1 stop");
-    let line = e.statusline(Some("c1"));
+    let (_, stops) = e.stop_until_card(|| e.agent_stop("c1"));
+    e.wait_for(&format!("{stops} stop"));
+    e.wait_for("Tips today: 1 of"); // the hook's "printed" note is its own send, after the turn end (DC-022)
+    let line = e.tip_line("c1", false);
     e.prompt("c1", "next: write the changelog entry");
     e.wait_for("5 prompt");
-    assert_eq!(e.statusline(Some("c1")), line);
+    assert_eq!(e.tip_line("c1", false), line);
     let id = line.trim().rsplit("aiq show ").next().unwrap();
     assert!(String::from_utf8(e.run(&["show", id], b"").stdout).unwrap().contains(TEXTS[0]));
     assert_eq!(e.statusline(Some("c1")), "", "opened: gone");
@@ -215,14 +244,7 @@ fn e2e_copilot_tip_in_chat_off_leaves_it_to_the_status_line() {
     e.reprompt_run("c1", 0);
     assert_eq!(e.agent_stop("c1"), "", "off: nothing in the conversation");
     e.wait_for("1 stop");
-    // Copilot refreshes its status line about once a second, and one refresh may miss the 80 ms budget on a
-    // loaded runner (Windows CI, 2026-11-03), so look as the status line does: a few refreshes.
-    let deadline = Instant::now() + Duration::from_secs(3);
-    let mut line = e.statusline(Some("c1"));
-    while line.is_empty() && Instant::now() < deadline {
-        std::thread::sleep(Duration::from_millis(200));
-        line = e.statusline(Some("c1"));
-    }
+    let line = e.tip_line("c1", false);
     let timings = std::fs::read_to_string(e.home().join("hook-timings.log")).unwrap_or_default();
     assert!(line.starts_with("AIQ tip: you've reworded"), "the status line still shows it: {line:?}\n{timings}");
 }
@@ -241,10 +263,8 @@ fn e2e_tip_highlight_off_renders_plain_even_with_colour_allowed() {
     });
     assert!(out.contains("AIQ tip:") && !out.contains("\\u001b") && !out.contains('\u{1b}'), "{out}");
     e.wait_for(&format!("{stops} stop"));
-    let mut c = e.cmd(&["statusline", "copilot"]);
-    c.env_remove("NO_COLOR");
-    let line =
-        String::from_utf8(e.run_with(c, json!({"session": {"id": "c1"}}).to_string().as_bytes()).stdout).unwrap();
+    e.wait_for("Tips today: 1 of"); // the hook's "printed" note is its own send, after the turn end (DC-022)
+    let line = e.tip_line("c1", true);
     assert!(line.starts_with("AIQ tip:") && !line.contains('\u{1b}'), "{line}");
 }
 

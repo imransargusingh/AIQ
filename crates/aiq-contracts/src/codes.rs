@@ -23,6 +23,13 @@ pub const INGEST_ACTIONS_NOT_RECORDED: &str = "AIQ-INGEST-ACTIONS-NOT-RECORDED";
 /// A count, not an error.
 pub const INGEST_SECRET_REMOVED: &str = "AIQ-INGEST-SECRET-REMOVED";
 pub const DELIVERY_CONFLICT: &str = "AIQ-DELIVERY-CONFLICT";
+/// A tip handed to a turn-end hook that never said it printed it (its wait ran out first): the tip is ready
+/// again for the next turn end instead of counting as shown (DC-022). A count.
+pub const CARD_UNCONFIRMED: &str = "AIQ-CARD-UNCONFIRMED";
+/// A "tip printed" note for a tip that is neither handed over nor ready in that session. Ignored; a count.
+pub const CARD_SHOWN_UNKNOWN: &str = "AIQ-CARD-SHOWN-UNKNOWN";
+/// The hook printed a tip but could not tell the core (its 20 ms send missed). The tip may show once more.
+pub const HOOK_SHOWN_UNSENT: &str = "AIQ-HOOK-SHOWN-UNSENT";
 pub const STORE_OPEN: &str = "AIQ-STORE-OPEN";
 pub const STORE_MIGRATION: &str = "AIQ-STORE-MIGRATION";
 pub const STORE_WRITE: &str = "AIQ-STORE-WRITE";
@@ -67,6 +74,9 @@ pub const ALL: &[&str] = &[
     INGEST_ACTIONS_NOT_RECORDED,
     INGEST_SECRET_REMOVED,
     DELIVERY_CONFLICT,
+    CARD_UNCONFIRMED,
+    CARD_SHOWN_UNKNOWN,
+    HOOK_SHOWN_UNSENT,
     STORE_OPEN,
     STORE_MIGRATION,
     STORE_WRITE,

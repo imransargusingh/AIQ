@@ -179,8 +179,12 @@ fn inner_outcome(paths: &Paths, host: &str, event: &str, start: Instant, marks: 
             }
         }
         EventBody::Stop(_) => {
-            let frame =
-                Request::TakeCard { token, trace_id: Some(trace_id.clone()), event: ev.clone(), wait_ms: STOP_WAIT_MS };
+            let frame = Request::TakeCard {
+                token: token.clone(),
+                trace_id: Some(trace_id.clone()),
+                event: ev.clone(),
+                wait_ms: STOP_WAIT_MS,
+            };
             match ipc::request(
                 paths,
                 &serde_json::to_string(&frame).unwrap_or_default(),
@@ -196,9 +200,25 @@ fn inner_outcome(paths: &Paths, host: &str, event: &str, start: Instant, marks: 
                             claude_code_system_message(&card, color)
                         };
                         let mut out = std::io::stdout().lock();
-                        let _ = writeln!(out, "{text}");
-                        let _ = out.flush();
-                        "card"
+                        if writeln!(out, "{text}").and_then(|_| out.flush()).is_err() {
+                            return "card-unprinted"; // no confirmation: the tip stays ready for the next turn end
+                        }
+                        drop(out);
+                        // The tip counts as shown only once the core hears it was printed (DC-022).
+                        let shown = Request::Shown {
+                            token,
+                            card_id: card.card_id.clone(),
+                            surface: ev.surface.clone(),
+                            session: ev.surface_session_id.clone(),
+                        };
+                        let frame = serde_json::to_string(&shown).unwrap_or_default();
+                        match ipc::request(paths, &frame, false, SEND_BUDGET) {
+                            Ok(_) => "card",
+                            Err(_) => {
+                                count(paths, codes::HOOK_SHOWN_UNSENT);
+                                "card-unsent"
+                            }
+                        }
                     }
                     _ => "no-card",
                 },
