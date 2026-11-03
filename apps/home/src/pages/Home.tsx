@@ -40,7 +40,6 @@ export function Home(ctx: Ctx) {
   }
 
   const max = Math.max(1, ...h.weeks.map((w) => w.tasks));
-  const latest = snap.tips[0];
   const mc = h.most_common_rung;
   const onRung = h.rungs.reduce((a, b) => a + b, 0);
   const rungMax = Math.max(1, ...h.rungs);
@@ -104,21 +103,16 @@ export function Home(ctx: Ctx) {
                 <i style={{ width: `${f}%`, background: "var(--primary)" }} />
                 {sp.could > 0 && <i style={{ width: `${fc - f}%`, background: "color-mix(in srgb,var(--primary) 35%,var(--surface))" }} />}
               </div>
-              <p className="meta">
-                Of {plural(sp.tasks, "judged task")}: {sp.finished} finished by agents,{sp.could > 0 ? ` ${sp.could} could be,` : ""} {sp.needs} need you.
-                {sp.uncertain > 0 && <> {plural(sp.uncertain, "task")} AIQ isn't sure about {sp.uncertain === 1 ? "is" : "are"} left out.</>}
-              </p>
               {sp.up > 0 && sp.up_to != null && (
                 <p>
                   <b>{pct(sp.up, sp.tasks)}%</b> could move up a rung, most often to {rungLabel(sp.up_to)}.
                 </p>
               )}
-              <p className="mute">
-                {sp.could > 0
-                  ? `"Could be" adds the tasks of kinds whose next step would let agents finish them.`
-                  : "No kind of task is one step from agents finishing it yet. The next steps below move your tasks up a rung first."}
+              <p className="meta">
+                {sp.finished} of {plural(sp.tasks, "judged task")} finished by agents
+                {sp.could > 0 && <> · {sp.could} could be</>} · {sp.needs} need you
+                {sp.uncertain > 0 && <> · {sp.uncertain} unsure, not counted</>}
               </p>
-              <p className="mute">{c.rule}</p>
             </>
           ) : (
             <>
@@ -142,12 +136,17 @@ export function Home(ctx: Ctx) {
               )}
             </>
           )}
-          <p className="meta">
-            {by && <>{by} · </>}
-            {plural(h.tasks_in_window, "task")} in the last {h.window_days} days
-            {h.imported_in_window > 0 && <> · {plural(h.imported_in_window, "imported task")}</>} ·{" "}
-            <button className="btnlink" onClick={() => go("tasks")}>See which</button>
-          </p>
+          <details className="how">
+            <summary className="meta">How AIQ counts</summary>
+            {ready && <p className="meta">{c.rule}</p>}
+            {ready && sp.could > 0 && <p className="meta">"Could be" adds the tasks of kinds whose next step would let agents finish them.</p>}
+            <p className="meta">
+              {by && <>{by} · </>}
+              {plural(h.tasks_in_window, "task")} in the last {h.window_days} days
+              {h.imported_in_window > 0 && <> · {plural(h.imported_in_window, "imported task")}</>} ·{" "}
+              <button className="btnlink" onClick={() => go("tasks")}>See which</button>
+            </p>
+          </details>
           <figure className="wk" role="group" aria-label={ready ? "Tasks and tasks agents finished each week, last 4 weeks" : "Tasks each week, last 4 weeks"}>
             <figcaption className="wk-key">
               Tasks each week
@@ -158,11 +157,6 @@ export function Home(ctx: Ctx) {
                 </>
               )}
             </figcaption>
-            <div className="wk-y" aria-hidden="true">
-              {[0, max].map((t, i) => (
-                <span key={i} style={{ top: `${i === 0 ? 100 : 0}%` }}>{t}</span>
-              ))}
-            </div>
             <div className="wk-plot">
               {h.weeks.map((w, n) => {
                 const ws = c.weeks[n];
@@ -212,22 +206,27 @@ export function Home(ctx: Ctx) {
           </figure>
         </section>
 
-        <section className="card" aria-labelledby="nx">
-          <h2 id="nx" className="mute" style={{ fontWeight: 400 }}>Your latest tip</h2>
-          {latest ? (
-            <>
-              <p style={{ font: "var(--t-heading)" }}>{sentence(latest.try_this)}</p>
-              <p className="mute">{sentence(latest.noticed)}</p>
-              <p className="meta">
-                {when(latest.delivered_ms, snap.now_ms, snap.offset_min)} · {toolName(latest.tool)}
-              </p>
-            </>
-          ) : (
-            <p className="mute">No tips yet. AIQ shows one in your tool when it notices something worth changing.</p>
-          )}
-          <div className="row" style={{ marginTop: "auto" }}>
-            <button className="btn pri" onClick={() => go("tips")}>All tips</button>
+        {/* Latest tips (design project-filter P6: all projects). Sized to its content, not stretched to the chart
+            card beside it; with no tips it is one line. */}
+        <section className={`card tips${snap.tips.length ? "" : " none"}`} aria-labelledby="nx">
+          <div className="head">
+            <h2 id="nx" className="mute" style={{ fontWeight: 400 }}>Your latest tips</h2>
+            <button className="btnlink" onClick={() => go("tips")}>All tips</button>
           </div>
+          {snap.tips.length === 0 ? (
+            <p className="meta">None yet. AIQ shows one in your tool when it notices something worth changing.</p>
+          ) : (
+            <ul aria-label="Your latest tips">
+              {snap.tips.slice(0, 4).map((t) => (
+                <li key={t.card_id}>
+                  <span>{sentence(t.try_this)}</span>
+                  <span className="meta">
+                    {when(t.delivered_ms, snap.now_ms, snap.offset_min)} · {toolName(t.tool)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
       </div>
 
@@ -310,42 +309,28 @@ export function Home(ctx: Ctx) {
         </div>
       </section>
 
-      <div className="two">
-        <section className="group" aria-labelledby="hb">
-          <div className="head">
-            <h2 id="hb">Set aside</h2>
-          </div>
-          {h.set_aside.length === 0 ? (
-            <p className="mute">No folders set aside. AIQ sets a folder aside when an app or script drives its sessions.</p>
-          ) : (
-            h.set_aside.map((f) => (
-              <div className="row" key={f.folder}>
-                <span className="chip">Automated</span>
-                <span title={f.folder}>{folderName(f.folder)}</span>
-                <span className="meta">
-                  {f.reason === "burst" ? "many sessions started at once" : f.reason === "template" ? "the same first prompt over and over" : f.reason}
-                </span>
-                <button className="btn" disabled={!snap.status.core} onClick={() => include(f.folder)} aria-label={`Include ${folderName(f.folder)}`}>
-                  Include
-                </button>
-              </div>
-            ))
-          )}
-          {h.set_aside.length > 0 && <p className="meta">If a folder is your own work, select Include and AIQ watches its sessions again.</p>}
-        </section>
-        <section className="group" aria-labelledby="rt">
-          <h2 id="rt">Recent tips</h2>
-          {snap.tips.length === 0 && <p className="mute">No tips yet.</p>}
-          {snap.tips.slice(0, 3).map((t) => (
-            <div className="head" key={t.card_id}>
-              <span>{sentence(t.noticed)}</span>
+      <section className="group" aria-labelledby="hb">
+        <div className="head">
+          <h2 id="hb">Set aside</h2>
+        </div>
+        {h.set_aside.length === 0 ? (
+          <p className="mute">No folders set aside. AIQ sets a folder aside when an app or script drives its sessions.</p>
+        ) : (
+          h.set_aside.map((f) => (
+            <div className="row" key={f.folder}>
+              <span className="chip">Automated</span>
+              <span title={f.folder}>{folderName(f.folder)}</span>
               <span className="meta">
-                {when(t.delivered_ms, snap.now_ms, snap.offset_min)} · {toolName(t.tool)}
+                {f.reason === "burst" ? "many sessions started at once" : f.reason === "template" ? "the same first prompt over and over" : f.reason}
               </span>
+              <button className="btn" disabled={!snap.status.core} onClick={() => include(f.folder)} aria-label={`Include ${folderName(f.folder)}`}>
+                Include
+              </button>
             </div>
-          ))}
-        </section>
-      </div>
+          ))
+        )}
+        {h.set_aside.length > 0 && <p className="meta">If a folder is your own work, select Include and AIQ watches its sessions again.</p>}
+      </section>
     </div>
   );
 }

@@ -120,7 +120,8 @@ await test("Home shows judged rungs, progress toward the split, and only measure
   const t = await page.locator("main").innerText();
   assert.match(t, /Tasks agents finished\s+Not enough judged tasks yet/);
   assert.match(t, /2 of 10 judged tasks needed to show what agents finished \(1 task AIQ isn't sure about doesn't count\)/);
-  assert.match(t, /7 tasks in the last 30 days · 1 imported task/);
+  await page.getByText("How AIQ counts").click();
+  assert.match(await page.locator("details.how").innerText(), /7 tasks in the last 30 days · 1 imported task/);
   assert.doesNotMatch(t, /\d+%/, "no percentages under 10 judged tasks");
   assert.match(t, /Your most common rung\s+Directed \(2\)\s+3 tasks judged in 30 days/);
   assert.match(t, /\(1 uncertain not counted\)/);
@@ -572,11 +573,14 @@ await test("coaching Home: finished and could be, the rule, uncertain left out, 
   const t = await page.locator("main").innerText();
   assert.match(t, /Tasks agents finished\s+33%\s+could be 67%/);
   assert.equal(await page.getByRole("img", { name: "Agents finished 33%, could be 67%" }).count(), 1);
-  assert.match(t, /Of 15 judged tasks: 5 finished by agents, 5 could be, 5 need you\. 1 task AIQ isn't sure about is left out\./);
-  assert.match(t, /"Could be" adds the tasks of kinds whose next step would let agents finish them\./);
-  assert.match(t, /47% could move up a rung, most often to Delegated \(3\)\./);
-  assert.match(t, /A task counts as finished when it was judged Delegated or higher and you sent no re-prompt correcting the agent\./);
-  assert.match(t, /Judged by your Copilot CLI/);
+  // Outcome first, then the measured counts on one line; how it is counted stays folded away until asked for.
+  assert.match(t, /47% could move up a rung, most often to Delegated \(3\)\.\s+5 of 15 judged tasks finished by agents · 5 could be · 5 need you · 1 unsure, not counted/);
+  assert.ok(!t.includes("A task counts as finished"), "the rule is folded away");
+  await page.getByText("How AIQ counts").click();
+  const how = await page.locator("details.how").innerText();
+  assert.match(how, /A task counts as finished when it was judged Delegated or higher and you sent no re-prompt correcting the agent\./);
+  assert.match(how, /"Could be" adds the tasks of kinds whose next step would let agents finish them\./);
+  assert.match(how, /Judged by your Copilot CLI/);
   // The weekly chart says what its two shades mean (dark = agents finished, light = the rest).
   assert.match(t, /Tasks each week\s+Finished by agents\s+Other tasks/);
   const rows = page.getByRole("list", { name: "Kinds of task with a next step" }).getByRole("listitem");
@@ -822,8 +826,7 @@ await test("Home drops 'could be' when no kind of task is one step from agents f
   const page = await open("coaching", { edit: (s) => { s.coaching.split = { ...s.coaching.split, finished: 1, could: 0, needs: 14, up: 13, up_to: 2 }; } });
   const t = await page.locator("main").innerText();
   assert.ok(!t.includes("could be"), "no 'could be' figure");
-  assert.match(t, /Of 15 judged tasks: 1 finished by agents, 14 need you\./);
-  assert.match(t, /No kind of task is one step from agents finishing it yet\./);
+  assert.match(t, /1 of 15 judged tasks finished by agents · 14 need you · 1 unsure, not counted/);
   assert.match(t, /87% could move up a rung, most often to Directed \(2\)\./);
   assert.equal(await page.getByRole("img", { name: "Agents finished 7%" }).count(), 1);
   await page.context().close();
