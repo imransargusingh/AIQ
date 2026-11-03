@@ -108,6 +108,11 @@ export function Home(ctx: Ctx) {
                 Of {plural(sp.tasks, "judged task")}: {sp.finished} finished by agents,{sp.could > 0 ? ` ${sp.could} could be,` : ""} {sp.needs} need you.
                 {sp.uncertain > 0 && <> {plural(sp.uncertain, "task")} AIQ isn't sure about {sp.uncertain === 1 ? "is" : "are"} left out.</>}
               </p>
+              {sp.up > 0 && sp.up_to != null && (
+                <p>
+                  <b>{pct(sp.up, sp.tasks)}%</b> could move up a rung, most often to {rungLabel(sp.up_to)}.
+                </p>
+              )}
               <p className="mute">
                 {sp.could > 0
                   ? `"Could be" adds the tasks of kinds whose next step would let agents finish them.`
@@ -420,7 +425,7 @@ function Projects(ctx: Ctx) {
                   <td className={p.most_common_rung ? undefined : "mute"}>{p.most_common_rung ? rungLabel(p.most_common_rung) : "Not judged yet"}</td>
                   <td className={`r num${enough ? "" : " mute"}`}>{enough ? `${pct(sp.finished, sp.tasks)}%` : p.judged > 0 ? "Too few judged" : "—"}</td>
                   <td className={`r num${enough ? "" : " mute"}`}>
-                    {enough ? `${p.next_step} (${pct(p.next_step, sp.tasks)}%)` : p.judged > 0 ? "Too few judged" : "—"}
+                    {enough ? `${sp.up} (${pct(sp.up, sp.tasks)}%)` : p.judged > 0 ? "Too few judged" : "—"}
                   </td>
                   <td>
                     {p.key !== "" && editing !== p.key && (
@@ -444,7 +449,7 @@ function Projects(ctx: Ctx) {
         </table>
       </div>
       <p className="meta">
-        "Could move up a rung" counts judged tasks whose kind of task has a next step in that project. A project needs {min} judged tasks before AIQ shows its numbers.
+        "Could move up a rung" counts judged tasks not finished by agents where the judge sees a next step at least one rung up. A project needs {min} judged tasks before AIQ shows its numbers.
       </p>
     </section>
   );

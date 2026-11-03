@@ -349,11 +349,14 @@ fn projects_split_home_by_folder_and_add_up() {
     let rows: Vec<(&str, &str, u32, u32, u32, bool)> = s
         .projects
         .iter()
-        .map(|x| (x.key.as_str(), x.name.as_str(), x.tasks_in_window, x.next_step, x.coaching.split.tasks, x.renamed))
+        .map(|x| {
+            (x.key.as_str(), x.name.as_str(), x.tasks_in_window, x.coaching.split.up, x.coaching.split.tasks, x.renamed)
+        })
         .collect();
-    // aiq: 12 tasks, 11 judged sure (one Uncertain); the 6 sure "tests" tasks have a next step. foresight: the 4
-    // specs, all with a next step, but under the split minimum (10), so it ranks after aiq.
-    assert_eq!(rows, vec![(AIQ, "aiq", 12, 6, 11, false), (FORESIGHT, "foresight", 4, 4, 4, false)]);
+    // aiq: 12 tasks, 11 judged sure (one Uncertain); 3 could move up a rung (the tests task with a correction
+    // and the 2 refactors; the other tests tasks are finished). foresight: the 4 specs, all one rung from
+    // Delegated, but under the split minimum (10), so it ranks after aiq.
+    assert_eq!(rows, vec![(AIQ, "aiq", 12, 3, 11, false), (FORESIGHT, "foresight", 4, 4, 4, false)]);
     // The projects add up to Home.
     let sum = |f: &dyn Fn(&aiq_home::Project) -> u32| s.projects.iter().map(f).sum::<u32>();
     assert_eq!(sum(&|x| x.tasks_in_window), s.home.tasks_in_window);

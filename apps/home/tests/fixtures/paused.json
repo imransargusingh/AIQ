@@ -501,7 +501,9 @@
       "finished": 0,
       "could": 0,
       "needs": 2,
-      "uncertain": 1
+      "uncertain": 1,
+      "up": 1,
+      "up_to": 3
     },
     "split_min": 10,
     "rule": "A task counts as finished when it was judged Delegated or higher and you sent no re-prompt correcting the agent.",
@@ -592,14 +594,15 @@
           2
         ]
       ],
-      "next_step": 0,
       "coaching": {
         "split": {
           "tasks": 1,
           "finished": 0,
           "could": 0,
           "needs": 1,
-          "uncertain": 0
+          "uncertain": 0,
+          "up": 1,
+          "up_to": 3
         },
         "split_min": 10,
         "rule": "A task counts as finished when it was judged Delegated or higher and you sent no re-prompt correcting the agent.",
@@ -676,14 +679,15 @@
           4
         ]
       ],
-      "next_step": 0,
       "coaching": {
         "split": {
           "tasks": 1,
           "finished": 0,
           "could": 0,
           "needs": 1,
-          "uncertain": 1
+          "uncertain": 1,
+          "up": 0,
+          "up_to": null
         },
         "split_min": 10,
         "rule": "A task counts as finished when it was judged Delegated or higher and you sent no re-prompt correcting the agent.",
@@ -760,14 +764,15 @@
           1
         ]
       ],
-      "next_step": 0,
       "coaching": {
         "split": {
           "tasks": 0,
           "finished": 0,
           "could": 0,
           "needs": 0,
-          "uncertain": 0
+          "uncertain": 0,
+          "up": 0,
+          "up_to": null
         },
         "split_min": 10,
         "rule": "A task counts as finished when it was judged Delegated or higher and you sent no re-prompt correcting the agent.",

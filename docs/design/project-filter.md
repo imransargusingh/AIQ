@@ -14,7 +14,7 @@ review-by: 2027-05-03
 summary: >-
   People work differently in different projects. AIQ home gets one Project picker at the top of Home and
   Tasks ("All projects" by default) and a "Your projects" table that compares them: tasks, most common rung,
-  agents finished, tasks with a next step. A project is the folder the session ran in; AIQ names it from the
+  agents finished, tasks that could move up a rung. A project is the folder the session ran in; AIQ names it from the
   folder and the person can rename it in one click. No tagging.
 ---
 
@@ -89,7 +89,7 @@ the all-projects verdict for each kind) would show advice the project's own task
 **P5b. "Your projects" compares them.** A table on Home, under All projects only, one row per project with
 a task in the last 30 days:
 
-| Project | Tasks | Most common rung | Agents finished | With a next step |
+| Project | Tasks | Most common rung | Agents finished | Could move up a rung |
 |---|---|---|---|---|
 | Foresight | 48 | Assisted | 0% | 31 (65%) |
 | AIQ | 120 | Directed | 4% | 22 (18%) |
@@ -97,8 +97,9 @@ a task in the last 30 days:
 
 *(Numbers above are illustrative, not measured.)*
 
-"With a next step" counts judged tasks whose kind of task has a next step in that project: the tasks that
-could move up a rung. The rows are ranked by it, most first, so the top row is "where you have the most room
+"Could move up a rung" is the same count Home's headline uses (PR #88, `split.up`): judged tasks agents did
+not finish where the judge sees a next step at least one rung up. One definition, so a project's number and
+Home's line always agree. The rows are ranked by it, most first, so the top row is "where you have the most room
 to use agents more". Projects with fewer judged tasks than the split minimum show "too few" and go last.
 Selecting a row sets the picker to that project.
 

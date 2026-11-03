@@ -1332,7 +1332,9 @@
       "finished": 7,
       "could": 6,
       "needs": 8,
-      "uncertain": 1
+      "uncertain": 1,
+      "up": 8,
+      "up_to": 3
     },
     "split_min": 10,
     "rule": "A task counts as finished when it was judged Delegated or higher and you sent no re-prompt correcting the agent.",
@@ -1765,14 +1767,15 @@
           22
         ]
       ],
-      "next_step": 13,
       "coaching": {
         "split": {
           "tasks": 21,
           "finished": 7,
           "could": 6,
           "needs": 8,
-          "uncertain": 1
+          "uncertain": 1,
+          "up": 8,
+          "up_to": 3
         },
         "split_min": 10,
         "rule": "A task counts as finished when it was judged Delegated or higher and you sent no re-prompt correcting the agent.",

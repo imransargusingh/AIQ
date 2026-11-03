@@ -76,9 +76,6 @@ pub struct Project {
     pub imported_in_window: u32,
     pub weeks: Vec<Week>,
     pub by_tool: Vec<(String, u32)>,
-    /// Judged, not-Uncertain tasks whose kind of task has a next step in this project: tasks that could move
-    /// up a rung. Measured count; the table ranks by it.
-    pub next_step: u32,
     pub coaching: Coaching,
 }
 
@@ -131,6 +128,10 @@ pub struct SplitOut {
     pub could: u32,
     pub needs: u32,
     pub uncertain: u32,
+    /// Not finished, with a next step at least one rung up (aiq-domain coach::Split::up).
+    pub up: u32,
+    /// The rung those next steps reach most often.
+    pub up_to: Option<u8>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
@@ -857,14 +858,7 @@ fn coaching(
             c.progress_days = blank.progress_days;
             c.progress_min = blank.progress_min;
             c.weeks = blank.weeks.iter().map(|w| WeekSplit { tasks: 0, finished: 0, ..*w }).collect();
-            let rows = coach_view(pack, now, &pj, judgments, &feedback, &flags, &mut c);
-            let next: BTreeSet<(&str, &str)> = rows
-                .iter()
-                .filter(|r| r.state == coach::RowState::Coach)
-                .map(|r| (r.job.as_str(), r.task_type.as_str()))
-                .collect();
-            let next_step =
-                pj.iter().filter(|t| !t.uncertain() && t.kind().is_some_and(|k| next.contains(&k))).count() as u32;
+            coach_view(pack, now, &pj, judgments, &feedback, &flags, &mut c);
             let (name, renamed) = names.get(key).cloned().unwrap_or_else(|| (NO_FOLDER.to_owned(), false));
             Project {
                 key: key.to_owned(),
@@ -878,18 +872,17 @@ fn coaching(
                 imported_in_window: t.imported,
                 weeks: t.weeks,
                 by_tool: t.by_tool,
-                next_step,
                 coaching: c,
             }
         })
         .collect();
-    // Most room to grow first (P5b): projects with enough judged tasks to say, then tasks with a next step,
-    // then the lower rung, then more tasks, then the name.
+    // Most room to grow first (P5b): projects with enough judged tasks to say, then tasks that could move up a
+    // rung (the same `split.up` Home shows), then the lower rung, then more tasks, then the name.
     projects.sort_by(|a, b| {
         let few = |p: &Project| p.coaching.split.tasks < p.coaching.split_min;
         few(a)
             .cmp(&few(b))
-            .then_with(|| b.next_step.cmp(&a.next_step))
+            .then_with(|| b.coaching.split.up.cmp(&a.coaching.split.up))
             .then_with(|| a.most_common_rung.unwrap_or(9).cmp(&b.most_common_rung.unwrap_or(9)))
             .then_with(|| b.tasks_in_window.cmp(&a.tasks_in_window))
             .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
@@ -999,7 +992,7 @@ fn judged_tasks<'a>(
         .collect()
 }
 
-/// The split, kinds, next steps, habits and progress over these judged tasks, into `c`. Returns the kind rows.
+/// The split, kinds, next steps, habits and progress over these judged tasks, into `c`.
 fn coach_view(
     pack: &PackV1,
     now: Now,
@@ -1008,13 +1001,20 @@ fn coach_view(
     feedback: &[aiq_domain::coach::Feedback],
     flags: &[aiq_domain::coach::Flag],
     c: &mut Coaching,
-) -> Vec<aiq_domain::coach::TypeRow> {
+) {
     use aiq_domain::coach;
     let p = &pack.coach;
     let rows = coach::type_rows(judged, &pack.moves, flags, now.utc_ms, p);
     let sp = coach::split(judged, &rows, now.utc_ms - WINDOW_DAYS * DAY_MS, now.utc_ms + 1);
-    c.split =
-        SplitOut { tasks: sp.tasks, finished: sp.finished, could: sp.could, needs: sp.needs, uncertain: sp.uncertain };
+    c.split = SplitOut {
+        tasks: sp.tasks,
+        finished: sp.finished,
+        could: sp.could,
+        needs: sp.needs,
+        uncertain: sp.uncertain,
+        up: sp.up,
+        up_to: sp.up_to,
+    };
     for w in c.weeks.iter_mut() {
         let ws = coach::split(judged, &rows, w.start_ms, w.start_ms + 7 * DAY_MS);
         (w.tasks, w.finished) = (ws.tasks, ws.finished);
@@ -1083,8 +1083,6 @@ fn coach_view(
             trend: r.trend.as_str(),
         })
         .collect();
-
-    rows
 }
 
 /// Each folder key's project name and whether the person chose it (design project-filter P2): the person's

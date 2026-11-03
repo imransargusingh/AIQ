@@ -32,8 +32,6 @@ export interface Project {
   imported_in_window: number;
   weeks: { start_ms: number; tasks: number }[];
   by_tool: [string, number][];
-  /** Judged tasks whose kind of task has a next step in this project. */
-  next_step: number;
   coaching: Coaching;
 }
 
@@ -120,7 +118,8 @@ export interface TaskJudgment {
 
 /** Coaching from rung results (design coaching-from-rungs). Every number is derived from judgments. */
 export interface Coaching {
-  split: { tasks: number; finished: number; could: number; needs: number; uncertain: number };
+  /** up: not finished, with a next step at least one rung up; up_to: the rung those steps reach most often. */
+  split: { tasks: number; finished: number; could: number; needs: number; uncertain: number; up: number; up_to: number | null };
   /** The split shows with at least this many judged, not-Uncertain tasks. */
   split_min: number;
   /** The rule shown under "Tasks agents finished". */
