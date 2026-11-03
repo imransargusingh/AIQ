@@ -2,11 +2,7 @@
 // Outside Tauri (the UI tests) a fixture stands in, set on window by the test before the page loads.
 import type { Outcome, Snapshot, TaskDetail } from "./types";
 
-<<<<<<< HEAD
-export type SettingKey = "daily_cap" | "copilot_tip_stays" | "next_rung_tips" | "judge" | "judge_daily_tasks" | "copilot_mid_turn" | "update" | `keep_on.${string}`;
-=======
-export type SettingKey = "daily_cap" | "copilot_tip_stays" | "next_rung_tips" | "judge" | "judge_daily_tasks" | "update" | `keep_on.${string}` | `project_name.${string}`;
->>>>>>> origin/main
+export type SettingKey = "daily_cap" | "copilot_tip_stays" | "next_rung_tips" | "judge" | "judge_daily_tasks" | "copilot_mid_turn" | "update" | `keep_on.${string}` | `project_name.${string}`;
 /** The reasons the core accepts (crates/aiq-core/src/coaching.rs FLAG_REASONS). */
 export type FlagReason = "evidence_wrong" | "not_useful" | "blocked" | "other";
 
