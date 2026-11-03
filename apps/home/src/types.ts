@@ -86,6 +86,10 @@ export interface TaskRow {
   last_ms: number;
   prompts: number;
   origin: "live" | "imported";
+  /** The tool's session the task's first prompt came from (Day view lanes). */
+  session: string;
+  /** Times of the task's prompts, in order (Day view ticks). */
+  prompt_ms: number[];
   /** code_change, write_doc, ask_research, run_ship or unclassified once judged. */
   job: string | null;
   rung: number | null;

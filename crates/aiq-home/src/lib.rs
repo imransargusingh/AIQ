@@ -277,11 +277,12 @@ pub struct TaskRow {
     pub rung: Option<u8>,
     /// The current judgment; None until judged.
     pub judgment: Option<TaskJudgment>,
-    /// Session of the first prompt (the judge finds the tool's transcript by it). Not sent to the page.
-    #[serde(skip)]
+    /// Session of the first prompt (the judge finds the tool's transcript by it). The Tasks page's Day view
+    /// draws one lane per session (design day-view D2).
     pub session: String,
-    /// Keys and times of the task's prompts, in order. Not sent to the page.
-    #[serde(skip)]
+    /// Keys and times of the task's prompts, in order. The page gets the times only, as `prompt_ms` (Day view
+    /// ticks); prompt ids never leave the read model.
+    #[serde(rename = "prompt_ms", serialize_with = "times_only")]
     pub members: Vec<(String, i64)>,
 }
 
@@ -312,6 +313,10 @@ pub struct TaskJudgment {
     pub read_chars: u32,
     pub read_actions: bool,
     pub versions: String,
+}
+
+fn times_only<S: serde::Serializer>(m: &[(String, i64)], s: S) -> Result<S::Ok, S::Error> {
+    s.collect_seq(m.iter().map(|(_, t)| t))
 }
 
 fn json_strings(s: &str) -> Vec<String> {

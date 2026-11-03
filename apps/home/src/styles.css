@@ -294,3 +294,26 @@ li+li>.kindrow{border-top:1px solid var(--hairline)}
 .tips li:last-child{padding-bottom:0}
 .how summary{cursor:pointer;width:max-content;padding:var(--s1) 0;color:var(--primary)}
 .how[open]{display:flex;flex-direction:column;gap:var(--s2)}
+/* Day view (design day-view): lanes of sessions, tasks as blocks by time, rung by colour and named in text. */
+.dv{background:var(--surface);border:1px solid var(--hairline);border-radius:var(--r-md);padding:var(--s4) var(--s5);display:flex;flex-direction:column;gap:var(--s1);overflow-x:auto}
+.dv-lane{display:grid;grid-template-columns:minmax(180px,240px) minmax(480px,1fr);gap:var(--s4);align-items:center;min-height:30px}
+.dv-name{position:relative;display:flex;flex-direction:column;min-width:0;padding:var(--s1) var(--s3);border-radius:var(--r-sm);cursor:default}
+.dv-name:hover,.dv-name:focus{background:var(--canvas-soft)}
+.dv-name:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}
+.dv-t{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dv-track{position:relative;height:22px;background:linear-gradient(90deg,var(--hairline) 1px,transparent 1px) 0 0/calc(100% / var(--dv-hours,12)) 100% repeat-x}
+.dv-task{all:unset;box-sizing:border-box;position:absolute;top:3px;height:16px;border-radius:var(--r-sm);border:1px solid var(--surface);cursor:pointer}
+.dv-task:hover{filter:brightness(.92)}
+.dv-task:focus-visible{outline:2px solid var(--focus-ring);outline-offset:1px;z-index:3}
+.dv-tick{position:absolute;bottom:0;width:1px;height:5px;background:var(--ink);opacity:.55}
+.dv-r1{background:var(--rung-1)} .dv-r2{background:var(--rung-2)} .dv-r3{background:var(--rung-3)} .dv-r4{background:var(--rung-4)} .dv-r5{background:var(--rung-5)}
+.dv-none{background:repeating-linear-gradient(135deg,var(--canvas-soft) 0 3px,var(--hairline) 3px 5px)}
+.key i.dv-none,.key i[class^="dv-r"]{border:1px solid var(--hairline)}
+.dv .tip{display:none;position:absolute;top:calc(100% + var(--s2));left:0;z-index:4;white-space:nowrap;background:var(--surface);color:var(--ink);border:1px solid var(--hairline);
+  border-radius:var(--r-sm);padding:var(--s2) var(--s3);font:var(--t-caption);box-shadow:var(--overlay);font-weight:400}
+.dv-name:hover .tip,.dv-name:focus .tip,.dv-task:hover .tip,.dv-task:focus .tip{display:block}
+.dv-axis{min-height:18px}
+.dv-axis .dv-track{background:none;height:16px}
+.dv-axis .dv-track span{position:absolute;transform:translateX(-50%);font:var(--t-caption);color:var(--ink-mute);white-space:nowrap}
+[data-theme="contrast"] .dv-task{border-color:var(--ink)}
+@media (forced-colors:active){.dv-task{forced-color-adjust:none;border:1px solid CanvasText}.dv-tick{background:CanvasText}}

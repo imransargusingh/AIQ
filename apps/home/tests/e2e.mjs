@@ -344,6 +344,50 @@ await test("empty store: teaching empty states, no errors", async () => {
   }
 });
 
+await test("Tasks Day view: a row per session, rung named on hover and focus, Enter opens the task, no axe violations", async () => {
+  // Three sessions on one day, from the fixture's own tasks moved onto the newest task's day.
+  const page = await open("full", {
+    hash: "#tasks",
+    edit: (s) => {
+      const base = Math.max(...s.tasks.map((t) => t.first_ms));
+      const day0 = base - (base % 86_400_000);
+      s.tasks.forEach((t, i) => {
+        const first = day0 + (8 + i) * 3_600_000;
+        t.prompt_ms = t.prompt_ms.map((p) => first + (p - t.first_ms));
+        t.last_ms = first + (t.last_ms - t.first_ms);
+        t.first_ms = first;
+      });
+    },
+  });
+  await page.getByRole("button", { name: "Day", exact: true }).click();
+  const lanes = page.getByRole("listitem");
+  assert.ok((await lanes.count()) >= 3, "one row per session");
+  assert.equal(await page.locator("table[aria-label=Tasks]").count(), 0, "the list is replaced by the Day view");
+  // Row summary on focus: tool, folder, time span, tasks, prompts.
+  const name = page.locator(".dv-name").first();
+  await name.focus();
+  const tip = name.locator(".tip");
+  assert.ok(await tip.isVisible(), "row summary shows on focus");
+  assert.match(await tip.innerText(), /session in .+\n.*\d+ tasks? · \d+ prompts?/s);
+  // A judged block names its rung in words.
+  const judged = page.locator(".dv-task:not(.dv-none)").first();
+  await judged.focus();
+  assert.match(await judged.locator(".tip").innerText(), /\((\d)\)/);
+  assert.match((await judged.getAttribute("aria-label")) ?? "", /Open task$/);
+  assert.deepEqual(await axe(page), []);
+  await page.keyboard.press("Enter");
+  await page.waitForSelector("main h1");
+  assert.ok(page.url().includes("#task/"), "Enter on a block opens its task");
+  assert.deepEqual(page.errors, []);
+  await page.context().close();
+  // Narrow window: the chart scrolls inside its own box, never the page.
+  const narrow = await open("full", { hash: "#tasks", width: 720, height: 520 });
+  await narrow.getByRole("button", { name: "Day", exact: true }).click();
+  const over = await narrow.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  assert.ok(over <= 0, `Day view overflows the page by ${over}px`);
+  await narrow.context().close();
+});
+
 await test("narrow window (720x520) has no horizontal page scroll", async () => {
   for (const [id] of pages) {
     const page = await open("full", { hash: `#${id}`, width: 720, height: 520 });
