@@ -7,7 +7,19 @@ use aiq_contracts::judge::{ActionSummary, Fact, Response};
 
 /// Stamped on every judgment. Bump on any change to the fact set, the rules below, or the prompt.
 pub const FACT_SET_VERSION: &str = "fs1";
-pub const RUBRIC_VERSION: &str = "r1";
+/// r2: a hedged yes on F6 counts when the person came back after the output (`F6_HEDGED_THRESHOLD`).
+pub const RUBRIC_VERSION: &str = "r2";
+/// Judgments of these rubric versions stay current unless `rubric_changes`: r1 differs from r2 only where F6
+/// was unknown, undisputed, at `F6_HEDGED_THRESHOLD` or more, after a re-prompt.
+pub const RUBRIC_VERSIONS_KEPT: [&str; 1] = ["r1"];
+
+/// Whether an r1 judgment's stored facts and read record could place differently under r2. The stored F6 has
+/// no value when unknown, so a hedged no is judged again too (it lands where it was).
+pub fn rubric_changes(facts_json: &str, reprompts: Option<u32>) -> bool {
+    let f6 = aiq_contracts::judge::parse_stored_facts(facts_json).remove("F6");
+    reprompts != Some(0)
+        && f6.is_some_and(|f| f.value.is_none() && !f.disputed && !f.log && f.confidence >= F6_HEDGED_THRESHOLD)
+}
 /// j2: the answer names a task type (design coaching-from-rungs D1); j1 judgments are re-judged lazily.
 /// j3 added the Ask or research pack; j4 records each run's job pick (design no-job-tasks); j5 added the Run
 /// or ship it pack (design run-or-ship-pack).
@@ -17,6 +29,11 @@ pub const JUDGE_VERSION: &str = "j5";
 pub const JUDGE_VERSIONS_KEPT: [&str; 3] = ["j2", "j3", "j4"];
 /// A model fact below this confidence counts as unknown (D10: the spike's correct facts sat at 0.5–0.6).
 pub const FACT_THRESHOLD: f64 = 0.6;
+/// F6 (output checked) yes from every run at this confidence or more counts as yes when the person wrote again
+/// after seeing the output (a log fact). The judge hedges F6 because the check partly happens off-transcript:
+/// golden g1 h02, h11, h20 said yes at 0.5 to 0.55 in every run and the author's label needs F6 yes in each.
+/// Below this, or with no re-prompt, F6 stays unknown and the guardrails lower the rung as before.
+pub const F6_HEDGED_THRESHOLD: f64 = 0.5;
 /// Job below this confidence is Unclassified (spike: 100% precision at 0.7).
 pub const JOB_THRESHOLD: f64 = 0.7;
 /// Task type below this confidence, or runs that disagree, is `other` within the job (same bar as the job).
@@ -626,7 +643,7 @@ pub fn merge_facts(runs: &[Response], log: &LogFacts) -> Facts {
         f3: log.checks_by,
         f4: m("F4", |r| r.f4_goal_context_constraints),
         f5: m("F5", |r| r.f5_reprompts_added_information),
-        f6: m("F6", |r| r.f6_output_checked),
+        f6: hedged_review(m("F6", |r| r.f6_output_checked), runs, log),
         f7,
         f7_log,
         f8: Merged::log("F8", log.coordinated),
@@ -641,6 +658,16 @@ pub fn merge_facts(runs: &[Response], log: &LogFacts) -> Facts {
         f2_person_share: None,
         reprompts: log.reprompts,
     }
+}
+
+/// F6 unknown only because every run said yes under `FACT_THRESHOLD` becomes yes when it reached
+/// `F6_HEDGED_THRESHOLD` and the log shows a prompt after the agent's first reply.
+fn hedged_review(f6: Merged, runs: &[Response], log: &LogFacts) -> Merged {
+    let hedged_yes = f6.value.is_none()
+        && !f6.disputed
+        && f6.confidence >= F6_HEDGED_THRESHOLD
+        && runs.first().is_some_and(|r| r.f6_output_checked.value);
+    if hedged_yes && log.reprompts >= 1 { Merged { value: Some(true), ..f6 } } else { f6 }
 }
 
 pub fn directed(f: &Facts) -> Gate {
@@ -1424,6 +1451,33 @@ mod tests {
         let (_, p) = place(&[r.clone(), r], &agent_edit_log(), 0);
         assert_eq!(p.current, 2);
         assert!(p.uncertain);
+    }
+
+    /// Eval cases h02, h11, h20 (golden g1): every run says the output was checked, at 0.5 to 0.55, and the
+    /// person came back after seeing it. That counts as checked; without the person coming back, or below
+    /// 0.5, or when the runs disagree, it stays unknown.
+    #[test]
+    fn a_hedged_yes_on_output_checked_counts_when_the_person_came_back_after_the_output() {
+        let mut r = run(2);
+        r.f6_output_checked = yes(0.5);
+        let two = turns(&["add a --since flag", "add a test for the bad date"], None);
+        let back = log_facts(&two, false);
+        let (f, p) = place(&[r.clone(), r.clone()], &back, 0);
+        assert_eq!(f.f6.value, Some(true));
+        assert_eq!((p.current, p.uncertain), (2, false));
+
+        let once = log_facts(&turns(&["add a --since flag"], None), false);
+        let (f, p) = place(&[r.clone(), r.clone()], &once, 0);
+        assert_eq!(f.f6.value, None, "no sign the person saw the output");
+        assert_eq!((p.current, p.uncertain), (1, true));
+
+        let mut low = r.clone();
+        low.f6_output_checked = yes(0.45);
+        assert_eq!(place(&[low.clone(), low], &back, 0).0.f6.value, None, "under the hedged bar");
+
+        let mut nay = r.clone();
+        nay.f6_output_checked = no(0.5);
+        assert_eq!(place(&[r, nay], &back, 0).0.f6.value, None, "runs disagree");
     }
 
     fn jr(job: &str, c: f64) -> JobRun {

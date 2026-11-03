@@ -1,9 +1,10 @@
 //! `aiq hook claude-code <event>` and `aiq hook copilot <event>`: the hot path. Guarantees (Phase 1
 //! design: Exposed contract 1; Phase 2 design: Exposed contract 1): always exits 0; never opens the store
 //! or loads the pack. Claude Code: stdout is empty, or exactly one `{"systemMessage": …}` on Stop; never
-//! `additionalContext`, `decision` or `continue`. Copilot: stdout and stderr are always empty (Copilot
-//! shows the person nothing, and its hooks block the agent, so both events are plain ingests).
-use aiq_contracts::card::claude_code_system_message;
+//! `additionalContext`, `decision` or `continue`. Copilot: stderr is always empty; stdout is empty, or on
+//! a Copilot CLI `agentStop` exactly one display-only `{"type":"progress",…}` line with the tip (setting
+//! `copilot_tip_in_chat`, default on); never `decision`, `additionalContext` or exit code 2.
+use aiq_contracts::card::{claude_code_system_message, copilot_progress_message};
 use aiq_contracts::codes;
 use aiq_contracts::event::{EventBody, EventV1, MAX_PROMPT_BYTES, PromptPayload, SCHEMA, StopPayload, cap_text};
 use aiq_contracts::frames::{Request, SpoolLine, TakeCardReply};
@@ -151,8 +152,9 @@ fn inner_outcome(paths: &Paths, host: &str, event: &str, start: Instant, marks: 
     marks.prep_us = Some(start.elapsed().as_micros() - read_done);
     let token = ipc::read_token(paths).unwrap_or_default();
     match &ev.body {
-        // Copilot: both events are ingests (nothing to show at agentStop; the status line renders).
-        EventBody::Prompt(_) | EventBody::Stop(_) if host == "copilot" => {
+        // Copilot: prompts are ingests, and so is VS Code's agentStop (the extension renders there). Copilot
+        // CLI's agentStop takes the card like Claude Code's Stop and prints it into the conversation.
+        EventBody::Prompt(_) | EventBody::Stop(_) if host == "copilot" && !copilot_cli_stop(&ev) => {
             let frame = Request::Ingest { token, trace_id: Some(trace_id.clone()), event: ev.clone() };
             match ipc::request(paths, &serde_json::to_string(&frame).unwrap_or_default(), false, SEND_BUDGET) {
                 Ok(_) => "sent",
@@ -186,9 +188,15 @@ fn inner_outcome(paths: &Paths, host: &str, event: &str, start: Instant, marks: 
                 SEND_BUDGET + STOP_REPLY_BUDGET,
             ) {
                 Ok(Some(line)) => match serde_json::from_str::<TakeCardReply>(&line) {
-                    Ok(TakeCardReply { card: Some(card) }) => {
+                    Ok(TakeCardReply { card: Some(card), plain }) => {
+                        let color = color_allowed() && !plain;
+                        let text = if host == "copilot" {
+                            copilot_progress_message(&card, color)
+                        } else {
+                            claude_code_system_message(&card, color)
+                        };
                         let mut out = std::io::stdout().lock();
-                        let _ = writeln!(out, "{}", claude_code_system_message(&card, color_allowed()));
+                        let _ = writeln!(out, "{text}");
                         let _ = out.flush();
                         "card"
                     }
@@ -207,6 +215,11 @@ fn inner_outcome(paths: &Paths, host: &str, event: &str, start: Instant, marks: 
             }
         }
     }
+}
+
+/// A Copilot CLI turn end, which shows its tip in the conversation (VS Code's turn ends never print).
+fn copilot_cli_stop(ev: &EventV1) -> bool {
+    matches!(ev.body, EventBody::Stop(_)) && ev.surface == COPILOT_CLI_SURFACE
 }
 
 /// Build `aiq.event.v1` from a Claude Code payload. None when the payload is not Claude Code's shape for
@@ -242,7 +255,7 @@ pub fn to_event(v: &Value, event: &str) -> Option<EventV1> {
     Some(ev)
 }
 
-pub const COPILOT_CLI_SURFACE: &str = "copilot-cli";
+pub const COPILOT_CLI_SURFACE: &str = aiq_core::service::COPILOT_CLI;
 pub const VSCODE_SURFACE: &str = "vscode";
 
 /// Surface of a Copilot hook. Copilot CLI and VS Code agent mode share `~/.copilot/hooks` and send the same

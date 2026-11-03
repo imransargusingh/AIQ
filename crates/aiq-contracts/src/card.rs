@@ -73,13 +73,27 @@ pub fn render_waiting_marker(card_id: &str, color: bool) -> String {
 /// Confirmed on the Windows laptop 2026-11-01: Claude Code renders the codes. `color: false` (the
 /// person set `NO_COLOR`, see no-color.org) sends plain text.
 pub fn claude_code_system_message(card: &CardV1, color: bool) -> String {
+    serde_json::json!({ "systemMessage": card_text(card, color) }).to_string()
+}
+
+/// The four-line card, every line yellow and the label a badge when `color`.
+fn card_text(card: &CardV1, color: bool) -> String {
     let plain = render_claude_code(card);
-    let text = if color {
+    if color {
         badge(&plain).lines().map(|l| format!("{LINE_ON}{l}{LINE_OFF}")).collect::<Vec<_>>().join("\n")
     } else {
         plain
-    };
-    serde_json::json!({ "systemMessage": text }).to_string()
+    }
+}
+
+/// Copilot CLI `agentStop` stdout: one progress line, which Copilot CLI shows in the conversation and
+/// documents as display-only (hooks reference, "progress messages"), so the agent is unchanged. Not
+/// `temporary`, so it stays after the agent's next reply. Same card as Claude Code's.
+/// assume: Copilot CLI 1.0.106 shows the line and draws its colour codes, as Claude Code does. Confirm:
+/// the next laptop upgrade shows the yellow card in the conversation. If false: the person sees the tip in
+/// the status line only (no line), or with raw codes (then turn the highlight off by default here).
+pub fn copilot_progress_message(card: &CardV1, color: bool) -> String {
+    serde_json::json!({ "type": "progress", "message": card_text(card, color) }).to_string()
 }
 
 #[cfg(test)]
@@ -161,6 +175,18 @@ mod tests {
             assert!(l.starts_with(LINE_ON) && l.ends_with(LINE_OFF), "{l:?}");
         }
         assert_eq!(strip_sgr(t), render_claude_code(&card()), "same words as the plain card");
+    }
+
+    #[test]
+    fn copilot_progress_message_is_one_display_only_line_with_the_card() {
+        let line = copilot_progress_message(&card(), true);
+        assert!(!line.contains('\n'), "one JSON line");
+        let v: serde_json::Value = serde_json::from_str(&line).unwrap();
+        assert_eq!(v.as_object().unwrap().len(), 2);
+        assert_eq!(v["type"], "progress");
+        assert_eq!(strip_sgr(v["message"].as_str().unwrap()), render_claude_code(&card()));
+        let plain: serde_json::Value = serde_json::from_str(&copilot_progress_message(&card(), false)).unwrap();
+        assert_eq!(plain["message"].as_str().unwrap(), render_claude_code(&card()));
     }
 
     #[test]

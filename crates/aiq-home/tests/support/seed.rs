@@ -390,7 +390,8 @@ pub fn coach_row(
     }
 }
 
-/// The coaching fixture: sixteen typed tasks over three weeks. Writing tests and Writing a spec each have
+/// The coaching fixture: sixteen typed tasks over three weeks, twelve in the aiq folder and the four specs in
+/// foresight. Writing tests and Writing a spec each have
 /// a next step, fixing bugs is at the right rung, refactoring has too few tasks, one task is Uncertain.
 /// One tip is turned off, so Settings lists it.
 pub fn coaching(paths: &Paths) {
@@ -415,7 +416,9 @@ pub fn coaching(paths: &Paths) {
     ];
     for (i, (job, ty, cur, state, corr, text)) in kinds.iter().enumerate() {
         let at = NOW - (i as i64 + 1) * 31 * 60 * MIN; // about 1.3 days apart, oldest about three weeks ago
-        let id = s.prompt("copilot-cli", &format!("k{i}"), at, Some(AIQ), text);
+        // The specs ran in another folder, so the projects differ (design project-filter).
+        let folder = if *job == "write_doc" { FORESIGHT } else { AIQ };
+        let id = s.prompt("copilot-cli", &format!("k{i}"), at, Some(folder), text);
         s.stop("copilot-cli", &format!("k{i}"), at + 3 * MIN);
         s.store.insert_judgment(&coach_row(&id, job, ty, *cur, state, *corr)).unwrap();
     }
