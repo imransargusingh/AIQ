@@ -32,12 +32,16 @@ pub const SETTING_COPILOT_TIP_STAYS: &str = "copilot_tip_stays";
 pub const SETTING_COPILOT_TIP_IN_CHAT: &str = "copilot_tip_in_chat";
 pub const SETTING_TIP_POPUP: &str = "tip_popup";
 pub const SETTING_TIP_HIGHLIGHT: &str = "tip_highlight";
-pub const SWITCH_SETTINGS: [&str; 5] = [
+/// `on` (default) or `off`: show where the open task is heading (design live-rung-trend): the Right now card on
+/// AIQ home and the trend in the Copilot CLI status line between tips. Imran 2026-11-03 "build C and D".
+pub const SETTING_LIVE_TREND: &str = "live_trend";
+pub const SWITCH_SETTINGS: [&str; 6] = [
     SETTING_COPILOT_TIP_IN_CHAT,
     SETTING_TIP_POPUP,
     SETTING_TIP_HIGHLIGHT,
     SETTING_COPILOT_MID_TURN,
     SETTING_AGENT_ACTIONS,
+    SETTING_LIVE_TREND,
 ];
 /// Surfaces whose tip shows in a terminal, where a pop-up helps when the person has looked away. VS Code
 /// shows its own notification, so it gets no pop-up.
@@ -209,6 +213,8 @@ pub enum TipLineOut {
     Full(CardV1),
     /// The "1 tip waiting" marker, with the card id for `aiq show`.
     Waiting(String),
+    /// No tip to show: where the open task is heading (design live-rung-trend D), plain text.
+    Trend(String),
 }
 
 fn new_id() -> String {
@@ -1346,21 +1352,42 @@ impl<C: Clock> Service<C> {
             return Ok(match (tip_line_state(self.copilot_tip_stays(), at, after, opened, now), card) {
                 (TipLine::Full, Some(c)) => Some(TipLineOut::Full(c)),
                 (TipLine::Waiting, _) => Some(TipLineOut::Waiting(card_id)),
-                _ => None,
+                _ => self.trend_line(surface, &session)?,
             });
         }
         if self.store.last_event_kind(surface, &session)?.as_deref() != Some("stop") {
-            return Ok(None); // mid-turn: a card never shows while the agent works
+            return self.trend_line(surface, &session); // mid-turn: a card never shows while the agent works
         }
         let ready = match self.store.ready_card(surface, &session)? {
             Some(r) => Some(r),
             None if surface == COPILOT_CLI && !self.vscode_extension_asking() => self.vscode_ready()?,
             None => None,
         };
-        let Some(ready) = ready else { return Ok(None) };
+        let Some(ready) = ready else { return self.trend_line(surface, &session) };
         // A VS Code tip shown here is delivered to this status line's session, so its lifetime follows
         // this session's prompts like the line's own tips.
         Ok(self.deliver(&ready.card_id, &ready.card_json, surface, &session)?.map(TipLineOut::Full))
+    }
+
+    /// The open task's trend for the status line, when the person has it on and there is an estimate. Uses the
+    /// coaching rows already built (never rebuilds them on a status-line refresh) for "could reach".
+    fn trend_line(&self, surface: &str, session: &str) -> Result<Option<TipLineOut>, StoreError> {
+        if !self.switch_on(SETTING_LIVE_TREND) {
+            return Ok(None);
+        }
+        let started = std::time::Instant::now();
+        let now = self.clock.now().utc_ms;
+        let t = crate::live_trend::open_task(&self.store, surface, session, now, self.engine.idle_gap_ms())?;
+        let could = t.as_ref().and_then(|t| self.coach.as_ref().and_then(|c| crate::live_trend::could(c, t)));
+        let line = t.as_ref().and_then(|t| crate::live_trend::status_text(t, could));
+        info!(
+            aiq.surface = surface,
+            open = t.is_some(),
+            shown = line.is_some(),
+            ms = started.elapsed().as_millis() as u64,
+            "core.trend_line"
+        );
+        Ok(line.map(TipLineOut::Trend))
     }
 
     fn vscode_extension_asking(&self) -> bool {

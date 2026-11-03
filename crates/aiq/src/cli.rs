@@ -645,6 +645,7 @@ pub fn config_set(name: &str, value: &str) -> ExitCode {
         "update" => ("update", format!("Updates: {value}.")),
         "copilot-mid-turn" => ("copilot_mid_turn", format!("Copilot messages sent while the agent works: {value}.")),
         "agent-actions" => ("agent_actions", format!("What the agent did in each turn: {value}.")),
+        "live-trend" => ("live_trend", format!("Where an open task is heading: {value}.")),
         "kind-label" => ("kind_label", format!("Kind-of-task labels: {value}.")),
         "kind-label-daily" => ("kind_label_daily", format!("Most kind labels per day: {value}.")),
         "kind-label-claude-model" => ("kind_label_claude_model", format!("Kind label, Claude model: {value}.")),
@@ -655,7 +656,7 @@ pub fn config_set(name: &str, value: &str) -> ExitCode {
                  tip-highlight, judge, judge-daily-tasks, \
                  judge-claude-model, judge-copilot-model, judge-copilot-sessions, next-rung-tips, check-claude-model, \
                  check-copilot-model, update, kind-label, kind-label-daily, kind-label-claude-model, kind-label-copilot-model, \
-                 copilot-mid-turn, agent-actions, keep-on.<job or job/kind>."
+                 copilot-mid-turn, agent-actions, live-trend, keep-on.<job or job/kind>."
             );
             return ExitCode::from(2);
         }

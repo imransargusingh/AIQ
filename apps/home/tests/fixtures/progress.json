@@ -1288,6 +1288,7 @@
     "copilot_tip_in_chat": true,
     "tip_popup": true,
     "tip_highlight": true,
+    "live_trend": true,
     "judge": "off",
     "judge_daily_tasks": 50,
     "copilot_mid_turn": "on",
@@ -2247,5 +2248,6 @@
         "progress_min": 3
       }
     }
-  ]
+  ],
+  "live": null
 }

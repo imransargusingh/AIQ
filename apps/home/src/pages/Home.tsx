@@ -8,6 +8,7 @@ import { KindList, ProgressList, judgedBy, pct } from "../coach";
 import { RUNGS, day, folderName, plural, rungLabel, sentence, toolName, when } from "../format";
 import { AccuracyPaused, Banners, ProjectPicker, Rung, Title, UpdateLine, type Ctx } from "../ui";
 import type { Project } from "../types";
+import { RightNow } from "./RightNow";
 
 export function Home(ctx: Ctx) {
   const { snap, go, announce, refresh } = ctx;
@@ -57,6 +58,7 @@ export function Home(ctx: Ctx) {
       <AccuracyPaused {...ctx} />
       <Title sr>Home</Title>
       <ProjectPicker {...ctx} />
+      <RightNow {...ctx} />
       {one && (
         <p className="meta" data-testid="project-note">
           Showing {one.name} only. Tips and Set aside cover all projects.

@@ -12,6 +12,7 @@ pub mod rung;
 pub mod secrets;
 pub mod text;
 pub mod tipline;
+pub mod trend;
 pub mod trigger;
 
 use aiq_contracts::pack::PackV1;

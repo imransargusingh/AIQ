@@ -13,10 +13,11 @@ const STAYS: { v: S["copilot_tip_stays"]; label: string; note?: string }[] = [
 ];
 
 /** Where tips show (each a switch, default on). Words say what the person sees, not how. */
-const WHERE: { k: "copilot_tip_in_chat" | "tip_popup" | "tip_highlight"; label: string; note: string }[] = [
+const WHERE: { k: "copilot_tip_in_chat" | "tip_popup" | "tip_highlight" | "live_trend"; label: string; note: string }[] = [
   { k: "copilot_tip_in_chat", label: "Show Copilot CLI tips in the conversation", note: "As well as in the status line at the bottom." },
   { k: "tip_popup", label: "Show a Windows pop-up when a tip appears in Claude Code or Copilot CLI", note: "Helps when you've switched to another window while the agent works. VS Code shows its own." },
   { k: "tip_highlight", label: "Highlight tips in yellow", note: "The \u201cAIQ tip:\u201d label in terminals, and the AIQ item in the VS Code status bar." },
+  { k: "live_trend", label: "Show where an open task is heading", note: "On Home while you work, and in the Copilot CLI status line between tips. An estimate; the judge's rung replaces it when the task ends." },
 ];
 
 const NEXT: { v: S["next_rung_tips"]; label: string; note?: string }[] = [

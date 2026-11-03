@@ -5,6 +5,7 @@ pub mod control;
 pub mod copilot_log;
 pub mod counters;
 pub mod ipc;
+pub mod live_trend;
 pub mod logging;
 pub mod pack;
 pub mod paths;

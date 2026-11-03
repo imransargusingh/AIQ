@@ -72,7 +72,7 @@ const pages = [
 ];
 
 await test("contract: fixtures are aiq.home.v1 snapshots from the Rust read model", async () => {
-  for (const f of ["full", "down", "paused", "empty", "first-run", "coaching", "progress"]) {
+  for (const f of ["full", "down", "paused", "empty", "first-run", "coaching", "progress", "live"]) {
     const s = JSON.parse(readFileSync(join(fixtures, `${f}.json`), "utf8"));
     assert.equal(s.schema, "aiq.home.v1");
     for (const k of ["status", "home", "tasks", "tips", "data", "settings", "setup", "coaching"]) assert.ok(k in s, `${f}: ${k}`);
@@ -421,6 +421,55 @@ await test("Tasks Day view: a row per session, rung named on hover and focus, En
   const over = await narrow.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   assert.ok(over <= 0, `Day view overflows the page by ${over}px`);
   await narrow.context().close();
+});
+
+for (const theme of ["light", "dark", "contrast"]) {
+  await test(`Right now card: the open task's estimate per turn, rung in words, tip at its turn, no axe violations (${theme})`, async () => {
+    const page = await open("live", { theme: theme === "light" ? undefined : theme });
+    const card = page.getByTestId("right-now");
+    const t = await card.innerText();
+    assert.match(t, /Right now · Writing a spec or PRD/);
+    assert.match(t, /Copilot CLI · 5 prompts · 22 min · agent working/);
+    assert.match(t, /Heading for Directed \(2\)\s*· could reach Delegated \(3\)/);
+    assert.match(t, /Agent made the edits itself \(turns 2, 3\)/);
+    assert.match(t, /Asked a piece at a time: 5 prompts/);
+    assert.match(t, /Turn 4: not recorded/);
+    assert.match(t, /AIQ tip:.*from turn 3/);
+    assert.match(t, /judge's rung replaces it/);
+    const img = await card.getByRole("img").getAttribute("aria-label");
+    assert.equal(img, "Estimate after each turn: turn 1: Assisted (1); turn 2: Delegated (3); turn 3: Directed (2); turn 4: Directed (2) (not recorded)");
+    assert.deepEqual(await axe(page), []);
+    if (shots) await page.screenshot({ path: join(shots, `right-now-${theme}.png`) });
+    if (theme === "light") {
+      await card.getByRole("button", { name: "Open task" }).click();
+      await page.waitForFunction(() => location.hash.startsWith("#task/"));
+    }
+    assert.deepEqual(page.errors, []);
+    await page.context().close();
+  });
+}
+
+await test("Right now card: gone with no open task and when switched off; the switch is in Settings > Tips", async () => {
+  const none = await open("full");
+  assert.equal(await none.getByTestId("right-now").count(), 0);
+  await none.context().close();
+  const off = await open("live", { edit: (s) => (s.live = null) });
+  assert.equal(await off.getByTestId("right-now").count(), 0);
+  await off.context().close();
+  const st = await open("live", { hash: "#settings" });
+  const sw = st.getByRole("switch", { name: "Show where an open task is heading" });
+  assert.equal(await sw.getAttribute("aria-checked"), "true");
+  await sw.click();
+  const calls = await st.evaluate(() => window.__AIQ_FIXTURE__.calls);
+  assert.ok(calls.some((c) => JSON.stringify(c).includes("live_trend")), JSON.stringify(calls).slice(0, 300));
+  await st.context().close();
+});
+
+await test("Right now card at 720 px: no page scroll", async () => {
+  const page = await open("live", { width: 720, height: 520 });
+  const w = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  assert.ok(w <= 0, `page scrolls by ${w}px`);
+  await page.context().close();
 });
 
 await test("narrow window (720x520) has no horizontal page scroll", async () => {

@@ -49,17 +49,25 @@ fn inner(paths: &Paths) -> &'static str {
     let Ok(Some(line)) = ipc::request(paths, &serde_json::to_string(&frame).unwrap_or_default(), true, BUDGET) else {
         return "no-core";
     };
-    let text = match serde_json::from_str::<TipLineReply>(&line) {
-        Ok(TipLineReply { card: Some(c), plain, .. }) => render_status_line(&c, crate::hook::color_allowed() && !plain),
-        Ok(TipLineReply { waiting_card_id: Some(id), plain, .. }) => {
-            render_waiting_marker(&id, crate::hook::color_allowed() && !plain)
+    let (text, trend) = match serde_json::from_str::<TipLineReply>(&line) {
+        Ok(TipLineReply { card: Some(c), plain, .. }) => {
+            (render_status_line(&c, crate::hook::color_allowed() && !plain), false)
         }
+        Ok(TipLineReply { waiting_card_id: Some(id), plain, .. }) => {
+            (render_waiting_marker(&id, crate::hook::color_allowed() && !plain), false)
+        }
+        // The trend is not a tip: plain text, no badge, so a tip still stands out when one comes.
+        Ok(TipLineReply { trend: Some(t), .. }) => (t, true),
         _ => return if has_session { "none" } else { "none-no-session" },
     };
     let mut out = std::io::stdout().lock();
     let _ = writeln!(out, "{text}");
     let _ = out.flush();
-    if has_session { "tip" } else { "tip-no-session" }
+    match (trend, has_session) {
+        (true, _) => "trend",
+        (false, true) => "tip",
+        (false, false) => "tip-no-session",
+    }
 }
 
 #[cfg(test)]
