@@ -204,6 +204,12 @@ fn writer_loop(mut svc: Service<SystemClock>, rx: Receiver<Cmd>, paths: &Paths, 
             Err(mpsc::RecvTimeoutError::Timeout) => Cmd::DrainSpool,
             Err(mpsc::RecvTimeoutError::Disconnected) => break None,
         };
+        // A frame a hook spooled while the core was busy (its 20 ms send missed) goes in before the next
+        // command, not at the idle tick: steady traffic (a status poll, a busy session) never lets the
+        // tick fire, and the spooled prompt would wait behind later ones (Windows runner flake, 2026-11-03).
+        if !matches!(cmd, Cmd::DrainSpool) && paths.spool().exists() {
+            drain_spool(paths, &mut svc, counters);
+        }
         match cmd {
             Cmd::Ingest { event, trace_id } => svc.ingest(&event, trace_id.as_deref()),
             Cmd::TakeCard { event, trace_id, received, wait_ms, reply } => {
