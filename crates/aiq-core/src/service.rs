@@ -144,6 +144,12 @@ struct TurnRead {
 /// First prompts held back at once (each a few KB at most, in memory).
 const MAX_HELD: usize = 1024;
 
+/// A show-ready card whose turn end is never seen expires this long after its decision.
+/// assume: a turn ends within 4 h (longest measured on the laptop: 42 min, 2026-11-02). Confirm: no
+/// `expired` card in `card_decision` whose session's next stop came after 4 h. If false: that long turn's
+/// tip is dropped (no wrong tip shown).
+const READY_TURN_MAX_MS: i64 = 4 * 3_600_000;
+
 /// Rule RC per session: a settled answer, or how many reads found the head not yet written.
 #[derive(Debug, Clone, Copy)]
 enum RcCheck {
@@ -1095,12 +1101,13 @@ impl<C: Clock> Service<C> {
         Ok(())
     }
 
-    /// Expire show-ready cards not delivered within the expiry window, so a stale card never shows in a
-    /// later, unrelated turn.
+    /// Expire show-ready cards not delivered within the expiry window after their turn ended, so a stale
+    /// card never shows in a later, unrelated turn. The window runs from the turn's end, not the decision:
+    /// on the laptop (2026-11-03 14:18Z) a 37-minute Copilot turn lost its tip 5 minutes before it ended.
     pub fn expire_stale(&mut self) -> Result<(), StoreError> {
         let now = self.clock.now().utc_ms;
-        let before = now - self.pack.trigger.ready_expiry_min as i64 * 60_000;
-        for c in self.store.stale_ready(before)? {
+        let ended_before = now - self.pack.trigger.ready_expiry_min as i64 * 60_000;
+        for c in self.store.stale_ready(ended_before, now - READY_TURN_MAX_MS)? {
             self.store.insert_decision(
                 &NewDecision {
                     decision_id: &new_id(),

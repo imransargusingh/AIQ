@@ -158,8 +158,15 @@ fn ready_card_excludes_delivered_and_expired() {
     assert!(s.ready_card("claude-code", "s").unwrap().is_none());
     decide(&s, "d2", "c2", "show_ready", "ok", 40);
     assert_eq!(s.ready_card("claude-code", "s").unwrap().unwrap().card_id, "c2");
-    assert_eq!(s.stale_ready(41).unwrap().len(), 1);
-    assert!(s.stale_ready(40).unwrap().is_empty());
+    assert!(s.stale_ready(i64::MAX, 40).unwrap().is_empty(), "no turn end yet, inside the hard cap");
+    assert_eq!(s.stale_ready(0, 41).unwrap().len(), 1, "past the hard cap with no turn end");
+    let stop = |id| NewEvent { kind: "stop", prompt_chars: None, ..ev(id, "s", None) };
+    s.insert_event(&stop("st0"), 30).unwrap(); // an earlier turn's end: not this card's
+    assert!(s.stale_ready(i64::MAX, 0).unwrap().is_empty());
+    s.insert_event(&stop("st1"), 45).unwrap(); // the card's turn ends
+    s.insert_event(&stop("st2"), 90).unwrap();
+    assert!(s.stale_ready(45, 0).unwrap().is_empty(), "the window runs from the turn's end");
+    assert_eq!(s.stale_ready(46, 0).unwrap().len(), 1);
     decide(&s, "d3", "c2", "drop", "expired", 50);
     assert!(s.ready_card("claude-code", "s").unwrap().is_none());
     let rec = s.card("c2").unwrap().unwrap();
