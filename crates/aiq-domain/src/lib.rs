@@ -6,6 +6,7 @@ pub mod check;
 pub mod clock;
 pub mod coach;
 pub mod job;
+pub mod label;
 pub mod reprompt;
 pub mod rung;
 pub mod secrets;

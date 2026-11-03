@@ -69,6 +69,11 @@ pub enum Request {
         answer: String,
         surface: String,
     },
+    /// `aiq label` stored a label for this live task: decide its next-step tip now (design kind-label). No reply.
+    KindLabel {
+        token: String,
+        task_id: String,
+    },
     /// "This doesn't fit" (`action` flag, with a reason) or its undo, for one (job, task type, move).
     GuidanceFlag {
         token: String,
@@ -97,6 +102,7 @@ impl Request {
             | Request::IncludeFolder { token, .. }
             | Request::ForgetItem { token, .. }
             | Request::TipFeedback { token, .. }
+            | Request::KindLabel { token, .. }
             | Request::GuidanceFlag { token, .. } => token,
         }
     }
@@ -157,6 +163,27 @@ pub struct CoachStatus {
     /// Jobs and kinds of task the accuracy check paused (design K6b), with the person's overrides.
     #[serde(default)]
     pub accuracy_paused: Vec<PausedScope>,
+    /// Labels of new tasks' kinds by a small model (design kind-label). None before v8 or with the core down.
+    #[serde(default)]
+    pub labels: Option<LabelStatus>,
+}
+
+/// Kind labels today and their self-check. Every number is counted from stored rows (measured).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct LabelStatus {
+    /// Labels may run: background judging is on and labels are not turned off.
+    pub enabled: bool,
+    /// Label calls since local midnight, and the daily budget.
+    pub today: u32,
+    pub daily: u32,
+    /// Of today's calls: answered, and answered confidently enough to coach from.
+    pub answered: u32,
+    pub confident: u32,
+    /// Median call time today, in ms; None with no call today.
+    pub median_ms: Option<u64>,
+    /// Labels checked against the later judgment, and how many were right (D10 for labels).
+    pub checked: u32,
+    pub right: u32,
 }
 
 /// One job or kind of task whose next-step tips the accuracy check paused (design K6b).

@@ -213,7 +213,20 @@ export async function pollOnce(
   return { state: waiting ? "tip" : "on", nextMs: POLL_MS };
 }
 
-export function statusText(s: State): { text: string; tooltip: string } {
+/**
+ * Status-bar text. `label` is the screen-reader text (no icon syntax). `highlight` marks a waiting tip: the
+ * extension gives the item VS Code's warning background, one of the two status-bar backgrounds VS Code
+ * allows, so a tip stands out after its notification has gone (Imran 2026-11-03, "make tips stand out").
+ */
+export function statusText(s: State): { text: string; label: string; tooltip: string; highlight: boolean } {
+  if (s === "tip") {
+    return { text: "$(lightbulb) AIQ: 1 tip waiting", label: "AIQ: 1 tip waiting", tooltip: "Click to read the tip.", highlight: true };
+  }
+  const t = plainStatusText(s);
+  return { ...t, label: t.text, highlight: false };
+}
+
+function plainStatusText(s: Exclude<State, "tip">): { text: string; tooltip: string } {
   switch (s) {
     case "on":
       return { text: "AIQ on", tooltip: "AIQ watches quietly. Click for tips, pause or resume." };
@@ -221,7 +234,5 @@ export function statusText(s: State): { text: string; tooltip: string } {
       return { text: "AIQ paused", tooltip: "Nothing is captured and no tips show. Click to resume." };
     case "down":
       return { text: "AIQ not running", tooltip: "Starts with your next agent prompt." };
-    case "tip":
-      return { text: "AIQ: 1 tip waiting", tooltip: "Click to read the tip." };
   }
 }

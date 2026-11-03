@@ -79,8 +79,11 @@ test("detailsText_evidenceAndDeleted", () => {
 test("statusText_everyStateHasTextAndTooltip", () => {
   for (const s of ["on", "paused", "down", "tip"] as const) {
     const t = statusText(s);
-    assert.ok(t.text.startsWith("AIQ") && t.tooltip.length > 0);
+    assert.ok(t.label.startsWith("AIQ") && !t.label.includes("$(") && t.tooltip.length > 0);
+    assert.equal(t.highlight, s === "tip", "only a waiting tip is highlighted");
   }
+  assert.equal(statusText("tip").text, "$(lightbulb) AIQ: 1 tip waiting");
+  assert.equal(statusText("on").text, "AIQ on");
 });
 
 test("executableCandidates_settingFirstThenPathThenInstallDirs", () => {

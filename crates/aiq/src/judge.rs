@@ -1024,7 +1024,7 @@ pub fn at_install_text(r: AtInstall, daily_tasks: u32) -> String {
     match r {
         AtInstall::TurnedOn => format!(
             "Judging: turned on. {DISCLOSURE}\nAIQ judges up to {daily_tasks} new tasks a day in the background.\n\
-             Undo: aiq config set judge off (or Settings > Rung model in AIQ home)\n"
+             Undo: aiq config set judge off (or Settings > Judging in AIQ home)\n"
         ),
         AtInstall::AlreadyOn => {
             format!("Judging is already on (up to {daily_tasks} tasks a day). Turn it off: aiq config set judge off\n")
@@ -1043,6 +1043,8 @@ own edits or diffs. Where: only to the tool that already saw the task, through y
   Copilot tasks     -> your Copilot CLI (no tools, none of your plugins or MCP servers; it runs in AIQ's
                       own folder, which AIQ deletes after each call unless you keep them:
                       aiq config set judge-copilot-sessions keep)
+When AIQ can't tell what kind of task you just started, it sends that task's first prompt once, the same
+way, to a small model, so a tip can show when your turn ends (up to 20 a day; aiq config set kind-label off).
 Judge calls use your plan's usage (two calls per task). A work account's admin policies, logging and
 retention apply to them. AIQ never reads or stores your sign-in.";
 
@@ -1052,7 +1054,7 @@ fn now() -> Now {
     Now { utc_ms: utc, offset_min: offset }
 }
 
-fn providers(paths: &Paths, set: &Settings) -> (ClaudeCli, CopilotCli) {
+pub(crate) fn providers(paths: &Paths, set: &Settings) -> (ClaudeCli, CopilotCli) {
     (
         ClaudeCli { exe: find_exe("claude"), model: set.claude_model.clone(), scratch: std::env::temp_dir() },
         CopilotCli {
