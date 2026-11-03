@@ -425,6 +425,21 @@ async fn run_update(app: tauri::AppHandle, action: String) -> Result<Outcome, St
     blocking(move || {
         let t = Instant::now();
         let paths = Paths::from_env();
+        // "check_if_due": AIQ home asks on open and hourly while open. It starts a check only when one is due
+        // (update::home_check_due), so a new release shows on Home within the hour; otherwise it does nothing.
+        if action == "check_if_due" {
+            let now = aiq_core::sysclock::SystemClock.now().utc_ms;
+            let mode = update::stored_mode(&paths);
+            let due = update::home_check_due(now, &update::read_state(&paths), mode.as_deref());
+            if !update::supported(&paths) || !due {
+                return Outcome::from(Ok(()));
+            }
+            let r = update::start(&paths, Action::Check { apply: false }, None, false)
+                .map_err(|e| format!("Could not start: {e}."));
+            let result = if r.is_ok() { "started" } else { "refused" };
+            log(&paths, "run_update", t, &format!("action=check_if_due {result}"));
+            return Outcome::from(r);
+        }
         // "check": look for a newer release and download it without installing (the person asked, so it runs
         // even with updates off); AIQ home stays open and shows "ready to install" once the script is done.
         let check = action == "check";
