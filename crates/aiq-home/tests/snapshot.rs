@@ -93,6 +93,7 @@ fn tips_settings_and_data() {
     assert_eq!(s.home.tips_today, 1);
     assert_eq!(s.settings.daily_cap, 3);
     assert_eq!(s.settings.copilot_tip_stays, "next-prompt");
+    assert!(s.settings.copilot_tip_in_chat && s.settings.tip_popup && s.settings.tip_highlight, "all on by default");
     assert_eq!((s.data.events, s.data.prompts, s.data.turn_ends), (13, 11, 2));
     assert_eq!(s.data.items.len(), 13);
     let deleted: Vec<_> = s.data.items.iter().filter(|i| i.deleted).collect();

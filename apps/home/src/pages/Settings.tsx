@@ -12,6 +12,13 @@ const STAYS: { v: S["copilot_tip_stays"]; label: string; note?: string }[] = [
   { v: "until-opened", label: "Until you open it" },
 ];
 
+/** Where tips show (each a switch, default on). Words say what the person sees, not how. */
+const WHERE: { k: "copilot_tip_in_chat" | "tip_popup" | "tip_highlight"; label: string; note: string }[] = [
+  { k: "copilot_tip_in_chat", label: "Show Copilot CLI tips in the conversation", note: "As well as in the status line at the bottom." },
+  { k: "tip_popup", label: "Show a Windows pop-up when a tip appears in Claude Code or Copilot CLI", note: "Helps when you've switched to another window while the agent works. VS Code shows its own." },
+  { k: "tip_highlight", label: "Highlight tips in yellow", note: "The \u201cAIQ tip:\u201d label in terminals, and the AIQ item in the VS Code status bar." },
+];
+
 const NEXT: { v: S["next_rung_tips"]; label: string; note?: string }[] = [
   { v: "auto", label: "On, unless AIQ's guesses are often wrong", note: "Default" },
   { v: "on", label: "Always on" },
@@ -155,6 +162,30 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
           ))}
           <span className="meta">Every tip stays in Habits and tips.</span>
         </fieldset>
+        <div className="group" role="group" aria-labelledby="where">
+          <span id="where">Where tips show</span>
+          {WHERE.map((w) => (
+            <div key={w.k}>
+              <div className="row" style={{ justifyContent: "space-between" }}>
+                <span id={`w-${w.k}`}>{w.label}</span>
+                <button
+                  className="switch"
+                  role="switch"
+                  aria-checked={st[w.k]}
+                  aria-labelledby={`w-${w.k}`}
+                  aria-describedby={`wn-${w.k}`}
+                  disabled={down}
+                  onClick={() =>
+                    st[w.k] ? change(w.k, "off", `${w.label}: off.`) : change(w.k, "on", `${w.label}: on.`)
+                  }
+                />
+              </div>
+              <span className="meta" id={`wn-${w.k}`}>
+                {w.note}
+              </span>
+            </div>
+          ))}
+        </div>
         <fieldset className="group" style={{ border: 0, padding: 0, margin: 0 }} disabled={down}>
           <legend style={{ padding: 0, marginBottom: "var(--s2)" }}>Next-step tips, for the kinds of task you repeat</legend>
           {NEXT.map((n) => (

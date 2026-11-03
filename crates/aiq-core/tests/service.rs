@@ -141,6 +141,13 @@ impl H {
         let e = ev_on("copilot-cli", &id, session, self.clock.now().utc_ms, body);
         self.svc().ingest(&e, None);
     }
+    /// Copilot CLI agentStop as the hook now sends it: take the card for the conversation line.
+    fn cp_take(&mut self, session: &str) -> Option<aiq_contracts::card::CardV1> {
+        let id = self.id();
+        let body = EventBody::Stop(StopPayload { stop_hook_active: false, prompt_id: None });
+        let e = ev_on("copilot-cli", &id, session, self.clock.now().utc_ms, body);
+        self.svc().take_card(&e, None, true)
+    }
     fn cp_run(&mut self, session: &str) {
         for t in [BASE, R1, R2, R3] {
             self.cp_send(session, t);
@@ -993,4 +1000,84 @@ fn aiq_check_folder_sessions_record_nothing_until_included() {
     assert!(h.svc().include_folder(check).unwrap());
     send_in(&mut h, "probe2", "now counted", check);
     assert_eq!(h.prompts(), 2, "included: recorded");
+}
+
+fn record_popups(h: &mut H) -> Arc<std::sync::Mutex<Vec<String>>> {
+    let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let s = seen.clone();
+    h.svc().set_popup(Box::new(move |c| s.lock().unwrap().push(c.card_id.clone())));
+    seen
+}
+
+#[test]
+fn copilot_cli_stop_takes_the_card_for_the_conversation_and_the_status_line_keeps_it() {
+    let mut h = H::new();
+    h.cp_run("c");
+    let card = h.cp_take("c").expect("default on: the card goes into the conversation");
+    assert_eq!(full(h.tip("c")).card_id, card.card_id, "the status line shows the same delivered tip");
+    assert_eq!(h.decisions(), vec![d("shown", "ok", 1)], "one delivery, not two");
+}
+
+#[test]
+fn copilot_tip_in_chat_off_leaves_delivery_to_the_status_line() {
+    let mut h = H::new();
+    h.svc().set("copilot_tip_in_chat", "off").unwrap();
+    assert!(h.svc().set("copilot_tip_in_chat", "yes").is_err());
+    h.cp_run("c");
+    assert_eq!(h.cp_take("c"), None);
+    assert!(full(h.tip("c")).noticed.contains("reworded"));
+}
+
+#[test]
+fn popup_shows_once_per_terminal_delivery_and_obeys_its_switch() {
+    let mut h = H::new();
+    let seen = record_popups(&mut h);
+    h.cp_run("c");
+    let card = h.cp_take("c").unwrap();
+    full(h.tip("c")); // a status-line refresh of the same tip is not a second pop-up
+    assert_eq!(*seen.lock().unwrap(), vec![card.card_id]);
+
+    let mut h = H::new();
+    let seen = record_popups(&mut h);
+    h.svc().set("tip_popup", "off").unwrap();
+    h.cp_run("c");
+    assert!(h.cp_take("c").is_some());
+    assert!(seen.lock().unwrap().is_empty(), "off: no pop-up");
+}
+
+#[test]
+fn vscode_delivery_never_pops_up() {
+    let mut h = H::new();
+    let seen = record_popups(&mut h);
+    for (i, t) in [BASE, R1, R2, R3].iter().enumerate() {
+        h.clock.advance(MIN);
+        let body = EventBody::Prompt(PromptPayload {
+            text: Some((*t).into()),
+            chars: t.len() as u64,
+            prompt_id: None,
+            truncated: false,
+        });
+        let e = ev_on("vscode", &format!("v{i}"), "v", h.clock.now().utc_ms, body);
+        h.svc().ingest(&e, None);
+    }
+    let e = ev_on(
+        "vscode",
+        "vs",
+        "v",
+        h.clock.now().utc_ms,
+        EventBody::Stop(StopPayload { stop_hook_active: false, prompt_id: None }),
+    );
+    h.svc().ingest(&e, None);
+    assert!(h.svc().take_card_any("vscode").is_some(), "VS Code got its card");
+    assert!(seen.lock().unwrap().is_empty(), "VS Code shows its own notification");
+}
+
+#[test]
+fn switch_settings_default_on() {
+    let mut h = H::new();
+    for k in aiq_core::service::SWITCH_SETTINGS {
+        assert!(h.svc().switch_on(k), "{k}");
+        h.svc().set(k, "off").unwrap();
+        assert!(!h.svc().switch_on(k), "{k}");
+    }
 }

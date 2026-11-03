@@ -68,6 +68,9 @@
   "settings": {
     "daily_cap": 5,
     "copilot_tip_stays": "next-prompt",
+    "copilot_tip_in_chat": true,
+    "tip_popup": true,
+    "tip_highlight": true,
     "judge": "off",
     "judge_daily_tasks": 50,
     "next_rung_tips": "auto",
