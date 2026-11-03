@@ -553,6 +553,11 @@ pub struct Split {
     pub needs: u32,
     /// Uncertain judgments left out, counted beside.
     pub uncertain: u32,
+    /// Not finished, and the judge sees a next step at least one rung up (potential > current): a subset of
+    /// could + needs, so the move people can make now shows even when no kind reaches Delegated.
+    pub up: u32,
+    /// The rung those tasks' next steps reach most often (ties: the lower rung). None when `up` is 0.
+    pub up_to: Option<u8>,
 }
 
 /// Finished under the interim rule (Imran 2026-11-02, Q-A): judged Delegated or higher and no re-prompt that
@@ -570,12 +575,17 @@ pub fn split(tasks: &[JudgedTask], rows: &[TypeRow], from_ms: i64, to_ms: i64) -
         .map(|r| (r.job.as_str(), r.task_type.as_str()))
         .collect();
     let mut s = Split::default();
+    let mut to = [0u32; 6];
     for t in tasks.iter().filter(|t| t.first_ms >= from_ms && t.first_ms < to_ms) {
         if t.uncertain() {
             s.uncertain += 1;
             continue;
         }
         s.tasks += 1;
+        if !finished(t) && t.potential > t.current {
+            s.up += 1;
+            to[usize::from(t.potential.min(5))] += 1;
+        }
         if finished(t) {
             s.finished += 1;
         } else if t.kind().is_some_and(|k| could_kinds.contains(&k)) {
@@ -584,6 +594,8 @@ pub fn split(tasks: &[JudgedTask], rows: &[TypeRow], from_ms: i64, to_ms: i64) -
             s.needs += 1;
         }
     }
+    let most = to.iter().copied().max().unwrap_or(0);
+    s.up_to = (most > 0).then(|| to.iter().position(|&n| n == most).unwrap_or(0) as u8);
     s
 }
 
@@ -1077,6 +1089,31 @@ mod tests {
         assert_eq!(s.could, 2, "the corrected and the j1 tests task: tests coaches toward Orchestrated");
         assert_eq!(s.needs, 2, "a NULL type is Needs you");
         assert_eq!(s.finished + s.could + s.needs, s.tasks);
+        assert!(s.up <= s.could + s.needs, "up is a subset of the not-finished tasks");
+    }
+
+    #[test]
+    fn split_counts_tasks_one_step_from_a_higher_rung() {
+        let m = moves();
+        let p = params();
+        let mut ts = vec![
+            task("a", 1, "tests", 1, "judged", true, "{}", Some(0)),
+            task("b", 1, "tests", 1, "judged", true, "{}", Some(0)),
+            task("c", 1, "tests", 2, "judged", true, "{}", Some(0)),
+            task("r", 1, "tests", 1, "right_rung", false, "{}", Some(0)),
+            task("u", 1, "tests", 1, "uncertain", true, "{}", Some(0)),
+        ];
+        ts[0].potential = 2;
+        ts[1].potential = 2;
+        ts[2].potential = 3;
+        ts[3].potential = 1;
+        ts[4].potential = 2;
+        let rows = type_rows(&ts, &m, &[], NOW, &p);
+        let s = split(&ts, &rows, NOW - 30 * DAY_MS, NOW + 1);
+        assert_eq!(s.up, 3, "uncertain and right-rung tasks don't count");
+        assert_eq!(s.up_to, Some(2), "two of three reach Directed");
+        let none = split(&ts[3..4], &rows, NOW - 30 * DAY_MS, NOW + 1);
+        assert_eq!((none.up, none.up_to), (0, None));
     }
 
     #[test]

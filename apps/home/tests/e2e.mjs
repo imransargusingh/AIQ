@@ -553,6 +553,7 @@ await test("coaching Home: finished and could be, the rule, uncertain left out, 
   assert.equal(await page.getByRole("img", { name: "Agents finished 33%, could be 67%" }).count(), 1);
   assert.match(t, /Of 15 judged tasks: 5 finished by agents, 5 could be, 5 need you\. 1 task AIQ isn't sure about is left out\./);
   assert.match(t, /"Could be" adds the tasks of kinds whose next step would let agents finish them\./);
+  assert.match(t, /47% could move up a rung, most often to Delegated \(3\)\./);
   assert.match(t, /A task counts as finished when it was judged Delegated or higher and you sent no re-prompt correcting the agent\./);
   assert.match(t, /Judged by your Copilot CLI/);
   const rows = page.getByRole("list", { name: "Kinds of task with a next step" }).getByRole("listitem");
@@ -794,12 +795,13 @@ await test("auto-update: Home's one line, Install now and Go back, the Settings 
   await dev.context().close();
 });
 
-await test("Home drops 'could be' when no kind of task is one step from agents finishing it", async () => {
-  const page = await open("coaching", { edit: (s) => { s.coaching.split = { ...s.coaching.split, finished: 1, could: 0, needs: 14 }; } });
+await test("Home drops 'could be' when no kind of task is one step from agents finishing it, and says how many could move up a rung", async () => {
+  const page = await open("coaching", { edit: (s) => { s.coaching.split = { ...s.coaching.split, finished: 1, could: 0, needs: 14, up: 13, up_to: 2 }; } });
   const t = await page.locator("main").innerText();
   assert.ok(!t.includes("could be"), "no 'could be' figure");
   assert.match(t, /Of 15 judged tasks: 1 finished by agents, 14 need you\./);
   assert.match(t, /No kind of task is one step from agents finishing it yet\./);
+  assert.match(t, /87% could move up a rung, most often to Directed \(2\)\./);
   assert.equal(await page.getByRole("img", { name: "Agents finished 7%" }).count(), 1);
   await page.context().close();
 });
