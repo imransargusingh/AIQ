@@ -311,7 +311,8 @@ pub const HOOK_BUDGET_MS: f64 = 100.0;
 
 /// Unix seconds of the last time the exes changed, from one upgrade log. Two writers, two line shapes and
 /// two places (`<home>\upgrade-log.txt` and `<home>\bin\upgrade-log.txt`; `status` reads both):
-/// `upgrade.ps1` writes `yyyy-mm-dd hh:mm:ssZ Upgraded AIQ…` / `… Rolled back to AIQ…` (lines where nothing
+/// `upgrade.ps1` writes `yyyy-mm-dd hh:mm:ssZ Upgraded AIQ…` / `… Rolled back to AIQ…`, `install.ps1` writes
+/// `… Installed AIQ…` (lines where nothing
 /// changed are skipped); the laptop's dev swapper writes `<RFC 3339 with offset> swapped aiq.exe (<n> bytes)`
 /// (measured 2026-11-02: `2026-11-02T14:00:57.7222903-08:00 swapped aiq.exe (5920768 bytes)`).
 /// assume: every exe change goes through one of the two. If false: the budget line says no upgrade is
@@ -320,7 +321,7 @@ pub fn last_upgrade(log: &str) -> Option<u64> {
     log.lines()
         .filter_map(|l| {
             let m = l.get(21..).unwrap_or("");
-            if m.starts_with("Upgraded AIQ") || m.starts_with("Rolled back to AIQ") {
+            if ["Upgraded AIQ", "Rolled back to AIQ", "Installed AIQ"].iter().any(|p| m.starts_with(p)) {
                 let t = chrono::NaiveDateTime::parse_from_str(l.get(..19)?, "%Y-%m-%d %H:%M:%S").ok()?;
                 return Some(t.and_utc().timestamp());
             }
@@ -844,6 +845,10 @@ mod tests {
              2026-11-02T14:30:00-08:00 swapped aiq-home.exe (100 bytes)\n"
         );
         assert_eq!(last_upgrade(&dev), Some(1_793_656_857)); // 2026-11-02 22:00:57Z
+        // install.ps1 (a release install or reinstall) also changes the exes: measured 2026-11-03, the
+        // laptop's budget window kept counting from an older dev swap after a 04:09Z install.
+        let installed = format!("{dev}2026-11-03 04:09:00Z Installed AIQ 0.1.0 (install.ps1).\n");
+        assert_eq!(last_upgrade(&installed), Some(1_793_678_940)); // 2026-11-03 04:09:00Z
     }
 
     #[test]

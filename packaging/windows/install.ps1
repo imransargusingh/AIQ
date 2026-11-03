@@ -46,6 +46,9 @@ foreach ($exe in 'aiq.exe', 'aiq-home.exe') {
     Copy-Item -Force (Join-Path $src $exe) $to
     Write-Host "Copied: $to"
 }
+# The hook budget in `aiq status` counts from the last time the exes changed (same line shape as upgrade.ps1).
+$ver = try { ((& (Join-Path $bin 'aiq.exe') version) -replace '^aiq\s+', '').Trim() } catch { 'unknown' }
+Add-Content -Path (Join-Path $home_ 'upgrade-log.txt') -Value ("{0:u} Installed AIQ {1} (install.ps1)." -f (Get-Date).ToUniversalTime(), $ver)
 $up = Join-Path $src 'upgrade.ps1'
 if (Test-Path $up) {
     Copy-Item -Force $up (Join-Path $bin 'upgrade.ps1')

@@ -95,6 +95,7 @@ jobs:
           $bin = Join-Path $env:USERPROFILE '.aiq\bin'
           foreach ($f in 'aiq.exe', 'aiq-home.exe') { if (-not (Test-Path (Join-Path $bin $f))) { Write-Error "missing $f"; exit 1 } }
           if (-not ([Environment]::GetEnvironmentVariable('Path', 'User') -split ';' -contains $bin)) { Write-Error 'user PATH not set'; exit 1 }
+          if (-not (Select-String -Quiet -Path (Join-Path $env:USERPROFILE '.aiq\upgrade-log.txt') -Pattern 'Z Installed AIQ ')) { Write-Error 'install wrote no upgrade-log line'; exit 1 }
           if (-not (Test-Path (Join-Path ([Environment]::GetFolderPath('Programs')) 'AIQ.lnk'))) { Write-Error 'no shortcut'; exit 1 }
           if (-not (Test-Path (Join-Path $env:USERPROFILE '.copilot\hooks\aiq.json'))) { Write-Error 'Copilot not connected'; exit 1 }
           & (Join-Path $bin 'aiq.exe') version
