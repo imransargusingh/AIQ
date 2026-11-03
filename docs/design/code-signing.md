@@ -2,7 +2,7 @@
 id: design-code-signing
 title: "Design: code-signing the Windows build"
 type: design
-status: proposed
+status: deferred
 owner: "Imran"
 phase: "alpha"
 tags: [design, alpha, release, signing, smartscreen, install, auto-update, security]
@@ -11,11 +11,9 @@ links:
   - { to: design-auto-update, rel: depends-on }
 review-by: 2027-05-02
 summary: >-
-  aiq.exe and aiq-home.exe ship unsigned, so SmartScreen warns and managed laptops may block them.
-  Recommendation: start Azure Artifact Signing (about $9.99 a month) now, because identity checks take
-  1 to 20 business days, and do not hold the alpha for it. Sign in release.yml before the zip and
-  checksum; the checksum, auto-update and install.ps1 keep working unchanged. Every step that needs
-  money, an account or an ID is Imran's.
+  DEFERRED (Imran, 2026-11-03): AIQ is an internal tool, so no commercial signing for now. Revisit only
+  if the G3 install on a managed laptop shows the unsigned files blocked rather than warned. The options
+  below (Azure Artifact Signing first) stay as the record of what to do then.
 ---
 
 # Design: code-signing the Windows build
@@ -24,15 +22,24 @@ Started without waiting, under Imran's standing rule: it is cloud-only, and it b
 no account. The alpha welcome note (PR #81) tells testers that `aiq.exe` and `aiq-home.exe` are not
 signed. Most alpha testers use managed work laptops, so this is a real install risk.
 
-## Decision for Imran
+## Decision (2026-11-03): deferred
 
-**Recommendation: Azure Artifact Signing (formerly Trusted Signing), Basic tier. Start it now. Do not
-hold the alpha for it.**
+Imran: "why do we need to sign the build? This is an internal tool." So: **no signing for now.** Nothing is
+bought and no account is made. The alpha ships unsigned and the welcome note keeps its SmartScreen
+click-through text.
+
+**Revisit trigger:** the G3 install on a managed laptop shows the unsigned exes or `install.ps1`
+**blocked** (app-control rule, Group Policy script policy, Smart App Control), not just warned. Then the
+recommendation below is the starting point, and the US/Canada and legal-name question goes back to Imran.
+
+## Recommendation if the trigger fires
+
+**Recommendation: Azure Artifact Signing (formerly Trusted Signing), Basic tier, started when the trigger fires.**
 
 - It costs about **$9.99 a month** (about $120 a year) and needs no USB token. It signs from GitHub
   Actions. *Source: Microsoft Learn "Code signing options", updated 2026-08-29.*
 - The slow part is the identity check: **1 to 20 business days**. *Source: Artifact Signing quickstart.*
-  Starting now means signing can land around the second alpha release.
+  Signing would land 1 to 4 weeks after the trigger fires.
 - Signing does **not** remove the SmartScreen warning on day one. Reputation builds per certificate
   over downloads (EV lost its instant pass in 2024). What signing does do: the warning names a
   publisher, the reputation carries over from release to release, and company rules that allow

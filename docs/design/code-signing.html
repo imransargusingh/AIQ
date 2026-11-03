@@ -24,12 +24,15 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 @media (max-width:640px) { main { width:100%; margin:0; padding:24px 18px; border:0; border-radius:0; } }
 </style></head><body><main><div class="source">Rendered from code-signing.md</div><h1>Design: code-signing the Windows build</h1>
 <p>Started without waiting, under Imran&#x27;s standing rule: it is cloud-only, and it buys nothing and creates no account. The alpha welcome note (PR #81) tells testers that <code>aiq.exe</code> and <code>aiq-home.exe</code> are not signed. Most alpha testers use managed work laptops, so this is a real install risk.</p>
-<h2>Decision for Imran</h2>
-<p><strong>Recommendation: Azure Artifact Signing (formerly Trusted Signing), Basic tier. Start it now. Do not hold the alpha for it.</strong></p>
+<h2>Decision (2026-11-03): deferred</h2>
+<p>Imran: &quot;why do we need to sign the build? This is an internal tool.&quot; So: <strong>no signing for now.</strong> Nothing is bought and no account is made. The alpha ships unsigned and the welcome note keeps its SmartScreen click-through text.</p>
+<p><strong>Revisit trigger:</strong> the G3 install on a managed laptop shows the unsigned exes or <code>install.ps1</code> <strong>blocked</strong> (app-control rule, Group Policy script policy, Smart App Control), not just warned. Then the recommendation below is the starting point, and the US/Canada and legal-name question goes back to Imran.</p>
+<h2>Recommendation if the trigger fires</h2>
+<p><strong>Recommendation: Azure Artifact Signing (formerly Trusted Signing), Basic tier, started when the trigger fires.</strong></p>
 <ul><li>It costs about <strong>$9.99 a month</strong> (about $120 a year) and needs no USB token. It signs from GitHub</li></ul>
 <p>Actions. <em>Source: Microsoft Learn &quot;Code signing options&quot;, updated 2026-08-29.</em></p>
 <ul><li>The slow part is the identity check: <strong>1 to 20 business days</strong>. <em>Source: Artifact Signing quickstart.</em></li></ul>
-<p>Starting now means signing can land around the second alpha release.</p>
+<p>Signing would land 1 to 4 weeks after the trigger fires.</p>
 <ul><li>Signing does <strong>not</strong> remove the SmartScreen warning on day one. Reputation builds per certificate</li></ul>
 <p>over downloads (EV lost its instant pass in 2024). What signing does do: the warning names a publisher, the reputation carries over from release to release, and company rules that allow &quot;signed by a known publisher&quot; can let it through. <em>Source: Microsoft Learn; Eric Lawrence, &quot;Best practices for SmartScreen AppRep&quot; (2024-11-15).</em></p>
 <ul><li>Meanwhile, keep the welcome note&#x27;s click-through text. Gate G3 (a run on a managed laptop) tells us</li></ul>
