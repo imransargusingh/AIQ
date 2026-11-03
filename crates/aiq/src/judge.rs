@@ -466,7 +466,8 @@ fn current_version(j: &JudgmentRow) -> bool {
         || (rung::RUBRIC_VERSIONS_KEPT.contains(&j.rubric_version.as_str())
             && !rung::rubric_changes(&j.facts, aiq_contracts::judge::parse_read(&j.read).reprompts));
     let fact_set = j.fact_set_version == rung::FACT_SET_VERSION
-        || (rung::FACT_SET_VERSIONS_KEPT.contains(&j.fact_set_version.as_str()) && !rung::fact_set_may_change(&j.facts));
+        || (rung::FACT_SET_VERSIONS_KEPT.contains(&j.fact_set_version.as_str())
+            && !rung::fact_set_may_change(&j.facts));
     fact_set
         && rubric
         && (j.judge_version == rung::JUDGE_VERSION
@@ -478,14 +479,15 @@ fn current_version(j: &JudgmentRow) -> bool {
 /// envelope). None when a judge call is needed.
 pub fn restamp(j: &JudgmentRow, log: &rung::LogFacts) -> Option<JudgmentRow> {
     let fresh = JudgmentRow { fact_set_version: rung::FACT_SET_VERSION.into(), ..j.clone() };
-    if current_version(j) || !rung::FACT_SET_VERSIONS_KEPT.contains(&j.fact_set_version.as_str()) || !current_version(&fresh) {
+    if current_version(j)
+        || !rung::FACT_SET_VERSIONS_KEPT.contains(&j.fact_set_version.as_str())
+        || !current_version(&fresh)
+    {
         return None;
     }
     let stored = aiq_contracts::judge::parse_stored_facts(&j.facts).remove("F3").and_then(|f| f.checker);
-    (stored.as_deref() == log.checks_by.map(rung::Checker::as_str)).then(|| JudgmentRow {
-        judgment_id: uuid::Uuid::now_v7().to_string(),
-        ..fresh
-    })
+    (stored.as_deref() == log.checks_by.map(rung::Checker::as_str))
+        .then(|| JudgmentRow { judgment_id: uuid::Uuid::now_v7().to_string(), ..fresh })
 }
 
 /// Tasks to judge now, best first: closed, not judged at the current versions, not waiting out a retry,

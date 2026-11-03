@@ -176,9 +176,30 @@ const EDIT_TOOLS: [&str; 10] = [
 ];
 /// Programs that are a check by themselves (after wrappers such as `npx` or `python -m`).
 const CHECK_PROGRAMS: [&str; 24] = [
-    "pytest", "jest", "vitest", "mocha", "tsc", "eslint", "ruff", "mypy", "pyright", "unittest", "tox", "rspec",
-    "phpunit", "flake8", "pylint", "shellcheck", "markdownlint", "markdownlint-cli2", "lychee", "golangci-lint",
-    "stylelint", "yamllint", "actionlint", "hadolint",
+    "pytest",
+    "jest",
+    "vitest",
+    "mocha",
+    "tsc",
+    "eslint",
+    "ruff",
+    "mypy",
+    "pyright",
+    "unittest",
+    "tox",
+    "rspec",
+    "phpunit",
+    "flake8",
+    "pylint",
+    "shellcheck",
+    "markdownlint",
+    "markdownlint-cli2",
+    "lychee",
+    "golangci-lint",
+    "stylelint",
+    "yamllint",
+    "actionlint",
+    "hadolint",
 ];
 /// Interpreters whose first non-flag argument is the script that runs (`python -I scripts/check.py`).
 const INTERPRETERS: [&str; 9] = ["python", "python3", "py", "bash", "sh", "zsh", "node", "pwsh", "powershell"];
