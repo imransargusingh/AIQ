@@ -281,3 +281,4 @@ li+li>.kindrow{border-top:1px solid var(--hairline)}
 .splitbar{display:flex;height:12px;border-radius:var(--r-pill);overflow:hidden;background:var(--canvas-soft);border:1px solid var(--hairline)}
 .splitbar i{display:block}
 .starter{font:var(--t-mono);white-space:pre-wrap;background:var(--canvas-soft);border:1px solid var(--hairline);border-radius:var(--r-sm);padding:var(--s3) var(--s4);margin:0}
+.preview{max-height:320px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;margin:0;padding:var(--s3);background:var(--canvas-soft);border:1px solid var(--hairline);border-radius:var(--r-sm);font:var(--t-mono)}

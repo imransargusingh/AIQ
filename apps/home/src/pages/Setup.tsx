@@ -131,6 +131,9 @@ export function Setup(ctx: Ctx & { rerun: boolean; finish: (s: Snapshot) => void
                 <b>You control the data</b>
                 <span className="mute">Pause any time; delete one prompt, or everything.</span>
               </div>
+              <p className="meta">
+                <button className="btnlink" onClick={() => void api.openPrivacy()}>Read the privacy page</button> (opens in your browser)
+              </p>
             </div>
             {nav()}
           </>
@@ -164,7 +167,7 @@ export function Setup(ctx: Ctx & { rerun: boolean; finish: (s: Snapshot) => void
                           {connected.includes(t.tool) && (
                             <>
                               {" "}
-                              To undo, run <code>aiq uninstall {t.tool}</code>.
+                              To undo, use Disconnect in Settings.
                             </>
                           )}
                         </>
