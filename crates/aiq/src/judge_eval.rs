@@ -97,7 +97,7 @@ pub fn turns(steps: &[Value]) -> Vec<Turn> {
 /// The judge's user message for a case, exactly as `aiq judge` builds it.
 pub fn envelope(c: &Case, fence: &str) -> String {
     let t = turns(&c.steps);
-    let log = rung::log_facts(&t, true);
+    let log = rung::log_facts(&t);
     rung::envelope(&c.tool, &t, &log, fence)
 }
 
@@ -203,7 +203,7 @@ fn all_same<T: PartialEq>(v: &[T]) -> Option<bool> {
 pub fn score_case(c: &Case, answers: &[Value]) -> CaseResult {
     let parsed: Vec<Response> = answers.iter().filter_map(|v| parse_response(v.clone()).ok()).collect();
     let t = turns(&c.steps);
-    let log = rung::log_facts(&t, true);
+    let log = rung::log_facts(&t);
     let placed = (!parsed.is_empty()).then(|| {
         let (_, pl) = rung::place(&parsed[..parsed.len().min(PLACED_RUNS)], &log, 0);
         let job = if pl.job == "unclassified" { "other".to_owned() } else { pl.job.clone() };
