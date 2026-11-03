@@ -449,8 +449,22 @@ async fn run_update(app: tauri::AppHandle, action: String) -> Result<Outcome, St
     .await
 }
 
+/// A second launch of AIQ home (a shortcut, an upgrade relaunch, a script) shows the window already open and
+/// exits, so the person never has two AIQ home windows. The plugin must be the first one registered.
+fn show_open_window(app: &tauri::AppHandle, cwd: &str) {
+    use tauri::Manager;
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.unminimize();
+        let _ = w.show();
+        let _ = w.set_focus();
+    }
+    // home.log keeps the second launch's working folder: the only trace of who started it.
+    log(&Paths::from_env(), "second_launch", Instant::now(), &format!("focused the open window cwd={cwd}"));
+}
+
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, cwd| show_open_window(app, &cwd)))
         .invoke_handler(tauri::generate_handler![
             snapshot,
             pause,
@@ -510,6 +524,17 @@ mod tests {
             );
         }
         assert_eq!(perms.len(), handler.len(), "capability file allows a command that doesn't exist");
+    }
+
+    /// The single-instance guard is registered before anything else (the plugin's own rule), so a second
+    /// launch exits before it opens a window. CI's Windows job also launches the exe twice and counts processes.
+    #[test]
+    fn single_instance_guard_is_the_first_plugin() {
+        let src = include_str!("main.rs");
+        let main = &src[src.find("fn main() {").unwrap()..];
+        let first = main.find(".plugin(").expect("no plugin registered");
+        assert!(main[first..].starts_with(".plugin(tauri_plugin_single_instance::init("));
+        assert!(first < main.find(".invoke_handler(").unwrap());
     }
 
     #[test]

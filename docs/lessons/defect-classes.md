@@ -232,3 +232,19 @@ summary: >-
 - **Control:** the writer loop drains a non-empty spool before any command; test
   `e2e_spooled_frame_goes_in_at_the_next_command_not_the_idle_tick` (red without the fix). Rule: work that
   must happen soon is triggered by the event that makes it needed, never only by an idle timeout.
+
+### DC-017 — A desktop app that any launcher can open twice
+- **Signature:** 2026-11-03 02:11Z, two AIQ home windows open on the owner's laptop; he started neither the
+  second nor (knowingly) the first. Each launch of `aiq-home.exe` opened its own window, with its own reads
+  of the store and its own update button.
+- **Why it survives:** several launchers start AIQ home (install.ps1 first run, upgrade.ps1 `-Relaunch`
+  three times, the Start-menu shortcut, dev swap scripts) and each is right on its own. Nothing owned "is one
+  already open?", and a single tester rarely double-launches.
+- **Instances:** 2026-11-03, laptop, after the 21st dev build install (launcher of the second still being
+  traced on the laptop).
+- **Sweep:** `grep -rn "aiq-home.exe" packaging crates apps`: every launcher above goes through the exe, so one
+  guard in the exe covers them all.
+- **Control:** `tauri-plugin-single-instance`, registered first in `main()`: a second launch shows the open
+  window and exits, and the open window writes `second_launch cwd=...` to home.log. Test
+  `single_instance_guard_is_the_first_plugin`; CI's Windows job launches the exe twice and fails on two
+  processes. Rule: a per-user desktop app enforces one instance in the exe, never in each launcher.
