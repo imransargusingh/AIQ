@@ -1110,10 +1110,14 @@ pub fn project_names<'a>(
     renames: &[(String, String)],
 ) -> std::collections::BTreeMap<String, (String, bool)> {
     let keys: BTreeSet<&str> = keys.collect();
-    let parts = |k: &str| k.split(['\\', '/']).filter(|p| !p.is_empty()).map(str::to_owned).collect::<Vec<_>>();
-    let last = |k: &str| parts(k).last().cloned().unwrap_or_else(|| k.to_owned());
+    // Blank parts (a path ending in a separator or a space) are skipped, and a key with no named part shows
+    // itself, so a name is never blank (laptop 2026-11-03: one row of 7 tasks showed no name).
+    let parts = |k: &str| {
+        k.split(['\\', '/']).map(str::trim).filter(|p| !p.is_empty()).map(str::to_owned).collect::<Vec<_>>()
+    };
+    let last = |k: &str| parts(k).last().cloned().unwrap_or_else(|| k.trim().to_owned());
     let mut seen: std::collections::BTreeMap<String, u32> = Default::default();
-    for k in keys.iter().filter(|k| !k.is_empty()) {
+    for k in keys.iter().filter(|k| !k.trim().is_empty()) {
         *seen.entry(last(k).to_lowercase()).or_default() += 1;
     }
     let chosen: std::collections::BTreeMap<&str, &str> = renames
@@ -1125,7 +1129,7 @@ pub fn project_names<'a>(
         .map(|k| {
             let named = if let Some(v) = chosen.get(k) {
                 ((*v).to_owned(), true)
-            } else if k.is_empty() {
+            } else if k.trim().is_empty() {
                 (NO_FOLDER.to_owned(), false)
             } else if seen.get(&last(k).to_lowercase()).copied().unwrap_or(0) > 1 {
                 let p = parts(k);
@@ -1154,6 +1158,16 @@ mod project_tests {
         assert_eq!(got("/home/me/aiq"), "aiq");
         assert_eq!(got(""), NO_FOLDER);
         assert!(n.values().all(|(_, renamed)| !renamed));
+    }
+
+    #[test]
+    fn a_name_is_never_blank() {
+        let keys = [r"c:\repos\tool\ ", r"c:\", "/", " "];
+        let n = project_names(keys.iter().copied(), &[]);
+        assert_eq!(n[r"c:\repos\tool\ "].0, "tool");
+        assert_eq!(n[r"c:\"].0, "c:");
+        assert_eq!(n["/"].0, "/");
+        assert!(n.values().all(|(name, _)| !name.trim().is_empty()), "{n:?}");
     }
 
     #[test]
