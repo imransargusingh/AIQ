@@ -217,3 +217,18 @@ summary: >-
   test `a_hedged_yes_on_output_checked_counts_when_the_person_came_back_after_the_output`; the replay gate
   pins h02, h11, h20 placements. Rule: a guardrail's fact bar is tuned per fact from eval data, and a lower
   bar needs a log fact to corroborate it.
+
+### DC-016 — Background work scheduled only on idle, starved by steady traffic
+- **Signature:** `e2e_copilot_tip_in_chat_off_leaves_it_to_the_status_line` failed once on the Windows
+  runner: one prompt's 20 ms send missed, the hook spooled it, and the core drains the spool only when its
+  command channel stays idle for 30 s. The test polls `aiq status` every 10 ms, so the idle tick never fired
+  and the prompt never arrived within the 10 s wait.
+- **Why it survives:** the idle tick looks like "every 30 s", and on a quiet laptop it is. Only steady traffic
+  (a poller, a busy session, a test) shows it is "30 s after the last command". A spool is rare, so the gap
+  only shows on a slow shared runner.
+- **Instances:** 2026-11-03, Windows CI, found by the Copilot capture thread (passed on re-run).
+- **Sweep:** `grep -n "recv_timeout(TICK)" crates`: the writer loop is the only idle-scheduled work; its tick
+  also prunes and expires stale cards (harmless to delay; left on the tick).
+- **Control:** the writer loop drains a non-empty spool before any command; test
+  `e2e_spooled_frame_goes_in_at_the_next_command_not_the_idle_tick` (red without the fix). Rule: work that
+  must happen soon is triggered by the event that makes it needed, never only by an idle timeout.

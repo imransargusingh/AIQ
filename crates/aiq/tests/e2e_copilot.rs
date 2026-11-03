@@ -197,7 +197,16 @@ fn e2e_copilot_tip_in_chat_off_leaves_it_to_the_status_line() {
     e.reprompt_run("c1", 0);
     assert_eq!(e.agent_stop("c1"), "", "off: nothing in the conversation");
     e.wait_for("1 stop");
-    assert!(e.statusline(Some("c1")).starts_with("AIQ tip: you've reworded"), "the status line still shows it");
+    // Copilot refreshes its status line about once a second, and one refresh may miss the 80 ms budget on a
+    // loaded runner (Windows CI, 2026-11-03), so look as the status line does: a few refreshes.
+    let deadline = Instant::now() + Duration::from_secs(3);
+    let mut line = e.statusline(Some("c1"));
+    while line.is_empty() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(200));
+        line = e.statusline(Some("c1"));
+    }
+    let timings = std::fs::read_to_string(e.home().join("hook-timings.log")).unwrap_or_default();
+    assert!(line.starts_with("AIQ tip: you've reworded"), "the status line still shows it: {line:?}\n{timings}");
 }
 
 #[test]
