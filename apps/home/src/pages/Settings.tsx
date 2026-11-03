@@ -199,6 +199,29 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
         )}
       </section>
 
+      <section className="card" aria-labelledby="st7">
+        <h2 id="st7">What AIQ records</h2>
+        <div className="row" style={{ justifyContent: "space-between" }}>
+          <span id="midturn">Copilot messages you send while the agent is still working</span>
+          <button
+            className="switch"
+            role="switch"
+            aria-checked={st.copilot_mid_turn === "on"}
+            aria-labelledby="midturn"
+            disabled={down}
+            onClick={() =>
+              st.copilot_mid_turn === "on"
+                ? change("copilot_mid_turn", "off", "AIQ no longer records Copilot messages sent while the agent works.")
+                : change("copilot_mid_turn", "on", "AIQ records Copilot messages sent while the agent works.")
+            }
+          />
+        </div>
+        <span className="meta">
+          Copilot doesn't tell AIQ about these, so AIQ reads them from Copilot's own history file on this computer when the agent
+          stops. Nothing leaves your computer.
+        </span>
+      </section>
+
       <section className="card" aria-labelledby="st2">
         <h2 id="st2">Keyboard</h2>
         <div className="row" style={{ justifyContent: "space-between" }}>

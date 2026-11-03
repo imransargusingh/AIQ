@@ -364,6 +364,8 @@ pub struct Settings {
     /// auto (judge new tasks in the background) or off. "off" until `aiq install` connects a tool or the person first runs `aiq judge`.
     pub judge: String,
     pub judge_daily_tasks: u32,
+    /// on or off: read Copilot's own history file for messages sent while the agent works (no hook fires).
+    pub copilot_mid_turn: String,
     /// auto, on or off.
     pub next_rung_tips: String,
     /// Next-rung tips may show now (off by the setting, or by AIQ's self-check under auto).
@@ -468,6 +470,7 @@ fn empty(paths: &Paths, pack: &PackV1, now: Now) -> Snapshot {
             copilot_tip_stays: TipStays::NextPrompt.as_str(),
             judge: "off".into(),
             judge_daily_tasks: aiq_domain::rung::DEFAULT_DAILY_TASKS,
+            copilot_mid_turn: "on".into(),
             next_rung_tips: "auto".into(),
             next_rung_on: true,
             guess_checked: 0,
@@ -540,6 +543,9 @@ fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()>
         }
         if let Some(n) = store.setting("judge_daily_tasks").ok().flatten().and_then(|v| v.parse().ok()) {
             s.settings.judge_daily_tasks = n;
+        }
+        if let Some(v) = store.setting(aiq_core::service::SETTING_COPILOT_MID_TURN).ok().flatten() {
+            s.settings.copilot_mid_turn = v;
         }
     }
 

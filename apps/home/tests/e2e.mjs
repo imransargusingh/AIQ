@@ -191,6 +191,18 @@ await test("keyboard: G-letter navigation, P pause, Ctrl+K palette", async () =>
   await page.context().close();
 });
 
+await test("Settings: a switch for Copilot messages sent while the agent works, on by default", async () => {
+  const page = await open("full", { hash: "#settings" });
+  const sw = page.getByRole("switch", { name: "Copilot messages you send while the agent is still working" });
+  assert.equal(await sw.getAttribute("aria-checked"), "true");
+  assert.ok((await page.locator("main").innerText()).includes("Nothing leaves your computer."));
+  await sw.click();
+  await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent?.startsWith("AIQ no longer records"));
+  assert.equal(await sw.getAttribute("aria-checked"), "false");
+  assert.deepEqual(await axe(page), []);
+  await page.context().close();
+});
+
 await test("keyboard: single-key shortcuts can be turned off", async () => {
   const page = await open("full", { hash: "#settings" });
   await page.getByRole("switch", { name: /Single-key shortcuts/ }).click();

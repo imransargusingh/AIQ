@@ -26,6 +26,10 @@ pub const SETTING_PAUSED: &str = "paused";
 pub const SETTING_DAILY_CAP: &str = "daily_cap";
 pub const SETTING_COPILOT_TIP_STAYS: &str = "copilot_tip_stays";
 pub const MAX_DAILY_CAP: u32 = 50;
+/// `on` (default) or `off`: read Copilot's own session log at agentStop for messages typed while the agent was
+/// working, which fire no hook (`copilot_log`).
+pub const SETTING_COPILOT_MID_TURN: &str = "copilot_mid_turn";
+const MAX_LOG_OFFSETS: usize = 4096;
 
 pub struct Service<C: Clock> {
     store: Store,
@@ -44,6 +48,11 @@ pub struct Service<C: Clock> {
     coach: Option<coaching::Cache>,
     /// AIQ-COACH-GUESS-LOW is logged once per core run.
     guess_low_logged: bool,
+    /// Copilot's home, for its session logs. None (tests, unless set): mid-turn messages are not read.
+    copilot_home: Option<std::path::PathBuf>,
+    /// How far each live Copilot session's log has been read (bounded; a forgotten session is read again
+    /// from the start, and stable event ids make that store nothing twice).
+    log_offsets: std::collections::HashMap<String, u64>,
 }
 
 /// Rule RC per session: a settled answer, or how many reads found the head not yet written.
@@ -102,6 +111,8 @@ impl<C: Clock> Service<C> {
             rc_checked: Default::default(),
             coach: None,
             guess_low_logged: false,
+            copilot_home: None,
+            log_offsets: Default::default(),
         };
         s.rebuild()?;
         Ok(s)
@@ -122,6 +133,11 @@ impl<C: Clock> Service<C> {
         engine.prune(now);
         self.engine = engine;
         Ok(())
+    }
+
+    /// Where Copilot keeps its session logs (`tools::copilot_home`); the core process sets it at start.
+    pub fn set_copilot_home(&mut self, home: std::path::PathBuf) {
+        self.copilot_home = Some(home);
     }
 
     pub fn engine(&self) -> &Engine {
@@ -174,6 +190,10 @@ impl<C: Clock> Service<C> {
     /// Ingest one event. Never panics; store failures are counted and logged.
     pub fn ingest(&mut self, ev: &EventV1, trace_id: Option<&str>) {
         let _s = info_span!("core.ingest", trace_id = trace_id.unwrap_or(""), aiq.kind = ev.kind()).entered();
+        if matches!(ev.body, EventBody::Stop(_)) {
+            // Before the stop itself: those messages were typed during the turn it ends.
+            self.mid_turn_messages(ev, trace_id);
+        }
         if let Err(e) = self.ingest_inner(ev, trace_id) {
             self.fail(e);
         }
@@ -274,6 +294,71 @@ impl<C: Clock> Service<C> {
             self.next_rung(&ev.surface, &ev.surface_session_id, &ev.event_id, text, trace_id)?;
         }
         Ok(())
+    }
+
+    /// Copilot messages typed while the agent was working fire no hook; read them from the new part of the
+    /// session's own log and ingest each as a prompt. Off the hook's clock: the Copilot hook does not wait for
+    /// the core. Stable event ids and a same-text check keep a message the hook did send from counting twice.
+    fn mid_turn_messages(&mut self, ev: &EventV1, trace_id: Option<&str>) {
+        if !matches!(ev.surface.as_str(), "copilot-cli" | "vscode") {
+            return;
+        }
+        let Some(path) =
+            self.copilot_home.as_deref().and_then(|h| crate::copilot_log::session_log(h, &ev.surface_session_id))
+        else {
+            return;
+        };
+        if self.store.setting(SETTING_COPILOT_MID_TURN).ok().flatten().as_deref() == Some("off") {
+            return;
+        }
+        let key = format!("{}/{}", ev.surface, ev.surface_session_id);
+        let from = self.log_offsets.get(&key).copied().unwrap_or(0);
+        let started = std::time::Instant::now();
+        let (found, next) = match crate::copilot_log::steering_since(&path, from) {
+            Ok(r) => r,
+            Err(_) => {
+                self.counters.inc(codes::INGEST_LOG_READ);
+                return;
+            }
+        };
+        if self.log_offsets.len() >= MAX_LOG_OFFSETS {
+            self.log_offsets.clear();
+        }
+        self.log_offsets.insert(key, next);
+        let mut stored = 0;
+        for t in &found {
+            let clean = aiq_domain::secrets::redact(&t.text).0;
+            let text = cap(&clean, aiq_contracts::event::MAX_PROMPT_BYTES);
+            if self.store.prompt_text_seen(&ev.surface, &ev.surface_session_id, &text).unwrap_or(false) {
+                continue;
+            }
+            let mut p = ev.clone();
+            p.event_id = crate::copilot_log::event_id(&ev.surface, &ev.surface_session_id, t);
+            p.ts = t.ts_ms.map(format_rfc3339_ms).unwrap_or_else(|| ev.ts.clone());
+            p.body = EventBody::Prompt(aiq_contracts::event::PromptPayload {
+                chars: t.text.chars().count() as u64,
+                truncated: clean.len() > text.len(),
+                text: Some(text.clone()),
+                prompt_id: None,
+            });
+            if let Err(e) = self.ingest_inner(&p, trace_id) {
+                self.fail(e);
+                continue;
+            }
+            // Not stored when the session or folder is set aside (that drop logs its own line).
+            if self.store.prompt_text_seen(&ev.surface, &ev.surface_session_id, &text).unwrap_or(false) {
+                stored += 1;
+                self.counters.inc(codes::INGEST_MID_TURN);
+            }
+        }
+        info!(
+            trace_id = trace_id.unwrap_or(""),
+            found = found.len(),
+            stored,
+            bytes = next - from.min(next),
+            ms = started.elapsed().as_millis() as u64,
+            "copilot.mid_turn"
+        );
     }
 
     /// The coaching cache, rebuilt when the store's coaching facts changed or it is an hour old.
@@ -796,6 +881,10 @@ impl<C: Clock> Service<C> {
                 }
             },
             crate::update::SETTING_UPDATE => crate::update::validate_mode(value)?,
+            SETTING_COPILOT_MID_TURN => match value {
+                "on" | "off" => value.to_owned(),
+                _ => return Err("copilot-mid-turn must be on or off".into()),
+            },
             SETTING_DAILY_CAP => match value.parse::<u32>() {
                 Ok(n) if n <= MAX_DAILY_CAP => n.to_string(),
                 _ => return Err(format!("daily-cap must be a whole number from 0 to {MAX_DAILY_CAP}")),
@@ -967,4 +1056,13 @@ impl<C: Clock> Service<C> {
         let now = self.clock.now().utc_ms;
         self.engine.prune(now);
     }
+}
+
+/// At most `max` bytes, cut on a character boundary.
+fn cap(s: &str, max: usize) -> String {
+    let mut i = s.len().min(max);
+    while !s.is_char_boundary(i) {
+        i -= 1;
+    }
+    s[..i].to_owned()
 }

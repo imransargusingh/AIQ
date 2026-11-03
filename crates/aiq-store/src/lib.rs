@@ -728,6 +728,20 @@ impl Store {
             .map_err(err(codes::STORE_OPEN))
     }
 
+    /// Is this exact prompt text already stored for the session? (A message read from Copilot's log that the
+    /// hook also sent.)
+    pub fn prompt_text_seen(&self, surface: &str, session: &str, text: &str) -> Result<bool> {
+        self.conn
+            .query_row(
+                "SELECT EXISTS (SELECT 1 FROM event e JOIN content c ON c.event_id = e.event_id
+                                WHERE e.surface = ?1 AND e.surface_session_id = ?2 AND e.kind = 'prompt'
+                                AND c.text = ?3)",
+                params![surface, session, text],
+                |r| r.get(0),
+            )
+            .map_err(err(codes::STORE_OPEN))
+    }
+
     pub fn insert_signal(&self, s: &NewSignal<'_>, now_ms: i64) -> Result<()> {
         let ev = serde_json::to_string(s.evidence).expect("strings serialize");
         self.conn

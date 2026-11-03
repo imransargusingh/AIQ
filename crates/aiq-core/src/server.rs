@@ -127,8 +127,9 @@ pub fn run(paths: &Paths) -> Result<(), CoreError> {
     let started = (|| {
         let pack = BundledPack.load().map_err(|d| CoreError { code: codes::STORE_OPEN, detail: d })?;
         let store = Store::open(&paths.db()).map_err(|e| CoreError { code: e.code, detail: e.detail })?;
-        let svc = Service::new(store, pack, SystemClock, counters.clone())
+        let mut svc = Service::new(store, pack, SystemClock, counters.clone())
             .map_err(|e| CoreError { code: e.code, detail: e.detail })?;
+        svc.set_copilot_home(crate::tools::copilot_home());
         Ok::<_, CoreError>(svc)
     })();
     let mut svc = match started {

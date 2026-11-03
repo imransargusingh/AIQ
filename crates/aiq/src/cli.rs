@@ -590,11 +590,12 @@ pub fn config_set(name: &str, value: &str) -> ExitCode {
         "check-claude-model" => ("check_claude_model", format!("Accuracy check, Claude model: {value}.")),
         "check-copilot-model" => ("check_copilot_model", format!("Accuracy check, Copilot model: {value}.")),
         "update" => ("update", format!("Updates: {value}.")),
+        "copilot-mid-turn" => ("copilot_mid_turn", format!("Copilot messages sent while the agent works: {value}.")),
         _ => {
             println!(
                 "Unknown setting {name}. Settings: daily-cap, copilot-tip-stays, judge, judge-daily-tasks, \
                  judge-claude-model, judge-copilot-model, judge-copilot-sessions, next-rung-tips, check-claude-model, \
-                 check-copilot-model, update, keep-on.<job or job/kind>."
+                 check-copilot-model, update, copilot-mid-turn, keep-on.<job or job/kind>."
             );
             return ExitCode::from(2);
         }
