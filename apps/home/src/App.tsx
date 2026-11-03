@@ -208,7 +208,6 @@ export function App() {
               }}
             >
               <span>{p.label}</span>
-              {singleKeys && <span className="k" aria-hidden="true">G {p.key}</span>}
             </a>
           ))}
           <div className="foot">

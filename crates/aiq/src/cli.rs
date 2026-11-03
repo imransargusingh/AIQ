@@ -234,7 +234,7 @@ fn status_text(paths: &Paths) -> (String, Vec<String>) {
     // upgrade.ps1 logs in the AIQ home; the laptop's dev swapper logs next to the exes. Newest of both.
     let upgrade = [paths.data.join(UPGRADE_LOG), paths.data.join("bin").join(UPGRADE_LOG)]
         .iter()
-        .filter_map(|p| last_upgrade(&std::fs::read_to_string(p).ok()?))
+        .filter_map(|p| last_upgrade(&decode_log(&std::fs::read(p).ok()?)?))
         .max();
     out += &hook_budget_lines(&text, &aside, upgrade);
     let errs = hook_error_counts(&paths);
@@ -284,6 +284,28 @@ pub fn hook_phase_lines(text: &str, now: u64) -> String {
 
 /// The upgrade script's log (`packaging/windows/upgrade.ps1`), in the AIQ home: `<yyyy-mm-dd hh:mm:ssZ> <message>`.
 pub const UPGRADE_LOG: &str = "upgrade-log.txt";
+
+/// An upgrade log's text. Windows PowerShell 5.1's `Tee-Object`/`Out-File` write UTF-16 LE with a BOM (the
+/// laptop's bin\upgrade-log.txt, measured 2026-11-02: starts FF FE, half its bytes zero), which
+/// `read_to_string` rejects; UTF-16 BE and UTF-8 (with or without a BOM) are read too. None when it is
+/// none of these, so the budget line says no upgrade is recorded rather than guessing.
+pub fn decode_log(bytes: &[u8]) -> Option<String> {
+    let utf16 = |b: &[u8], le: bool| {
+        let units: Vec<u16> = b
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|c| if le { u16::from_le_bytes(*c) } else { u16::from_be_bytes(*c) })
+            .collect();
+        String::from_utf16(&units).ok()
+    };
+    match bytes {
+        [0xFF, 0xFE, rest @ ..] => utf16(rest, true),
+        [0xFE, 0xFF, rest @ ..] => utf16(rest, false),
+        [0xEF, 0xBB, 0xBF, rest @ ..] => String::from_utf8(rest.to_vec()).ok(),
+        _ => String::from_utf8(bytes.to_vec()).ok(),
+    }
+}
 /// The hook speed budget of record: AIQ's own part of each hook run, p95 (Imran, 2026-11-01; alpha gate G1).
 pub const HOOK_BUDGET_MS: f64 = 100.0;
 
@@ -781,6 +803,25 @@ mod tests {
         // Core not running: no folder list, so only the outcome rule applies; nothing left out says nothing.
         assert!(hook_time_lines(&text, now, &[]).contains("leave out 2 runs"));
         assert!(!hook_time_lines("Stop 200 no-card\n", now, &[]).contains("leave out"));
+    }
+
+    #[test]
+    fn upgrade_logs_are_read_in_the_encodings_powershell_writes() {
+        let line = "2026-11-02T15:19:56.9874094-08:00 swapped aiq.exe (5992960 bytes)\r\n";
+        // Windows PowerShell 5.1 Tee-Object -Append: UTF-16 LE with a BOM (the laptop's file, 2026-11-02).
+        let mut le = vec![0xFF, 0xFE];
+        le.extend(line.encode_utf16().flat_map(u16::to_le_bytes));
+        let mut be = vec![0xFE, 0xFF];
+        be.extend(line.encode_utf16().flat_map(u16::to_be_bytes));
+        let mut bom8 = vec![0xEF, 0xBB, 0xBF];
+        bom8.extend(line.as_bytes());
+        let want = last_upgrade(line);
+        assert!(want.is_some());
+        for bytes in [le, be, bom8, line.as_bytes().to_vec()] {
+            assert_eq!(decode_log(&bytes).as_deref().and_then(last_upgrade), want);
+        }
+        assert_eq!(decode_log(&[0xFF, 0xFE, 0x00, 0xD8]), None, "broken UTF-16: not recorded, never guessed");
+        assert_eq!(decode_log(&[0xC3]), None);
     }
 
     #[test]

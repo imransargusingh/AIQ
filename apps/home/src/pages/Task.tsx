@@ -138,7 +138,7 @@ export function Task(ctx: Ctx & { taskId: string }) {
           <span className="mute">
             {snap.settings.judge === "auto"
               ? "AIQ judges finished tasks in the background, through your own Claude Code or Copilot CLI."
-              : "Run aiq judge once to start; it shows what it sends first."}
+              : "Judging is off. Turn it on in Settings, under Judging."}
           </span>
         </div>
       )}

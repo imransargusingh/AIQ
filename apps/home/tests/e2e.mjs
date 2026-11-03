@@ -119,7 +119,7 @@ await test("Home shows judged rungs, progress toward the split, and only measure
   const page = await open("full");
   const t = await page.locator("main").innerText();
   assert.match(t, /Tasks agents finished\s+Not enough judged tasks yet/);
-  assert.match(t, /2 of 10 judged tasks needed to show what agents finished \(1 AIQ isn't sure about don't count\)/);
+  assert.match(t, /2 of 10 judged tasks needed to show what agents finished \(1 task AIQ isn't sure about doesn't count\)/);
   assert.match(t, /7 tasks in the last 30 days · 1 imported task/);
   assert.doesNotMatch(t, /\d+%/, "no percentages under 10 judged tasks");
   assert.match(t, /Your most common rung\s+Directed \(2\)\s+3 tasks judged in 30 days/);
@@ -148,6 +148,8 @@ await test("screen readers hear clean names: nav, rung rows, skip link", async (
   const nav = await page.getByRole("navigation", { name: "AIQ" }).ariaSnapshot();
   assert.match(nav, /link "Home"/, nav);
   assert.equal(await page.getByRole("link", { name: "Home", exact: true }).getAttribute("aria-keyshortcuts"), "G H");
+  // The G-letter shortcuts still work but the nav shows no hint text (Imran 2026-11-02: "Get rid of the hints").
+  assert.doesNotMatch(await page.locator("nav.side a").allInnerTexts().then((t) => t.join("|")), /\bG [A-Z]\b/);
   for (const name of ["Factory (5), 0 tasks", "Directed (2), 1 task"]) {
     assert.equal(await page.getByRole("button", { name, exact: true }).count(), 1, name);
   }
@@ -401,7 +403,7 @@ await test("setup: first run walks five steps with Back; Start only after I unde
   await page.waitForFunction(() => document.querySelector("main")?.innerText.includes("GitHub Copilot · connected just now"));
   let t = await page.locator("main").innerText();
   assert.match(t, /Claude Code · connected\n/);
-  assert.ok(t.includes("To undo, run aiq uninstall copilot."));
+  assert.ok(t.includes("To undo, use Disconnect in Settings."));
   assert.deepEqual(await page.getByRole("list", { name: "Files AIQ changed" }).locator("li").allInnerTexts(), ["C:\\Users\\you\\.copilot\\hooks\\aiq.json"]);
   assert.ok(!t.includes("aiq uninstall claude-code"), "only the tool connected just now shows the undo");
   assert.equal(await page.getByRole("button", { name: /^Connect/ }).count(), 0);
@@ -550,6 +552,7 @@ await test("coaching Home: finished and could be, the rule, uncertain left out, 
   assert.match(t, /Tasks agents finished\s+33%\s+could be 67%/);
   assert.equal(await page.getByRole("img", { name: "Agents finished 33%, could be 67%" }).count(), 1);
   assert.match(t, /Of 15 judged tasks: 5 finished by agents, 5 could be, 5 need you\. 1 task AIQ isn't sure about is left out\./);
+  assert.match(t, /"Could be" adds the tasks of kinds whose next step would let agents finish them\./);
   assert.match(t, /A task counts as finished when it was judged Delegated or higher and you sent no re-prompt correcting the agent\./);
   assert.match(t, /Judged by your Copilot CLI/);
   const rows = page.getByRole("list", { name: "Kinds of task with a next step" }).getByRole("listitem");
@@ -789,6 +792,41 @@ await test("auto-update: Home's one line, Install now and Go back, the Settings 
   assert.match(await dev.locator("main").innerText(), /wasn't installed from a release, so it doesn't update itself/);
   assert.equal(await dev.getByRole("radio", { name: "Tell me first" }).count(), 0);
   await dev.context().close();
+});
+
+await test("Home drops 'could be' when no kind of task is one step from agents finishing it", async () => {
+  const page = await open("coaching", { edit: (s) => { s.coaching.split = { ...s.coaching.split, finished: 1, could: 0, needs: 14 }; } });
+  const t = await page.locator("main").innerText();
+  assert.ok(!t.includes("could be"), "no 'could be' figure");
+  assert.match(t, /Of 15 judged tasks: 1 finished by agents, 14 need you\./);
+  assert.match(t, /No kind of task is one step from agents finishing it yet\./);
+  assert.equal(await page.getByRole("img", { name: "Agents finished 7%" }).count(), 1);
+  await page.context().close();
+});
+
+await test("no terminal needed: Include a set-aside folder, Disconnect a tool, see what judging sends, open the privacy page", async () => {
+  const home = await open("full");
+  await home.getByRole("button", { name: "Include pipeline" }).click();
+  await home.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "AIQ will watch sessions in pipeline again.");
+  const inc = await home.evaluate(() => window.__AIQ_FIXTURE__.calls.filter((c) => c.cmd === "include_folder").map((c) => c.args));
+  assert.deepEqual(inc, [{ folder: "c:\\users\\imran\\source\\repos\\pipeline" }]);
+  assert.ok(!(await home.locator("main").innerText()).includes("aiq include"));
+  await home.context().close();
+
+  const st = await open("full", { hash: "#settings" });
+  assert.ok(!(await st.locator("main").innerText()).includes("In a terminal"));
+  await st.getByRole("button", { name: "See what would be sent" }).click();
+  await st.waitForSelector("pre.preview");
+  assert.match(await st.locator("pre.preview").innerText(), /Nothing was sent/);
+  await st.getByRole("button", { name: "Disconnect Claude Code" }).click();
+  await st.waitForFunction(() => document.querySelector("[role=status]")?.textContent.startsWith("Disconnected Claude Code."));
+  assert.match(await st.getByRole("list", { name: "Files AIQ changed" }).innerText(), /settings\.json/);
+  assert.equal(await st.getByRole("button", { name: "Disconnect Claude Code" }).count(), 0);
+  await st.getByRole("button", { name: "Read the privacy page" }).click();
+  const cmds = await st.evaluate(() => window.__AIQ_FIXTURE__.calls.map((c) => c.cmd));
+  for (const c of ["judge_preview", "disconnect_tool", "open_privacy"]) assert.ok(cmds.includes(c), c);
+  assert.deepEqual(await axe(st), []);
+  await st.context().close();
 });
 
 await browser.close();

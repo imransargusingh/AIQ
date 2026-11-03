@@ -1,5 +1,5 @@
 //! AIQ home desktop shell (designs `docs/design/aiq-home-app.md`, `aiq-home-deferred-pages.md`, `auto-update.md`).
-//! Twelve commands, each a thin call (the list is checked against build.rs and the capability file by a test):
+//! Sixteen commands, each a thin call (the list is checked against build.rs and the capability file by a test):
 //! reads go to the `aiq-home` read model (read-only store), changes go through `aiq_core::control` to the
 //! core, the only writer. Each command's time and outcome is logged locally to `<data>/home.log`.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
@@ -244,21 +244,9 @@ async fn connect_tools() -> Result<Connected, String> {
     blocking(|| {
         let t = Instant::now();
         let paths = Paths::from_env();
-        let mut c = std::process::Command::new(aiq_exe());
-        c.args(["install", "--yes"]).stdin(std::process::Stdio::null());
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            c.creation_flags(0x0800_0000); // CREATE_NO_WINDOW: no console flashes up
-        }
-        let r = match c.output() {
-            Ok(o) => {
-                let changed = changed_lines(&String::from_utf8_lossy(&o.stdout));
-                let why = (!o.status.success())
-                    .then(|| String::from_utf8_lossy(&o.stderr).lines().last().unwrap_or("").to_string());
-                (changed, why)
-            }
-            Err(e) => (Vec::new(), Some(format!("Could not run aiq ({e})."))),
+        let r = match run_aiq(&["install", "--yes"]) {
+            Ok((ok, out, err)) => (changed_lines(&out), (!ok).then_some(err)),
+            Err(m) => (Vec::new(), Some(m)),
         };
         let (changed, why) = r;
         log(
@@ -273,6 +261,129 @@ async fn connect_tools() -> Result<Connected, String> {
                 .map(|m| format!("AIQ couldn't connect your tools. {m} Run aiq install in a terminal to see why.")),
             changed,
         }
+    })
+    .await
+}
+
+/// Run the `aiq` beside AIQ home with fixed arguments, no console window and no stdin: (succeeded, stdout,
+/// the last stderr line). AIQ home never edits another tool's files itself; the CLI does, with its backups.
+fn run_aiq(args: &[&str]) -> Result<(bool, String, String), String> {
+    let mut c = std::process::Command::new(aiq_exe());
+    c.args(args).stdin(std::process::Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        c.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    let o = c.output().map_err(|e| format!("Could not run aiq ({e})."))?;
+    let err = String::from_utf8_lossy(&o.stderr).lines().last().unwrap_or("").to_string();
+    Ok((o.status.success(), String::from_utf8_lossy(&o.stdout).into_owned(), err))
+}
+
+/// The tools Settings can disconnect: the same names `aiq uninstall` takes.
+fn disconnectable(tool: &str) -> bool {
+    matches!(tool, "claude-code" | "copilot")
+}
+
+/// Settings' Disconnect: runs `aiq uninstall <tool> --yes`, which restores the tool's settings from AIQ's
+/// backup and lists what it changed. Run setup again connects it back.
+#[tauri::command]
+async fn disconnect_tool(tool: String) -> Result<Connected, String> {
+    blocking(move || {
+        let t = Instant::now();
+        let paths = Paths::from_env();
+        if !disconnectable(&tool) {
+            return Connected {
+                ok: false,
+                message: Some("Not changed: AIQ doesn't know that tool.".into()),
+                changed: Vec::new(),
+            };
+        }
+        let r = run_aiq(&["uninstall", &tool, "--yes"]);
+        let c = match r {
+            Ok((true, out, _)) => Connected { ok: true, message: None, changed: changed_lines(&out) },
+            Ok((false, out, err)) => Connected {
+                ok: false,
+                message: Some(format!("AIQ couldn't disconnect it. {err}")),
+                changed: changed_lines(&out),
+            },
+            Err(m) => Connected { ok: false, message: Some(m), changed: Vec::new() },
+        };
+        log(&paths, "disconnect_tool", t, if c.ok { "ok" } else { "error" });
+        c
+    })
+    .await
+}
+
+/// "Include" on Home's Set aside list: AIQ watches that folder's sessions again.
+#[tauri::command]
+async fn include_folder(folder: String) -> Result<Outcome, String> {
+    blocking(move || {
+        let t = Instant::now();
+        let paths = Paths::from_env();
+        let r = control::include_folder(&paths, &folder, CORE_TIMEOUT).map_err(|e| match e {
+            ControlError::NotRunning => NOT_RUNNING.to_owned(),
+            ControlError::Refused(m) => format!("Not changed: {m}"),
+            ControlError::Io(m) => m,
+        });
+        log(&paths, "include_folder", t, if r.is_ok() { "ok" } else { "refused" });
+        Outcome::from(r)
+    })
+    .await
+}
+
+/// What `judge_preview` shows: `aiq judge --dry-run`'s text, which sends nothing.
+#[derive(Debug, Serialize)]
+struct Preview {
+    ok: bool,
+    text: String,
+}
+
+/// The preview stays readable: a long task is cut, and says so.
+const PREVIEW_MAX: usize = 20_000;
+
+/// Settings' "See what would be sent": the next task exactly as the judge would get it. Nothing is sent.
+#[tauri::command]
+async fn judge_preview() -> Result<Preview, String> {
+    blocking(|| {
+        let t = Instant::now();
+        let paths = Paths::from_env();
+        let p = match run_aiq(&["judge", "--dry-run"]) {
+            Ok((ok, out, err)) => {
+                let mut text = if ok { out } else { format!("{out}{err}") };
+                if text.len() > PREVIEW_MAX {
+                    let cut = (0..=PREVIEW_MAX).rev().find(|i| text.is_char_boundary(*i)).unwrap_or(0);
+                    text.truncate(cut);
+                    text.push_str("\n… (cut here; run aiq judge --dry-run in a terminal to see it all)");
+                }
+                Preview { ok, text }
+            }
+            Err(m) => Preview { ok: false, text: m },
+        };
+        log(&paths, "judge_preview", t, if p.ok { "ok" } else { "error" });
+        p
+    })
+    .await
+}
+
+/// The privacy page for alpha users (docs/privacy-and-terms.md on GitHub until it has its own address).
+const PRIVACY_URL: &str = "https://github.com/imransargusingh/AIQ/blob/main/docs/privacy-and-terms.md";
+
+/// Open the privacy page in the default browser. A fixed address only: the page can't open anything else.
+#[tauri::command]
+async fn open_privacy() -> Result<Outcome, String> {
+    blocking(|| {
+        let t = Instant::now();
+        let paths = Paths::from_env();
+        #[cfg(windows)]
+        let r = std::process::Command::new("explorer").arg(PRIVACY_URL).spawn();
+        #[cfg(target_os = "macos")]
+        let r = std::process::Command::new("open").arg(PRIVACY_URL).spawn();
+        #[cfg(all(unix, not(target_os = "macos")))]
+        let r = std::process::Command::new("xdg-open").arg(PRIVACY_URL).spawn();
+        let r = r.map(|_| ()).map_err(|e| format!("Could not open the browser ({e}). The page is at {PRIVACY_URL}"));
+        log(&paths, "open_privacy", t, if r.is_ok() { "ok" } else { "error" });
+        Outcome::from(r)
     })
     .await
 }
@@ -339,7 +450,11 @@ fn main() {
             tip_on,
             tip_off,
             connect_tools,
-            run_update
+            run_update,
+            disconnect_tool,
+            include_folder,
+            judge_preview,
+            open_privacy
         ])
         .run(tauri::generate_context!())
         .expect("AIQ home could not start its window");
@@ -380,6 +495,14 @@ mod tests {
             );
         }
         assert_eq!(perms.len(), handler.len(), "capability file allows a command that doesn't exist");
+    }
+
+    #[test]
+    fn only_known_tools_can_be_disconnected() {
+        assert!(disconnectable("claude-code"));
+        assert!(disconnectable("copilot"));
+        assert!(!disconnectable("--all"));
+        assert!(!disconnectable("vscode"));
     }
 
     #[test]

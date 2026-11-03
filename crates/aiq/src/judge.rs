@@ -1003,7 +1003,7 @@ pub fn at_install_text(r: AtInstall, daily_tasks: u32) -> String {
     match r {
         AtInstall::TurnedOn => format!(
             "Judging: turned on. {DISCLOSURE}\nAIQ judges up to {daily_tasks} new tasks a day in the background.\n\
-             Undo: aiq config set judge off (or Settings > Rung model in AIQ home)\n"
+             Undo: aiq config set judge off (or Settings > Judging in AIQ home)\n"
         ),
         AtInstall::AlreadyOn => {
             format!("Judging is already on (up to {daily_tasks} tasks a day). Turn it off: aiq config set judge off\n")

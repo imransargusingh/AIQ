@@ -9,7 +9,7 @@ const t = (over: Partial<TaskRow>): TaskRow => ({
 describe("format", () => {
   it("names jobs and judgment states in words", () => {
     expect(jobName("code_change")).toBe("Code a change");
-    expect(jobName("unclassified")).toBe("Unclassified");
+    expect(jobName("unclassified")).toBe("No job fits");
     expect(jobOf(t({}))).toBe("Not classified yet");
     expect(jobOf(t({ job: "write_doc" }))).toBe("Write a spec or doc");
     expect(jobName("ask_research")).toBe("Ask or research");
