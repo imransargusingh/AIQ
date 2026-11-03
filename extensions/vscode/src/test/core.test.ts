@@ -79,8 +79,11 @@ test("detailsText_evidenceAndDeleted", () => {
 test("statusText_everyStateHasTextAndTooltip", () => {
   for (const s of ["on", "paused", "down", "tip"] as const) {
     const t = statusText(s);
-    assert.ok(t.text.startsWith("AIQ") && t.tooltip.length > 0);
+    assert.ok(t.label.startsWith("AIQ") && !t.label.includes("$(") && t.tooltip.length > 0);
+    assert.equal(t.highlight, s === "tip", "only a waiting tip is highlighted");
   }
+  assert.equal(statusText("tip").text, "$(lightbulb) AIQ: 1 tip waiting");
+  assert.equal(statusText("on").text, "AIQ on");
 });
 
 test("executableCandidates_settingFirstThenPathThenInstallDirs", () => {
@@ -96,19 +99,22 @@ test("request_realSocket_sendsTokenAndParsesReply_wrongTokenGetsNull", async () 
   const sock = path.join(dir, "core.sock");
   fs.writeFileSync(path.join(dir, "token"), "secret\n");
   const seen: Record<string, unknown>[] = [];
+  let plainReply = false;
   const server = net.createServer((c) => {
     c.setEncoding("utf8");
     c.once("data", (d: string) => {
       const f = JSON.parse(d.trim());
       seen.push(f);
       if (f.token !== "secret") return c.destroy(); // the core closes a bad-token frame without reply
-      c.end(JSON.stringify({ card }) + "\n");
+      c.end(JSON.stringify(plainReply ? { card, plain: true } : { card }) + "\n");
     });
   });
   await new Promise<void>((r) => server.listen(sock, r));
   try {
     const ep = { socket: sock, token: path.join(dir, "token"), paused_flag: path.join(dir, "paused") };
     assert.deepEqual(await coreClient(ep).takeCard(), card);
+    plainReply = true;
+    assert.deepEqual(await coreClient(ep).takeCard(), { ...card, plain: true }, "highlight off reaches the extension");
     assert.deepEqual(seen[0], { op: "take_card_any", surface: "vscode", token: "secret" });
     fs.writeFileSync(ep.token, "stale");
     assert.equal(await request(ep, { op: "status" }), null);

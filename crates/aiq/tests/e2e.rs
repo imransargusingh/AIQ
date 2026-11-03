@@ -131,7 +131,7 @@ fn e2e_reword_three_times_one_card_second_run_held() {
     let text = msg["systemMessage"].as_str().unwrap();
     assert!(
         text.starts_with(
-            "\u{1b}[22;33m\u{1b}[1mAIQ tip:\u{1b}[22m you've reworded this request 3 times without adding new details."
+            "\u{1b}[22;33m\u{1b}[1;30;43mAIQ tip:\u{1b}[22;49;33m you've reworded this request 3 times without adding new details."
         ),
         "{text}"
     );
@@ -367,6 +367,19 @@ fn e2e_forget_all_needs_confirmation() {
 }
 
 #[test]
+fn e2e_status_reads_the_dev_swap_log_next_to_the_exes() {
+    // The laptop's dev swapper logs in <home>\bin, not <home> (measured 2026-11-02 after #66 was installed).
+    let e = Env::new();
+    assert!(e.status().contains("no upgrade recorded"), "{}", e.status());
+    let bin = e.home().join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    std::fs::write(bin.join("upgrade-log.txt"), "2026-11-02T14:00:57.7222903-08:00 swapped aiq.exe (5920768 bytes)\n")
+        .unwrap();
+    let st = e.status();
+    assert!(st.contains("since the last upgrade at 2026-11-02 22:00Z"), "{st}");
+}
+
+#[test]
 fn e2e_status_first_run_and_core_down_states() {
     let mut e = Env::new();
     let down = e.status();
@@ -581,4 +594,19 @@ fn e2e_import_dry_run_then_import_status_and_forget_imported() {
     assert!(run(&["import"]).contains("0 imported, 0 set aside as automated, 1 unchanged"));
     assert!(run(&["forget", "--imported", "--yes"]).contains("Deleted 1 imported sessions."));
     assert!(!run(&["status"]).contains("Imported history"));
+}
+
+#[test]
+fn e2e_spooled_frame_goes_in_at_the_next_command_not_the_idle_tick() {
+    // A hook whose send missed while the core was busy spools; the core must take it in before its next
+    // command, because a steady stream of commands keeps the 30 s idle tick from ever firing.
+    let down = Env::new();
+    assert!(down.stop("s", "p0").status.success());
+    let spooled = std::fs::read(down.home().join("spool.jsonl")).unwrap();
+    let mut e = Env::new();
+    e.start_core();
+    std::fs::write(e.home().join("spool.jsonl"), spooled).unwrap();
+    let st = e.status();
+    assert!(st.contains("1 stop"), "taken in at the very next command: {st}");
+    assert!(!e.home().join("spool.jsonl").exists());
 }

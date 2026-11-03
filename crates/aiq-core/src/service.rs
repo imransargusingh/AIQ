@@ -25,7 +25,54 @@ use tracing::{info, info_span, warn};
 pub const SETTING_PAUSED: &str = "paused";
 pub const SETTING_DAILY_CAP: &str = "daily_cap";
 pub const SETTING_COPILOT_TIP_STAYS: &str = "copilot_tip_stays";
+/// Where tips show (Imran 2026-11-03, "make tips stand out", each one a setting). All "on" or "off",
+/// default on. `copilot_tip_in_chat`: a Copilot CLI tip is also printed into the conversation at the
+/// turn's end. `tip_popup`: a Windows pop-up when a tip is delivered in a terminal (Claude Code, Copilot
+/// CLI). `tip_highlight`: the yellow "AIQ tip:" badge and the VS Code status-bar colour.
+pub const SETTING_COPILOT_TIP_IN_CHAT: &str = "copilot_tip_in_chat";
+pub const SETTING_TIP_POPUP: &str = "tip_popup";
+pub const SETTING_TIP_HIGHLIGHT: &str = "tip_highlight";
+pub const SWITCH_SETTINGS: [&str; 5] = [
+    SETTING_COPILOT_TIP_IN_CHAT,
+    SETTING_TIP_POPUP,
+    SETTING_TIP_HIGHLIGHT,
+    SETTING_COPILOT_MID_TURN,
+    SETTING_AGENT_ACTIONS,
+];
+/// Surfaces whose tip shows in a terminal, where a pop-up helps when the person has looked away. VS Code
+/// shows its own notification, so it gets no pop-up.
+pub const POPUP_SURFACES: [&str; 2] = ["claude-code", "copilot-cli"];
+/// Called with each card delivered on a pop-up surface while `tip_popup` is on (the core passes
+/// `popup::show`; tests record).
+pub type Popup = Box<dyn Fn(&CardV1) + Send>;
 pub const MAX_DAILY_CAP: u32 = 50;
+/// `on` (default) or `off`: read Copilot's own session log at agentStop for messages typed while the agent was
+/// working, which fire no hook (`copilot_log`).
+pub const SETTING_COPILOT_MID_TURN: &str = "copilot_mid_turn";
+/// `on` (default) or `off`: at each turn's end, read the new part of the tool's own log and store what the agent
+/// did as counts (`agent_actions`, schema v9 `turn_action`). Imran 2026-11-03 "Let's do it", after the downsides.
+pub const SETTING_AGENT_ACTIONS: &str = "agent_actions";
+const MAX_LOG_OFFSETS: usize = 4096;
+/// Copilot CLI's surface name (the hook client uses the same constant).
+pub const COPILOT_CLI: &str = "copilot-cli";
+
+/// `project_name.<folder key>`: the name the person gave a project in AIQ home (design project-filter P2).
+pub const SETTING_PROJECT_NAME: &str = "project_name.";
+/// Longest project name kept, in characters.
+pub const MAX_PROJECT_NAME: usize = 60;
+
+/// Validate a project rename: a folder key (1–1024 bytes, as the hooks keep `cwd`) and a name of at most
+/// `MAX_PROJECT_NAME` characters with no control characters. Empty (after trimming) means "AIQ names it".
+fn project_name(folder: &str, value: &str) -> Result<String, String> {
+    if folder.is_empty() || folder.len() > 1024 {
+        return Err("name a project folder".into());
+    }
+    let v = value.trim();
+    if v.chars().count() > MAX_PROJECT_NAME || v.chars().any(char::is_control) {
+        return Err(format!("a project name is up to {MAX_PROJECT_NAME} characters, on one line"));
+    }
+    Ok(v.to_owned())
+}
 
 pub struct Service<C: Clock> {
     store: Store,
@@ -35,6 +82,10 @@ pub struct Service<C: Clock> {
     classifier: Box<dyn JobClassifier + Send>,
     counters: Arc<Counters>,
     guard: Guard,
+    /// The first prompt of each session the automated rule holds back, in memory only, so a person's session in
+    /// a set-aside folder is recorded whole when its second prompt arrives (H ≥ 2). Never written to disk unless
+    /// that happens. Bounded: on overflow all are dropped, and those sessions are recorded from their second prompt.
+    held: std::collections::HashMap<(String, String), EventV1>,
     /// Folder keys where a claude.ai Projects / Remote Control session was set aside (rule RC), so
     /// "Include them" can be offered there although no folder rule exists. In memory; bounded.
     projects_folders: std::collections::HashSet<String>,
@@ -44,7 +95,54 @@ pub struct Service<C: Clock> {
     coach: Option<coaching::Cache>,
     /// AIQ-COACH-GUESS-LOW is logged once per core run.
     guess_low_logged: bool,
+    popup: Option<Popup>,
+    /// Starts a background label of a new task's first prompt (`aiq label`); None in tests and without a model.
+    label_requester: Option<LabelRequester>,
+    /// Copilot's home, for its session logs. None (tests, unless set): mid-turn messages are not read.
+    copilot_home: Option<std::path::PathBuf>,
+    /// How far each live Copilot session's log has been read (bounded; a forgotten session is read again
+    /// from the start, and stable event ids make that store nothing twice).
+    log_offsets: std::collections::HashMap<String, u64>,
 }
+
+/// A new task whose kind the word guess could not name: label its first prompt in the background.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LabelRequest {
+    pub task_id: String,
+    pub surface: String,
+    pub session: String,
+    pub requested_ms: i64,
+}
+
+pub type LabelRequester = Box<dyn Fn(LabelRequest) + Send>;
+
+/// A task's kind, from a word guess or a label, with what it rests on.
+struct Kind<'a> {
+    job: &'a str,
+    task_type: &'a str,
+    score: f64,
+    evidence: &'a [String],
+}
+
+/// What the automated rule says about one live event.
+enum Gate {
+    Record,
+    /// Record nothing (an app or script's session, or a first prompt held back), and the rule that said so.
+    Skip(&'static str),
+    /// Record this held first prompt, then the event: a person's second prompt in a held session.
+    Rescue(Box<EventV1>),
+}
+
+/// One turn's read of the tool's log: the actions, or why they are not recorded; and what the read cost.
+struct TurnRead {
+    acts: Option<crate::agent_actions::Actions>,
+    why: Option<&'static str>,
+    bytes: u64,
+    ms: u64,
+}
+
+/// First prompts held back at once (each a few KB at most, in memory).
+const MAX_HELD: usize = 1024;
 
 /// Rule RC per session: a settled answer, or how many reads found the head not yet written.
 #[derive(Debug, Clone, Copy)]
@@ -98,10 +196,15 @@ impl<C: Clock> Service<C> {
             classifier: Box::new(AlwaysUnclassified),
             counters,
             guard: Guard::new(),
+            held: Default::default(),
             projects_folders: Default::default(),
             rc_checked: Default::default(),
             coach: None,
             guess_low_logged: false,
+            popup: None,
+            label_requester: None,
+            copilot_home: None,
+            log_offsets: Default::default(),
         };
         s.rebuild()?;
         Ok(s)
@@ -122,6 +225,16 @@ impl<C: Clock> Service<C> {
         engine.prune(now);
         self.engine = engine;
         Ok(())
+    }
+
+    /// Where Copilot keeps its session logs (`tools::copilot_home`); the core process sets it at start.
+    pub fn set_copilot_home(&mut self, home: std::path::PathBuf) {
+        self.copilot_home = Some(home);
+    }
+
+    /// Wire the background labeller (the `aiq` binary does; must return at once, never wait on a model).
+    pub fn set_label_requester(&mut self, f: LabelRequester) {
+        self.label_requester = Some(f);
     }
 
     pub fn engine(&self) -> &Engine {
@@ -158,6 +271,15 @@ impl<C: Clock> Service<C> {
             .unwrap_or(TipStays::NextPrompt)
     }
 
+    /// An on/off switch from `SWITCH_SETTINGS`; anything but "off" (including unset) is on.
+    pub fn switch_on(&self, key: &str) -> bool {
+        self.store.setting(key).ok().flatten().as_deref() != Some("off")
+    }
+
+    pub fn set_popup(&mut self, popup: Popup) {
+        self.popup = Some(popup);
+    }
+
     fn quiet(&self) -> Result<bool, StoreError> {
         Ok(in_quiet_period(self.store.last_delivery_ms()?, self.clock.now().utc_ms, self.pack.trigger.quiet_min))
     }
@@ -173,6 +295,22 @@ impl<C: Clock> Service<C> {
 
     /// Ingest one event. Never panics; store failures are counted and logged.
     pub fn ingest(&mut self, ev: &EventV1, trace_id: Option<&str>) {
+        // An async stop (VS Code, or a Copilot CLI stop that reached the core by the spool): read the turn's
+        // mid-turn messages first, since they were typed before it. A stop the hook waits on (`take_card`)
+        // reads them after its reply instead (`after_stop`), off the hook's clock.
+        let turn = self.read_turn_log(ev, trace_id);
+        self.ingest_event(ev, trace_id);
+        self.record_turn_actions(ev, turn, trace_id);
+    }
+
+    /// The work after a stop's reply is sent: Copilot messages typed while the agent worked, and what the agent
+    /// did in the turn.
+    pub fn after_stop(&mut self, ev: &EventV1, trace_id: Option<&str>) {
+        let turn = self.read_turn_log(ev, trace_id);
+        self.record_turn_actions(ev, turn, trace_id);
+    }
+
+    fn ingest_event(&mut self, ev: &EventV1, trace_id: Option<&str>) {
         let _s = info_span!("core.ingest", trace_id = trace_id.unwrap_or(""), aiq.kind = ev.kind()).entered();
         if let Err(e) = self.ingest_inner(ev, trace_id) {
             self.fail(e);
@@ -187,10 +325,31 @@ impl<C: Clock> Service<C> {
             self.counters.inc(codes::INGEST_SHAPE);
             return Ok(());
         }
-        if self.automated(ev)? {
-            self.counters.inc(codes::INGEST_AUTOMATED);
-            return Ok(()); // an app or script drove this session: record nothing (import spec US-12)
+        match self.automated(ev)? {
+            Gate::Skip(reason) => {
+                self.counters.inc(codes::INGEST_AUTOMATED);
+                // One line per skipped event, so a lost prompt can be traced to its rule (2026-11-03: six first
+                // prompts of hand-typed VS Code sessions were dropped and nothing said why). No text, no path.
+                info!(
+                    trace_id = trace_id.unwrap_or(""),
+                    aiq.reason = reason,
+                    aiq.surface = ev.surface.as_str(),
+                    aiq.kind = ev.kind(),
+                    aiq.dir = ev.cwd.as_deref().and_then(aiq_domain::automated::folder_tag).unwrap_or_default(),
+                    "event set aside"
+                );
+                return Ok(()); // an app or script drove this session: record nothing (import spec US-12)
+            }
+            // A person in a held session: record its first prompt (no tip now, it is late), then this one.
+            Gate::Rescue(first) => self.record(&first, trace_id, false)?,
+            Gate::Record => {}
         }
+        self.record(ev, trace_id, true)
+    }
+
+    /// Store one event and run the detectors. `tips`: false for a held first prompt recorded late, which
+    /// must not raise a card.
+    fn record(&mut self, ev: &EventV1, trace_id: Option<&str>, tips: bool) -> Result<(), StoreError> {
         let now = self.clock.now().utc_ms;
         let ts = parse_rfc3339_ms(&ev.ts).unwrap_or(now);
         // Security review S2: the hook already removed secrets; this pass covers spool lines written by an
@@ -256,6 +415,9 @@ impl<C: Clock> Service<C> {
             )
         };
         let new_task = self.engine.task_id(&ev.surface, &ev.surface_session_id) == Some(ev.event_id.as_str());
+        if !tips {
+            return Ok(());
+        }
         if let Some(sig) = sig {
             self.on_signal(&ev.surface, &ev.surface_session_id, &sig, trace_id)?;
         }
@@ -264,6 +426,168 @@ impl<C: Clock> Service<C> {
             self.next_rung(&ev.surface, &ev.surface_session_id, &ev.event_id, text, trace_id)?;
         }
         Ok(())
+    }
+
+    /// At a stop, read the new part of the tool's own log, read-only and off the hook's clock (the hook never
+    /// opens it: ~0.4 s on Imran's laptop, measured 2026-11-02). Copilot messages typed while the agent was working
+    /// fire no hook, so each is ingested as a prompt here (stable event ids and a same-text check keep a message
+    /// the hook did send from counting twice). The turn's actions are returned for `record_turn_actions`, which
+    /// stores them once the stop itself is stored. None: nothing to read (not a stop, paused, both switches off).
+    fn read_turn_log(&mut self, ev: &EventV1, trace_id: Option<&str>) -> Option<TurnRead> {
+        if !matches!(ev.body, EventBody::Stop(_)) || self.paused() {
+            return None;
+        }
+        use crate::agent_actions::{LogKind, read_since, tail_start};
+        let (kind, path) = match ev.surface.as_str() {
+            "claude-code" => (LogKind::Claude, ev.transcript.as_deref().map(std::path::PathBuf::from)),
+            // Copilot CLI and VS Code agent mode (Copilot target) write the same session log.
+            COPILOT_CLI | "vscode" => (
+                LogKind::Copilot,
+                Some(crate::copilot_log::session_log(self.copilot_home.as_deref()?, &ev.surface_session_id)?),
+            ),
+            _ => return None,
+        };
+        let mid_turn = kind == LogKind::Copilot && self.switch_on(SETTING_COPILOT_MID_TURN);
+        let actions = self.switch_on(SETTING_AGENT_ACTIONS);
+        if !mid_turn && !actions {
+            return None;
+        }
+        let not_recorded = |why: &'static str, bytes: u64, ms: u64| {
+            actions.then_some(TurnRead { acts: None, why: Some(why), bytes, ms })
+        };
+        let Some(path) = path else { return not_recorded("no_log", 0, 0) }; // an older hook sent no transcript
+        let key = format!("{}/{}", ev.surface, ev.surface_session_id);
+        let known = self.log_offsets.get(&key).copied();
+        let started = std::time::Instant::now();
+        let read = read_since(&path, known.unwrap_or_else(|| tail_start(&path)), kind);
+        let ms = started.elapsed().as_millis() as u64;
+        let read = match read {
+            Ok(r) => r,
+            Err(e) => {
+                self.counters.inc(codes::INGEST_LOG_READ);
+                let why = if e.kind() == std::io::ErrorKind::NotFound { "no_log" } else { "read_error" };
+                return not_recorded(why, 0, ms);
+            }
+        };
+        if self.log_offsets.len() >= MAX_LOG_OFFSETS {
+            self.log_offsets.clear();
+        }
+        self.log_offsets.insert(key, read.next);
+        if mid_turn {
+            self.store_mid_turn(ev, &read.steering, trace_id);
+        }
+        if !actions {
+            return None;
+        }
+        // Never a guess: a turn read only in part is "not recorded".
+        let why = if read.capped {
+            Some("too_large")
+        } else if read.bad_lines > 0 {
+            Some("unparsed")
+        } else if known.is_none() && !read.saw_prompt {
+            Some("no_start") // first read since the core started, and the turn began before the part read
+        } else {
+            None
+        };
+        Some(TurnRead { acts: why.is_none().then_some(read.actions), why, bytes: read.bytes, ms })
+    }
+
+    /// Ingest Copilot messages typed into the running turn, read from its log.
+    fn store_mid_turn(&mut self, ev: &EventV1, found: &[crate::copilot_log::Typed], trace_id: Option<&str>) {
+        let mut stored = 0;
+        for t in found {
+            let clean = aiq_domain::secrets::redact(&t.text).0;
+            let text = cap(&clean, aiq_contracts::event::MAX_PROMPT_BYTES);
+            if self.store.prompt_text_seen(&ev.surface, &ev.surface_session_id, &text).unwrap_or(false) {
+                continue;
+            }
+            let mut p = ev.clone();
+            p.event_id = crate::copilot_log::event_id(&ev.surface, &ev.surface_session_id, t);
+            p.ts = t.ts_ms.map(format_rfc3339_ms).unwrap_or_else(|| ev.ts.clone());
+            p.body = EventBody::Prompt(aiq_contracts::event::PromptPayload {
+                chars: t.text.chars().count() as u64,
+                truncated: clean.len() > text.len(),
+                text: Some(text.clone()),
+                prompt_id: None,
+            });
+            if let Err(e) = self.ingest_inner(&p, trace_id) {
+                self.fail(e);
+                continue;
+            }
+            // Not stored when the session or folder is set aside (that drop logs its own line).
+            if self.store.prompt_text_seen(&ev.surface, &ev.surface_session_id, &text).unwrap_or(false) {
+                stored += 1;
+                self.counters.inc(codes::INGEST_MID_TURN);
+            }
+        }
+        info!(trace_id = trace_id.unwrap_or(""), found = found.len(), stored, "copilot.mid_turn");
+    }
+
+    /// Store the turn's actions as one `turn_action` row, keyed by its stop: counts and tool names only. Only for
+    /// a stop the store kept (a set-aside or paused session records nothing). A replayed stop stores nothing.
+    fn record_turn_actions(&mut self, ev: &EventV1, turn: Option<TurnRead>, trace_id: Option<&str>) {
+        let Some(t) = turn else { return };
+        if !self.store.has_event(&ev.event_id).unwrap_or(false) {
+            return;
+        }
+        let now = self.clock.now().utc_ms;
+        let n = |x: u32| Some(i64::from(x));
+        let a = t.acts.as_ref();
+        let row = aiq_store::TurnActionRow {
+            stop_event_id: ev.event_id.clone(),
+            surface: ev.surface.clone(),
+            surface_session_id: ev.surface_session_id.clone(),
+            ts_utc_ms: parse_rfc3339_ms(&ev.ts).unwrap_or(now),
+            outcome: if a.is_some() { "recorded" } else { "not_recorded" }.into(),
+            why: t.why.map(str::to_owned),
+            tool_calls: a.and_then(|a| n(a.tool_calls())),
+            commands: a.and_then(|a| n(a.commands_run)),
+            files: a.and_then(|a| n(a.files.len() as u32)),
+            subagents: a.and_then(|a| n(a.subagents)),
+            tools: a.map(|a| serde_json::to_string(&a.tools).unwrap_or_default()),
+            bytes_read: t.bytes as i64,
+            read_ms: t.ms as i64,
+            utc_ms: now,
+        };
+        match self.store.insert_turn_action(&row) {
+            Ok(true) => {
+                if t.why.is_some() {
+                    self.counters.inc(codes::INGEST_ACTIONS_NOT_RECORDED);
+                }
+                info!(
+                    trace_id = trace_id.unwrap_or(""),
+                    aiq.surface = ev.surface.as_str(),
+                    outcome = row.outcome.as_str(),
+                    why = t.why.unwrap_or(""),
+                    tool_calls = row.tool_calls.unwrap_or(0),
+                    bytes = t.bytes,
+                    ms = t.ms,
+                    "agent.actions"
+                );
+            }
+            Ok(false) => {}
+            Err(e) => self.fail(e),
+        }
+    }
+
+    /// Live agent actions today, for `aiq status`: counted from stored rows.
+    fn actions_status(&self) -> aiq_contracts::frames::ActionsStatus {
+        let rows = self.store.turn_actions_since(self.clock.now().local_midnight_utc_ms()).unwrap_or_default();
+        let mut ms: Vec<u64> = rows.iter().map(|r| r.read_ms.max(0) as u64).collect();
+        ms.sort_unstable();
+        let mut why = std::collections::BTreeMap::<String, u32>::new();
+        for r in rows.iter().filter(|r| r.outcome != "recorded") {
+            *why.entry(r.why.clone().unwrap_or_default()).or_default() += 1;
+        }
+        aiq_contracts::frames::ActionsStatus {
+            enabled: self.switch_on(SETTING_AGENT_ACTIONS),
+            turns: rows.len() as u32,
+            not_recorded: why.values().sum(),
+            why: why.into_iter().collect(),
+            p95_ms: (!ms.is_empty()).then(|| ms[((ms.len() * 95).div_ceil(100)).saturating_sub(1)]),
+            max_ms: ms.last().copied(),
+            max_bytes: rows.iter().map(|r| r.bytes_read.max(0) as u64).max(),
+        }
     }
 
     /// The coaching cache, rebuilt when the store's coaching facts changed or it is an hour old.
@@ -319,7 +643,8 @@ impl<C: Clock> Service<C> {
         trace_id: Option<&str>,
         started: std::time::Instant,
     ) -> Result<(), StoreError> {
-        if !cache.tips_on(mode, pack) {
+        let (words_on, labels_on) = (cache.words_on(mode, pack), cache.labels_on(mode, pack) && self.labels_enabled());
+        if !words_on && !labels_on {
             if !self.guess_low_logged {
                 self.guess_low_logged = true;
                 self.counters.inc(codes::COACH_GUESS_LOW);
@@ -327,17 +652,23 @@ impl<C: Clock> Service<C> {
                     error.code = codes::COACH_GUESS_LOW,
                     checked = cache.check.checked,
                     right = cache.check.right,
+                    label_checked = cache.label_check.checked,
+                    label_right = cache.label_check.right,
                     "next-rung tips turned off by AIQ's self-check"
                 );
             }
             return Ok(());
         }
         let words = features(text, &pack.reprompt).words;
-        let Some(g) = coach::guess_type(&words, &cache.neighbours, &pack.coach) else {
+        let guess = if words_on { coach::guess_type(&words, &cache.neighbours, &pack.coach) } else { None };
+        let Some(g) = guess else {
+            // No word match: ask the small model in the background (design kind-label). The core never waits on
+            // a model (C9); the answer comes back as `on_kind_label`, before the turn's Stop in most turns.
+            let asked = labels_on && self.request_label(surface, session, task_id);
             info!(
                 ms = started.elapsed().as_millis() as u64,
                 neighbours = cache.neighbours.len(),
-                coach.outcome = "no_guess",
+                coach.outcome = if asked { "label_requested" } else { "no_guess" },
                 "coach.guess"
             );
             return Ok(());
@@ -352,7 +683,126 @@ impl<C: Clock> Service<C> {
             similarity: g.similarity,
             neighbours: g.neighbours.clone(),
             utc_ms: now.utc_ms,
+            method: "words".into(),
         })?;
+        let kind = Kind { job: &g.job, task_type: &g.task_type, score: g.similarity, evidence: &g.neighbours };
+        self.decide_kind(cache, pack, mode, surface, session, task_id, kind, "words", trace_id, started)
+    }
+
+    /// Labels can run: a labeller is wired, background judging is on and labels are not turned off.
+    fn labels_enabled(&self) -> bool {
+        self.label_requester.is_some() && coaching::labels_enabled(&self.store)
+    }
+
+    /// Ask for a label of this new task's first prompt (labels are enabled). True when asked.
+    fn request_label(&mut self, surface: &str, session: &str, task_id: &str) -> bool {
+        let Some(req) = self.label_requester.as_ref() else { return false };
+        if !matches!(surface, "claude-code" | "copilot-cli" | "vscode") {
+            return false;
+        }
+        self.counters.inc(codes::COACH_LABEL_REQUESTED);
+        req(LabelRequest {
+            task_id: task_id.to_owned(),
+            surface: surface.to_owned(),
+            session: session.to_owned(),
+            requested_ms: self.clock.now().utc_ms,
+        });
+        true
+    }
+
+    /// A label for `task_id` was stored (`aiq label` says so): decide on a next-step tip from it, exactly as from
+    /// a word guess. Dropped when the session has moved to another task, the task already has a guess, the label
+    /// is not confident, or AIQ's self-check turned labels off.
+    pub fn on_kind_label(&mut self, task_id: &str) -> Result<(), StoreError> {
+        let started = std::time::Instant::now();
+        let mode = coaching::mode(&self.store);
+        if mode == "off" || self.paused() {
+            return Ok(());
+        }
+        let Some(l) = self.store.kind_labels_of(task_id)?.into_iter().rev().find(|l| l.outcome == "ok") else {
+            return Ok(());
+        };
+        let outcome = |o: &str| {
+            info!(
+                ms = started.elapsed().as_millis() as u64,
+                latency_ms = l.latency_ms,
+                coach.outcome = o,
+                "coach.label"
+            )
+        };
+        if self.engine.task_id(&l.surface, &l.surface_session_id) != Some(task_id) {
+            outcome("label_task_moved_on");
+            return Ok(());
+        }
+        if self.store.has_type_guess(task_id)? {
+            return Ok(()); // already decided (a repeated notice)
+        }
+        let label = aiq_domain::label::Label {
+            job: l.job.clone().unwrap_or_default(),
+            job_confidence: l.job_confidence.unwrap_or(0.0),
+            task_type: l.task_type.clone().unwrap_or_default(),
+            task_type_confidence: l.task_type_confidence.unwrap_or(0.0),
+        };
+        let Some((job, task_type)) = aiq_domain::label::accept(&label) else {
+            outcome("label_not_confident");
+            return Ok(());
+        };
+        let pack = self.pack.clone();
+        self.coach_cache()?;
+        let cache = self.coach.take().expect("built above");
+        let r = (|| {
+            if !cache.labels_on(&mode, &pack) {
+                outcome("label_self_check_off");
+                return Ok(());
+            }
+            let score = label.job_confidence.min(label.task_type_confidence);
+            self.store.insert_type_guess(&aiq_store::TypeGuessRow {
+                guess_id: new_id(),
+                task_id: task_id.to_owned(),
+                surface: l.surface.clone(),
+                job: job.to_owned(),
+                task_type: task_type.to_owned(),
+                similarity: score,
+                neighbours: vec![],
+                utc_ms: self.clock.now().utc_ms,
+                method: aiq_domain::label::METHOD.into(),
+            })?;
+            let evidence = [format!("label:{}", l.model.as_deref().unwrap_or(&l.provider))];
+            let kind = Kind { job, task_type, score, evidence: &evidence };
+            self.decide_kind(
+                &cache,
+                &pack,
+                &mode,
+                &l.surface,
+                &l.surface_session_id,
+                task_id,
+                kind,
+                "label",
+                None,
+                started,
+            )
+        })();
+        self.coach = Some(cache);
+        r
+    }
+
+    /// The next-step decision for a task whose kind is known (from words or a label): the kind's coached move,
+    /// the accuracy pause (K6b), the person's answers, cooldown and habit, then the trigger engine.
+    #[allow(clippy::too_many_arguments)]
+    fn decide_kind(
+        &mut self,
+        cache: &coaching::Cache,
+        pack: &aiq_contracts::pack::PackV1,
+        mode: &str,
+        surface: &str,
+        session: &str,
+        task_id: &str,
+        g: Kind<'_>,
+        method: &str,
+        trace_id: Option<&str>,
+        started: std::time::Instant,
+    ) -> Result<(), StoreError> {
+        let now = self.clock.now();
         let row = cache
             .rows
             .iter()
@@ -363,7 +813,8 @@ impl<C: Clock> Service<C> {
         }) else {
             info!(
                 ms = started.elapsed().as_millis() as u64,
-                similarity = g.similarity,
+                similarity = g.score,
+                method,
                 coach.outcome = "not_coachable",
                 "coach.guess"
             );
@@ -409,8 +860,8 @@ impl<C: Clock> Service<C> {
                 detector_version: coach::DETECTOR_VERSION,
                 opportunity_id: coach::OPPORTUNITY,
                 reprompt_count: 0,
-                score: g.similarity,
-                evidence: &g.neighbours,
+                score: g.score,
+                evidence: g.evidence,
                 job: Job::Named(job),
                 core_opportunity: false,
                 threshold,
@@ -421,7 +872,8 @@ impl<C: Clock> Service<C> {
         )?;
         info!(
             ms = started.elapsed().as_millis() as u64,
-            similarity = g.similarity,
+            similarity = g.score,
+            method,
             coach.outcome = "decided",
             "coach.guess"
         );
@@ -457,8 +909,9 @@ impl<C: Clock> Service<C> {
         v
     }
 
-    /// The automated-session rule, live side. True: record nothing for this event.
-    fn automated(&mut self, ev: &EventV1) -> Result<bool, StoreError> {
+    /// The automated-session rule, live side. A skip names its rule (`projects`, `aiq-check`, `session`,
+    /// `folder`, `template`, `burst`) for the log.
+    fn automated(&mut self, ev: &EventV1) -> Result<Gate, StoreError> {
         let (surface, session) = (ev.surface.as_str(), ev.surface_session_id.as_str());
         if ev.projects || self.projects_session(ev) {
             // Rule RC: Claude's own Projects / Remote Control session, every event, unless included.
@@ -467,7 +920,7 @@ impl<C: Clock> Service<C> {
                 if self.projects_folders.len() < 1024 && !k.is_empty() && self.projects_folders.insert(k) {
                     info!(aiq.reason = "projects", "Projects session set aside");
                 }
-                return Ok(true);
+                return Ok(Gate::Skip("projects"));
             }
         }
         if let Some(k) = ev.cwd.as_deref().filter(|c| is_aiq_check_folder(c)).map(folder_key) {
@@ -475,17 +928,19 @@ impl<C: Clock> Service<C> {
             // set-aside rule once, so `aiq status` lists it and `aiq include` brings it back.
             match self.store.folder_rules_now()?.get(&k).map(String::as_str) {
                 Some("include") => {}
-                Some(_) => return Ok(true),
+                Some(_) => return Ok(Gate::Skip("aiq-check")),
                 None => {
                     self.store.insert_folder_rule(&k, "set_aside", "aiq-check", "live", self.clock.now().utc_ms)?;
                     info!(aiq.reason = "aiq-check", "folder set aside: AIQ's own checks");
-                    return Ok(true);
+                    return Ok(Gate::Skip("aiq-check"));
                 }
             }
         }
-        let EventBody::Prompt(p) = &ev.body else { return Ok(self.guard.is_ignored(surface, session)) };
+        let EventBody::Prompt(p) = &ev.body else {
+            return Ok(if self.guard.is_ignored(surface, session) { Gate::Skip("session") } else { Gate::Record });
+        };
         if !self.guard.is_ignored(surface, session) && self.store.session_known(surface, session)? {
-            return Ok(false); // not a first prompt, and not a session being ignored
+            return Ok(Gate::Record); // not a first prompt, and not a session being ignored
         }
         let set_aside = match ev.cwd.as_deref().map(folder_key) {
             Some(k) if !k.is_empty() => self.store.set_aside_folders()?.iter().any(|(f, _, _)| *f == k),
@@ -502,12 +957,23 @@ impl<C: Clock> Service<C> {
             set_aside,
             now,
         );
-        let Verdict::Ignore { reason, new_folder } = verdict else { return Ok(false) };
+        let key = (surface.to_owned(), session.to_owned());
+        let (reason, new_folder) = match verdict {
+            Verdict::Record => return Ok(Gate::Record),
+            Verdict::Rescued => {
+                return Ok(self.held.remove(&key).map_or(Gate::Record, |e| Gate::Rescue(Box::new(e))));
+            }
+            Verdict::Ignore { reason, new_folder } => (reason, new_folder),
+        };
+        if self.held.len() >= MAX_HELD {
+            self.held.clear();
+        }
+        self.held.insert(key, ev.clone());
         if let Some(folder) = new_folder {
             self.store.insert_folder_rule(&folder, "set_aside", reason.as_str(), "live", now)?;
             info!(aiq.reason = reason.as_str(), "folder set aside: automated sessions");
         }
-        Ok(true)
+        Ok(Gate::Skip(reason.as_str()))
     }
 
     /// Folders whose sessions AIQ ignores now, newest first: (folder, reason).
@@ -658,7 +1124,7 @@ impl<C: Clock> Service<C> {
     /// `fresh` is false when the request waited longer than the client will wait; then nothing is
     /// delivered, because a card handed to a client that already left would be lost.
     pub fn take_card(&mut self, ev: &EventV1, trace_id: Option<&str>, fresh: bool) -> Option<CardV1> {
-        self.ingest(ev, trace_id);
+        self.ingest_event(ev, trace_id);
         let _s = info_span!("core.take_card", trace_id = trace_id.unwrap_or("")).entered();
         match self.take_card_inner(ev, fresh) {
             Ok(c) => c,
@@ -680,6 +1146,9 @@ impl<C: Clock> Service<C> {
             && !self.store.prompt_seen(surface, session, pid)?
         {
             return Ok(None); // this turn's prompt has not arrived yet: the card waits for the next Stop
+        }
+        if surface == COPILOT_CLI && !self.switch_on(SETTING_COPILOT_TIP_IN_CHAT) {
+            return Ok(None); // the status line delivers it instead
         }
         let Some(ready) = self.store.ready_card(surface, session)? else { return Ok(None) };
         self.deliver(&ready.card_id, &ready.card_json, surface, session)
@@ -706,7 +1175,14 @@ impl<C: Clock> Service<C> {
         }
         self.store.insert_delivery(card_id, surface, session, self.clock.now())?;
         info!(aiq.outcome = "delivered", aiq.surface = surface, "card delivered");
-        Ok(serde_json::from_str(card_json).ok())
+        let card: Option<CardV1> = serde_json::from_str(card_json).ok();
+        if let (Some(c), Some(p)) = (&card, &self.popup)
+            && POPUP_SURFACES.contains(&surface)
+            && self.switch_on(SETTING_TIP_POPUP)
+        {
+            p(c);
+        }
+        Ok(card)
     }
 
     /// Copilot CLI status line: the tip line for a session, or None. Delivers a show-ready card only after
@@ -775,6 +1251,10 @@ impl<C: Clock> Service<C> {
     pub fn set(&mut self, key: &str, value: &str) -> Result<(), String> {
         let v = match key {
             SETTING_PAUSED if value == "true" || value == "false" => value.to_owned(),
+            k if SWITCH_SETTINGS.contains(&k) => match value {
+                "on" | "off" => value.to_owned(),
+                _ => return Err(format!("{} must be on or off", k.replace('_', "-"))),
+            },
             SETTING_COPILOT_TIP_STAYS => match TipStays::parse(value) {
                 Some(v) => v.as_str().to_owned(),
                 None => {
@@ -782,12 +1262,17 @@ impl<C: Clock> Service<C> {
                     return Err(format!("copilot-tip-stays must be one of: {}", all.join(", ")));
                 }
             },
+            crate::update::SETTING_UPDATE => crate::update::validate_mode(value)?,
             SETTING_DAILY_CAP => match value.parse::<u32>() {
                 Ok(n) if n <= MAX_DAILY_CAP => n.to_string(),
                 _ => return Err(format!("daily-cap must be a whole number from 0 to {MAX_DAILY_CAP}")),
             },
             k if k.starts_with(coaching::SETTING_KEEP_ON) => self.keep_on_value(k, value)?,
-            _ => match aiq_domain::rung::validate_setting(key, value).or_else(|| coach::validate_setting(key, value)) {
+            k if k.starts_with(SETTING_PROJECT_NAME) => project_name(&k[SETTING_PROJECT_NAME.len()..], value)?,
+            _ => match aiq_domain::rung::validate_setting(key, value)
+                .or_else(|| coach::validate_setting(key, value))
+                .or_else(|| aiq_domain::label::validate_setting(key, value))
+            {
                 Some(v) => v?,
                 None => return Err(format!("unknown setting {key}")),
             },
@@ -859,10 +1344,11 @@ impl<C: Clock> Service<C> {
                 );
                 f
             },
+            agent_actions: Some(self.actions_status()),
             coach: self.coach.as_ref().map(|c| {
                 let mode = coaching::mode(&self.store);
                 CoachStatus {
-                    tips_on: c.tips_on(&mode, &self.pack),
+                    tips_on: c.tips_on(&mode, &self.pack, self.labels_enabled()),
                     mode,
                     checked: c.check.checked,
                     right: c.check.right,
@@ -870,6 +1356,7 @@ impl<C: Clock> Service<C> {
                     other_pct: c.other_share.map(|x| (x * 100.0).round() as u32),
                     cache_ms: c.build_ms,
                     accuracy_paused: coaching::paused_scopes(&self.store, &c.pauses),
+                    labels: coaching::label_status(&self.store, c, self.clock.now()).ok(),
                 }
             }),
         }
@@ -952,5 +1439,28 @@ impl<C: Clock> Service<C> {
     pub fn prune(&mut self) {
         let now = self.clock.now().utc_ms;
         self.engine.prune(now);
+    }
+}
+
+/// At most `max` bytes, cut on a character boundary.
+fn cap(s: &str, max: usize) -> String {
+    let mut i = s.len().min(max);
+    while !s.is_char_boundary(i) {
+        i -= 1;
+    }
+    s[..i].to_owned()
+}
+
+#[cfg(test)]
+mod project_name_tests {
+    use super::*;
+
+    #[test]
+    fn project_names_are_short_one_line_and_blank_resets() {
+        assert_eq!(project_name(r"c:\repos\aiq", "  AI coach ").unwrap(), "AI coach");
+        assert_eq!(project_name(r"c:\repos\aiq", "   ").unwrap(), "");
+        assert!(project_name(r"c:\repos\aiq", &"x".repeat(MAX_PROJECT_NAME + 1)).is_err());
+        assert!(project_name(r"c:\repos\aiq", "two\nlines").is_err());
+        assert!(project_name("", "name").is_err());
     }
 }

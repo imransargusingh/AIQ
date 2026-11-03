@@ -12,7 +12,7 @@ export const RUNGS: { name: string; means: string }[] = [
 /** Rung names first, numbers second (spec H4): "Directed (2)". */
 export const rungLabel = (rung: number) => `${RUNGS[rung - 1].name} (${rung})`;
 
-const JOBS: Record<string, string> = { code_change: "Code a change", write_doc: "Write a spec or doc", ask_research: "Ask or research", run_ship: "Run or ship it", unclassified: "Unclassified" };
+const JOBS: Record<string, string> = { code_change: "Code a change", write_doc: "Write a spec or doc", ask_research: "Ask or research", run_ship: "Run or ship it", unclassified: "No job fits" };
 /** The job a task was judged to be. */
 export const jobName = (j: string | null) => (j ? JOBS[j] ?? j : "Not judged yet");
 
@@ -98,17 +98,4 @@ export const jobOf = (t: TaskRow) => (t.job ? jobName(t.job) : NOT_CLASSIFIED);
 export function jobOptions(tasks: TaskRow[]): { options: string[]; dropdown: boolean } {
   const jobs = [...new Set(tasks.map(jobOf))].sort();
   return { options: ["All", ...jobs], dropdown: jobs.length > 4 };
-}
-
-/** Where the person uses agents most: folder and tool, by number of tasks. */
-export function topPlaces(tasks: TaskRow[], max = 3): { folder: string | null; tool: string; tasks: number; prompts: number }[] {
-  const m = new Map<string, { folder: string | null; tool: string; tasks: number; prompts: number }>();
-  for (const t of tasks) {
-    const k = `${t.folder ?? ""}|${t.tool}`;
-    const e = m.get(k) ?? { folder: t.folder, tool: t.tool, tasks: 0, prompts: 0 };
-    e.tasks += 1;
-    e.prompts += t.prompts;
-    m.set(k, e);
-  }
-  return [...m.values()].sort((a, b) => b.tasks - a.tasks || b.prompts - a.prompts).slice(0, max);
 }

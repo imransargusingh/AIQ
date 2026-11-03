@@ -32,16 +32,26 @@ pub fn render_claude_code(card: &CardV1) -> String {
 }
 
 /// Claude Code draws hook messages dim, which made the card easy to miss (Imran, laptop check). Each line is
-/// yellow at normal intensity (`22` cancels the dim), and the "AIQ tip:" label is bold. Basic 16-colour
-/// codes, so Claude Code's "ANSI colors only" themes work too. Codes are per line because the terminal UI
-/// lays each line out separately.
+/// yellow at normal intensity (`22` cancels the dim). The "AIQ tip:" label is a badge: bold black on a
+/// yellow background, so the tip stands out from the agent's own yellow or bold text (Imran 2026-11-03,
+/// "make tips stand out"). Basic 16-colour codes, so Claude Code's "ANSI colors only" themes work too.
+/// Codes are per line because the terminal UI lays each line out separately.
+/// assume: Claude Code and Copilot CLI draw SGR background 43 as they draw foreground 33 (foreground was
+/// seen on the laptop 2026-11-01; background is not yet seen). Confirm: the next laptop check shows a
+/// yellow badge. If false: the label shows as bold text on the yellow line, as before (no text is lost).
 const LINE_ON: &str = "\u{1b}[22;33m";
 const LINE_OFF: &str = "\u{1b}[39m";
-const BOLD_ON: &str = "\u{1b}[1m";
-const BOLD_OFF: &str = "\u{1b}[22m";
+const BADGE_ON: &str = "\u{1b}[1;30;43m";
+/// Ends the badge and goes back to the yellow line.
+const BADGE_OFF: &str = "\u{1b}[22;49;33m";
+const LABEL: &str = "AIQ tip:";
+
+fn badge(plain: &str) -> String {
+    plain.replacen(LABEL, &format!("{BADGE_ON}{LABEL}{BADGE_OFF}"), 1)
+}
 
 /// Copilot CLI status line (ADR-0005 rule 5): one line, the tip and where to read it in full. Never quotes
-/// prompt text. With colour it looks like the Claude Code card: the whole line yellow, "AIQ tip:" bold
+/// prompt text. With colour it looks like the Claude Code card: the whole line yellow, "AIQ tip:" a badge
 /// (Imran, laptop check 2026-11-01); `NO_COLOR` gives plain text.
 pub fn render_status_line(card: &CardV1, color: bool) -> String {
     let noticed = card.noticed.trim_end_matches('.');
@@ -49,31 +59,41 @@ pub fn render_status_line(card: &CardV1, color: bool) -> String {
     if !color {
         return plain;
     }
-    let body = plain.replacen("AIQ tip:", &format!("{BOLD_ON}AIQ tip:{BOLD_OFF}"), 1);
-    format!("{LINE_ON}{body}{LINE_OFF}")
+    format!("{LINE_ON}{}{LINE_OFF}", badge(&plain))
 }
 
-/// The shrunk status line once the full tip has had its time ("two prompts or 5 minutes" setting).
-pub fn render_waiting_marker(card_id: &str) -> String {
-    format!("1 tip waiting · aiq show {card_id}")
+/// The shrunk status line once the full tip has had its time ("two prompts or 5 minutes" setting). Yellow
+/// like the tip, so it still reads as AIQ's; no badge, because the tip itself has already been seen.
+pub fn render_waiting_marker(card_id: &str, color: bool) -> String {
+    let plain = format!("1 tip waiting · aiq show {card_id}");
+    if color { format!("{LINE_ON}{plain}{LINE_OFF}") } else { plain }
 }
 
 /// The only stdout a Claude Code hook may produce: `{"systemMessage": "<text>"}`.
 /// Confirmed on the Windows laptop 2026-11-01: Claude Code renders the codes. `color: false` (the
 /// person set `NO_COLOR`, see no-color.org) sends plain text.
 pub fn claude_code_system_message(card: &CardV1, color: bool) -> String {
+    serde_json::json!({ "systemMessage": card_text(card, color) }).to_string()
+}
+
+/// The four-line card, every line yellow and the label a badge when `color`.
+fn card_text(card: &CardV1, color: bool) -> String {
     let plain = render_claude_code(card);
-    let text = if color {
-        plain
-            .replacen("AIQ tip:", &format!("{BOLD_ON}AIQ tip:{BOLD_OFF}"), 1)
-            .lines()
-            .map(|l| format!("{LINE_ON}{l}{LINE_OFF}"))
-            .collect::<Vec<_>>()
-            .join("\n")
+    if color {
+        badge(&plain).lines().map(|l| format!("{LINE_ON}{l}{LINE_OFF}")).collect::<Vec<_>>().join("\n")
     } else {
         plain
-    };
-    serde_json::json!({ "systemMessage": text }).to_string()
+    }
+}
+
+/// Copilot CLI `agentStop` stdout: one progress line, which Copilot CLI shows in the conversation and
+/// documents as display-only (hooks reference, "progress messages"), so the agent is unchanged. Not
+/// `temporary`, so it stays after the agent's next reply. Same card as Claude Code's.
+/// assume: Copilot CLI 1.0.106 shows the line and draws its colour codes, as Claude Code does. Confirm:
+/// the next laptop upgrade shows the yellow card in the conversation. If false: the person sees the tip in
+/// the status line only (no line), or with raw codes (then turn the highlight off by default here).
+pub fn copilot_progress_message(card: &CardV1, color: bool) -> String {
+    serde_json::json!({ "type": "progress", "message": card_text(card, color) }).to_string()
 }
 
 #[cfg(test)]
@@ -101,9 +121,13 @@ mod tests {
         assert_eq!(plain, "AIQ tip: you've reworded this request 3 times without adding new details · aiq show 01J");
         assert!(!plain.contains('\n') && plain.chars().count() <= 100);
         let colored = render_status_line(&card(), true);
-        assert!(colored.starts_with("\u{1b}[22;33m\u{1b}[1mAIQ tip:\u{1b}[22m ") && !colored.contains('\n'));
+        assert!(
+            colored.starts_with("\u{1b}[22;33m\u{1b}[1;30;43mAIQ tip:\u{1b}[22;49;33m ") && !colored.contains('\n')
+        );
         assert!(colored.ends_with(" · aiq show 01J\u{1b}[39m"), "whole line yellow, as the Claude Code card");
-        assert_eq!(render_waiting_marker("01J"), "1 tip waiting · aiq show 01J");
+        assert_eq!(strip_sgr(&colored), plain, "same words as the plain line");
+        assert_eq!(render_waiting_marker("01J", false), "1 tip waiting · aiq show 01J");
+        assert_eq!(render_waiting_marker("01J", true), "\u{1b}[22;33m1 tip waiting · aiq show 01J\u{1b}[39m");
     }
 
     #[test]
@@ -146,11 +170,23 @@ mod tests {
     fn system_message_colours_every_line_and_bolds_the_label() {
         let v: serde_json::Value = serde_json::from_str(&claude_code_system_message(&card(), true)).unwrap();
         let t = v["systemMessage"].as_str().unwrap();
-        assert!(t.starts_with("\u{1b}[22;33m\u{1b}[1mAIQ tip:\u{1b}[22m you've reworded"), "{t}");
+        assert!(t.starts_with("\u{1b}[22;33m\u{1b}[1;30;43mAIQ tip:\u{1b}[22;49;33m you've reworded"), "{t}");
         for l in t.lines() {
             assert!(l.starts_with(LINE_ON) && l.ends_with(LINE_OFF), "{l:?}");
         }
         assert_eq!(strip_sgr(t), render_claude_code(&card()), "same words as the plain card");
+    }
+
+    #[test]
+    fn copilot_progress_message_is_one_display_only_line_with_the_card() {
+        let line = copilot_progress_message(&card(), true);
+        assert!(!line.contains('\n'), "one JSON line");
+        let v: serde_json::Value = serde_json::from_str(&line).unwrap();
+        assert_eq!(v.as_object().unwrap().len(), 2);
+        assert_eq!(v["type"], "progress");
+        assert_eq!(strip_sgr(v["message"].as_str().unwrap()), render_claude_code(&card()));
+        let plain: serde_json::Value = serde_json::from_str(&copilot_progress_message(&card(), false)).unwrap();
+        assert_eq!(plain["message"].as_str().unwrap(), render_claude_code(&card()));
     }
 
     #[test]

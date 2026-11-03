@@ -54,6 +54,15 @@ fn main() {
     c.status.read_ms = 12;
     write(&out, "coaching", &c);
 
+    // Rung progress per kind of task: one up, one down, one the same, one too few (the success measure).
+    let moving = Paths::at(&tmp.join("progress"));
+    seed::progress(&moving);
+    aiq_core::control::finish_setup(&moving).unwrap();
+    let mut m = aiq_home::snapshot(&moving, &pack, now);
+    m.status.core = true;
+    m.status.read_ms = 12;
+    write(&out, "progress", &m);
+
     let empty = Paths::at(&tmp.join("empty"));
     let mut e = aiq_home::snapshot(&empty, &pack, now);
     e.status.core = true;
@@ -72,5 +81,10 @@ fn write(dir: &std::path::Path, name: &str, s: &aiq_home::Snapshot) {
         ToolFound { tool: "claude-code", hooked: true, present: true, install: "aiq install claude-code" },
         ToolFound { tool: "copilot", hooked: false, present: true, install: "aiq install copilot" },
     ];
+    // Fixed, not this machine's: an installed copy, checked an hour before the seed's now, nothing waiting.
+    s.update.supported = true;
+    s.update.running = "0.1.0".into();
+    s.update.checked_ms = Some(s.now_ms - 3_600_000);
+    s.update.can_rollback = true;
     std::fs::write(dir.join(format!("{name}.json")), serde_json::to_string_pretty(&s).unwrap()).unwrap();
 }

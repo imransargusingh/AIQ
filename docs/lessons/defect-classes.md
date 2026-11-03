@@ -171,3 +171,155 @@ summary: >-
 - **Control:** confident kind now uses the same condition as kind. Test
   `confident_kind_uses_the_same_denominator_as_kind` asserts confident n is never above kind n. Rung:
   automated control.
+
+### DC-013 — A test fixture copied from rendered output instead of the file's bytes
+- **Signature:** PR #73 taught `aiq status` to read the laptop swapper's `swapped aiq.exe` lines, and its
+  test passed, but on the laptop the line still said "no upgrade recorded". The test line came from the
+  console paste; the real file is UTF-16 LE with a BOM (Windows PowerShell 5.1 `Tee-Object -Append`), and
+  `read_to_string` rejected it, which `.ok()` turned into "not recorded".
+- **Why it survives:** a terminal shows UTF-16 and UTF-8 the same, and the degrade-to-"not recorded" rule
+  hides the read error.
+- **Instances:** 2026-11-02, `cli.rs` status reading `bin\upgrade-log.txt` (measured on the laptop: starts
+  FF FE, 66,974 of 134,022 bytes zero).
+- **Sweep:** other files AIQ reads that PowerShell writes: the release `upgrade.ps1` writes its log with
+  `Add-Content` (ANSI code page; its lines are ASCII, so read as UTF-8) and `update.json` with
+  `Set-Content -Encoding UTF8` (a BOM, already stripped by `update::strip_bom`). `hook-timings` is AIQ's own.
+- **Control:** `decode_log` reads UTF-16 LE/BE and UTF-8 with or without a BOM. Test
+  `upgrade_logs_are_read_in_the_encodings_powershell_writes` builds the bytes PowerShell writes. Rule: a
+  parser of a file another program writes is tested on that program's bytes, not on a pasted line.
+
+### DC-014 — The first key of a JSON map taken as the one that matters
+- **Signature:** a sealed `claude -p --model sonnet` judge call recorded its model as `claude-haiku-5-5`.
+  Claude Code adds a small helper call on another model, so `modelUsage` lists two models, and
+  `serde_json`'s map sorts keys, so `keys().next()` named the helper.
+- **Why it survives:** with one model in the map the first key is right; a short probe call lists one model,
+  only a real judge-sized call lists two. Nothing reads the recorded model back against the setting.
+- **Instances:** 2026-11-03, found by the first `aiq judge --eval` run in the cloud (report showed
+  claude-haiku-5-5; replayed by hand: haiku 19 output tokens $0.0001, sonnet 77 tokens $0.017).
+  `judge.rs` Claude path, and the same code on Copilot's `modelMetrics`.
+- **Sweep:** `grep -rn "keys().next()" crates`: the two judge sites only.
+- **Control:** `main_model` picks the entry that cost most, else wrote most; test
+  `the_judge_model_is_the_one_that_did_the_work_not_the_first_key`. Copilot's entry shape is not recorded,
+  so there it still keeps the first key (marked `assume:` in the code). Rule: never read meaning from a
+  JSON map's key order.
+
+### DC-015 — A fact the judge always hedges, read as unknown, demotes the rungs it should support
+- **Signature:** golden g1 cases h02, h11, h20: every run said F6 (output checked) yes at 0.5 to 0.55, under
+  the 0.6 fact bar, so F6 was unknown; Directed and Delegated both need F6, so one unsure fact took a
+  Directed or Delegated task to Assisted and Uncertain.
+- **Why it survives:** one bar for every model fact (D10) hides that some facts sit partly off the transcript,
+  where an honest model hedges. Unit tests build facts at 0.9; nothing scored placement against expected
+  rungs until the judge eval (PR #90).
+- **Instances:** 2026-11-03, `aiq judge --eval` replay: rung exact 20/32; 3 of the 12 rung misses were this.
+- **Sweep:** replay table of every case's facts vs expected rung: h06 is the same shape at 0.4 (left alone,
+  under the hedged bar); no other fact sat yes at 0.5 to 0.6 on a demoted case.
+- **Control:** rubric r2 `hedged_review` (F6 yes in every run at 0.5 or more plus a re-prompt in the log);
+  test `a_hedged_yes_on_output_checked_counts_when_the_person_came_back_after_the_output`; the replay gate
+  pins h02, h11, h20 placements. Rule: a guardrail's fact bar is tuned per fact from eval data, and a lower
+  bar needs a log fact to corroborate it.
+
+### DC-016 — Background work scheduled only on idle, starved by steady traffic
+- **Signature:** `e2e_copilot_tip_in_chat_off_leaves_it_to_the_status_line` failed once on the Windows
+  runner: one prompt's 20 ms send missed, the hook spooled it, and the core drains the spool only when its
+  command channel stays idle for 30 s. The test polls `aiq status` every 10 ms, so the idle tick never fired
+  and the prompt never arrived within the 10 s wait.
+- **Why it survives:** the idle tick looks like "every 30 s", and on a quiet laptop it is. Only steady traffic
+  (a poller, a busy session, a test) shows it is "30 s after the last command". A spool is rare, so the gap
+  only shows on a slow shared runner.
+- **Instances:** 2026-11-03, Windows CI, found by the Copilot capture thread (passed on re-run).
+- **Sweep:** `grep -n "recv_timeout(TICK)" crates`: the writer loop is the only idle-scheduled work; its tick
+  also prunes and expires stale cards (harmless to delay; left on the tick).
+- **Control:** the writer loop drains a non-empty spool before any command; test
+  `e2e_spooled_frame_goes_in_at_the_next_command_not_the_idle_tick` (red without the fix). Rule: work that
+  must happen soon is triggered by the event that makes it needed, never only by an idle timeout.
+
+### DC-017 — A desktop app that any launcher can open twice
+- **Signature:** 2026-11-03 02:11Z, two AIQ home windows open on the owner's laptop; he started neither the
+  second nor (knowingly) the first. Each launch of `aiq-home.exe` opened its own window, with its own reads
+  of the store and its own update button.
+- **Why it survives:** several launchers start AIQ home (install.ps1 first run, upgrade.ps1 `-Relaunch`
+  three times, the Start-menu shortcut, dev swap scripts) and each is right on its own. Nothing owned "is one
+  already open?", and a single tester rarely double-launches.
+- **Instances:** 2026-11-03, laptop, after the 21st dev build install (launcher of the second still being
+  traced on the laptop).
+- **Sweep:** `grep -rn "aiq-home.exe" packaging crates apps`: every launcher above goes through the exe, so one
+  guard in the exe covers them all.
+- **Control:** `tauri-plugin-single-instance`, registered first in `main()`: a second launch shows the open
+  window and exits, and the open window writes `second_launch cwd=...` to home.log. Test
+  `single_instance_guard_is_the_first_plugin`; CI's Windows job launches the exe twice and fails on two
+  processes. Rule: a per-user desktop app enforces one instance in the exe, never in each launcher.
+
+### DC-018 — One record reached by two capture paths, counted once per path
+- **Signature:** 2026-11-03, Imran's store: a session captured live by the hooks (`event`) and again by
+  `aiq import` (`import_event`) showed as two tasks, prompts 2–3 s apart. Both copies were judged (two premium
+  requests) and sometimes got different kinds. Measured read-only: 7 sessions held both ways, 805 tasks where
+  there were 785; 10 sessions' tasks judged twice.
+- **Why it survives:** each path is right on its own and keys its rows its own way (`event_id` vs
+  `import:<tool>:<session>:<seq>`), so no key collides. The overlap only exists once a person both runs the
+  hooks and imports history, and VS Code's live surface (`vscode`) differs from the file's tool
+  (`copilot-cli`), so even a session-id join by surface misses it.
+- **Instances:** 2026-11-02 reinstall + import (noted then, not fixed); measured 2026-11-03 by the
+  intent-sessions thread.
+- **Sweep:** every reader of `import_event`/`import_session` (`grep -rn "FROM import_" crates`): only the task
+  list builds tasks; the judge, task detail and kind label read prompts by the task list's member ids. Data-tab
+  counts (`imported_sessions`, `imported_events`) count stored rows, which is what they say.
+- **Control:** the task list joins the copies (`crates/aiq-home/src/twins.rs`): same session id across the
+  tool family, twins (within 30 s with the same text, or within 3 s) are one prompt, the rest are the union. Tests
+  `a_session_captured_live_and_imported_is_one_task` and
+  `a_session_held_live_and_imported_is_judged_once_with_every_prompt` (red without the fix). Rule: when a
+  second capture path writes the same thing, the one read model that builds the unit joins the paths before
+  counting; never count per path.
+
+### DC-019 — A device fact that under-reads, labelled "trust this over the text", overrules what the text shows
+- **Signature:** golden g1 h16, h17, a04, r03: the agent ran `lychee` + `markdownlint`, `scripts/check_brief.py`,
+  `scripts/verify_refresh.py`, `scripts/rerun.sh <test>`. The check detector knew none of them, so the envelope
+  said "checks run by: nobody". GPT Sol trusted it (as told), set F6 no at 0.86 to 0.98 and placed rung 1.
+- **Why it survives:** the detector is an allow-list tested on the commands its author thought of; Claude Sonnet
+  weighed the quoted commands and hid the gap, so only a second model exposed it. The spec's F3 already named
+  linters and evals.
+- **Instances:** 2026-11-03, Copilot eval on the laptop (68 premium requests): 4 of 6 rung misses.
+- **Sweep:** every command in golden g1 (`jq` over `steps[].command`): r04's `pre-commit run` was missed too
+  (added); r02's `sha256sum -c` is still not a check (left: the model placed r02 right from the text). Same class elsewhere: any log fact rendered as trusted (`agent edited files`, `sub-agents`,
+  `spec named`) is an allow-list too.
+- **Control:** fact set fs2 (linters, script names, test-name arguments); test
+  `checks_are_read_as_command_lines_not_substrings` holds the four g1 commands and six near-misses; the Copilot
+  eval runs on both providers before a fact-set change ships. Rule: a "trusted" device fact must say what it
+  could not see, or be tested against every command in the golden set.
+
+### DC-020 — A device fact read from turns AIQ never recorded, shown as "no"
+- **Signature:** 78 of 541 judgments on Imran's store (2026-11-03) were made with no agent actions in any turn,
+  and the envelope said "agent edited files: no, checks run by: nobody (trust these over the quoted text)". The
+  log path treated a turn with no stop row, or a live prompt with no match in the transcript, the same as a turn
+  the agent spent doing nothing.
+- **Why it survives:** `None` (not recorded) and "read, no tool calls" collapsed into one value; a single
+  `actions_known` flag per task hid per-turn gaps; the golden set always has every turn recorded.
+- **Instances:** 2 imported tasks with no stop rows and 2 live tasks with no matching transcript prompt among
+  the 78 (measured read-only on the laptop, `docs/investigations/no-actions/`). The other 74 really had no tool
+  calls inside their prompts' windows, except 2 prompts below.
+- **Sweep:** the Copilot import reader closes a turn at the first `assistant.turn_end`; 2 prompts lost 248 tool
+  calls that came after it, and 1 prompt's 314 sub-agent calls (and its `subagent.started`) are not counted.
+  Same family (an under-read stated as fact); its own change, not this one.
+- **Control:** fact set fs3: `log_facts` keeps a yes seen in recorded turns and makes every no unknown when a turn
+  is not recorded; the envelope says "not recorded" and how many prompts. Tests
+  `a_turn_not_recorded_makes_a_no_unknown_and_never_none`,
+  `the_envelope_says_not_recorded_never_none_for_turns_aiq_did_not_record`,
+  `an_imported_turn_without_a_stop_row_is_not_recorded_and_one_with_an_empty_stop_is_none`. Rule: a device
+  fact is a no only when every input it covers was read.
+
+### DC-021 — A reader that ends a turn at an event the tool writes more than once per turn
+- **Signature:** the Copilot import reader closed a prompt's turn at the first main-line `assistant.turn_end`.
+  Copilot writes one after each model round, so every tool call after the first round was dropped until the next
+  prompt. Measured 2026-11-03 on Imran's store (DC-020's sweep): 2 prompts lost 248 tool calls.
+- **Why it survives:** the fixture wrote one `turn_end` per prompt, the shape its author expected; the live reader
+  resets at each prompt and never read `turn_end`, so the two paths disagreed silently. And a reader fix alone
+  reaches nothing already imported: unchanged files are never read again.
+- **Instances:** `read_copilot` since `aiq import` was built; also the judge's live-task path, which reads the
+  same function.
+- **Sweep:** every reader that ends a unit on a tool's marker (`grep -rn "turn_end\|turn_start" crates`): only
+  `read_copilot`. Claude's reader ends at the next prompt or end of file, as does the live reader.
+- **Control:** a turn runs to the next prompt or the end of the file; test
+  `copilot_reader_keeps_every_round_of_a_prompt_past_its_first_turn_end` (several rounds, a sub-agent's own
+  turn end, red on the old reader). `COPILOT_READER` is stored in the settings: a run with a different version
+  reads every Copilot session again once (`a_new_copilot_reader_reads_unchanged_sessions_again_once`). Rule: a
+  turn ends where the person acts, never at a marker the tool may repeat; any change to what a reader stores
+  raises its reader version.

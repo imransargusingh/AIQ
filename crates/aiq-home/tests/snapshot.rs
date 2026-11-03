@@ -80,6 +80,50 @@ fn tasks_follow_the_task_rule_window_and_set_aside() {
 }
 
 #[test]
+fn a_session_captured_live_and_imported_is_one_task() {
+    let d = tempfile::tempdir().unwrap();
+    let p = Paths::at(d.path());
+    let mut s = Seed::new(&p);
+    let t0 = NOW - 2 * DAY;
+    // VS Code agent mode: the hooks saw two prompts; Copilot's own log (imported) also holds the one typed while
+    // the agent worked, and its copies of the other two land 2-3 s later.
+    let v1 = s.prompt("vscode", "S", t0, Some(AIQ), "fix the build");
+    s.prompt("vscode", "S", t0 + 10 * MIN, Some(AIQ), "now the tests");
+    s.imported_session(
+        "copilot-cli",
+        "S",
+        AIQ,
+        "imported",
+        &[
+            (t0 + 2_500, "fix the build"),
+            (t0 + 5 * MIN, "use the other runner"),
+            (t0 + 10 * MIN + 3_000, "now the tests"),
+        ],
+    );
+    // Claude Code: the same session twice, nothing extra.
+    let c1 = s.prompt("claude-code", "C", t0 + DAY, Some(AIQ), "write the spec");
+    s.imported_session("claude-code", "C", AIQ, "imported", &[(t0 + DAY + 1_000, "write the spec")]);
+    // Imported only (before live capture began): a task as before.
+    s.imported_session("claude-code", "OLD", AIQ, "imported", &[(t0 - DAY, "an older session")]);
+    let snap = snap(&p);
+    assert!(snap.status.error.is_none(), "{:?}", snap.status.error);
+    let shape: Vec<(&str, &str, u32, &str)> =
+        snap.tasks.iter().map(|t| (t.task_id.as_str(), t.tool.as_str(), t.prompts, t.origin)).collect();
+    assert_eq!(
+        shape,
+        vec![
+            (c1.as_str(), "claude-code", 1, "live"),
+            (v1.as_str(), "vscode", 3, "live"),
+            ("import:claude-code:OLD:0", "claude-code", 1, "imported"),
+        ]
+    );
+    let merged = &snap.tasks[1];
+    assert_eq!(merged.members[1].0, "import:copilot-cli:S:2", "the prompt only the import holds joins in order");
+    assert_eq!(merged.folder.as_deref(), Some(AIQ));
+    assert_eq!(snap.home.tasks_in_window, 3);
+}
+
+#[test]
 fn tips_settings_and_data() {
     let d = tempfile::tempdir().unwrap();
     let p = Paths::at(d.path());
@@ -93,6 +137,7 @@ fn tips_settings_and_data() {
     assert_eq!(s.home.tips_today, 1);
     assert_eq!(s.settings.daily_cap, 3);
     assert_eq!(s.settings.copilot_tip_stays, "next-prompt");
+    assert!(s.settings.copilot_tip_in_chat && s.settings.tip_popup && s.settings.tip_highlight, "all on by default");
     assert_eq!((s.data.events, s.data.prompts, s.data.turn_ends), (13, 11, 2));
     assert_eq!(s.data.items.len(), 13);
     let deleted: Vec<_> = s.data.items.iter().filter(|i| i.deleted).collect();
@@ -307,4 +352,88 @@ fn coaching_split_kinds_habits_and_settings_derive_from_judgments() {
     let j = s.tasks.iter().find(|t| t.task_id == ids[0]).unwrap().judgment.as_ref().unwrap();
     assert_eq!(j.task_type_label, Some("Writing tests"));
     assert_eq!(c.weeks.iter().map(|w| w.tasks).sum::<u32>(), 10);
+}
+
+#[test]
+fn progress_compares_each_kinds_typical_rung_over_two_14_day_halves() {
+    let d = tempfile::tempdir().unwrap();
+    let p = Paths::at(d.path());
+    progress(&p);
+    let s = snap(&p);
+    assert!(s.status.error.is_none(), "{:?}", s.status.error);
+    let c = &s.coaching;
+    assert_eq!((c.progress_days, c.progress_min), (14, 3));
+    let got: Vec<_> = c
+        .progress
+        .iter()
+        .map(|r| (r.task_type.as_str(), r.trend, r.recent, r.earlier, r.uncertain, r.recent_rung, r.earlier_rung))
+        .collect();
+    assert_eq!(
+        got,
+        vec![
+            ("tests", "up", 4, 3, 1, Some(3), Some(2)),
+            ("spec", "down", 3, 3, 0, Some(2), Some(3)),
+            ("fix_bug", "same", 3, 3, 0, Some(1), Some(1)),
+            ("refactor", "too_few", 1, 1, 0, Some(2), Some(2)),
+        ]
+    );
+    // An empty store has no rows but still says the window and minimum.
+    let e = tempfile::tempdir().unwrap();
+    let es = snap(&Paths::at(e.path()));
+    assert!(es.coaching.progress.is_empty());
+    assert_eq!((es.coaching.progress_days, es.coaching.progress_min), (14, 3));
+}
+
+#[test]
+fn projects_split_home_by_folder_and_add_up() {
+    let d = tempfile::tempdir().unwrap();
+    let p = Paths::at(d.path());
+    coaching(&p);
+    let s = snap(&p);
+    assert!(s.status.error.is_none(), "{:?}", s.status.error);
+    let rows: Vec<(&str, &str, u32, u32, u32, bool)> = s
+        .projects
+        .iter()
+        .map(|x| {
+            (x.key.as_str(), x.name.as_str(), x.tasks_in_window, x.coaching.split.up, x.coaching.split.tasks, x.renamed)
+        })
+        .collect();
+    // aiq: 12 tasks, 11 judged sure (one Uncertain); 3 could move up a rung (the tests task with a correction
+    // and the 2 refactors; the other tests tasks are finished). foresight: the 4 specs, all one rung from
+    // Delegated, but under the split minimum (10), so it ranks after aiq.
+    assert_eq!(rows, vec![(AIQ, "aiq", 12, 3, 11, false), (FORESIGHT, "foresight", 4, 4, 4, false)]);
+    // The projects add up to Home.
+    let sum = |f: &dyn Fn(&aiq_home::Project) -> u32| s.projects.iter().map(f).sum::<u32>();
+    assert_eq!(sum(&|x| x.tasks_in_window), s.home.tasks_in_window);
+    assert_eq!(sum(&|x| x.judged), s.home.judged);
+    for r in 0..5 {
+        assert_eq!(sum(&|x| x.rungs[r]), s.home.rungs[r], "rung {}", r + 1);
+    }
+    assert_eq!(sum(&|x| x.coaching.split.tasks), s.coaching.split.tasks);
+    // Same rules on the project's tasks only: foresight's one kind is the spec, with its next step.
+    let f = &s.projects[1];
+    assert_eq!(f.most_common_rung, Some(2));
+    let kinds: Vec<(&str, &str)> = f.coaching.kinds.iter().map(|k| (k.task_type.as_str(), k.state)).collect();
+    assert_eq!(kinds, vec![("spec", "coach")]);
+    assert_eq!(f.coaching.opportunities.len(), 1);
+    assert_eq!(f.weeks.iter().map(|w| w.tasks).sum::<u32>(), 4);
+}
+
+#[test]
+fn a_renamed_project_keeps_its_name_and_an_empty_name_goes_back() {
+    let d = tempfile::tempdir().unwrap();
+    let p = Paths::at(d.path());
+    let mut s = Seed::new(&p);
+    s.prompt("claude-code", "a", NOW - DAY, Some(AIQ), "fix the build");
+    s.prompt("vscode", "b", NOW - 2 * DAY, None, "explain this");
+    s.setting(&format!("project_name.{AIQ}"), "AI coach", NOW - 3 * DAY);
+    drop(s);
+    let names = |s: &aiq_home::Snapshot| -> Vec<(String, bool)> {
+        let mut v: Vec<_> = s.projects.iter().map(|x| (x.name.clone(), x.renamed)).collect();
+        v.sort();
+        v
+    };
+    assert_eq!(names(&snap(&p)), vec![("AI coach".into(), true), (aiq_home::NO_FOLDER.into(), false)]);
+    Seed::new(&p).setting(&format!("project_name.{AIQ}"), "", NOW - DAY);
+    assert_eq!(names(&snap(&p)), vec![(aiq_home::NO_FOLDER.into(), false), ("aiq".into(), false)]);
 }

@@ -290,12 +290,7 @@ pub fn type_rows(
         .map(|((job, ty), mut ts)| {
             ts.sort_by(|a, b| b.first_ms.cmp(&a.first_ms).then_with(|| a.task_id.cmp(&b.task_id)));
             let sure: Vec<&&JudgedTask> = ts.iter().filter(|t| !t.uncertain()).collect();
-            let mut by_rung = [0u32; 5];
-            for t in &sure {
-                by_rung[(t.current.clamp(1, 5) - 1) as usize] += 1;
-            }
-            let top = by_rung.iter().copied().max().unwrap_or(0);
-            let today = (top > 0).then(|| by_rung.iter().position(|&n| n == top).unwrap() as u8 + 1);
+            let today = typical_rung(sure.iter().map(|t| t.current));
             let mut row = TypeRow {
                 job: job.to_owned(),
                 task_type: ty.to_owned(),
@@ -351,6 +346,123 @@ pub fn type_rows(
         .collect();
     rows.sort_by(|a, b| b.tasks.cmp(&a.tasks).then_with(|| a.label.cmp(b.label)).then_with(|| a.job.cmp(&b.job)));
     rows
+}
+
+/// Most common rung among these current rungs; ties go lower. None when there are none.
+pub fn typical_rung(rungs: impl IntoIterator<Item = u8>) -> Option<u8> {
+    let mut by_rung = [0u32; 5];
+    for r in rungs {
+        by_rung[(r.clamp(1, 5) - 1) as usize] += 1;
+    }
+    let top = by_rung.iter().copied().max().unwrap_or(0);
+    (top > 0).then(|| by_rung.iter().position(|&n| n == top).unwrap() as u8 + 1)
+}
+
+// ------------------------------------------------------------------ rung progress (success measure)
+
+/// Each half of the progress comparison: the last 14 days against the 14 days before.
+// simplify: fixed at 14; becomes a CoachParams field if Imran wants it editable in Settings.
+pub const PROGRESS_DAYS: u32 = 14;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Trend {
+    Up,
+    Down,
+    Same,
+    /// Either half has fewer than `recurring_min` judged, not-Uncertain tasks.
+    TooFew,
+}
+
+impl Trend {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Trend::Up => "up",
+            Trend::Down => "down",
+            Trend::Same => "same",
+            Trend::TooFew => "too_few",
+        }
+    }
+}
+
+/// One kind of task's typical rung in the last `PROGRESS_DAYS` against the `PROGRESS_DAYS` before: Imran's
+/// success measure, "a recurring task type moves up a rung". Counts are measured; rungs are the judge's.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Progress {
+    pub job: String,
+    pub task_type: String,
+    pub label: &'static str,
+    /// Judged, not-Uncertain tasks in each half: the tasks behind each typical rung.
+    pub recent: u32,
+    pub earlier: u32,
+    /// Uncertain judgments in both halves, left out of the rungs and counted beside.
+    pub uncertain: u32,
+    /// Typical rung (most common, ties lower) of each half; None when that half has no tasks.
+    pub recent_rung: Option<u8>,
+    pub earlier_rung: Option<u8>,
+    pub trend: Trend,
+}
+
+/// One row per kind of task with judged tasks in the last 2 × `PROGRESS_DAYS`. A kind needs at least
+/// `recurring_min` (the tips' repeated-kind minimum) judged, not-Uncertain tasks in BOTH halves before AIQ
+/// says it moved; otherwise it is "too few". The judge's fallback kind "other" is not one kind of work and
+/// is left out. Order: moved up, moved down, same, too few; then most recent tasks, then label.
+pub fn progress(tasks: &[JudgedTask], now_ms: i64, p: &CoachParams) -> Vec<Progress> {
+    let half = PROGRESS_DAYS as i64 * DAY_MS;
+    let (mid, start) = (now_ms - half, now_ms - 2 * half);
+    #[derive(Default)]
+    struct Halves {
+        recent: Vec<u8>,
+        earlier: Vec<u8>,
+        uncertain: u32,
+    }
+    let mut groups: BTreeMap<(&str, &str), Halves> = BTreeMap::new();
+    for t in tasks.iter().filter(|t| t.first_ms >= start && t.first_ms <= now_ms) {
+        let Some(k) = t.kind().filter(|(_, ty)| *ty != "other") else { continue };
+        let g = groups.entry(k).or_default();
+        match (t.uncertain(), t.first_ms >= mid) {
+            (true, _) => g.uncertain += 1,
+            (false, true) => g.recent.push(t.current),
+            (false, false) => g.earlier.push(t.current),
+        }
+    }
+    let mut out: Vec<Progress> = groups
+        .into_iter()
+        .map(|((job, ty), Halves { recent, earlier, uncertain })| {
+            let (rr, er) = (typical_rung(recent.iter().copied()), typical_rung(earlier.iter().copied()));
+            let enough = recent.len() as u32 >= p.recurring_min && earlier.len() as u32 >= p.recurring_min;
+            let trend = match (enough, rr, er) {
+                (true, Some(r), Some(e)) if r > e => Trend::Up,
+                (true, Some(r), Some(e)) if r < e => Trend::Down,
+                (true, Some(_), Some(_)) => Trend::Same,
+                _ => Trend::TooFew,
+            };
+            Progress {
+                job: job.to_owned(),
+                task_type: ty.to_owned(),
+                label: task_type_label(job, ty).unwrap_or("Other"),
+                recent: recent.len() as u32,
+                earlier: earlier.len() as u32,
+                uncertain,
+                recent_rung: rr,
+                earlier_rung: er,
+                trend,
+            }
+        })
+        .collect();
+    let rank = |t: Trend| match t {
+        Trend::Up => 0,
+        Trend::Down => 1,
+        Trend::Same => 2,
+        Trend::TooFew => 3,
+    };
+    out.sort_by(|a, b| {
+        rank(a.trend)
+            .cmp(&rank(b.trend))
+            .then_with(|| b.recent.cmp(&a.recent))
+            .then_with(|| a.label.cmp(b.label))
+            .then_with(|| a.job.cmp(&b.job))
+    });
+    out
 }
 
 /// How far one move reaches on the person's judged tasks in the window (measured from stored facts, no model).
@@ -441,6 +553,11 @@ pub struct Split {
     pub needs: u32,
     /// Uncertain judgments left out, counted beside.
     pub uncertain: u32,
+    /// Not finished, and the judge sees a next step at least one rung up (potential > current): a subset of
+    /// could + needs, so the move people can make now shows even when no kind reaches Delegated.
+    pub up: u32,
+    /// The rung those tasks' next steps reach most often (ties: the lower rung). None when `up` is 0.
+    pub up_to: Option<u8>,
 }
 
 /// Finished under the interim rule (Imran 2026-11-02, Q-A): judged Delegated or higher and no re-prompt that
@@ -458,12 +575,17 @@ pub fn split(tasks: &[JudgedTask], rows: &[TypeRow], from_ms: i64, to_ms: i64) -
         .map(|r| (r.job.as_str(), r.task_type.as_str()))
         .collect();
     let mut s = Split::default();
+    let mut to = [0u32; 6];
     for t in tasks.iter().filter(|t| t.first_ms >= from_ms && t.first_ms < to_ms) {
         if t.uncertain() {
             s.uncertain += 1;
             continue;
         }
         s.tasks += 1;
+        if !finished(t) && t.potential > t.current {
+            s.up += 1;
+            to[usize::from(t.potential.min(5))] += 1;
+        }
         if finished(t) {
             s.finished += 1;
         } else if t.kind().is_some_and(|k| could_kinds.contains(&k)) {
@@ -472,6 +594,8 @@ pub fn split(tasks: &[JudgedTask], rows: &[TypeRow], from_ms: i64, to_ms: i64) -
             s.needs += 1;
         }
     }
+    let most = to.iter().copied().max().unwrap_or(0);
+    s.up_to = (most > 0).then(|| to.iter().position(|&n| n == most).unwrap_or(0) as u8);
     s
 }
 
@@ -965,6 +1089,31 @@ mod tests {
         assert_eq!(s.could, 2, "the corrected and the j1 tests task: tests coaches toward Orchestrated");
         assert_eq!(s.needs, 2, "a NULL type is Needs you");
         assert_eq!(s.finished + s.could + s.needs, s.tasks);
+        assert!(s.up <= s.could + s.needs, "up is a subset of the not-finished tasks");
+    }
+
+    #[test]
+    fn split_counts_tasks_one_step_from_a_higher_rung() {
+        let m = moves();
+        let p = params();
+        let mut ts = vec![
+            task("a", 1, "tests", 1, "judged", true, "{}", Some(0)),
+            task("b", 1, "tests", 1, "judged", true, "{}", Some(0)),
+            task("c", 1, "tests", 2, "judged", true, "{}", Some(0)),
+            task("r", 1, "tests", 1, "right_rung", false, "{}", Some(0)),
+            task("u", 1, "tests", 1, "uncertain", true, "{}", Some(0)),
+        ];
+        ts[0].potential = 2;
+        ts[1].potential = 2;
+        ts[2].potential = 3;
+        ts[3].potential = 1;
+        ts[4].potential = 2;
+        let rows = type_rows(&ts, &m, &[], NOW, &p);
+        let s = split(&ts, &rows, NOW - 30 * DAY_MS, NOW + 1);
+        assert_eq!(s.up, 3, "uncertain and right-rung tasks don't count");
+        assert_eq!(s.up_to, Some(2), "two of three reach Directed");
+        let none = split(&ts[3..4], &rows, NOW - 30 * DAY_MS, NOW + 1);
+        assert_eq!((none.up, none.up_to), (0, None));
     }
 
     #[test]
@@ -1087,5 +1236,85 @@ mod tests {
     fn card_labels_lower_case_the_first_letter_only() {
         assert_eq!(card_label("write_doc", "spec"), "writing a spec or PRD");
         assert_eq!(card_label("code_change", "tests"), "writing tests");
+    }
+    // ---------------------------------------------------------------- rung progress
+
+    fn at(id: &str, day: i64, ty: &str, current: u8, state: &str) -> JudgedTask {
+        task(id, day, ty, current, state, false, "{}", Some(0))
+    }
+
+    #[test]
+    fn typical_rung_is_the_most_common_and_ties_go_lower() {
+        assert_eq!(typical_rung([2, 3, 3]), Some(3));
+        assert_eq!(typical_rung([2, 3]), Some(2));
+        assert_eq!(typical_rung([]), None);
+    }
+
+    #[test]
+    fn progress_compares_the_last_14_days_with_the_14_before() {
+        let mut ts = vec![];
+        // tests: Directed before, Delegated now -> up.
+        for i in 0..3 {
+            ts.push(at(&format!("te{i}"), 20 + i, "tests", 2, "judged"));
+        }
+        for i in 0..4 {
+            ts.push(at(&format!("tr{i}"), 1 + i, "tests", 3, "judged"));
+        }
+        ts.push(at("tu", 2, "tests", 5, "uncertain"));
+        // fix_bug: Delegated before, Directed now -> down.
+        for i in 0..3 {
+            ts.push(at(&format!("fe{i}"), 15 + i, "fix_bug", 3, "judged"));
+            ts.push(at(&format!("fr{i}"), 3 + i, "fix_bug", 2, "right_rung"));
+        }
+        // refactor: same rung both halves.
+        for i in 0..3 {
+            ts.push(at(&format!("re{i}"), 16 + i, "refactor", 2, "judged"));
+            ts.push(at(&format!("rr{i}"), 5 + i, "refactor", 2, "judged"));
+        }
+        // deps: two earlier tasks only -> too few, even though the rung differs.
+        ts.push(at("de0", 20, "deps", 1, "judged"));
+        ts.push(at("de1", 21, "deps", 1, "judged"));
+        for i in 0..3 {
+            ts.push(at(&format!("dr{i}"), 2 + i, "deps", 4, "judged"));
+        }
+        // other: the judge's fallback, never a row. Older than 28 days: out of both halves.
+        for i in 0..6 {
+            ts.push(at(&format!("o{i}"), 1 + i * 3, "other", 1 + (i as u8 % 3), "judged"));
+        }
+        ts.push(at("old", 29, "tests", 1, "judged"));
+        let p = progress(&ts, NOW, &params());
+        let got: Vec<_> = p
+            .iter()
+            .map(|r| (r.task_type.as_str(), r.trend.as_str(), r.recent, r.earlier, r.recent_rung, r.earlier_rung))
+            .collect();
+        assert_eq!(
+            got,
+            vec![
+                ("tests", "up", 4, 3, Some(3), Some(2)),
+                ("fix_bug", "down", 3, 3, Some(2), Some(3)),
+                ("refactor", "same", 3, 3, Some(2), Some(2)),
+                ("deps", "too_few", 3, 2, Some(4), Some(1)),
+            ]
+        );
+        assert_eq!(p[0].uncertain, 1, "uncertain counted beside, not on a rung");
+    }
+
+    #[test]
+    fn progress_needs_the_repeated_kind_minimum_in_both_halves() {
+        let mut ts = vec![at("e0", 20, "tests", 1, "judged"), at("e1", 21, "tests", 1, "judged")];
+        ts.push(at("e2", 22, "tests", 1, "uncertain"));
+        for i in 0..3 {
+            ts.push(at(&format!("r{i}"), 1 + i, "tests", 3, "judged"));
+        }
+        assert_eq!(
+            progress(&ts, NOW, &params())[0].trend,
+            Trend::TooFew,
+            "an uncertain task does not make up the count"
+        );
+        ts.push(at("e3", 23, "tests", 1, "judged"));
+        assert_eq!(progress(&ts, NOW, &params())[0].trend, Trend::Up);
+        let strict = CoachParams { recurring_min: 4, ..params() };
+        assert_eq!(progress(&ts, NOW, &strict)[0].trend, Trend::TooFew, "the minimum is the tips' recurring_min");
+        assert!(progress(&[], NOW, &params()).is_empty());
     }
 }

@@ -2,9 +2,11 @@
 // with its judged job and rung, or "Not judged yet" (design rung-judge). States other than a plain judgment
 // carry a text label (Uncertain, Right rung, Capped by a blocker), never colour alone.
 import { useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { folderName, jobOf, jobOptions, plural, rungLabel, sortTasks, stateLabel, toolName, when, type Dir, type SortKey } from "../format";
+import { jobOf, jobOptions, plural, sortTasks, stateLabel, toolName, when, type Dir, type SortKey } from "../format";
 import { KindList } from "../coach";
-import { Banners, Chip, Title, type Ctx } from "../ui";
+import { Banners, Chip, ProjectPicker, Rung, Title, type Ctx } from "../ui";
+import { projectName, projectOf } from "../project";
+import { DayView } from "./DayView";
 
 const COLS: { key: SortKey; label: string; right?: boolean }[] = [
   { key: "when", label: "Started" },
@@ -17,6 +19,7 @@ export function Tasks(ctx: Ctx) {
   const [sort, setSort] = useState<{ key: SortKey; dir: Dir }>({ key: "when", dir: -1 });
   const [job, setJob] = useState("All");
   const [sel, setSel] = useState(0);
+  const [view, setView] = useState<"list" | "day">("list");
   const body = useRef<HTMLTableSectionElement>(null);
   const { options, dropdown } = jobOptions(snap.tasks);
   const rows = useMemo(
@@ -43,6 +46,7 @@ export function Tasks(ctx: Ctx) {
   return (
     <div className="page wide">
       <Banners {...ctx} />
+      <ProjectPicker {...ctx} />
       <header className="head">
         <div className="group">
           <Title>Tasks</Title>
@@ -53,6 +57,10 @@ export function Tasks(ctx: Ctx) {
         </div>
         {snap.tasks.length > 0 && (
           <div className="row">
+            <div className="seg" role="group" aria-label="View">
+              <button aria-pressed={view === "list"} onClick={() => setView("list")}>List</button>
+              <button aria-pressed={view === "day"} onClick={() => setView("day")}>Day</button>
+            </div>
             <span className="meta" id="joblbl">Job</span>
             {dropdown ? (
               <select className="input" aria-labelledby="joblbl" value={job} onChange={(e) => setJob(e.target.value)}>
@@ -82,7 +90,9 @@ export function Tasks(ctx: Ctx) {
           <KindList label="Kinds of task" rows={snap.coaching.kinds} open={(k) => ctx.openKind(k.job, k.task_type)} />
         </section>
       )}
-      {snap.tasks.length === 0 ? (
+      {snap.tasks.length > 0 && view === "day" ? (
+        <DayView {...ctx} snap={{ ...snap, tasks: snap.tasks.filter((t) => job === "All" || jobOf(t) === job) }} />
+      ) : snap.tasks.length === 0 ? (
         <div className="empty">
           <b>No tasks yet.</b>
           <span className="mute">A task shows here after you work with Claude Code, Copilot CLI or VS Code agent mode while AIQ is watching.</span>
@@ -100,9 +110,11 @@ export function Tasks(ctx: Ctx) {
                     </button>
                   </th>
                 ))}
-                <th>Folder</th>
+                <th>Project</th>
                 <th>Job and kind</th>
-                <th>Rung</th>
+                <th>
+                  <span className="rung" title="How much of the task you handed to the agent, from Assisted (1) to Factory (5). Hover a rung to see what it means.">Rung</span>
+                </th>
               </tr>
             </thead>
             <tbody ref={body}>
@@ -125,7 +137,7 @@ export function Tasks(ctx: Ctx) {
                     {toolName(t.tool)} {t.origin === "imported" && <Chip>Imported</Chip>}
                   </td>
                   <td className="r num">{t.prompts}</td>
-                  <td title={t.folder ?? "Not recorded for tasks before this version"}>{folderName(t.folder)}</td>
+                  <td title={t.folder ?? "Not recorded for tasks before this version"}>{projectName(snap, projectOf(t))}</td>
                   <td className={t.job ? undefined : "mute"}>
                     {jobOf(t)}
                     {t.judgment?.task_type_label && <span className="meta"> · {t.judgment.task_type_label}</span>}
@@ -133,7 +145,7 @@ export function Tasks(ctx: Ctx) {
                   <td className={t.judgment ? undefined : "mute"}>
                     {t.judgment ? (
                       <>
-                        {rungLabel(t.judgment.current)}
+                        <Rung r={t.judgment.current} />
                         {stateLabel(t.judgment.state) && <> <Chip>{stateLabel(t.judgment.state)}</Chip></>}
                       </>
                     ) : (
@@ -146,7 +158,7 @@ export function Tasks(ctx: Ctx) {
           </table>
         </div>
       )}
-      {snap.tasks.length > 0 && <p className="meta">J and K move between rows, Enter opens a task. Select a column heading to sort.</p>}
+      {snap.tasks.length > 0 && view === "list" && <p className="meta">J and K move between rows, Enter opens a task. Select a column heading to sort.</p>}
     </div>
   );
 }

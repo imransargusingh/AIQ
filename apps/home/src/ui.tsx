@@ -1,8 +1,8 @@
 // Small shared pieces: banners, dialog with focus trap, skeletons, chips.
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api } from "./api";
 import type { Snapshot } from "./types";
-import { when } from "./format";
+import { RUNGS, rungLabel, when } from "./format";
 
 /** Nav pages, plus places outside the nav: one task's detail, one kind of task (from Home or Tasks), setup. */
 export type Page = "home" | "tasks" | "tips" | "data" | "settings" | "task" | "kind" | "setup";
@@ -25,6 +25,39 @@ export interface Ctx {
   announce: (msg: string) => void;
   togglePause: () => void;
   refresh: () => void;
+  /** The project Home and Tasks show (a folder key, "" for no folder), or null for all (design project-filter P3). */
+  project: string | null;
+  setProject: (key: string | null) => void;
+}
+
+/** The picker's "All projects" value: a NUL can't be in any folder path, so no project key equals it. */
+const ALL = "\u0000";
+
+/** The Project picker at the top of Home and Tasks (design project-filter P3). Hidden with one project or none. */
+export function ProjectPicker({ snap, project, setProject }: Pick<Ctx, "snap" | "project" | "setProject">) {
+  if (snap.projects.length < 2) return null;
+  const shown = project !== null && snap.projects.some((p) => p.key === project) ? project : null;
+  return (
+    <div className="row projpick">
+      <label className="meta" htmlFor="projsel">Project</label>
+      <select
+        id="projsel"
+        className="input"
+        value={shown === null ? ALL : shown}
+        onChange={(e) => setProject(e.target.value === ALL ? null : e.target.value)}
+      >
+        <option value={ALL}>All projects</option>
+        {snap.projects.map((p) => (
+          <option key={p.key} value={p.key}>
+            {p.name} ({p.tasks_in_window})
+          </option>
+        ))}
+      </select>
+      {shown !== null && (
+        <button className="btnlink" onClick={() => setProject(null)}>Show all projects</button>
+      )}
+    </div>
+  );
 }
 
 /** The page title takes focus on every page change, so a screen reader says where the person is. */
@@ -78,6 +111,61 @@ export function Banners({ snap, togglePause, refresh }: Pick<Ctx, "snap" | "togg
   );
 }
 
+/** Home's one line about updates (design auto-update U5): a version waiting, installed, failed or left. */
+export function UpdateLine({ snap, announce }: Pick<Ctx, "snap" | "announce">) {
+  const u = snap.update;
+  const [msg, setMsg] = useState<string | null>(null);
+  if (!u.supported || u.note === "none") return null;
+  const run = async (action: "install" | "rollback") => {
+    const r = await api.runUpdate(action);
+    const m = r.ok ? (action === "install" ? "Installing the update. AIQ home closes and opens again." : "Going back. AIQ home closes and opens again.") : r.message;
+    setMsg(m);
+    announce(m);
+  };
+  const at = u.at_ms != null ? when(u.at_ms, snap.now_ms, snap.offset_min) : "";
+  const ver = (v: string | null) => (v ?? "").replace(/^v/, "");
+  let text: ReactNode;
+  let action: ReactNode = null;
+  if (u.note === "waiting") {
+    text =
+      u.mode === "auto" ? (
+        <>AIQ {ver(u.available)} is ready. It installs by itself when you close AIQ home.</>
+      ) : (
+        <>AIQ {ver(u.available)} is ready to install.</>
+      );
+    action = (
+      <button className="btn" onClick={() => run("install")}>
+        Install now
+      </button>
+    );
+  } else if (u.note === "applied") {
+    text = (
+      <>
+        AIQ updated itself to {u.running} ({at}). Your data and settings are kept.
+      </>
+    );
+    if (u.can_rollback)
+      action = (
+        <button className="btn" onClick={() => run("rollback")}>
+          Go back to {u.from ?? "the previous version"}
+        </button>
+      );
+  } else if (u.note === "failed") {
+    text = <>AIQ couldn't install an update, so it kept {u.running}{u.message ? ` (${u.message})` : ""}. It tries again tomorrow.</>;
+  } else {
+    text = <>You went back to AIQ {u.running}. AIQ won't install {u.from ?? "that version"} again by itself; a newer one still installs.</>;
+  }
+  return (
+    <div className="banner" data-testid="update-line">
+      <div className="grow">
+        {text}
+        {msg && <span className="meta"> {msg}</span>}
+      </div>
+      {action}
+    </div>
+  );
+}
+
 /** Modal dialog: focus starts on the first marked element (Cancel), Tab is trapped, Esc closes, focus returns. */
 export function Dialog({ label, onClose, children, className = "" }: { label: string; onClose: () => void; children: ReactNode; className?: string }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -123,6 +211,13 @@ export const Sk = ({ w = "100%", h = "14px" }: { w?: string; h?: string }) => <s
 
 export const Chip = ({ children, tone }: { children: ReactNode; tone?: "ok" | "warn" | "tried" }) => (
   <span className={`chip${tone ? ` ${tone}` : ""}`}>{children}</span>
+);
+
+/** A rung's name; hovering it says what the rung means (the full ladder is on Home, How you work with agents). */
+export const Rung = ({ r }: { r: number }) => (
+  <span className="rung" title={RUNGS[r - 1].means}>
+    {rungLabel(r)}
+  </span>
 );
 
 /** Prompts can be many KB; show a preview and keep the full text one click (or Enter) away. */

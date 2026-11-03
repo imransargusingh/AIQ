@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Kind Label</title><style>
+:root { color-scheme: light dark; --bg:#f7f5ef; --panel:#fff; --text:#20201d;
+  --muted:#66645f; --line:#d9d5ca; --accent:#3157a4; --code:#f0eee7; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#171816; --panel:#20221f; --text:#f2f1eb; --muted:#b8b6ae;
+    --line:#3d403a; --accent:#8fb0ff; --code:#292c27; }
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text);
+  font:16px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif; }
+main { width:min(920px,calc(100% - 32px)); margin:32px auto; padding:40px;
+  background:var(--panel); border:1px solid var(--line); border-radius:12px; }
+h1,h2,h3,h4,h5,h6 { line-height:1.2; margin:1.5em 0 .55em; }
+h1 { margin-top:0; font-size:2.2rem; } h2 { border-bottom:1px solid var(--line); padding-bottom:.3em; }
+a { color:var(--accent); } code { background:var(--code); padding:.12em .35em; border-radius:4px; }
+pre { overflow:auto; padding:16px; background:var(--code); border-radius:8px; }
+pre code { padding:0; } blockquote { margin:1em 0; padding:.2em 1em; color:var(--muted);
+  border-left:4px solid var(--line); }
+table { width:100%; border-collapse:collapse; margin:1em 0; display:block; overflow:auto; }
+th,td { padding:.55em .75em; border:1px solid var(--line); text-align:left; vertical-align:top; }
+th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); }
+.source { color:var(--muted); font-size:.9rem; margin-bottom:2rem; }
+@media (max-width:640px) { main { width:100%; margin:0; padding:24px 18px; border:0; border-radius:0; } }
+</style></head><body><main><div class="source">Rendered from kind-label.md</div><h1>Design: label the kind of task with a small model</h1>
+<p>Approved by Imran on 2026-11-02 (&quot;let&#x27;s go with your recommendation&quot;, thread &quot;Find out why no tips have fired&quot;).</p>
+<h2>Problem (measured)</h2>
+<p>From the tip decision log and store on the laptop, 2026-11-02:</p>
+<ul><li>Since the tips went live: 29 prompts, 9 new tasks. 8 of 9 stopped at the kind guess (<code>no_guess</code>).</li><li>Best word overlap (Jaccard) of a real first prompt with any of 122 judged tasks: 0.03 to 0.15. The bar</li></ul>
+<p>(<code>[coach] match_threshold</code>) is 0.45; only 2 to 3 word prompts reach it.</p>
+<ul><li>Leave-one-out over the 122 judged tasks: the live rule 9 of 13 right; TF-IDF at most 15 of 32. No word</li></ul>
+<p>rule reaches the 8-in-10 self-check bar.</p>
+<h2>Decision</h2>
+<ol><li><strong>Word guess first.</strong> <code>coach::guess_type</code> is unchanged and free. When it names a kind, nothing is sent.</li><li><strong>Otherwise ask for a label, off every clock that matters.</strong> The core (<code>Service::next_rung</code>) calls a</li></ol>
+<p>labeller the <code>aiq</code> binary wires in; it starts <code>aiq label --task … --surface … --session …</code> detached, on its own thread. The hook already returned (ingest has no reply), and the core never waits on a model (C9). Hook time is unchanged: nothing on the hook path changed.</p>
+<ol><li><strong>One sealed call, same provider, the person&#x27;s own sign-in.</strong> <code>aiq label</code> reuses the judge&#x27;s</li></ol>
+<p><code>ClaudeCli</code> / <code>CopilotCli</code>: Claude Code <code>claude -p</code> in an empty folder, no tools, hooks off, no saved session; Copilot CLI with its own empty <code>COPILOT_HOME</code> (in <code>label-work</code>, not <code>judge-work</code>, which the judge sweeps under its lock), no tools, no MCP servers, its session id recorded as AIQ&#x27;s own (US-11). Models: Claude <code>haiku</code> (<code>kind-label-claude-model</code>); Copilot the label model if set (<code>kind-label-copilot-model</code>), else the judge&#x27;s Copilot model, else Copilot&#x27;s default.</p>
+<ol><li><strong>What is sent:</strong> only the first prompt, secrets removed again, cut to 4,000 bytes, inside a per-call</li></ol>
+<p>fence. The system prompt is the judge&#x27;s own JOB and TASK TYPE text, cut from <code>rung::SYSTEM</code> at run time, so the label and the judgment it is checked against share one vocabulary.</p>
+<ol><li><strong>What is stored:</strong> one append-only <code>kind_label</code> row per call (schema v8): ids, outcome, job, kind, both</li></ol>
+<p>confidences, model, request time, call time, tokens, cost. Never text.</p>
+<ol><li><strong>Decision.</strong> <code>aiq label</code> tells the core (<code>Request::KindLabel</code>, no reply). <code>Service::on_kind_label</code></li></ol>
+<p>drops the label when the session has moved to another task, the task already has a guess, or <code>label::accept</code> fails (needs a pack job, a named kind, and both confidences at least 0.8, the coaching bar). Otherwise it writes a <code>type_guess</code> row with <code>method = label</code> and runs the same decision as a word guess: the kind&#x27;s coached move, the accuracy pause (K6b, PR #59), tip answers, cooldown, habit, then the trigger engine&#x27;s budget and quiet period. The card waits for the turn&#x27;s end (Claude Code Stop, Copilot CLI status line) as before.</p>
+<ol><li><strong>Own self-check.</strong> D10 (<code>check_guesses</code> against the later judgment) now runs per method. Labels turn</li></ol>
+<p>off by themselves below 8 in 10 right with at least 10 checked, without touching word guesses, and the other way round. <code>next-rung-tips on</code> overrides both, as before.</p>
+<ol><li><strong>Switches and budget.</strong> Labels run only while background judging is on (PR #75) and</li></ol>
+<p><code>kind-label</code> is not <code>off</code>. Their own daily budget, <code>kind-label-daily</code>, default 20, 0 to 500, counted from <code>kind_label</code> rows since local midnight. It is separate from the judge&#x27;s budget because a label is one call and a judgment two, and the person can see and cap each. Set-aside and automated sessions never reach the decision, so they are never labelled.</p>
+<h2>Measured vs guessed</h2>
+<table><thead><tr><th>Claim</th><th>Status</th></tr></thead><tbody><tr><td>Word guess misses 8 of 9 new tasks</td><td>Measured on the laptop, one day</td></tr><tr><td>Hook time unchanged</td><td>Inferred from the code: no hook-path change; the hook budget block in <code>aiq status</code> will show it</td></tr><tr><td>A label returns before most first turns end</td><td>Inferred: a sealed Copilot judge call took ~11 s (measured); turns ran 18 s to 42 min that day. Each <code>kind_label</code> row records <code>wait_ms</code> (request to answer) in <code>label.log</code>, so this becomes measured after install</td></tr><tr><td>Label accuracy against the judge</td><td>Not measured yet. <code>aiq label --eval [--sample n]</code> measures it on judged tasks (stores nothing)</td></tr><tr><td>Default budget 20 a day</td><td>Guess (about 9 new tasks a day, one day measured)</td></tr><tr><td>Copilot default model is good enough</td><td>Guess; <code>aiq label --eval --only copilot-cli</code> measures it</td></tr></tbody></table>
+<h2>Instrumentation</h2>
+<ul><li><code>aiq status</code>: labels today of the budget, answered, confident, median call time, and labels checked</li></ul>
+<p>against the judge (right of checked).</p>
+<ul><li><code>core.log</code>: <code>coach.guess</code> with <code>coach.outcome = label_requested | no_guess | decided | not_coachable</code> and</li></ul>
+<p><code>method</code>; <code>coach.label</code> with <code>label_not_confident | label_task_moved_on | label_self_check_off</code>.</p>
+<ul><li>Counter <code>AIQ-COACH-LABEL-REQUESTED</code>.</li><li><code>label.log</code> (bounded): one line per label call or skip, with call time and wait time.</li><li><code>aiq export</code> includes <code>kind_label</code>.</li></ul>
+<h2>Failure modes</h2>
+<table><thead><tr><th>Failure</th><th>Result</th></tr></thead><tbody><tr><td>Tool missing, signed out, timeout, bad answer</td><td>Row stored with that outcome; no tip; counts against the budget</td></tr><tr><td>Core down when the label arrives</td><td>Row stays unused; nothing shown</td></tr><tr><td>Label after the session moved to a new task</td><td>Dropped (<code>label_task_moved_on</code>)</td></tr><tr><td>Label arrives after the first turn ended</td><td>Claude Code: the card shows at the next Stop of the same task. Copilot: the status line shows it</td></tr><tr><td>Labels wrong too often</td><td>Own self-check turns labels off below 8 in 10; word guesses unaffected</td></tr><tr><td>Process killed mid-call</td><td>Its Copilot home in <code>label-work</code> is swept by the next label run after 10 minutes</td></tr></tbody></table>
+<h2>Next</h2>
+<ul><li>After install, run <code>aiq label --eval --sample 20</code> (about 20 premium requests on Copilot) for label</li></ul>
+<p>accuracy before relying on live numbers, then read live labels against the judge in <code>aiq status</code>.</p>
+<ul><li>If Copilot&#x27;s default model is slow or costly, set <code>kind-label-copilot-model</code> to a smaller one after</li></ul>
+<p>checking which models the person&#x27;s Copilot offers.</p>
+<ul><li>AIQ home does not show the label budget yet; <code>aiq status</code> does.</li></ul></main></body></html>

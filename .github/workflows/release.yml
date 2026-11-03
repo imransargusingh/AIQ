@@ -1,9 +1,10 @@
 name: release
 
-# Private-alpha design A1: one Windows zip (aiq.exe, aiq-home.exe, install.ps1, README.txt) plus SHA256SUMS.
+# Private-alpha design A1: one Windows zip (aiq.exe, aiq-home.exe, install.cmd, install.ps1, README.txt) plus SHA256SUMS.
 # A version tag v* builds it, smoke-tests install.ps1 on the runner, and attaches both files to a DRAFT
 # GitHub release: nothing is public until a person presses Publish. workflow_dispatch builds and tests the
-# zip as a workflow artifact only, with no release at all.
+# zip as a workflow artifact only, or, with draft_release on, also a draft release v<version> targeting that commit
+# (GitHub creates the tag only when the draft is published).
 on:
   push:
     tags: ["v*"]
@@ -11,8 +12,14 @@ on:
     paths:
       - "packaging/**"
       - "crates/aiq/src/install.rs"
+      - "crates/aiq-core/src/update.rs"
       - ".github/workflows/release.yml"
   workflow_dispatch:
+    inputs:
+      draft_release:
+        description: "Also make a DRAFT release v<Cargo version> from this commit (the tag is created only when someone presses Publish)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -62,28 +69,40 @@ jobs:
           $v = '${{ steps.version.outputs.version }}'
           $stage = Join-Path $env:RUNNER_TEMP "aiq-$v-windows-x64"
           New-Item -ItemType Directory -Force $stage | Out-Null
-          Copy-Item target/release/aiq.exe, apps/home/src-tauri/target/release/aiq-home.exe, packaging/windows/install.ps1, packaging/windows/upgrade.ps1, packaging/windows/README.txt $stage
+          Copy-Item target/release/aiq.exe, apps/home/src-tauri/target/release/aiq-home.exe, packaging/windows/install.cmd, packaging/windows/install.ps1, packaging/windows/upgrade.ps1, packaging/windows/README.txt $stage
           New-Item -ItemType Directory -Force dist | Out-Null
           $zip = "dist/aiq-$v-windows-x64.zip"
           Compress-Archive -Path "$stage/*" -DestinationPath $zip
           $h = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
           "$h  aiq-$v-windows-x64.zip" | Set-Content -Encoding ascii dist/SHA256SUMS
           Get-Content dist/SHA256SUMS
-      - name: Smoke test - install.ps1 from the zip on this runner, then uninstall
+      - name: Smoke test - install.cmd (double-click path) from the zip on this runner, then uninstall
         shell: pwsh
         run: |
           $v = '${{ steps.version.outputs.version }}'
           $un = Join-Path $env:RUNNER_TEMP 'unzipped'
           Expand-Archive "dist/aiq-$v-windows-x64.zip" $un
           New-Item -ItemType Directory -Force (Join-Path $env:USERPROFILE '.copilot') | Out-Null
-          powershell -ExecutionPolicy Bypass -File (Join-Path $un 'install.ps1') -NoLaunch -AllowElevated
+          # install.cmd is what people double-click; it must run install.ps1 even with Mark-of-the-Web on the files.
+          Get-ChildItem $un | ForEach-Object { Set-Content -Path $_.FullName -Stream Zone.Identifier -Value "[ZoneTransfer]`r`nZoneId=3" }
+          # Reproduce a typical laptop: RemoteSigned for this user, so a downloaded unsigned install.ps1 is refused when run directly (UnauthorizedAccess, as on Imran's laptop).
+          Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
+          $direct = powershell -NoProfile -Command "& '$(Join-Path $un 'install.ps1')' -NoLaunch -AllowElevated" 2>&1 | Out-String
+          if ($direct -notmatch 'UnauthorizedAccess') { Write-Error "expected the direct run to be refused, got: $direct"; exit 1 }
+          $env:AIQ_NO_PAUSE = '1'
+          cmd /c (Join-Path $un 'install.cmd') -NoLaunch -AllowElevated
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $bin = Join-Path $env:USERPROFILE '.aiq\bin'
           foreach ($f in 'aiq.exe', 'aiq-home.exe') { if (-not (Test-Path (Join-Path $bin $f))) { Write-Error "missing $f"; exit 1 } }
           if (-not ([Environment]::GetEnvironmentVariable('Path', 'User') -split ';' -contains $bin)) { Write-Error 'user PATH not set'; exit 1 }
+          if (-not (Select-String -Quiet -Path (Join-Path $env:USERPROFILE '.aiq\upgrade-log.txt') -Pattern 'Z Installed AIQ ')) { Write-Error 'install wrote no upgrade-log line'; exit 1 }
+          foreach ($f in 'aiq.exe', 'aiq-home.exe', 'upgrade.ps1') { if (Get-Item (Join-Path $bin $f) -Stream Zone.Identifier -ErrorAction SilentlyContinue) { Write-Error "$f still marked as downloaded"; exit 1 } }
           if (-not (Test-Path (Join-Path ([Environment]::GetFolderPath('Programs')) 'AIQ.lnk'))) { Write-Error 'no shortcut'; exit 1 }
           if (-not (Test-Path (Join-Path $env:USERPROFILE '.copilot\hooks\aiq.json'))) { Write-Error 'Copilot not connected'; exit 1 }
           & (Join-Path $bin 'aiq.exe') version
+          # install.ps1 turned background judging on (rung-judge D4): a second connect reads it back from the store.
+          $again = & (Join-Path $bin 'aiq.exe') install --yes | Out-String
+          if ($again -notmatch 'Judging is already on') { Write-Error "judging not turned on at install: $again"; exit 1 }
           & (Join-Path $bin 'aiq.exe') uninstall copilot --yes
           if (Test-Path (Join-Path $env:USERPROFILE '.copilot\hooks\aiq.json')) { Write-Error 'Copilot hook left behind'; exit 1 }
       - name: Smoke test - upgrade refuses a tampered zip, upgrades from a good one, rolls back
@@ -106,6 +125,58 @@ jobs:
           if ($LASTEXITCODE -ne 0) { Write-Error 'rollback failed'; exit 1 }
           & (Join-Path $env:USERPROFILE '.aiq\bin\aiq.exe') version
           Get-Content (Join-Path $env:USERPROFILE '.aiq\upgrade-log.txt')
+      - name: Smoke test - auto-update refuses a tampered download, waits while AIQ home is open, installs when idle, never reinstalls a version rolled back from
+        shell: pwsh
+        run: |
+          $v = '${{ steps.version.outputs.version }}'
+          $aiq = Join-Path $env:USERPROFILE '.aiq'
+          $up = Join-Path $aiq 'bin\upgrade.ps1'
+          $exe = Join-Path $aiq 'bin\aiq.exe'
+          function St { Get-Content -Raw (Join-Path $aiq 'update.json') | ConvertFrom-Json }
+          function Fail([string]$m) { Write-Error $m; Get-Content (Join-Path $aiq 'upgrade-log.txt') -Tail 10; exit 1 }
+          # A folder standing in for GitHub: this build's zip published as a newer tag.
+          $feed = Join-Path $env:RUNNER_TEMP 'feed'
+          New-Item -ItemType Directory -Force $feed | Out-Null
+          Copy-Item "dist/aiq-$v-windows-x64.zip", dist/SHA256SUMS $feed
+          @{ tag_name = 'v99.0.0'; zip = "aiq-$v-windows-x64.zip" } | ConvertTo-Json | Set-Content (Join-Path $feed 'latest.json')
+          $bad = Join-Path $env:RUNNER_TEMP 'feed-bad'
+          Copy-Item -Recurse $feed $bad
+          Add-Content -Path (Join-Path $bad "aiq-$v-windows-x64.zip") -Value 'tampered'
+
+          $h0 = (Get-FileHash $exe).Hash
+          powershell -ExecutionPolicy Bypass -File $up -Check -Apply -Feed $bad
+          if ($LASTEXITCODE -eq 0) { Fail 'tampered download was accepted' }
+          if ((St).state -ne 'failed') { Fail "tampered: state $((St).state), want failed" }
+          if (Test-Path (Join-Path $aiq 'update')) { Fail 'tampered download left staged' }
+          if ((Get-FileHash $exe).Hash -ne $h0) { Fail 'tampered download changed aiq.exe' }
+
+          # AIQ home open: the update downloads and waits.
+          $home_ = Start-Process -PassThru -FilePath (Join-Path $aiq 'bin\aiq-home.exe')
+          Start-Sleep -Seconds 3
+          if ($home_.HasExited) { Fail "AIQ home did not stay open on the runner (exit $($home_.ExitCode))" }
+          powershell -ExecutionPolicy Bypass -File $up -Check -Apply -Feed $feed
+          if ($LASTEXITCODE -ne 3) { Fail "with AIQ home open, exit $LASTEXITCODE, want 3 (waiting)" }
+          $s = St
+          if ($s.state -ne 'waiting' -or $s.available -ne 'v99.0.0' -or $s.blocked -ne 'AIQ home is open') { Fail "waiting: $($s | ConvertTo-Json -Compress)" }
+          Stop-Process -Id $home_.Id -Force
+          Start-Sleep -Seconds 1
+
+          # Idle: the waiting update installs, keeps .old copies, and says so.
+          powershell -ExecutionPolicy Bypass -File $up -Apply
+          if ($LASTEXITCODE -ne 0) { Fail "apply when idle: exit $LASTEXITCODE" }
+          $s = St
+          if ($s.state -ne 'applied' -or $s.installed_tag -ne 'v99.0.0' -or $s.from -ne $v) { Fail "applied: $($s | ConvertTo-Json -Compress)" }
+          if (Test-Path (Join-Path $aiq 'update')) { Fail 'staged files left after install' }
+          foreach ($f in 'aiq.exe.old', 'aiq-home.exe.old') { if (-not (Test-Path (Join-Path $aiq "bin\$f"))) { Fail "no $f kept" } }
+          & $exe update
+
+          # Go back: the release left is never installed again by itself.
+          powershell -ExecutionPolicy Bypass -File $up -Rollback
+          if ($LASTEXITCODE -ne 0) { Fail 'rollback failed' }
+          if ((St).skip -ne 'v99.0.0') { Fail "rollback did not record the release left: $((St) | ConvertTo-Json -Compress)" }
+          powershell -ExecutionPolicy Bypass -File $up -Check -Apply -Feed $feed
+          if ((St).state -ne 'rolled_back' -or (Test-Path (Join-Path $aiq 'update'))) { Fail "reinstalled after rollback: $((St) | ConvertTo-Json -Compress)" }
+          Get-Content (Join-Path $aiq 'upgrade-log.txt') -Tail 8
       - name: Smoke test - uninstall --all removes hooks, user PATH entry and shortcut, keeps the data
         shell: pwsh
         run: |
@@ -126,7 +197,7 @@ jobs:
           retention-days: 14
 
   draft-release:
-    if: github.ref_type == 'tag'
+    if: github.ref_type == 'tag' || inputs.draft_release
     needs: windows
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -142,6 +213,24 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cd dist && sha256sum -c SHA256SUMS && cd ..
-          gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --draft \
+          tag="v${{ needs.windows.outputs.version }}"
+          rels=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100")
+          # Pressing Publish creates the tag, and the tag push runs this workflow again. Measured 2026-11-03: that
+          # run made a second DRAFT tagged v0.1.0 beside the published one. So: a draft whose tag already has a
+          # published release is a leftover and goes; a published release is never touched; no new draft for it.
+          published=$(jq -c '[.[] | select(.draft | not) | .tag_name]' <<<"$rels")
+          jq -r '.[] | select(.draft) | "\(.id) \(.tag_name)"' <<<"$rels" | while read -r id t; do
+            if jq -e --arg t "$t" 'index($t) != null' <<<"$published" >/dev/null; then
+              gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$id"; echo "Removed leftover draft $id ($t is already published)"
+            fi
+          done
+          if jq -e --arg t "$tag" 'index($t) != null' <<<"$published" >/dev/null; then
+            echo "$tag is already published; no draft made."; exit 0
+          fi
+          # A rebuild replaces an older DRAFT of the same version; a published release is never touched.
+          gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq '.[] | select(.draft and .tag_name == "v${{ needs.windows.outputs.version }}") | .id' |
+            while read -r id; do gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$id"; echo "Replaced older draft $id"; done
+          gh release create "v${{ needs.windows.outputs.version }}" dist/* --repo "$GITHUB_REPOSITORY" --draft --target "$GITHUB_SHA" \
             --title "AIQ ${{ needs.windows.outputs.version }}" \
-            --notes "Private alpha build. Unzip, then run install.ps1 (see README.txt). Check the zip against SHA256SUMS."
+            --notes "Private alpha build. Unzip, then double-click install.cmd (see README.txt). Check the zip against SHA256SUMS."

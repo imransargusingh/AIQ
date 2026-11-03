@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Welcome</title><style>
+:root { color-scheme: light dark; --bg:#f7f5ef; --panel:#fff; --text:#20201d;
+  --muted:#66645f; --line:#d9d5ca; --accent:#3157a4; --code:#f0eee7; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#171816; --panel:#20221f; --text:#f2f1eb; --muted:#b8b6ae;
+    --line:#3d403a; --accent:#8fb0ff; --code:#292c27; }
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text);
+  font:16px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif; }
+main { width:min(920px,calc(100% - 32px)); margin:32px auto; padding:40px;
+  background:var(--panel); border:1px solid var(--line); border-radius:12px; }
+h1,h2,h3,h4,h5,h6 { line-height:1.2; margin:1.5em 0 .55em; }
+h1 { margin-top:0; font-size:2.2rem; } h2 { border-bottom:1px solid var(--line); padding-bottom:.3em; }
+a { color:var(--accent); } code { background:var(--code); padding:.12em .35em; border-radius:4px; }
+pre { overflow:auto; padding:16px; background:var(--code); border-radius:8px; }
+pre code { padding:0; } blockquote { margin:1em 0; padding:.2em 1em; color:var(--muted);
+  border-left:4px solid var(--line); }
+table { width:100%; border-collapse:collapse; margin:1em 0; display:block; overflow:auto; }
+th,td { padding:.55em .75em; border:1px solid var(--line); text-align:left; vertical-align:top; }
+th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); }
+.source { color:var(--muted); font-size:.9rem; margin-bottom:2rem; }
+@media (max-width:640px) { main { width:100%; margin:0; padding:24px 18px; border:0; border-radius:0; } }
+</style></head><body><main><div class="source">Rendered from welcome.md</div><h1>Welcome to the AIQ private alpha</h1>
+<p>Thanks for trying AIQ. This page is everything you need. It takes two minutes to read.</p>
+<h2>What AIQ is</h2>
+<p>AIQ is a private coach for how you work with AI agents such as GitHub Copilot. It is not a report card and not a diagnostics tool. It helps you build better habits, one small step at a time.</p>
+<p>AIQ places each finished task on a five-step ladder: <strong>Assisted, Directed, Delegated, Orchestrated, Factory</strong>. When it sees an easy next step for the kind of task you just did, it shows one short tip in your tool, marked <strong>AIQ tip:</strong>. The goal is that, over a few weeks, the tasks you repeat move up a step. Only you see any of this. There is no manager view, no team view and no AIQ server.</p>
+<h2>Install (Windows, about two minutes, no admin rights)</h2>
+<ol><li>Download <code>aiq-0.1.0-windows-x64.zip</code> from</li></ol>
+<p>&lt;https://github.com/imransargusingh/AIQ/releases/latest&gt; and unzip it anywhere.</p>
+<ol><li>Double-click <code>install.cmd</code> in that folder. A window shows each step and waits for you to close it.</li></ol>
+<p>If you prefer a terminal, run this in a normal PowerShell window in that folder:</p>
+<pre><code>   powershell -ExecutionPolicy Bypass -File .\install.ps1</code></pre>
+<p>Typing <code>.\install.ps1</code> on its own does not work: Windows refuses it because the script is not signed.</p>
+<p>That is all. AIQ connects to the AI tools it finds, lists every file it changed, reads your past sessions on this computer, turns on judging (below) and opens AIQ home. There is nothing to set up.</p>
+<p>The program files are not code-signed yet, so Windows or your company&#x27;s device rules may warn you. Check your employer&#x27;s rules before installing on a work computer.</p>
+<p><strong>To undo it fully:</strong> <code>aiq uninstall --all</code> takes AIQ out of every tool and removes its PATH entry and Start menu shortcut. Your AIQ data stays until you also run <code>aiq forget --all</code>.</p>
+<h2>What leaves your computer</h2>
+<p>Your prompts are stored only on your computer, in <code>%USERPROFILE%\.aiq</code>. AIQ sends no telemetry. Three things do go out:</p>
+<table><thead><tr><th>What</th><th>Where it goes</th><th>What it costs you</th><th>Turn it off</th></tr></thead><tbody><tr><td><strong>Judging your finished tasks.</strong> On from install. AIQ sends the task&#x27;s prompts (secrets removed) and a summary of what the agent did. Never your files or diffs.</td><td>Only to the tool that did the task, through <strong>your own</strong> sign-in, in a sealed call with no tools, plugins or MCP servers.</td><td>Two calls per task, at most 50 tasks a day by default. On Copilot each call counts against your plan&#x27;s premium requests.</td><td>AIQ home <strong>Settings &gt; Judging</strong>, or <code>aiq config set judge off</code></td></tr><tr><td><strong>A quick label of a new task.</strong> Only while judging is on, and only when AIQ can&#x27;t tell the kind of task from your past ones. It sends that task&#x27;s first prompt once (secrets removed).</td><td>Same tool, same sign-in, sealed the same way, with a small model.</td><td>At most 20 a day by default. On Copilot each label is one premium request.</td><td><code>aiq config set kind-label off</code> (judging off stops it too)</td></tr><tr><td><strong>A daily update check.</strong></td><td>GitHub&#x27;s public release page. It sends nothing about you.</td><td>Nothing.</td><td>Settings <strong>Don&#x27;t check for updates</strong>, or <code>aiq config set update off</code></td></tr></tbody></table>
+<p>On a work account, your organisation&#x27;s rules for that account cover these calls, as they cover anything else you send through it. Full details: <a href="../privacy-and-terms.md">AIQ privacy and terms</a> (&lt;https://github.com/imransargusingh/AIQ/blob/main/docs/privacy-and-terms.md&gt;).</p>
+<h2>What to expect in the first days</h2>
+<ul><li><strong>Day one is mostly quiet.</strong> AIQ reads your past sessions and judges your finished tasks in the</li></ul>
+<p>background. You may see no tips at all at first. That is normal, not a fault.</p>
+<ul><li><strong>Tips are rare on purpose.</strong> At most 5 a day, only when AIQ is confident, and never in the middle of</li></ul>
+<p>your work. It shows a tip when the agent stops, or on the Copilot CLI status line.</p>
+<ul><li><strong>Some tips will be wrong.</strong> This is early software. If a tip or a judgment doesn&#x27;t fit how you work,</li></ul>
+<p>press <strong>This doesn&#x27;t fit</strong> in AIQ home. AIQ also checks itself and pauses a kind of tip when its own accuracy drops.</p>
+<ul><li><strong>AIQ updates itself</strong> about once a day when there is a new version, while AIQ home is closed. Your</li></ul>
+<p>data and settings stay.</p>
+<ul><li><strong>Need a break?</strong> <code>aiq pause</code>, then <code>aiq resume</code> when you&#x27;re ready.</li><li><strong>Progress takes weeks.</strong> AIQ needs several tasks of the same kind before it can show one moving up</li></ul>
+<p>a step.</p>
+<h2>Feedback and help</h2>
+<p>Tell us anything: what helped, what annoyed you, what was wrong. Contact <strong>imrans</strong>.</p>
+<p>If something breaks, run <code>aiq status --report</code> and send the file it makes. It has counts, timings and error codes. It has no prompt text, and folders appear as <code>folder-1</code>, <code>folder-2</code>. Nothing is sent unless you send it.</p>
+<p>The code is public, so you can check anything on this page or open an issue: &lt;https://github.com/imransargusingh/AIQ&gt;.</p></main></body></html>

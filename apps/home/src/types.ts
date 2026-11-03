@@ -12,6 +12,44 @@ export interface Snapshot {
   settings: Settings;
   setup: Setup;
   coaching: Coaching;
+  update: Update;
+  /** One row per project with a task in the window, most room to grow first (design project-filter). */
+  projects: Project[];
+}
+
+/** One project: tasks whose session ran in one folder (crates/aiq-home `Project`, design project-filter). */
+export interface Project {
+  /** The folder key the tasks carry (`TaskRow.folder`); "" for tasks with no folder recorded. */
+  key: string;
+  name: string;
+  /** The person chose the name; false when AIQ named it from the folder. */
+  renamed: boolean;
+  tasks_in_window: number;
+  judged: number;
+  uncertain: number;
+  rungs: [number, number, number, number, number];
+  most_common_rung: number | null;
+  imported_in_window: number;
+  weeks: { start_ms: number; tasks: number }[];
+  by_tool: [string, number][];
+  coaching: Coaching;
+}
+
+/** Auto-update (crates/aiq-core/src/update.rs `View`, design auto-update U5). */
+export interface Update {
+  /** False for a copy not installed with install.ps1: it never updates itself. */
+  supported: boolean;
+  mode: "auto" | "ask" | "off";
+  running: string;
+  note: "none" | "waiting" | "applied" | "failed" | "rolled_back";
+  available: string | null;
+  blocked: string | null;
+  from: string | null;
+  at_ms: number | null;
+  message: string | null;
+  checked_ms: number | null;
+  check_error: string | null;
+  can_rollback: boolean;
 }
 
 export interface Status {
@@ -48,6 +86,10 @@ export interface TaskRow {
   last_ms: number;
   prompts: number;
   origin: "live" | "imported";
+  /** The tool's session the task's first prompt came from (Day view lanes). */
+  session: string;
+  /** Times of the task's prompts, in order (Day view ticks). */
+  prompt_ms: number[];
   /** code_change, write_doc, ask_research, run_ship or unclassified once judged. */
   job: string | null;
   rung: number | null;
@@ -80,7 +122,8 @@ export interface TaskJudgment {
 
 /** Coaching from rung results (design coaching-from-rungs). Every number is derived from judgments. */
 export interface Coaching {
-  split: { tasks: number; finished: number; could: number; needs: number; uncertain: number };
+  /** up: not finished, with a next step at least one rung up; up_to: the rung those steps reach most often. */
+  split: { tasks: number; finished: number; could: number; needs: number; uncertain: number; up: number; up_to: number | null };
   /** The split shows with at least this many judged, not-Uncertain tasks. */
   split_min: number;
   /** The rule shown under "Tasks agents finished". */
@@ -94,6 +137,26 @@ export interface Coaching {
   habits_imported: boolean;
   /** Judged before kinds of task existed. */
   untyped: number;
+  /** Each kind's typical rung, last `progress_days` against the `progress_days` before. Moved up first. */
+  progress: ProgressRow[];
+  progress_days: number;
+  /** Judged tasks each half needs before AIQ says a kind moved. */
+  progress_min: number;
+}
+
+export type Trend = "up" | "down" | "same" | "too_few";
+
+export interface ProgressRow {
+  job: string;
+  task_type: string;
+  label: string;
+  /** Judged, not-Uncertain tasks in the last `progress_days`, and in the `progress_days` before. */
+  recent: number;
+  earlier: number;
+  uncertain: number;
+  recent_rung: number | null;
+  earlier_rung: number | null;
+  trend: Trend;
 }
 
 export type KindState = "coach" | "too_few" | "right_rung" | "blocked" | "not_sure" | "flagged";
@@ -179,8 +242,16 @@ export interface Item {
 export interface Settings {
   daily_cap: number;
   copilot_tip_stays: "next-prompt" | "two-prompts-or-5-min" | "until-opened";
+  /** Where tips show; each on unless the person turned it off. */
+  copilot_tip_in_chat: boolean;
+  tip_popup: boolean;
+  tip_highlight: boolean;
   judge: "auto" | "off";
   judge_daily_tasks: number;
+  /** Read Copilot's own history file for messages sent while the agent works. */
+  copilot_mid_turn: "on" | "off";
+  /** At each turn's end, count what the agent did (tool calls, commands, files, sub-agents). */
+  agent_actions: "on" | "off";
   next_rung_tips: "auto" | "on" | "off";
   /** Next-step tips may show now. */
   next_rung_on: boolean;

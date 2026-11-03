@@ -3,9 +3,9 @@
 // judged it says so. Model-written text renders as plain text only (TR-5).
 import { useEffect, useState } from "react";
 import { api } from "../api";
-import { clock, folderName, jobName, plural, rungLabel, stateLabel, toolName, when } from "../format";
+import { clock, folderName, jobName, plural, stateLabel, toolName, when } from "../format";
 import type { TaskDetail } from "../types";
-import { Banners, Chip, Content, Sk, Title, preview, type Ctx } from "../ui";
+import { Banners, Chip, Content, Rung, Sk, Title, preview, type Ctx } from "../ui";
 
 type State = { kind: "loading" } | { kind: "ok"; d: TaskDetail } | { kind: "gone" } | { kind: "error"; message: string };
 
@@ -110,7 +110,11 @@ export function Task(ctx: Ctx & { taskId: string }) {
         <section className="card group" aria-labelledby="jd">
           <h2 id="jd">How this task was done</h2>
           <div className="row">
-            <Chip>Rung: {rungLabel(j.current)}</Chip>
+            <Chip>
+              <span>
+                Rung: <Rung r={j.current} />
+              </span>
+            </Chip>
             {stateLabel(j.state) && <Chip>{stateLabel(j.state)}</Chip>}
             <Chip>Job: {jobName(j.job)}</Chip>
           </div>
@@ -122,7 +126,7 @@ export function Task(ctx: Ctx & { taskId: string }) {
           </ul>
           {j.potential > j.current && j.gap && (
             <p>
-              <b>Next step ({rungLabel(j.current)} → {rungLabel(j.potential)}):</b> {j.gap}
+              <b>Next step (<Rung r={j.current} /> → <Rung r={j.potential} />):</b> {j.gap}
             </p>
           )}
           {j.blockers.length > 0 && <p className="mute">Outside your control: {j.blockers.join(" ")}</p>}
@@ -138,7 +142,7 @@ export function Task(ctx: Ctx & { taskId: string }) {
           <span className="mute">
             {snap.settings.judge === "auto"
               ? "AIQ judges finished tasks in the background, through your own Claude Code or Copilot CLI."
-              : "Run aiq judge once to start; it shows what it sends first."}
+              : "Judging is off. Turn it on in Settings, under Judging."}
           </span>
         </div>
       )}

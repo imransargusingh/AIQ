@@ -12,6 +12,8 @@ mod import;
 mod install;
 mod install_copilot;
 mod judge;
+mod judge_eval;
+mod label;
 mod spawn;
 mod statusline;
 
@@ -34,6 +36,9 @@ Usage:
   aiq uninstall copilot [--yes]       Remove only AIQ's Copilot hooks and status line
   aiq config set daily-cap <n>        Most tips per day, all tools together (0-50, default 5)
   aiq config set copilot-tip-stays <next-prompt|two-prompts-or-5-min|until-opened>
+  aiq config set copilot-tip-in-chat <on|off>   Copilot CLI tip also shown in the conversation (default on)
+  aiq config set tip-popup <on|off>             Windows pop-up when a terminal tip shows (default on)
+  aiq config set tip-highlight <on|off>         Yellow \"AIQ tip:\" label and VS Code colour (default on)
                                       How long a tip stays in Copilot CLI's status line
   aiq import [--dry-run]              Add your past Claude Code and Copilot CLI sessions to AIQ
   aiq include <folder>                Watch a folder AIQ set aside as automated (an app or script's runs)
@@ -43,30 +48,50 @@ Usage:
   aiq unflag <job>/<type> <move>      Undo a flag
   aiq config set next-rung-tips <auto|on|off>  Next-step tips for kinds of task you repeat (auto: AIQ
                                       turns them off itself if it guesses the kind of task wrong)
+  aiq config set copilot-mid-turn <on|off>  Count Copilot messages you send while the agent is working
+                                      (read from Copilot's own history file on this computer)
+  aiq config set agent-actions <on|off>  Count what the agent did in each turn: tool calls, commands,
+                                      files, sub-agents (counts only, read from the tool's own log)
   aiq config set keep-on.<job or job/type> <on|auto>  Keep next-step tips showing for a job or kind the
                                       accuracy check paused (auto: AIQ decides again)
   aiq tips                            Each next-step tip, whether it is on, and how often it would show
                                       on your judged tasks (measured, no model call)
+  aiq progress                        Each kind of task's typical rung, last 14 days against the 14
+                                      before: which moved up or down (read-only, no model call)
   aiq judge [--max <n>] [--only claude-code|copilot-cli] [--dry-run]
                                       Judge your finished tasks through your own Claude Code / Copilot CLI
                                       (--dry-run shows what would be sent, sends nothing)
-  aiq judge --check [--sample <n>] [--no-job] [--dry-run]
+  aiq judge --check [--sample <n>] [--no-job | --job <job>] [--dry-run]
                                       Check the judge: a second model reads n judged tasks blind (default 30)
                                       and AIQ reports how often they agree (--dry-run: sample and cost only)
   aiq judge --check-report            The latest check's numbers again, and what AIQ measured itself
   aiq judge --survey-other [--sample <n>] [--dry-run]
                                       What kind of work your tasks with no job are (counts and generic labels only)
-  aiq config set judge <auto|off>     Judge new tasks in the background (on after your first aiq judge)
+  aiq judge --eval [--runs <n>] [--provider claude-code|copilot-cli] [--dry-run]
+                                      Score the judge on AIQ's fixed set of made-up tasks with known answers,
+                                      n runs each (default 2): accuracy and whether runs agree (no data of yours)
+  aiq judge --eval --replay           The same score from answers recorded in the repo (free, no model call)
+  aiq judge --eval-report             The latest eval again, and what moved since the one before
+  aiq config set judge <auto|off>     Judge new tasks in the background (aiq install turns it on)
   aiq config set judge-daily-tasks <n>  Most tasks judged per day (0-500, default 50)
   aiq config set judge-copilot-sessions <delete|keep>  Delete AIQ's own Copilot judge sessions (default)
+  aiq config set kind-label <auto|off>  When word matching can't tell a new task's kind, a small model
+                                      names it from the first prompt, in the background (on while judging is on)
+  aiq config set kind-label-daily <n>  Most kind labels per day (0-500, default 20; one call each)
+  aiq label --eval [--sample <n>] [--only claude-code|copilot-cli] [--dry-run]
+                                      Measure kind labels against the judge on your judged tasks (stores nothing)
   aiq export [<folder>]               Copy everything AIQ stored to plain JSON files you can read
                                       (default: a new folder under AIQ's own folder)
   aiq forget --imported [--yes]       Delete only what aiq import added
   aiq forget --all [--yes]            Delete everything AIQ stored on this machine
+  aiq update [--now]                  What AIQ's updater last did; --now checks for a newer release now
+  aiq config set update <auto|ask|off>  Install updates by itself when idle (auto, default), tell you
+                                      first (ask), or never check by itself (off)
   aiq core                            Run the background core in this terminal
   aiq version
 
-Everything stays on this machine.";
+Your data stays on this machine. Judge calls go only through your own Copilot or Claude Code, and
+once a day AIQ asks GitHub for a newer release (unless updates are off). Privacy and terms: docs/privacy-and-terms.md in the AIQ repo.";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -89,6 +114,7 @@ fn main() -> ExitCode {
         ["include", folder, ..] => cli::include_folder(folder),
         [verb @ ("helpful" | "not" | "snooze" | "off" | "on"), id, ..] => cli::tip_feedback(verb, id),
         ["tips", ..] => cli::tips(),
+        ["progress", ..] => cli::progress(),
         ["flag", rest @ ..] => cli::flag(rest, false),
         ["unflag", rest @ ..] => cli::flag(rest, true),
         ["statusline", "copilot", ..] => statusline::run(),
@@ -96,9 +122,11 @@ fn main() -> ExitCode {
             println!("{}", aiq_core::paths::Paths::from_env().endpoint_json());
             ExitCode::SUCCESS
         }
+        ["update", rest @ ..] => cli::update(rest),
         ["import", rest @ ..] => import::cli(rest),
         ["export", rest @ ..] => export::cli(rest),
         ["judge", rest @ ..] => judge::cli(rest),
+        ["label", rest @ ..] => label::cli(rest),
         ["forget", "--imported", ..] | ["forget", _, "--imported", ..] => import::forget(yes),
         ["forget", "--all", ..] | ["forget", _, "--all", ..] => cli::forget_all(yes),
         ["version" | "--version" | "-V", ..] => {

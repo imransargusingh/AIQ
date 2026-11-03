@@ -72,7 +72,7 @@ const pages = [
 ];
 
 await test("contract: fixtures are aiq.home.v1 snapshots from the Rust read model", async () => {
-  for (const f of ["full", "down", "paused", "empty", "first-run", "coaching"]) {
+  for (const f of ["full", "down", "paused", "empty", "first-run", "coaching", "progress"]) {
     const s = JSON.parse(readFileSync(join(fixtures, `${f}.json`), "utf8"));
     assert.equal(s.schema, "aiq.home.v1");
     for (const k of ["status", "home", "tasks", "tips", "data", "settings", "setup", "coaching"]) assert.ok(k in s, `${f}: ${k}`);
@@ -119,8 +119,9 @@ await test("Home shows judged rungs, progress toward the split, and only measure
   const page = await open("full");
   const t = await page.locator("main").innerText();
   assert.match(t, /Tasks agents finished\s+Not enough judged tasks yet/);
-  assert.match(t, /2 of 10 judged tasks needed to show what agents finished \(1 AIQ isn't sure about don't count\)/);
-  assert.match(t, /7 tasks in the last 30 days · 1 imported task/);
+  assert.match(t, /2 of 10 judged tasks needed to show what agents finished \(1 task AIQ isn't sure about doesn't count\)/);
+  await page.getByText("How AIQ counts").click();
+  assert.match(await page.locator("details.how").innerText(), /7 tasks in the last 30 days · 1 imported task/);
   assert.doesNotMatch(t, /\d+%/, "no percentages under 10 judged tasks");
   assert.match(t, /Your most common rung\s+Directed \(2\)\s+3 tasks judged in 30 days/);
   assert.match(t, /\(1 uncertain not counted\)/);
@@ -133,6 +134,27 @@ await test("Home shows judged rungs, progress toward the split, and only measure
   assert.equal(await row.getAttribute("aria-expanded"), "true");
   assert.match(await page.locator("main").innerText(), /hand the agent a whole outcome/);
   await page.context().close();
+});
+
+await test("every rung name says what it means on hover: Home ladder, Tasks column, task detail", async () => {
+  const page = await open("full");
+  const scale = page.locator(".scale > span");
+  assert.equal(await scale.count(), 5);
+  assert.match((await scale.nth(2).getAttribute("title")) ?? "", /hand the agent a whole outcome/);
+  await page.context().close();
+  const tasks = await open("full", { hash: "#tasks" });
+  assert.match((await tasks.locator("th .rung").getAttribute("title")) ?? "", /from Assisted \(1\) to Factory \(5\)/);
+  const named = tasks.locator("table[aria-label=Tasks] td .rung");
+  assert.ok((await named.count()) > 0, "judged rows name a rung");
+  for (const r of await named.all()) assert.ok(((await r.getAttribute("title")) ?? "").length > 20, await r.innerText());
+  assert.deepEqual(await axe(tasks), []);
+  await tasks.locator("tbody tr").first().focus();
+  await tasks.keyboard.press("j");
+  await tasks.keyboard.press("Enter");
+  await tasks.waitForSelector("#jd");
+  assert.ok(((await tasks.locator("section .chip .rung").first().getAttribute("title")) ?? "").length > 20, "task detail rung chip");
+  assert.deepEqual(tasks.errors, []);
+  await tasks.context().close();
 });
 
 await test("Home answers the headline without scrolling at 1280x800", async () => {
@@ -148,6 +170,8 @@ await test("screen readers hear clean names: nav, rung rows, skip link", async (
   const nav = await page.getByRole("navigation", { name: "AIQ" }).ariaSnapshot();
   assert.match(nav, /link "Home"/, nav);
   assert.equal(await page.getByRole("link", { name: "Home", exact: true }).getAttribute("aria-keyshortcuts"), "G H");
+  // The G-letter shortcuts still work but the nav shows no hint text (Imran 2026-11-02: "Get rid of the hints").
+  assert.doesNotMatch(await page.locator("nav.side a").allInnerTexts().then((t) => t.join("|")), /\bG [A-Z]\b/);
   for (const name of ["Factory (5), 0 tasks", "Directed (2), 1 task"]) {
     assert.equal(await page.getByRole("button", { name, exact: true }).count(), 1, name);
   }
@@ -189,9 +213,35 @@ await test("keyboard: G-letter navigation, P pause, Ctrl+K palette", async () =>
   await page.context().close();
 });
 
+await test("Settings: a switch for Copilot messages sent while the agent works, on by default", async () => {
+  const page = await open("full", { hash: "#settings" });
+  const sw = page.getByRole("switch", { name: "Copilot messages you send while the agent is still working" });
+  assert.equal(await sw.getAttribute("aria-checked"), "true");
+  assert.ok((await page.locator("main").innerText()).includes("Nothing leaves your computer."));
+  await sw.click();
+  await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent?.startsWith("AIQ no longer records"));
+  assert.equal(await sw.getAttribute("aria-checked"), "false");
+  assert.deepEqual(await axe(page), []);
+  await page.context().close();
+});
+
+await test("Settings: a switch for what the agent did in each turn, on by default, counts only", async () => {
+  const page = await open("full", { hash: "#settings" });
+  const sw = page.getByRole("switch", { name: "What the agent did in each turn" });
+  assert.equal(await sw.getAttribute("aria-checked"), "true");
+  assert.ok((await page.locator("main").innerText()).includes("No command text or file names."));
+  await sw.click();
+  await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent?.includes("what the agent did"));
+  assert.equal(await sw.getAttribute("aria-checked"), "false");
+  const calls = await page.evaluate(() => window.__AIQ_FIXTURE__.calls);
+  assert.ok(calls.some((c) => c.cmd === "set_setting" && c.args?.key === "agent_actions" && c.args?.value === "off"), JSON.stringify(calls));
+  assert.deepEqual(await axe(page), []);
+  await page.context().close();
+});
+
 await test("keyboard: single-key shortcuts can be turned off", async () => {
   const page = await open("full", { hash: "#settings" });
-  await page.getByRole("switch").click();
+  await page.getByRole("switch", { name: /Single-key shortcuts/ }).click();
   await page.locator("body").click();
   await page.keyboard.press("g");
   await page.keyboard.press("h");
@@ -275,11 +325,28 @@ await test("Settings change through the core; tips a day", async () => {
   await page.getByRole("group", { name: /Tasks judged a day/ }).getByRole("button", { name: "100", exact: true }).click();
   await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Tasks judged a day set to 100.");
   assert.equal(await page.getByRole("group", { name: /Tasks judged a day/ }).getByRole("button", { name: "100", exact: true }).getAttribute("aria-pressed"), "true");
+  // Judging has a switch here, not only a terminal command.
+  const jsw = page.getByRole("switch", { name: "Judge finished tasks in the background" });
+  assert.equal(await jsw.getAttribute("aria-checked"), "false");
+  await jsw.click();
+  await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Judging is on.");
+  assert.equal(await jsw.getAttribute("aria-checked"), "true");
+  assert.ok((await page.locator("main").innerText()).includes("Judging in the background"));
+  // Where tips show: three switches, on by default, each with its own off.
+  for (const name of ["Show Copilot CLI tips in the conversation", "Show a Windows pop-up when a tip appears in Claude Code or Copilot CLI", "Highlight tips in yellow"]) {
+    assert.equal(await page.getByRole("switch", { name }).getAttribute("aria-checked"), "true", name);
+  }
+  const pop = page.getByRole("switch", { name: "Show a Windows pop-up when a tip appears in Claude Code or Copilot CLI" });
+  await pop.click();
+  await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent?.endsWith(": off."));
+  assert.equal(await pop.getAttribute("aria-checked"), "false");
   const calls = await page.evaluate(() => window.__AIQ_FIXTURE__.calls.filter((c) => c.cmd === "set_setting").map((c) => c.args));
   assert.deepEqual(calls, [
     { key: "daily_cap", value: "5" },
     { key: "copilot_tip_stays", value: "until-opened" },
     { key: "judge_daily_tasks", value: "100" },
+    { key: "judge", value: "auto" },
+    { key: "tip_popup", value: "off" },
   ]);
   await page.context().close();
 });
@@ -310,6 +377,50 @@ await test("empty store: teaching empty states, no errors", async () => {
     if (shots) await page.screenshot({ path: join(shots, `${id}-empty.png`) });
     await page.context().close();
   }
+});
+
+await test("Tasks Day view: a row per session, rung named on hover and focus, Enter opens the task, no axe violations", async () => {
+  // Three sessions on one day, from the fixture's own tasks moved onto the newest task's day.
+  const page = await open("full", {
+    hash: "#tasks",
+    edit: (s) => {
+      const base = Math.max(...s.tasks.map((t) => t.first_ms));
+      const day0 = base - (base % 86_400_000);
+      s.tasks.forEach((t, i) => {
+        const first = day0 + (8 + i) * 3_600_000;
+        t.prompt_ms = t.prompt_ms.map((p) => first + (p - t.first_ms));
+        t.last_ms = first + (t.last_ms - t.first_ms);
+        t.first_ms = first;
+      });
+    },
+  });
+  await page.getByRole("button", { name: "Day", exact: true }).click();
+  const lanes = page.getByRole("listitem");
+  assert.ok((await lanes.count()) >= 3, "one row per session");
+  assert.equal(await page.locator("table[aria-label=Tasks]").count(), 0, "the list is replaced by the Day view");
+  // Row summary on focus: tool, folder, time span, tasks, prompts.
+  const name = page.locator(".dv-name").first();
+  await name.focus();
+  const tip = name.locator(".tip");
+  assert.ok(await tip.isVisible(), "row summary shows on focus");
+  assert.match(await tip.innerText(), /session in .+\n.*\d+ tasks? · \d+ prompts?/s);
+  // A judged block names its rung in words.
+  const judged = page.locator(".dv-task:not(.dv-none)").first();
+  await judged.focus();
+  assert.match(await judged.locator(".tip").innerText(), /\((\d)\)/);
+  assert.match((await judged.getAttribute("aria-label")) ?? "", /Open task$/);
+  assert.deepEqual(await axe(page), []);
+  await page.keyboard.press("Enter");
+  await page.waitForSelector("main h1");
+  assert.ok(page.url().includes("#task/"), "Enter on a block opens its task");
+  assert.deepEqual(page.errors, []);
+  await page.context().close();
+  // Narrow window: the chart scrolls inside its own box, never the page.
+  const narrow = await open("full", { hash: "#tasks", width: 720, height: 520 });
+  await narrow.getByRole("button", { name: "Day", exact: true }).click();
+  const over = await narrow.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  assert.ok(over <= 0, `Day view overflows the page by ${over}px`);
+  await narrow.context().close();
 });
 
 await test("narrow window (720x520) has no horizontal page scroll", async () => {
@@ -393,7 +504,7 @@ await test("setup: first run walks five steps with Back; Start only after I unde
   await page.waitForFunction(() => document.querySelector("main")?.innerText.includes("GitHub Copilot · connected just now"));
   let t = await page.locator("main").innerText();
   assert.match(t, /Claude Code · connected\n/);
-  assert.ok(t.includes("To undo, run aiq uninstall copilot."));
+  assert.ok(t.includes("To undo, use Disconnect in Settings."));
   assert.deepEqual(await page.getByRole("list", { name: "Files AIQ changed" }).locator("li").allInnerTexts(), ["C:\\Users\\you\\.copilot\\hooks\\aiq.json"]);
   assert.ok(!t.includes("aiq uninstall claude-code"), "only the tool connected just now shows the undo");
   assert.equal(await page.getByRole("button", { name: /^Connect/ }).count(), 0);
@@ -405,8 +516,19 @@ await test("setup: first run walks five steps with Back; Start only after I unde
   await cont.click();
   assert.equal(await h1(), "How AIQ will judge your tasks");
   t = await page.locator("main").innerText();
-  assert.ok(t.includes("Nothing to connect yet."));
+  assert.ok(!t.includes("later version"), "the rung model is here, not coming");
+  assert.ok(t.includes("Judging is on. AIQ turned it on when it connected your tools"), t);
+  assert.ok(t.includes("Up to 50 tasks a day"), t);
   assert.ok(t.includes("AIQ never reads or stores your sign-in."));
+  const jsw = page.getByRole("switch", { name: "Judge finished tasks in the background" });
+  assert.equal(await jsw.getAttribute("aria-checked"), "true");
+  await jsw.click();
+  await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Judging is off. AIQ judges no new tasks.");
+  assert.equal(await jsw.getAttribute("aria-checked"), "false");
+  assert.ok((await page.locator("main").innerText()).includes("Judging is off. Without it AIQ can't tell the rung"));
+  await jsw.click();
+  await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Judging is on.");
+  assert.deepEqual(await axe(page), []);
   assert.ok(t.includes("On a work account, your organisation's policies apply"));
   await cont.click();
   assert.equal(await h1(), "How many tips a day?");
@@ -427,7 +549,7 @@ await test("setup: first run walks five steps with Back; Start only after I unde
   await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Setup done. AIQ is watching.");
   assert.equal(await page.locator("nav").count(), 1);
   const calls = await page.evaluate(() => window.__AIQ_FIXTURE__.calls.map((c) => c.cmd).filter((c) => c !== "snapshot"));
-  assert.deepEqual(calls, ["connect_tools", "set_setting", "finish_setup"], "connected once, not again on Back");
+  assert.deepEqual(calls, ["connect_tools", "set_setting", "set_setting", "set_setting", "finish_setup"], "connected once, not again on Back");
   await page.context().close();
 });
 
@@ -530,9 +652,16 @@ await test("coaching Home: finished and could be, the rule, uncertain left out, 
   const t = await page.locator("main").innerText();
   assert.match(t, /Tasks agents finished\s+33%\s+could be 67%/);
   assert.equal(await page.getByRole("img", { name: "Agents finished 33%, could be 67%" }).count(), 1);
-  assert.match(t, /Of 15 judged tasks: 5 finished by agents, 5 could be, 5 need you\. 1 task AIQ isn't sure about is left out\./);
-  assert.match(t, /A task counts as finished when it was judged Delegated or higher and you sent no re-prompt correcting the agent\./);
-  assert.match(t, /Judged by your Copilot CLI/);
+  // Outcome first, then the measured counts on one line; how it is counted stays folded away until asked for.
+  assert.match(t, /47% could move up a rung, most often to Delegated \(3\)\.\s+5 of 15 judged tasks finished by agents · 5 could be · 5 need you · 1 unsure, not counted/);
+  assert.ok(!t.includes("A task counts as finished"), "the rule is folded away");
+  await page.getByText("How AIQ counts").click();
+  const how = await page.locator("details.how").innerText();
+  assert.match(how, /A task counts as finished when it was judged Delegated or higher and you sent no re-prompt correcting the agent\./);
+  assert.match(how, /"Could be" adds the tasks of kinds whose next step would let agents finish them\./);
+  assert.match(how, /Judged by your Copilot CLI/);
+  // The weekly chart says what its two shades mean (dark = agents finished, light = the rest).
+  assert.match(t, /Tasks each week\s+Finished by agents\s+Other tasks/);
   const rows = page.getByRole("list", { name: "Kinds of task with a next step" }).getByRole("listitem");
   assert.equal(await rows.count(), 2);
   const first = await rows.first().innerText();
@@ -544,6 +673,40 @@ await test("coaching Home: finished and could be, the rule, uncertain left out, 
   await page.waitForSelector("main h1:text('Writing tests')");
   assert.ok(page.url().endsWith("#kind/code_change/tests"));
   await page.context().close();
+});
+
+await test("progress Home: kinds that moved up or down, counts behind them, too few said plainly, no axe violations", async () => {
+  for (const theme of ["light", "dark", "contrast"]) {
+    const page = await open("progress", { theme: theme === "light" ? undefined : theme });
+    const sec = page.locator("section", { has: page.locator("h2#pg") });
+    const t = await sec.innerText();
+    assert.match(t, /Is each kind of task moving up\?/);
+    assert.match(t, /last 14 days against the 14 before\. Counts are measured; rungs are the judge's reading\./);
+    assert.match(t, /1 kind of task moved up a rung\. 1 moved down\./);
+    const rows = page.getByRole("list", { name: "Rung progress by kind of task" }).getByRole("listitem");
+    assert.equal(await rows.count(), 3, "too-few kinds are one line, not rows");
+    assert.match(await rows.nth(0).innerText(), /Writing tests[\s\S]*Directed \(2\) → Delegated \(3\)[\s\S]*Moved up[\s\S]*4 in the last 14 days · 3 before/);
+    assert.match(await rows.nth(1).innerText(), /Writing a spec or PRD[\s\S]*Delegated \(3\) → Directed \(2\)[\s\S]*Moved down/);
+    assert.match(await rows.nth(2).innerText(), /Fixing a bug or failing test[\s\S]*Assisted \(1\)[\s\S]*Same rung/);
+    assert.match(t, /Too few tasks to say for 1 kind of task: each needs at least 3 judged tasks in both halves\./);
+    const v = await axe(page);
+    assert.deepEqual(v, [], v.join("; "));
+    assert.deepEqual(page.errors, []);
+    if (shots) await page.screenshot({ path: join(shots, `progress-home-${theme}.png`), fullPage: true });
+    if (theme === "light") {
+      await rows.first().getByRole("button").click();
+      await page.waitForSelector("main h1:text('Writing tests')");
+      assert.ok(page.url().endsWith("#kind/code_change/tests"));
+    }
+    await page.context().close();
+  }
+  // Nothing moved yet, and no kinds: the empty wording, never a guessed trend.
+  const same = await open("coaching");
+  assert.match(await same.locator("section", { has: same.locator("h2#pg") }).innerText(), /No kind of task has moved a rung yet\.[\s\S]*Too few tasks to say for 4 kinds of task/);
+  await same.context().close();
+  const none = await open("coaching", { edit: (s) => (s.coaching.progress = []) });
+  assert.match(await none.locator("main").innerText(), /Progress shows once AIQ knows the kind of your tasks from the last 28 days\./);
+  await none.context().close();
 });
 
 await test("kind of task: the pack's step, copy starter, judge words as text, This doesn't fit with a reason, Undo", async () => {
@@ -689,6 +852,129 @@ await test("Accuracy pause (K6b): Home and Settings say why, Keep showing and Le
   const none = await open("coaching", { hash: "#settings" });
   assert.match(await none.locator("main").innerText(), /AIQ also pauses the tips for a job or kind of task by itself/);
   await none.context().close();
+});
+
+await test("auto-update: Home's one line, Install now and Go back, the Settings switch (design auto-update U5)", async () => {
+  const none = await open("full");
+  assert.equal(await none.getByTestId("update-line").count(), 0, "nothing waiting: no line");
+  await none.context().close();
+  const waiting = (s) => Object.assign(s.update, { note: "waiting", available: "v0.2.0", blocked: "AIQ home is open" });
+  const home = await open("full", { edit: waiting });
+  assert.equal((await home.getByTestId("update-line").innerText()).split("\n")[0], "AIQ 0.2.0 is ready. It installs by itself when you close AIQ home.");
+  await home.getByRole("button", { name: "Install now" }).click();
+  await home.waitForFunction(() => document.querySelector("[data-testid=update-line]")?.textContent.includes("AIQ home closes and opens again"));
+  const calls = await home.evaluate(() => window.__AIQ_FIXTURE__.calls.filter((c) => c.cmd === "run_update").map((c) => c.args));
+  assert.deepEqual(calls, [{ action: "install" }]);
+  assert.deepEqual(await axe(home), []);
+  await home.context().close();
+  const ask = await open("empty", { edit: (s) => (waiting(s), (s.update.mode = "ask")) });
+  assert.match(await ask.getByTestId("update-line").innerText(), /AIQ 0\.2\.0 is ready to install\./);
+  await ask.context().close();
+  const applied = (s) => Object.assign(s.update, { note: "applied", from: "0.0.9", at_ms: s.now_ms - 3_600_000 });
+  const done = await open("full", { edit: applied });
+  assert.match(await done.getByTestId("update-line").innerText(), /AIQ updated itself to 0\.1\.0 \(Today .+\)\. Your data and settings are kept\./);
+  await done.getByRole("button", { name: "Go back to 0.0.9" }).click();
+  const back = await done.evaluate(() => window.__AIQ_FIXTURE__.calls.filter((c) => c.cmd === "run_update").map((c) => c.args));
+  assert.deepEqual(back, [{ action: "rollback" }]);
+  await done.context().close();
+  const st = await open("full", { hash: "#settings" });
+  assert.equal(await st.getByTestId("app-version").innerText(), "AIQ 0.1.0");
+  assert.equal(await st.getByRole("radio", { name: /Update automatically/ }).isChecked(), true);
+  await st.getByRole("radio", { name: "Tell me first" }).check();
+  await st.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Updates: tell me first.");
+  const set = await st.evaluate(() => window.__AIQ_FIXTURE__.calls.filter((c) => c.cmd === "set_setting").map((c) => c.args));
+  assert.deepEqual(set, [{ key: "update", value: "ask" }]);
+  await st.getByRole("radio", { name: "Don't check for updates" }).check();
+  await st.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Updates: don't check for updates.");
+  assert.match(await st.locator("main").innerText(), /AIQ doesn't check for updates and makes no network call of its own\. You're on AIQ 0\.1\.0\./);
+  const set2 = await st.evaluate(() => window.__AIQ_FIXTURE__.calls.filter((c) => c.cmd === "set_setting").map((c) => c.args));
+  assert.deepEqual(set2.at(-1), { key: "update", value: "off" });
+  await st.getByRole("button", { name: "Check for updates now" }).click();
+  await st.waitForFunction(() => document.querySelector("[role=status]")?.textContent.startsWith("Checking GitHub for a newer AIQ"));
+  const chk = await st.evaluate(() => window.__AIQ_FIXTURE__.calls.filter((c) => c.cmd === "run_update").map((c) => c.args));
+  assert.deepEqual(chk, [{ action: "check" }]);
+  assert.deepEqual(await axe(st), []);
+  await st.context().close();
+  const dev = await open("full", { hash: "#settings", edit: (s) => (s.update.supported = false) });
+  assert.match(await dev.locator("main").innerText(), /wasn't installed from a release, so it doesn't update itself/);
+  assert.equal(await dev.getByRole("radio", { name: "Tell me first" }).count(), 0);
+  await dev.context().close();
+});
+
+await test("Home drops 'could be' when no kind of task is one step from agents finishing it, and says how many could move up a rung", async () => {
+  const page = await open("coaching", { edit: (s) => { s.coaching.split = { ...s.coaching.split, finished: 1, could: 0, needs: 14, up: 13, up_to: 2 }; } });
+  const t = await page.locator("main").innerText();
+  assert.ok(!t.includes("could be"), "no 'could be' figure");
+  assert.match(t, /1 of 15 judged tasks finished by agents · 14 need you · 1 unsure, not counted/);
+  assert.match(t, /87% could move up a rung, most often to Directed \(2\)\./);
+  assert.equal(await page.getByRole("img", { name: "Agents finished 7%" }).count(), 1);
+  await page.context().close();
+});
+
+await test("no terminal needed: Include a set-aside folder, Disconnect a tool, see what judging sends, open the privacy page", async () => {
+  const home = await open("full");
+  await home.getByRole("button", { name: "Include pipeline" }).click();
+  await home.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "AIQ will watch sessions in pipeline again.");
+  const inc = await home.evaluate(() => window.__AIQ_FIXTURE__.calls.filter((c) => c.cmd === "include_folder").map((c) => c.args));
+  assert.deepEqual(inc, [{ folder: "c:\\users\\imran\\source\\repos\\pipeline" }]);
+  assert.ok(!(await home.locator("main").innerText()).includes("aiq include"));
+  await home.context().close();
+
+  const st = await open("full", { hash: "#settings" });
+  assert.ok(!(await st.locator("main").innerText()).includes("In a terminal"));
+  await st.getByRole("button", { name: "See what would be sent" }).click();
+  await st.waitForSelector("pre.preview");
+  assert.match(await st.locator("pre.preview").innerText(), /Nothing was sent/);
+  await st.getByRole("button", { name: "Disconnect Claude Code" }).click();
+  await st.waitForFunction(() => document.querySelector("[role=status]")?.textContent.startsWith("Disconnected Claude Code."));
+  assert.match(await st.getByRole("list", { name: "Files AIQ changed" }).innerText(), /settings\.json/);
+  assert.equal(await st.getByRole("button", { name: "Disconnect Claude Code" }).count(), 0);
+  await st.getByRole("button", { name: "Read the privacy page" }).click();
+  const cmds = await st.evaluate(() => window.__AIQ_FIXTURE__.calls.map((c) => c.cmd));
+  for (const c of ["judge_preview", "disconnect_tool", "open_privacy"]) assert.ok(cmds.includes(c), c);
+  assert.deepEqual(await axe(st), []);
+  await st.context().close();
+});
+
+await test("projects: Your projects ranks folders, the picker scopes Home and Tasks, rename saves", async () => {
+  const page = await open("coaching");
+  const table = page.getByRole("table", { name: "Your projects" });
+  const rows = table.locator("tbody tr");
+  assert.equal(await rows.count(), 2);
+  assert.match(await rows.nth(0).innerText(), /aiq[\s\S]*12[\s\S]*Delegated \(3\)[\s\S]*45%[\s\S]*3 \(27%\)/);
+  assert.match(await rows.nth(1).innerText(), /foresight[\s\S]*4[\s\S]*Directed \(2\)[\s\S]*Too few judged/);
+  // Selecting a name scopes Home: the headline, the note, and no table.
+  await page.getByRole("button", { name: "Show foresight only" }).click();
+  await page.waitForSelector("[data-testid=project-note]");
+  const t = await page.locator("main").innerText();
+  assert.match(t, /Showing foresight only\. Tips and Set aside cover all projects\./);
+  assert.match(t, /Not enough judged tasks yet/);
+  assert.equal(await page.getByRole("table", { name: "Your projects" }).count(), 0);
+  assert.equal(await page.getByLabel("Project").inputValue(), "c:\\users\\imran\\source\\repos\\foresight");
+  assert.deepEqual(await axe(page), []);
+  // The choice carries to Tasks: only foresight's four tasks.
+  await page.locator("nav a", { hasText: "Tasks" }).click();
+  await page.waitForSelector("table[aria-label=Tasks]");
+  assert.equal(await page.locator("table[aria-label=Tasks] tbody tr").count(), 4);
+  assert.match(await page.locator("main").innerText(), /4 tasks in the last 30 days/);
+  await page.getByRole("button", { name: "Show all projects" }).click();
+  assert.equal(await page.locator("table[aria-label=Tasks] tbody tr").count(), 16);
+  await page.context().close();
+
+  const r = await open("coaching");
+  await r.getByRole("button", { name: "Rename aiq" }).click();
+  await r.getByLabel("New name for aiq").fill("AI coach");
+  await r.getByRole("button", { name: "Save" }).click();
+  await r.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Renamed to AI coach.");
+  const set = await r.evaluate(() => window.__AIQ_FIXTURE__.calls.filter((c) => c.cmd === "set_setting").map((c) => c.args));
+  assert.deepEqual(set, [{ key: "project_name.c:\\users\\imran\\source\\repos\\aiq", value: "AI coach" }]);
+  await r.context().close();
+
+  // One project: no picker, no table.
+  const solo = await open("full", { edit: (s) => (s.projects = s.projects.slice(0, 1)) });
+  assert.equal(await solo.getByLabel("Project").count(), 0);
+  assert.equal(await solo.getByRole("table", { name: "Your projects" }).count(), 0);
+  await solo.context().close();
 });
 
 await browser.close();

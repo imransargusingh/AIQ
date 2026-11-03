@@ -91,7 +91,11 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2"
-      }
+      },
+      "session": "k0",
+      "prompt_ms": [
+        1793422800000
+      ]
     },
     {
       "task_id": "019000000003-0000-7000-8000-000000000000",
@@ -126,7 +130,11 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2"
-      }
+      },
+      "session": "k1",
+      "prompt_ms": [
+        1793311200000
+      ]
     },
     {
       "task_id": "019000000005-0000-7000-8000-000000000000",
@@ -161,7 +169,11 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2"
-      }
+      },
+      "session": "k2",
+      "prompt_ms": [
+        1793199600000
+      ]
     },
     {
       "task_id": "019000000007-0000-7000-8000-000000000000",
@@ -196,7 +208,11 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2"
-      }
+      },
+      "session": "k3",
+      "prompt_ms": [
+        1793088000000
+      ]
     },
     {
       "task_id": "019000000009-0000-7000-8000-000000000000",
@@ -231,7 +247,11 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2"
-      }
+      },
+      "session": "k4",
+      "prompt_ms": [
+        1792976400000
+      ]
     },
     {
       "task_id": "019000000011-0000-7000-8000-000000000000",
@@ -266,7 +286,11 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2"
-      }
+      },
+      "session": "k5",
+      "prompt_ms": [
+        1792864800000
+      ]
     },
     {
       "task_id": "019000000013-0000-7000-8000-000000000000",
@@ -301,12 +325,16 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2"
-      }
+      },
+      "session": "k6",
+      "prompt_ms": [
+        1792753200000
+      ]
     },
     {
       "task_id": "019000000015-0000-7000-8000-000000000000",
       "tool": "copilot-cli",
-      "folder": "c:\\users\\imran\\source\\repos\\aiq",
+      "folder": "c:\\users\\imran\\source\\repos\\foresight",
       "first_ms": 1792641600000,
       "last_ms": 1792641600000,
       "prompts": 1,
@@ -336,12 +364,16 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2"
-      }
+      },
+      "session": "k7",
+      "prompt_ms": [
+        1792641600000
+      ]
     },
     {
       "task_id": "019000000017-0000-7000-8000-000000000000",
       "tool": "copilot-cli",
-      "folder": "c:\\users\\imran\\source\\repos\\aiq",
+      "folder": "c:\\users\\imran\\source\\repos\\foresight",
       "first_ms": 1792530000000,
       "last_ms": 1792530000000,
       "prompts": 1,
@@ -371,12 +403,16 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2"
-      }
+      },
+      "session": "k8",
+      "prompt_ms": [
+        1792530000000
+      ]
     },
     {
       "task_id": "019000000019-0000-7000-8000-000000000000",
       "tool": "copilot-cli",
-      "folder": "c:\\users\\imran\\source\\repos\\aiq",
+      "folder": "c:\\users\\imran\\source\\repos\\foresight",
       "first_ms": 1792418400000,
       "last_ms": 1792418400000,
       "prompts": 1,
@@ -406,12 +442,16 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2"
-      }
+      },
+      "session": "k9",
+      "prompt_ms": [
+        1792418400000
+      ]
     },
     {
       "task_id": "019000000021-0000-7000-8000-000000000000",
       "tool": "copilot-cli",
-      "folder": "c:\\users\\imran\\source\\repos\\aiq",
+      "folder": "c:\\users\\imran\\source\\repos\\foresight",
       "first_ms": 1792306800000,
       "last_ms": 1792306800000,
       "prompts": 1,
@@ -441,7 +481,11 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2"
-      }
+      },
+      "session": "k10",
+      "prompt_ms": [
+        1792306800000
+      ]
     },
     {
       "task_id": "019000000023-0000-7000-8000-000000000000",
@@ -476,7 +520,11 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2"
-      }
+      },
+      "session": "k11",
+      "prompt_ms": [
+        1792195200000
+      ]
     },
     {
       "task_id": "019000000025-0000-7000-8000-000000000000",
@@ -511,7 +559,11 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2"
-      }
+      },
+      "session": "k12",
+      "prompt_ms": [
+        1792083600000
+      ]
     },
     {
       "task_id": "019000000027-0000-7000-8000-000000000000",
@@ -546,7 +598,11 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2"
-      }
+      },
+      "session": "k13",
+      "prompt_ms": [
+        1791972000000
+      ]
     },
     {
       "task_id": "019000000029-0000-7000-8000-000000000000",
@@ -581,7 +637,11 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2"
-      }
+      },
+      "session": "k14",
+      "prompt_ms": [
+        1791860400000
+      ]
     },
     {
       "task_id": "019000000031-0000-7000-8000-000000000000",
@@ -616,7 +676,11 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2"
-      }
+      },
+      "session": "k15",
+      "prompt_ms": [
+        1791748800000
+      ]
     }
   ],
   "tips": [],
@@ -626,7 +690,7 @@
     "turn_ends": 16,
     "imported_sessions": 0,
     "imported_events": 0,
-    "store_bytes": 245760,
+    "store_bytes": 282624,
     "items": [
       {
         "event_id": "019000000002-0000-7000-8000-000000000000",
@@ -891,8 +955,13 @@
   "settings": {
     "daily_cap": 5,
     "copilot_tip_stays": "next-prompt",
+    "copilot_tip_in_chat": true,
+    "tip_popup": true,
+    "tip_highlight": true,
     "judge": "off",
     "judge_daily_tasks": 50,
+    "copilot_mid_turn": "on",
+    "agent_actions": "on",
     "next_rung_tips": "auto",
     "next_rung_on": true,
     "guess_checked": 0,
@@ -1028,7 +1097,9 @@
       "finished": 5,
       "could": 5,
       "needs": 5,
-      "uncertain": 1
+      "uncertain": 1,
+      "up": 7,
+      "up_to": 3
     },
     "split_min": 10,
     "rule": "A task counts as finished when it was judged Delegated or higher and you sent no re-prompt correcting the agent.",
@@ -1347,6 +1418,577 @@
       }
     ],
     "habits_imported": false,
-    "untyped": 0
-  }
+    "untyped": 0,
+    "progress": [
+      {
+        "job": "code_change",
+        "task_type": "tests",
+        "label": "Writing tests",
+        "recent": 6,
+        "earlier": 0,
+        "uncertain": 1,
+        "recent_rung": 3,
+        "earlier_rung": null,
+        "trend": "too_few"
+      },
+      {
+        "job": "write_doc",
+        "task_type": "spec",
+        "label": "Writing a spec or PRD",
+        "recent": 3,
+        "earlier": 1,
+        "uncertain": 0,
+        "recent_rung": 2,
+        "earlier_rung": 2,
+        "trend": "too_few"
+      },
+      {
+        "job": "code_change",
+        "task_type": "fix_bug",
+        "label": "Fixing a bug or failing test",
+        "recent": 0,
+        "earlier": 3,
+        "uncertain": 0,
+        "recent_rung": null,
+        "earlier_rung": 1,
+        "trend": "too_few"
+      },
+      {
+        "job": "code_change",
+        "task_type": "refactor",
+        "label": "Refactoring or cleaning up",
+        "recent": 0,
+        "earlier": 2,
+        "uncertain": 0,
+        "recent_rung": null,
+        "earlier_rung": 2,
+        "trend": "too_few"
+      }
+    ],
+    "progress_days": 14,
+    "progress_min": 3
+  },
+  "update": {
+    "supported": true,
+    "mode": "auto",
+    "running": "0.1.0",
+    "note": "none",
+    "available": null,
+    "blocked": null,
+    "from": null,
+    "at_ms": null,
+    "message": null,
+    "checked_ms": 1793530800000,
+    "check_error": null,
+    "can_rollback": true
+  },
+  "projects": [
+    {
+      "key": "c:\\users\\imran\\source\\repos\\aiq",
+      "name": "aiq",
+      "renamed": false,
+      "tasks_in_window": 12,
+      "judged": 12,
+      "uncertain": 1,
+      "rungs": [
+        3,
+        2,
+        6,
+        0,
+        0
+      ],
+      "most_common_rung": 3,
+      "imported_in_window": 0,
+      "weeks": [
+        {
+          "start_ms": 1791115200000,
+          "tasks": 0
+        },
+        {
+          "start_ms": 1791720000000,
+          "tasks": 5
+        },
+        {
+          "start_ms": 1792324800000,
+          "tasks": 2
+        },
+        {
+          "start_ms": 1792929600000,
+          "tasks": 5
+        }
+      ],
+      "by_tool": [
+        [
+          "copilot-cli",
+          12
+        ]
+      ],
+      "coaching": {
+        "split": {
+          "tasks": 11,
+          "finished": 5,
+          "could": 1,
+          "needs": 5,
+          "uncertain": 1,
+          "up": 3,
+          "up_to": 3
+        },
+        "split_min": 10,
+        "rule": "A task counts as finished when it was judged Delegated or higher and you sent no re-prompt correcting the agent.",
+        "weeks": [
+          {
+            "start_ms": 1791115200000,
+            "tasks": 0,
+            "finished": 0
+          },
+          {
+            "start_ms": 1791720000000,
+            "tasks": 5,
+            "finished": 0
+          },
+          {
+            "start_ms": 1792324800000,
+            "tasks": 1,
+            "finished": 1
+          },
+          {
+            "start_ms": 1792929600000,
+            "tasks": 5,
+            "finished": 4
+          }
+        ],
+        "week_min": 3,
+        "opportunities": [
+          {
+            "job": "code_change",
+            "task_type": "tests",
+            "label": "Writing tests",
+            "tasks": 7,
+            "uncertain": 1,
+            "per_week": 1.6,
+            "today": 3,
+            "potential": 4,
+            "state": "coach",
+            "next": {
+              "move_id": "written_brief",
+              "habit": "Give the agent a written brief or instructions file",
+              "why": "a written brief or instructions file carries the context every time, so the agent can plan alone.",
+              "try_this": "save the goal, rules and checks for this kind of task in a file and point the agent at it.",
+              "starter": "Read <brief or instructions file>. Plan the steps, do them, and check each one against the brief."
+            },
+            "ranked_last": false,
+            "last_task_id": "019000000001-0000-7000-8000-000000000000",
+            "last_gap": "Give the agent <b>a brief</b>.",
+            "task_ids": [
+              "019000000001-0000-7000-8000-000000000000",
+              "019000000003-0000-7000-8000-000000000000",
+              "019000000005-0000-7000-8000-000000000000",
+              "019000000007-0000-7000-8000-000000000000",
+              "019000000009-0000-7000-8000-000000000000",
+              "019000000011-0000-7000-8000-000000000000",
+              "019000000013-0000-7000-8000-000000000000"
+            ]
+          }
+        ],
+        "kinds": [
+          {
+            "job": "code_change",
+            "task_type": "tests",
+            "label": "Writing tests",
+            "tasks": 7,
+            "uncertain": 1,
+            "per_week": 1.6,
+            "today": 3,
+            "potential": 4,
+            "state": "coach",
+            "next": {
+              "move_id": "written_brief",
+              "habit": "Give the agent a written brief or instructions file",
+              "why": "a written brief or instructions file carries the context every time, so the agent can plan alone.",
+              "try_this": "save the goal, rules and checks for this kind of task in a file and point the agent at it.",
+              "starter": "Read <brief or instructions file>. Plan the steps, do them, and check each one against the brief."
+            },
+            "ranked_last": false,
+            "last_task_id": "019000000001-0000-7000-8000-000000000000",
+            "last_gap": "Give the agent <b>a brief</b>.",
+            "task_ids": [
+              "019000000001-0000-7000-8000-000000000000",
+              "019000000003-0000-7000-8000-000000000000",
+              "019000000005-0000-7000-8000-000000000000",
+              "019000000007-0000-7000-8000-000000000000",
+              "019000000009-0000-7000-8000-000000000000",
+              "019000000011-0000-7000-8000-000000000000",
+              "019000000013-0000-7000-8000-000000000000"
+            ]
+          },
+          {
+            "job": "code_change",
+            "task_type": "fix_bug",
+            "label": "Fixing a bug or failing test",
+            "tasks": 3,
+            "uncertain": 0,
+            "per_week": 0.7,
+            "today": 1,
+            "potential": null,
+            "state": "right_rung",
+            "next": null,
+            "ranked_last": false,
+            "last_task_id": "019000000023-0000-7000-8000-000000000000",
+            "last_gap": "Give the agent <b>a brief</b>.",
+            "task_ids": [
+              "019000000023-0000-7000-8000-000000000000",
+              "019000000025-0000-7000-8000-000000000000",
+              "019000000027-0000-7000-8000-000000000000"
+            ]
+          },
+          {
+            "job": "code_change",
+            "task_type": "refactor",
+            "label": "Refactoring or cleaning up",
+            "tasks": 2,
+            "uncertain": 0,
+            "per_week": 0.5,
+            "today": 2,
+            "potential": null,
+            "state": "too_few",
+            "next": null,
+            "ranked_last": false,
+            "last_task_id": "019000000029-0000-7000-8000-000000000000",
+            "last_gap": "Give the agent <b>a brief</b>.",
+            "task_ids": [
+              "019000000029-0000-7000-8000-000000000000",
+              "019000000031-0000-7000-8000-000000000000"
+            ]
+          }
+        ],
+        "habits": [
+          {
+            "job": "code_change",
+            "move_id": "brief",
+            "name": "Give the agent the goal, context and limits up front",
+            "state": "adopted",
+            "eligible": 6,
+            "seen": 6,
+            "moved_to": "adopted",
+            "moved_ms": 1791972000000,
+            "moved_back": false
+          },
+          {
+            "job": "code_change",
+            "move_id": "check_code",
+            "name": "Check the diff or run the tests before using the result",
+            "state": "adopted",
+            "eligible": 6,
+            "seen": 6,
+            "moved_to": "adopted",
+            "moved_ms": 1791972000000,
+            "moved_back": false
+          },
+          {
+            "job": "code_change",
+            "move_id": "hand_over",
+            "name": "Hand over the whole task with a done test",
+            "state": "adopted",
+            "eligible": 6,
+            "seen": 6,
+            "moved_to": "adopted",
+            "moved_ms": 1791972000000,
+            "moved_back": false
+          },
+          {
+            "job": "code_change",
+            "move_id": "let_agent_edit",
+            "name": "Let the agent make the edits",
+            "state": "adopted",
+            "eligible": 6,
+            "seen": 6,
+            "moved_to": "adopted",
+            "moved_ms": 1791972000000,
+            "moved_back": false
+          },
+          {
+            "job": "code_change",
+            "move_id": "written_brief",
+            "name": "Give the agent a written brief or instructions file",
+            "state": "not_yet",
+            "eligible": 6,
+            "seen": 0,
+            "moved_to": null,
+            "moved_ms": null,
+            "moved_back": false
+          },
+          {
+            "job": "code_change",
+            "move_id": "agent_checks",
+            "name": "Ask the agent to run the tests itself",
+            "state": "not_yet",
+            "eligible": 6,
+            "seen": 0,
+            "moved_to": null,
+            "moved_ms": null,
+            "moved_back": false
+          },
+          {
+            "job": "code_change",
+            "move_id": "split_and_check",
+            "name": "Split the work with an automated check between steps",
+            "state": "not_yet",
+            "eligible": 6,
+            "seen": 0,
+            "moved_to": null,
+            "moved_ms": null,
+            "moved_back": false
+          }
+        ],
+        "habits_imported": false,
+        "untyped": 0,
+        "progress": [
+          {
+            "job": "code_change",
+            "task_type": "tests",
+            "label": "Writing tests",
+            "recent": 6,
+            "earlier": 0,
+            "uncertain": 1,
+            "recent_rung": 3,
+            "earlier_rung": null,
+            "trend": "too_few"
+          },
+          {
+            "job": "code_change",
+            "task_type": "fix_bug",
+            "label": "Fixing a bug or failing test",
+            "recent": 0,
+            "earlier": 3,
+            "uncertain": 0,
+            "recent_rung": null,
+            "earlier_rung": 1,
+            "trend": "too_few"
+          },
+          {
+            "job": "code_change",
+            "task_type": "refactor",
+            "label": "Refactoring or cleaning up",
+            "recent": 0,
+            "earlier": 2,
+            "uncertain": 0,
+            "recent_rung": null,
+            "earlier_rung": 2,
+            "trend": "too_few"
+          }
+        ],
+        "progress_days": 14,
+        "progress_min": 3
+      }
+    },
+    {
+      "key": "c:\\users\\imran\\source\\repos\\foresight",
+      "name": "foresight",
+      "renamed": false,
+      "tasks_in_window": 4,
+      "judged": 4,
+      "uncertain": 0,
+      "rungs": [
+        0,
+        4,
+        0,
+        0,
+        0
+      ],
+      "most_common_rung": 2,
+      "imported_in_window": 0,
+      "weeks": [
+        {
+          "start_ms": 1791115200000,
+          "tasks": 0
+        },
+        {
+          "start_ms": 1791720000000,
+          "tasks": 1
+        },
+        {
+          "start_ms": 1792324800000,
+          "tasks": 3
+        },
+        {
+          "start_ms": 1792929600000,
+          "tasks": 0
+        }
+      ],
+      "by_tool": [
+        [
+          "copilot-cli",
+          4
+        ]
+      ],
+      "coaching": {
+        "split": {
+          "tasks": 4,
+          "finished": 0,
+          "could": 4,
+          "needs": 0,
+          "uncertain": 0,
+          "up": 4,
+          "up_to": 3
+        },
+        "split_min": 10,
+        "rule": "A task counts as finished when it was judged Delegated or higher and you sent no re-prompt correcting the agent.",
+        "weeks": [
+          {
+            "start_ms": 1791115200000,
+            "tasks": 0,
+            "finished": 0
+          },
+          {
+            "start_ms": 1791720000000,
+            "tasks": 1,
+            "finished": 0
+          },
+          {
+            "start_ms": 1792324800000,
+            "tasks": 3,
+            "finished": 0
+          },
+          {
+            "start_ms": 1792929600000,
+            "tasks": 0,
+            "finished": 0
+          }
+        ],
+        "week_min": 3,
+        "opportunities": [
+          {
+            "job": "write_doc",
+            "task_type": "spec",
+            "label": "Writing a spec or PRD",
+            "tasks": 4,
+            "uncertain": 0,
+            "per_week": 0.9,
+            "today": 2,
+            "potential": 3,
+            "state": "coach",
+            "next": {
+              "move_id": "hand_over_doc",
+              "habit": "Ask for the whole draft with what done means",
+              "why": "asking for the whole draft with what done means lets the agent keep it consistent.",
+              "try_this": "ask for the complete draft and say what a finished one must contain.",
+              "starter": "Write the whole <doc>. Done means it covers <sections> for <reader>. Then list what you were unsure of."
+            },
+            "ranked_last": false,
+            "last_task_id": "019000000015-0000-7000-8000-000000000000",
+            "last_gap": "Give the agent <b>a brief</b>.",
+            "task_ids": [
+              "019000000015-0000-7000-8000-000000000000",
+              "019000000017-0000-7000-8000-000000000000",
+              "019000000019-0000-7000-8000-000000000000",
+              "019000000021-0000-7000-8000-000000000000"
+            ]
+          }
+        ],
+        "kinds": [
+          {
+            "job": "write_doc",
+            "task_type": "spec",
+            "label": "Writing a spec or PRD",
+            "tasks": 4,
+            "uncertain": 0,
+            "per_week": 0.9,
+            "today": 2,
+            "potential": 3,
+            "state": "coach",
+            "next": {
+              "move_id": "hand_over_doc",
+              "habit": "Ask for the whole draft with what done means",
+              "why": "asking for the whole draft with what done means lets the agent keep it consistent.",
+              "try_this": "ask for the complete draft and say what a finished one must contain.",
+              "starter": "Write the whole <doc>. Done means it covers <sections> for <reader>. Then list what you were unsure of."
+            },
+            "ranked_last": false,
+            "last_task_id": "019000000015-0000-7000-8000-000000000000",
+            "last_gap": "Give the agent <b>a brief</b>.",
+            "task_ids": [
+              "019000000015-0000-7000-8000-000000000000",
+              "019000000017-0000-7000-8000-000000000000",
+              "019000000019-0000-7000-8000-000000000000",
+              "019000000021-0000-7000-8000-000000000000"
+            ]
+          }
+        ],
+        "habits": [
+          {
+            "job": "write_doc",
+            "move_id": "brief_doc",
+            "name": "Say who the doc is for, what it must do, and its limits",
+            "state": "adopted",
+            "eligible": 3,
+            "seen": 3,
+            "moved_to": "adopted",
+            "moved_ms": 1792530000000,
+            "moved_back": false
+          },
+          {
+            "job": "write_doc",
+            "move_id": "check_sources",
+            "name": "Check drafted claims against a source",
+            "state": "adopted",
+            "eligible": 3,
+            "seen": 3,
+            "moved_to": "adopted",
+            "moved_ms": 1792530000000,
+            "moved_back": false
+          },
+          {
+            "job": "write_doc",
+            "move_id": "hand_over_doc",
+            "name": "Ask for the whole draft with what done means",
+            "state": "not_yet",
+            "eligible": 3,
+            "seen": 0,
+            "moved_to": null,
+            "moved_ms": null,
+            "moved_back": false
+          },
+          {
+            "job": "write_doc",
+            "move_id": "written_brief",
+            "name": "Give the agent a written brief or instructions file",
+            "state": "not_yet",
+            "eligible": 3,
+            "seen": 0,
+            "moved_to": null,
+            "moved_ms": null,
+            "moved_back": false
+          },
+          {
+            "job": "write_doc",
+            "move_id": "split_and_check",
+            "name": "Split the work with an automated check between steps",
+            "state": "not_yet",
+            "eligible": 3,
+            "seen": 0,
+            "moved_to": null,
+            "moved_ms": null,
+            "moved_back": false
+          }
+        ],
+        "habits_imported": false,
+        "untyped": 0,
+        "progress": [
+          {
+            "job": "write_doc",
+            "task_type": "spec",
+            "label": "Writing a spec or PRD",
+            "recent": 3,
+            "earlier": 1,
+            "uncertain": 0,
+            "recent_rung": 2,
+            "earlier_rung": 2,
+            "trend": "too_few"
+          }
+        ],
+        "progress_days": 14,
+        "progress_min": 3
+      }
+    }
+  ]
 }

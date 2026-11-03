@@ -4,10 +4,9 @@ use crate::counters::Counters;
 use crate::ipc;
 use crate::pack::BundledPack;
 use crate::paths::{Paths, write_user_only};
-use crate::service::{SETTING_PAUSED, Service, TipLineOut};
+use crate::service::{SETTING_PAUSED, SETTING_TIP_HIGHLIGHT, Service, TipLineOut};
 use crate::spool;
 use crate::sysclock::SystemClock;
-use aiq_contracts::card::CardV1;
 use aiq_contracts::codes;
 use aiq_contracts::event::EventV1;
 use aiq_contracts::frames::{MAX_FRAME_BYTES, OkReply, Request, ShowReply, StatusReply, TakeCardReply, TipLineReply};
@@ -68,7 +67,7 @@ pub enum Cmd {
         trace_id: Option<String>,
         received: Instant,
         wait_ms: u64,
-        reply: mpsc::Sender<Option<CardV1>>,
+        reply: mpsc::Sender<TakeCardReply>,
     },
     Status {
         reply: mpsc::Sender<StatusReply>,
@@ -86,7 +85,7 @@ pub enum Cmd {
     TakeCardAny {
         surface: String,
         received: Instant,
-        reply: mpsc::Sender<Option<CardV1>>,
+        reply: mpsc::Sender<TakeCardReply>,
     },
     Setting {
         key: String,
@@ -101,6 +100,9 @@ pub enum Cmd {
         event_id: String,
         reply: mpsc::Sender<Result<(), String>>,
     },
+    KindLabel {
+        task_id: String,
+    },
     DrainSpool,
     Shutdown {
         reply: mpsc::Sender<()>,
@@ -109,6 +111,11 @@ pub enum Cmd {
 
 /// Run the core until it is killed or told to forget everything.
 pub fn run(paths: &Paths) -> Result<(), CoreError> {
+    run_with(paths, None)
+}
+
+/// `run`, with the background kind labeller the `aiq` binary provides (design kind-label).
+pub fn run_with(paths: &Paths, labeller: Option<crate::service::LabelRequester>) -> Result<(), CoreError> {
     let fail = |code: &'static str| move |e: std::io::Error| CoreError { code, detail: e.to_string() };
     paths.ensure_dirs().map_err(fail(codes::STORE_OPEN))?;
     let mut lock_opts = std::fs::OpenOptions::new();
@@ -127,12 +134,16 @@ pub fn run(paths: &Paths) -> Result<(), CoreError> {
     let started = (|| {
         let pack = BundledPack.load().map_err(|d| CoreError { code: codes::STORE_OPEN, detail: d })?;
         let store = Store::open(&paths.db()).map_err(|e| CoreError { code: e.code, detail: e.detail })?;
-        let svc = Service::new(store, pack, SystemClock, counters.clone())
+        let mut svc = Service::new(store, pack, SystemClock, counters.clone())
             .map_err(|e| CoreError { code: e.code, detail: e.detail })?;
+        svc.set_copilot_home(crate::tools::copilot_home());
         Ok::<_, CoreError>(svc)
     })();
     let mut svc = match started {
-        Ok(s) => s,
+        Ok(mut s) => {
+            s.set_popup(Box::new(crate::popup::show));
+            s
+        }
         Err(e) => {
             error!(error.code = e.code, "core failed to start");
             let _ = write_user_only(&paths.core_error(), format!("{e}\n").as_bytes());
@@ -140,6 +151,9 @@ pub fn run(paths: &Paths) -> Result<(), CoreError> {
         }
     };
     let _ = std::fs::remove_file(paths.core_error());
+    if let Some(l) = labeller {
+        svc.set_label_requester(l);
+    }
     reconcile_pause(paths, &mut svc);
 
     let token = ipc::new_token();
@@ -190,12 +204,19 @@ fn writer_loop(mut svc: Service<SystemClock>, rx: Receiver<Cmd>, paths: &Paths, 
             Err(mpsc::RecvTimeoutError::Timeout) => Cmd::DrainSpool,
             Err(mpsc::RecvTimeoutError::Disconnected) => break None,
         };
+        // A frame a hook spooled while the core was busy (its 20 ms send missed) goes in before the next
+        // command, not at the idle tick: steady traffic (a status poll, a busy session) never lets the
+        // tick fire, and the spooled prompt would wait behind later ones (Windows runner flake, 2026-11-03).
+        if !matches!(cmd, Cmd::DrainSpool) && paths.spool().exists() {
+            drain_spool(paths, &mut svc, counters);
+        }
         match cmd {
             Cmd::Ingest { event, trace_id } => svc.ingest(&event, trace_id.as_deref()),
             Cmd::TakeCard { event, trace_id, received, wait_ms, reply } => {
                 let fresh = received.elapsed() <= Duration::from_millis(wait_ms);
                 let card = svc.take_card(&event, trace_id.as_deref(), fresh);
-                let _ = reply.send(card);
+                let _ = reply.send(TakeCardReply { card, plain: !svc.switch_on(SETTING_TIP_HIGHLIGHT) });
+                svc.after_stop(&event, trace_id.as_deref());
             }
             Cmd::Status { reply } => {
                 let _ = reply.send(svc.status());
@@ -204,9 +225,10 @@ fn writer_loop(mut svc: Service<SystemClock>, rx: Receiver<Cmd>, paths: &Paths, 
                 let _ = reply.send(svc.show(&card_id, &opened_on));
             }
             Cmd::TipLine { surface, session, reply } => {
+                let plain = !svc.switch_on(SETTING_TIP_HIGHLIGHT);
                 let r = match svc.tip_line(&surface, session.as_deref()) {
-                    Some(TipLineOut::Full(c)) => TipLineReply { card: Some(c), waiting_card_id: None },
-                    Some(TipLineOut::Waiting(id)) => TipLineReply { card: None, waiting_card_id: Some(id) },
+                    Some(TipLineOut::Full(c)) => TipLineReply { card: Some(c), waiting_card_id: None, plain },
+                    Some(TipLineOut::Waiting(id)) => TipLineReply { card: None, waiting_card_id: Some(id), plain },
                     None => TipLineReply::default(),
                 };
                 let _ = reply.send(r);
@@ -214,7 +236,7 @@ fn writer_loop(mut svc: Service<SystemClock>, rx: Receiver<Cmd>, paths: &Paths, 
             Cmd::TakeCardAny { surface, received, reply } => {
                 // A card handed to a poller that already gave up would be lost; deliver only while it waits.
                 let card = if received.elapsed() <= RENDER_WAIT { svc.take_card_any(&surface) } else { None };
-                let _ = reply.send(card);
+                let _ = reply.send(TakeCardReply { card, plain: !svc.switch_on(SETTING_TIP_HIGHLIGHT) });
             }
             Cmd::Setting { key, value, reply } => {
                 let _ = reply.send(svc.set(&key, &value));
@@ -242,6 +264,11 @@ fn writer_loop(mut svc: Service<SystemClock>, rx: Receiver<Cmd>, paths: &Paths, 
                     reason.as_deref(),
                     note.as_deref(),
                 ));
+            }
+            Cmd::KindLabel { task_id } => {
+                if let Err(e) = svc.on_kind_label(&task_id) {
+                    counters.inc(e.code);
+                }
             }
             Cmd::DrainSpool => {
                 drain_spool(paths, &mut svc, counters);
@@ -324,10 +351,10 @@ pub fn dispatch(req: Request, tx: &SyncSender<Cmd>, counters: &Counters, receive
         Request::TakeCard { event, trace_id, wait_ms, .. } => {
             let (rtx, rrx) = mpsc::channel();
             let card = match tx.try_send(Cmd::TakeCard { event, trace_id, received, wait_ms, reply: rtx }) {
-                Ok(()) => rrx.recv_timeout(Duration::from_millis(wait_ms.max(1))).ok().flatten(),
-                Err(_) => None, // never queued behind a full channel
+                Ok(()) => rrx.recv_timeout(Duration::from_millis(wait_ms.max(1))).unwrap_or_default(),
+                Err(_) => TakeCardReply::default(), // never queued behind a full channel
             };
-            Dispatch::Reply(to_line(&TakeCardReply { card }))
+            Dispatch::Reply(to_line(&card))
         }
         Request::Status { .. } => {
             ask(tx, |reply| Cmd::Status { reply }).map_or(Dispatch::NoReply, |s| Dispatch::Reply(to_line(&s)))
@@ -348,10 +375,10 @@ pub fn dispatch(req: Request, tx: &SyncSender<Cmd>, counters: &Counters, receive
         Request::TakeCardAny { surface, .. } => {
             let (rtx, rrx) = mpsc::channel();
             let card = match tx.try_send(Cmd::TakeCardAny { surface, received, reply: rtx }) {
-                Ok(()) => rrx.recv_timeout(RENDER_WAIT).ok().flatten(),
-                Err(_) => None,
+                Ok(()) => rrx.recv_timeout(RENDER_WAIT).unwrap_or_default(),
+                Err(_) => TakeCardReply::default(),
             };
-            Dispatch::Reply(to_line(&TakeCardReply { card }))
+            Dispatch::Reply(to_line(&card))
         }
         Request::Setting { key, value, .. } => {
             let r = ask(tx, |reply| Cmd::Setting { key, value, reply })
@@ -377,6 +404,12 @@ pub fn dispatch(req: Request, tx: &SyncSender<Cmd>, counters: &Counters, receive
             let r = ask(tx, |reply| Cmd::GuidanceFlag { job, task_type, move_id, action, reason, note, reply })
                 .unwrap_or_else(|| Err("core did not answer".into()));
             Dispatch::Reply(to_line(&OkReply { ok: r.is_ok(), message: r.err() }))
+        }
+        Request::KindLabel { task_id, .. } => {
+            if let Err(TrySendError::Full(_)) = tx.try_send(Cmd::KindLabel { task_id }) {
+                counters.inc(codes::INGEST_BACKPRESSURE);
+            }
+            Dispatch::NoReply
         }
         Request::Forget { .. } => Dispatch::Forget,
     }

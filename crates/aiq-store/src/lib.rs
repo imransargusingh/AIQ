@@ -15,8 +15,11 @@ pub const SCHEMA_V4: &str = include_str!("schema_v4.sql");
 pub const SCHEMA_V5: &str = include_str!("schema_v5.sql");
 pub const SCHEMA_V6: &str = include_str!("schema_v6.sql");
 pub const SCHEMA_V7: &str = include_str!("schema_v7.sql");
+pub const SCHEMA_V8: &str = include_str!("schema_v8.sql");
+pub const SCHEMA_V9: &str = include_str!("schema_v9.sql");
 /// Migration N takes the store from `user_version` N to N+1, in one transaction.
-pub const MIGRATIONS: &[&str] = &[SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6, SCHEMA_V7];
+pub const MIGRATIONS: &[&str] =
+    &[SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6, SCHEMA_V7, SCHEMA_V8, SCHEMA_V9];
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StoreError {
@@ -262,8 +265,52 @@ pub struct TypeGuessRow {
     pub job: String,
     pub task_type: String,
     pub similarity: f64,
-    /// Judged task ids the guess leaned on (never text).
+    /// Judged task ids the guess leaned on (never text). Empty for a label.
     pub neighbours: Vec<String>,
+    pub utc_ms: i64,
+    /// `words` (nearest neighbours) or `label` (a small model read the first prompt); `words` before v8.
+    pub method: String,
+}
+
+/// One label call for one live task's first prompt (schema v8 `kind_label`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct KindLabelRow {
+    pub label_id: String,
+    pub task_id: String,
+    pub surface: String,
+    pub surface_session_id: String,
+    pub provider: String,
+    pub model: Option<String>,
+    pub outcome: String,
+    pub job: Option<String>,
+    pub job_confidence: Option<f64>,
+    pub task_type: Option<String>,
+    pub task_type_confidence: Option<f64>,
+    pub requested_utc_ms: i64,
+    pub started_utc_ms: i64,
+    pub latency_ms: i64,
+    pub tokens_in: Option<i64>,
+    pub tokens_out: Option<i64>,
+    pub cost_usd: Option<f64>,
+    pub utc_ms: i64,
+}
+
+/// One live turn's agent actions (schema v9 `turn_action`). Counts are None when `outcome` is `not_recorded`.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct TurnActionRow {
+    pub stop_event_id: String,
+    pub surface: String,
+    pub surface_session_id: String,
+    pub ts_utc_ms: i64,
+    pub outcome: String,
+    pub why: Option<String>,
+    pub tool_calls: Option<i64>,
+    pub commands: Option<i64>,
+    pub files: Option<i64>,
+    pub subagents: Option<i64>,
+    pub tools: Option<String>,
+    pub bytes_read: i64,
+    pub read_ms: i64,
     pub utc_ms: i64,
 }
 
@@ -447,8 +494,8 @@ impl Store {
     pub fn insert_type_guess(&self, g: &TypeGuessRow) -> Result<()> {
         self.conn
             .execute(
-                "INSERT INTO type_guess (guess_id, task_id, surface, job, task_type, similarity, neighbours, utc_ms)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                "INSERT INTO type_guess (guess_id, task_id, surface, job, task_type, similarity, neighbours, utc_ms, method)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                 params![
                     g.guess_id,
                     g.task_id,
@@ -457,11 +504,22 @@ impl Store {
                     g.task_type,
                     g.similarity,
                     serde_json::to_string(&g.neighbours).expect("strings serialize"),
-                    g.utc_ms
+                    g.utc_ms,
+                    g.method
                 ],
             )
             .map(|_| ())
             .map_err(err(codes::STORE_WRITE))
+    }
+
+    /// Does this task have a type guess (by any method)? False before v6.
+    pub fn has_type_guess(&self, task_id: &str) -> Result<bool> {
+        if !self.has_table("type_guess")? {
+            return Ok(false);
+        }
+        self.conn
+            .query_row("SELECT EXISTS (SELECT 1 FROM type_guess WHERE task_id = ?1)", [task_id], |r| r.get(0))
+            .map_err(err(codes::STORE_OPEN))
     }
 
     /// Every type guess, oldest first. Empty before v6.
@@ -472,7 +530,7 @@ impl Store {
         let mut st = self
             .conn
             .prepare(
-                "SELECT guess_id, task_id, surface, job, task_type, similarity, neighbours, utc_ms FROM type_guess
+                "SELECT guess_id, task_id, surface, job, task_type, similarity, neighbours, utc_ms, method FROM type_guess
                  ORDER BY utc_ms, rowid",
             )
             .map_err(err(codes::STORE_OPEN))?;
@@ -488,10 +546,162 @@ impl Store {
                     similarity: r.get(5)?,
                     neighbours: serde_json::from_str(&n).unwrap_or_default(),
                     utc_ms: r.get(7)?,
+                    method: r.get(8)?,
                 })
             })
             .map_err(err(codes::STORE_OPEN))?;
         rows.collect::<rusqlite::Result<_>>().map_err(err(codes::STORE_OPEN))
+    }
+
+    // ------------------------------------------------------------ kind labels (schema v8)
+
+    pub fn insert_kind_label(&self, l: &KindLabelRow) -> Result<()> {
+        self.conn
+            .execute(
+                "INSERT INTO kind_label (label_id, task_id, surface, surface_session_id, provider, model, outcome, job,
+                   job_confidence, task_type, task_type_confidence, requested_utc_ms, started_utc_ms, latency_ms,
+                   tokens_in, tokens_out, cost_usd, utc_ms)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
+                params![
+                    l.label_id,
+                    l.task_id,
+                    l.surface,
+                    l.surface_session_id,
+                    l.provider,
+                    l.model,
+                    l.outcome,
+                    l.job,
+                    l.job_confidence,
+                    l.task_type,
+                    l.task_type_confidence,
+                    l.requested_utc_ms,
+                    l.started_utc_ms,
+                    l.latency_ms,
+                    l.tokens_in,
+                    l.tokens_out,
+                    l.cost_usd,
+                    l.utc_ms
+                ],
+            )
+            .map(|_| ())
+            .map_err(err(codes::STORE_WRITE))
+    }
+
+    fn kind_labels_where(&self, cond: &str, p: impl rusqlite::Params) -> Result<Vec<KindLabelRow>> {
+        if !self.has_table("kind_label")? {
+            return Ok(vec![]);
+        }
+        let sql = format!(
+            "SELECT label_id, task_id, surface, surface_session_id, provider, model, outcome, job, job_confidence,
+               task_type, task_type_confidence, requested_utc_ms, started_utc_ms, latency_ms, tokens_in, tokens_out,
+               cost_usd, utc_ms FROM kind_label WHERE {cond} ORDER BY utc_ms, rowid"
+        );
+        let mut st = self.conn.prepare(&sql).map_err(err(codes::STORE_OPEN))?;
+        let rows = st
+            .query_map(p, |r| {
+                Ok(KindLabelRow {
+                    label_id: r.get(0)?,
+                    task_id: r.get(1)?,
+                    surface: r.get(2)?,
+                    surface_session_id: r.get(3)?,
+                    provider: r.get(4)?,
+                    model: r.get(5)?,
+                    outcome: r.get(6)?,
+                    job: r.get(7)?,
+                    job_confidence: r.get(8)?,
+                    task_type: r.get(9)?,
+                    task_type_confidence: r.get(10)?,
+                    requested_utc_ms: r.get(11)?,
+                    started_utc_ms: r.get(12)?,
+                    latency_ms: r.get(13)?,
+                    tokens_in: r.get(14)?,
+                    tokens_out: r.get(15)?,
+                    cost_usd: r.get(16)?,
+                    utc_ms: r.get(17)?,
+                })
+            })
+            .map_err(err(codes::STORE_OPEN))?;
+        rows.collect::<rusqlite::Result<_>>().map_err(err(codes::STORE_OPEN))
+    }
+
+    /// Label calls for one task, oldest first. Empty before v8.
+    pub fn kind_labels_of(&self, task_id: &str) -> Result<Vec<KindLabelRow>> {
+        self.kind_labels_where("task_id = ?1", [task_id])
+    }
+
+    /// Label calls started at or after `since_ms` (the daily budget and `aiq status`). Empty before v8.
+    pub fn kind_labels_since(&self, since_ms: i64) -> Result<Vec<KindLabelRow>> {
+        self.kind_labels_where("started_utc_ms >= ?1", [since_ms])
+    }
+
+    /// Store one live turn's actions. False when that stop already has a row (a replayed stop stores nothing).
+    pub fn insert_turn_action(&self, t: &TurnActionRow) -> Result<bool> {
+        self.conn
+            .execute(
+                "INSERT OR IGNORE INTO turn_action (stop_event_id, surface, surface_session_id, ts_utc_ms, outcome, why,
+                   tool_calls, commands, files, subagents, tools, bytes_read, read_ms, utc_ms)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                params![
+                    t.stop_event_id,
+                    t.surface,
+                    t.surface_session_id,
+                    t.ts_utc_ms,
+                    t.outcome,
+                    t.why,
+                    t.tool_calls,
+                    t.commands,
+                    t.files,
+                    t.subagents,
+                    t.tools,
+                    t.bytes_read,
+                    t.read_ms,
+                    t.utc_ms
+                ],
+            )
+            .map(|n| n == 1)
+            .map_err(err(codes::STORE_WRITE))
+    }
+
+    /// Live turns whose actions were read at or after `since_ms`, oldest first. Empty before v9.
+    pub fn turn_actions_since(&self, since_ms: i64) -> Result<Vec<TurnActionRow>> {
+        if !self.has_table("turn_action")? {
+            return Ok(vec![]);
+        }
+        let mut st = self
+            .conn
+            .prepare(
+                "SELECT stop_event_id, surface, surface_session_id, ts_utc_ms, outcome, why, tool_calls, commands, files,
+                   subagents, tools, bytes_read, read_ms, utc_ms FROM turn_action WHERE utc_ms >= ?1 ORDER BY utc_ms, rowid",
+            )
+            .map_err(err(codes::STORE_OPEN))?;
+        let rows = st
+            .query_map([since_ms], |r| {
+                Ok(TurnActionRow {
+                    stop_event_id: r.get(0)?,
+                    surface: r.get(1)?,
+                    surface_session_id: r.get(2)?,
+                    ts_utc_ms: r.get(3)?,
+                    outcome: r.get(4)?,
+                    why: r.get(5)?,
+                    tool_calls: r.get(6)?,
+                    commands: r.get(7)?,
+                    files: r.get(8)?,
+                    subagents: r.get(9)?,
+                    tools: r.get(10)?,
+                    bytes_read: r.get(11)?,
+                    read_ms: r.get(12)?,
+                    utc_ms: r.get(13)?,
+                })
+            })
+            .map_err(err(codes::STORE_OPEN))?;
+        rows.collect::<rusqlite::Result<_>>().map_err(err(codes::STORE_OPEN))
+    }
+
+    /// The event is stored (a stop of a set-aside or paused session is not).
+    pub fn has_event(&self, event_id: &str) -> Result<bool> {
+        self.conn
+            .query_row("SELECT EXISTS (SELECT 1 FROM event WHERE event_id = ?1)", [event_id], |r| r.get(0))
+            .map_err(err(codes::STORE_OPEN))
     }
 
     pub fn insert_tip_feedback(&self, f: &TipFeedbackRow) -> Result<()> {
@@ -723,6 +933,20 @@ impl Store {
                 "SELECT EXISTS (SELECT 1 FROM event WHERE surface = ?1 AND surface_session_id = ?2
                                 AND prompt_id = ?3 AND kind = 'prompt')",
                 params![surface, session, prompt_id],
+                |r| r.get(0),
+            )
+            .map_err(err(codes::STORE_OPEN))
+    }
+
+    /// Is this exact prompt text already stored for the session? (A message read from Copilot's log that the
+    /// hook also sent.)
+    pub fn prompt_text_seen(&self, surface: &str, session: &str, text: &str) -> Result<bool> {
+        self.conn
+            .query_row(
+                "SELECT EXISTS (SELECT 1 FROM event e JOIN content c ON c.event_id = e.event_id
+                                WHERE e.surface = ?1 AND e.surface_session_id = ?2 AND e.kind = 'prompt'
+                                AND c.text = ?3)",
+                params![surface, session, text],
                 |r| r.get(0),
             )
             .map_err(err(codes::STORE_OPEN))
@@ -994,6 +1218,16 @@ impl Store {
             .query_row("SELECT value FROM current_setting WHERE key = ?1", [key], |r| r.get(0))
             .optional()
             .map_err(err(codes::STORE_OPEN))
+    }
+
+    /// Every current setting whose key starts with `prefix` (exact, not a LIKE pattern), as (key, value).
+    pub fn settings_with_prefix(&self, prefix: &str) -> Result<Vec<(String, String)>> {
+        let mut st = self
+            .conn
+            .prepare("SELECT key, value FROM current_setting WHERE substr(key, 1, length(?1)) = ?1 ORDER BY key")
+            .map_err(err(codes::STORE_OPEN))?;
+        let rows = st.query_map([prefix], |r| Ok((r.get(0)?, r.get(1)?))).map_err(err(codes::STORE_OPEN))?;
+        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(err(codes::STORE_OPEN))
     }
 
     pub fn set_setting(&self, key: &str, value: &str, now_ms: i64) -> Result<()> {

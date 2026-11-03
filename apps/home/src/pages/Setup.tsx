@@ -6,7 +6,7 @@ import { api } from "../api";
 import type { Snapshot, ToolFound } from "../types";
 import { Title, type Ctx } from "../ui";
 
-const STEPS = ["Privacy", "Tools", "Rung model", "Tips", "Your history"];
+const STEPS = ["Privacy", "Tools", "Judging", "Tips", "Your history"];
 const TOOL: Record<ToolFound["tool"], { name: string; where: string }> = {
   "claude-code": { name: "Claude Code", where: "Tips show when Claude Code finishes a turn." },
   copilot: { name: "GitHub Copilot", where: "Copilot CLI and VS Code agent mode share these hooks. Tips show in Copilot CLI's status line." },
@@ -64,6 +64,14 @@ export function Setup(ctx: Ctx & { rerun: boolean; finish: (s: Snapshot) => void
       refresh();
     } else setMsg(r.message);
   };
+  const setJudge = async (on: boolean) => {
+    const r = await api.setSetting("judge", on ? "auto" : "off");
+    if (r.ok) {
+      setMsg(null);
+      announce(on ? "Judging is on." : "Judging is off. AIQ judges no new tasks.");
+      refresh();
+    } else setMsg(r.message);
+  };
   const start = async () => {
     setBusy(true);
     try {
@@ -113,7 +121,7 @@ export function Setup(ctx: Ctx & { rerun: boolean; finish: (s: Snapshot) => void
             <div className="group">
               <div className="kv">
                 <b>Only you see it</b>
-                <span className="mute">No manager or team view exists. Your data stays on this computer.</span>
+                <span className="mute">No manager or team view exists. AIQ has no server, and your prompts are kept on this computer.</span>
               </div>
               <div className="kv">
                 <b>About the task, not you</b>
@@ -123,6 +131,9 @@ export function Setup(ctx: Ctx & { rerun: boolean; finish: (s: Snapshot) => void
                 <b>You control the data</b>
                 <span className="mute">Pause any time; delete one prompt, or everything.</span>
               </div>
+              <p className="meta">
+                <button className="btnlink" onClick={() => void api.openPrivacy()}>Read the privacy page</button> (opens in your browser)
+              </p>
             </div>
             {nav()}
           </>
@@ -156,7 +167,7 @@ export function Setup(ctx: Ctx & { rerun: boolean; finish: (s: Snapshot) => void
                           {connected.includes(t.tool) && (
                             <>
                               {" "}
-                              To undo, run <code>aiq uninstall {t.tool}</code>.
+                              To undo, use Disconnect in Settings.
                             </>
                           )}
                         </>
@@ -211,13 +222,40 @@ export function Setup(ctx: Ctx & { rerun: boolean; finish: (s: Snapshot) => void
           <>
             <header className="group">
               <Title>How AIQ will judge your tasks</Title>
-              <p className="mute">Nothing to connect yet. The rung model comes in a later version of AIQ. Tips work without it.</p>
+              <p className="mute">
+                {snap.settings.judge === "auto"
+                  ? "Judging is on. AIQ turned it on when it connected your tools, so it can show which rung each task was done at and coach the next step."
+                  : "Judging is off. Without it AIQ can't tell the rung of a task, so it shows no next-step tips."}
+              </p>
             </header>
+            <p className="mute">
+              A rung is how much of a task you handed to the agent, from Assisted (1: you ask for pieces and do the work) to Factory (5: a
+              saved workflow runs it for you and others).
+            </p>
             <p>
-              When it comes, AIQ will judge finished tasks through your own signed-in Claude Code or Copilot, using your own plan. AIQ never reads
-              or stores your sign-in.
+              AIQ judges each finished task through the tool that already saw it, with your own sign-in: Claude Code tasks through your Claude
+              Code, Copilot and VS Code tasks through your Copilot CLI. It sends the task's prompts and a summary of what the agent did, never
+              your own edits. Up to {snap.settings.judge_daily_tasks} tasks a day, two calls each on your own plan. AIQ never reads or stores
+              your sign-in.
             </p>
             <p className="meta">On a work account, your organisation's policies apply to these calls, including logging and retention.</p>
+            <div className="row" style={{ justifyContent: "space-between" }}>
+              <span id="sjon">Judge finished tasks in the background</span>
+              <button
+                className="switch"
+                role="switch"
+                aria-checked={snap.settings.judge === "auto"}
+                aria-labelledby="sjon"
+                disabled={down}
+                onClick={() => setJudge(snap.settings.judge !== "auto")}
+              />
+            </div>
+            <p className="meta">Change it any time in Settings, under Judging.</p>
+            {msg && (
+              <p className="errtext" role="alert">
+                {msg}
+              </p>
+            )}
             {nav()}
           </>
         )}

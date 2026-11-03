@@ -1,8 +1,8 @@
-// The bridge to the Tauri shell (apps/home/src-tauri). Ten commands; nothing else leaves the page.
+// The bridge to the Tauri shell (apps/home/src-tauri). Sixteen commands; nothing else leaves the page.
 // Outside Tauri (the UI tests) a fixture stands in, set on window by the test before the page loads.
 import type { Outcome, Snapshot, TaskDetail } from "./types";
 
-export type SettingKey = "daily_cap" | "copilot_tip_stays" | "next_rung_tips" | "judge_daily_tasks" | `keep_on.${string}`;
+export type SettingKey = "daily_cap" | "copilot_tip_stays" | "copilot_tip_in_chat" | "tip_popup" | "tip_highlight" | "next_rung_tips" | "judge" | "judge_daily_tasks" | "copilot_mid_turn" | "agent_actions" | "update" | `keep_on.${string}` | `project_name.${string}`;
 /** The reasons the core accepts (crates/aiq-core/src/coaching.rs FLAG_REASONS). */
 export type FlagReason = "evidence_wrong" | "not_useful" | "blocked" | "other";
 
@@ -40,14 +40,24 @@ function fixture<T>(cmd: string, args: Record<string, unknown>): Promise<T> {
       if (!s.status.core) out = { ok: false, message: "AIQ isn't running, so settings can't change right now. It starts with your next prompt in Claude Code or Copilot." };
       else {
         if (args.key === "daily_cap") s.settings.daily_cap = Number(args.value);
+        if (args.key === "judge") s.settings.judge = args.value as Snapshot["settings"]["judge"];
         if (args.key === "judge_daily_tasks") s.settings.judge_daily_tasks = Number(args.value);
+        if (args.key === "copilot_mid_turn") s.settings.copilot_mid_turn = args.value as Snapshot["settings"]["copilot_mid_turn"];
+        if (args.key === "agent_actions") s.settings.agent_actions = args.value as Snapshot["settings"]["agent_actions"];
+        if (args.key === "update") s.update.mode = args.value as Snapshot["update"]["mode"];
         if (args.key === "copilot_tip_stays") s.settings.copilot_tip_stays = args.value as Snapshot["settings"]["copilot_tip_stays"];
+        if (args.key === "copilot_tip_in_chat" || args.key === "tip_popup" || args.key === "tip_highlight") s.settings[args.key] = args.value === "on";
         const keep = String(args.key).startsWith("keep_on.") ? s.settings.accuracy_paused.find((p) => `keep_on.${p.scope}` === args.key) : undefined;
         if (String(args.key).startsWith("keep_on.") && !keep) {
           out = { ok: false, message: "Not changed: AIQ hasn't paused tips for that." };
           break;
         }
         if (keep) keep.kept_on = args.value === "on";
+        if (String(args.key).startsWith("project_name.")) {
+          const p = s.projects.find((x) => `project_name.${x.key}` === args.key);
+          const v = String(args.value).trim();
+          if (p) [p.name, p.renamed] = v ? [v, true] : [p.key.split(/[\\/]/).filter(Boolean).pop() ?? p.key, false];
+        }
         if (args.key === "next_rung_tips") {
           s.settings.next_rung_tips = args.value as Snapshot["settings"]["next_rung_tips"];
           s.settings.next_rung_on = args.value === "on" || (args.value === "auto" && !s.settings.guess_auto_off);
@@ -105,7 +115,36 @@ function fixture<T>(cmd: string, args: Record<string, unknown>): Promise<T> {
         break;
       }
       for (const t of s.setup.tools) if (t.present) t.hooked = true;
+      // aiq install turns background judging on when it was never set (the fixtures' "off" stands for unset here).
+      s.settings.judge = "auto";
       out = { ok: true, changed: ["C:\\Users\\you\\.copilot\\hooks\\aiq.json"] };
+      break;
+    case "run_update":
+      // The real shell closes the window after replying; the fixture only records the call.
+      out = f.fail?.includes(cmd) ? { ok: false, message: "Could not start: updates run only for AIQ installed with install.ps1 on Windows." } : { ok: true };
+      break;
+    case "disconnect_tool": {
+      const t = s.setup.tools.find((x) => x.tool === args.tool);
+      if (!t || !t.hooked) out = { ok: false, message: "Not changed: AIQ isn't connected to that tool.", changed: [] };
+      else {
+        t.hooked = false;
+        out = { ok: true, changed: [t.tool === "copilot" ? "C:\\Users\\you\\.copilot\\hooks\\aiq.json" : "C:\\Users\\you\\.claude\\settings.json"] };
+      }
+      break;
+    }
+    case "include_folder":
+      if (!s.status.core) out = { ok: false, message: "AIQ isn't running, so this can't change right now. It starts with your next prompt in Claude Code or Copilot." };
+      else if (!s.home.set_aside.some((x) => x.folder === args.folder)) out = { ok: false, message: "Not changed: that folder isn't set aside." };
+      else {
+        s.home.set_aside = s.home.set_aside.filter((x) => x.folder !== args.folder);
+        out = { ok: true };
+      }
+      break;
+    case "judge_preview":
+      out = { ok: true, text: "AIQ judges each task you finish with AI.\n\n1 task is waiting to be judged. Nothing was sent.\n\nThe next task would be sent to your Copilot CLI like this:\n\n<task>refactor the login handler</task>" };
+      break;
+    case "open_privacy":
+      out = { ok: true };
       break;
     case "finish_setup":
       s.setup.done = true;
@@ -134,4 +173,14 @@ export const api = {
   tipOn: (tipId: string) => invoke<Outcome>("tip_on", { tipId }),
   /** Settings' per-tip switch: turn a tip off before it shows (same as "Don't show this again"). */
   tipOff: (tipId: string) => invoke<Outcome>("tip_off", { tipId }),
+  /** Settings' Disconnect: `aiq uninstall <tool> --yes`, which restores the tool's settings from AIQ's backup. */
+  disconnectTool: (tool: "claude-code" | "copilot") => invoke<{ ok: boolean; message?: string; changed: string[] }>("disconnect_tool", { tool }),
+  /** Home's Include: AIQ watches a folder it set aside as automated again. */
+  includeFolder: (folder: string) => invoke<Outcome>("include_folder", { folder }),
+  /** What judging would send for the next task (`aiq judge --dry-run`). Nothing is sent. */
+  judgePreview: () => invoke<{ ok: boolean; text: string }>("judge_preview"),
+  /** Open the privacy page in the default browser (a fixed address). */
+  openPrivacy: () => invoke<Outcome>("open_privacy"),
+  /** Install the waiting update or go back (AIQ home closes and reopens), or check now (it stays open). */
+  runUpdate: (action: "install" | "rollback" | "check") => invoke<Outcome>("run_update", { action }),
 };

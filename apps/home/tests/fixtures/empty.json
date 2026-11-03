@@ -68,8 +68,13 @@
   "settings": {
     "daily_cap": 5,
     "copilot_tip_stays": "next-prompt",
+    "copilot_tip_in_chat": true,
+    "tip_popup": true,
+    "tip_highlight": true,
     "judge": "off",
     "judge_daily_tasks": 50,
+    "copilot_mid_turn": "on",
+    "agent_actions": "on",
     "next_rung_tips": "auto",
     "next_rung_on": true,
     "guess_checked": 0,
@@ -203,7 +208,9 @@
       "finished": 0,
       "could": 0,
       "needs": 0,
-      "uncertain": 0
+      "uncertain": 0,
+      "up": 0,
+      "up_to": null
     },
     "split_min": 10,
     "rule": "A task counts as finished when it was judged Delegated or higher and you sent no re-prompt correcting the agent.",
@@ -234,6 +241,24 @@
     "kinds": [],
     "habits": [],
     "habits_imported": false,
-    "untyped": 0
-  }
+    "untyped": 0,
+    "progress": [],
+    "progress_days": 14,
+    "progress_min": 3
+  },
+  "update": {
+    "supported": true,
+    "mode": "auto",
+    "running": "0.1.0",
+    "note": "none",
+    "available": null,
+    "blocked": null,
+    "from": null,
+    "at_ms": null,
+    "message": null,
+    "checked_ms": 1793530800000,
+    "check_error": null,
+    "can_rollback": true
+  },
+  "projects": []
 }

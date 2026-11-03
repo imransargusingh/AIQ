@@ -427,6 +427,7 @@ fn coaching_facts_are_append_only_and_read_back_in_order() {
         similarity: 0.5,
         neighbours: vec!["a".into(), "b".into()],
         utc_ms: 10,
+        method: "words".into(),
     })
     .unwrap();
     for (i, a) in ["not_helpful", "off", "on"].iter().enumerate() {
@@ -557,4 +558,31 @@ fn store_from_a_newer_aiq_is_refused_not_opened_as_if_current() {
         MIGRATIONS.len() as i64,
         "the store itself is untouched"
     );
+}
+
+#[test]
+fn v9_turn_actions_store_once_per_stop_and_are_append_only() {
+    let (_d, s) = open();
+    let row = TurnActionRow {
+        stop_event_id: "stop-1".into(),
+        surface: "claude-code".into(),
+        surface_session_id: "s".into(),
+        ts_utc_ms: 5,
+        outcome: "recorded".into(),
+        tool_calls: Some(3),
+        commands: Some(1),
+        files: Some(2),
+        subagents: Some(0),
+        tools: Some(r#"{"Bash":1,"Edit":2}"#.into()),
+        bytes_read: 900,
+        read_ms: 1,
+        utc_ms: 10,
+        ..Default::default()
+    };
+    assert!(s.insert_turn_action(&row).unwrap());
+    assert!(!s.insert_turn_action(&row).unwrap(), "a replayed stop stores nothing");
+    assert_eq!(s.turn_actions_since(0).unwrap(), vec![row]);
+    assert!(s.turn_actions_since(11).unwrap().is_empty());
+    let e = s.raw().execute("UPDATE turn_action SET tool_calls = 9", []).unwrap_err().to_string();
+    assert!(e.contains("AIQ-STORE-APPEND-ONLY"), "{e}");
 }
