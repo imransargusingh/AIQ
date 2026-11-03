@@ -5,8 +5,8 @@
 import { useState } from "react";
 import { api, type FlagReason } from "../api";
 import { KIND_STATE, perWeek } from "../coach";
-import { jobName, plural, rungLabel, sentence, toolName, when } from "../format";
-import { Banners, Chip, Title, type Ctx } from "../ui";
+import { jobName, plural, sentence, toolName, when } from "../format";
+import { Banners, Chip, Rung, Title, type Ctx } from "../ui";
 
 const REASONS: { v: FlagReason; label: string }[] = [
   { v: "evidence_wrong", label: "AIQ got these tasks wrong" },
@@ -84,8 +84,16 @@ export function Kind(ctx: Ctx & { kindId: string }) {
           <Chip>{jobName(k.job)}</Chip>
           <Chip>{plural(k.tasks, "task")} in {snap.home.window_days} days</Chip>
           <Chip>{perWeek(k.per_week)}</Chip>
-          {k.today != null && <Chip>Today: {rungLabel(k.today)}</Chip>}
-          {k.potential != null && k.today != null && k.potential > k.today && <Chip>Could be: {rungLabel(k.potential)}</Chip>}
+          {k.today != null && <Chip>
+              <span>
+                Today: <Rung r={k.today} />
+              </span>
+            </Chip>}
+          {k.potential != null && k.today != null && k.potential > k.today && <Chip>
+              <span>
+                Could be: <Rung r={k.potential} />
+              </span>
+            </Chip>}
           <Chip tone={k.state === "right_rung" ? "ok" : undefined}>{KIND_STATE[k.state]}</Chip>
         </div>
         {k.uncertain > 0 && <p className="meta">{plural(k.uncertain, "task")} AIQ isn't sure about {k.uncertain === 1 ? "is" : "are"} left out of this.</p>}
@@ -168,7 +176,14 @@ export function Kind(ctx: Ctx & { kindId: string }) {
                   {when(t.first_ms, snap.now_ms, snap.offset_min)} · {toolName(t.tool)}
                 </button>
                 <span className="meta">
-                  {t.judgment ? `${rungLabel(t.judgment.current)}${t.judgment.state === "uncertain" ? " · Uncertain" : ""}` : "Not judged yet"}
+                  {t.judgment ? (
+                    <>
+                      <Rung r={t.judgment.current} />
+                      {t.judgment.state === "uncertain" && " · Uncertain"}
+                    </>
+                  ) : (
+                    "Not judged yet"
+                  )}
                 </span>
               </li>
             ))}

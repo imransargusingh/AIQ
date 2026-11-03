@@ -23,6 +23,11 @@ pub const COPILOT: &str = "copilot-cli";
 /// Folder prior: a folder over this share automated takes its remaining one-prompt sessions too.
 const FOLDER_PRIOR: f64 = 0.8;
 const MAX_TEXT: usize = 64 * 1024;
+/// The Copilot reader's version. A run whose stored version differs reads every Copilot session again, even
+/// unchanged files, so a reader fix reaches sessions imported before it. Raise it whenever `read_copilot`
+/// would store different events for the same file. 2: a turn no longer ends at its first `assistant.turn_end`.
+const COPILOT_READER: &str = "2";
+const COPILOT_READER_KEY: &str = "import.copilot_reader";
 
 /// One source session, read into memory.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -156,12 +161,17 @@ pub fn read_claude(path: &Path, id: &str, mtime_ms: i64, folder_slug: &str) -> s
 }
 
 /// Copilot CLI event stream. A typed prompt is a main-line `user.message` delivered `idle` or `steering`
-/// (sub-agent events carry `agentId`); the turn ends at `assistant.turn_end` or the next prompt.
+/// (sub-agent events carry `agentId`); the turn runs to the next prompt or the end of the file. Copilot writes
+/// `assistant.turn_end` after each model round, so one prompt can hold many: measured 2026-11-03 on Imran's
+/// store, 2 prompts had 248 tool calls after their first one, which `COPILOT_READER` 1 dropped. The stop is
+/// stamped at the turn's last main-line `assistant.turn_end`, or its last record when it has none.
 pub fn read_copilot(path: &Path, id: &str, mtime_ms: i64) -> std::io::Result<Parsed> {
     let mut p = Parsed { tool: COPILOT, id: id.to_owned(), mtime_ms, folder: "(none)".into(), ..Default::default() };
     let mut acts = Actions::default();
     let mut open = false;
     let mut last_ts = None;
+    // The open turn's last main-line `assistant.turn_end`.
+    let mut turn_end = None;
     for e in lines(path)? {
         let main = e.get("agentId").is_none_or(Value::is_null);
         let d = &e["data"];
@@ -180,7 +190,7 @@ pub fn read_copilot(path: &Path, id: &str, mtime_ms: i64) -> std::io::Result<Par
                 if open {
                     p.events.push(ImportedEvent {
                         kind: "stop".into(),
-                        ts_utc_ms: last_ts,
+                        ts_utc_ms: turn_end.take().or(last_ts),
                         text: None,
                         actions: acts.take_json(),
                     });
@@ -197,15 +207,7 @@ pub fn read_copilot(path: &Path, id: &str, mtime_ms: i64) -> std::io::Result<Par
             Some("tool.execution_start" | "subagent.started") if open => {
                 aiq_core::agent_actions::copilot_record(&e, &mut acts)
             }
-            Some("assistant.turn_end") if main && open => {
-                p.events.push(ImportedEvent {
-                    kind: "stop".into(),
-                    ts_utc_ms: ts,
-                    text: None,
-                    actions: acts.take_json(),
-                });
-                open = false;
-            }
+            Some("assistant.turn_end") if main && open => turn_end = ts.or(turn_end),
             _ => {}
         }
         if ts.is_some() {
@@ -213,7 +215,8 @@ pub fn read_copilot(path: &Path, id: &str, mtime_ms: i64) -> std::io::Result<Par
         }
     }
     if open {
-        p.events.push(ImportedEvent { kind: "stop".into(), ts_utc_ms: last_ts, text: None, actions: acts.take_json() });
+        let ts_utc_ms = turn_end.or(last_ts);
+        p.events.push(ImportedEvent { kind: "stop".into(), ts_utc_ms, text: None, actions: acts.take_json() });
     }
     Ok(p)
 }
@@ -408,6 +411,7 @@ pub fn run(
     let include: HashSet<String> = rules.iter().filter(|(_, a)| *a == "include").map(|(f, _)| f.clone()).collect();
     let known: HashMap<(String, String), KnownImport> =
         store.known_imports()?.into_iter().map(|k| ((k.tool.clone(), k.source_session_id.clone()), k)).collect();
+    let copilot_reader_changed = store.setting(COPILOT_READER_KEY)?.as_deref() != Some(COPILOT_READER);
     // (tool, the file read this run or None when unchanged since the last run, rule input)
     let mut rows: Vec<(&'static str, Option<Parsed>, RuleInput)> = Vec::with_capacity(sources.len());
     let mut failed = Vec::new();
@@ -416,8 +420,10 @@ pub fn run(
         match known.get(&(s.tool.to_owned(), s.id.clone())) {
             // Read again when the outcome may change: an included folder's set-aside sessions, and AIQ's own
             // test sessions an earlier build imported (they leave the history and drop their text).
+            // And every session of a tool whose reader changed since the last run.
             Some(k)
                 if k.source_mtime_ms == s.mtime_ms
+                    && !(s.tool == COPILOT && copilot_reader_changed)
                     && !(k.outcome == "automated" && include.contains(&folder_key(&k.folder)))
                     && !(k.outcome == "imported"
                         && is_aiq_check_folder(&k.folder)
@@ -524,6 +530,10 @@ pub fn run(
             if !rules.contains_key(*folder) {
                 store.insert_folder_rule(folder, "set_aside", reason, "import", now_ms())?;
             }
+        }
+        // Only once every Copilot file was read with this reader; a failed one is tried again next run.
+        if copilot_reader_changed && rep.by_tool.get(COPILOT).is_none_or(|t| t[4] == 0) {
+            store.set_setting(COPILOT_READER_KEY, COPILOT_READER, now_ms())?;
         }
         store.insert_import_run(&run_id, started_ms, now_ms(), &rep.counts)?;
     }
@@ -765,6 +775,92 @@ mod tests {
             (a["tools"]["edit"].as_u64(), a["files"][0].as_str(), a["subagents"].as_u64()),
             (Some(1), Some("x.py"), Some(1))
         );
+    }
+
+    /// Copilot writes `assistant.turn_end` after each model round: a prompt's tool calls go on past the first.
+    fn copilot_multi_round(home: &Path, id: &str) {
+        let at = |s: u32| format!("2026-11-03T10:00:{s:02}Z");
+        let tool = |s: u32, name: &str| json!({"type": "tool.execution_start", "timestamp": at(s), "data": {"toolName": name, "arguments": {}}});
+        let end = |s: u32| json!({"type": "assistant.turn_end", "timestamp": at(s), "data": {}});
+        let rows = vec![
+            json!({"type": "session.start", "timestamp": at(0), "data": {"startTime": at(0), "context": {"cwd": "C:\\repos\\b"}}}),
+            json!({"type": "user.message", "timestamp": at(1), "data": {"content": "fix the build", "delivery": "idle"}}),
+            tool(2, "view"),
+            end(3),
+            tool(4, "edit"),
+            tool(5, "powershell"),
+            json!({"type": "subagent.started", "timestamp": at(6), "data": {}}),
+            json!({"type": "tool.execution_start", "agentId": "sub1", "timestamp": at(7), "data": {"toolName": "view"}}),
+            json!({"type": "assistant.turn_end", "agentId": "sub1", "timestamp": at(8), "data": {}}),
+            end(9),
+            json!({"type": "session.usage_checkpoint", "timestamp": at(20), "data": {}}),
+            json!({"type": "user.message", "timestamp": at(30), "data": {"content": "now run the tests", "delivery": "idle"}}),
+            tool(31, "powershell"),
+            end(32),
+            tool(33, "view"),
+        ];
+        write_lines(&home.join("session-state").join(id).join("events.jsonl"), &rows);
+    }
+
+    #[test]
+    fn copilot_reader_keeps_every_round_of_a_prompt_past_its_first_turn_end() {
+        let d = tempfile::tempdir().unwrap();
+        copilot_multi_round(d.path(), "c1");
+        let p = read(&discover(&d.path().join("none"), d.path())[0]).unwrap();
+        let kinds: Vec<&str> = p.events.iter().map(|e| e.kind.as_str()).collect();
+        assert_eq!(kinds, ["prompt", "stop", "prompt", "stop"], "same seq numbers as reader 1");
+        let acts = |i: usize| -> Value { serde_json::from_str(p.events[i].actions.as_deref().unwrap()).unwrap() };
+        let first = acts(1);
+        assert_eq!(
+            (first["tools"]["view"].as_u64(), first["tools"]["edit"].as_u64(), first["tools"]["powershell"].as_u64()),
+            (Some(1), Some(1), Some(1)),
+            "the sub-agent's own view is its work, not the main line's: {first}"
+        );
+        assert_eq!(first["subagents"].as_u64(), Some(1));
+        let second = acts(3);
+        assert_eq!((second["tools"]["powershell"].as_u64(), second["tools"]["view"].as_u64()), (Some(1), Some(1)));
+        let ts = |s: u32| ts_ms(&json!(format!("2026-11-03T10:00:{s:02}Z")));
+        assert_eq!(p.events[1].ts_utc_ms, ts(9), "stop at the last main-line turn end, not the checkpoint after it");
+        assert_eq!(p.events[3].ts_utc_ms, ts(32));
+    }
+
+    #[test]
+    fn a_new_copilot_reader_reads_unchanged_sessions_again_once() {
+        let d = tempfile::tempdir().unwrap();
+        let (claude, copilot) = (d.path().join("claude"), d.path().join("copilot"));
+        copilot_multi_round(&copilot, "c1");
+        claude_session(&claude, "C--repos-a", "s1", "cli", &["fix the bug"]);
+        let mut store = Store::open(&d.path().join("aiq.db")).unwrap();
+        let src = discover(&claude, &copilot);
+        let p = AutomatedParams::default();
+        assert_eq!(run(&mut store, &src, &HashSet::new(), &p, false, 1).unwrap().by_tool[COPILOT], [1, 1, 0, 0, 0]);
+        assert_eq!(run(&mut store, &src, &HashSet::new(), &p, false, 2).unwrap().by_tool[COPILOT], [1, 0, 0, 1, 0]);
+        // As a store last imported by reader 1: its stored stop missed the calls after the first turn end.
+        store.set_setting(COPILOT_READER_KEY, "1", 3).unwrap();
+        store
+            .raw()
+            .execute_batch(
+                "CREATE TEMP TABLE old AS SELECT * FROM import_event WHERE kind = 'stop';
+                 DELETE FROM import_event WHERE kind = 'stop';
+                 INSERT INTO import_event (tool, source_session_id, seq, kind, ts_utc_ms, text, actions)
+                   SELECT tool, source_session_id, seq, kind, ts_utc_ms, text, NULL FROM old;",
+            )
+            .unwrap();
+        assert_eq!(run(&mut store, &src, &HashSet::new(), &p, true, 4).unwrap().by_tool[COPILOT], [1, 1, 0, 0, 0]);
+        assert_eq!(store.setting(COPILOT_READER_KEY).unwrap().as_deref(), Some("1"), "a dry run changes nothing");
+        let rep = run(&mut store, &src, &HashSet::new(), &p, false, 5).unwrap();
+        assert_eq!((rep.by_tool[COPILOT], rep.by_tool[CLAUDE]), ([1, 1, 0, 0, 0], [1, 0, 0, 1, 0]), "Claude untouched");
+        let stops: Vec<Option<String>> = store
+            .raw()
+            .prepare("SELECT actions FROM import_event WHERE tool = 'copilot-cli' AND kind = 'stop' ORDER BY seq")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        let calls: Value = serde_json::from_str(stops[0].as_deref().unwrap()).unwrap();
+        assert_eq!(calls["tools"]["edit"].as_u64(), Some(1), "the re-read stored the later rounds");
+        assert_eq!(run(&mut store, &src, &HashSet::new(), &p, false, 6).unwrap().by_tool[COPILOT], [1, 0, 0, 1, 0]);
     }
 
     fn sess(folder: &str, prompts: &[&str], start: i64, ni: Option<bool>) -> Parsed {

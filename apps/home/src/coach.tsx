@@ -3,7 +3,7 @@
 // snapshot; nothing is computed here but percentages and labels.
 import { jobName, rungLabel } from "./format";
 import type { Coaching, KindRow, KindState, ProgressRow, TaskRow } from "./types";
-import { Chip } from "./ui";
+import { Chip, Rung } from "./ui";
 
 export const KIND_STATE: Record<KindState, string> = {
   coach: "Next step ready",
@@ -44,10 +44,12 @@ export function KindList({ rows, open, label }: { rows: KindRow[]; open: (k: Kin
                 <Chip>{jobName(k.job)}</Chip>
                 {k.today != null && k.potential != null && k.potential > k.today ? (
                   <Chip>
-                    {rungLabel(k.today)} → {rungLabel(k.potential)}
+                    <span>
+                      <Rung r={k.today} /> → <Rung r={k.potential} />
+                    </span>
                   </Chip>
                 ) : k.today != null ? (
-                  <Chip>{rungLabel(k.today)}</Chip>
+                  <Chip><Rung r={k.today} /></Chip>
                 ) : null}
                 {k.state !== "coach" && <Chip tone={k.state === "right_rung" ? "ok" : undefined}>{KIND_STATE[k.state]}</Chip>}
               </span>
@@ -102,10 +104,12 @@ export function ProgressList({ c, open }: { c: Coaching; open: (job: string, typ
                       <Chip>{jobName(r.job)}</Chip>
                       {moved ? (
                         <Chip>
-                          {rungLabel(r.earlier_rung!)} → {rungLabel(r.recent_rung!)}
+                          <span>
+                            <Rung r={r.earlier_rung!} /> → <Rung r={r.recent_rung!} />
+                          </span>
                         </Chip>
                       ) : r.recent_rung != null ? (
-                        <Chip>{rungLabel(r.recent_rung)}</Chip>
+                        <Chip><Rung r={r.recent_rung} /></Chip>
                       ) : null}
                       <Chip tone={r.trend === "up" ? "ok" : r.trend === "down" ? "warn" : undefined}>{TREND[r.trend]}</Chip>
                     </span>

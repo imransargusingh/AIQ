@@ -136,6 +136,27 @@ await test("Home shows judged rungs, progress toward the split, and only measure
   await page.context().close();
 });
 
+await test("every rung name says what it means on hover: Home ladder, Tasks column, task detail", async () => {
+  const page = await open("full");
+  const scale = page.locator(".scale > span");
+  assert.equal(await scale.count(), 5);
+  assert.match((await scale.nth(2).getAttribute("title")) ?? "", /hand the agent a whole outcome/);
+  await page.context().close();
+  const tasks = await open("full", { hash: "#tasks" });
+  assert.match((await tasks.locator("th .rung").getAttribute("title")) ?? "", /from Assisted \(1\) to Factory \(5\)/);
+  const named = tasks.locator("table[aria-label=Tasks] td .rung");
+  assert.ok((await named.count()) > 0, "judged rows name a rung");
+  for (const r of await named.all()) assert.ok(((await r.getAttribute("title")) ?? "").length > 20, await r.innerText());
+  assert.deepEqual(await axe(tasks), []);
+  await tasks.locator("tbody tr").first().focus();
+  await tasks.keyboard.press("j");
+  await tasks.keyboard.press("Enter");
+  await tasks.waitForSelector("#jd");
+  assert.ok(((await tasks.locator("section .chip .rung").first().getAttribute("title")) ?? "").length > 20, "task detail rung chip");
+  assert.deepEqual(tasks.errors, []);
+  await tasks.context().close();
+});
+
 await test("Home answers the headline without scrolling at 1280x800", async () => {
   const page = await open("full");
   const box = await page.locator("#kr").boundingBox();
