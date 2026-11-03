@@ -2,7 +2,7 @@
 id: design-project-filter
 title: "Design: filter tasks by project"
 type: design
-status: proposed
+status: accepted
 owner: "Imran"
 phase: "5"
 tags: [design, aiq-home, coaching, projects]
@@ -119,10 +119,10 @@ set-aside folder (two or more prompts) as tasks again; those tasks appear under 
 any other. So a folder can appear both in "Set aside" and in "Your projects". That is correct (the folder
 has both automated sessions and the person's own) and the table counts only the person's tasks.
 
-## Layout question for Imran
+## Layout decision
 
-One judgement call is on a card in the thread: **dropdown at the top of Home and Tasks (built) vs a
-separate Projects page.** Recommendation: the dropdown plus the table on Home, because the question
+**Decided (Imran, 2026-11-03 00:56Z): the dropdown at the top of Home and Tasks, plus the table on Home**,
+over a separate Projects page or a chip row. Reason given on the card: the dropdown plus the table on Home, because the question
 "where do I have more room?" is answered on the page people already open, and the filter reuses every
 Home section instead of a second copy of them.
 
