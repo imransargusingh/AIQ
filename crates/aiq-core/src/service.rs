@@ -25,11 +25,29 @@ use tracing::{info, info_span, warn};
 pub const SETTING_PAUSED: &str = "paused";
 pub const SETTING_DAILY_CAP: &str = "daily_cap";
 pub const SETTING_COPILOT_TIP_STAYS: &str = "copilot_tip_stays";
+/// Where tips show (Imran 2026-11-03, "make tips stand out", each one a setting). All "on" or "off",
+/// default on. `copilot_tip_in_chat`: a Copilot CLI tip is also printed into the conversation at the
+/// turn's end. `tip_popup`: a Windows pop-up when a tip is delivered in a terminal (Claude Code, Copilot
+/// CLI). `tip_highlight`: the yellow "AIQ tip:" badge and the VS Code status-bar colour.
+pub const SETTING_COPILOT_TIP_IN_CHAT: &str = "copilot_tip_in_chat";
+pub const SETTING_TIP_POPUP: &str = "tip_popup";
+pub const SETTING_TIP_HIGHLIGHT: &str = "tip_highlight";
+pub const SWITCH_SETTINGS: [&str; 4] =
+    [SETTING_COPILOT_TIP_IN_CHAT, SETTING_TIP_POPUP, SETTING_TIP_HIGHLIGHT, SETTING_COPILOT_MID_TURN];
+/// Surfaces whose tip shows in a terminal, where a pop-up helps when the person has looked away. VS Code
+/// shows its own notification, so it gets no pop-up.
+pub const POPUP_SURFACES: [&str; 2] = ["claude-code", "copilot-cli"];
+/// Called with each card delivered on a pop-up surface while `tip_popup` is on (the core passes
+/// `popup::show`; tests record).
+pub type Popup = Box<dyn Fn(&CardV1) + Send>;
 pub const MAX_DAILY_CAP: u32 = 50;
 /// `on` (default) or `off`: read Copilot's own session log at agentStop for messages typed while the agent was
 /// working, which fire no hook (`copilot_log`).
 pub const SETTING_COPILOT_MID_TURN: &str = "copilot_mid_turn";
 const MAX_LOG_OFFSETS: usize = 4096;
+/// Copilot CLI's surface name (the hook client uses the same constant).
+pub const COPILOT_CLI: &str = "copilot-cli";
+
 /// `project_name.<folder key>`: the name the person gave a project in AIQ home (design project-filter P2).
 pub const SETTING_PROJECT_NAME: &str = "project_name.";
 /// Longest project name kept, in characters.
@@ -69,6 +87,7 @@ pub struct Service<C: Clock> {
     coach: Option<coaching::Cache>,
     /// AIQ-COACH-GUESS-LOW is logged once per core run.
     guess_low_logged: bool,
+    popup: Option<Popup>,
     /// Starts a background label of a new task's first prompt (`aiq label`); None in tests and without a model.
     label_requester: Option<LabelRequester>,
     /// Copilot's home, for its session logs. None (tests, unless set): mid-turn messages are not read.
@@ -166,6 +185,7 @@ impl<C: Clock> Service<C> {
             rc_checked: Default::default(),
             coach: None,
             guess_low_logged: false,
+            popup: None,
             label_requester: None,
             copilot_home: None,
             log_offsets: Default::default(),
@@ -235,6 +255,15 @@ impl<C: Clock> Service<C> {
             .unwrap_or(TipStays::NextPrompt)
     }
 
+    /// An on/off switch from `SWITCH_SETTINGS`; anything but "off" (including unset) is on.
+    pub fn switch_on(&self, key: &str) -> bool {
+        self.store.setting(key).ok().flatten().as_deref() != Some("off")
+    }
+
+    pub fn set_popup(&mut self, popup: Popup) {
+        self.popup = Some(popup);
+    }
+
     fn quiet(&self) -> Result<bool, StoreError> {
         Ok(in_quiet_period(self.store.last_delivery_ms()?, self.clock.now().utc_ms, self.pack.trigger.quiet_min))
     }
@@ -250,11 +279,20 @@ impl<C: Clock> Service<C> {
 
     /// Ingest one event. Never panics; store failures are counted and logged.
     pub fn ingest(&mut self, ev: &EventV1, trace_id: Option<&str>) {
+        // An async stop (VS Code, or a Copilot CLI stop that reached the core by the spool): read the turn's
+        // mid-turn messages first, since they were typed before it. A stop the hook waits on (`take_card`)
+        // reads them after its reply instead (`after_stop`), off the hook's clock.
+        self.mid_turn_messages(ev, trace_id);
+        self.ingest_event(ev, trace_id);
+    }
+
+    /// The work after a stop's reply is sent: Copilot messages typed while the agent worked.
+    pub fn after_stop(&mut self, ev: &EventV1, trace_id: Option<&str>) {
+        self.mid_turn_messages(ev, trace_id);
+    }
+
+    fn ingest_event(&mut self, ev: &EventV1, trace_id: Option<&str>) {
         let _s = info_span!("core.ingest", trace_id = trace_id.unwrap_or(""), aiq.kind = ev.kind()).entered();
-        if matches!(ev.body, EventBody::Stop(_)) {
-            // Before the stop itself: those messages were typed during the turn it ends.
-            self.mid_turn_messages(ev, trace_id);
-        }
         if let Err(e) = self.ingest_inner(ev, trace_id) {
             self.fail(e);
         }
@@ -375,7 +413,7 @@ impl<C: Clock> Service<C> {
     /// session's own log and ingest each as a prompt. Off the hook's clock: the Copilot hook does not wait for
     /// the core. Stable event ids and a same-text check keep a message the hook did send from counting twice.
     fn mid_turn_messages(&mut self, ev: &EventV1, trace_id: Option<&str>) {
-        if !matches!(ev.surface.as_str(), "copilot-cli" | "vscode") {
+        if !matches!(ev.body, EventBody::Stop(_)) || !matches!(ev.surface.as_str(), "copilot-cli" | "vscode") {
             return;
         }
         let Some(path) =
@@ -383,7 +421,7 @@ impl<C: Clock> Service<C> {
         else {
             return;
         };
-        if self.store.setting(SETTING_COPILOT_MID_TURN).ok().flatten().as_deref() == Some("off") {
+        if !self.switch_on(SETTING_COPILOT_MID_TURN) {
             return;
         }
         let key = format!("{}/{}", ev.surface, ev.surface_session_id);
@@ -970,7 +1008,7 @@ impl<C: Clock> Service<C> {
     /// `fresh` is false when the request waited longer than the client will wait; then nothing is
     /// delivered, because a card handed to a client that already left would be lost.
     pub fn take_card(&mut self, ev: &EventV1, trace_id: Option<&str>, fresh: bool) -> Option<CardV1> {
-        self.ingest(ev, trace_id);
+        self.ingest_event(ev, trace_id);
         let _s = info_span!("core.take_card", trace_id = trace_id.unwrap_or("")).entered();
         match self.take_card_inner(ev, fresh) {
             Ok(c) => c,
@@ -992,6 +1030,9 @@ impl<C: Clock> Service<C> {
             && !self.store.prompt_seen(surface, session, pid)?
         {
             return Ok(None); // this turn's prompt has not arrived yet: the card waits for the next Stop
+        }
+        if surface == COPILOT_CLI && !self.switch_on(SETTING_COPILOT_TIP_IN_CHAT) {
+            return Ok(None); // the status line delivers it instead
         }
         let Some(ready) = self.store.ready_card(surface, session)? else { return Ok(None) };
         self.deliver(&ready.card_id, &ready.card_json, surface, session)
@@ -1018,7 +1059,14 @@ impl<C: Clock> Service<C> {
         }
         self.store.insert_delivery(card_id, surface, session, self.clock.now())?;
         info!(aiq.outcome = "delivered", aiq.surface = surface, "card delivered");
-        Ok(serde_json::from_str(card_json).ok())
+        let card: Option<CardV1> = serde_json::from_str(card_json).ok();
+        if let (Some(c), Some(p)) = (&card, &self.popup)
+            && POPUP_SURFACES.contains(&surface)
+            && self.switch_on(SETTING_TIP_POPUP)
+        {
+            p(c);
+        }
+        Ok(card)
     }
 
     /// Copilot CLI status line: the tip line for a session, or None. Delivers a show-ready card only after
@@ -1087,6 +1135,10 @@ impl<C: Clock> Service<C> {
     pub fn set(&mut self, key: &str, value: &str) -> Result<(), String> {
         let v = match key {
             SETTING_PAUSED if value == "true" || value == "false" => value.to_owned(),
+            k if SWITCH_SETTINGS.contains(&k) => match value {
+                "on" | "off" => value.to_owned(),
+                _ => return Err(format!("{} must be on or off", k.replace('_', "-"))),
+            },
             SETTING_COPILOT_TIP_STAYS => match TipStays::parse(value) {
                 Some(v) => v.as_str().to_owned(),
                 None => {
@@ -1095,10 +1147,6 @@ impl<C: Clock> Service<C> {
                 }
             },
             crate::update::SETTING_UPDATE => crate::update::validate_mode(value)?,
-            SETTING_COPILOT_MID_TURN => match value {
-                "on" | "off" => value.to_owned(),
-                _ => return Err("copilot-mid-turn must be on or off".into()),
-            },
             SETTING_DAILY_CAP => match value.parse::<u32>() {
                 Ok(n) if n <= MAX_DAILY_CAP => n.to_string(),
                 _ => return Err(format!("daily-cap must be a whole number from 0 to {MAX_DAILY_CAP}")),

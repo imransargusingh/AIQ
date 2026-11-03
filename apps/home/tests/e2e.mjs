@@ -296,12 +296,21 @@ await test("Settings change through the core; tips a day", async () => {
   await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Judging is on.");
   assert.equal(await jsw.getAttribute("aria-checked"), "true");
   assert.ok((await page.locator("main").innerText()).includes("Judging in the background"));
+  // Where tips show: three switches, on by default, each with its own off.
+  for (const name of ["Show Copilot CLI tips in the conversation", "Show a Windows pop-up when a tip appears in Claude Code or Copilot CLI", "Highlight tips in yellow"]) {
+    assert.equal(await page.getByRole("switch", { name }).getAttribute("aria-checked"), "true", name);
+  }
+  const pop = page.getByRole("switch", { name: "Show a Windows pop-up when a tip appears in Claude Code or Copilot CLI" });
+  await pop.click();
+  await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent?.endsWith(": off."));
+  assert.equal(await pop.getAttribute("aria-checked"), "false");
   const calls = await page.evaluate(() => window.__AIQ_FIXTURE__.calls.filter((c) => c.cmd === "set_setting").map((c) => c.args));
   assert.deepEqual(calls, [
     { key: "daily_cap", value: "5" },
     { key: "copilot_tip_stays", value: "until-opened" },
     { key: "judge_daily_tasks", value: "100" },
     { key: "judge", value: "auto" },
+    { key: "tip_popup", value: "off" },
   ]);
   await page.context().close();
 });
