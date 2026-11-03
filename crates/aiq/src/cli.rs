@@ -14,7 +14,7 @@ pub fn core() -> ExitCode {
     let paths = Paths::from_env();
     crate::judge::start_background(paths.clone());
     aiq_core::update::start_background(paths.clone());
-    match server::run(&paths) {
+    match server::run_with(&paths, Some(crate::label::requester())) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) if e.code == aiq_contracts::codes::CORE_ALREADY_RUNNING => {
             eprintln!("AIQ core is already running ({}).", e.code);
@@ -176,6 +176,9 @@ fn status_text(paths: &Paths) -> (String, Vec<String>) {
                     out += &format!("Judged tasks typed \"other\": {o}%\n");
                 }
                 out += &render_accuracy_paused(&c.accuracy_paused);
+                if let Some(l) = &c.labels {
+                    out += &render_labels(l);
+                }
             }
             if let Some((_, n)) = ignored {
                 out += &format!("Automated prompts ignored since the core started: {n}\n");
@@ -551,6 +554,19 @@ pub fn include_folder(folder: &str) -> ExitCode {
 }
 
 /// Jobs and kinds the accuracy check paused, and the one command that keeps each showing (design K6b).
+/// Kind labels (design kind-label): today's calls against the budget, and AIQ's own check of them.
+pub fn render_labels(l: &aiq_contracts::frames::LabelStatus) -> String {
+    if !l.enabled {
+        return "Kind-of-task labels: off (on while background judging is on; aiq config set kind-label auto)\n".into();
+    }
+    let ms = l.median_ms.map_or(String::new(), |m| format!(", median {:.1} s", m as f64 / 1000.0));
+    format!(
+        "Kind-of-task labels today: {} of {} (answered {}, confident {}{ms}). Labels checked against the judge: \
+         right {} of {}\n",
+        l.today, l.daily, l.answered, l.confident, l.right, l.checked
+    )
+}
+
 pub fn render_accuracy_paused(p: &[aiq_contracts::frames::PausedScope]) -> String {
     let mut out = String::new();
     for s in p {
@@ -593,12 +609,17 @@ pub fn config_set(name: &str, value: &str) -> ExitCode {
         "check-claude-model" => ("check_claude_model", format!("Accuracy check, Claude model: {value}.")),
         "check-copilot-model" => ("check_copilot_model", format!("Accuracy check, Copilot model: {value}.")),
         "update" => ("update", format!("Updates: {value}.")),
+        "kind-label" => ("kind_label", format!("Kind-of-task labels: {value}.")),
+        "kind-label-daily" => ("kind_label_daily", format!("Most kind labels per day: {value}.")),
+        "kind-label-claude-model" => ("kind_label_claude_model", format!("Kind label, Claude model: {value}.")),
+        "kind-label-copilot-model" => ("kind_label_copilot_model", format!("Kind label, Copilot model: {value}.")),
         _ => {
             println!(
                 "Unknown setting {name}. Settings: daily-cap, copilot-tip-stays, copilot-tip-in-chat, tip-popup, \
                  tip-highlight, judge, judge-daily-tasks, \
                  judge-claude-model, judge-copilot-model, judge-copilot-sessions, next-rung-tips, check-claude-model, \
-                 check-copilot-model, update, keep-on.<job or job/kind>."
+                 check-copilot-model, update, kind-label, kind-label-daily, kind-label-claude-model, kind-label-copilot-model, \
+                 keep-on.<job or job/kind>."
             );
             return ExitCode::from(2);
         }
@@ -941,7 +962,17 @@ pub fn tips() -> ExitCode {
         .map(|r| coach::tip_pref(&cache.feedback, &coach::tip_id(&r.move_id), utc_ms, p) == coach::TipPref::Off)
         .collect();
     let mode = aiq_core::coaching::mode(&store);
-    print!("{}", render_tips(&reach, &off, &f4, &mode, cache.tips_on(&mode, &pack), p.window_days));
+    print!(
+        "{}",
+        render_tips(
+            &reach,
+            &off,
+            &f4,
+            &mode,
+            cache.tips_on(&mode, &pack, aiq_core::coaching::labels_enabled(&store)),
+            p.window_days
+        )
+    );
     ExitCode::SUCCESS
 }
 

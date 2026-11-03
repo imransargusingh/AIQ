@@ -101,6 +101,11 @@ export function Home(ctx: Ctx) {
                 Of {plural(sp.tasks, "judged task")}: {sp.finished} finished by agents,{sp.could > 0 ? ` ${sp.could} could be,` : ""} {sp.needs} need you.
                 {sp.uncertain > 0 && <> {plural(sp.uncertain, "task")} AIQ isn't sure about {sp.uncertain === 1 ? "is" : "are"} left out.</>}
               </p>
+              {sp.up > 0 && sp.up_to != null && (
+                <p>
+                  <b>{pct(sp.up, sp.tasks)}%</b> could move up a rung, most often to {rungLabel(sp.up_to)}.
+                </p>
+              )}
               <p className="mute">
                 {sp.could > 0
                   ? `"Could be" adds the tasks of kinds whose next step would let agents finish them.`
@@ -137,6 +142,15 @@ export function Home(ctx: Ctx) {
             <button className="btnlink" onClick={() => go("tasks")}>See which</button>
           </p>
           <figure className="wk" role="group" aria-label={ready ? "Tasks and tasks agents finished each week, last 4 weeks" : "Tasks each week, last 4 weeks"}>
+            <figcaption className="wk-key">
+              Tasks each week
+              {ready && (
+                <>
+                  <span><i className="sw fin" aria-hidden="true" />Finished by agents</span>
+                  <span><i className="sw rest" aria-hidden="true" />Other tasks</span>
+                </>
+              )}
+            </figcaption>
             <div className="wk-y" aria-hidden="true">
               {[0, max].map((t, i) => (
                 <span key={i} style={{ top: `${i === 0 ? 100 : 0}%` }}>{t}</span>
@@ -160,7 +174,7 @@ export function Home(ctx: Ctx) {
                     <i
                       style={{
                         flex: `${w.tasks - (few ? 0 : fin)} 1 0`,
-                        background: ready ? "color-mix(in srgb,var(--primary) 35%,var(--surface))" : "var(--primary)",
+                        background: ready ? "var(--wk-rest)" : "var(--primary)",
                         minHeight: w.tasks - (few ? 0 : fin) ? 18 : 0,
                         color: ready ? "var(--ink)" : undefined,
                       }}

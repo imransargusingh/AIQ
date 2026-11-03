@@ -100,6 +100,9 @@ pub enum Cmd {
         event_id: String,
         reply: mpsc::Sender<Result<(), String>>,
     },
+    KindLabel {
+        task_id: String,
+    },
     DrainSpool,
     Shutdown {
         reply: mpsc::Sender<()>,
@@ -108,6 +111,11 @@ pub enum Cmd {
 
 /// Run the core until it is killed or told to forget everything.
 pub fn run(paths: &Paths) -> Result<(), CoreError> {
+    run_with(paths, None)
+}
+
+/// `run`, with the background kind labeller the `aiq` binary provides (design kind-label).
+pub fn run_with(paths: &Paths, labeller: Option<crate::service::LabelRequester>) -> Result<(), CoreError> {
     let fail = |code: &'static str| move |e: std::io::Error| CoreError { code, detail: e.to_string() };
     paths.ensure_dirs().map_err(fail(codes::STORE_OPEN))?;
     let mut lock_opts = std::fs::OpenOptions::new();
@@ -142,6 +150,9 @@ pub fn run(paths: &Paths) -> Result<(), CoreError> {
         }
     };
     let _ = std::fs::remove_file(paths.core_error());
+    if let Some(l) = labeller {
+        svc.set_label_requester(l);
+    }
     reconcile_pause(paths, &mut svc);
 
     let token = ipc::new_token();
@@ -245,6 +256,11 @@ fn writer_loop(mut svc: Service<SystemClock>, rx: Receiver<Cmd>, paths: &Paths, 
                     reason.as_deref(),
                     note.as_deref(),
                 ));
+            }
+            Cmd::KindLabel { task_id } => {
+                if let Err(e) = svc.on_kind_label(&task_id) {
+                    counters.inc(e.code);
+                }
             }
             Cmd::DrainSpool => {
                 drain_spool(paths, &mut svc, counters);
@@ -380,6 +396,12 @@ pub fn dispatch(req: Request, tx: &SyncSender<Cmd>, counters: &Counters, receive
             let r = ask(tx, |reply| Cmd::GuidanceFlag { job, task_type, move_id, action, reason, note, reply })
                 .unwrap_or_else(|| Err("core did not answer".into()));
             Dispatch::Reply(to_line(&OkReply { ok: r.is_ok(), message: r.err() }))
+        }
+        Request::KindLabel { task_id, .. } => {
+            if let Err(TrySendError::Full(_)) = tx.try_send(Cmd::KindLabel { task_id }) {
+                counters.inc(codes::INGEST_BACKPRESSURE);
+            }
+            Dispatch::NoReply
         }
         Request::Forget { .. } => Dispatch::Forget,
     }

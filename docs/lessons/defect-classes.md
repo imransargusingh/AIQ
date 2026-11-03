@@ -187,3 +187,33 @@ summary: >-
 - **Control:** `decode_log` reads UTF-16 LE/BE and UTF-8 with or without a BOM. Test
   `upgrade_logs_are_read_in_the_encodings_powershell_writes` builds the bytes PowerShell writes. Rule: a
   parser of a file another program writes is tested on that program's bytes, not on a pasted line.
+
+### DC-014 — The first key of a JSON map taken as the one that matters
+- **Signature:** a sealed `claude -p --model sonnet` judge call recorded its model as `claude-haiku-5-5`.
+  Claude Code adds a small helper call on another model, so `modelUsage` lists two models, and
+  `serde_json`'s map sorts keys, so `keys().next()` named the helper.
+- **Why it survives:** with one model in the map the first key is right; a short probe call lists one model,
+  only a real judge-sized call lists two. Nothing reads the recorded model back against the setting.
+- **Instances:** 2026-11-03, found by the first `aiq judge --eval` run in the cloud (report showed
+  claude-haiku-5-5; replayed by hand: haiku 19 output tokens $0.0001, sonnet 77 tokens $0.017).
+  `judge.rs` Claude path, and the same code on Copilot's `modelMetrics`.
+- **Sweep:** `grep -rn "keys().next()" crates`: the two judge sites only.
+- **Control:** `main_model` picks the entry that cost most, else wrote most; test
+  `the_judge_model_is_the_one_that_did_the_work_not_the_first_key`. Copilot's entry shape is not recorded,
+  so there it still keeps the first key (marked `assume:` in the code). Rule: never read meaning from a
+  JSON map's key order.
+
+### DC-015 — A fact the judge always hedges, read as unknown, demotes the rungs it should support
+- **Signature:** golden g1 cases h02, h11, h20: every run said F6 (output checked) yes at 0.5 to 0.55, under
+  the 0.6 fact bar, so F6 was unknown; Directed and Delegated both need F6, so one unsure fact took a
+  Directed or Delegated task to Assisted and Uncertain.
+- **Why it survives:** one bar for every model fact (D10) hides that some facts sit partly off the transcript,
+  where an honest model hedges. Unit tests build facts at 0.9; nothing scored placement against expected
+  rungs until the judge eval (PR #90).
+- **Instances:** 2026-11-03, `aiq judge --eval` replay: rung exact 20/32; 3 of the 12 rung misses were this.
+- **Sweep:** replay table of every case's facts vs expected rung: h06 is the same shape at 0.4 (left alone,
+  under the hedged bar); no other fact sat yes at 0.5 to 0.6 on a demoted case.
+- **Control:** rubric r2 `hedged_review` (F6 yes in every run at 0.5 or more plus a re-prompt in the log);
+  test `a_hedged_yes_on_output_checked_counts_when_the_person_came_back_after_the_output`; the replay gate
+  pins h02, h11, h20 placements. Rule: a guardrail's fact bar is tuned per fact from eval data, and a lower
+  bar needs a log fact to corroborate it.

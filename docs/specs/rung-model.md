@@ -252,7 +252,10 @@ facts and the content. Then, in order: (1) **floor** — if the Factory guardrai
 repo-verifiable facts (F9 runs by others, F3 agent or automated), the rung is at least Factory; else
 if the Orchestrated guardrail holds on F7, F8 and F3, at least Orchestrated; (2) **guardrails** lower
 the rung to the highest rung whose guardrails hold. Floors use only facts read from logs or the repo,
-never model-read facts; a guardrail resting on a low-confidence fact counts as not met, and the evidence names it. When
+never model-read facts; a guardrail resting on a low-confidence fact counts as not met, and the evidence names it.
+One exception, rubric r2: F6 (output checked) at 0.5 or more, yes in every run, counts as yes when the log shows
+the person wrote again after the agent's output (the judge hedges F6 because the check partly happens off the
+transcript; golden set g1 cases h02, h11, h20). When
 the judge's mixed evidence leaves it between two rungs, it picks the lower and says why. Judge
 outcomes and verification, not activity (anti-gaming).
 

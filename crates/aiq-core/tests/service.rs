@@ -758,14 +758,49 @@ fn automated_template_sessions_set_folder_aside_and_record_nothing_after() {
 }
 
 #[test]
-fn automated_folder_person_session_recorded_from_second_prompt() {
+fn automated_folder_person_session_recorded_whole_from_second_prompt() {
     let mut h = H::new();
     h.svc().store().insert_folder_rule("/ep", "set_aside", "template", "live", T0).unwrap();
     for t in [BASE, R1, R2, R3, "and one more reword of the same thing"] {
         h.cp_in("/ep", "person", t, MIN);
     }
-    assert_eq!(h.prompts(), 4, "first prompt ignored (H = 1 so far), then a person: recorded");
+    assert_eq!(h.prompts(), 5, "first prompt held (H = 1 so far), then a person: recorded, first prompt included");
     assert!(h.svc().status().core_counters.iter().any(|(k, n)| k == codes::INGEST_AUTOMATED && *n == 1));
+    let first: String = h
+        .svc()
+        .store()
+        .raw()
+        .query_row("SELECT t.text FROM event e JOIN content t ON t.event_id = e.event_id ORDER BY e.ts_utc_ms, e.rowid LIMIT 1", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(first, BASE, "the held first prompt is the session's first recorded prompt");
+}
+
+#[test]
+fn automated_folder_one_prompt_session_records_nothing() {
+    let mut h = H::new();
+    h.svc().store().insert_folder_rule("/ep", "set_aside", "template", "live", T0).unwrap();
+    h.cp_in("/ep", "app", "collect profile 4", MIN);
+    h.cp_stop("app");
+    assert_eq!(
+        h.prompts(),
+        0,
+        "a one-prompt session in a set-aside folder stays aside; its held prompt is never stored"
+    );
+}
+
+#[test]
+fn template_in_a_folder_a_person_works_in_sets_aside_only_its_sessions() {
+    let mut h = H::new();
+    for i in 0..5 {
+        h.cp_in("/tacit", &format!("me{i}"), &format!("my own question {}", "q".repeat(i + 1)), MIN);
+    }
+    for i in 0..11 {
+        h.cp_in("/tacit", &format!("app{i}"), &format!("distil session {i}"), MIN);
+    }
+    assert_eq!(h.prompts(), 15, "5 of mine and 10 app runs before the template shows; the 11th is set aside");
+    assert!(h.svc().status().automated_folders.is_empty(), "11 of 16 (69%) is below the folder bar: no folder rule");
+    h.cp_in("/tacit", "me9", "one more of mine", MIN);
+    assert_eq!(h.prompts(), 16, "a person's one-prompt session there is still recorded");
 }
 
 #[test]

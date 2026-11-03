@@ -102,6 +102,10 @@ pub struct SplitOut {
     pub could: u32,
     pub needs: u32,
     pub uncertain: u32,
+    /// Not finished, with a next step at least one rung up (aiq-domain coach::Split::up).
+    pub up: u32,
+    /// The rung those next steps reach most often.
+    pub up_to: Option<u8>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
@@ -688,8 +692,10 @@ fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()>
     Ok(())
 }
 
-/// Every task whose first prompt is at or after `since_ms`, live and imported, outside set-aside folders,
-/// newest first. The one Task list both AIQ home and the rung judge read, so their task ids always agree.
+/// Every task whose first prompt is at or after `since_ms`, live and imported, newest first. A session's own
+/// verdict decides, not its folder's: an imported session counts when the import kept it, and a live session in a
+/// set-aside folder counts when a person sent it two or more prompts (the rule's H ≥ 2). The one-prompt live
+/// sessions there are left out (the app runs recorded before the folder rule fired). The one Task list both AIQ home and the rung judge read, so their task ids always agree.
 pub fn tasks(store: &Store, pack: &PackV1, since_ms: i64) -> Result<Vec<TaskRow>, String> {
     let aside: BTreeSet<String> = if store.has_table("folder_rule").map_err(|e| e.to_string())? {
         store.set_aside_folders().map_err(|e| e.to_string())?.into_iter().map(|(f, _, _)| f).collect()
@@ -721,6 +727,13 @@ fn task_list(store: &Store, pack: &PackV1, window_start: i64, aside: &BTreeSet<&
     }
     let folder_of: std::collections::BTreeMap<&str, Option<&str>> =
         rows.iter().map(|(id, _, _, _, f)| (id.as_str(), f.as_deref())).collect();
+    let mut prompts_in: std::collections::BTreeMap<(&str, &str), u32> = std::collections::BTreeMap::new();
+    for (_, surface, session, _, _) in &rows {
+        *prompts_in.entry((surface.as_str(), session.as_str())).or_default() += 1;
+    }
+    // Live tasks of one-prompt sessions in set-aside folders: (surface, session) of their first prompt.
+    let session_of: std::collections::BTreeMap<&str, (&str, &str)> =
+        rows.iter().map(|(id, surface, session, _, _)| (id.as_str(), (surface.as_str(), session.as_str()))).collect();
     let live = split_tasks(
         rows.iter().map(|(id, surface, session, ts, _)| TaskPrompt { event_id: id, surface, session, utc_ms: *ts }),
         span,
@@ -728,6 +741,11 @@ fn task_list(store: &Store, pack: &PackV1, window_start: i64, aside: &BTreeSet<&
     );
     let mut tasks: Vec<TaskRow> = live
         .into_iter()
+        .filter(|t| {
+            let in_aside = folder_of.get(t.task_id.as_str()).copied().flatten().is_some_and(|f| aside.contains(f));
+            !in_aside
+                || session_of.get(t.task_id.as_str()).is_some_and(|k| prompts_in.get(k).copied().unwrap_or(0) >= 2)
+        })
         .map(|t| {
             let folder = folder_of.get(t.task_id.as_str()).copied().flatten().map(str::to_owned);
             row(t, folder, "live")
@@ -778,7 +796,7 @@ fn task_list(store: &Store, pack: &PackV1, window_start: i64, aside: &BTreeSet<&
         }
     }
 
-    tasks.retain(|t| t.first_ms >= window_start && !t.folder.as_deref().is_some_and(|f| aside.contains(f)));
+    tasks.retain(|t| t.first_ms >= window_start);
     tasks.sort_by(|a, b| b.first_ms.cmp(&a.first_ms).then_with(|| a.task_id.cmp(&b.task_id)));
 
     Ok(tasks)
@@ -838,8 +856,15 @@ fn coaching(
     let rows = coach::type_rows(&judged, &pack.moves, &flags, now.utc_ms, p);
     let c = &mut s.coaching;
     let sp = coach::split(&judged, &rows, now.utc_ms - WINDOW_DAYS * DAY_MS, now.utc_ms + 1);
-    c.split =
-        SplitOut { tasks: sp.tasks, finished: sp.finished, could: sp.could, needs: sp.needs, uncertain: sp.uncertain };
+    c.split = SplitOut {
+        tasks: sp.tasks,
+        finished: sp.finished,
+        could: sp.could,
+        needs: sp.needs,
+        uncertain: sp.uncertain,
+        up: sp.up,
+        up_to: sp.up_to,
+    };
     for w in c.weeks.iter_mut() {
         let ws = coach::split(&judged, &rows, w.start_ms, w.start_ms + 7 * DAY_MS);
         (w.tasks, w.finished) = (ws.tasks, ws.finished);

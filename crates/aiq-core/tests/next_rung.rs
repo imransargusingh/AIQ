@@ -296,6 +296,7 @@ fn self_check_turns_tips_off_at_seven_of_ten_and_on_brings_them_back() {
                 similarity: 0.6,
                 neighbours: vec![],
                 utc_ms: 1,
+                method: "words".into(),
             })
             .unwrap();
         }
@@ -446,4 +447,173 @@ fn guess_and_decision_fit_the_budget_with_5000_judgments() {
         "MEASURED first-prompt ingest + next-rung decision with 5,003 judgments: warm {warm} ms, p95 {p95} ms, max {first} ms (hourly cache rebuild {cache_ms} ms)"
     );
     assert!(p95 <= 2_000, "p95 {p95} ms");
+}
+
+// ------------------------------------------------------------------ kind labels (design kind-label)
+
+/// A first prompt the word guess cannot name (no overlap with the seeded "Writing tests" prompts).
+const UNLIKE: &str = "the session cookie expires too soon after login, can you look into it";
+
+type Asked = Arc<Mutex<Vec<aiq_core::service::LabelRequest>>>;
+
+/// Wire a recording labeller and turn background judging on.
+fn with_labeller(h: &mut H) -> Asked {
+    let asked: Asked = Arc::default();
+    let a = asked.clone();
+    h.svc.set_label_requester(Box::new(move |r| a.lock().unwrap().push(r)));
+    h.svc.set("judge", "auto").unwrap();
+    asked
+}
+
+/// What `aiq label` stores: one answered label call.
+fn store_label(h: &H, task: &str, session: &str, task_type: &str, conf: f64) {
+    Store::open(&h.path)
+        .unwrap()
+        .insert_kind_label(&aiq_store::KindLabelRow {
+            label_id: format!("l-{task}-{conf}"),
+            task_id: task.into(),
+            surface: "copilot-cli".into(),
+            surface_session_id: session.into(),
+            provider: "copilot-cli".into(),
+            model: Some("small".into()),
+            outcome: "ok".into(),
+            job: Some("code_change".into()),
+            job_confidence: Some(0.95),
+            task_type: Some(task_type.into()),
+            task_type_confidence: Some(conf),
+            requested_utc_ms: h.now(),
+            started_utc_ms: h.now(),
+            latency_ms: 6_000,
+            tokens_in: Some(900),
+            tokens_out: Some(30),
+            cost_usd: None,
+            utc_ms: h.now(),
+        })
+        .unwrap();
+}
+
+#[test]
+fn no_word_match_asks_for_a_label_and_the_label_decides_the_tip_before_the_turn_ends() {
+    let mut h = H::new();
+    h.seed();
+    let asked = with_labeller(&mut h);
+    let task = h.prompt("copilot-cli", "s", UNLIKE);
+    {
+        let a = asked.lock().unwrap();
+        assert_eq!(a.len(), 1, "one request for the new task");
+        assert_eq!(
+            (a[0].task_id.as_str(), a[0].surface.as_str(), a[0].session.as_str()),
+            (task.as_str(), "copilot-cli", "s")
+        );
+    }
+    assert!(Store::open(&h.path).unwrap().type_guesses().unwrap().iter().all(|g| g.task_id != task));
+    // The label comes back mid-turn (a judge-sized call is ~11 s; turns run 18 s and up).
+    h.advance(10_000);
+    store_label(&h, &task, "s", "tests", 0.9);
+    h.svc.on_kind_label(&task).unwrap();
+    let card = full(h.cp_turn_end("s")).expect("a next-step tip from the label");
+    assert_eq!(card.tip_id, "next_rung.written_brief");
+    assert!(card.noticed.starts_with("this looks like writing tests."));
+    let g: Vec<_> =
+        Store::open(&h.path).unwrap().type_guesses().unwrap().into_iter().filter(|g| g.task_id == task).collect();
+    assert_eq!(g.len(), 1);
+    assert_eq!((g[0].method.as_str(), g[0].similarity, g[0].neighbours.len()), ("label", 0.9, 0));
+    // A repeated notice decides nothing again.
+    h.svc.on_kind_label(&task).unwrap();
+    assert_eq!(Store::open(&h.path).unwrap().type_guesses().unwrap().iter().filter(|g| g.task_id == task).count(), 1);
+    // A later prompt of the same task asks for nothing.
+    h.prompt("copilot-cli", "s", "also check the remember-me cookie");
+    assert_eq!(asked.lock().unwrap().len(), 1);
+}
+
+#[test]
+fn a_word_match_needs_no_label_and_labels_stay_off_without_judging_or_when_turned_off() {
+    let mut h = H::new();
+    h.seed();
+    let asked = with_labeller(&mut h);
+    h.prompt("copilot-cli", "w", NEW);
+    assert!(asked.lock().unwrap().is_empty(), "the word guess named it: no model call");
+    h.svc.set("judge", "off").unwrap();
+    h.advance(2 * HOUR);
+    h.prompt("copilot-cli", "x", UNLIKE);
+    h.svc.set("judge", "auto").unwrap();
+    h.svc.set("kind_label", "off").unwrap();
+    h.advance(2 * HOUR);
+    h.prompt("copilot-cli", "y", UNLIKE);
+    assert!(asked.lock().unwrap().is_empty(), "judging off, or labels off: nothing is sent");
+    assert!(!h.svc.status().coach.unwrap().labels.unwrap().enabled);
+    h.svc.set("kind_label", "auto").unwrap();
+    h.advance(2 * HOUR);
+    h.prompt("copilot-cli", "z", UNLIKE);
+    assert_eq!(asked.lock().unwrap().len(), 1);
+    assert!(h.svc.set("kind_label_daily", "501").is_err());
+}
+
+#[test]
+fn an_unsure_label_or_one_for_a_task_the_session_left_raises_nothing() {
+    let mut h = H::new();
+    h.seed();
+    with_labeller(&mut h);
+    let t1 = h.prompt("copilot-cli", "s", UNLIKE);
+    store_label(&h, &t1, "s", "tests", 0.7);
+    h.svc.on_kind_label(&t1).unwrap();
+    assert!(full(h.cp_turn_end("s")).is_none(), "below 0.8: no guess, no tip");
+    assert!(Store::open(&h.path).unwrap().type_guesses().unwrap().iter().all(|g| g.task_id != t1));
+    // A new task in another session, whose session then moves on before the label is back.
+    h.advance(2 * HOUR);
+    let t2 = h.prompt("copilot-cli", "m", UNLIKE);
+    h.advance(2 * HOUR);
+    h.prompt("copilot-cli", "m", "something else entirely now");
+    store_label(&h, &t2, "m", "tests", 0.95);
+    h.svc.on_kind_label(&t2).unwrap();
+    assert!(Store::open(&h.path).unwrap().type_guesses().unwrap().iter().all(|g| g.task_id != t2));
+}
+
+#[test]
+fn a_label_tip_is_held_by_the_accuracy_pause_like_a_word_tip() {
+    let mut h = H::new();
+    h.seed();
+    with_labeller(&mut h);
+    check_run(&h.path, "r1", T0, 7);
+    let t = h.prompt("copilot-cli", "s", UNLIKE);
+    store_label(&h, &t, "s", "tests", 0.9);
+    h.svc.on_kind_label(&t).unwrap();
+    assert!(full(h.cp_turn_end("s")).is_none());
+    assert!(h.decisions().iter().any(|(o, r, _)| o == "drop" && r == "accuracy_paused"), "{:?}", h.decisions());
+}
+
+#[test]
+fn labels_have_their_own_self_check_and_turn_off_below_eight_in_ten() {
+    let mut h = H::new();
+    h.seed();
+    let asked = with_labeller(&mut h);
+    {
+        let s = Store::open(&h.path).unwrap();
+        for i in 0..10 {
+            let id = format!("lg{i}");
+            s.insert_judgment(&judgment(&id, if i < 7 { "tests" } else { "fix_bug" })).unwrap();
+            s.insert_type_guess(&TypeGuessRow {
+                guess_id: id.clone(),
+                task_id: id,
+                surface: "copilot-cli".into(),
+                job: "code_change".into(),
+                task_type: "tests".into(),
+                similarity: 0.9,
+                neighbours: vec![],
+                utc_ms: 1,
+                method: "label".into(),
+            })
+            .unwrap();
+        }
+    }
+    h.prompt("copilot-cli", "a", UNLIKE);
+    assert!(asked.lock().unwrap().is_empty(), "labels 7 of 10: AIQ stops asking");
+    let st = h.svc.status().coach.unwrap();
+    let l = st.labels.unwrap();
+    assert_eq!((l.checked, l.right), (10, 7));
+    assert_eq!((st.checked, st.right), (1, 1), "word guesses keep their own count");
+    assert!(st.tips_on, "word guesses still coach");
+    h.advance(2 * HOUR);
+    h.prompt("copilot-cli", "b", NEW);
+    assert!(full(h.cp_turn_end("b")).is_some());
 }

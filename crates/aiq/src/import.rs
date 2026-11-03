@@ -493,7 +493,17 @@ pub fn run(
     }
     let inputs: Vec<RuleInput> = rows.iter().map(|r| r.2.clone()).collect();
     let why = automated(&inputs, &include, p);
-    // Folders where a burst or a template fired get the live side's folder rule (template wins, as live).
+    // Folders where a burst or a template fired get the live side's folder rule (template wins, as live), but
+    // only on folder-level evidence: over `FOLDER_PRIOR` of the folder's sessions set aside one by one (as the
+    // live side's `automated::FOLDER_SHARE`). In a folder a person also works in, only the matching sessions go.
+    let mut share: HashMap<&str, (usize, usize)> = HashMap::new();
+    for (i, w) in inputs.iter().zip(&why) {
+        if !i.projects && i.human_turns > 0 {
+            let e = share.entry(i.folder.as_str()).or_default();
+            e.0 += 1;
+            e.1 += usize::from(!w.is_empty());
+        }
+    }
     let mut folder_reason: HashMap<&str, &'static str> = HashMap::new();
     for (i, w) in inputs.iter().zip(&why) {
         let r = if w.contains(&"T") {
@@ -505,6 +515,10 @@ pub fn run(
         } else {
             continue;
         };
+        let (n, a) = share.get(i.folder.as_str()).copied().unwrap_or_default();
+        if r != "aiq-check" && (n == 0 || a as f64 / n as f64 <= FOLDER_PRIOR) {
+            continue;
+        }
         let e = folder_reason.entry(i.folder.as_str()).or_insert(r);
         if r == "template" {
             *e = r;
@@ -617,13 +631,16 @@ pub fn render(rep: &Report, dry_run: bool) -> String {
         let rest = s.sessions - s.projects - s.aiq_checks;
         out += &match s.folder_reason {
             Some(_) => format!(
-                "{folder}: {} automated sessions set aside; AIQ ignores this folder's app runs from now on. \
-                 If that is your own work: aiq include \"{folder}\", then aiq import\n",
+                "{folder}: {} sessions an app or script started set aside, and new one-prompt sessions here will \
+                 be too; sessions where you type more than one prompt still count. If the one-prompt runs are yours \
+                 too: aiq include \"{folder}\", then aiq import\n",
                 rest
             ),
-            None => {
-                format!("{folder}: {} sessions started by a script (one prompt, no one typing) set aside\n", rest)
-            }
+            None => format!(
+                "{folder}: {} sessions an app or script started (one prompt, no one typing) set aside; the rest of \
+                 this folder counts as your work\n",
+                rest
+            ),
         };
     }
     out += "Imported sessions show in your history; they never raise tips. Remove them with: aiq forget --imported\n";
@@ -1019,6 +1036,8 @@ mod tests {
         let dry = run(&mut store, &src, &HashSet::new(), &p, true, 1).unwrap();
         assert!(store.set_aside_folders().unwrap().is_empty(), "a dry run writes no folder rule");
         assert!(render(&dry, true).contains("aiq include \"c:\\users\\x\\ep\""));
+        assert!(render(&dry, true).contains("sessions where you type more than one prompt still count"));
+        assert!(!render(&dry, true).contains("ignores this folder"), "the folder is not ignored as a whole");
         let rep = run(&mut store, &src, &HashSet::new(), &p, false, 2).unwrap();
         assert_eq!(rep.by_tool[COPILOT], [11, 0, 11, 0, 0]);
         let rules = store.set_aside_folders().unwrap();
@@ -1029,5 +1048,88 @@ mod tests {
         let inc = run(&mut store, &src, &HashSet::new(), &p, false, 5).unwrap();
         assert_eq!(inc.by_tool[COPILOT], [11, 11, 0, 0, 0]);
         assert!(store.set_aside_folders().unwrap().is_empty(), "the person's include stands");
+    }
+
+    /// The shape measured on Imran's laptop 2026-11-03, scaled down: app folders with a person's own sessions in
+    /// them (executive_presence 99% app, foresight 91%), a folder shared with an app (tacit 59%), AIQ's checks.
+    /// Before the fix every task in a folder with a rule was dropped; now a session's own verdict decides.
+    #[test]
+    fn a_persons_sessions_count_in_app_folders_and_mixed_folders_get_no_folder_rule() {
+        let d = tempfile::tempdir().unwrap();
+        let (claude, copilot) = (d.path().join("claude"), d.path().join("copilot"));
+        let (ep, fs, tacit, mine) =
+            (r"C:\Users\X\Executive_Presence", r"C:\Users\X\Foresight", r"C:\Users\X\Tacit", r"C:\repos\a");
+        let probe = r"C:\Users\X\AppData\Local\Temp\aiq-phase2-check";
+        let at = |day: u32, min: u32| format!("2026-09-{:02}T{:02}:{:02}:00Z", day, 8 + min / 60, min % 60);
+        let mut n = 0;
+        let mut add = |cwd: &str, start: String, prompts: &[&str]| {
+            n += 1;
+            copilot_session(&copilot, &format!("s{n}"), cwd, &start, prompts);
+        };
+        for i in 0..58 {
+            add(ep, at(1 + i / 20, i % 20), &[&format!("collect profile {i} from https://x/{i}")]);
+        }
+        add(ep, at(10, 0), &["why does the profile page crash", "add a test for it"]);
+        add(ep, at(11, 0), &["rename the api client", "now update the docs"]);
+        for i in 0..27 {
+            add(fs, at(1 + i % 28, 30), &[&format!("research run {i} for cosmos")]);
+        }
+        for i in 0..3 {
+            add(
+                fs,
+                at(2 + i, 200),
+                &[&format!("plan the {} feature", ["sync", "export", "audit"][i as usize]), "go on"],
+            );
+        }
+        for i in 0..13 {
+            add(tacit, at(1 + i, 300), &[&format!("distil session {i}")]);
+        }
+        for i in 0..3 {
+            add(
+                tacit,
+                at(15 + i, 0),
+                &[&format!("refactor the {} module", ["store", "cli", "hook"][i as usize]), "ok"],
+            );
+        }
+        for q in [
+            "what does tacit store",
+            "list the open issues",
+            "explain the hook",
+            "fix the typo",
+            "bump version",
+            "why is ci red",
+        ] {
+            add(tacit, at(20, 0), &[q]);
+        }
+        add(probe, at(5, 0), &["run: echo aiq-probe, then say done"]);
+        add(mine, at(5, 0), &["fix the bug", "add a test"]);
+        add(mine, at(6, 0), &["write the release note"]);
+        let mut store = Store::open(&d.path().join("aiq.db")).unwrap();
+        let src = discover(&claude, &copilot);
+        let p = AutomatedParams::default();
+        let rep = run(&mut store, &src, &HashSet::new(), &p, false, 1).unwrap();
+        let pack = aiq_core::pack::parse(aiq_core::pack::BUNDLED_TOML).unwrap();
+        let tasks = aiq_home::tasks(&store, &pack, 0).unwrap();
+        let per = |f: &str| tasks.iter().filter(|t| t.folder.as_deref() == Some(folder_key(f).as_str())).count();
+        let rules: Vec<String> = store.set_aside_folders().unwrap().into_iter().map(|r| r.0).collect();
+        println!(
+            "fixture: imported {} set aside {}; tasks {} (ep {}, foresight {}, tacit {}, mine {}); folder rules {:?}",
+            rep.counts.imported,
+            rep.counts.automated,
+            tasks.len(),
+            per(ep),
+            per(fs),
+            per(tacit),
+            per(mine),
+            rules
+        );
+        assert_eq!((rep.counts.imported, rep.counts.automated), (16, 99));
+        assert_eq!((per(ep), per(fs), per(tacit), per(mine), tasks.len()), (2, 3, 9, 2, 16));
+        let mut want = vec![folder_key(ep), folder_key(fs), folder_key(probe)];
+        want.sort();
+        let mut got = rules.clone();
+        got.sort();
+        assert_eq!(got, want, "tacit (13 of 22 app runs, 59%) gets no folder rule");
+        assert!(render(&rep, false).contains("the rest of this folder counts as your work"));
     }
 }
