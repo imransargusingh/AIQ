@@ -186,7 +186,7 @@ const INTERPRETERS: [&str; 9] = ["python", "python3", "py", "bash", "sh", "zsh",
 /// (`scripts/verify_refresh.py`, `./run_tests.sh`, `scripts/rerun.sh test_reroute 50`).
 const CHECK_WORDS: [&str; 9] = ["test", "tests", "check", "checks", "verify", "validate", "lint", "smoke", "e2e"];
 /// Build tools whose first subcommand decides whether the command is a check.
-const CHECK_SUBCOMMANDS: [(&str, &[&str]); 8] = [
+const CHECK_SUBCOMMANDS: [(&str, &[&str]); 9] = [
     ("cargo", &["test", "build", "check", "clippy", "nextest"]),
     ("go", &["test", "vet", "build"]),
     ("dotnet", &["test", "build"]),
@@ -195,6 +195,7 @@ const CHECK_SUBCOMMANDS: [(&str, &[&str]); 8] = [
     ("gradlew", &["test", "check", "build"]),
     ("make", &["test", "check"]),
     ("playwright", &["test"]),
+    ("pre-commit", &["run"]),
 ];
 /// Script names (`npm run <x>`) that are checks: the name or its first `:`-part.
 const CHECK_SCRIPTS: [&str; 8] = ["test", "lint", "build", "check", "typecheck", "e2e", "tsc", "verify"];
@@ -1829,6 +1830,7 @@ mod tests {
             "./run_tests.sh",
             "pwsh -File scripts/Test-Install.ps1",
             "shellcheck install.sh",
+            "pre-commit install && pre-commit run --all-files",
         ] {
             assert!(is_check(yes), "{yes}");
         }
@@ -1845,6 +1847,7 @@ mod tests {
             "python scripts/gen_testdata.py",
             "cat tests/test_a.py",
             "gh pr create --fill",
+            "pre-commit install",
             "git log --since='7 days ago' --pretty=%s",
         ] {
             assert!(!is_check(no), "{no}");

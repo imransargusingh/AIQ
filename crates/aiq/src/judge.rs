@@ -15,7 +15,7 @@ use aiq_domain::rung::{self, Turn};
 use aiq_home::TaskRow;
 use aiq_store::{CallOutcome, JudgmentRow, NewJudgeCall, Store};
 use serde_json::{Value, json};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
@@ -1095,6 +1095,47 @@ pub(crate) fn providers(paths: &Paths, set: &Settings) -> (ClaudeCli, CopilotCli
 }
 
 /// `aiq judge [--max <n>] [--only claude-code|copilot-cli] [--dry-run] [--auto]`
+/// `aiq judge --versions`: read-only. How the current judgments stand against today's versions: current,
+/// restamped without a model call, or judged again (by tool), and how many were judged with no agent actions
+/// in the log (their F1 and F3 read "no" from missing data).
+fn versions_cli(store: &Store, homes: &Homes) -> ExitCode {
+    let Ok(pack) = aiq_core::pack::parse(aiq_core::pack::BUNDLED_TOML) else { return ExitCode::FAILURE };
+    let Ok(tasks) = aiq_home::tasks(store, &pack, 0) else { return ExitCode::FAILURE };
+    let Ok(judged) = store.current_judgments() else { return ExitCode::FAILURE };
+    let (mut current, mut restamped, mut no_actions) = (0, 0, 0);
+    let mut again: BTreeMap<String, u32> = BTreeMap::new();
+    for t in &tasks {
+        let Some(j) = judged.get(&t.task_id) else { continue };
+        let read: Value = serde_json::from_str(&j.read).unwrap_or_default();
+        if read["actions"] == Value::Bool(false) {
+            no_actions += 1;
+        }
+        if current_version(j) {
+            current += 1;
+            continue;
+        }
+        let (turns, known) = task_turns(store, homes, t).unwrap_or_default();
+        if restamp(j, &rung::log_facts(&turns, known)).is_some() {
+            restamped += 1;
+        } else {
+            *again.entry(t.tool.clone()).or_default() += 1;
+        }
+    }
+    println!(
+        "Judgments: {} (fact set {}, rubric {}, judge {})",
+        current + restamped + again.values().sum::<u32>(),
+        rung::FACT_SET_VERSION,
+        rung::RUBRIC_VERSION,
+        rung::JUDGE_VERSION
+    );
+    println!("  current: {current}\n  kept without a model call: {restamped}");
+    for (tool, n) in &again {
+        println!("  judged again ({tool}): {n}");
+    }
+    println!("  judged with no agent actions in the log: {no_actions}");
+    ExitCode::SUCCESS
+}
+
 pub fn cli(args: &[&str]) -> ExitCode {
     let paths = Paths::from_env();
     let auto = args.contains(&"--auto");
@@ -1131,6 +1172,9 @@ pub fn cli(args: &[&str]) -> ExitCode {
     }
     let homes = Homes::from_env();
     let n = now();
+    if args.contains(&"--versions") {
+        return versions_cli(&store, &homes);
+    }
     if dry {
         return dry_run(&store, &homes, n, only);
     }

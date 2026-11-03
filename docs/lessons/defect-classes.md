@@ -226,9 +226,8 @@ summary: >-
   weighed the quoted commands and hid the gap, so only a second model exposed it. The spec's F3 already named
   linters and evals.
 - **Instances:** 2026-11-03, Copilot eval on the laptop (68 premium requests): 4 of 6 rung misses.
-- **Sweep:** every command in golden g1 (`jq` over `steps[].command`): r02's `sha256sum -c` and r04's
-  `pre-commit run` are still not checks (left: r02 is a release check the model read correctly; pre-commit is
-  install-time). Same class elsewhere: any log fact rendered as trusted (`agent edited files`, `sub-agents`,
+- **Sweep:** every command in golden g1 (`jq` over `steps[].command`): r04's `pre-commit run` was missed too
+  (added); r02's `sha256sum -c` is still not a check (left: the model placed r02 right from the text). Same class elsewhere: any log fact rendered as trusted (`agent edited files`, `sub-agents`,
   `spec named`) is an allow-list too.
 - **Control:** fact set fs2 (linters, script names, test-name arguments); test
   `checks_are_read_as_command_lines_not_substrings` holds the four g1 commands and six near-misses; the Copilot
