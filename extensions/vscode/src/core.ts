@@ -17,6 +17,8 @@ export interface Endpoint {
 
 /** `aiq.card.v1` (contracts/aiq.card.v1.json). */
 export interface Card {
+  /** Not part of aiq.card.v1: set from the reply when the person turned the tip highlight off. */
+  plain?: boolean;
   schema: string;
   card_id: string;
   opportunity_id: string;
@@ -146,8 +148,9 @@ export interface CoreClient {
 export function coreClient(ep: Endpoint): CoreClient {
   return {
     async takeCard() {
-      const r = await request<{ card: Card | null }>(ep, { op: "take_card_any", surface: SURFACE });
-      return r === null ? undefined : r.card;
+      const r = await request<{ card: Card | null; plain?: boolean }>(ep, { op: "take_card_any", surface: SURFACE });
+      if (r === null) return undefined;
+      return r.card && r.plain ? { ...r.card, plain: true } : r.card;
     },
     show: (cardId) => request<ShowReply>(ep, { op: "show", card_id: cardId, opened_on: SURFACE }),
     async feedback(cardId, answer) {

@@ -5,6 +5,7 @@ import { api } from "./api";
 import { singleFlight } from "./refresh";
 import { toolName } from "./format";
 import type { Snapshot } from "./types";
+import { scoped } from "./project";
 import { Dialog, PAGES, Sk, type Ctx, type Page } from "./ui";
 import { Home } from "./pages/Home";
 import { Tasks } from "./pages/Tasks";
@@ -48,6 +49,8 @@ export function App() {
   const [palette, setPalette] = useState(false);
   const [said, setSaid] = useState("");
   const [singleKeys, setSingleKeysState] = useState(readPref);
+  // The project Home, Tasks and a kind's page show; all until the person picks one (design project-filter P3).
+  const [project, setProjectState] = useState<string | null>(null);
   const gPending = useRef(0);
 
   const announce = useCallback((m: string) => {
@@ -149,7 +152,16 @@ export function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [singleKeys, palette, go, togglePause, inSetup]);
 
-  const ctx: Ctx | null = snap && { snap, go, openTask, openKind, announce, togglePause, refresh };
+  const setProject = useCallback(
+    (key: string | null) => {
+      setProjectState(key);
+      const name = key === null ? null : snap?.projects.find((p) => p.key === key)?.name;
+      announce(name ? `Showing ${name}.` : "Showing all projects.");
+    },
+    [snap, announce],
+  );
+  const ctx: Ctx | null = snap && { snap, go, openTask, openKind, announce, togglePause, refresh, project, setProject };
+  const one: Ctx | null = ctx && { ...ctx, snap: scoped(ctx.snap, project) };
   const watching = snap?.home.by_tool.map(([t]) => toolName(t)) ?? [];
 
   if (ctx && inSetup) {
@@ -252,13 +264,13 @@ export function App() {
               </div>
             </div>
           )}
-          {ctx && page === "home" && <Home key="home" {...ctx} />}
-          {ctx && page === "tasks" && <Tasks key="tasks" {...ctx} />}
+          {one && page === "home" && <Home key="home" {...one} />}
+          {one && page === "tasks" && <Tasks key="tasks" {...one} />}
           {ctx && page === "tips" && <Tips key="tips" {...ctx} />}
           {ctx && page === "data" && <Data key="data" {...ctx} />}
           {ctx && page === "settings" && <Settings key="settings" {...ctx} singleKeys={singleKeys} setSingleKeys={setSingleKeys} />}
           {ctx && page === "task" && route.task && <Task key={`task-${route.task}`} {...ctx} taskId={route.task} />}
-          {ctx && page === "kind" && route.task && <Kind key={`kind-${route.task}`} {...ctx} kindId={route.task} />}
+          {one && page === "kind" && route.task && <Kind key={`kind-${route.task}`} {...one} kindId={route.task} />}
         </main>
       </div>
       <p className="sr" role="status" aria-live="polite">{said}</p>

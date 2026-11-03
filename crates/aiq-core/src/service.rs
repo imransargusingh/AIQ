@@ -25,7 +25,41 @@ use tracing::{info, info_span, warn};
 pub const SETTING_PAUSED: &str = "paused";
 pub const SETTING_DAILY_CAP: &str = "daily_cap";
 pub const SETTING_COPILOT_TIP_STAYS: &str = "copilot_tip_stays";
+/// Where tips show (Imran 2026-11-03, "make tips stand out", each one a setting). All "on" or "off",
+/// default on. `copilot_tip_in_chat`: a Copilot CLI tip is also printed into the conversation at the
+/// turn's end. `tip_popup`: a Windows pop-up when a tip is delivered in a terminal (Claude Code, Copilot
+/// CLI). `tip_highlight`: the yellow "AIQ tip:" badge and the VS Code status-bar colour.
+pub const SETTING_COPILOT_TIP_IN_CHAT: &str = "copilot_tip_in_chat";
+pub const SETTING_TIP_POPUP: &str = "tip_popup";
+pub const SETTING_TIP_HIGHLIGHT: &str = "tip_highlight";
+pub const SWITCH_SETTINGS: [&str; 3] = [SETTING_COPILOT_TIP_IN_CHAT, SETTING_TIP_POPUP, SETTING_TIP_HIGHLIGHT];
+/// Surfaces whose tip shows in a terminal, where a pop-up helps when the person has looked away. VS Code
+/// shows its own notification, so it gets no pop-up.
+pub const POPUP_SURFACES: [&str; 2] = ["claude-code", "copilot-cli"];
+/// Called with each card delivered on a pop-up surface while `tip_popup` is on (the core passes
+/// `popup::show`; tests record).
+pub type Popup = Box<dyn Fn(&CardV1) + Send>;
 pub const MAX_DAILY_CAP: u32 = 50;
+/// Copilot CLI's surface name (the hook client uses the same constant).
+pub const COPILOT_CLI: &str = "copilot-cli";
+
+/// `project_name.<folder key>`: the name the person gave a project in AIQ home (design project-filter P2).
+pub const SETTING_PROJECT_NAME: &str = "project_name.";
+/// Longest project name kept, in characters.
+pub const MAX_PROJECT_NAME: usize = 60;
+
+/// Validate a project rename: a folder key (1–1024 bytes, as the hooks keep `cwd`) and a name of at most
+/// `MAX_PROJECT_NAME` characters with no control characters. Empty (after trimming) means "AIQ names it".
+fn project_name(folder: &str, value: &str) -> Result<String, String> {
+    if folder.is_empty() || folder.len() > 1024 {
+        return Err("name a project folder".into());
+    }
+    let v = value.trim();
+    if v.chars().count() > MAX_PROJECT_NAME || v.chars().any(char::is_control) {
+        return Err(format!("a project name is up to {MAX_PROJECT_NAME} characters, on one line"));
+    }
+    Ok(v.to_owned())
+}
 
 pub struct Service<C: Clock> {
     store: Store,
@@ -48,6 +82,7 @@ pub struct Service<C: Clock> {
     coach: Option<coaching::Cache>,
     /// AIQ-COACH-GUESS-LOW is logged once per core run.
     guess_low_logged: bool,
+    popup: Option<Popup>,
     /// Starts a background label of a new task's first prompt (`aiq label`); None in tests and without a model.
     label_requester: Option<LabelRequester>,
 }
@@ -140,6 +175,7 @@ impl<C: Clock> Service<C> {
             rc_checked: Default::default(),
             coach: None,
             guess_low_logged: false,
+            popup: None,
             label_requester: None,
         };
         s.rebuild()?;
@@ -200,6 +236,15 @@ impl<C: Clock> Service<C> {
             .flatten()
             .and_then(|v| TipStays::parse(&v))
             .unwrap_or(TipStays::NextPrompt)
+    }
+
+    /// An on/off switch from `SWITCH_SETTINGS`; anything but "off" (including unset) is on.
+    pub fn switch_on(&self, key: &str) -> bool {
+        self.store.setting(key).ok().flatten().as_deref() != Some("off")
+    }
+
+    pub fn set_popup(&mut self, popup: Popup) {
+        self.popup = Some(popup);
     }
 
     fn quiet(&self) -> Result<bool, StoreError> {
@@ -880,6 +925,9 @@ impl<C: Clock> Service<C> {
         {
             return Ok(None); // this turn's prompt has not arrived yet: the card waits for the next Stop
         }
+        if surface == COPILOT_CLI && !self.switch_on(SETTING_COPILOT_TIP_IN_CHAT) {
+            return Ok(None); // the status line delivers it instead
+        }
         let Some(ready) = self.store.ready_card(surface, session)? else { return Ok(None) };
         self.deliver(&ready.card_id, &ready.card_json, surface, session)
     }
@@ -905,7 +953,14 @@ impl<C: Clock> Service<C> {
         }
         self.store.insert_delivery(card_id, surface, session, self.clock.now())?;
         info!(aiq.outcome = "delivered", aiq.surface = surface, "card delivered");
-        Ok(serde_json::from_str(card_json).ok())
+        let card: Option<CardV1> = serde_json::from_str(card_json).ok();
+        if let (Some(c), Some(p)) = (&card, &self.popup)
+            && POPUP_SURFACES.contains(&surface)
+            && self.switch_on(SETTING_TIP_POPUP)
+        {
+            p(c);
+        }
+        Ok(card)
     }
 
     /// Copilot CLI status line: the tip line for a session, or None. Delivers a show-ready card only after
@@ -974,6 +1029,10 @@ impl<C: Clock> Service<C> {
     pub fn set(&mut self, key: &str, value: &str) -> Result<(), String> {
         let v = match key {
             SETTING_PAUSED if value == "true" || value == "false" => value.to_owned(),
+            k if SWITCH_SETTINGS.contains(&k) => match value {
+                "on" | "off" => value.to_owned(),
+                _ => return Err(format!("{} must be on or off", k.replace('_', "-"))),
+            },
             SETTING_COPILOT_TIP_STAYS => match TipStays::parse(value) {
                 Some(v) => v.as_str().to_owned(),
                 None => {
@@ -987,6 +1046,7 @@ impl<C: Clock> Service<C> {
                 _ => return Err(format!("daily-cap must be a whole number from 0 to {MAX_DAILY_CAP}")),
             },
             k if k.starts_with(coaching::SETTING_KEEP_ON) => self.keep_on_value(k, value)?,
+            k if k.starts_with(SETTING_PROJECT_NAME) => project_name(&k[SETTING_PROJECT_NAME.len()..], value)?,
             _ => match aiq_domain::rung::validate_setting(key, value)
                 .or_else(|| coach::validate_setting(key, value))
                 .or_else(|| aiq_domain::label::validate_setting(key, value))
@@ -1156,5 +1216,19 @@ impl<C: Clock> Service<C> {
     pub fn prune(&mut self) {
         let now = self.clock.now().utc_ms;
         self.engine.prune(now);
+    }
+}
+
+#[cfg(test)]
+mod project_name_tests {
+    use super::*;
+
+    #[test]
+    fn project_names_are_short_one_line_and_blank_resets() {
+        assert_eq!(project_name(r"c:\repos\aiq", "  AI coach ").unwrap(), "AI coach");
+        assert_eq!(project_name(r"c:\repos\aiq", "   ").unwrap(), "");
+        assert!(project_name(r"c:\repos\aiq", &"x".repeat(MAX_PROJECT_NAME + 1)).is_err());
+        assert!(project_name(r"c:\repos\aiq", "two\nlines").is_err());
+        assert!(project_name("", "name").is_err());
     }
 }

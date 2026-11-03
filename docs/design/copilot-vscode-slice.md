@@ -349,7 +349,7 @@ can never deliver twice; the unique session index backs it up. Status line and e
 |---|---|---|---|---|
 | B1 hook / status line / extension → core | S: another user's process | mitigate | Phase 1 pipe DACL + token; extension reads the same user-only token file | frame without token closed |
 | B2 Copilot → hook stdin | T: hostile prompt text echoed into the status line | mitigate | Tip line never echoes prompt text; control characters stripped from any text printed | `tip_line_never_contains_prompt_text` |
-| B2 | E: AIQ alters the agent | prevent | Copilot hook prints nothing, always exits 0 | stdout/stderr empty contract test |
+| B2 | E: AIQ alters the agent | prevent | Copilot hook never writes stderr, always exits 0; stdout is empty except one display-only `{"type":"progress"}` line at a Copilot CLI `agentStop` (2026-11-03 amendment) | e2e: only agentStop prints, exactly `type` + `message` |
 | B4 `~/.copilot/settings.json` | T/R: install corrupts config or hides changes | mitigate | Diff + consent + backup + rename; uninstall removes only AIQ's entries | round-trip install → uninstall byte-identical |
 | B4 | E: teammates run AIQ | prevent | Never writes `.github/hooks/` or a repo's settings | test install never touches cwd |
 | B6 extension | E: extension runs commands from frames | prevent | Extension only renders card fields as text; no command URIs from core data | unit test: markdown/command links in card text shown literally |

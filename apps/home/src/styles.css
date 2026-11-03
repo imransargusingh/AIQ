@@ -94,7 +94,12 @@ p{margin:0}
 .k-k{background:var(--primary)} .k-c{background:var(--rung-2)} .k-n{background:var(--canvas-soft);border:1px solid var(--hairline)!important}
 [data-theme="contrast"] .k-c,[data-theme="contrast"] .k-n{border:1px solid var(--ink)!important}
 [data-theme="contrast"] .k-c{background:repeating-linear-gradient(45deg,var(--surface) 0 3px,#4d4d4d 3px 5px)}
-.wk{margin:0;display:grid;grid-template-columns:auto minmax(0,1fr);grid-template-rows:120px auto;column-gap:var(--s3);row-gap:var(--s2)}
+.wk{--wk-rest:color-mix(in srgb,var(--primary) 35%,var(--surface));margin:0;display:grid;grid-template-columns:auto minmax(0,1fr);grid-template-rows:auto 120px auto;column-gap:var(--s3);row-gap:var(--s2)}
+.wk-key{grid-column:1/-1;margin-bottom:var(--s2);display:flex;flex-wrap:wrap;align-items:center;gap:var(--s1) var(--s4);font:var(--t-caption);color:var(--ink-mute)}
+.wk-key span{display:inline-flex;align-items:center;gap:var(--s1)}
+.wk-key .sw{display:inline-block;width:10px;height:10px;border-radius:2px}
+.wk-key .sw.fin{background:var(--primary)}
+.wk-key .sw.rest{background:var(--wk-rest)}
 .wk-y{position:relative;width:36px;font:var(--t-caption);color:var(--ink-mute);font-variant-numeric:tabular-nums;text-align:right}
 .wk-y span{position:absolute;right:0;transform:translateY(-50%)}
 .wk-plot{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--s4)}
@@ -187,7 +192,7 @@ tbody tr[aria-selected="true"] td:first-child{box-shadow:inset 3px 0 var(--prima
 .selmark{display:inline-block;width:16px;color:var(--primary);font-weight:700}
 tbody tr:focus-visible{outline:2px solid var(--focus-ring);outline-offset:-2px}
 td.clip{max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:var(--t-mono)}
-.tablewrap{background:var(--surface);border:1px solid var(--hairline);border-radius:var(--r-md);overflow-x:auto}
+.tablewrap{position:relative;background:var(--surface);border:1px solid var(--hairline);border-radius:var(--r-md);overflow-x:auto}
 .starter{font:var(--t-mono);background:var(--canvas-soft);border-radius:var(--r-sm);padding:var(--s4);white-space:pre-wrap}
 .opt{display:flex;gap:var(--s3);align-items:flex-start;min-height:36px;padding:var(--s3) var(--s4);border:1px solid var(--hairline);border-radius:var(--r-sm);cursor:pointer;background:var(--surface)}
 .opt:has(input:checked){border-color:var(--primary)}
@@ -252,6 +257,9 @@ nav.side{overflow:auto}
     --focus-ring:Highlight;--rung-1:Canvas;--rung-2:Canvas;--rung-3:Canvas;--rung-4:Canvas;--rung-5:Canvas}
   .btn.pri,.seg button[aria-pressed="true"],.switch[aria-checked="true"]{forced-color-adjust:none;background:Highlight;color:HighlightText;border-color:Highlight}
   .wk-col>i:first-child{forced-color-adjust:none;background:Highlight!important;color:HighlightText}
+  .wk-key .sw{forced-color-adjust:none;border:1px solid CanvasText}
+  .wk-key .sw.fin{background:Highlight}
+  .wk-key .sw.rest{background:Canvas}
 }
 
 /* Skip link: hidden until keyboard focus reaches it. */

@@ -4,7 +4,7 @@
   "versions": {
     "judge": "j5",
     "fact_set": "fs1",
-    "rubric": "r1",
+    "rubric": "r2",
     "golden": "g1"
   },
   "provider": "claude-code",
@@ -40,11 +40,11 @@
       3
     ],
     "rung_exact": [
-      20,
+      22,
       32
     ],
     "rung_within_one": [
-      28,
+      29,
       32
     ]
   },
@@ -82,8 +82,8 @@
     "h02": {
       "job": "write_doc",
       "kind": "other",
-      "rung": 1,
-      "state": "uncertain"
+      "rung": 3,
+      "state": "judged"
     },
     "h03": {
       "job": "ask_research",
@@ -136,8 +136,8 @@
     "h11": {
       "job": "write_doc",
       "kind": "other",
-      "rung": 1,
-      "state": "uncertain"
+      "rung": 3,
+      "state": "judged"
     },
     "h12": {
       "job": "ask_research",
@@ -190,8 +190,8 @@
     "h20": {
       "job": "code_change",
       "kind": "feature",
-      "rung": 1,
-      "state": "uncertain"
+      "rung": 2,
+      "state": "judged"
     },
     "i01": {
       "job": "code_change",

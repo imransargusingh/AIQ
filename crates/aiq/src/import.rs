@@ -631,8 +631,9 @@ pub fn render(rep: &Report, dry_run: bool) -> String {
         let rest = s.sessions - s.projects - s.aiq_checks;
         out += &match s.folder_reason {
             Some(_) => format!(
-                "{folder}: {} automated sessions set aside; AIQ ignores this folder's app runs from now on. \
-                 If that is your own work: aiq include \"{folder}\", then aiq import\n",
+                "{folder}: {} sessions an app or script started set aside, and new one-prompt sessions here will \
+                 be too; sessions where you type more than one prompt still count. If the one-prompt runs are yours \
+                 too: aiq include \"{folder}\", then aiq import\n",
                 rest
             ),
             None => format!(
@@ -1035,6 +1036,8 @@ mod tests {
         let dry = run(&mut store, &src, &HashSet::new(), &p, true, 1).unwrap();
         assert!(store.set_aside_folders().unwrap().is_empty(), "a dry run writes no folder rule");
         assert!(render(&dry, true).contains("aiq include \"c:\\users\\x\\ep\""));
+        assert!(render(&dry, true).contains("sessions where you type more than one prompt still count"));
+        assert!(!render(&dry, true).contains("ignores this folder"), "the folder is not ignored as a whole");
         let rep = run(&mut store, &src, &HashSet::new(), &p, false, 2).unwrap();
         assert_eq!(rep.by_tool[COPILOT], [11, 0, 11, 0, 0]);
         let rules = store.set_aside_folders().unwrap();
