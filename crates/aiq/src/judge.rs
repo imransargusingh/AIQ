@@ -15,7 +15,7 @@ use aiq_domain::rung::{self, Turn};
 use aiq_home::TaskRow;
 use aiq_store::{CallOutcome, JudgmentRow, NewJudgeCall, Store};
 use serde_json::{Value, json};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
@@ -465,10 +465,29 @@ fn current_version(j: &JudgmentRow) -> bool {
     let rubric = j.rubric_version == rung::RUBRIC_VERSION
         || (rung::RUBRIC_VERSIONS_KEPT.contains(&j.rubric_version.as_str())
             && !rung::rubric_changes(&j.facts, aiq_contracts::judge::parse_read(&j.read).reprompts));
-    j.fact_set_version == rung::FACT_SET_VERSION
+    let fact_set = j.fact_set_version == rung::FACT_SET_VERSION
+        || (rung::FACT_SET_VERSIONS_KEPT.contains(&j.fact_set_version.as_str())
+            && !rung::fact_set_may_change(&j.facts));
+    fact_set
         && rubric
         && (j.judge_version == rung::JUDGE_VERSION
             || (rung::JUDGE_VERSIONS_KEPT.contains(&j.judge_version.as_str()) && j.job != "unclassified"))
+}
+
+/// A judgment outdated only because its kept fact set's F3 may read differently, whose task's log facts
+/// today give the same F3: restamped at the current fact set without a model call (the model read the same
+/// envelope). None when a judge call is needed.
+pub fn restamp(j: &JudgmentRow, log: &rung::LogFacts) -> Option<JudgmentRow> {
+    let fresh = JudgmentRow { fact_set_version: rung::FACT_SET_VERSION.into(), ..j.clone() };
+    if current_version(j)
+        || !rung::FACT_SET_VERSIONS_KEPT.contains(&j.fact_set_version.as_str())
+        || !current_version(&fresh)
+    {
+        return None;
+    }
+    let stored = aiq_contracts::judge::parse_stored_facts(&j.facts).remove("F3").and_then(|f| f.checker);
+    (stored.as_deref() == log.checks_by.map(rung::Checker::as_str))
+        .then(|| JudgmentRow { judgment_id: uuid::Uuid::now_v7().to_string(), ..fresh })
 }
 
 /// Tasks to judge now, best first: closed, not judged at the current versions, not waiting out a retry,
@@ -820,6 +839,8 @@ pub struct Report {
     pub uncertain: u32,
     pub failed: u32,
     pub skipped_no_text: u32,
+    /// Outdated only by the fact set, same log facts today: restamped without a model call.
+    pub restamped: u32,
     pub waiting: u32,
     pub budget_left: u32,
     /// Providers that could not be used this run, with why.
@@ -866,6 +887,12 @@ pub fn run(r: &Run<'_>) -> Result<Report, String> {
         let (turns, known) = task_turns(r.store, r.homes, t).map_err(|e| e.to_string())?;
         if turns.is_empty() {
             rep.skipped_no_text += 1;
+            continue;
+        }
+        if let Some(row) = judged_now.get(&t.task_id).and_then(|j| restamp(j, &rung::log_facts(&turns, known))) {
+            r.store.insert_judgment(&row).map_err(|e| e.to_string())?;
+            judged_now.insert(t.task_id.clone(), row);
+            rep.restamped += 1;
             continue;
         }
         let provider = if name == CLAUDE { r.claude } else { r.copilot };
@@ -1088,6 +1115,47 @@ pub(crate) fn providers(paths: &Paths, set: &Settings) -> (ClaudeCli, CopilotCli
 }
 
 /// `aiq judge [--max <n>] [--only claude-code|copilot-cli] [--dry-run] [--auto]`
+/// `aiq judge --versions`: read-only. How the current judgments stand against today's versions: current,
+/// restamped without a model call, or judged again (by tool), and how many were judged with no agent actions
+/// in the log (their F1 and F3 read "no" from missing data).
+fn versions_cli(store: &Store, homes: &Homes) -> ExitCode {
+    let Ok(pack) = aiq_core::pack::parse(aiq_core::pack::BUNDLED_TOML) else { return ExitCode::FAILURE };
+    let Ok(tasks) = aiq_home::tasks(store, &pack, 0) else { return ExitCode::FAILURE };
+    let Ok(judged) = store.current_judgments() else { return ExitCode::FAILURE };
+    let (mut current, mut restamped, mut no_actions) = (0, 0, 0);
+    let mut again: BTreeMap<String, u32> = BTreeMap::new();
+    for t in &tasks {
+        let Some(j) = judged.get(&t.task_id) else { continue };
+        let read: Value = serde_json::from_str(&j.read).unwrap_or_default();
+        if read["actions"] == Value::Bool(false) {
+            no_actions += 1;
+        }
+        if current_version(j) {
+            current += 1;
+            continue;
+        }
+        let (turns, known) = task_turns(store, homes, t).unwrap_or_default();
+        if restamp(j, &rung::log_facts(&turns, known)).is_some() {
+            restamped += 1;
+        } else {
+            *again.entry(t.tool.clone()).or_default() += 1;
+        }
+    }
+    println!(
+        "Judgments: {} (fact set {}, rubric {}, judge {})",
+        current + restamped + again.values().sum::<u32>(),
+        rung::FACT_SET_VERSION,
+        rung::RUBRIC_VERSION,
+        rung::JUDGE_VERSION
+    );
+    println!("  current: {current}\n  kept without a model call: {restamped}");
+    for (tool, n) in &again {
+        println!("  judged again ({tool}): {n}");
+    }
+    println!("  judged with no agent actions in the log: {no_actions}");
+    ExitCode::SUCCESS
+}
+
 pub fn cli(args: &[&str]) -> ExitCode {
     let paths = Paths::from_env();
     let auto = args.contains(&"--auto");
@@ -1124,6 +1192,9 @@ pub fn cli(args: &[&str]) -> ExitCode {
     }
     let homes = Homes::from_env();
     let n = now();
+    if args.contains(&"--versions") {
+        return versions_cli(&store, &homes);
+    }
     if dry {
         return dry_run(&store, &homes, n, only);
     }
@@ -1188,6 +1259,9 @@ pub fn render(rep: &Report, daily: u32) -> String {
     o += ".\n";
     if rep.failed > 0 {
         o += &format!("{} could not be judged this time; AIQ tries again later.\n", rep.failed);
+    }
+    if rep.restamped > 0 {
+        o += &format!("{} kept their judgment: today's rules read them the same, so no model call.\n", rep.restamped);
     }
     if rep.skipped_no_text > 0 {
         o += &format!(
@@ -2562,6 +2636,27 @@ mod tests {
         assert!(current_version(&r1(r#"{"value":null,"confidence":0.0,"source":"model","disputed":true}"#, "{}")));
         assert!(current_version(&r1(r#"{"value":true,"confidence":0.9,"source":"model","disputed":false}"#, "{}")));
         assert!(!current_version(&JudgmentRow { rubric_version: "r0".into(), ..j("write_doc", rung::JUDGE_VERSION) }));
+
+        // Fact set fs2 widens the agent's checks: fs1 judgments with F3 agent or unknown stay; nobody/person are
+        // restamped without a call when today's log gives the same F3, else judged again.
+        let fs1 = |f3: &str| JudgmentRow {
+            fact_set_version: "fs1".into(),
+            facts: format!(r#"{{"F3":{{"value":{f3},"source":"log"}}}}"#),
+            ..j("code_change", rung::JUDGE_VERSION)
+        };
+        assert!(current_version(&fs1(r#""agent""#)));
+        assert!(current_version(&fs1("null")));
+        assert!(!current_version(&fs1(r#""nobody""#)));
+        let log = |cmd: &str| {
+            let a = ActionSummary { commands: vec![cmd.into()], ..Default::default() };
+            rung::log_facts(&[Turn { at_ms: 0, prompt: "x".into(), actions: Some(a) }], true)
+        };
+        let same = restamp(&fs1(r#""nobody""#), &log("scripts/refresh.sh --all")).expect("same F3: no call");
+        assert_eq!(same.fact_set_version, rung::FACT_SET_VERSION);
+        assert!(current_version(&same));
+        assert!(restamp(&fs1(r#""nobody""#), &log("scripts/verify_refresh.py")).is_none(), "now the agent checked");
+        assert!(restamp(&fs1(r#""agent""#), &log("cargo test")).is_none(), "already current");
+        assert!(restamp(&JudgmentRow { judge_version: "j1".into(), ..fs1(r#""nobody""#) }, &log("ls")).is_none());
     }
 
     #[test]
