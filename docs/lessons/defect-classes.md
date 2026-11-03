@@ -264,7 +264,7 @@ summary: >-
   list builds tasks; the judge, task detail and kind label read prompts by the task list's member ids. Data-tab
   counts (`imported_sessions`, `imported_events`) count stored rows, which is what they say.
 - **Control:** the task list joins the copies (`crates/aiq-home/src/twins.rs`): same session id across the
-  tool family, twins within 10 s with the same text are one prompt, the rest are the union. Tests
+  tool family, twins (within 30 s with the same text, or within 3 s) are one prompt, the rest are the union. Tests
   `a_session_captured_live_and_imported_is_one_task` and
   `a_session_held_live_and_imported_is_judged_once_with_every_prompt` (red without the fix). Rule: when a
   second capture path writes the same thing, the one read model that builds the unit joins the paths before

@@ -4,11 +4,16 @@
 //! and Copilot CLI and VS Code agent mode both write `session-state/<session>/events.jsonl`, whose folder name
 //! is the live session id. Neither copy holds every prompt (the hooks miss some, the import reads a file that
 //! may hold more or fewer), so the task list keeps the live copy and adds only the imported prompts that have
-//! no live twin. A twin is a prompt of the same session, at most `TWIN_MS` away, with the same text (when both
-//! copies kept it). Measured on Imran's store 2026-11-03: the two copies of one prompt are 2–3 s apart.
+//! no live twin. A twin is a prompt of the same session, at most `TWIN_MS` away with the same text (when both
+//! copies kept it), or at most `SAME_MS` away whatever its text. Measured on Imran's store 2026-11-03 (67 live
+//! prompts): 51 had a same-text copy within 30 s (50 within 5 s, 1 between 10 and 30 s); 1 had a copy under
+//! 1 s away whose text differed (the tool rewrote it); the next-nearest different-text prompts were 3 s to
+//! 2 min away; no copy ever sat under another session id.
 
-/// Furthest apart the live and imported copies of one prompt can be.
-pub const TWIN_MS: i64 = 10_000;
+/// Furthest apart the live and imported copies of one prompt can be, when their text agrees.
+pub const TWIN_MS: i64 = 30_000;
+/// So close that two prompts of one session are one prompt even when the copies' text differs.
+pub const SAME_MS: i64 = 3_000;
 
 /// The tool that wrote a live surface's session file: VS Code agent mode writes Copilot's.
 pub fn family(surface: &str) -> &str {
@@ -61,7 +66,7 @@ pub fn fates(live: &[Copy<'_>], imported: &[Copy<'_>]) -> Vec<Fate> {
         out[i] = Fate::Extra(same[0]);
         for &j in same {
             let d = (live[j].utc_ms - p.utc_ms).abs();
-            if d <= TWIN_MS && same_text(live[j].text, p.text) {
+            if d <= SAME_MS || (d <= TWIN_MS && same_text(live[j].text, p.text)) {
                 pairs.push((d, i, j));
             }
         }
@@ -95,7 +100,7 @@ mod tests {
         let imported = [
             c("copilot-cli", "S", 3_500, Some("fix  the build")), // VS Code's file, 2.5 s later, spacing differs
             c("copilot-cli", "S", 30_000, Some("steer")),         // typed while the agent worked: hook missed it
-            c("copilot-cli", "S", 61_000, Some("something else")), // near a live prompt, other text
+            c("copilot-cli", "S", 64_000, Some("something else")), // 4 s from a live prompt, other text
             c("claude-code", "C", 7_000, Some("text the live copy deleted")),
             c("claude-code", "D", 7_000, Some("only imported")),
             c("copilot-cli", "S", 1_000 + TWIN_MS + 1, Some("fix the build")), // too far from its twin
@@ -104,6 +109,10 @@ mod tests {
             fates(&live, &imported),
             [Fate::Twin, Fate::Extra(0), Fate::Extra(0), Fate::Twin, Fate::Alone, Fate::Extra(0)]
         );
+        // Under SAME_MS the copies are one prompt even when the tool rewrote the text.
+        let live = [c("claude-code", "C", 5_000, Some("see @file.rs"))];
+        let imported = [c("claude-code", "C", 5_800, Some("see file.rs (attached)"))];
+        assert_eq!(fates(&live, &imported), [Fate::Twin]);
     }
 
     #[test]
