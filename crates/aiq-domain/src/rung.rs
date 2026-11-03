@@ -6,7 +6,18 @@ use crate::secrets;
 use aiq_contracts::judge::{ActionSummary, Fact, Response};
 
 /// Stamped on every judgment. Bump on any change to the fact set, the rules below, or the prompt.
-pub const FACT_SET_VERSION: &str = "fs1";
+/// fs2: F3 also counts linters (lychee, markdownlint, shellcheck, ...) and the team's own check scripts
+/// (`scripts/verify_*.py`, `./run_tests.sh`, a script given a test by name).
+pub const FACT_SET_VERSION: &str = "fs2";
+/// Judgments of these fact sets stay current when their stored F3 checker is already `agent` or unknown: fs2
+/// only widens what counts as the agent's check, so only `nobody` and `person` can change.
+pub const FACT_SET_VERSIONS_KEPT: [&str; 1] = ["fs1"];
+
+/// Whether a kept fact set's stored F3 could read differently today (then the task's log facts decide).
+pub fn fact_set_may_change(facts_json: &str) -> bool {
+    let f3 = aiq_contracts::judge::parse_stored_facts(facts_json).remove("F3");
+    f3.and_then(|f| f.checker).is_some_and(|c| c == "nobody" || c == "person")
+}
 /// r2: a hedged yes on F6 counts when the person came back after the output (`F6_HEDGED_THRESHOLD`).
 pub const RUBRIC_VERSION: &str = "r2";
 /// Judgments of these rubric versions stay current unless `rubric_changes`: r1 differs from r2 only where F6
@@ -164,10 +175,16 @@ const EDIT_TOOLS: [&str; 10] = [
     "write_file",
 ];
 /// Programs that are a check by themselves (after wrappers such as `npx` or `python -m`).
-const CHECK_PROGRAMS: [&str; 13] = [
+const CHECK_PROGRAMS: [&str; 24] = [
     "pytest", "jest", "vitest", "mocha", "tsc", "eslint", "ruff", "mypy", "pyright", "unittest", "tox", "rspec",
-    "phpunit",
+    "phpunit", "flake8", "pylint", "shellcheck", "markdownlint", "markdownlint-cli2", "lychee", "golangci-lint",
+    "stylelint", "yamllint", "actionlint", "hadolint",
 ];
+/// Interpreters whose first non-flag argument is the script that runs (`python -I scripts/check.py`).
+const INTERPRETERS: [&str; 9] = ["python", "python3", "py", "bash", "sh", "zsh", "node", "pwsh", "powershell"];
+/// A script whose file name has one of these words, or that is given a test by name, is a check
+/// (`scripts/verify_refresh.py`, `./run_tests.sh`, `scripts/rerun.sh test_reroute 50`).
+const CHECK_WORDS: [&str; 9] = ["test", "tests", "check", "checks", "verify", "validate", "lint", "smoke", "e2e"];
 /// Build tools whose first subcommand decides whether the command is a check.
 const CHECK_SUBCOMMANDS: [(&str, &[&str]); 8] = [
     ("cargo", &["test", "build", "check", "clippy", "nextest"]),
@@ -222,6 +239,36 @@ fn program(tok: &str) -> &str {
     base.trim_end_matches(".exe").trim_end_matches(".cmd").trim_end_matches(".bat")
 }
 
+/// The person's own script a command runs: a path (`scripts/x.sh`, `./x`) or an interpreter's script argument.
+/// `assume:` a script named for checking checks; if teams name build or data scripts `check_*`, F3 reads agent
+/// on work that wasn't checked (golden g1 replay would show a placement move on those cases).
+fn script_run<'a>(toks: &[&'a str], i: usize) -> Option<&'a str> {
+    let first = *toks.get(i)?;
+    let is_script = |t: &str| {
+        t.contains('/') || t.contains('\\') || [".py", ".sh", ".ps1", ".js", ".ts"].iter().any(|e| t.ends_with(e))
+    };
+    if INTERPRETERS.contains(&program(first)) {
+        let mut j = i + 1;
+        while let Some(t) = toks.get(j) {
+            if matches!(*t, "-c" | "-e" | "-command" | "-m") {
+                return None;
+            }
+            if !t.starts_with('-') {
+                return Some(t);
+            }
+            j += 1;
+        }
+        return None;
+    }
+    is_script(first).then_some(first)
+}
+
+/// Lower-case words of a file name without its extension: `Test-Install.ps1` -> test, install.
+fn words(name: &str) -> impl Iterator<Item = &str> {
+    let stem = name.rsplit_once('.').map_or(name, |(a, _)| a);
+    stem.split(['_', '-', '.']).filter(|w| !w.is_empty())
+}
+
 fn segment_is_check(toks: &[&str]) -> bool {
     let mut i = 0;
     // Skip env assignments (`CI=1`) and wrappers (`npx`, `python -m`, `uv run`, `poetry run`).
@@ -264,6 +311,12 @@ fn segment_is_check(toks: &[&str]) -> bool {
     };
     if let Some((_, subs)) = CHECK_SUBCOMMANDS.iter().find(|(name, _)| *name == p) {
         return args.first().is_some_and(|a| subs.contains(a));
+    }
+    if let Some(script) = script_run(toks, i) {
+        let names_check = |t: &str| words(program(t)).next().is_some_and(|w| CHECK_WORDS.contains(&w));
+        let script_args = &toks[toks.iter().position(|t| *t == script).map_or(toks.len(), |k| k + 1)..];
+        return words(program(script)).any(|w| CHECK_WORDS.contains(&w))
+            || script_args.iter().any(|a| !a.starts_with('-') && names_check(a));
     }
     if matches!(p, "npm" | "pnpm" | "yarn" | "bun") {
         let script = |s: &str| CHECK_SCRIPTS.contains(&s.split(':').next().unwrap_or(s));
@@ -1766,6 +1819,16 @@ mod tests {
             "go vet ./...",
             "dotnet build App.sln",
             "C:\\tools\\pytest.exe tests",
+            // Golden g1 h17, a04, r03, h16: linters and the team's own check scripts (GPT Sol eval 07:15Z read
+            // "checks run by: nobody" from these and set F6 no).
+            "lychee docs README.md && markdownlint docs README.md",
+            "python -I scripts/check_brief.py docs/briefs/solver-vendors.md out/vendors.md",
+            "scripts/verify_refresh.py --since today",
+            "scripts/rerun.sh test_reroute_after_cancel 50",
+            "bash scripts/validate-config.sh",
+            "./run_tests.sh",
+            "pwsh -File scripts/Test-Install.ps1",
+            "shellcheck install.sh",
         ] {
             assert!(is_check(yes), "{yes}");
         }
@@ -1777,6 +1840,12 @@ mod tests {
             "cargo run -- export",
             "echo 'run cargo test later'",
             "git commit -m \"fix tests\"",
+            "python -I analyze.py data/solver_runs_oct.csv",
+            "scripts/refresh.sh --all",
+            "python scripts/gen_testdata.py",
+            "cat tests/test_a.py",
+            "gh pr create --fill",
+            "git log --since='7 days ago' --pretty=%s",
         ] {
             assert!(!is_check(no), "{no}");
         }
