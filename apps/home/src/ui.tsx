@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api } from "./api";
 import type { Snapshot } from "./types";
-import { when } from "./format";
+import { RUNGS, rungLabel, when } from "./format";
 
 /** Nav pages, plus places outside the nav: one task's detail, one kind of task (from Home or Tasks), setup. */
 export type Page = "home" | "tasks" | "tips" | "data" | "settings" | "task" | "kind" | "setup";
@@ -211,6 +211,13 @@ export const Sk = ({ w = "100%", h = "14px" }: { w?: string; h?: string }) => <s
 
 export const Chip = ({ children, tone }: { children: ReactNode; tone?: "ok" | "warn" | "tried" }) => (
   <span className={`chip${tone ? ` ${tone}` : ""}`}>{children}</span>
+);
+
+/** A rung's name; hovering it says what the rung means (the full ladder is on Home, How you work with agents). */
+export const Rung = ({ r }: { r: number }) => (
+  <span className="rung" title={RUNGS[r - 1].means}>
+    {rungLabel(r)}
+  </span>
 );
 
 /** Prompts can be many KB; show a preview and keep the full text one click (or Enter) away. */
