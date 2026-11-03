@@ -462,8 +462,11 @@ pub fn provider_for(tool: &str) -> Option<&'static str> {
 }
 
 fn current_version(j: &JudgmentRow) -> bool {
+    let rubric = j.rubric_version == rung::RUBRIC_VERSION
+        || (rung::RUBRIC_VERSIONS_KEPT.contains(&j.rubric_version.as_str())
+            && !rung::rubric_changes(&j.facts, aiq_contracts::judge::parse_read(&j.read).reprompts));
     j.fact_set_version == rung::FACT_SET_VERSION
-        && j.rubric_version == rung::RUBRIC_VERSION
+        && rubric
         && (j.judge_version == rung::JUDGE_VERSION
             || (rung::JUDGE_VERSIONS_KEPT.contains(&j.judge_version.as_str()) && j.job != "unclassified"))
 }
@@ -2484,6 +2487,22 @@ mod tests {
         assert_eq!(judge_view(&j("code_change", rung::JUDGE_VERSION)).job, "code_change");
         assert!(current_version(&j("unclassified", rung::JUDGE_VERSION)));
         assert!(!current_version(&j("code_change", "j1")));
+
+        // Rubric r2 re-judges only r1 judgments whose hedged F6 may now count (eval h02, h11, h20).
+        let r1 = |f6: &str, read: &str| JudgmentRow {
+            rubric_version: "r1".into(),
+            facts: format!(r#"{{"F6":{f6}}}"#),
+            read: read.into(),
+            ..j("write_doc", rung::JUDGE_VERSION)
+        };
+        let hedged = r#"{"value":null,"confidence":0.55,"source":"model","disputed":false}"#;
+        assert!(!current_version(&r1(hedged, r#"{"prompts":2,"reprompts":1}"#)));
+        assert!(!current_version(&r1(hedged, "{}")), "re-prompts not recorded: judge again");
+        assert!(current_version(&r1(hedged, r#"{"prompts":1,"reprompts":0}"#)));
+        assert!(current_version(&r1(r#"{"value":null,"confidence":0.4,"source":"model","disputed":false}"#, "{}")));
+        assert!(current_version(&r1(r#"{"value":null,"confidence":0.0,"source":"model","disputed":true}"#, "{}")));
+        assert!(current_version(&r1(r#"{"value":true,"confidence":0.9,"source":"model","disputed":false}"#, "{}")));
+        assert!(!current_version(&JudgmentRow { rubric_version: "r0".into(), ..j("write_doc", rung::JUDGE_VERSION) }));
     }
 
     #[test]

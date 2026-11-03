@@ -202,3 +202,18 @@ summary: >-
   `the_judge_model_is_the_one_that_did_the_work_not_the_first_key`. Copilot's entry shape is not recorded,
   so there it still keeps the first key (marked `assume:` in the code). Rule: never read meaning from a
   JSON map's key order.
+
+### DC-015 — A fact the judge always hedges, read as unknown, demotes the rungs it should support
+- **Signature:** golden g1 cases h02, h11, h20: every run said F6 (output checked) yes at 0.5 to 0.55, under
+  the 0.6 fact bar, so F6 was unknown; Directed and Delegated both need F6, so one unsure fact took a
+  Directed or Delegated task to Assisted and Uncertain.
+- **Why it survives:** one bar for every model fact (D10) hides that some facts sit partly off the transcript,
+  where an honest model hedges. Unit tests build facts at 0.9; nothing scored placement against expected
+  rungs until the judge eval (PR #90).
+- **Instances:** 2026-11-03, `aiq judge --eval` replay: rung exact 20/32; 3 of the 12 rung misses were this.
+- **Sweep:** replay table of every case's facts vs expected rung: h06 is the same shape at 0.4 (left alone,
+  under the hedged bar); no other fact sat yes at 0.5 to 0.6 on a demoted case.
+- **Control:** rubric r2 `hedged_review` (F6 yes in every run at 0.5 or more plus a re-prompt in the log);
+  test `a_hedged_yes_on_output_checked_counts_when_the_person_came_back_after_the_output`; the replay gate
+  pins h02, h11, h20 placements. Rule: a guardrail's fact bar is tuned per fact from eval data, and a lower
+  bar needs a log fact to corroborate it.
