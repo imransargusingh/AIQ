@@ -474,9 +474,9 @@ fn current_version(j: &JudgmentRow) -> bool {
             || (rung::JUDGE_VERSIONS_KEPT.contains(&j.judge_version.as_str()) && j.job != "unclassified"))
 }
 
-/// A judgment outdated only because its kept fact set's F3 may read differently, whose task's log facts
-/// today give the same F3: restamped at the current fact set without a model call (the model read the same
-/// envelope). None when a judge call is needed.
+/// A judgment outdated only because its kept fact set's log facts may read differently, whose task today has
+/// every turn's actions recorded (so no fact turns unknown) and gives the same F3: restamped at the current fact
+/// set without a model call (the model read the same envelope). None when a judge call is needed.
 pub fn restamp(j: &JudgmentRow, log: &rung::LogFacts) -> Option<JudgmentRow> {
     let fresh = JudgmentRow { fact_set_version: rung::FACT_SET_VERSION.into(), ..j.clone() };
     if current_version(j)
@@ -486,7 +486,7 @@ pub fn restamp(j: &JudgmentRow, log: &rung::LogFacts) -> Option<JudgmentRow> {
         return None;
     }
     let stored = aiq_contracts::judge::parse_stored_facts(&j.facts).remove("F3").and_then(|f| f.checker);
-    (stored.as_deref() == log.checks_by.map(rung::Checker::as_str))
+    (log.unrecorded == 0 && stored.as_deref() == log.checks_by.map(rung::Checker::as_str))
         .then(|| JudgmentRow { judgment_id: uuid::Uuid::now_v7().to_string(), ..fresh })
 }
 
@@ -594,9 +594,11 @@ fn import_key(id: &str) -> Option<(&str, &str, i64)> {
     Some((tool, sid, seq.parse().ok()?))
 }
 
-/// The task's turns (prompt text and the agent's actions after it) and whether actions were available.
-/// Text the person deleted is skipped; an empty result means there is nothing left to judge.
-pub fn task_turns(store: &Store, homes: &Homes, t: &TaskRow) -> aiq_store::Result<(Vec<Turn>, bool)> {
+/// The task's turns (prompt text and the agent's actions after it). A turn's actions are `None` when AIQ did not
+/// record them (no stop row, no transcript, no matching prompt in it): unknown, never "the agent did nothing".
+/// A turn read with no tool calls is `Some` and empty. Text the person deleted is skipped; an empty result means
+/// there is nothing left to judge.
+pub fn task_turns(store: &Store, homes: &Homes, t: &TaskRow) -> aiq_store::Result<Vec<Turn>> {
     let c = store.raw();
     if t.origin == "imported" {
         let mut turns = Vec::new();
@@ -614,19 +616,19 @@ pub fn task_turns(store: &Store, homes: &Homes, t: &TaskRow) -> aiq_store::Resul
                 )
                 .ok()
                 .flatten();
-            let actions: Option<String> = c
+            // The stop row after the prompt: present means the import read the turn (NULL = no tool calls).
+            let stop: Option<Option<String>> = c
                 .query_row(
                     "SELECT actions FROM import_event WHERE tool = ?1 AND source_session_id = ?2 AND seq = ?3 AND kind = 'stop'",
                     rusqlite::params![tool, sid, seq + 1],
                     |r| r.get(0),
                 )
-                .ok()
-                .flatten();
+                .ok();
             if let Some(text) = text.filter(|t| !t.trim().is_empty()) {
-                turns.push(Turn { at_ms: *at, prompt: text, actions: actions.and_then(|a| ActionSummary::parse(&a)) });
+                turns.push(Turn { at_ms: *at, prompt: text, actions: stop.and_then(read_actions) });
             }
         }
-        return Ok((turns, true));
+        return Ok(turns);
     }
     let mut turns = Vec::new();
     for (id, at) in &t.members {
@@ -648,18 +650,13 @@ pub fn task_turns(store: &Store, homes: &Homes, t: &TaskRow) -> aiq_store::Resul
     }
     // Live events carry no actions: read them from the tool's own transcript, matching each prompt to the
     // transcript prompt nearest in time (within 2 minutes).
-    let Some(p) = transcript(homes, &t.tool, &t.session) else { return Ok((turns, false)) };
+    let Some(p) = transcript(homes, &t.tool, &t.session) else { return Ok(turns) };
     let mut tx: Vec<(i64, Option<ActionSummary>)> = Vec::new();
     for (i, ev) in p.events.iter().enumerate() {
         if ev.kind == "prompt"
             && let Some(ts) = ev.ts_utc_ms
         {
-            let acts = p
-                .events
-                .get(i + 1)
-                .filter(|n| n.kind == "stop")
-                .and_then(|n| n.actions.as_deref())
-                .and_then(ActionSummary::parse);
+            let acts = p.events.get(i + 1).filter(|n| n.kind == "stop").and_then(|n| read_actions(n.actions.clone()));
             tx.push((ts, acts));
         }
     }
@@ -670,7 +667,15 @@ pub fn task_turns(store: &Store, homes: &Homes, t: &TaskRow) -> aiq_store::Resul
             turn.actions = a.clone();
         }
     }
-    Ok((turns, true))
+    Ok(turns)
+}
+
+/// A read turn's stored actions: none stored means the reader saw no tool calls; unparseable means unknown.
+fn read_actions(stored: Option<String>) -> Option<ActionSummary> {
+    match stored {
+        None => Some(ActionSummary::default()),
+        Some(a) => ActionSummary::parse(&a),
+    }
 }
 
 // ------------------------------------------------------------------ one task
@@ -703,11 +708,10 @@ pub fn judge_task(
     provider_name: &str,
     t: &TaskRow,
     turns: &[Turn],
-    actions_known: bool,
     judged: &HashMap<String, JudgmentRow>,
     reprompt: &aiq_contracts::pack::RepromptParams,
 ) -> aiq_store::Result<(Option<Judged>, Vec<CallResult>)> {
-    let log = rung::log_facts(turns, actions_known);
+    let log = rung::log_facts(turns);
     let fence = format!("AIQ-QUOTE-{}", uuid::Uuid::new_v4().simple());
     let user = rung::envelope(&t.tool, turns, &log, &fence);
     let schema = response_schema();
@@ -884,19 +888,19 @@ pub fn run(r: &Run<'_>) -> Result<Report, String> {
             rep.waiting += 1;
             continue;
         }
-        let (turns, known) = task_turns(r.store, r.homes, t).map_err(|e| e.to_string())?;
+        let turns = task_turns(r.store, r.homes, t).map_err(|e| e.to_string())?;
         if turns.is_empty() {
             rep.skipped_no_text += 1;
             continue;
         }
-        if let Some(row) = judged_now.get(&t.task_id).and_then(|j| restamp(j, &rung::log_facts(&turns, known))) {
+        if let Some(row) = judged_now.get(&t.task_id).and_then(|j| restamp(j, &rung::log_facts(&turns))) {
             r.store.insert_judgment(&row).map_err(|e| e.to_string())?;
             judged_now.insert(t.task_id.clone(), row);
             rep.restamped += 1;
             continue;
         }
         let provider = if name == CLAUDE { r.claude } else { r.copilot };
-        let (j, results) = judge_task(r.store, r.paths, provider, name, t, &turns, known, &judged_now, &pack.reprompt)
+        let (j, results) = judge_task(r.store, r.paths, provider, name, t, &turns, &judged_now, &pack.reprompt)
             .map_err(|e| e.to_string())?;
         allowed -= 1;
         rep.budget_left = rep.budget_left.saturating_sub(1);
@@ -1134,8 +1138,8 @@ fn versions_cli(store: &Store, homes: &Homes) -> ExitCode {
             current += 1;
             continue;
         }
-        let (turns, known) = task_turns(store, homes, t).unwrap_or_default();
-        if restamp(j, &rung::log_facts(&turns, known)).is_some() {
+        let turns = task_turns(store, homes, t).unwrap_or_default();
+        if restamp(j, &rung::log_facts(&turns)).is_some() {
             restamped += 1;
         } else {
             *again.entry(t.tool.clone()).or_default() += 1;
@@ -1308,8 +1312,8 @@ fn dry_run(store: &Store, homes: &Homes, n: Now, only: Option<&str>) -> ExitCode
         set.daily_tasks
     );
     if let Some(t) = q.first() {
-        let (turns, known) = task_turns(store, homes, t).unwrap_or_default();
-        let log = rung::log_facts(&turns, known);
+        let turns = task_turns(store, homes, t).unwrap_or_default();
+        let log = rung::log_facts(&turns);
         println!(
             "\nThe next task ({}, {}) would be sent to your {} like this:\n",
             t.task_id,
@@ -1423,12 +1427,12 @@ pub fn run_survey(
         let Some(j) = store.judgment(jid).map_err(|e| e.to_string())? else { continue };
         let Some(t) = by_id.get(j.task_id.as_str()) else { continue };
         let Some(name) = provider_for(&t.tool) else { continue };
-        let (turns, known) = task_turns(store, homes, t).map_err(|e| e.to_string())?;
+        let turns = task_turns(store, homes, t).map_err(|e| e.to_string())?;
         if turns.is_empty() {
             out.failed += 1;
             continue;
         }
-        let log = rung::log_facts(&turns, known);
+        let log = rung::log_facts(&turns);
         let fence = format!("AIQ-QUOTE-{}", uuid::Uuid::new_v4().simple());
         let user = rung::envelope(&t.tool, &turns, &log, &fence);
         let session_id = uuid::Uuid::new_v4().to_string();
@@ -1666,12 +1670,12 @@ pub fn run_check(
             rep.failed += 1;
             continue;
         }
-        let (turns, known) = task_turns(store, homes, t).map_err(|e| e.to_string())?;
+        let turns = task_turns(store, homes, t).map_err(|e| e.to_string())?;
         if turns.is_empty() {
             rep.skipped_no_text += 1;
             continue;
         }
-        let log = rung::log_facts(&turns, known);
+        let log = rung::log_facts(&turns);
         let fence = format!("AIQ-QUOTE-{}", uuid::Uuid::new_v4().simple());
         let user =
             rung::envelope_within(&t.tool, &turns, &log, &fence, rung::CHECK_PROMPT_CAP, rung::CHECK_ENVELOPE_CAP);
@@ -2399,7 +2403,7 @@ mod tests {
         let v: Vec<&TaskRow> = tasks.iter().filter(|t| t.session == "sv").collect();
         assert_eq!(v.len(), 1, "one task, not one per copy");
         assert_eq!((v[0].task_id.as_str(), v[0].prompts), ("v1", 2));
-        let (turns, _) = task_turns(&store, &e.homes, v[0]).unwrap();
+        let turns = task_turns(&store, &e.homes, v[0]).unwrap();
         let prompts: Vec<&str> = turns.iter().map(|t| t.prompt.as_str()).collect();
         assert_eq!(prompts, ["refactor the parser", "keep the old API"]);
         let judge = Fake::ok(2);
@@ -2456,6 +2460,55 @@ mod tests {
         assert!(imp.0.contains("agent edited files: yes (3 edits)"));
         assert!(imp.0.contains("checks (tests, build, lint) run by: agent"));
         assert!(imp.0.contains("AIQ-QUOTE-"));
+    }
+
+    /// DC-020: an imported prompt whose stop row is there was read (no actions stored = no tool calls); one with
+    /// no stop row was not recorded, so its facts are unknown and the envelope says so.
+    #[test]
+    fn an_imported_turn_without_a_stop_row_is_not_recorded_and_one_with_an_empty_stop_is_none() {
+        let e = env();
+        let mut store = Store::open(&e.paths.db()).unwrap();
+        let at = NOW - 9 * DAY_MS;
+        let ev = |kind: &str, ts: i64, text: Option<&str>| ImportedEvent {
+            kind: kind.into(),
+            ts_utc_ms: Some(ts),
+            text: text.map(Into::into),
+            actions: None,
+        };
+        let session = ImportedSession {
+            tool: "copilot-cli".into(),
+            source_session_id: "cn".into(),
+            source_mtime_ms: 1,
+            folder: "/repo".into(),
+            started_utc_ms: Some(at),
+            human_turns: 2,
+            non_interactive: None,
+            template_key: None,
+            outcome: "imported".into(),
+            why: String::new(),
+            events: vec![
+                ev("prompt", at, Some("what does the loader do?")),
+                ev("stop", at + MIN, None),
+                ev("prompt", at + 2 * MIN, Some("and the cache?")),
+            ],
+        };
+        store.put_import_session("run3", &session).unwrap();
+        let pack = aiq_core::pack::parse(aiq_core::pack::BUNDLED_TOML).unwrap();
+        let tasks = aiq_home::tasks(&store, &pack, 0).unwrap();
+        let t = tasks.iter().find(|t| t.session == "cn").unwrap();
+        let turns = task_turns(&store, &e.homes, t).unwrap();
+        assert_eq!(turns[0].actions, Some(ActionSummary::default()), "read, no tool calls");
+        assert_eq!(turns[1].actions, None, "no stop row: not recorded");
+        let log = rung::log_facts(&turns);
+        assert_eq!((log.agent_edited, log.checks_by, log.unrecorded), (None, None, 1));
+        let judge = Fake::ok(2);
+        go(&e, &judge, &judge, None);
+        let sent = judge.sent.borrow();
+        let env = &sent.iter().find(|(u, _)| u.contains("what does the loader do?")).unwrap().0;
+        assert!(env.contains("run by: not recorded") && !env.contains("run by: nobody"), "{env}");
+        // A live task whose transcript is gone: every turn not recorded.
+        let live = tasks.iter().find(|t| t.task_id == "b1").unwrap();
+        assert!(task_turns(&store, &e.homes, live).unwrap().iter().all(|t| t.actions.is_none()));
     }
 
     #[test]
@@ -2649,7 +2702,7 @@ mod tests {
         assert!(!current_version(&fs1(r#""nobody""#)));
         let log = |cmd: &str| {
             let a = ActionSummary { commands: vec![cmd.into()], ..Default::default() };
-            rung::log_facts(&[Turn { at_ms: 0, prompt: "x".into(), actions: Some(a) }], true)
+            rung::log_facts(&[Turn { at_ms: 0, prompt: "x".into(), actions: Some(a) }])
         };
         let same = restamp(&fs1(r#""nobody""#), &log("scripts/refresh.sh --all")).expect("same F3: no call");
         assert_eq!(same.fact_set_version, rung::FACT_SET_VERSION);
@@ -2657,6 +2710,22 @@ mod tests {
         assert!(restamp(&fs1(r#""nobody""#), &log("scripts/verify_refresh.py")).is_none(), "now the agent checked");
         assert!(restamp(&fs1(r#""agent""#), &log("cargo test")).is_none(), "already current");
         assert!(restamp(&JudgmentRow { judge_version: "j1".into(), ..fs1(r#""nobody""#) }, &log("ls")).is_none());
+        // Fact set fs3: a stored "no" from turns AIQ did not record is judged again; one from turns all read is
+        // restamped (same envelope).
+        let fs2 = JudgmentRow {
+            fact_set_version: "fs2".into(),
+            facts: r#"{"F1":{"value":false,"source":"log"},"F3":{"value":"nobody","source":"log"}}"#.into(),
+            ..j("ask_research", rung::JUDGE_VERSION)
+        };
+        assert!(!current_version(&fs2));
+        let unrecorded = rung::log_facts(&[Turn { at_ms: 0, prompt: "x".into(), actions: None }]);
+        assert!(restamp(&fs2, &unrecorded).is_none(), "now not recorded: judge again");
+        assert!(restamp(&fs2, &log("ls")).is_some(), "every turn read, same facts: no call");
+        let yes = JudgmentRow {
+            facts: r#"{"F1":{"value":true,"source":"log"},"F3":{"value":"agent","source":"log"}}"#.into(),
+            ..fs2.clone()
+        };
+        assert!(current_version(&yes), "a yes cannot turn unknown");
     }
 
     #[test]

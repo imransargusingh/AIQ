@@ -286,6 +286,25 @@ summary: >-
   eval runs on both providers before a fact-set change ships. Rule: a "trusted" device fact must say what it
   could not see, or be tested against every command in the golden set.
 
+### DC-020 — A device fact read from turns AIQ never recorded, shown as "no"
+- **Signature:** 78 of 541 judgments on Imran's store (2026-11-03) were made with no agent actions in any turn,
+  and the envelope said "agent edited files: no, checks run by: nobody (trust these over the quoted text)". The
+  log path treated a turn with no stop row, or a live prompt with no match in the transcript, the same as a turn
+  the agent spent doing nothing.
+- **Why it survives:** `None` (not recorded) and "read, no tool calls" collapsed into one value; a single
+  `actions_known` flag per task hid per-turn gaps; the golden set always has every turn recorded.
+- **Instances:** 2 imported tasks with no stop rows and 2 live tasks with no matching transcript prompt among
+  the 78 (measured read-only on the laptop, `docs/investigations/no-actions/`). The other 74 really had no tool
+  calls inside their prompts' windows, except 2 prompts below.
+- **Sweep:** the Copilot import reader closes a turn at the first `assistant.turn_end`; 2 prompts lost 248 tool
+  calls that came after it, and 1 prompt's 314 sub-agent calls (and its `subagent.started`) are not counted.
+  Same family (an under-read stated as fact); its own change, not this one.
+- **Control:** fact set fs3: `log_facts` keeps a yes seen in recorded turns and makes every no unknown when a turn
+  is not recorded; the envelope says "not recorded" and how many prompts. Tests
+  `a_turn_not_recorded_makes_a_no_unknown_and_never_none`,
+  `the_envelope_says_not_recorded_never_none_for_turns_aiq_did_not_record`,
+  `an_imported_turn_without_a_stop_row_is_not_recorded_and_one_with_an_empty_stop_is_none`. Rule: a device
+  fact is a no only when every input it covers was read.
 
 ### DC-021 — A reader that ends a turn at an event the tool writes more than once per turn
 - **Signature:** the Copilot import reader closed a prompt's turn at the first main-line `assistant.turn_end`.
