@@ -427,6 +427,7 @@ fn coaching_facts_are_append_only_and_read_back_in_order() {
         similarity: 0.5,
         neighbours: vec!["a".into(), "b".into()],
         utc_ms: 10,
+        method: "words".into(),
     })
     .unwrap();
     for (i, a) in ["not_helpful", "off", "on"].iter().enumerate() {
