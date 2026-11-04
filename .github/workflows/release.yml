@@ -105,6 +105,40 @@ jobs:
           if ($again -notmatch 'Judging is already on') { Write-Error "judging not turned on at install: $again"; exit 1 }
           & (Join-Path $bin 'aiq.exe') uninstall copilot --yes
           if (Test-Path (Join-Path $env:USERPROFILE '.copilot\hooks\aiq.json')) { Write-Error 'Copilot hook left behind'; exit 1 }
+      - name: Smoke test - install.ps1 drops a waiting update of the same version, keeps a newer one
+        shell: pwsh
+        run: |
+          $v = '${{ steps.version.outputs.version }}'
+          $aiq = Join-Path $env:USERPROFILE '.aiq'
+          $un = Join-Path $env:RUNNER_TEMP 'unzipped'
+          $stage = Join-Path $aiq 'update'
+          $stateFile = Join-Path $aiq 'update.json'
+          function Fail([string]$m) { Write-Error $m; Get-Content (Join-Path $aiq 'upgrade-log.txt') -Tail 5; exit 1 }
+          function St { Get-Content -Raw $stateFile | ConvertFrom-Json }
+          # The laptop on 2026-11-04: a check staged this version, then the person installed it with install.cmd.
+          function Wait-Update([string]$tag) {
+            $zip = "aiq-$($tag -replace '^v', '')-windows-x64.zip"
+            New-Item -ItemType Directory -Force $stage | Out-Null
+            Set-Content (Join-Path $stage $zip) 'staged'
+            @{ state = 'waiting'; available = $tag; staged = $zip; blocked = 'AIQ home is open'; installed = '0.0.1'; checked_at = '2026-11-04T00:13:00Z' } | ConvertTo-Json | Set-Content $stateFile
+          }
+          function Install { powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $un 'install.ps1') -NoLaunch -AllowElevated; if ($LASTEXITCODE -ne 0) { Fail "install.ps1 exit $LASTEXITCODE" } }
+
+          Wait-Update "v$v"
+          Install
+          $s = St
+          if ($s.state -ne 'current' -or $s.available -or $s.staged -or $s.blocked -or $s.installed -ne $v) { Fail "same version still waiting: $($s | ConvertTo-Json -Compress)" }
+          if ($s.checked_at -ne '2026-11-04T00:13:00Z') { Fail 'other update.json fields were not kept' }
+          if (Test-Path $stage) { Fail 'the staged zip was left in .aiq\update' }
+          if (-not (Select-String -Quiet -Path (Join-Path $aiq 'upgrade-log.txt') -Pattern 'AIQ-INSTALL-CLEARED-WAITING')) { Fail 'no log line for the dropped update' }
+
+          Wait-Update 'v99.0.0'
+          Install
+          $s = St
+          if ($s.state -ne 'waiting' -or $s.available -ne 'v99.0.0' -or -not (Test-Path (Join-Path $stage 'aiq-99.0.0-windows-x64.zip'))) { Fail "a newer waiting update was dropped: $($s | ConvertTo-Json -Compress)" }
+
+          # The steps below start from no update state.
+          Remove-Item -Recurse -Force $stage, $stateFile
       - name: Smoke test - upgrade refuses a tampered zip, upgrades from a good one, rolls back
         shell: pwsh
         run: |
