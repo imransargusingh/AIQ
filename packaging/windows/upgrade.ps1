@@ -55,9 +55,28 @@ function Log([string]$m) {
 }
 function Now-Utc { (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ') }
 function Stop-Aiq {
-    Get-Process -Name 'aiq', 'aiq-home' -ErrorAction SilentlyContinue |
-        Where-Object { $_.Path -and $_.Path.StartsWith($bin, [StringComparison]::OrdinalIgnoreCase) } |
-        Stop-Process -Force -ErrorAction SilentlyContinue
+    $p = @(Get-Process -Name 'aiq', 'aiq-home' -ErrorAction SilentlyContinue |
+        Where-Object { $_.Path -and $_.Path.StartsWith($bin, [StringComparison]::OrdinalIgnoreCase) })
+    # Any aiq.exe counts as the core: -Apply runs only when no other aiq.exe is (Busy-Reason), and a hook that
+    # happens to be stopped during -Rollback only means the core is started once more than needed (it exits).
+    if ($p | Where-Object { $_.Name -eq 'aiq' }) { $script:coreWasRunning = $true }
+    $p | Stop-Process -Force -ErrorAction SilentlyContinue
+    # Wait for them to end, so their exes are free to replace.
+    $p | Wait-Process -Timeout 10 -ErrorAction SilentlyContinue
+}
+# Start the core again after Stop-Aiq stopped one. Without it AIQ stayed down until the next hook started it (laptop,
+# 2026-11-04: Home's Install now swapped at 04:17:03Z, core back at 04:22:53Z; Home said "AIQ isn't running").
+# A second core exits at once (CORE_ALREADY_RUNNING), so this is safe when one is already up.
+$script:coreWasRunning = $false
+function Start-Core {
+    $exe = Join-Path $bin 'aiq.exe'
+    if (-not $script:coreWasRunning -or -not (Test-Path $exe)) { return }
+    try {
+        Start-Process -WindowStyle Hidden -FilePath $exe -ArgumentList 'core'
+        Log 'AIQ-UPDATE-CORE: started the AIQ core again.'
+    } catch {
+        Log "AIQ-UPDATE-CORE: could not start the AIQ core ($($_.Exception.Message)); the next hook starts it."
+    }
 }
 function Installed-Version {
     try { ((& (Join-Path $bin 'aiq.exe') version) -replace '^aiq\s+', '').Trim() } catch { 'unknown' }
@@ -236,6 +255,7 @@ if ($Rollback) {
     # Auto-update must not put back the version the person just left; a newer release still installs.
     Write-State @{ state = 'rolled_back'; from = $from; installed = $to; skip = $leaving; installed_tag = $null; at = (Now-Utc); blocked = $null; message = $null }
     Log "Rolled back to AIQ $to. AIQ won't install $from again by itself. Run -Rollback again to return to it."
+    Start-Core
     if ($Relaunch) { Start-Process -FilePath (Join-Path $bin 'aiq-home.exe') }
     exit 0
 }
@@ -262,7 +282,7 @@ if ($Check -or $Apply) {
         if (-not $newV -or ($haveV -and $newV -le $haveV)) {
             Remove-Item -Recurse -Force $stage -ErrorAction SilentlyContinue
             $keep = if ($st.state -in 'applied', 'rolled_back', 'failed') { $st.state } else { 'current' }
-            Write-State @{ checked_at = (Now-Utc); installed = $have; latest = $rel.tag; state = $keep; check_error = $null; retry_at = $null; available = $null }
+            Write-State @{ checked_at = (Now-Utc); installed = $have; latest = $rel.tag; state = $keep; check_error = $null; retry_at = $null; available = $null; staged = $null; blocked = $null }
             Log "AIQ $have is up to date (newest release $($rel.tag))."
         } elseif ($rel.tag -eq $st.skip) {
             Write-State @{ checked_at = (Now-Utc); installed = $have; latest = $rel.tag; check_error = $null; retry_at = $null }
@@ -297,6 +317,19 @@ if ($Check -or $Apply) {
         if ($st.state -ne 'waiting' -or -not $zipPath -or -not (Test-Path $zipPath)) {
             if ($Relaunch) { Start-Process -FilePath (Join-Path $bin 'aiq-home.exe') }
             exit $code
+        }
+        # AIQ-UPDATE-NOT-NEWER: a staged release that is not newer than what is installed (the person installed it
+        # another way after the check) is dropped, never swapped in: a same-for-same swap stops AIQ for nothing
+        # and overwrites the .old copies, so "Go back" is lost (laptop, 2026-11-04 04:17:03Z).
+        $have = Installed-Version
+        $stagedV = Ver "$($st.available)"
+        $haveV = Ver $have
+        if ($stagedV -and $haveV -and $stagedV -le $haveV) {
+            Remove-Item -Recurse -Force $stage -ErrorAction SilentlyContinue
+            Write-State @{ state = 'current'; installed = $have; available = $null; staged = $null; blocked = $null }
+            Log "AIQ-UPDATE-NOT-NEWER: the waiting $($st.available) is not newer than AIQ $have. Dropped it; nothing changed."
+            if ($Relaunch) { Start-Process -FilePath (Join-Path $bin 'aiq-home.exe') }
+            exit 0
         }
         if ($WaitPid) { Wait-Process -Id $WaitPid -Timeout 20 -ErrorAction SilentlyContinue }
         $busy = Busy-Reason
@@ -345,6 +378,8 @@ if ($Check -or $Apply) {
         } finally {
             Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue
         }
+        # Stop-Aiq stopped the core on both paths (updated, or put back after a failed swap).
+        Start-Core
         if ($Relaunch) { Start-Process -FilePath (Join-Path $bin 'aiq-home.exe') }
     }
     exit $code

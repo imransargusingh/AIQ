@@ -392,3 +392,23 @@ summary: >-
 - **Control (tests):** release.yml step "install.ps1 drops a waiting update of the same version, keeps a newer
   one" on the Windows runner.
 - **Rule:** every path that changes the installed version reconciles the state the other paths keep about it.
+- **Recurrence (2026-11-04 04:17:03Z, laptop):** before #120 shipped, Home still offered the stale 0.1.2 and
+  Imran's **Install now** ran `upgrade.ps1 -Apply` on it: a same-for-same swap that overwrote the `.old` copies
+  (the way back to 0.1.1 was lost). A second path, same class: `-Apply` trusted `state waiting` without checking
+  the installed version. **Control:** `-Apply` drops a staged release that is not newer than the installed one
+  (`AIQ-UPDATE-NOT-NEWER`) before anything is stopped; `-Check`'s up-to-date branch also clears `staged` and
+  `blocked`. Test: release.yml auto-update step, "a waiting release that is not newer is dropped" (the `.old`
+  copy's hash must not change).
+
+### DC-025 — A process stopped to replace its exe and never started again
+- **Signature:** 2026-11-04 04:17:03Z, laptop: `upgrade.ps1 -Apply` (Home's Install now) stopped `aiq.exe` and
+  `aiq-home.exe`, swapped, and relaunched only Home (`-Relaunch`). home.log showed `core=false` until a hook
+  started the core at 04:22:53Z; Home said "AIQ isn't running" for almost six minutes.
+- **Why it survives:** the CI smoke test checked the exes and update.json after the swap, never what was
+  running. A hook restarts the core sooner or later, so it looks like a delay, not a fault.
+- **Control (product):** `Stop-Aiq` records whether an `aiq.exe` was running; `-Apply` (success and put-back
+  paths) and `-Rollback` start `aiq core` hidden again when one was (`AIQ-UPDATE-CORE`). A second core exits at
+  once (`CORE_ALREADY_RUNNING`). `Stop-Aiq` now waits for the processes to end before the swap.
+- **Control (tests):** release.yml auto-update step starts a core before the idle apply and fails unless an
+  `aiq.exe core` from the bin folder is running afterwards.
+- **Rule:** whatever an update stops, it starts again, and the test asserts the running set, not only the files.
