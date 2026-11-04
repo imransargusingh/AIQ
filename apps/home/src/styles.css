@@ -287,17 +287,27 @@ li+li>.kindrow{border-top:1px solid var(--hairline)}
 .how[open]{display:flex;flex-direction:column;gap:var(--s2)}
 /* Day view (design day-view): lanes of sessions, tasks as blocks by time, rung by colour and named in text. */
 .dv{background:var(--surface);border:1px solid var(--hairline);border-radius:var(--r-md);padding:var(--s4) var(--s5);display:flex;flex-direction:column;gap:var(--s1);overflow-x:auto}
-.dv-lane{display:grid;grid-template-columns:minmax(180px,240px) minmax(480px,1fr);gap:var(--s4);align-items:center;min-height:30px}
+.dv-lane{display:grid;grid-template-columns:minmax(200px,300px) minmax(440px,1fr);gap:var(--s4);align-items:center;min-height:30px}
 .dv-name{position:relative;display:flex;flex-direction:column;min-width:0;padding:var(--s1) var(--s3);border-radius:var(--r-sm);cursor:default}
 .dv-name:hover,.dv-name:focus{background:var(--canvas-soft)}
 .dv-name:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}
 .dv-t{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.dv-track{position:relative;height:22px;background:linear-gradient(90deg,var(--hairline) 1px,transparent 1px) 0 0/calc(100% / var(--dv-hours,12)) 100% repeat-x}
-.dv-task{all:unset;box-sizing:border-box;position:absolute;top:3px;height:16px;border-radius:var(--r-sm);border:1px solid var(--surface);cursor:pointer}
+.dv-track{position:relative;height:24px}
+.dv-task{all:unset;box-sizing:border-box;position:absolute;top:1px;height:22px;display:grid;place-items:center;border-radius:var(--r-sm);border:1px solid var(--surface);cursor:pointer}
 .dv-task:hover{filter:brightness(.92)}
 .dv-task:focus-visible{outline:2px solid var(--focus-ring);outline-offset:1px;z-index:3}
 .dv-tick{position:absolute;bottom:0;width:1px;height:5px;background:var(--ink);opacity:.55}
 .dv-r1{background:var(--rung-1)} .dv-r2{background:var(--rung-2)} .dv-r3{background:var(--rung-3)} .dv-r4{background:var(--rung-4)} .dv-r5{background:var(--rung-5)}
+/* The rung number on a block (item 5a), in whichever ink reads on that rung's colour in each theme. */
+.dv-n{font:600 12px/1 var(--f-text);font-variant-numeric:tabular-nums;color:#000;pointer-events:none}
+.dv-task.dv-r4 .dv-n,.dv-task.dv-r5 .dv-n{color:#fff}
+[data-theme="dark"] .dv-task.dv-r1 .dv-n,[data-theme="dark"] .dv-task.dv-r2 .dv-n{color:#fff}
+[data-theme="dark"] .dv-task.dv-r4 .dv-n,[data-theme="dark"] .dv-task.dv-r5 .dv-n{color:#000}
+@media (prefers-color-scheme:dark){:root:not([data-theme]) .dv-task.dv-r1 .dv-n,:root:not([data-theme]) .dv-task.dv-r2 .dv-n{color:#fff}
+  :root:not([data-theme]) .dv-task.dv-r4 .dv-n,:root:not([data-theme]) .dv-task.dv-r5 .dv-n{color:#000}}
+[data-theme="contrast"] .dv-n{color:var(--ink)}
+.dv-break{position:absolute;top:-4px;bottom:-4px;border-left:2px dotted var(--hairline);transform:translateX(-50%)}
+.daysum{display:block;margin:0}
 .dv-none{background:repeating-linear-gradient(135deg,var(--canvas-soft) 0 3px,var(--hairline) 3px 5px)}
 .key i.dv-none,.key i[class^="dv-r"]{border:1px solid var(--hairline)}
 .dv .tip{display:none;position:absolute;top:calc(100% + var(--s2));left:0;z-index:4;white-space:nowrap;background:var(--surface);color:var(--ink);border:1px solid var(--hairline);
@@ -307,7 +317,7 @@ li+li>.kindrow{border-top:1px solid var(--hairline)}
 .dv-axis .dv-track{background:none;height:16px}
 .dv-axis .dv-track span{position:absolute;transform:translateX(-50%);font:var(--t-caption);color:var(--ink-mute);white-space:nowrap}
 [data-theme="contrast"] .dv-task{border-color:var(--ink)}
-@media (forced-colors:active){.dv-task{forced-color-adjust:none;border:1px solid CanvasText}.dv-tick{background:CanvasText}}
+@media (forced-colors:active){.dv-task{forced-color-adjust:none;border:1px solid CanvasText}.dv-tick{background:CanvasText}.dv-n{color:CanvasText!important}.dv-break{border-color:CanvasText}}
 
 /* Right now card on Home (design live-rung-trend C): the open task's estimate after each turn. */
 .rn .head{display:flex;justify-content:space-between;align-items:baseline;gap:var(--s3);flex-wrap:wrap}
@@ -389,3 +399,42 @@ li+li>.kindrow{border-top:1px solid var(--hairline)}
 [data-theme="contrast"] .rmix span,[data-theme="contrast"] .mix-col span,[data-theme="contrast"] .mix-r i{outline:1px solid var(--ink);outline-offset:-1px}
 @media (forced-colors:active){.rmix span,.mix-col span,.mix-r i{forced-color-adjust:none;outline:1px solid CanvasText;outline-offset:-1px}}
 @media (max-width:760px){.mix-wrap{grid-template-columns:minmax(0,1fr)}.lad-cols,.lad-row{grid-template-columns:minmax(110px,1fr) repeat(5,48px) 52px}.lad-cols span{font-size:10px;overflow:hidden;text-overflow:ellipsis}.step-row{grid-template-columns:minmax(0,1fr) auto}.step-row .h{grid-column:1/-1;grid-row:2}}
+
+/* Habits grouped by state (UI review item 6): one line per habit, a bar for seen in n of m. */
+.habits{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:var(--s2)}
+.hb{display:grid;grid-template-columns:minmax(0,1fr) minmax(120px,220px) 150px;gap:var(--s4);align-items:center;padding:var(--s3) var(--s4);
+  background:var(--surface);border:1px solid var(--hairline);border-radius:var(--r-md)}
+.hb .hb-none{grid-column:2/-1}
+@media (max-width:720px){.hb{grid-template-columns:minmax(0,1fr)}.hb .hb-none{grid-column:auto}}
+
+/* Kind page "Moving up?" (UI review item 9): rung of each judged task over the window. */
+.km{margin:var(--s3) 0 0;display:grid;grid-template-columns:auto minmax(0,1fr);grid-template-rows:120px auto;column-gap:var(--s4);row-gap:var(--s2)}
+.km-y{position:relative;min-width:110px;font:var(--t-caption);color:var(--ink-mute);text-align:right}
+.km-y span{position:absolute;right:0;transform:translateY(-50%);white-space:nowrap}
+.km-plot{position:relative;margin:0 var(--s2)}
+.km-plot svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.km-plot polyline{fill:none;stroke:var(--ink);stroke-width:2;vector-effect:non-scaling-stroke;stroke-linejoin:round}
+.km-grid{position:absolute;left:0;right:0;border-top:1px solid var(--hairline)}
+.km-could{position:absolute;left:0;right:0;border-top:1.5px dashed var(--primary)}
+.km-split{position:absolute;top:-6px;bottom:-6px;border-left:1px dashed var(--ink-mute)}
+.km-dot{position:absolute;width:10px;height:10px;transform:translate(-50%,-50%);border-radius:var(--r-pill);background:var(--primary);box-shadow:0 0 0 2px var(--surface)}
+.km-dot.unsure{background:var(--surface);border:2px solid var(--ink-mute);box-shadow:none}
+.km-x{grid-column:2;position:relative;height:18px;margin:0 var(--s2)}
+.km-x span{position:absolute;white-space:nowrap}
+@media (forced-colors:active){.km-dot{forced-color-adjust:none;background:Highlight}.km-dot.unsure{background:Canvas;border-color:CanvasText}.km-plot polyline{stroke:CanvasText}.km-could{border-color:LinkText}}
+
+/* Getting started (UI review item 7): a list that ticks itself until Home has its first numbers. */
+.cklist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:var(--s4)}
+.ck{display:flex;gap:var(--s4);align-items:flex-start}
+.ck .mark{width:22px;height:22px;flex:none;border-radius:50%;border:1.5px solid var(--ink-mute);display:grid;place-items:center;font-weight:700;font-size:12px}
+.ck .mark.on{background:var(--primary);border-color:var(--primary);color:var(--on-primary)}
+@media (forced-colors:active){.ck .mark.on{forced-color-adjust:none;background:Highlight;color:HighlightText;border-color:Highlight}}
+
+/* Settings section index and folded groups (UI review 2026-11-04, item 8). */
+.secnav{position:sticky;top:0;z-index:2;display:flex;flex-wrap:wrap;gap:var(--s1) var(--s5);padding:var(--s2) 0;margin:calc(-1 * var(--s4)) 0;background:var(--canvas);border-bottom:1px solid var(--hairline)}
+.card h2[tabindex]:focus{outline:none}
+.card h2[tabindex]:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}
+.fold{border-top:1px solid var(--hairline);padding-top:var(--s3)}
+.fold > summary{cursor:pointer;width:max-content;max-width:100%}
+.fold[open] > summary{margin-bottom:var(--s3)}
+main:has(.secnav){scroll-padding-top:56px}

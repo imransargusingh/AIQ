@@ -1,9 +1,10 @@
-// Day view on the Tasks page (design day-view): one row per tool session for one day, each task a block
-// coloured by its judged rung, prompts as ticks. Hover or focus a row or block for details; Enter or a click
-// on a block opens the task. Rung is also named in text (tooltip and row summary), never colour alone.
+// Day view on the Tasks page (design day-view; UI review 2026-11-04, item 5a): one row per tool session for one
+// day, named by its kinds of task, each task a block with its rung number, coloured by rung, prompts as ticks.
+// Quiet gaps over 30 minutes shrink to a break, and one line sums the day. Hover or focus a row or block for
+// details; Enter or a click on a block opens the task. Rung is in text and number, never colour alone.
 import { useMemo, useState } from "react";
 import { clock, day, jobOf, plural, rungLabel, stateLabel, toolName } from "../format";
-import { hours, lanes, minuteOf, taskDays, type Lane } from "../day";
+import { GAP_MIN, daySummary, lanes, taskDays, timeline, type Lane } from "../day";
 import { projectName, projectOf } from "../project";
 import type { Ctx } from "../ui";
 import type { TaskRow } from "../types";
@@ -68,22 +69,20 @@ export function DayView(ctx: Ctx) {
   const key = picked !== null && days.includes(picked) ? picked : days[0];
   const ls = useMemo(() => (key === undefined ? [] : lanes(snap.tasks, key, off)), [snap.tasks, key, off]);
   if (key === undefined) return null;
-  const [h0, h1] = hours(ls, key, off);
-  const pct = (ms: number) => ((minuteOf(ms, key, off) - h0 * 60) / ((h1 - h0) * 60)) * 100;
-  const step = h1 - h0 > 8 ? 2 : 1;
-  const ticks: number[] = [];
-  for (let h = h0; h <= h1; h += step) ticks.push(h);
+  const all = ls.flatMap((l) => l.tasks);
+  const { stretches, pos: pct } = timeline(all);
   const i = days.indexOf(key);
-  const tasks = ls.reduce((n, l) => n + l.tasks.length, 0);
+  const sum = daySummary(all);
+  const tips = snap.tips.filter((t) => Math.floor((t.delivered_ms + off * 60_000) / 86_400_000) === key).length;
+  const hm = sum.minutes >= 60 ? `${Math.floor(sum.minutes / 60)} h ${sum.minutes % 60} min` : `${sum.minutes} min`;
+  // An axis label per stretch, skipped when it would sit on the one before.
+  const labels = stretches.filter((s, n) => n === 0 || s.from - stretches[n - 1].from >= 7);
 
   return (
     <section className="group" aria-labelledby="dayhd">
       <div className="head">
         <h2 id="dayhd">{day(key * 86_400_000, 0)}</h2>
         <div className="row">
-          <span className="meta">
-            {plural(ls.length, "session")} · {plural(tasks, "task")}
-          </span>
           <button className="btn" disabled={i >= days.length - 1} onClick={() => setPicked(days[i + 1])} aria-label="Earlier day">
             ‹ Earlier
           </button>
@@ -92,6 +91,17 @@ export function DayView(ctx: Ctx) {
           </button>
         </div>
       </div>
+      <p className="card daysum" data-testid="day-summary">
+        {plural(sum.tasks, "task")}
+        {sum.kinds > 0 && <> · {plural(sum.kinds, "kind")} of task</>}
+        {sum.usual !== null && (
+          <>
+            {" "}· mostly <b>{rungLabel(sum.usual)}</b>
+          </>
+        )}
+        {sum.not_judged > 0 && <> · {sum.not_judged} not judged yet</>} · {hm} inside tasks · {plural(ls.length, "session")}
+        {tips > 0 && <> · {plural(tips, "tip")} shown</>}
+      </p>
       <div className="key" aria-hidden="true">
         {[1, 2, 3, 4, 5].map((r) => (
           <span key={r}>
@@ -104,21 +114,25 @@ export function DayView(ctx: Ctx) {
           Not judged yet
         </span>
       </div>
-      <div className="dv" role="list" aria-label={`Sessions on ${day(key * 86_400_000, 0)}`} style={{ ["--dv-hours" as string]: h1 - h0 }}>
+      <div className="dv" role="list" aria-label={`Sessions on ${day(key * 86_400_000, 0)}`} >
         {ls.map((l) => {
           const name = projectName(snap, projectOf(l.tasks[0]));
+          const title = l.kinds.length ? l.kinds.join(", ") : l.not_judged ? "Not judged yet" : "No kind yet";
           return (
             <div className="dv-lane" role="listitem" key={l.key}>
               <div className="dv-name" tabIndex={0} aria-label={`${toolName(l.tool)} session in ${name}, ${span(l.first_ms, l.last_ms, off)}, ${plural(l.tasks.length, "task")}`}>
                 <span className="dv-t">
-                  {toolName(l.tool)} · {name}
+                  <b>{title}</b>
                 </span>
-                <span className="meta num">
-                  {span(l.first_ms, l.last_ms, off)} · {plural(l.prompts, "prompt")}
+                <span className="meta num dv-t">
+                  {span(l.first_ms, l.last_ms, off)} · {toolName(l.tool)} · {name} · {plural(l.prompts, "prompt")}
                 </span>
                 <LaneTip l={l} name={name} off={off} />
               </div>
               <div className="dv-track">
+                {stretches.slice(1).map((st) => (
+                  <i key={st.a} className="dv-break" style={{ left: `${st.from}%` }} />
+                ))}
                 {l.tasks.map((t) => {
                   const a = pct(t.first_ms);
                   const w = Math.max(pct(t.last_ms) - a, 0);
@@ -127,10 +141,11 @@ export function DayView(ctx: Ctx) {
                     <button
                       key={t.task_id}
                       className={`dv-task ${r ? `dv-r${r}` : "dv-none"}`}
-                      style={{ left: `${a}%`, width: `max(8px, ${w}%)` }}
+                      style={{ left: `min(${a}%, calc(100% - 24px))`, width: `max(24px, ${w}%)` }}
                       aria-label={`${t.judgment?.task_type_label ?? jobOf(t)}, ${span(t.first_ms, t.last_ms, off)}, ${plural(t.prompts, "prompt")}, ${t.judgment ? rungLabel(t.judgment.current) : "not judged yet"}. Open task`}
                       onClick={() => ctx.openTask(t.task_id)}
                     >
+                      <span className="dv-n" aria-hidden="true">{r ?? "–"}</span>
                       {t.prompt_ms.map((p, k) => (
                         <i key={k} className="dv-tick" style={{ left: w > 0 ? `${((pct(p) - a) / w) * 100}%` : "50%" }} />
                       ))}
@@ -145,15 +160,18 @@ export function DayView(ctx: Ctx) {
         <div className="dv-lane dv-axis" aria-hidden="true">
           <span />
           <div className="dv-track">
-            {ticks.map((h) => (
-              <span key={h} style={{ left: `${((h - h0) / (h1 - h0)) * 100}%` }}>
-                {String(h % 24).padStart(2, "0")}:00
+            {labels.map((st) => (
+              <span key={st.a} style={{ left: `${st.from}%` }}>
+                {clock(st.a, off)}
               </span>
             ))}
           </div>
         </div>
       </div>
-      <p className="meta">One row per session. Hover or focus a row or block for details; select a block to open its task.</p>
+      <p className="meta">
+        One row per session, named by its kinds of task. Each block shows its rung number. Quiet gaps over {GAP_MIN} minutes shrink to a dotted break. Hover or focus a row or
+        block for details; select a block to open its task.
+      </p>
     </section>
   );
 }

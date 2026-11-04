@@ -1288,6 +1288,18 @@ impl Store {
         rows.collect::<rusqlite::Result<Vec<_>>>().map_err(err(codes::STORE_OPEN))
     }
 
+    /// When `key` last changed (its newest `setting_change` row), or None if it was never set.
+    pub fn setting_since(&self, key: &str) -> Result<Option<i64>> {
+        self.conn
+            .query_row(
+                "SELECT utc_ms FROM setting_change WHERE key = ?1 ORDER BY utc_ms DESC, rowid DESC LIMIT 1",
+                [key],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(err(codes::STORE_OPEN))
+    }
+
     pub fn set_setting(&self, key: &str, value: &str, now_ms: i64) -> Result<()> {
         self.conn
             .execute("INSERT INTO setting_change (key, value, utc_ms) VALUES (?1, ?2, ?3)", params![key, value, now_ms])

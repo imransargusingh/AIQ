@@ -249,6 +249,10 @@ export interface TipRow {
   why: string;
   try_this: string;
   opened: boolean;
+  /** The pack's tip id: `next_rung.<move>` for a next-step tip; "" when the card couldn't be read. */
+  tip_id: string;
+  /** A next-step tip's habit in the first judged tasks after it where it fits; null for tips with no habit. */
+  after: { seen: number; checked: number } | null;
 }
 
 export interface Data {
@@ -283,6 +287,8 @@ export interface Settings {
   live_trend: boolean;
   judge: "auto" | "off";
   judge_daily_tasks: number;
+  /** When judging was last switched on or off; null when it was never switched. */
+  judge_since_ms: number | null;
   /** Read Copilot's own history file for messages sent while the agent works. */
   copilot_mid_turn: "on" | "off";
   /** At each turn's end, count what the agent did (tool calls, commands, files, sub-agents). */

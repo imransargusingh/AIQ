@@ -162,6 +162,73 @@ impl Seed {
         card_id
     }
 
+    /// A next-step tip for pack move `move_id` (tip id `next_rung.<move>`), delivered at `at`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn next_tip(
+        &mut self,
+        surface: &str,
+        session: &str,
+        at: i64,
+        evidence: Vec<String>,
+        move_id: &str,
+        try_this: &str,
+        opened: bool,
+    ) -> String {
+        let signal_id = self.id();
+        let card_id = self.id();
+        let decision_id = self.id();
+        self.store
+            .insert_signal(
+                &NewSignal {
+                    signal_id: &signal_id,
+                    task_id: &evidence[0],
+                    surface,
+                    session,
+                    detector_id: "next_rung",
+                    detector_version: 1,
+                    pack_version: "bundled-4",
+                    opportunity_id: "next_rung",
+                    reprompt_count: 0,
+                    score: 1.0,
+                    evidence: &evidence,
+                },
+                at,
+            )
+            .unwrap();
+        let card = serde_json::json!({
+            "schema": "aiq.card.v1", "card_id": card_id, "opportunity_id": "next_rung", "tip_id": format!("next_rung.{move_id}"),
+            "noticed": "This looks like a kind of task you repeat.",
+            "why": "One step would let the agent take more of it.",
+            "try_this": try_this,
+            "evidence_ref": format!("aiq show {card_id}"), "pack_version": "bundled-4"
+        })
+        .to_string();
+        self.store
+            .insert_decision(
+                &NewDecision {
+                    decision_id: &decision_id,
+                    card_id: &card_id,
+                    signal_id: &signal_id,
+                    surface,
+                    session,
+                    outcome: "show_ready",
+                    reason_code: "ok",
+                    rule_id: "in_moment.v1",
+                    pack_version: "bundled-4",
+                    card_json: &card,
+                },
+                at,
+            )
+            .unwrap();
+        self.store
+            .insert_delivery(&card_id, surface, session, aiq_domain::clock::Now { utc_ms: at, offset_min: 0 })
+            .unwrap();
+        if opened {
+            self.store.insert_open(&card_id, "cli", at + MIN).unwrap();
+        }
+        card_id
+    }
+
     /// A current judgment (schema v5) for `task_id`, and its two judge calls at `at`.
     #[allow(clippy::too_many_arguments)]
     pub fn judgment(
@@ -455,6 +522,27 @@ pub fn coaching(paths: &Paths) {
             utc_ms: NOW - DAY,
         })
         .unwrap();
+    // Next-step tips (UI review item 6): one before the newest code tasks, whose checks the person then ran (3
+    // of 3), and one before the specs, whose whole-draft habit didn't follow (0 of 3).
+    let ev = vec!["k0".to_string()];
+    s.next_tip(
+        "copilot-cli",
+        "k0",
+        NOW - 7 * 31 * 60 * MIN,
+        ev.clone(),
+        "check_code",
+        "Check the diff or run the tests before using the result.",
+        true,
+    );
+    s.next_tip(
+        "copilot-cli",
+        "k7",
+        NOW - 12 * 31 * 60 * MIN,
+        ev,
+        "hand_over_doc",
+        "Ask for the whole draft with what done means.",
+        false,
+    );
 }
 
 /// Rung progress (the success measure): kinds of task judged in the last 14 days and the 14 before.

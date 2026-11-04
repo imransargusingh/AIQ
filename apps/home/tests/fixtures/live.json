@@ -711,7 +711,37 @@
       "noticed": "You reworded the same request 3 times in this task.",
       "why": "Rewording often means the agent is missing context, not words.",
       "try_this": "Say what is wrong with the last answer and add the one fact it lacked.",
-      "opened": false
+      "opened": false,
+      "tip_id": "reprompt.restate",
+      "after": null
+    },
+    {
+      "card_id": "019000000034-0000-7000-8000-000000000000",
+      "tool": "copilot-cli",
+      "delivered_ms": 1792753200000,
+      "noticed": "This looks like a kind of task you repeat.",
+      "why": "One step would let the agent take more of it.",
+      "try_this": "Check the diff or run the tests before using the result.",
+      "opened": true,
+      "tip_id": "next_rung.check_code",
+      "after": {
+        "seen": 3,
+        "checked": 3
+      }
+    },
+    {
+      "card_id": "019000000037-0000-7000-8000-000000000000",
+      "tool": "copilot-cli",
+      "delivered_ms": 1792195200000,
+      "noticed": "This looks like a kind of task you repeat.",
+      "why": "One step would let the agent take more of it.",
+      "try_this": "Ask for the whole draft with what done means.",
+      "opened": false,
+      "tip_id": "next_rung.hand_over_doc",
+      "after": {
+        "seen": 0,
+        "checked": 3
+      }
     }
   ],
   "data": {
@@ -1063,6 +1093,7 @@
     "live_trend": true,
     "judge": "off",
     "judge_daily_tasks": 50,
+    "judge_since_ms": null,
     "copilot_mid_turn": "on",
     "agent_actions": "on",
     "next_rung_tips": "auto",

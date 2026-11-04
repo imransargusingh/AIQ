@@ -164,10 +164,41 @@ await test("every rung name says what it means on hover: Home ladder, Tasks colu
 });
 
 await test("Home answers the headline without scrolling at 1280x800", async () => {
-  const page = await open("full");
+  const page = await open("coaching");
   const box = await page.locator("#kr").boundingBox();
   assert.ok(box && box.y + box.height < 800, `headline at ${box?.y}`);
+  assert.equal(await page.locator("#gs").count(), 0, "no getting-started card once the numbers show");
   await page.context().close();
+  // Before the first numbers, the getting-started card is the answer to "is it working?".
+  const early = await open("full");
+  const gs = await early.locator("#gs").boundingBox();
+  assert.ok(gs && gs.y + gs.height < 800, `getting started at ${gs?.y}`);
+  await early.context().close();
+});
+
+await test("Getting started ticks itself from the snapshot (item 7)", async () => {
+  const page = await open("empty");
+  assert.equal(await page.locator("main h1").innerText(), "AIQ is getting to know your work");
+  const items = await page.locator("ul.cklist li").allInnerTexts();
+  assert.equal(items.length, 5, items.join("|"));
+  assert.match(items[0], /Claude Code connected[\s\S]*GitHub Copilot is on this computer but not connected\. Connect/);
+  assert.match(items[1], /No prompt captured yet/);
+  assert.match(items[2], /Judging is off[\s\S]*Turn on in Settings/);
+  assert.match(items[3], /No task judged yet/);
+  assert.match(items[4], /Your first numbers[\s\S]*0 of 10 judged tasks/);
+  assert.equal(await page.locator("ul.cklist .mark.on").count(), 1);
+  assert.deepEqual(await page.locator("ul.cklist .sr").allInnerTexts(), ["Done: ", "Not yet: ", "Not yet: ", "Not yet: ", "Not yet: "].map((x) => x.trim()));
+  assert.deepEqual(await axe(page), []);
+  if (shots) await page.screenshot({ path: join(shots, "home-getting-started.png") });
+  await page.getByRole("button", { name: "Turn on in Settings" }).click();
+  await page.waitForFunction(() => location.hash === "#settings");
+  await page.context().close();
+  const full = await open("full");
+  const card = full.locator("section[aria-labelledby=gs]");
+  assert.match(await card.innerText(), /Getting started\s+3 of 5 done[\s\S]*Prompts captured[\s\S]*11 prompts and 7 tasks so far in Copilot CLI, Claude Code, VS Code[\s\S]*3 tasks judged[\s\S]*4 tasks waiting\.[\s\S]*2 of 10 judged tasks/);
+  assert.deepEqual(await axe(full), []);
+  assert.deepEqual(full.errors, []);
+  await full.context().close();
 });
 
 await test("screen readers hear clean names: nav, rung rows, skip link", async () => {
@@ -259,16 +290,16 @@ await test("keyboard: single-key shortcuts can be turned off", async () => {
 
 await test("Tasks: sort, J/K, imported and not-judged labels; prompt markup is text", async () => {
   const page = await open("full", { hash: "#tasks" });
-  assert.equal(await page.locator("tbody tr").count(), 7);
+  assert.equal(await page.locator("table[aria-label=Tasks] tbody tr").count(), 7);
   const prompts = page.getByRole("button", { name: /^Prompts/ });
   await prompts.click();
   assert.equal(await page.locator("th").nth(2).getAttribute("aria-sort"), "descending");
-  assert.equal((await page.locator("tbody tr").first().locator("td").nth(2).textContent()).trim(), "3");
-  await page.locator("tbody tr").first().focus();
+  assert.equal((await page.locator("table[aria-label=Tasks] tbody tr").first().locator("td").nth(2).textContent()).trim(), "3");
+  await page.locator("table[aria-label=Tasks] tbody tr").first().focus();
   await page.keyboard.press("j");
   assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-selected")), "true");
   assert.equal(await page.locator("tbody tr[aria-selected=true]").count(), 1);
-  const t = await page.locator("tbody").innerText();
+  const t = await page.locator("table[aria-label=Tasks] tbody").innerText();
   assert.ok(t.includes("Imported"));
   assert.ok(t.includes("Not judged yet") && t.includes("Not classified yet"));
   assert.ok(t.includes("Uncertain"), "an Uncertain judgment says so");
@@ -327,6 +358,10 @@ await test("Settings change through the core; tips a day", async () => {
   assert.equal(await page.getByRole("button", { name: "3", exact: true }).getAttribute("aria-pressed"), "true");
   await page.getByRole("button", { name: "5", exact: true }).click();
   await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Tips a day set to 5.");
+  // Where tips show and how long they stay is folded under one line that says how it's set (item 8).
+  const fold = page.locator("details.fold > summary");
+  assert.equal((await fold.innerText()).replace(/\s+/g, " "), "Where tips show and how long they stay · 3 of 3 on · until your next prompt");
+  await fold.click();
   await page.getByLabel("Until you open it").check();
   await page.getByRole("group", { name: /Tasks judged a day/ }).getByRole("button", { name: "100", exact: true }).click();
   await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Tasks judged a day set to 100.");
@@ -357,6 +392,52 @@ await test("Settings change through the core; tips a day", async () => {
   await page.context().close();
 });
 
+await test("Settings: a section index, Sharing and Keyboard folded in, judging off says since when (item 8)", async () => {
+  const page = await open("full", { hash: "#settings" });
+  const nav = page.getByRole("navigation", { name: "Settings sections" });
+  assert.deepEqual(await nav.getByRole("button").allInnerTexts(), ["Tips", "What AIQ records", "Judging", "Updates", "Tools"]);
+  assert.deepEqual(await page.locator("main h2").allInnerTexts(), ["Tips", "What AIQ records", "Judging", "Updates", "Tools and keyboard"]);
+  await nav.getByRole("button", { name: "Updates" }).click();
+  await page.waitForFunction(() => document.activeElement?.id === "st6");
+  // The index stays in view while the page scrolls.
+  await page.waitForFunction(() => document.querySelector("main").scrollTop > 0 && document.querySelector(".secnav").getBoundingClientRect().top < 80);
+  assert.equal(await page.evaluate(() => scrollY), 0, "only the page scrolls, not the window");
+  assert.match(await page.getByTestId("privacy-line").innerText(), /^Sharing is off: AIQ shares nothing with anyone\. .*Read the privacy page/);
+  assert.equal(await page.getByRole("switch", { name: /Single-key shortcuts/ }).count(), 1);
+  // Off and never switched (no stored time): no invented "since", and today's counts say they're judged, not running.
+  const judging = page.locator("section[aria-labelledby=st3]");
+  assert.equal(await judging.locator(".chip").innerText(), "Off");
+  assert.equal(await page.getByTestId("judge-today").innerText(), "AIQ judges no new task while this is off. Judged today: 3 tasks, 6 calls, $0.04 reported by Claude Code.");
+  // axe's target-size rule counts a control scrolled under the sticky index as too small, so axe reads the page
+  // from the top, where nothing sits under the index (CI run 41892919844 caught the 'Off' radio under it).
+  await page.evaluate(() => document.querySelector("main").scrollTo({ top: 0, behavior: "instant" }));
+  assert.deepEqual(await axe(page), []);
+  if (shots) await page.screenshot({ path: join(shots, "settings-index.png") });
+  await page.context().close();
+  // Switched off this morning, after judging 3 tasks: the counts say they came before.
+  const off = await open("full", {
+    hash: "#settings",
+    edit: (s) => {
+      s.settings.judge = "off";
+      s.settings.judge_since_ms = s.now_ms - 3_600_000;
+      s.home.judge_today = { tasks: 3, calls: 6, failed_calls: 0, cost_usd: null };
+    },
+  });
+  assert.match(await off.locator("section[aria-labelledby=st3] .chip").innerText(), /^Off since \d\d:\d\d$/);
+  assert.equal(await off.getByTestId("judge-today").innerText(), "AIQ judges no new task while this is off. Earlier today, before it was off: 3 tasks, 6 calls.");
+  await off.getByRole("switch", { name: "Judge finished tasks in the background" }).click();
+  await off.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Judging is on.");
+  assert.match(await off.getByTestId("judge-today").innerText(), /^Up to 50 tasks a day\. Today: 3 tasks, 6 calls\.$/);
+  await off.context().close();
+  for (const theme of ["dark", "contrast"]) {
+    const p = await open("full", { hash: "#settings", theme });
+    await p.locator("details.fold > summary").click();
+    await p.evaluate(() => document.querySelector("main").scrollTo({ top: 0, behavior: "instant" }));
+    assert.deepEqual(await axe(p), [], theme);
+    await p.context().close();
+  }
+});
+
 await test("core down: banner with stored time on every page; settings disabled", async () => {
   for (const [id] of pages) {
     const page = await open("down", { hash: `#${id}` });
@@ -376,7 +457,7 @@ await test("paused: banner with Resume on every page, and in the nav", async () 
 });
 
 await test("empty store: teaching empty states, no errors", async () => {
-  for (const [id, , expect] of [["home", 0, "AIQ is watching quietly"], ["tasks", 0, "No tasks yet."], ["tips", 0, "No tips yet."], ["data", 0, "AIQ has no stored history."]]) {
+  for (const [id, , expect] of [["home", 0, "AIQ is getting to know your work"], ["tasks", 0, "No tasks yet."], ["tips", 0, "No tips yet."], ["data", 0, "AIQ has no stored history."]]) {
     const page = await open("empty", { hash: `#${id}` });
     assert.ok((await page.locator("main").innerText()).includes(expect), id);
     assert.deepEqual(await axe(page), []);
@@ -404,6 +485,13 @@ await test("Tasks Day view: a row per session, rung named on hover and focus, En
   const lanes = page.getByRole("listitem");
   assert.ok((await lanes.count()) >= 3, "one row per session");
   assert.equal(await page.locator("table[aria-label=Tasks]").count(), 0, "the list is replaced by the Day view");
+  // Item 5a: one line sums the day; blocks carry their rung number; rows are named by kind.
+  assert.match(await page.getByTestId("day-summary").innerText(), /^7 tasks( · \d+ kinds? of task)? · mostly \w+ \(\d\) · \d+ not judged yet · .* inside tasks · \d+ sessions?/);
+  assert.match(await page.locator(".dv-task:not(.dv-none) .dv-n").first().innerText(), /^[1-5]$/);
+  assert.equal(await page.locator(".dv-task.dv-none .dv-n").first().innerText(), "–");
+  const names = await page.locator(".dv-name .dv-t b").allInnerTexts();
+  assert.ok(names.some((n) => n === "Not judged yet"), names.join("|"));
+  assert.ok(await page.locator(".dv-break").count() > 0, "gaps of hours shrink to breaks");
   // Row summary on focus: tool, folder, time span, tasks, prompts.
   const name = page.locator(".dv-name").first();
   await name.focus();
@@ -608,7 +696,7 @@ await test("setup: first run walks five steps with Back; Start only after I unde
   if (shots) await page.screenshot({ path: join(shots, "setup-last.png"), fullPage: true });
   await start.click();
   // The empty store's Home is its teaching state.
-  await page.waitForFunction(() => document.querySelector("main h1")?.textContent === "AIQ is watching quietly");
+  await page.waitForFunction(() => document.querySelector("main h1")?.textContent === "AIQ is getting to know your work");
   await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Setup done. AIQ is watching.");
   assert.equal(await page.locator("nav").count(), 1);
   const calls = await page.evaluate(() => window.__AIQ_FIXTURE__.calls.filter((c) => !String(c.args?.action ?? "").startsWith("check_")).map((c) => c.cmd).filter((c) => c !== "snapshot"));
@@ -822,33 +910,81 @@ await test("kind of task: the pack's step, copy starter, judge words as text, Th
   await page.context().close();
 });
 
-await test("Tasks: kinds of task listed with their state; job column names the kind", async () => {
-  const page = await open("coaching", { hash: "#tasks" });
-  const kinds = await page.getByRole("list", { name: "Kinds of task" }).innerText();
-  for (const k of ["Writing tests", "Writing a spec or PRD", "Fixing a bug or failing test", "Right rung", "Refactoring or cleaning up", "Too few tasks yet"]) assert.ok(kinds.includes(k), k);
-  assert.match(await page.locator("tbody").innerText(), /Code a change · Writing tests/);
-  // The chosen view sits directly under the List | Day switch; the kinds list comes after it, never between.
-  const afterHeader = () => page.evaluate(() => {
-    const n = document.querySelector("main header.head")?.nextElementSibling;
-    return n ? (n.matches(".tablewrap") ? "list" : n.querySelector("#dayhd") ? "day" : n.outerHTML.slice(0, 80)) : "none";
-  });
-  assert.equal(await afterHeader(), "list", "List view is the first section after the header");
-  await page.getByRole("button", { name: "Day", exact: true }).click();
-  assert.equal(await afterHeader(), "day", "Day view is the first section after the header");
-  assert.ok(await page.locator("#dayhd").isVisible() && (await page.locator("#dayhd").boundingBox()).y < 800, "Day view starts on screen");
+await test("Tasks opens on kinds of task: rung today, could be, a week, the 14-day move; a row opens the kind (item 4)", async () => {
+  const page = await open("progress", { hash: "#tasks" });
+  assert.equal(await page.getByRole("button", { name: "Kinds", exact: true }).getAttribute("aria-pressed"), "true", "Kinds is the default");
+  const table = page.getByRole("table", { name: "Kinds of task" });
+  const rows = table.locator("tbody tr");
+  assert.equal(await rows.count(), 4);
+  const t = await table.innerText();
+  assert.match(t, /Writing tests[\s\S]*Code a change[\s\S]*↑ up from Directed \(2\)/);
+  assert.match(t, /Writing a spec or PRD[\s\S]*↓ down from Delegated \(3\)/);
+  assert.match(t, /Fixing a bug or failing test[\s\S]*– same rung/);
+  assert.match(t, /Refactoring or cleaning up[\s\S]*Too few tasks to say/);
+  assert.match(await page.locator("main header.head").innerText(), /Kinds\s+All tasks\s+Day/);
+  assert.equal(await page.locator("table[aria-label=Tasks]").count(), 0, "the task list waits under All tasks");
+  assert.deepEqual(await axe(page), []);
+  await rows.first().click();
+  await page.waitForFunction(() => location.hash.startsWith("#kind/"));
   await page.context().close();
+
+  const c = await open("coaching", { hash: "#tasks" });
+  const ct = await c.getByRole("table", { name: "Kinds of task" }).innerText();
+  for (const k of ["Writing tests", "Writing a spec or PRD", "Fixing a bug or failing test", "Right rung", "Refactoring or cleaning up", "Too few tasks yet"]) assert.ok(ct.includes(k), k);
+  assert.equal(await c.getByRole("list", { name: "Kinds of task" }).count(), 0, "no second kinds list below");
+  // The chosen view sits directly under the switch.
+  const afterHeader = () => c.evaluate(() => {
+    const n = document.querySelector("main header.head")?.nextElementSibling;
+    return n ? (n.matches(".tablewrap") ? n.querySelector("table")?.getAttribute("aria-label") : n.querySelector("#dayhd") ? "day" : n.outerHTML.slice(0, 80)) : "none";
+  });
+  assert.equal(await afterHeader(), "Kinds of task");
+  await c.getByRole("button", { name: "All tasks", exact: true }).click();
+  assert.equal(await afterHeader(), "Tasks");
+  assert.match(await c.locator("tbody").innerText(), /Code a change · Writing tests/);
+  await c.getByRole("button", { name: "Day", exact: true }).click();
+  assert.equal(await afterHeader(), "day");
+  assert.ok((await c.locator("#dayhd").boundingBox()).y < 800, "Day view starts on screen");
+  await c.context().close();
+
+  // No kinds yet: no Kinds button, the list first.
+  const f = await open("full", { hash: "#tasks" });
+  assert.equal(await f.getByRole("button", { name: "Kinds", exact: true }).count(), 0);
+  assert.equal(await f.locator("table[aria-label=Tasks]").count(), 1);
+  await f.context().close();
 });
 
-await test("Habits: words for each state, seen in n of m, banners, imported footnote", async () => {
+await test("Habits grouped by state with a bar; a habit two jobs share is one line; tips folded with what happened after (item 6)", async () => {
   const page = await open("coaching", { hash: "#tips" });
   const t = await page.locator("main").innerText();
-  assert.ok(!t.includes("Habit tracking comes in a later version"));
-  assert.match(t, /Give the agent a written brief or instructions file\s+Not yet\s+Seen in 0 of 6 tasks in 14 days/);
-  assert.match(t, /Hand over the whole task with a done test\s+Adopted\s+Seen in 6 of 6 tasks in 14 days/);
-  const banners = await page.locator(".banner.info").count();
-  assert.ok(banners >= 1 && banners <= 3, `one to three banners, got ${banners}`);
-  assert.match(t, /You adopted a habit:/);
+  // Groups in order, Trying now only when something is being tried.
+  const heads = await page.locator("main h2").allInnerTexts();
+  assert.deepEqual(heads.map((h) => h.replace(/\s*\d+$/, "")), ["Adopted", "Not yet", "Tip history"]);
+  const adopted = await page.getByRole("list", { name: "Adopted" }).innerText();
+  assert.match(adopted, /Hand over the whole task with a done test\s+Code a change[\s\S]*?Seen in 6 of 6 tasks/);
+  const notYet = await page.getByRole("list", { name: "Not yet" }).innerText();
+  assert.match(notYet, /Give the agent a written brief or instructions file\s+Code a change, Write a spec or doc[\s\S]*?Seen in 0 of 9 tasks/, "one line for both jobs, counts added");
+  assert.equal(await page.locator(".banner.info").count(), 0, "no banners repeating the rows");
+  assert.match(adopted, /Adopted \w{3} \d+ \w{3}/, "a recent move shows its date on the row");
+  // Tip history: what happened after each next-step tip.
+  const tips = await page.getByRole("table", { name: "Tip history" }).innerText();
+  assert.match(tips, /Check the diff or run the tests before using the result\.[\s\S]*Did it in 3 of the next 3 tasks/);
+  assert.match(tips, /Ask for the whole draft with what done means\.[\s\S]*Did it in 0 of the next 3 tasks/);
+  assert.deepEqual(await axe(page), []);
+  // Stop tips like this goes through the core.
+  await page.getByRole("button", { name: "Stop tips like this" }).first().click();
+  await page.waitForFunction(() => window.__AIQ_FIXTURE__.calls.some((c) => c.cmd === "tip_off"));
+  const call = await page.evaluate(() => window.__AIQ_FIXTURE__.calls.find((c) => c.cmd === "tip_off").args);
+  assert.deepEqual(call, { tipId: "next_rung.check_code" });
   assert.ok(!t.includes("Includes tasks AIQ imported"), "no imported tasks in this fixture");
+  await page.context().close();
+
+  // A tip shown twice is one row; a tip with no habit says so.
+  const full = await open("full", { hash: "#tips" });
+  const ft = await full.getByRole("table", { name: "Tip history" }).innerText();
+  assert.equal(await full.locator("table[aria-label='Tip history'] tbody tr").count(), 1);
+  assert.match(ft, /Shown 2 times[\s\S]*×2[\s\S]*You opened it[\s\S]*Copilot CLI, Claude Code[\s\S]*No habit to follow/);
+  await full.context().close();
+
   const imp = await open("coaching", { hash: "#tips", edit: (s) => (s.coaching.habits_imported = true) });
   assert.match(await imp.locator("main").innerText(), /Includes tasks AIQ imported from your history\./);
   await imp.context().close();
@@ -858,12 +994,29 @@ await test("Habits: words for each state, seen in n of m, banners, imported foot
       s.coaching.habits = [{ ...s.coaching.habits[0], state: "tried", moved_to: "tried", moved_ms: s.now_ms - 86_400_000, moved_back: true, seen: 1, eligible: 4 }];
     },
   });
-  assert.match(await lapse.locator("main").innerText(), /Back to Tried: .* You did it in 1 of 4 recent tasks where it fits\./);
+  const lt = await lapse.getByRole("list", { name: "Trying now" }).innerText();
+  assert.match(lt, /Back to trying since \w{3} \d+ \w{3}[\s\S]*Seen in 1 of 4 tasks/);
   await lapse.context().close();
   const empty = await open("empty", { hash: "#tips" });
   assert.match(await empty.locator("main").innerText(), /No habits to show yet\./);
   await empty.context().close();
+});
+
+await test("Kind page: Moving up? draws each judged task's rung, says the 14-day move, names every dot for screen readers (item 9)", async () => {
+  const page = await open("progress", { hash: "#kind/code_change/tests" });
+  const card = page.locator("section", { has: page.locator("#km") });
+  assert.match(await card.innerText(), /Moved up\s*Directed \(2\) → Delegated \(3\), last 14 days against the 14 before\./);
+  const label = await page.getByRole("img", { name: /Rung of each judged task/ }).getAttribute("aria-label");
+  const dots = await page.locator(".km-dot").count();
+  assert.equal(label.split(";").length, dots, "every dot is named in the label");
+  assert.ok(dots >= 6);
+  assert.deepEqual(await axe(page), []);
   await page.context().close();
+  const c = await open("coaching", { hash: "#kind/code_change/tests" });
+  assert.match(await c.locator("section", { has: c.locator("#km") }).innerText(), /Too few tasks to say/);
+  assert.equal(await c.locator(".km-dot.unsure").count(), 1, "the Uncertain task is a hollow dot");
+  assert.equal(await c.locator(".km-could").count(), 1, "dashed line where the kind could reach");
+  await c.context().close();
 });
 
 await test("Settings: next-step tips auto/on/off, AIQ's self-check stop with Turn back on, a switch per tip", async () => {
@@ -1069,24 +1222,30 @@ await test("no terminal needed: Include a set-aside folder, Disconnect a tool, s
   await st.context().close();
 });
 
-await test("projects: Your projects ranks folders, the picker scopes Home and Tasks, rename saves", async () => {
-  const page = await open("coaching");
+await test("projects: Your projects ranks folders on Tasks, the picker scopes Home and Tasks, rename saves", async () => {
+  const home = await open("coaching");
+  assert.equal(await home.getByRole("table", { name: "Your projects" }).count(), 0, "Your projects moved from Home to Tasks");
+  await home.context().close();
+  const page = await open("coaching", { hash: "#tasks" });
   const table = page.getByRole("table", { name: "Your projects" });
   const rows = table.locator("tbody tr");
   assert.equal(await rows.count(), 2);
   assert.match(await rows.nth(0).innerText(), /aiq[\s\S]*12[\s\S]*Delegated \(3\)[\s\S]*45%[\s\S]*3 \(27%\)/);
   assert.match(await rows.nth(1).innerText(), /foresight[\s\S]*4[\s\S]*Directed \(2\)[\s\S]*Too few judged/);
-  // Selecting a name scopes Home: the headline, the note, and no table.
+  // Selecting a name scopes Tasks, and the table goes.
   await page.getByRole("button", { name: "Show foresight only" }).click();
+  await page.waitForFunction(() => !document.querySelector("table[aria-label='Your projects']"));
+  assert.equal(await page.getByLabel("Project").inputValue(), "c:\\users\\imran\\source\\repos\\foresight");
+  assert.deepEqual(await axe(page), []);
+  // The choice carries to Home.
+  await page.locator("nav a", { hasText: "Home" }).click();
   await page.waitForSelector("[data-testid=project-note]");
   const t = await page.locator("main").innerText();
   assert.match(t, /Showing foresight only\. Tips and Set aside cover all projects\./);
   assert.match(t, /Not enough judged tasks yet/);
-  assert.equal(await page.getByRole("table", { name: "Your projects" }).count(), 0);
-  assert.equal(await page.getByLabel("Project").inputValue(), "c:\\users\\imran\\source\\repos\\foresight");
-  assert.deepEqual(await axe(page), []);
-  // The choice carries to Tasks: only foresight's four tasks.
+  // On Tasks: only foresight's four tasks.
   await page.locator("nav a", { hasText: "Tasks" }).click();
+  await page.getByRole("button", { name: "All tasks", exact: true }).click();
   await page.waitForSelector("table[aria-label=Tasks]");
   assert.equal(await page.locator("table[aria-label=Tasks] tbody tr").count(), 4);
   assert.match(await page.locator("main").innerText(), /4 tasks in the last 30 days/);
@@ -1094,7 +1253,7 @@ await test("projects: Your projects ranks folders, the picker scopes Home and Ta
   assert.equal(await page.locator("table[aria-label=Tasks] tbody tr").count(), 16);
   await page.context().close();
 
-  const r = await open("coaching");
+  const r = await open("coaching", { hash: "#tasks" });
   await r.getByRole("button", { name: "Rename aiq" }).click();
   await r.getByLabel("New name for aiq").fill("AI coach");
   await r.getByRole("button", { name: "Save" }).click();
@@ -1104,7 +1263,7 @@ await test("projects: Your projects ranks folders, the picker scopes Home and Ta
   await r.context().close();
 
   // One project: no picker, no table.
-  const solo = await open("full", { edit: (s) => (s.projects = s.projects.slice(0, 1)) });
+  const solo = await open("full", { hash: "#tasks", edit: (s) => (s.projects = s.projects.slice(0, 1)) });
   assert.equal(await solo.getByLabel("Project").count(), 0);
   assert.equal(await solo.getByRole("table", { name: "Your projects" }).count(), 0);
   await solo.context().close();
