@@ -20,6 +20,9 @@ pub const CHECK_EVERY_MS: i64 = 24 * 3600 * 1000;
 /// The hourly cadence: after a check that failed (no release yet, no network, a proxy), and while AIQ home is
 /// open. Five minutes under an hour, so an hourly timer that fires a little early still finds it due.
 pub const HOURLY_MS: i64 = 55 * 60 * 1000;
+/// When AIQ home opens it checks if the last check is this old (Imran, 2026-11-04: 0.1.3 was out at 14:33Z and a
+/// Home opened after a 14:17Z check would not have seen it until ~15:12Z). The hourly timer and focus keep HOURLY_MS.
+pub const HOME_OPEN_MS: i64 = 10 * 60 * 1000;
 /// How long Home says "AIQ updated itself" (or that an update failed or was undone) after it happened. A day:
 /// Home also hides the note once it has been seen and offers a dismiss (Imran, 2026-11-04: a week-long banner at
 /// the top of Home took prime space).
@@ -164,7 +167,16 @@ fn kick_sleep(now_ms: i64, st: &State) -> Duration {
 /// waiting for the daily check. Not with updates off, and not while an update already waits (that would only
 /// download it again).
 pub fn home_check_due(now_ms: i64, st: &State, mode: Option<&str>) -> bool {
-    mode != Some("off") && st.state.as_deref() != Some("waiting") && check_due(now_ms, st, HOURLY_MS)
+    home_due(now_ms, st, mode, HOURLY_MS)
+}
+
+/// As `home_check_due`, for the moment AIQ home opens: due 10 minutes after the last check, not 55.
+pub fn home_open_check_due(now_ms: i64, st: &State, mode: Option<&str>) -> bool {
+    home_due(now_ms, st, mode, HOME_OPEN_MS)
+}
+
+fn home_due(now_ms: i64, st: &State, mode: Option<&str>, every: i64) -> bool {
+    mode != Some("off") && st.state.as_deref() != Some("waiting") && check_due(now_ms, st, every)
 }
 
 /// The script's arguments for one action. `wait_pid`: the caller about to exit (AIQ home, the CLI).
@@ -278,6 +290,8 @@ pub struct View {
     pub message: Option<String>,
     pub checked_ms: Option<i64>,
     pub check_error: Option<String>,
+    /// The newest release the last good check saw (it may be one the person went back from, never installed).
+    pub latest: Option<String>,
     /// A previous version is kept (`.old` copies), so "Go back" can work.
     pub can_rollback: bool,
 }
@@ -327,6 +341,7 @@ pub fn view(paths: &Paths, mode: Option<&str>, now_ms: i64) -> View {
         message: st.message.clone(),
         checked_ms: st.checked_at.as_deref().and_then(parse_utc_ms),
         check_error: st.check_error.clone(),
+        latest: st.latest.clone(),
         can_rollback: !applied_to_itself && paths.data.join("bin").join("aiq.exe.old").is_file(),
     }
 }
@@ -421,6 +436,11 @@ mod tests {
         assert!(home_check_due(t0() + HOURLY_MS, &ok, Some("ask")));
         assert!(!home_check_due(t0() + HOURLY_MS, &ok, Some("off")));
         assert!(!home_check_due(t0() + CHECK_EVERY_MS, &st(Some("waiting"), Some(T0)), None));
+        // On open: 10 minutes, not 55; still never with updates off or while one waits.
+        assert!(!home_open_check_due(t0() + HOME_OPEN_MS - 1, &ok, None));
+        assert!(home_open_check_due(t0() + HOME_OPEN_MS, &ok, None));
+        assert!(!home_open_check_due(t0() + HOURLY_MS, &ok, Some("off")));
+        assert!(!home_open_check_due(t0() + CHECK_EVERY_MS, &st(Some("waiting"), Some(T0)), None));
     }
 
     #[test]

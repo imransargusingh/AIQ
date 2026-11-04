@@ -1403,6 +1403,7 @@ mod update_tests {
             message: None,
             checked_ms: None,
             check_error: None,
+            latest: None,
             can_rollback: false,
         }
     }

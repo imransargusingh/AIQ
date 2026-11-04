@@ -78,6 +78,8 @@ export interface Update {
   message: string | null;
   checked_ms: number | null;
   check_error: string | null;
+  /** The newest release the last good check saw. */
+  latest: string | null;
   can_rollback: boolean;
 }
 
