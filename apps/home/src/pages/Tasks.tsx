@@ -78,18 +78,6 @@ export function Tasks(ctx: Ctx) {
           </div>
         )}
       </header>
-      {snap.coaching.kinds.length > 0 && (
-        <section className="group" aria-labelledby="kinds">
-          <div className="head">
-            <h2 id="kinds">Kinds of task</h2>
-            <span className="meta">
-              The kind of each task is the judge's estimate. Most tasks first.
-              {snap.coaching.untyped > 0 && ` ${plural(snap.coaching.untyped, "task")} judged before kinds existed ${snap.coaching.untyped === 1 ? "isn't" : "aren't"} grouped.`}
-            </span>
-          </div>
-          <KindList label="Kinds of task" rows={snap.coaching.kinds} open={(k) => ctx.openKind(k.job, k.task_type)} />
-        </section>
-      )}
       {snap.tasks.length > 0 && view === "day" ? (
         <DayView {...ctx} snap={{ ...snap, tasks: snap.tasks.filter((t) => job === "All" || jobOf(t) === job) }} />
       ) : snap.tasks.length === 0 ? (
@@ -159,6 +147,19 @@ export function Tasks(ctx: Ctx) {
         </div>
       )}
       {snap.tasks.length > 0 && view === "list" && <p className="meta">J and K move between rows, Enter opens a task. Select a column heading to sort.</p>}
+      {/* Below the chosen view, so the List or Day view sits directly under its switch (a long kinds list pushed it off screen). */}
+      {snap.coaching.kinds.length > 0 && (
+        <section className="group" aria-labelledby="kinds">
+          <div className="head">
+            <h2 id="kinds">Kinds of task</h2>
+            <span className="meta">
+              The kind of each task is the judge's estimate. Most tasks first.
+              {snap.coaching.untyped > 0 && ` ${plural(snap.coaching.untyped, "task")} judged before kinds existed ${snap.coaching.untyped === 1 ? "isn't" : "aren't"} grouped.`}
+            </span>
+          </div>
+          <KindList label="Kinds of task" rows={snap.coaching.kinds} open={(k) => ctx.openKind(k.job, k.task_type)} />
+        </section>
+      )}
     </div>
   );
 }
