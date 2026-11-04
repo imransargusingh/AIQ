@@ -111,10 +111,30 @@ export function Banners({ snap, togglePause, refresh }: Pick<Ctx, "snap" | "togg
   );
 }
 
-/** Home's one line about updates (design auto-update U5): a version waiting, installed, failed or left. */
+const UPDATE_SEEN = "aiq.updateNoteSeen";
+/** The note this Home session already showed: it stays until Home closes, then never shows again. */
+let noteThisSession: string | null = null;
+
+function seenBefore(key: string): boolean {
+  if (noteThisSession === key) return false;
+  let before = false;
+  try {
+    before = localStorage.getItem(UPDATE_SEEN) === key;
+    localStorage.setItem(UPDATE_SEEN, key);
+  } catch {
+    /* No storage: the core's one-day limit still ends it. */
+  }
+  if (!before) noteThisSession = key;
+  return before;
+}
+
+/** Home's one line about updates (design auto-update U5, U5g). A waiting update is a banner with Install now.
+ * Installed, failed or undone is a slim line: shown on one Home session, a day at most (core), with a dismiss. */
 export function UpdateLine({ snap, announce }: Pick<Ctx, "snap" | "announce">) {
   const u = snap.update;
   const [msg, setMsg] = useState<string | null>(null);
+  const key = `${u.note}:${u.at_ms ?? ""}`;
+  const [hidden, setHidden] = useState(() => u.note !== "none" && u.note !== "waiting" && seenBefore(key));
   if (!u.supported || u.note === "none") return null;
   const run = async (action: "install" | "rollback") => {
     const r = await api.runUpdate(action);
@@ -122,47 +142,55 @@ export function UpdateLine({ snap, announce }: Pick<Ctx, "snap" | "announce">) {
     setMsg(m);
     announce(m);
   };
-  const at = u.at_ms != null ? when(u.at_ms, snap.now_ms, snap.offset_min) : "";
   const ver = (v: string | null) => (v ?? "").replace(/^v/, "");
+  if (u.note === "waiting") {
+    return (
+      <div className="banner" data-testid="update-line">
+        <div className="grow">
+          {u.mode === "auto" ? (
+            <>AIQ {ver(u.available)} is ready. It installs by itself when you close AIQ home.</>
+          ) : (
+            <>AIQ {ver(u.available)} is ready to install.</>
+          )}
+          {msg && <span className="meta"> {msg}</span>}
+        </div>
+        <button className="btn" onClick={() => run("install")}>
+          Install now
+        </button>
+      </div>
+    );
+  }
+  if (hidden) return null;
   let text: ReactNode;
   let action: ReactNode = null;
-  if (u.note === "waiting") {
-    text =
-      u.mode === "auto" ? (
-        <>AIQ {ver(u.available)} is ready. It installs by itself when you close AIQ home.</>
-      ) : (
-        <>AIQ {ver(u.available)} is ready to install.</>
-      );
-    action = (
-      <button className="btn" onClick={() => run("install")}>
-        Install now
-      </button>
-    );
-  } else if (u.note === "applied") {
-    text = (
-      <>
-        AIQ updated itself to {u.running} ({at}). Your data and settings are kept.
-      </>
-    );
-    if (u.can_rollback)
+  if (u.note === "applied") {
+    text = <>Updated to AIQ {ver(u.running)}.</>;
+    if (u.can_rollback && u.from)
       action = (
-        <button className="btn" onClick={() => run("rollback")}>
-          Go back to {u.from ?? "the previous version"}
+        <button className="btnlink" onClick={() => run("rollback")}>
+          Go back to {ver(u.from)}
         </button>
       );
   } else if (u.note === "failed") {
-    text = <>AIQ couldn't install an update, so it kept {u.running}{u.message ? ` (${u.message})` : ""}. It tries again tomorrow.</>;
+    text = <>An update didn't install{u.message ? ` (${u.message})` : ""}; AIQ {ver(u.running)} kept. It tries again tomorrow.</>;
   } else {
-    text = <>You went back to AIQ {u.running}. AIQ won't install {u.from ?? "that version"} again by itself; a newer one still installs.</>;
+    text = <>Back on AIQ {ver(u.running)}. {u.from ? ver(u.from) : "That version"} won't install again by itself.</>;
   }
+  const dismiss = () => {
+    setHidden(true);
+    announce("Update note dismissed.");
+  };
   return (
-    <div className="banner" data-testid="update-line">
-      <div className="grow">
+    <p className="updnote meta" data-testid="update-line">
+      <span>
         {text}
-        {msg && <span className="meta"> {msg}</span>}
-      </div>
+        {msg && <> {msg}</>}
+      </span>
       {action}
-    </div>
+      <button className="btnlink x" aria-label="Dismiss update note" title="Dismiss" onClick={dismiss}>
+        ×
+      </button>
+    </p>
   );
 }
 

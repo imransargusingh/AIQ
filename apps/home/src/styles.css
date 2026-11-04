@@ -247,6 +247,8 @@ nav.side{overflow:auto}
 .wk-col>i.k-seen{background:var(--primary)}
 .tablewrap td.wrap{white-space:normal;word-break:break-word;font:var(--t-mono);max-width:560px}
 .btnlink{all:unset;cursor:pointer;color:var(--primary);font:var(--t-caption);display:inline-flex;align-items:center;min-height:24px}
+.updnote{display:flex;gap:var(--s3);align-items:center;flex-wrap:wrap;margin:0}
+.updnote .x{min-width:24px;justify-content:center;color:var(--ink-mute);font-size:16px}
 .btnlink:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}
 
 /* Windows high contrast (forced colours): use the person's own system colours, never fixed hex values,
