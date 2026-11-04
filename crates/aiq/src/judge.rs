@@ -1126,7 +1126,14 @@ fn versions_cli(store: &Store, homes: &Homes) -> ExitCode {
     let Ok(pack) = aiq_core::pack::parse(aiq_core::pack::BUNDLED_TOML) else { return ExitCode::FAILURE };
     let Ok(tasks) = aiq_home::tasks(store, &pack, 0) else { return ExitCode::FAILURE };
     let Ok(judged) = store.current_judgments() else { return ExitCode::FAILURE };
-    let (mut current, mut restamped, mut no_actions) = (0, 0, 0);
+    let n = now();
+    let calls = store.judge_calls_since(n.utc_ms - 7 * DAY_MS).unwrap_or_default();
+    // The same queue `run` walks, so "judged again" counts only tasks a run would send to the model.
+    let queued: HashSet<&str> = queue(&tasks, &judged, &calls, n.utc_ms, pack.idle_gap_min as i64 * 60_000, None)
+        .iter()
+        .map(|t| t.task_id.as_str())
+        .collect();
+    let (mut current, mut restamped, mut no_actions, mut no_text, mut held) = (0, 0, 0, 0, 0);
     let mut again: BTreeMap<String, u32> = BTreeMap::new();
     for t in &tasks {
         let Some(j) = judged.get(&t.task_id) else { continue };
@@ -1138,8 +1145,14 @@ fn versions_cli(store: &Store, homes: &Homes) -> ExitCode {
             current += 1;
             continue;
         }
+        if !queued.contains(t.task_id.as_str()) {
+            held += 1;
+            continue;
+        }
         let turns = task_turns(store, homes, t).unwrap_or_default();
-        if restamp(j, &rung::log_facts(&turns)).is_some() {
+        if turns.is_empty() {
+            no_text += 1;
+        } else if restamp(j, &rung::log_facts(&turns)).is_some() {
             restamped += 1;
         } else {
             *again.entry(t.tool.clone()).or_default() += 1;
@@ -1147,7 +1160,7 @@ fn versions_cli(store: &Store, homes: &Homes) -> ExitCode {
     }
     println!(
         "Judgments: {} (fact set {}, rubric {}, judge {})",
-        current + restamped + again.values().sum::<u32>(),
+        current + restamped + no_text + held + again.values().sum::<u32>(),
         rung::FACT_SET_VERSION,
         rung::RUBRIC_VERSION,
         rung::JUDGE_VERSION
@@ -1156,6 +1169,8 @@ fn versions_cli(store: &Store, homes: &Homes) -> ExitCode {
     for (tool, n) in &again {
         println!("  judged again ({tool}): {n}");
     }
+    println!("  outdated, no prompt text left (never sent): {no_text}");
+    println!("  outdated, not queued (still open, or gave up after {GIVE_UP} failures): {held}");
     println!("  judged with no agent actions in the log: {no_actions}");
     ExitCode::SUCCESS
 }
