@@ -17,9 +17,10 @@ pub const SCHEMA_V6: &str = include_str!("schema_v6.sql");
 pub const SCHEMA_V7: &str = include_str!("schema_v7.sql");
 pub const SCHEMA_V8: &str = include_str!("schema_v8.sql");
 pub const SCHEMA_V9: &str = include_str!("schema_v9.sql");
+pub const SCHEMA_V10: &str = include_str!("schema_v10.sql");
 /// Migration N takes the store from `user_version` N to N+1, in one transaction.
 pub const MIGRATIONS: &[&str] =
-    &[SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6, SCHEMA_V7, SCHEMA_V8, SCHEMA_V9];
+    &[SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6, SCHEMA_V7, SCHEMA_V8, SCHEMA_V9, SCHEMA_V10];
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StoreError {
@@ -1196,6 +1197,48 @@ impl Store {
             .collect::<std::result::Result<Vec<_>, _>>()
             .map_err(err(codes::STORE_OPEN))?;
         Ok(rows)
+    }
+
+    /// Note one live session AIQ set aside at its first prompt. False when the session already has a row. A no-op
+    /// before v10.
+    pub fn insert_set_aside_session(
+        &self,
+        surface: &str,
+        session: &str,
+        folder: &str,
+        reason: &str,
+        utc_ms: i64,
+    ) -> Result<bool> {
+        if !self.has_table("set_aside_session")? {
+            return Ok(false);
+        }
+        self.conn
+            .execute(
+                "INSERT OR IGNORE INTO set_aside_session (surface, surface_session_id, folder, reason, utc_ms)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![surface, session, folder, reason, utc_ms],
+            )
+            .map(|n| n == 1)
+            .map_err(err(codes::STORE_WRITE))
+    }
+
+    /// Per folder key: (live sessions still set aside, the newest one's time). A session a person later sent a second
+    /// prompt to is recorded (it has a `surface_session` row) and is not counted. Empty before v10.
+    pub fn set_aside_session_counts(&self) -> Result<HashMap<String, (u32, i64)>> {
+        if !self.has_table("set_aside_session")? {
+            return Ok(HashMap::new());
+        }
+        let mut st = self
+            .conn
+            .prepare(
+                "SELECT a.folder, COUNT(*), MAX(a.utc_ms) FROM set_aside_session a
+                 WHERE NOT EXISTS (SELECT 1 FROM surface_session s
+                                   WHERE s.surface = a.surface AND s.surface_session_id = a.surface_session_id)
+                 GROUP BY a.folder",
+            )
+            .map_err(err(codes::STORE_OPEN))?;
+        let rows = st.query_map([], |r| Ok((r.get(0)?, (r.get(1)?, r.get(2)?)))).map_err(err(codes::STORE_OPEN))?;
+        rows.collect::<std::result::Result<_, _>>().map_err(err(codes::STORE_OPEN))
     }
 
     /// Every folder's current rule: the newest action per folder (`set_aside` or `include`).

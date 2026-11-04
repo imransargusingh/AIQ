@@ -65,7 +65,30 @@
     "set_aside": [
       {
         "folder": "c:\\users\\imran\\source\\repos\\pipeline",
-        "reason": "burst"
+        "reason": "burst",
+        "since_ms": 1793275200000,
+        "own": false,
+        "runs": 12,
+        "last_ms": 1793334600000,
+        "kept": 0
+      },
+      {
+        "folder": "c:\\users\\imran\\appdata\\local\\temp\\aiq-copilot-probe-8qz2mk1d\\run0",
+        "reason": "aiq-check",
+        "since_ms": 1793188860000,
+        "own": true,
+        "runs": 1,
+        "last_ms": 1793188860000,
+        "kept": 0
+      },
+      {
+        "folder": "c:\\users\\imran\\appdata\\local\\temp\\aiq-copilot-probe-3glkf9fj\\run0",
+        "reason": "aiq-check",
+        "since_ms": 1793188800000,
+        "own": true,
+        "runs": 1,
+        "last_ms": 1793188800000,
+        "kept": 0
       }
     ],
     "tips_today": 1
@@ -285,7 +308,7 @@
     "turn_ends": 2,
     "imported_sessions": 1,
     "imported_events": 6,
-    "store_bytes": 258048,
+    "store_bytes": 270336,
     "items": [
       {
         "event_id": "019000000018-0000-7000-8000-000000000000",

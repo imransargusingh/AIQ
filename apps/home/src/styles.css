@@ -297,8 +297,14 @@ li+li>.kindrow{border-top:1px solid var(--hairline)}
 .tips li{display:flex;flex-direction:column;gap:2px;padding:var(--s3) 0;border-top:1px solid var(--hairline)}
 .tips li:first-child{border-top:0;padding-top:0}
 .tips li:last-child{padding-bottom:0}
-.how summary{cursor:pointer;width:max-content;padding:var(--s1) 0;color:var(--primary)}
+.how summary,.folded summary{cursor:pointer;width:max-content;padding:var(--s1) 0;color:var(--primary)}
 .how[open]{display:flex;flex-direction:column;gap:var(--s2)}
+/* Set aside (design aiq-home-app D11): name and path on one line (full path in the title), then why and the counts. */
+.asides{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;max-width:720px}
+.aside{display:flex;align-items:center;gap:var(--s4);padding:6px 0;border-top:1px solid var(--hairline)}
+.aside:first-child{border-top:0}
+.aside-text{display:flex;flex-direction:column;gap:0;min-width:0;flex:1}
+.aside-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* Day view (design day-view): lanes of sessions, tasks as blocks by time, rung by colour and named in text. */
 .dv{background:var(--surface);border:1px solid var(--hairline);border-radius:var(--r-md);padding:var(--s4) var(--s5);display:flex;flex-direction:column;gap:var(--s1);overflow-x:auto}
 .dv-lane{display:grid;grid-template-columns:minmax(180px,240px) minmax(480px,1fr);gap:var(--s4);align-items:center;min-height:30px}

@@ -5,9 +5,9 @@
 import { useState } from "react";
 import { api } from "../api";
 import { KindList, ProgressList, judgedBy, pct } from "../coach";
-import { RUNGS, day, folderName, plural, rungLabel, sentence, toolName, when } from "../format";
+import { RUNGS, day, folderName, plural, rungLabel, sentence, shortPath, toolName, when } from "../format";
 import { AccuracyPaused, Banners, ProjectPicker, Rung, Title, UpdateLine, type Ctx } from "../ui";
-import type { Project } from "../types";
+import type { Project, SetAside } from "../types";
 import { RightNow } from "./RightNow";
 
 export function Home(ctx: Ctx) {
@@ -315,23 +315,7 @@ export function Home(ctx: Ctx) {
         <div className="head">
           <h2 id="hb">Set aside</h2>
         </div>
-        {h.set_aside.length === 0 ? (
-          <p className="mute">No folders set aside. AIQ sets a folder aside when an app or script drives its sessions.</p>
-        ) : (
-          h.set_aside.map((f) => (
-            <div className="row" key={f.folder}>
-              <span className="chip">Automated</span>
-              <span title={f.folder}>{folderName(f.folder)}</span>
-              <span className="meta">
-                {f.reason === "burst" ? "many sessions started at once" : f.reason === "template" ? "the same first prompt over and over" : f.reason}
-              </span>
-              <button className="btn" disabled={!snap.status.core} onClick={() => include(f.folder)} aria-label={`Include ${folderName(f.folder)}`}>
-                Include
-              </button>
-            </div>
-          ))
-        )}
-        {h.set_aside.length > 0 && <p className="meta">If a folder is your own work, select Include and AIQ watches its sessions again.</p>}
+        <SetAsideList {...ctx} include={include} />
       </section>
     </div>
   );
@@ -448,5 +432,66 @@ function Projects(ctx: Ctx) {
         "Could move up a rung" counts judged tasks not finished by agents where the judge sees a next step at least one rung up. A project needs {min} judged tasks before AIQ shows its numbers.
       </p>
     </section>
+  );
+}
+
+const WHY: Record<string, string> = {
+  template: "Same first prompt each time",
+  burst: "Many sessions at once",
+  "aiq-check": "AIQ's own test",
+};
+
+/** Set aside (design aiq-home-app D11): what AIQ leaves out of coaching and why, with how much and when, so the
+ * person can tell an app's folder from their own. AIQ's own test folders fold into one line nobody needs to open. */
+function SetAsideList(ctx: Ctx & { include: (folder: string) => void }) {
+  const { snap, include } = ctx;
+  const all = snap.home.set_aside;
+  if (all.length === 0) return <p className="mute">Nothing set aside. AIQ sets a folder aside when an app or script drives the AI there.</p>;
+  const mine = all.filter((f) => !f.own);
+  const own = all.filter((f) => f.own);
+  const ownRuns = own.reduce((n, f) => n + f.runs, 0);
+  // Two lines a folder: which folder (name, then the path that tells same-named folders apart), then why and how much.
+  const row = (f: SetAside, path: string) => {
+    const last = f.last_ms !== null ? when(f.last_ms, snap.now_ms, snap.offset_min) : null;
+    const facts = [
+      f.own ? null : WHY[f.reason] ?? f.reason,
+      f.runs > 0 ? `${plural(f.runs, "run")} left out` : null,
+      last ? `last ${last.replace(/^(Today|Yesterday)/, (w) => w.toLowerCase())}` : null,
+      f.kept > 0 ? `${plural(f.kept, "task")} of yours kept` : null,
+    ].filter(Boolean);
+    return (
+      <li className="aside" key={f.folder}>
+        <div className="aside-text">
+          <span className="aside-name" title={f.folder}>
+            <b>{f.own ? path : folderName(f.folder)}</b>
+            {!f.own && <span className="meta"> {path}</span>}
+          </span>
+          {facts.length > 0 && <span className="meta">{facts.join(" · ")}</span>}
+        </div>
+        <button
+          className="btn small"
+          disabled={!snap.status.core}
+          onClick={() => include(f.folder)}
+          aria-label={`Include ${folderName(f.folder)}`}
+          title="Count every session in this folder from now on"
+        >
+          Include
+        </button>
+      </li>
+    );
+  };
+  return (
+    <>
+      <p className="meta">AIQ leaves out runs an app or script started here. A session where you send a second prompt still counts.</p>
+      {mine.length > 0 && <ul className="asides">{mine.map((f) => row(f, shortPath(f.folder)))}</ul>}
+      {own.length > 0 && (
+        <details className="folded">
+          <summary>
+            AIQ's own test folders ({own.length}{ownRuns > 0 ? `, ${plural(ownRuns, "run")}` : ""})
+          </summary>
+          <ul className="asides">{own.map((f) => row(f, f.folder.replace(/^.*?[\\/]te?mp[\\/]/i, "")))}</ul>
+        </details>
+      )}
+    </>
   );
 }

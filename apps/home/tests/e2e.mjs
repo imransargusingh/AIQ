@@ -1022,6 +1022,13 @@ await test("Home drops 'could be' when no kind of task is one step from agents f
 
 await test("no terminal needed: Include a set-aside folder, Disconnect a tool, see what judging sends, open the privacy page", async () => {
   const home = await open("full");
+  // Set aside says what it is for, which folder (path), how much and when; AIQ's own test folders fold away.
+  const aside = await home.locator("section[aria-labelledby=hb]").innerText();
+  assert.match(aside, /AIQ leaves out runs an app or script started here\. A session where you send a second prompt still counts\./);
+  assert.match(aside, /pipeline ~\\source\\repos\\pipeline\nMany sessions at once · 12 runs left out · last /);
+  assert.match(aside, /AIQ's own test folders \(2, 2 runs\)/);
+  assert.equal(await home.locator("section[aria-labelledby=hb] details").getAttribute("open"), null, "folded by default");
+  assert.equal(await home.getByRole("button", { name: "Include run0" }).first().isVisible(), false);
   await home.getByRole("button", { name: "Include pipeline" }).click();
   await home.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "AIQ will watch sessions in pipeline again.");
   const inc = await home.evaluate(() => window.__AIQ_FIXTURE__.calls.filter((c) => c.cmd === "include_folder").map((c) => c.args));

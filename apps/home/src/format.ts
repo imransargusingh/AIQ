@@ -35,6 +35,11 @@ export function folderName(path: string | null): string {
   return parts[parts.length - 1] ?? path;
 }
 
+/** A path for a row: the user folder as `~`, so the distinguishing part fits. The full path is the title. */
+export function shortPath(path: string): string {
+  return path.replace(/^[a-z]:[\\/]users[\\/][^\\/]+(?=[\\/]|$)/i, "~").replace(/^\/(home|Users)\/[^/]+(?=\/|$)/, "~");
+}
+
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const pad = (n: number) => String(n).padStart(2, "0");
