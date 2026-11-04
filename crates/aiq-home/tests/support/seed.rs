@@ -525,8 +525,24 @@ pub fn coaching(paths: &Paths) {
     // Next-step tips (UI review item 6): one before the newest code tasks, whose checks the person then ran (3
     // of 3), and one before the specs, whose whole-draft habit didn't follow (0 of 3).
     let ev = vec!["k0".to_string()];
-    s.next_tip("copilot-cli", "k0", NOW - 7 * 31 * 60 * MIN, ev.clone(), "check_code", "Check the diff or run the tests before using the result.", true);
-    s.next_tip("copilot-cli", "k7", NOW - 12 * 31 * 60 * MIN, ev, "hand_over_doc", "Ask for the whole draft with what done means.", false);
+    s.next_tip(
+        "copilot-cli",
+        "k0",
+        NOW - 7 * 31 * 60 * MIN,
+        ev.clone(),
+        "check_code",
+        "Check the diff or run the tests before using the result.",
+        true,
+    );
+    s.next_tip(
+        "copilot-cli",
+        "k7",
+        NOW - 12 * 31 * 60 * MIN,
+        ev,
+        "hand_over_doc",
+        "Ask for the whole draft with what done means.",
+        false,
+    );
 }
 
 /// Rung progress (the success measure): kinds of task judged in the last 14 days and the 14 before.
