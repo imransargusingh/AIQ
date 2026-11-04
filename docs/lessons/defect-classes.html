@@ -263,4 +263,28 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <p>paths) and <code>-Rollback</code> start <code>aiq core</code> hidden again when one was (<code>AIQ-UPDATE-CORE</code>). A second core exits at once (<code>CORE_ALREADY_RUNNING</code>). <code>Stop-Aiq</code> now waits for the processes to end before the swap.</p>
 <ul><li><strong>Control (tests):</strong> release.yml auto-update step starts a core before the idle apply and fails unless an</li></ul>
 <p><code>aiq.exe core</code> from the bin folder is running afterwards.</p>
-<ul><li><strong>Rule:</strong> whatever an update stops, it starts again, and the test asserts the running set, not only the files.</li></ul></main></body></html>
+<ul><li><strong>Rule:</strong> whatever an update stops, it starts again, and the test asserts the running set, not only the files.</li></ul>
+<h3>DC-026 — One log, two writers, two caps</h3>
+<ul><li><strong>Signature:</strong> 2026-11-04, laptop on 0.1.2: <code>hook-timings.log</code> was 15.5 KB / 323 lines, oldest line 2026-11-03</li></ul>
+<p>14:17Z, though the hooks&#x27; cap is 128 KiB. The Copilot CLI status-line command appends to the same file with its own 32 KiB cap, so <code>bounded_append</code> emptied the hooks&#x27; log every time it passed 32 KiB. The hook-budget window (runs since the last upgrade) lost its runs each time.</p>
+<ul><li><strong>Why it survives:</strong> each writer is right on its own; the cap is an argument at every call site, and no test</li></ul>
+<p>reads two writers together. A plain truncate also empties the log at every fill, so a short log looks normal.</p>
+<ul><li><strong>Control (product):</strong> <code>hook::append_timing</code> is the only writer of the timing log (hooks and status line);</li></ul>
+<p>a full log rotates to <code>hook-timings.1.log</code> (<code>paths::rotating_append</code>) and <code>aiq status</code> reads both.</p>
+<ul><li><strong>Control (tests):</strong> <code>hook::tests::the_timing_log_has_one_writer</code> fails when another file names the timing log</li></ul>
+<p>and appends (red on the old statusline.rs); <code>paths::tests::rotating_append_keeps_the_previous_fill</code>.</p>
+<ul><li><strong>Sweep:</strong> <code>judge.log</code> and <code>label.log</code> have several writers, all with their file&#x27;s one <code>LOG_MAX</code>; <code>hook-errors.log</code></li></ul>
+<p>has one writer.</p>
+<ul><li><strong>Rule:</strong> a shared file has one writer function that owns its cap; callers pass only the line.</li></ul>
+<h3>DC-027 — A gate figure that applies an older, coarser rule than the product view it measures</h3>
+<ul><li><strong>Signature:</strong> 2026-11-04, laptop on 0.1.2: 34 hook runs since the install, <code>aiq status</code> said &quot;no hook runs since</li></ul>
+<p>then yet&quot; for G1. The figure left out every run in a set-aside folder (7 Copilot runs in foresight, template rule), while since PR #87 the task list counts a person&#x27;s session there (two or more prompts).</p>
+<ul><li><strong>Why it survives:</strong> PR #87 changed the task list and the judge; the hook figures read the same folder list</li></ul>
+<p>through a separate path (<code>split_hook_runs</code>) that nobody re-read. The figure was empty, not wrong-looking.</p>
+<ul><li><strong>Control (product):</strong> the timing log carries a session tag (<code>s=</code>, a hash, never the id); <code>cli::SetAside</code> splits</li></ul>
+<p>folders like the task list: <code>projects</code> and <code>aiq-check</code> leave out every run, other set-aside folders leave out only runs whose session has fewer than two prompt runs.</p>
+<ul><li><strong>Control (tests):</strong> <code>cli::tests::hook_budget_counts_a_persons_session_in_a_template_folder_like_tasks_do</code></li></ul>
+<p>(shaped like the laptop: foresight, the AIQ repo, an aiq-check folder, a pre-0.1.4 line, an automated run).</p>
+<ul><li><strong>Sweep:</strong> other readers of the folder list: <code>aiq status</code>&#x27;s folder listing (display only) and <code>aiq_home::tasks</code></li></ul>
+<p>(already per session). None else.</p>
+<ul><li><strong>Rule:</strong> when a set-aside rule changes, grep every reader of the folder list, not only the one in the change.</li></ul></main></body></html>

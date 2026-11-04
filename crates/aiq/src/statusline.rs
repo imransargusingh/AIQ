@@ -4,7 +4,7 @@
 use aiq_contracts::card::{render_status_line, render_waiting_marker};
 use aiq_contracts::frames::{Request, TipLineReply};
 use aiq_core::ipc;
-use aiq_core::paths::{Paths, bounded_append};
+use aiq_core::paths::Paths;
 use serde_json::Value;
 use std::io::{Read, Write};
 use std::process::ExitCode;
@@ -19,11 +19,8 @@ pub fn run() -> ExitCode {
     std::panic::set_hook(Box::new(|_| {}));
     let paths = Paths::from_env();
     let outcome = std::panic::catch_unwind(|| inner(&paths)).unwrap_or("panic");
-    let _ = bounded_append(
-        &paths.hook_timings(),
-        &format!("statusline {} {outcome}", start.elapsed().as_micros()),
-        32 * 1024,
-    );
+    // The hooks' log and cap: its own smaller cap here emptied the hooks' timings (defect class HOOK-LOG-CAP).
+    crate::hook::append_timing(&paths, &format!("statusline {} {outcome}", start.elapsed().as_micros()));
     ExitCode::SUCCESS
 }
 
