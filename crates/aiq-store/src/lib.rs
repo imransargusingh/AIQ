@@ -327,6 +327,8 @@ pub struct SessionEvent {
     /// JSON {tool name: calls}, when recorded.
     pub tools: Option<String>,
     pub subagents: Option<i64>,
+    /// Why a stop's turn was not recorded (`turn_action.why`): no_log, read_error, too_large, unparsed, no_start.
+    pub why: Option<String>,
 }
 
 /// One answer to a tip (schema v6 `tip_feedback`).
@@ -716,8 +718,11 @@ impl Store {
     /// deleted or never stored) and each stop with its turn's recorded actions (None before v9, or when no row
     /// was written). The live rung trend reads this (design live-rung-trend T2).
     pub fn session_events(&self, surface: &str, session: &str, since_ms: i64) -> Result<Vec<SessionEvent>> {
-        let actions =
-            if self.has_table("turn_action")? { "a.outcome, a.tools, a.subagents" } else { "NULL, NULL, NULL" };
+        let actions = if self.has_table("turn_action")? {
+            "a.outcome, a.tools, a.subagents, a.why"
+        } else {
+            "NULL, NULL, NULL, NULL"
+        };
         let join =
             if self.has_table("turn_action")? { "LEFT JOIN turn_action a ON a.stop_event_id = e.event_id" } else { "" };
         let sql = format!(
@@ -737,6 +742,7 @@ impl Store {
                     action_outcome: r.get(4)?,
                     tools: r.get(5)?,
                     subagents: r.get(6)?,
+                    why: r.get(7)?,
                 })
             })
             .map_err(err(codes::STORE_OPEN))?;
@@ -1323,6 +1329,18 @@ impl Store {
             .map_err(err(codes::STORE_OPEN))?;
         let rows = st.query_map([prefix], |r| Ok((r.get(0)?, r.get(1)?))).map_err(err(codes::STORE_OPEN))?;
         rows.collect::<rusqlite::Result<Vec<_>>>().map_err(err(codes::STORE_OPEN))
+    }
+
+    /// When `key` last changed (its newest `setting_change` row), or None if it was never set.
+    pub fn setting_since(&self, key: &str) -> Result<Option<i64>> {
+        self.conn
+            .query_row(
+                "SELECT utc_ms FROM setting_change WHERE key = ?1 ORDER BY utc_ms DESC, rowid DESC LIMIT 1",
+                [key],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(err(codes::STORE_OPEN))
     }
 
     pub fn set_setting(&self, key: &str, value: &str, now_ms: i64) -> Result<()> {

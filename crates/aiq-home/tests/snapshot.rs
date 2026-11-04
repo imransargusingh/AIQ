@@ -454,12 +454,28 @@ fn live_trend_reads_the_open_task_turn_by_turn() {
     let rungs: Vec<Option<u8>> = l.trend.steps.iter().map(|x| x.rung).collect();
     assert_eq!(rungs, [Some(1), Some(3), Some(2), Some(2)]);
     assert_eq!(l.trend.unrecorded, [4]);
+    assert_eq!(l.trend.unrecorded_why, ["read_error"]);
     assert_eq!((l.trend.rung, l.trend.could), (Some(2), Some(3)), "could reach comes from the spec kind's row");
     assert_eq!(l.kind, Some("Writing a spec or PRD"));
     assert_eq!(l.trend.tip.as_ref().map(|t| t.turn), Some(3));
     assert!(s.tasks.iter().any(|t| t.task_id == l.task_id), "opens a task the list has");
     let json = serde_json::to_string(l).unwrap();
     assert!(!json.contains("tighten the wording") && !json.contains("Write the spec"), "no prompt text in the card");
+}
+
+/// Judging off says since when only from a stored setting change (UI review item 8); never switched, no time.
+#[test]
+fn judging_says_when_it_was_last_switched() {
+    let d = tempfile::tempdir().unwrap();
+    let p = Paths::at(d.path());
+    standard(&p, false);
+    assert_eq!(snap(&p).settings.judge_since_ms, None, "never switched: no time");
+    let mut seed = Seed::new(&p);
+    seed.setting("judge", "auto", NOW - 3 * 60 * MIN);
+    seed.setting("judge", "off", NOW - 2 * 60 * MIN);
+    let s = snap(&p);
+    assert_eq!(s.settings.judge, "off");
+    assert_eq!(s.settings.judge_since_ms, Some(NOW - 2 * 60 * MIN), "the newest change");
 }
 
 #[test]
@@ -514,4 +530,20 @@ fn set_aside_rows_count_runs_kept_tasks_and_put_aiq_checks_last() {
         "2 live + 1 imported set aside; the rescued session is kept, not counted"
     );
     assert_eq!(s.home.set_aside[0].since_ms, NOW - 3 * DAY);
+}
+
+/// A turn whose stop has no turn_action row (the core never read its log) is not recorded, with the reason
+/// `not_read`; a one-turn task with only that turn has no estimate.
+#[test]
+fn live_trend_names_a_turn_the_core_never_read() {
+    let d = tempfile::tempdir().unwrap();
+    let p = Paths::at(d.path());
+    let mut s = seed::Seed::new(&p);
+    let brief = "Fix the failing parser test in tests/parse.rs. Context: it fails only on Windows paths; keep the \
+                 public API unchanged and run the suite after";
+    s.prompt("vscode", "vs9", NOW - 44 * MIN, Some(AIQ), brief);
+    s.stop("vscode", "vs9", NOW - 2 * MIN);
+    let l = snap(&p).live.expect("a task is open");
+    assert_eq!((l.trend.unrecorded.clone(), l.trend.unrecorded_why.clone()), (vec![1], vec!["not_read".to_string()]));
+    assert_eq!(l.trend.rung, None);
 }

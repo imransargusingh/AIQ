@@ -104,3 +104,6 @@ export function jobOptions(tasks: TaskRow[]): { options: string[]; dropdown: boo
   const jobs = [...new Set(tasks.map(jobOf))].sort();
   return { options: ["All", ...jobs], dropdown: jobs.length > 4 };
 }
+
+/** Times a week for a table cell: "1.6", or "under 1". */
+export const perWeekShort = (n: number) => (n < 1 ? "under 1" : Number.isInteger(n) ? String(n) : n.toFixed(1));

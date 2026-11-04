@@ -341,6 +341,21 @@ impl<C: Clock> Service<C> {
         self.record_turn_actions(ev, turn, trace_id);
     }
 
+    /// The log a live session's turns are read from, and its kind. None: this surface has no log AIQ reads (or
+    /// Copilot's home is unknown); `Some((kind, None))`: the hook sent no transcript path.
+    fn turn_log(&self, ev: &EventV1) -> Option<(crate::agent_actions::LogKind, Option<std::path::PathBuf>)> {
+        use crate::agent_actions::LogKind;
+        match ev.surface.as_str() {
+            "claude-code" => Some((LogKind::Claude, ev.transcript.as_deref().map(std::path::PathBuf::from))),
+            // Copilot CLI and VS Code agent mode (Copilot target) write the same session log.
+            COPILOT_CLI | "vscode" => Some((
+                LogKind::Copilot,
+                Some(crate::copilot_log::session_log(self.copilot_home.as_deref()?, &ev.surface_session_id)?),
+            )),
+            _ => None,
+        }
+    }
+
     /// The work after a stop's reply is sent: Copilot messages typed while the agent worked, and what the agent
     /// did in the turn.
     pub fn after_stop(&mut self, ev: &EventV1, trace_id: Option<&str>) {
@@ -487,16 +502,8 @@ impl<C: Clock> Service<C> {
         if !matches!(ev.body, EventBody::Stop(_)) || self.paused() {
             return None;
         }
-        use crate::agent_actions::{LogKind, read_since, tail_start};
-        let (kind, path) = match ev.surface.as_str() {
-            "claude-code" => (LogKind::Claude, ev.transcript.as_deref().map(std::path::PathBuf::from)),
-            // Copilot CLI and VS Code agent mode (Copilot target) write the same session log.
-            COPILOT_CLI | "vscode" => (
-                LogKind::Copilot,
-                Some(crate::copilot_log::session_log(self.copilot_home.as_deref()?, &ev.surface_session_id)?),
-            ),
-            _ => return None,
-        };
+        use crate::agent_actions::{LogKind, read_back_to_prompt, read_since};
+        let (kind, path) = self.turn_log(ev)?;
         let mid_turn = kind == LogKind::Copilot && self.switch_on(SETTING_COPILOT_MID_TURN);
         let actions = self.switch_on(SETTING_AGENT_ACTIONS);
         if !mid_turn && !actions {
@@ -509,7 +516,10 @@ impl<C: Clock> Service<C> {
         let key = format!("{}/{}", ev.surface, ev.surface_session_id);
         let known = self.log_offsets.get(&key).copied();
         let started = std::time::Instant::now();
-        let read = read_since(&path, known.unwrap_or_else(|| tail_start(&path)), kind);
+        let read = match known {
+            Some(from) => read_since(&path, from, kind),
+            None => read_back_to_prompt(&path, kind),
+        };
         let ms = started.elapsed().as_millis() as u64;
         let read = match read {
             Ok(r) => r,

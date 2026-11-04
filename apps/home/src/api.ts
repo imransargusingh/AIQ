@@ -40,7 +40,7 @@ function fixture<T>(cmd: string, args: Record<string, unknown>): Promise<T> {
       if (!s.status.core) out = { ok: false, message: "AIQ isn't running, so settings can't change right now. It starts with your next prompt in Claude Code or Copilot." };
       else {
         if (args.key === "daily_cap") s.settings.daily_cap = Number(args.value);
-        if (args.key === "judge") s.settings.judge = args.value as Snapshot["settings"]["judge"];
+        if (args.key === "judge") [s.settings.judge, s.settings.judge_since_ms] = [args.value as Snapshot["settings"]["judge"], s.now_ms];
         if (args.key === "judge_daily_tasks") s.settings.judge_daily_tasks = Number(args.value);
         if (args.key === "copilot_mid_turn") s.settings.copilot_mid_turn = args.value as Snapshot["settings"]["copilot_mid_turn"];
         if (args.key === "agent_actions") s.settings.agent_actions = args.value as Snapshot["settings"]["agent_actions"];

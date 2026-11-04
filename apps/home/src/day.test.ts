@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dayKey, hours, lanes, taskDays } from "./day";
+import { dayKey, daySummary, lanes, taskDays, timeline } from "./day";
 import type { TaskJudgment, TaskRow } from "./types";
 
 const H = 3_600_000;
@@ -35,10 +35,31 @@ describe("day view", () => {
     expect(taskDays(ts, 120)).toEqual([20_001, 20_000]); // 23:00 UTC is 01:00 next day at UTC+2
   });
 
-  it("the axis covers first to last prompt in whole hours, at least two, past midnight when a task runs over", () => {
-    const k = dayKey(D0, 0);
-    expect(hours(lanes([t("a", "s", D0 + 9.5 * H, D0 + 9.6 * H)], k, 0), k, 0)).toEqual([9, 11]);
-    expect(hours(lanes([t("a", "s", D0 + 22 * H, D0 + 25 * H)], k, 0), k, 0)).toEqual([22, 26]);
-    expect(hours([], k, 0)).toEqual([9, 17]);
+  it("the axis keeps stretches of work and shrinks quiet gaps over 30 minutes to one break", () => {
+    const M = 60_000;
+    const { stretches, pos } = timeline([
+      { first_ms: D0 + 9 * H, last_ms: D0 + 9 * H + 20 * M },
+      { first_ms: D0 + 9 * H + 40 * M, last_ms: D0 + 10 * H }, // 20 min after: same stretch
+      { first_ms: D0 + 15 * H, last_ms: D0 + 15 * H }, // 5 h later: a new stretch, 10 units of room
+    ]);
+    // 60 + 10 units of work, one 15-unit break: 85 units.
+    expect(stretches.map((s) => [s.a, s.b])).toEqual([[D0 + 9 * H, D0 + 10 * H], [D0 + 15 * H, D0 + 15 * H]]);
+    expect(stretches[0].from).toBe(0);
+    expect(stretches[0].to).toBeCloseTo((60 / 85) * 100);
+    expect(stretches[1].from).toBeCloseTo((75 / 85) * 100);
+    expect(pos(D0 + 9 * H + 30 * M)).toBeCloseTo((30 / 85) * 100);
+    expect(pos(D0 + 15 * H)).toBeCloseTo((75 / 85) * 100);
+    expect(timeline([]).pos(D0)).toBe(0);
+  });
+
+  it("sums the day: tasks, kinds, usual rung without Uncertain, minutes inside tasks, not judged", () => {
+    const u = { ...j(5, "Writing tests"), state: "uncertain" } as TaskJudgment;
+    const s = daySummary([
+      t("a", "s", D0, D0 + H, { ...j(3, "Writing tests"), state: "judged" } as TaskJudgment),
+      t("b", "s", D0 + 2 * H, D0 + 2 * H + 30 * 60_000, { ...j(2, "Fixing a bug"), state: "judged" } as TaskJudgment),
+      t("c", "s", D0 + 3 * H, D0 + 3 * H, u),
+      t("d", "s", D0 + 4 * H, D0 + 4 * H),
+    ]);
+    expect(s).toEqual({ tasks: 4, kinds: 2, usual: 2, minutes: 90, not_judged: 1 });
   });
 });

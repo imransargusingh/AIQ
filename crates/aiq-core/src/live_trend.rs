@@ -55,6 +55,8 @@ pub struct LiveTrend {
     pub did_is_lookup: bool,
     pub brief: Option<bool>,
     pub unrecorded: Vec<u32>,
+    /// For each of `unrecorded`, the reason: no_log, read_error, too_large, unparsed, no_start, or not_read.
+    pub unrecorded_why: Vec<String>,
     pub subagents: u32,
     pub tip: Option<TipAt>,
 }
@@ -86,7 +88,7 @@ pub fn open_task(
         return Ok(None);
     };
     let evs = &evs[first..];
-    let (turns, working) = turns_of(evs);
+    let (turns, whys, working) = turns_of(evs);
     let first_text = evs[0].text.as_deref();
     let (job, task_type) = label(store, surface, session, evs[0].ts_utc_ms)?;
     let (steps, why) = trend_with(&turns, job.as_deref(), first_text.map(briefed));
@@ -117,17 +119,19 @@ pub fn open_task(
         did_turns,
         did_is_lookup,
         brief: why.brief,
+        unrecorded_why: why.unrecorded.iter().map(|t| whys[*t as usize - 1].clone().unwrap_or_default()).collect(),
         unrecorded: why.unrecorded,
         subagents: why.subagents,
         tip,
     }))
 }
 
-/// Turns that have ended, each with its recorded actions (None when a stop has no recorded row), and whether the
-/// agent is still working on the last prompt. Several stops in one turn (a Copilot steering message) add up;
-/// one unrecorded stop makes the turn unrecorded.
-fn turns_of(evs: &[SessionEvent]) -> (Vec<Turn>, bool) {
-    let mut turns: Vec<(Turn, bool)> = Vec::new();
+/// Turns that have ended, each with its recorded actions (None when a stop has no recorded row) and why it was
+/// not recorded (the stored `why`, or `not_read` for a stop with no row), and whether the agent is still working
+/// on the last prompt. Several stops in one turn (a Copilot steering message) add up; one unrecorded stop makes
+/// the turn unrecorded.
+fn turns_of(evs: &[SessionEvent]) -> (Vec<Turn>, Vec<Option<String>>, bool) {
+    let mut turns: Vec<(Turn, Option<String>, bool)> = Vec::new();
     for e in evs {
         match e.kind.as_str() {
             "prompt" => turns.push((
@@ -136,31 +140,32 @@ fn turns_of(evs: &[SessionEvent]) -> (Vec<Turn>, bool) {
                     prompt: e.text.clone().unwrap_or_default(),
                     actions: Some(ActionSummary::default()),
                 },
+                None,
                 false,
             )),
             "stop" => {
-                let Some((t, ended)) = turns.last_mut() else { continue };
+                let Some((t, why, ended)) = turns.last_mut() else { continue };
                 *ended = true;
-                let read = (e.action_outcome.as_deref() == Some("recorded")).then(|| {
-                    let tools: BTreeMap<String, u32> =
-                        e.tools.as_deref().and_then(|j| serde_json::from_str(j).ok()).unwrap_or_default();
-                    (tools, e.subagents.unwrap_or(0).max(0) as u32)
-                });
-                match (t.actions.as_mut(), read) {
-                    (Some(a), Some((tools, subs))) => {
+                if e.action_outcome.as_deref() == Some("recorded") {
+                    if let Some(a) = t.actions.as_mut() {
+                        let tools: BTreeMap<String, u32> =
+                            e.tools.as_deref().and_then(|j| serde_json::from_str(j).ok()).unwrap_or_default();
                         for (k, n) in tools {
                             *a.tools.entry(k).or_default() += n;
                         }
-                        a.subagents += subs;
+                        a.subagents += e.subagents.unwrap_or(0).max(0) as u32;
                     }
-                    _ => t.actions = None,
+                } else {
+                    t.actions = None;
+                    why.get_or_insert_with(|| e.why.clone().unwrap_or_else(|| "not_read".into()));
                 }
             }
             _ => {}
         }
     }
-    let working = turns.last().is_some_and(|(_, ended)| !ended);
-    (turns.into_iter().filter(|(_, ended)| *ended).map(|(t, _)| t).collect(), working)
+    let working = turns.last().is_some_and(|(_, _, ended)| !ended);
+    let (turns, whys) = turns.into_iter().filter(|(_, _, ended)| *ended).map(|(t, w, _)| (t, w)).unzip();
+    (turns, whys, working)
 }
 
 /// The session's first-prompt label at or after the task's start, kept only at the judge's own bars.
