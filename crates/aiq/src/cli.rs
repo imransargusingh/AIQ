@@ -231,12 +231,12 @@ fn status_text(paths: &Paths) -> (String, Vec<String>) {
     if spooled > 0 {
         out += &format!("Queued while the core was down: {spooled} events\n");
     }
-    let aside: Vec<String> = reply
+    let aside = SetAside::from_folders(reply.iter().flat_map(|s| &s.automated_folders));
+    // The previous fill first, so the lines stay in time order.
+    let text = [paths.hook_timings_prev(), paths.hook_timings()]
         .iter()
-        .flat_map(|s| &s.automated_folders)
-        .filter_map(|(f, _)| aiq_domain::automated::folder_tag(f))
-        .collect();
-    let text = std::fs::read_to_string(paths.hook_timings()).unwrap_or_default();
+        .map(|p| std::fs::read_to_string(p).unwrap_or_default())
+        .collect::<String>();
     let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
     out += &hook_time_lines(&text, now, &aside);
     // upgrade.ps1 logs in the AIQ home; the laptop's dev swapper logs next to the exes. Newest of both.
@@ -346,7 +346,7 @@ pub fn last_upgrade(log: &str) -> Option<u64> {
 /// The figure that counts against the hook budget: AIQ's own part of each run (total less reading the
 /// host's input, which is the host's wait), p95 per event, over runs since the last upgrade, so a fix shows
 /// the day it is installed instead of when older lines age out. Same exclusions as the other hook figures.
-pub fn hook_budget_lines(text: &str, aside: &[String], since: Option<u64>) -> String {
+pub fn hook_budget_lines(text: &str, aside: &SetAside, since: Option<u64>) -> String {
     let Some(since) = since else {
         return format!(
             "Hook budget ({HOOK_BUDGET_MS:.0} ms p95, AIQ's own part): no upgrade recorded in {UPGRADE_LOG}, so \
@@ -386,18 +386,55 @@ pub fn hook_budget_lines(text: &str, aside: &[String], since: Option<u64>) -> St
 /// and AIQ's own judge calls (`internal`). Their time is the host's stdin wait, not AIQ's.
 const NOT_A_PERSON: [&str; 2] = ["automated", "internal"];
 
+/// The set-aside folders, as the timing log's folder tags, split the way the task list splits them (PR #87).
+#[derive(Debug, Default)]
+pub struct SetAside {
+    /// Every run left out: Claude's own Projects / Remote Control folders (`projects`) and AIQ's own check folders
+    /// (`aiq-check`), whose sessions the core records nothing for, however many prompts they send.
+    pub whole: Vec<String>,
+    /// Folders set aside as automated (burst, template, or the import's rule): a run counts when its session sent
+    /// two or more prompts, the rule's H ≥ 2, the same test that keeps a person's task there.
+    pub by_session: Vec<String>,
+}
+
+impl SetAside {
+    /// From the core's `(folder, reason)` list.
+    pub fn from_folders<'a>(folders: impl IntoIterator<Item = &'a (String, String)>) -> Self {
+        let mut s = Self::default();
+        for (f, reason) in folders {
+            let Some(tag) = aiq_domain::automated::folder_tag(f) else { continue };
+            if matches!(reason.as_str(), "projects" | "aiq-check") { s.whole.push(tag) } else { s.by_session.push(tag) }
+        }
+        s
+    }
+}
+
+/// Prompt events, by host: a session with two or more of these in the log is a person's.
+const PROMPT_EVENTS: [&str; 2] = ["UserPromptSubmit", "userPromptSubmitted"];
+
 /// Splits the timing log into the runs that count against AIQ's hook budget and the number left out: runs
-/// with a `NOT_A_PERSON` outcome, and runs whose folder tag is one AIQ sets aside (automated folders,
-/// Projects / Remote Control folders, AIQ's own check folders; `aside` holds their `folder_tag`s).
-/// Lines from builds before the tag are kept unless their outcome says otherwise.
-pub fn split_hook_runs<'a>(text: &'a str, aside: &[String]) -> (Vec<&'a str>, usize) {
+/// with a `NOT_A_PERSON` outcome, runs in a `whole` folder, and runs in a `by_session` folder whose session has
+/// fewer than two prompt runs in the log (or no session tag: builds before 0.1.4).
+/// Lines from builds before the folder tag are kept unless their outcome says otherwise.
+/// assume: the log holds a session's earlier prompts. If false (the log rotated twice since): that session's
+/// runs are left out until it sends two more, which the left-out count shows.
+pub fn split_hook_runs<'a>(text: &'a str, aside: &SetAside) -> (Vec<&'a str>, usize) {
+    let field = |l: &'a str, k: &str| l.split_whitespace().find_map(|w| w.strip_prefix(k));
+    let mut prompts: std::collections::HashMap<&str, u32> = Default::default();
+    for l in text.lines().filter(|l| l.split_whitespace().next().is_some_and(|e| PROMPT_EVENTS.contains(&e))) {
+        if let Some(s) = field(l, "s=") {
+            *prompts.entry(s).or_default() += 1;
+        }
+    }
     let mut left_out = 0;
     let kept = text
         .lines()
         .filter(|l| {
             let outcome = l.split_whitespace().nth(2).unwrap_or("");
-            let dir = l.split_whitespace().find_map(|w| w.strip_prefix("dir="));
-            let out = NOT_A_PERSON.contains(&outcome) || dir.is_some_and(|d| aside.iter().any(|a| a == d));
+            let in_folder = |set: &[String]| field(l, "dir=").is_some_and(|d| set.iter().any(|a| a == d));
+            let person = field(l, "s=").is_some_and(|s| prompts.get(s).is_some_and(|n| *n >= 2));
+            let out =
+                NOT_A_PERSON.contains(&outcome) || in_folder(&aside.whole) || (in_folder(&aside.by_session) && !person);
             left_out += usize::from(out);
             !out
         })
@@ -407,7 +444,7 @@ pub fn split_hook_runs<'a>(text: &'a str, aside: &[String]) -> (Vec<&'a str>, us
 
 /// p50 / p95 in-process hook time per event, from the hook's own timing log, over the runs that count
 /// against AIQ's budget, plus one line naming how many runs were left out.
-pub fn hook_time_lines(text: &str, now: u64, aside: &[String]) -> String {
+pub fn hook_time_lines(text: &str, now: u64, aside: &SetAside) -> String {
     let (kept, left_out) = split_hook_runs(text, aside);
     let text = kept.join("\n");
     let mut by: std::collections::BTreeMap<&str, Vec<u64>> = Default::default();
@@ -833,7 +870,7 @@ mod tests {
              UserPromptSubmit 300000 sent host_ms=900 read_us=290000 prep_us=300 dir={tacit} at=99300 v=0.1.0\n\
              statusline 2000 none\n"
         );
-        let out = hook_time_lines(&text, now, &[tacit]);
+        let out = hook_time_lines(&text, now, &SetAside { by_session: vec![tacit], ..Default::default() });
         assert_eq!(
             out,
             "Hook time in-process, UserPromptSubmit: p50 1.0 ms, p95 1.0 ms (1 runs)\n\
@@ -842,8 +879,8 @@ mod tests {
              Hook times leave out 3 runs from sessions AIQ sets aside (automated sessions and AIQ's own checks)\n"
         );
         // Core not running: no folder list, so only the outcome rule applies; nothing left out says nothing.
-        assert!(hook_time_lines(&text, now, &[]).contains("leave out 2 runs"));
-        assert!(!hook_time_lines("Stop 200 no-card\n", now, &[]).contains("leave out"));
+        assert!(hook_time_lines(&text, now, &SetAside::default()).contains("leave out 2 runs"));
+        assert!(!hook_time_lines("Stop 200 no-card\n", now, &SetAside::default()).contains("leave out"));
     }
 
     #[test]
@@ -895,14 +932,50 @@ mod tests {
                     UserPromptSubmit 900000 automated read_us=900000 at=1300 v=0.1.0\n\
                     Stop 150000 no-card read_us=1000 prep_us=100 at=1400 v=0.1.0\n";
         assert_eq!(
-            hook_budget_lines(text, &[], Some(since)),
+            hook_budget_lines(text, &SetAside::default(), Some(since)),
             "Hook budget (100 ms p95 of AIQ's own part, the figure for alpha gate G1), since the last upgrade at \
              1970-01-01 00:16Z:\n  \
              Stop: p95 149.0 ms over 1 runs, OVER budget\n  \
              UserPromptSubmit: p95 0.6 ms over 2 runs, within budget\n"
         );
-        assert!(hook_budget_lines("", &[], Some(since)).ends_with("  no hook runs since then yet\n"));
-        assert!(hook_budget_lines(text, &[], None).contains("no upgrade recorded"));
+        assert!(hook_budget_lines("", &SetAside::default(), Some(since)).ends_with("  no hook runs since then yet\n"));
+        assert!(hook_budget_lines(text, &SetAside::default(), None).contains("no upgrade recorded"));
+    }
+
+    #[test]
+    fn hook_budget_counts_a_persons_session_in_a_template_folder_like_tasks_do() {
+        // Shaped like Imran's laptop on 2026-11-04: foresight set aside by a template rule, the AIQ repo by rule RC.
+        let folders = [
+            (r"c:\repos\foresight".to_string(), "template".to_string()),
+            (r"c:\repos\aiq".to_string(), "projects".to_string()),
+            (r"c:\users\x\appdata\local\temp\aiq-check".to_string(), "aiq-check".to_string()),
+        ];
+        let aside = SetAside::from_folders(&folders);
+        assert_eq!((aside.whole.len(), aside.by_session.len()), (2, 1));
+        let tag = |f: &str| aiq_domain::automated::folder_tag(f).unwrap();
+        let (fs, aiq) = (tag(r"c:\repos\foresight"), tag(r"c:\repos\aiq"));
+        let s = |id: &str| aiq_domain::automated::session_tag(id).unwrap();
+        let (person, app, rc) = (s("person"), s("app"), s("rc"));
+        let text = format!(
+            "userPromptSubmitted 3000 sent read_us=1000 dir={fs} s={person} at=2000 v=0.1.4\n\
+             agentStop 5000 sent read_us=1000 dir={fs} s={person} at=2010 v=0.1.4\n\
+             userPromptSubmitted 4000 sent read_us=1000 dir={fs} s={person} at=2020 v=0.1.4\n\
+             userPromptSubmitted 90000 sent read_us=1000 dir={fs} s={app} at=2030 v=0.1.4\n\
+             agentStop 90000 sent read_us=1000 dir={fs} s={app} at=2040 v=0.1.4\n\
+             UserPromptSubmit 90000 sent read_us=1000 dir={aiq} s={rc} at=2050 v=0.1.4\n\
+             UserPromptSubmit 90000 sent read_us=1000 dir={aiq} s={rc} at=2060 v=0.1.4\n\
+             userPromptSubmitted 90000 sent read_us=1000 dir={fs} at=2070 v=0.1.2\n\
+             UserPromptSubmit 90000 automated read_us=1000 s={person} at=2080 v=0.1.4\n"
+        );
+        let (kept, left_out) = split_hook_runs(&text, &aside);
+        assert_eq!((kept.len(), left_out), (3, 6), "only the person's three foresight runs count");
+        assert_eq!(
+            hook_budget_lines(&text, &aside, Some(1_000)),
+            "Hook budget (100 ms p95 of AIQ's own part, the figure for alpha gate G1), since the last upgrade at \
+             1970-01-01 00:16Z:\n  \
+             agentStop: p95 4.0 ms over 1 runs, within budget\n  \
+             userPromptSubmitted: p95 3.0 ms over 2 runs, within budget\n"
+        );
     }
 
     #[test]

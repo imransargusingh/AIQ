@@ -412,3 +412,33 @@ summary: >-
 - **Control (tests):** release.yml auto-update step starts a core before the idle apply and fails unless an
   `aiq.exe core` from the bin folder is running afterwards.
 - **Rule:** whatever an update stops, it starts again, and the test asserts the running set, not only the files.
+
+### DC-026 — One log, two writers, two caps
+- **Signature:** 2026-11-04, laptop on 0.1.2: `hook-timings.log` was 15.5 KB / 323 lines, oldest line 2026-11-03
+  14:17Z, though the hooks' cap is 128 KiB. The Copilot CLI status-line command appends to the same file with its
+  own 32 KiB cap, so `bounded_append` emptied the hooks' log every time it passed 32 KiB. The hook-budget window
+  (runs since the last upgrade) lost its runs each time.
+- **Why it survives:** each writer is right on its own; the cap is an argument at every call site, and no test
+  reads two writers together. A plain truncate also empties the log at every fill, so a short log looks normal.
+- **Control (product):** `hook::append_timing` is the only writer of the timing log (hooks and status line);
+  a full log rotates to `hook-timings.1.log` (`paths::rotating_append`) and `aiq status` reads both.
+- **Control (tests):** `hook::tests::the_timing_log_has_one_writer` fails when another file names the timing log
+  and appends (red on the old statusline.rs); `paths::tests::rotating_append_keeps_the_previous_fill`.
+- **Sweep:** `judge.log` and `label.log` have several writers, all with their file's one `LOG_MAX`; `hook-errors.log`
+  has one writer.
+- **Rule:** a shared file has one writer function that owns its cap; callers pass only the line.
+
+### DC-027 — A gate figure that applies an older, coarser rule than the product view it measures
+- **Signature:** 2026-11-04, laptop on 0.1.2: 34 hook runs since the install, `aiq status` said "no hook runs since
+  then yet" for G1. The figure left out every run in a set-aside folder (7 Copilot runs in foresight, template
+  rule), while since PR #87 the task list counts a person's session there (two or more prompts).
+- **Why it survives:** PR #87 changed the task list and the judge; the hook figures read the same folder list
+  through a separate path (`split_hook_runs`) that nobody re-read. The figure was empty, not wrong-looking.
+- **Control (product):** the timing log carries a session tag (`s=`, a hash, never the id); `cli::SetAside` splits
+  folders like the task list: `projects` and `aiq-check` leave out every run, other set-aside folders leave out
+  only runs whose session has fewer than two prompt runs.
+- **Control (tests):** `cli::tests::hook_budget_counts_a_persons_session_in_a_template_folder_like_tasks_do`
+  (shaped like the laptop: foresight, the AIQ repo, an aiq-check folder, a pre-0.1.4 line, an automated run).
+- **Sweep:** other readers of the folder list: `aiq status`'s folder listing (display only) and `aiq_home::tasks`
+  (already per session). None else.
+- **Rule:** when a set-aside rule changes, grep every reader of the folder list, not only the one in the change.

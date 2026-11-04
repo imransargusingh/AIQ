@@ -75,6 +75,10 @@ impl Paths {
     pub fn hook_timings(&self) -> PathBuf {
         self.data.join("hook-timings.log")
     }
+    /// The timing log's previous fill, kept when the log rotates (`rotating_append`).
+    pub fn hook_timings_prev(&self) -> PathBuf {
+        self.data.join("hook-timings.1.log")
+    }
     pub fn hook_errors(&self) -> PathBuf {
         self.data.join("hook-errors.log")
     }
@@ -172,6 +176,18 @@ pub fn bounded_append(path: &Path, line: &str, max: u64) -> std::io::Result<()> 
     f.write_all(format!("{line}\n").as_bytes())
 }
 
+/// Like `bounded_append`, but a full log is renamed to `prev` (replacing the older fill) instead of emptied, so
+/// readers that read `prev` then `path` always see between one and two fills of history.
+/// assume: two writers rarely cross the cap in the same instant. If false: the second rename moves a one-line
+/// log over `prev` and that fill is lost, the same loss the plain truncate had every time. A failed rename
+/// appends anyway (the file runs a little over the cap) and the next run tries again.
+pub fn rotating_append(path: &Path, prev: &Path, line: &str, max: u64) -> std::io::Result<()> {
+    if std::fs::metadata(path).is_ok_and(|m| m.len() > max) {
+        let _ = std::fs::rename(path, prev);
+    }
+    bounded_append(path, line, u64::MAX)
+}
+
 /// Write a whole file atomically (temp + rename), owner-only.
 pub fn write_user_only(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     use std::io::Write;
@@ -194,6 +210,22 @@ pub fn write_user_only(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rotating_append_keeps_the_previous_fill() {
+        let d = tempfile::tempdir().unwrap();
+        let (p, prev) = (d.path().join("t.log"), d.path().join("t.1.log"));
+        for i in 0..30 {
+            rotating_append(&p, &prev, &format!("line {i:02}"), 64).unwrap();
+        }
+        let (old, new) = (std::fs::read_to_string(&prev).unwrap(), std::fs::read_to_string(&p).unwrap());
+        assert!(new.ends_with("line 29\n"));
+        // Every line since the older fill began is still there, in order, and nothing was emptied.
+        let both = format!("{old}{new}");
+        let n: Vec<u32> = both.lines().map(|l| l[5..].parse().unwrap()).collect();
+        assert!(n.windows(2).all(|w| w[1] == w[0] + 1), "{both}");
+        assert!(n.len() > 64 / 8, "more than one fill kept: {both}");
+    }
 
     #[test]
     fn windows_pipe_path_is_nodes_pipe_form() {
