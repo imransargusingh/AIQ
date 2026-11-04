@@ -17,6 +17,10 @@ pub const MAX_COMMANDS: usize = 30;
 pub const MAX_CMD: usize = 200;
 /// Most bytes one stop reads; a longer backlog makes that turn "not recorded" and the next read goes on.
 pub const MAX_READ_BYTES: u64 = 16 * 1024 * 1024;
+/// Bytes a session's first read since the core started takes from the end of its log. Laptop 2026-11-04 01:28Z
+/// (0.1.2): a 16 MB first read took 296 ms in the core's single writer, where other sessions' stops wait; the
+/// other reads were tens of KB. A turn whose prompt lies further back than this is "not recorded" (`no_start`).
+pub const TAIL_READ_BYTES: u64 = 2 * 1024 * 1024;
 
 /// Text as AIQ stores it: secrets removed (security review S2), then cut to `max` bytes on a char boundary.
 pub fn clean_text(raw: &str, max: usize) -> String {
@@ -169,10 +173,10 @@ pub struct LogRead {
 }
 
 /// Where to start reading a log whose offset AIQ does not know (first stop of a session since the core started):
-/// the last `MAX_READ_BYTES`, so a long session is not read whole. The first, partial line is skipped by
+/// the last `TAIL_READ_BYTES`, so a long session is not read whole. The first, partial line is skipped by
 /// `read_since` (`from` > 0 and not on a line start).
 pub fn tail_start(path: &Path) -> u64 {
-    std::fs::metadata(path).map_or(0, |m| m.len().saturating_sub(MAX_READ_BYTES))
+    std::fs::metadata(path).map_or(0, |m| m.len().saturating_sub(TAIL_READ_BYTES))
 }
 
 /// Read the log from byte `from` on: whole lines only (a line still being written waits for the next read), at
@@ -252,6 +256,17 @@ mod tests {
         let body: String = lines.iter().map(|l| format!("{l}\n")).collect();
         std::fs::write(&p, format!("{body}{tail}")).unwrap();
         (d, p)
+    }
+
+    #[test]
+    fn a_first_read_takes_only_the_logs_last_two_megabytes() {
+        let d = tempfile::TempDir::new().unwrap();
+        let p = d.path().join("big.jsonl");
+        std::fs::write(&p, vec![b'x'; (TAIL_READ_BYTES + 10) as usize]).unwrap();
+        assert_eq!(tail_start(&p), 10);
+        std::fs::write(&p, b"small\n").unwrap();
+        assert_eq!(tail_start(&p), 0);
+        assert_eq!(tail_start(&d.path().join("missing")), 0);
     }
 
     #[test]
