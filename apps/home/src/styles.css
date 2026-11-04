@@ -130,19 +130,6 @@ kbd{font:var(--t-caption);border:1px solid var(--ink-mute);border-radius:var(--r
 .opp .name{font-weight:600;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 .opp .next{grid-column:1/-1;color:var(--ink-mute)}
 .opp .freq{text-align:right;font:var(--t-caption);color:var(--ink-mute);white-space:nowrap}
-.rungs{display:flex;flex-direction:column;gap:var(--s3)}
-.rr{all:unset;box-sizing:border-box;display:grid;grid-template-columns:16px 132px minmax(0,1fr) 112px;gap:var(--s4);align-items:center;min-height:32px;padding:0 var(--s2);border-radius:var(--r-sm);cursor:pointer}
-.rr:hover{background:var(--canvas-soft)}
-.rr:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}
-.rr .chev{font:var(--t-caption);color:var(--ink-mute);transition:transform var(--fast) var(--ease)}
-.rr[aria-expanded="true"] .chev{transform:rotate(90deg)}
-.rr.hd{cursor:default;font:var(--t-caption);color:var(--ink-mute);white-space:nowrap;min-height:0}
-.rr.hd:hover{background:none}
-.rx{margin:0 0 var(--s3) calc(16px + var(--s4) + var(--s2));padding:var(--s4) var(--s5);border:1px solid var(--hairline);border-radius:var(--r-md);background:var(--surface);display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:var(--s5)}
-.rx[hidden]{display:none}
-.rx li a{display:inline-flex;align-items:center;min-height:24px;color:var(--primary)}
-.rx h3{margin:0 0 var(--s2);font:var(--t-caption);color:var(--ink-mute);font-weight:400}
-.rx ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:var(--s2)}
 .lc{margin:0;display:grid;grid-template-columns:auto minmax(0,1fr);grid-template-rows:96px auto;column-gap:var(--s3);row-gap:var(--s2)}
 .lc-y{position:relative;width:32px;font:var(--t-caption);color:var(--ink-mute);font-variant-numeric:tabular-nums;text-align:right}
 .lc-y span{position:absolute;right:0;transform:translateY(-50%)}
@@ -169,7 +156,6 @@ kbd{font:var(--t-caption);border:1px solid var(--ink-mute);border-radius:var(--r
 .track .now{position:absolute;inset:0 auto 0 0;border-radius:var(--r-sm)}
 [data-theme="contrast"] .track .now{border:1px solid var(--ink)}
 .track .pot{position:absolute;inset:-3px auto -3px 0;border:1.5px dashed var(--ink-mute);border-radius:var(--r-sm)}
-.rr.hd span:last-child,.rr .v{text-align:right;white-space:nowrap;font:var(--t-caption);color:var(--ink-mute);font-variant-numeric:tabular-nums}
 .legend{display:flex;gap:var(--s5);font:var(--t-caption);color:var(--ink-mute);flex-wrap:wrap}
 .legend i{display:inline-block;width:14px;height:10px;border-radius:var(--r-sm);background:var(--rung-3);margin-right:var(--s2);vertical-align:-1px}
 .legend i.p{background:none;border:1.5px dashed var(--ink-mute)}
@@ -348,3 +334,58 @@ li+li>.kindrow{border-top:1px solid var(--hairline)}
 .titlebar .updchip{cursor:pointer;color:var(--primary);border-color:var(--primary);font-weight:600}
 .titlebar .updchip:hover{background:var(--primary);color:var(--surface)}
 .titlebar .updchip:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+
+/* How you work with agents: the rung mix (share bar, change, weekly mix, kinds on a rung). */
+.mix-head{font:var(--t-heading);margin:0}
+.mix-wrap{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--s6);align-items:end}
+.rmix{display:flex;gap:2px;height:28px;border-radius:var(--r-sm);overflow:hidden}
+.rmix span{display:block;height:100%}
+.mix-lab{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:var(--s3);list-style:none;margin:0;padding:0}
+.mix-r{all:unset;box-sizing:border-box;display:flex;flex-direction:column;gap:var(--s1);font:var(--t-caption);color:var(--ink-mute);white-space:nowrap;cursor:pointer;padding:var(--s2);border-radius:var(--r-sm);min-width:0}
+.mix-r:hover:not(:disabled){background:var(--canvas-soft)}
+.mix-r:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}
+.mix-r:disabled{cursor:default}
+.mix-r[aria-pressed="true"]{background:var(--surface);box-shadow:inset 0 -2px 0 var(--primary)}
+.mix-r b{font:600 16px/1.2 var(--f-text);color:var(--ink)}
+.mix-r i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:var(--s2);vertical-align:-1px}
+.mix-weeks{display:flex;flex-direction:column;gap:var(--s2)}
+.mix-cols{display:flex;gap:6px;align-items:stretch;height:64px}
+.mix-col{display:flex;flex-direction:column-reverse;gap:1px;width:22px;border-radius:2px;overflow:hidden}
+.mix-col.few{border:1px dashed var(--hairline)}
+.mix-col span{display:block}
+.mix-kinds{display:flex;flex-wrap:wrap;gap:var(--s2);align-items:center;margin:0}
+.up{color:var(--success)}
+.dn{color:var(--warning)}
+/* Is each kind of task moving up?: the ladder map, one row per kind on the five rungs. */
+.hero{display:flex;align-items:baseline;gap:var(--s3)}
+.hero b{font:600 28px/1 var(--f-display)}
+.lad-key{display:flex;gap:var(--s5);flex-wrap:wrap;align-items:center}
+.lad-key svg{vertical-align:-2px;margin-right:var(--s2)}
+.lad-cols,.lad-row{display:grid;grid-template-columns:minmax(140px,280px) repeat(5,76px) 64px;justify-content:start;align-items:center}
+.lad-cols span{text-align:center;white-space:nowrap}
+.lad-cols .lad-n{text-align:right}
+.lad,.lad ul,.nsteps{list-style:none;margin:0;padding:0}
+.lad-pack{display:block;font:600 12px/1.4 var(--f-text);color:var(--ink-mute);padding:var(--s4) 0 var(--s1);border-bottom:1px solid var(--hairline)}
+.lad-row{all:unset;box-sizing:border-box;display:grid;align-items:center;grid-template-columns:minmax(140px,280px) repeat(5,76px) 64px;justify-content:start;width:100%;height:30px;cursor:pointer;border-radius:var(--r-sm)}
+.lad-row:hover{background:var(--canvas-soft)}
+.lad-row:focus-visible{outline:2px solid var(--focus-ring);outline-offset:-2px}
+.lad-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-left:var(--s2)}
+.lad-svg{grid-column:2/7;display:block;width:100%;height:30px;overflow:visible}
+.lad-n{font:var(--t-caption);color:var(--ink-mute);text-align:right;padding-right:var(--s2);white-space:nowrap}
+.lad-grid{stroke:var(--hairline);stroke-width:1}
+.lad-base{stroke:var(--hairline);stroke-width:2;stroke-linecap:round}
+.lad-now{fill:var(--primary);stroke:var(--canvas);stroke-width:2}
+.lad-before{fill:var(--canvas);stroke:var(--ink-mute);stroke-width:2}
+.lad-next{stroke:var(--primary);stroke-width:2;stroke-dasharray:3 3}
+.lad-next-dot{fill:var(--canvas);stroke:var(--primary);stroke-width:2;stroke-dasharray:3 2}
+.nsteps li+li{border-top:1px solid var(--hairline)}
+.step-row{all:unset;box-sizing:border-box;display:grid;grid-template-columns:minmax(140px,220px) minmax(0,1fr) auto;gap:var(--s4);align-items:baseline;width:100%;padding:var(--s2);cursor:pointer;border-radius:var(--r-sm)}
+.step-row:hover{background:var(--canvas-soft)}
+.step-row:focus-visible{outline:2px solid var(--focus-ring);outline-offset:-2px}
+.step-row .k{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.step-row .h{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.step-row .to{white-space:nowrap}
+.head h3{font:var(--t-heading);margin:0}
+[data-theme="contrast"] .rmix span,[data-theme="contrast"] .mix-col span,[data-theme="contrast"] .mix-r i{outline:1px solid var(--ink);outline-offset:-1px}
+@media (forced-colors:active){.rmix span,.mix-col span,.mix-r i{forced-color-adjust:none;outline:1px solid CanvasText;outline-offset:-1px}}
+@media (max-width:760px){.mix-wrap{grid-template-columns:minmax(0,1fr)}.lad-cols,.lad-row{grid-template-columns:minmax(110px,1fr) repeat(5,48px) 52px}.lad-cols span{font-size:10px;overflow:hidden;text-overflow:ellipsis}.step-row{grid-template-columns:minmax(0,1fr) auto}.step-row .h{grid-column:1/-1;grid-row:2}}
