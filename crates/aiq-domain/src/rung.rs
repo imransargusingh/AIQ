@@ -209,6 +209,20 @@ const CHECK_PROGRAMS: [&str; 24] = [
     "actionlint",
     "hadolint",
 ];
+/// The linters fs2 added (named apart in `check_rule` counts).
+const LINTERS_ADDED_FS2: [&str; 11] = [
+    "flake8",
+    "pylint",
+    "shellcheck",
+    "markdownlint",
+    "markdownlint-cli2",
+    "lychee",
+    "golangci-lint",
+    "stylelint",
+    "yamllint",
+    "actionlint",
+    "hadolint",
+];
 /// Interpreters whose first non-flag argument is the script that runs (`python -I scripts/check.py`).
 const INTERPRETERS: [&str; 9] = ["python", "python3", "py", "bash", "sh", "zsh", "node", "pwsh", "powershell"];
 /// A script whose file name has one of these words, or that is given a test by name, is a check
@@ -243,10 +257,15 @@ fn is_edit_tool(name: &str) -> bool {
 /// playwright"` or `grep -r pytest src` is not a check (fact-check rerun, 2026-11-02: substring matching
 /// gave 2 false "agent ran checks" in 15 real Copilot tasks and missed `npm --prefix web run test:e2e`).
 fn is_check(cmd: &str) -> bool {
+    check_rule(cmd).is_some()
+}
+
+/// Which rule made a command a check (for counts that must not carry the command itself), or None.
+pub fn check_rule(cmd: &str) -> Option<&'static str> {
     let c = strip_quoted(&cmd.to_ascii_lowercase());
-    c.split(['\n', ';', '|', '&']).any(|part| {
+    c.split(['\n', ';', '|', '&']).find_map(|part| {
         let toks: Vec<&str> = part.split_whitespace().collect();
-        segment_is_check(&toks)
+        segment_check_rule(&toks)
     })
 }
 
@@ -299,7 +318,7 @@ fn words(name: &str) -> impl Iterator<Item = &str> {
     stem.split(['_', '-', '.']).filter(|w| !w.is_empty())
 }
 
-fn segment_is_check(toks: &[&str]) -> bool {
+fn segment_check_rule(toks: &[&str]) -> Option<&'static str> {
     let mut i = 0;
     // Skip env assignments (`CI=1`) and wrappers (`npx`, `python -m`, `uv run`, `poetry run`).
     while i < toks.len() {
@@ -314,10 +333,10 @@ fn segment_is_check(toks: &[&str]) -> bool {
             break;
         }
     }
-    let Some(first) = toks.get(i) else { return false };
+    let first = toks.get(i)?;
     let p = program(first);
     if CHECK_PROGRAMS.contains(&p) {
-        return true;
+        return Some(if LINTERS_ADDED_FS2.contains(&p) { "linter (fs2)" } else { "test or lint program" });
     }
     // The first non-flag argument; flags that take a value (`--prefix <dir>`, `-C <dir>`) skip it too.
     let args: Vec<&str> = {
@@ -340,24 +359,31 @@ fn segment_is_check(toks: &[&str]) -> bool {
         v
     };
     if let Some((_, subs)) = CHECK_SUBCOMMANDS.iter().find(|(name, _)| *name == p) {
-        return args.first().is_some_and(|a| subs.contains(a));
+        let sub = args.first().is_some_and(|a| subs.contains(a));
+        return sub.then_some(if p == "pre-commit" { "pre-commit run (fs2)" } else { "build tool check" });
     }
     if let Some(script) = script_run(toks, i) {
         let names_check = |t: &str| words(program(t)).next().is_some_and(|w| CHECK_WORDS.contains(&w));
         let script_args = &toks[toks.iter().position(|t| *t == script).map_or(toks.len(), |k| k + 1)..];
-        return words(program(script)).any(|w| CHECK_WORDS.contains(&w))
-            || script_args.iter().any(|a| !a.starts_with('-') && names_check(a));
+        if words(program(script)).any(|w| CHECK_WORDS.contains(&w)) {
+            return Some("script named for checking (fs2)");
+        }
+        return script_args
+            .iter()
+            .any(|a| !a.starts_with('-') && names_check(a))
+            .then_some("script given a test by name (fs2)");
     }
     if matches!(p, "npm" | "pnpm" | "yarn" | "bun") {
         let script = |s: &str| CHECK_SCRIPTS.contains(&s.split(':').next().unwrap_or(s));
-        return match args.first() {
+        let hit = match args.first() {
             Some(&"test") | Some(&"t") => true,
             Some(&"run") | Some(&"run-script") => args.get(1).is_some_and(|s| script(s)),
             Some(s) if p != "npm" => script(s),
             _ => false,
         };
+        return hit.then_some("package script");
     }
-    false
+    None
 }
 
 /// A file in the agent tool's own scratch space (Copilot keeps `session-state/<id>/files`): writing there is

@@ -15,7 +15,7 @@ use aiq_domain::rung::{self, Turn};
 use aiq_home::TaskRow;
 use aiq_store::{CallOutcome, JudgmentRow, NewJudgeCall, Store};
 use serde_json::{Value, json};
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
@@ -1126,8 +1126,17 @@ fn versions_cli(store: &Store, homes: &Homes) -> ExitCode {
     let Ok(pack) = aiq_core::pack::parse(aiq_core::pack::BUNDLED_TOML) else { return ExitCode::FAILURE };
     let Ok(tasks) = aiq_home::tasks(store, &pack, 0) else { return ExitCode::FAILURE };
     let Ok(judged) = store.current_judgments() else { return ExitCode::FAILURE };
-    let (mut current, mut restamped, mut no_actions) = (0, 0, 0);
+    let n = now();
+    let calls = store.judge_calls_since(n.utc_ms - 7 * DAY_MS).unwrap_or_default();
+    // The same queue `run` walks, so "judged again" counts only tasks a run would send to the model.
+    let queued: HashSet<&str> = queue(&tasks, &judged, &calls, n.utc_ms, pack.idle_gap_min as i64 * 60_000, None)
+        .iter()
+        .map(|t| t.task_id.as_str())
+        .collect();
+    let (mut current, mut restamped, mut no_actions, mut no_text, mut held) = (0, 0, 0, 0, 0);
     let mut again: BTreeMap<String, u32> = BTreeMap::new();
+    let mut why_again: BTreeMap<String, u32> = BTreeMap::new();
+    let mut rules_now: BTreeMap<&str, u32> = BTreeMap::new();
     for t in &tasks {
         let Some(j) = judged.get(&t.task_id) else { continue };
         let read: Value = serde_json::from_str(&j.read).unwrap_or_default();
@@ -1138,16 +1147,48 @@ fn versions_cli(store: &Store, homes: &Homes) -> ExitCode {
             current += 1;
             continue;
         }
+        if !queued.contains(t.task_id.as_str()) {
+            held += 1;
+            continue;
+        }
         let turns = task_turns(store, homes, t).unwrap_or_default();
-        if restamp(j, &rung::log_facts(&turns)).is_some() {
-            restamped += 1;
+        if turns.is_empty() {
+            no_text += 1;
         } else {
-            *again.entry(t.tool.clone()).or_default() += 1;
+            let log = rung::log_facts(&turns);
+            if restamp(j, &log).is_some() {
+                restamped += 1;
+            } else {
+                *again.entry(t.tool.clone()).or_default() += 1;
+                // Why: the stored F3 against today's, and whether a turn is now "not recorded".
+                let was = aiq_contracts::judge::parse_stored_facts(&j.facts).remove("F3").and_then(|f| f.checker);
+                let why = format!(
+                    "{} {}: F3 {} -> {}{}",
+                    t.tool,
+                    j.fact_set_version,
+                    was.as_deref().unwrap_or("unknown"),
+                    log.checks_by.map_or("unknown", rung::Checker::as_str),
+                    if log.unrecorded > 0 { ", a turn not recorded" } else { "" }
+                );
+                *why_again.entry(why).or_default() += 1;
+                if was.as_deref() != Some("agent") && log.checks_by == Some(rung::Checker::Agent) {
+                    // Which rule now reads a check: rule names only, never the command (it is the person's).
+                    let rules: BTreeSet<&str> = turns
+                        .iter()
+                        .filter_map(|t| t.actions.as_ref())
+                        .flat_map(|a| a.commands.iter())
+                        .filter_map(|c| rung::check_rule(c))
+                        .collect();
+                    for r in rules {
+                        *rules_now.entry(r).or_default() += 1;
+                    }
+                }
+            }
         }
     }
     println!(
         "Judgments: {} (fact set {}, rubric {}, judge {})",
-        current + restamped + again.values().sum::<u32>(),
+        current + restamped + no_text + held + again.values().sum::<u32>(),
         rung::FACT_SET_VERSION,
         rung::RUBRIC_VERSION,
         rung::JUDGE_VERSION
@@ -1156,6 +1197,17 @@ fn versions_cli(store: &Store, homes: &Homes) -> ExitCode {
     for (tool, n) in &again {
         println!("  judged again ({tool}): {n}");
     }
+    for (why, n) in &why_again {
+        println!("    {why}: {n}");
+    }
+    if !rules_now.is_empty() {
+        println!("  tasks whose F3 now reads agent, by the rule that matched (a task can count under several):");
+        for (r, n) in &rules_now {
+            println!("    {r}: {n}");
+        }
+    }
+    println!("  outdated, no prompt text left (never sent): {no_text}");
+    println!("  outdated, not queued (still open, or gave up after {GIVE_UP} failures): {held}");
     println!("  judged with no agent actions in the log: {no_actions}");
     ExitCode::SUCCESS
 }
