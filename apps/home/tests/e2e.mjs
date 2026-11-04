@@ -408,6 +408,9 @@ await test("Settings: a section index, Sharing and Keyboard folded in, judging o
   const judging = page.locator("section[aria-labelledby=st3]");
   assert.equal(await judging.locator(".chip").innerText(), "Off");
   assert.equal(await page.getByTestId("judge-today").innerText(), "AIQ judges no new task while this is off. Judged today: 3 tasks, 6 calls, $0.04 reported by Claude Code.");
+  // axe's target-size rule counts a control scrolled under the sticky index as too small, so axe reads the page
+  // from the top, where nothing sits under the index (CI run 41892919844 caught the 'Off' radio under it).
+  await page.evaluate(() => document.querySelector("main").scrollTo({ top: 0, behavior: "instant" }));
   assert.deepEqual(await axe(page), []);
   if (shots) await page.screenshot({ path: join(shots, "settings-index.png") });
   await page.context().close();
@@ -429,6 +432,7 @@ await test("Settings: a section index, Sharing and Keyboard folded in, judging o
   for (const theme of ["dark", "contrast"]) {
     const p = await open("full", { hash: "#settings", theme });
     await p.locator("details.fold > summary").click();
+    await p.evaluate(() => document.querySelector("main").scrollTo({ top: 0, behavior: "instant" }));
     assert.deepEqual(await axe(p), [], theme);
     await p.context().close();
   }
