@@ -124,15 +124,21 @@ await test("Home shows judged rungs, progress toward the split, and only measure
   assert.match(await page.locator("details.how").innerText(), /7 tasks in the last 30 days · 1 imported task/);
   assert.doesNotMatch(t, /\d+%/, "no percentages under 10 judged tasks");
   assert.match(t, /Your most common rung\s+Directed \(2\)\s+3 tasks judged in 30 days/);
-  assert.match(t, /\(1 uncertain not counted\)/);
-  assert.match(t, /Where agents could do more\s+[^\n]*\n+Next steps show once AIQ knows the kind of each task/);
-  for (const r of ["Assisted (1)", "Directed (2)", "Delegated (3)", "Orchestrated (4)", "Factory (5)"]) assert.ok(t.includes(r), r);
+  assert.match(t, /1 task the judge wasn't sure about is left out · See them/);
+  assert.match(t, /Next steps\s+[^\n]*\n+Next steps show once AIQ knows the kind of each task/);
+  // The rung mix: counts only under 10 judged tasks (no share), each rung's meaning on hover, the change waits.
+  const mix = await page.locator("section", { has: page.locator("h2#rg") }).innerText();
+  assert.match(mix, /Directed is your most common rung so far\./);
+  assert.match(mix, /The change shows once the last 14 days and the 14 before each have 10 judged tasks\./);
+  for (const r of ["Assisted", "Directed", "Delegated", "Orchestrated", "Factory"]) assert.ok(mix.includes(r), r);
+  assert.match((await page.locator(".mix-r span[title]").nth(2).getAttribute("title")) ?? "", /hand the agent a whole outcome/);
   assert.equal(await page.locator(".wk-col").count(), 4);
-  // Rung rows expand to say what the rung means.
-  const row = page.getByRole("button", { name: /Delegated \(3\)/ });
+  assert.equal(await page.locator(".mix-col").count(), 4);
+  // Selecting a rung lists its kinds of task.
+  const row = page.getByRole("button", { name: /^Delegated \(3\): / });
   await row.click();
-  assert.equal(await row.getAttribute("aria-expanded"), "true");
-  assert.match(await page.locator("main").innerText(), /hand the agent a whole outcome/);
+  assert.equal(await row.getAttribute("aria-pressed"), "true");
+  assert.match(await page.locator(".mix-kinds").innerText(), /On Delegated:/);
   await page.context().close();
 });
 
@@ -172,7 +178,7 @@ await test("screen readers hear clean names: nav, rung rows, skip link", async (
   assert.equal(await page.getByRole("link", { name: "Home", exact: true }).getAttribute("aria-keyshortcuts"), "G H");
   // The G-letter shortcuts still work but the nav shows no hint text (Imran 2026-11-02: "Get rid of the hints").
   assert.doesNotMatch(await page.locator("nav.side a").allInnerTexts().then((t) => t.join("|")), /\bG [A-Z]\b/);
-  for (const name of ["Factory (5), 0 tasks", "Directed (2), 1 task"]) {
+  for (const name of ["Factory (5): 0 tasks", "Directed (2): 1 task"]) {
     assert.equal(await page.getByRole("button", { name, exact: true }).count(), 1, name);
   }
   // Focus starts on the page title; the skip link is the first stop of the window chrome, before the nav.
@@ -722,7 +728,11 @@ await test("coaching Home: finished and could be, the rule, uncertain left out, 
   const rows = page.getByRole("list", { name: "Kinds of task with a next step" }).getByRole("listitem");
   assert.equal(await rows.count(), 2);
   const first = await rows.first().innerText();
-  assert.match(first, /Writing tests[\s\S]*Delegated \(3\) → Orchestrated \(4\)[\s\S]*7 tasks · 1\.6 a week[\s\S]*Next step: Give the agent a written brief or instructions file/);
+  assert.match(first, /Writing tests\s+Give the agent a written brief or instructions file\s+→ Orchestrated \(4\)/);
+  // The rung mix: 15 judged tasks, so shares show; the kinds on the highest rung reached are listed.
+  const mix = await page.locator("section", { has: page.locator("h2#rg") }).innerText();
+  assert.match(mix, /Delegated\s+40%\s+6 tasks/);
+  assert.match(await page.locator(".mix-kinds").innerText(), /On Delegated:\s+Writing tests · 6/);
   assert.ok(!(await page.locator("main").innerHTML()).includes("Give the agent <b>"), "judge text is not on Home");
   // A week with fewer than 3 judged tasks says so instead of a share.
   assert.ok((await page.locator(".wk-col").first().getAttribute("aria-label")).includes("too few judged tasks to say"));
@@ -737,21 +747,24 @@ await test("progress Home: kinds that moved up or down, counts behind them, too 
     const page = await open("progress", { theme: theme === "light" ? undefined : theme });
     const sec = page.locator("section", { has: page.locator("h2#pg") });
     const t = await sec.innerText();
-    assert.match(t, /Is each kind of task moving up\?/);
-    assert.match(t, /last 14 days against the 14 before\. Counts are measured; rungs are the judge's reading\./);
-    assert.match(t, /1 kind of task moved up a rung\. 1 moved down\./);
-    const rows = page.getByRole("list", { name: "Rung progress by kind of task" }).getByRole("listitem");
+    assert.match(t, /Is each kind of task moving up\?\s+1\s+of 3 kinds moved up a rung · 1 moved down/);
+    assert.match(t, /Last 14 days\s+The 14 before, when it moved\s+Where the next step gets you/);
+    const rows = page.getByRole("list", { name: "Rung progress by kind of task" }).getByRole("button");
     assert.equal(await rows.count(), 3, "too-few kinds are one line, not rows");
-    assert.match(await rows.nth(0).innerText(), /Writing tests[\s\S]*Directed \(2\) → Delegated \(3\)[\s\S]*Moved up[\s\S]*4 in the last 14 days · 3 before/);
-    assert.match(await rows.nth(1).innerText(), /Writing a spec or PRD[\s\S]*Delegated \(3\) → Directed \(2\)[\s\S]*Moved down/);
-    assert.match(await rows.nth(2).innerText(), /Fixing a bug or failing test[\s\S]*Assisted \(1\)[\s\S]*Same rung/);
-    assert.match(t, /Too few tasks to say for 1 kind of task: each needs at least 3 judged tasks in both halves\./);
+    // Movers first in their pack; the row's name carries what the dots show.
+    assert.equal(await rows.nth(0).getAttribute("aria-label"), "Writing tests, Delegated (3) in the last 14 days, moved up from Directed (2), next step reaches Orchestrated (4), 4 tasks in the last 14 days, 3 before");
+    assert.match(await rows.nth(0).innerText(), /Writing tests\s+↑ up/);
+    assert.equal(await rows.nth(1).getAttribute("aria-label"), "Fixing a bug or failing test, Assisted (1) in the last 14 days, same rung, 3 tasks in the last 14 days, 3 before");
+    assert.match(await rows.nth(2).innerText(), /Writing a spec or PRD\s+↓ down/);
+    assert.match(t, /1 more kind of task: too few to say if it moved\. Each needs at least 3 judged tasks in both halves\. Show/);
+    await page.getByRole("button", { name: "Show" }).click();
+    assert.equal(await page.getByRole("list", { name: "Kinds of task with too few tasks to say" }).getByRole("button").count(), 1);
     const v = await axe(page);
     assert.deepEqual(v, [], v.join("; "));
     assert.deepEqual(page.errors, []);
     if (shots) await page.screenshot({ path: join(shots, `progress-home-${theme}.png`), fullPage: true });
     if (theme === "light") {
-      await rows.first().getByRole("button").click();
+      await rows.first().click();
       await page.waitForSelector("main h1:text('Writing tests')");
       assert.ok(page.url().endsWith("#kind/code_change/tests"));
     }
@@ -759,9 +772,12 @@ await test("progress Home: kinds that moved up or down, counts behind them, too 
   }
   // Nothing moved yet, and no kinds: the empty wording, never a guessed trend.
   const same = await open("coaching");
-  assert.match(await same.locator("section", { has: same.locator("h2#pg") }).innerText(), /No kind of task has moved a rung yet\.[\s\S]*Too few tasks to say for 4 kinds of task/);
+  // Nothing has a reading in both halves: no headline number, kinds with a next step still on the ladder.
+  const st = await same.locator("section", { has: same.locator("h2#pg") }).innerText();
+  assert.doesNotMatch(st, /moved up a rung/);
+  assert.match(st, /2 more kinds of task: too few to say if they moved/);
   await same.context().close();
-  const none = await open("coaching", { edit: (s) => (s.coaching.progress = []) });
+  const none = await open("coaching", { edit: (s) => ((s.coaching.progress = []), (s.coaching.kinds = [])) });
   assert.match(await none.locator("main").innerText(), /Progress shows once AIQ knows the kind of your tasks from the last 28 days\./);
   await none.context().close();
 });

@@ -4,7 +4,8 @@
 // guessed. Model-written text renders as plain text only (TR-5).
 import { useState } from "react";
 import { api } from "../api";
-import { KindList, ProgressList, judgedBy, pct } from "../coach";
+import { LadderMap, NextSteps, RungMix, judgedBy, moved, pct } from "../coach";
+import { DAY, rungCounts, shift } from "../mix";
 import { RUNGS, day, folderName, plural, rungLabel, sentence, toolName, when } from "../format";
 import { AccuracyPaused, Banners, ProjectPicker, Rung, Title, UpdateLine, type Ctx } from "../ui";
 import type { Project } from "../types";
@@ -18,7 +19,6 @@ export function Home(ctx: Ctx) {
     if (r.ok) refresh();
   };
   const h = snap.home;
-  const [open, setOpen] = useState<number | null>(null);
 
   if (h.tasks_in_window === 0 && snap.data.events === 0 && !snap.status.error) {
     return (
@@ -43,7 +43,7 @@ export function Home(ctx: Ctx) {
   const max = Math.max(1, ...h.weeks.map((w) => w.tasks));
   const mc = h.most_common_rung;
   const onRung = h.rungs.reduce((a, b) => a + b, 0);
-  const rungMax = Math.max(1, ...h.rungs);
+  const mv = moved(snap.coaching);
   const c = snap.coaching;
   const sp = c.split;
   const ready = sp.tasks >= c.split_min;
@@ -232,28 +232,63 @@ export function Home(ctx: Ctx) {
         </section>
       </div>
 
+      <section className="group" aria-labelledby="rg">
+        <div className="head">
+          <h2 id="rg">How you work with agents</h2>
+          <span className="meta">
+            {onRung > 0
+              ? `Judged tasks, last ${h.window_days} days · change: last ${c.progress_days} days against the ${c.progress_days} before`
+              : "The five rungs. Your share on each shows once tasks are judged."}
+          </span>
+        </div>
+        {onRung > 0 ? (
+          <RungMix
+            rungs={h.rungs}
+            shift={shift(snap.tasks, snap.now_ms, c.progress_days, c.split_min)}
+            shiftDays={c.progress_days}
+            shiftMin={c.split_min}
+            shareMin={c.split_min}
+            weeks={h.weeks.map((w) => ({ start_ms: w.start_ms, label: day(w.start_ms, snap.offset_min), rungs: rungCounts(snap.tasks, w.start_ms, w.start_ms + 7 * DAY) }))}
+            weekMin={c.week_min}
+            tasks={snap.tasks}
+            uncertain={h.uncertain}
+            seeUncertain={() => go("tasks")}
+          />
+        ) : (
+          <ul className="mix-lab" aria-label="The five rungs">
+            {RUNGS.map((_, i) => (
+              <li key={i}><Rung r={i + 1} /></li>
+            ))}
+          </ul>
+        )}
+      </section>
+
       <section className="group" aria-labelledby="pg">
         <div className="head">
           <h2 id="pg">Is each kind of task moving up?</h2>
-          <span className="meta">
-            Typical rung of your judged tasks, last {c.progress_days} days against the {c.progress_days} before. Counts are measured; rungs are the judge's reading.
-          </span>
+          {mv.read > 0 && (
+            <span className="hero">
+              <b className="num">{mv.up}</b>
+              <span className="meta">
+                of {mv.read} {mv.read === 1 ? "kind" : "kinds"} moved up a rung{mv.down > 0 ? ` · ${mv.down} moved down` : ""}
+              </span>
+            </span>
+          )}
         </div>
-        {c.progress.length === 0 ? (
+        {c.progress.length === 0 && c.kinds.length === 0 ? (
           <p className="mute">
             {h.judged === 0
               ? "Progress shows here once tasks are judged."
               : `Progress shows once AIQ knows the kind of your tasks from the last ${2 * c.progress_days} days.`}
           </p>
         ) : (
-          <ProgressList c={c} open={ctx.openKind} />
+          <LadderMap c={c} open={ctx.openKind} />
         )}
-      </section>
-
-      <section className="group" aria-labelledby="ns">
         <div className="head">
-          <h2 id="ns">Where agents could do more</h2>
-          <span className="meta">Kinds of task you repeat, with one next step each. Most often first.</span>
+          <h3 id="ns">Next steps</h3>
+          {c.kinds.length > 0 && (
+            <button className="btnlink meta" onClick={() => go("tasks")}>All kinds of task</button>
+          )}
         </div>
         {c.opportunities.length === 0 ? (
           <p className="mute">
@@ -264,52 +299,11 @@ export function Home(ctx: Ctx) {
                 : "No next step yet: your kinds of task are at their right rung, too few to say, or capped by something outside your control."}
           </p>
         ) : (
-          <KindList label="Kinds of task with a next step" rows={c.opportunities} open={(k) => ctx.openKind(k.job, k.task_type)} />
-        )}
-        {c.kinds.length > 0 && (
-          <p className="meta">
-            <button className="btnlink" onClick={() => go("tasks")}>All kinds of task</button>
-          </p>
+          <NextSteps rows={c.opportunities} open={(k) => ctx.openKind(k.job, k.task_type)} />
         )}
       </section>
 
       {!one && snap.projects.length > 1 && <Projects {...ctx} />}
-
-      <section className="group" aria-labelledby="rg">
-        <div className="head">
-          <h2 id="rg">How you work with agents</h2>
-          <span className="meta">
-            {onRung > 0
-              ? `Your judged tasks on each rung, last ${h.window_days} days${h.uncertain > 0 ? ` (${h.uncertain} uncertain not counted)` : ""}.`
-              : "The five rungs. Your share on each shows once tasks are judged."}
-          </span>
-        </div>
-        <div className="rungs">
-          {RUNGS.map((_, i) => i).reverse().map((i) => (
-            <div key={i}>
-              <button
-                className="rr"
-                aria-label={`${rungLabel(i + 1)}, ${onRung > 0 ? plural(h.rungs[i], "task") : "not judged yet"}`}
-                aria-expanded={open === i} aria-controls={`rx${i}`} onClick={() => setOpen(open === i ? null : i)}>
-                <span className="chev" aria-hidden="true">›</span>
-                <span>{rungLabel(i + 1)}</span>
-                <span className="track" aria-hidden="true">
-                  {h.rungs[i] > 0 && (
-                    <span className="now" style={{ width: `${(100 * h.rungs[i]) / rungMax}%`, background: "var(--primary)" }} />
-                  )}
-                </span>
-                <span className="v">{onRung > 0 ? plural(h.rungs[i], "task") : "Not judged yet"}</span>
-              </button>
-              <div className="rx" id={`rx${i}`} hidden={open !== i}>
-                <div>
-                  <h3>What it means</h3>
-                  <p>{RUNGS[i].means}</p>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
 
       <section className="group" aria-labelledby="hb">
         <div className="head">
