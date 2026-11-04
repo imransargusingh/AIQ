@@ -54,6 +54,9 @@ pub struct State {
     pub message: Option<String>,
     /// A tag the person rolled back from; never installed again by itself.
     pub skip: Option<String>,
+    /// After a check GitHub's API refused for its rate limit (403/429): when the limit resets. The next check
+    /// waits for it rather than the hour (2026-11-04: a shared office address had used all 60 calls).
+    pub retry_at: Option<String>,
 }
 
 pub fn state_path(paths: &Paths) -> PathBuf {
@@ -128,10 +131,30 @@ pub fn decide(now_ms: i64, st: &State, mode: Option<&str>) -> Option<Action> {
 }
 
 /// A check is due `every` after the last one, or an hour after one that failed (a 404 before the first release
-/// is published made the laptop wait a full day on 2026-11-03). Never checked, or an unreadable time: due.
+/// is published made the laptop wait a full day on 2026-11-03). After a rate-limited one it is due when the limit
+/// resets (`retry_at`, at most a day on). Never checked, or an unreadable time: due.
 fn check_due(now_ms: i64, st: &State, every: i64) -> bool {
-    let wait = if st.check_error.is_some() { every.min(HOURLY_MS) } else { every };
-    st.checked_at.as_deref().and_then(parse_utc_ms).is_none_or(|t| now_ms - t >= wait)
+    let Some(t) = st.checked_at.as_deref().and_then(parse_utc_ms) else { return true };
+    if st.check_error.is_none() {
+        return now_ms - t >= every;
+    }
+    match retry_at_ms(st) {
+        Some(r) => now_ms >= r.min(t + CHECK_EVERY_MS),
+        None => now_ms - t >= every.min(HOURLY_MS),
+    }
+}
+
+fn retry_at_ms(st: &State) -> Option<i64> {
+    st.check_error.as_ref().and(st.retry_at.as_deref()).and_then(parse_utc_ms)
+}
+
+/// How long the kicker sleeps: an hour, or less when a rate limit resets sooner (a minute after the reset, so
+/// the check lands after it).
+fn kick_sleep(now_ms: i64, st: &State) -> Duration {
+    match retry_at_ms(st).map(|r| r + 60_000 - now_ms) {
+        Some(ms) if ms > 0 && ms < KICK_EVERY.as_millis() as i64 => Duration::from_millis(ms.max(60_000) as u64),
+        _ => KICK_EVERY,
+    }
 }
 
 /// AIQ home asks this when it opens and every hour while open, then starts a check (download, no install) when
@@ -222,13 +245,17 @@ pub fn start_background(paths: Paths) {
         loop {
             let mode = stored_mode(&paths);
             let now = chrono::Utc::now().timestamp_millis();
-            if let Some(action) = decide(now, &read_state(&paths), mode.as_deref()) {
+            let st = read_state(&paths);
+            if let Some(action) = decide(now, &st, mode.as_deref()) {
                 match start(&paths, action, None, false) {
                     Ok(()) => tracing::info!(?action, "update run started"),
                     Err(e) => tracing::warn!(error = %e, "update run did not start"),
                 }
             }
-            std::thread::sleep(KICK_EVERY);
+            // The state read before a check just started: a rate limit it hits is seen on the next wake.
+            let sleep = kick_sleep(now, &st);
+            tracing::debug!(sleep_s = sleep.as_secs(), "update kicker sleeping");
+            std::thread::sleep(sleep);
         }
     });
 }
@@ -314,6 +341,51 @@ mod tests {
         assert_eq!(decide(t0() + HOURLY_MS, &failed, None), Some(Action::Check { apply: true }));
         assert_eq!(decide(t0() + HOURLY_MS, &failed, Some("ask")), Some(Action::Check { apply: false }));
         assert_eq!(decide(t0() + HOURLY_MS, &failed, Some("off")), None);
+    }
+
+    #[test]
+    fn a_rate_limited_check_waits_for_the_reset_not_the_hour() {
+        // 2026-11-04 on the laptop: 403 with X-RateLimit-Remaining 0, reset 58 minutes later.
+        let reset = t0() + 58 * 60_000;
+        let limited = State {
+            check_error: Some("(403) Forbidden".into()),
+            retry_at: Some("2026-11-02T21:58:00Z".into()),
+            ..st(None, Some(T0))
+        };
+        assert_eq!(decide(t0() + HOURLY_MS, &limited, None), None, "the hour is not enough");
+        assert_eq!(decide(reset, &limited, None), Some(Action::Check { apply: true }));
+        assert!(!home_check_due(reset - 1, &limited, None));
+        assert!(home_check_due(reset, &limited, None));
+        // A sooner reset is also honoured.
+        let soon = State { retry_at: Some("2026-11-02T21:10:00Z".into()), ..limited.clone() };
+        assert_eq!(decide(t0() + 10 * 60_000, &soon, None), Some(Action::Check { apply: true }));
+        // A reset far off (a bad header) never stops checks past a day.
+        let far = State { retry_at: Some("2026-12-02T21:00:00Z".into()), ..limited.clone() };
+        assert_eq!(decide(t0() + CHECK_EVERY_MS, &far, None), Some(Action::Check { apply: true }));
+        // retry_at left over without an error, or unreadable, changes nothing.
+        let stale = State { check_error: None, ..limited.clone() };
+        assert_eq!(decide(t0() + HOURLY_MS, &stale, None), None);
+        let junk = State { retry_at: Some("soon".into()), ..limited };
+        assert_eq!(decide(t0() + HOURLY_MS, &junk, None), Some(Action::Check { apply: true }));
+    }
+
+    #[test]
+    fn the_kicker_wakes_a_minute_after_a_reset_that_comes_before_the_hour() {
+        let limited = |at: &str| State {
+            check_error: Some("(403) Forbidden".into()),
+            retry_at: Some(at.into()),
+            ..st(None, Some(T0))
+        };
+        assert_eq!(kick_sleep(t0(), &limited("2026-11-02T21:20:00Z")), Duration::from_secs(21 * 60));
+        assert_eq!(
+            kick_sleep(t0(), &limited("2026-11-02T20:59:30Z")),
+            Duration::from_secs(60),
+            "just passed: at least a minute"
+        );
+        assert_eq!(kick_sleep(t0(), &limited("2026-11-02T20:58:00Z")), KICK_EVERY, "long passed");
+        assert_eq!(kick_sleep(t0() - 30_000, &limited("2026-11-02T21:00:00Z")), Duration::from_secs(90));
+        assert_eq!(kick_sleep(t0(), &limited("2026-11-02T23:00:00Z")), KICK_EVERY);
+        assert_eq!(kick_sleep(t0(), &st(None, Some(T0))), KICK_EVERY);
     }
 
     #[test]

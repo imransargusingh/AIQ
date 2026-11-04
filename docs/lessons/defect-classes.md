@@ -356,3 +356,25 @@ summary: >-
   `loaded-repro.sh`, 150 loaded runs: 0 lost tips (was 10). Card-printing Stop hook, 40 unloaded runs: p95
   1.43 ms before, 1.78 ms after. Rule: a hand-over across two processes is complete only when the receiver says
   so; a sender's own record of "sent" is a reservation.
+
+### DC-023 — An unauthenticated GitHub API call on the product's normal path, sharing a per-address limit
+- **Signature:** 2026-11-04 00:13Z, Imran's laptop: `aiq update --now` reported "check failed (403) Forbidden".
+  Measured by the alpha thread: `api.github.com` answered 403 with `X-RateLimit-Limit 60`, `X-RateLimit-Remaining
+  0`, reset 00:58:43Z, for the laptop's address; the repo is public and its release downloads worked. The 60
+  unauthenticated calls an hour are counted per public address, so everyone behind one office NAT shares them.
+- **Why it survives:** on a home connection or a CI runner the limit is never near, so every test passed. The
+  failure needs many people on one address, which no test had.
+- **Instances:** `packaging/windows/upgrade.ps1` `Latest-Release` (the only `api.github.com` call in the repo:
+  checked with `grep -rn api.github.com` over `*.rs *.ts *.tsx *.ps1 *.yml`). The core and AIQ home start this
+  script and make no GitHub call of their own.
+- **Control (product):** the tag comes from the `github.com/<repo>/releases/latest` redirect (HEAD, 302 to
+  `.../releases/tag/<tag>`) and the assets from `releases/download/<tag>/`, neither under the API limit; the API
+  is asked only when the redirect names no tag. A 403/429 from the API records `retry_at` (from
+  `X-RateLimit-Reset` or `Retry-After`) and the core checks again then, not in an hour or a day
+  (`check_due`, `kick_sleep`).
+- **Control (tests):** `packaging/windows/tests/upgrade-network.ps1` on the Windows runner (release.yml) runs the
+  script against a local stand-in: redirect path makes no API call; no tag falls back to the API; a rate-limited
+  API leaves `retry_at` at the reset. `a_rate_limited_check_waits_for_the_reset_not_the_hour` and
+  `the_kicker_wakes_a_minute_after_a_reset_that_comes_before_the_hour` in `crates/aiq-core/src/update.rs`.
+- **Rule:** a call the product makes by itself on every install never uses an unauthenticated API with a
+  per-address quota when an unmetered route exists; if it must, it reads the quota headers and waits for the reset.
