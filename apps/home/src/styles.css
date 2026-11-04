@@ -287,17 +287,27 @@ li+li>.kindrow{border-top:1px solid var(--hairline)}
 .how[open]{display:flex;flex-direction:column;gap:var(--s2)}
 /* Day view (design day-view): lanes of sessions, tasks as blocks by time, rung by colour and named in text. */
 .dv{background:var(--surface);border:1px solid var(--hairline);border-radius:var(--r-md);padding:var(--s4) var(--s5);display:flex;flex-direction:column;gap:var(--s1);overflow-x:auto}
-.dv-lane{display:grid;grid-template-columns:minmax(180px,240px) minmax(480px,1fr);gap:var(--s4);align-items:center;min-height:30px}
+.dv-lane{display:grid;grid-template-columns:minmax(200px,300px) minmax(440px,1fr);gap:var(--s4);align-items:center;min-height:30px}
 .dv-name{position:relative;display:flex;flex-direction:column;min-width:0;padding:var(--s1) var(--s3);border-radius:var(--r-sm);cursor:default}
 .dv-name:hover,.dv-name:focus{background:var(--canvas-soft)}
 .dv-name:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}
 .dv-t{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.dv-track{position:relative;height:22px;background:linear-gradient(90deg,var(--hairline) 1px,transparent 1px) 0 0/calc(100% / var(--dv-hours,12)) 100% repeat-x}
-.dv-task{all:unset;box-sizing:border-box;position:absolute;top:3px;height:16px;border-radius:var(--r-sm);border:1px solid var(--surface);cursor:pointer}
+.dv-track{position:relative;height:24px}
+.dv-task{all:unset;box-sizing:border-box;position:absolute;top:1px;height:22px;display:grid;place-items:center;border-radius:var(--r-sm);border:1px solid var(--surface);cursor:pointer}
 .dv-task:hover{filter:brightness(.92)}
 .dv-task:focus-visible{outline:2px solid var(--focus-ring);outline-offset:1px;z-index:3}
 .dv-tick{position:absolute;bottom:0;width:1px;height:5px;background:var(--ink);opacity:.55}
 .dv-r1{background:var(--rung-1)} .dv-r2{background:var(--rung-2)} .dv-r3{background:var(--rung-3)} .dv-r4{background:var(--rung-4)} .dv-r5{background:var(--rung-5)}
+/* The rung number on a block (item 5a), in whichever ink reads on that rung's colour in each theme. */
+.dv-n{font:600 12px/1 var(--f-text);font-variant-numeric:tabular-nums;color:#000;pointer-events:none}
+.dv-task.dv-r4 .dv-n,.dv-task.dv-r5 .dv-n{color:#fff}
+[data-theme="dark"] .dv-task.dv-r1 .dv-n,[data-theme="dark"] .dv-task.dv-r2 .dv-n{color:#fff}
+[data-theme="dark"] .dv-task.dv-r4 .dv-n,[data-theme="dark"] .dv-task.dv-r5 .dv-n{color:#000}
+@media (prefers-color-scheme:dark){:root:not([data-theme]) .dv-task.dv-r1 .dv-n,:root:not([data-theme]) .dv-task.dv-r2 .dv-n{color:#fff}
+  :root:not([data-theme]) .dv-task.dv-r4 .dv-n,:root:not([data-theme]) .dv-task.dv-r5 .dv-n{color:#000}}
+[data-theme="contrast"] .dv-n{color:var(--ink)}
+.dv-break{position:absolute;top:-4px;bottom:-4px;border-left:2px dotted var(--hairline);transform:translateX(-50%)}
+.daysum{display:block;margin:0}
 .dv-none{background:repeating-linear-gradient(135deg,var(--canvas-soft) 0 3px,var(--hairline) 3px 5px)}
 .key i.dv-none,.key i[class^="dv-r"]{border:1px solid var(--hairline)}
 .dv .tip{display:none;position:absolute;top:calc(100% + var(--s2));left:0;z-index:4;white-space:nowrap;background:var(--surface);color:var(--ink);border:1px solid var(--hairline);
@@ -307,7 +317,7 @@ li+li>.kindrow{border-top:1px solid var(--hairline)}
 .dv-axis .dv-track{background:none;height:16px}
 .dv-axis .dv-track span{position:absolute;transform:translateX(-50%);font:var(--t-caption);color:var(--ink-mute);white-space:nowrap}
 [data-theme="contrast"] .dv-task{border-color:var(--ink)}
-@media (forced-colors:active){.dv-task{forced-color-adjust:none;border:1px solid CanvasText}.dv-tick{background:CanvasText}}
+@media (forced-colors:active){.dv-task{forced-color-adjust:none;border:1px solid CanvasText}.dv-tick{background:CanvasText}.dv-n{color:CanvasText!important}.dv-break{border-color:CanvasText}}
 
 /* Right now card on Home (design live-rung-trend C): the open task's estimate after each turn. */
 .rn .head{display:flex;justify-content:space-between;align-items:baseline;gap:var(--s3);flex-wrap:wrap}

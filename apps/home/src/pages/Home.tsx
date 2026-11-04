@@ -2,13 +2,11 @@
 // next step come from the rung judge (design rung-judge, coaching-from-rungs D9); Uncertain judgments are shown
 // on Tasks but never counted on a rung or in the split here. Until a task is judged it says so; nothing is
 // guessed. Model-written text renders as plain text only (TR-5).
-import { useState } from "react";
 import { api } from "../api";
 import { LadderMap, NextSteps, RungMix, judgedBy, moved, pct } from "../coach";
 import { DAY, rungCounts, shift } from "../mix";
 import { RUNGS, day, folderName, plural, rungLabel, sentence, toolName, when } from "../format";
 import { AccuracyPaused, Banners, ProjectPicker, Rung, Title, UpdateLine, type Ctx } from "../ui";
-import type { Project } from "../types";
 import { RightNow } from "./RightNow";
 
 export function Home(ctx: Ctx) {
@@ -303,8 +301,6 @@ export function Home(ctx: Ctx) {
         )}
       </section>
 
-      {!one && snap.projects.length > 1 && <Projects {...ctx} />}
-
       <section className="group" aria-labelledby="hb">
         <div className="head">
           <h2 id="hb">Set aside</h2>
@@ -328,119 +324,5 @@ export function Home(ctx: Ctx) {
         {h.set_aside.length > 0 && <p className="meta">If a folder is your own work, select Include and AIQ watches its sessions again.</p>}
       </section>
     </div>
-  );
-}
-
-/** "Your projects" (design project-filter P5b): one row per project, most room to grow first. Selecting a name
- * shows that project; Rename keeps a name the person chose (empty goes back to the folder's name). */
-function Projects(ctx: Ctx) {
-  const { snap, setProject, announce, refresh } = ctx;
-  const [editing, setEditing] = useState<string | null>(null);
-  const [draft, setDraft] = useState("");
-  const min = snap.coaching.split_min;
-  const save = async (p: Project) => {
-    const r = await api.setSetting(`project_name.${p.key}`, draft);
-    announce(r.ok ? (draft.trim() ? `Renamed to ${draft.trim()}.` : "AIQ names this project from its folder again.") : r.message);
-    if (r.ok) {
-      setEditing(null);
-      refresh();
-    }
-  };
-  return (
-    <section className="group" aria-labelledby="pj">
-      <div className="head">
-        <h2 id="pj">Your projects</h2>
-        <span className="meta">
-          A project is the folder you worked in. Most tasks that could move up a rung first. Counts are measured; rungs are the judge's reading.
-        </span>
-      </div>
-      <div className="tablewrap">
-        <table aria-label="Your projects">
-          <thead>
-            <tr>
-              <th>Project</th>
-              <th className="r">Tasks</th>
-              <th>Most common rung</th>
-              <th className="r">Agents finished</th>
-              <th className="r">Could move up a rung</th>
-              <th><span className="sr">Rename</span></th>
-            </tr>
-          </thead>
-          <tbody>
-            {snap.projects.map((p) => {
-              const sp = p.coaching.split;
-              const enough = sp.tasks >= min;
-              return (
-                <tr key={p.key}>
-                  <td title={p.key || "Tasks from before AIQ recorded the folder, or from tools that don't send it"}>
-                    {editing === p.key ? (
-                      <form
-                        className="row"
-                        onSubmit={(e) => {
-                          e.preventDefault();
-                          save(p);
-                        }}
-                      >
-                        <input
-                          className="input"
-                          aria-label={`New name for ${p.name}`}
-                          maxLength={60}
-                          value={draft}
-                          placeholder={folderName(p.key)}
-                          autoFocus
-                          onChange={(e) => setDraft(e.target.value)}
-                          onKeyDown={(e) => e.key === "Escape" && setEditing(null)}
-                        />
-                        <button className="btn pri" type="submit" disabled={!snap.status.core}>Save</button>
-                        <button className="btn" type="button" onClick={() => setEditing(null)}>Cancel</button>
-                      </form>
-                    ) : (
-                      <button
-                        className="btnlink"
-                        aria-label={`Show ${p.name} only`}
-                        onClick={() => {
-                          setProject(p.key);
-                          // Back to the top, on the picker, so the person sees the whole page change.
-                          requestAnimationFrame(() => document.getElementById("projsel")?.focus());
-                        }}
-                      >
-                        {p.name}
-                      </button>
-                    )}{" "}
-                    {p.by_tool.map(([t]) => (
-                      <span className="chip" key={t}>{toolName(t)}</span>
-                    ))}
-                  </td>
-                  <td className="r num">{p.tasks_in_window}</td>
-                  <td className={p.most_common_rung ? undefined : "mute"}>{p.most_common_rung ? <Rung r={p.most_common_rung} /> : "Not judged yet"}</td>
-                  <td className={`r num${enough ? "" : " mute"}`}>{enough ? `${pct(sp.finished, sp.tasks)}%` : p.judged > 0 ? "Too few judged" : "—"}</td>
-                  <td className={`r num${enough ? "" : " mute"}`}>
-                    {enough ? `${sp.up} (${pct(sp.up, sp.tasks)}%)` : p.judged > 0 ? "Too few judged" : "—"}
-                  </td>
-                  <td>
-                    {p.key !== "" && editing !== p.key && (
-                      <button
-                        className="btnlink"
-                        disabled={!snap.status.core}
-                        aria-label={`Rename ${p.name}`}
-                        onClick={() => {
-                          setEditing(p.key);
-                          setDraft(p.renamed ? p.name : "");
-                        }}
-                      >
-                        Rename
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      <p className="meta">
-        "Could move up a rung" counts judged tasks not finished by agents where the judge sees a next step at least one rung up. A project needs {min} judged tasks before AIQ shows its numbers.
-      </p>
-    </section>
   );
 }

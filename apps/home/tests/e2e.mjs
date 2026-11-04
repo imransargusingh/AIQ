@@ -259,16 +259,16 @@ await test("keyboard: single-key shortcuts can be turned off", async () => {
 
 await test("Tasks: sort, J/K, imported and not-judged labels; prompt markup is text", async () => {
   const page = await open("full", { hash: "#tasks" });
-  assert.equal(await page.locator("tbody tr").count(), 7);
+  assert.equal(await page.locator("table[aria-label=Tasks] tbody tr").count(), 7);
   const prompts = page.getByRole("button", { name: /^Prompts/ });
   await prompts.click();
   assert.equal(await page.locator("th").nth(2).getAttribute("aria-sort"), "descending");
-  assert.equal((await page.locator("tbody tr").first().locator("td").nth(2).textContent()).trim(), "3");
-  await page.locator("tbody tr").first().focus();
+  assert.equal((await page.locator("table[aria-label=Tasks] tbody tr").first().locator("td").nth(2).textContent()).trim(), "3");
+  await page.locator("table[aria-label=Tasks] tbody tr").first().focus();
   await page.keyboard.press("j");
   assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-selected")), "true");
   assert.equal(await page.locator("tbody tr[aria-selected=true]").count(), 1);
-  const t = await page.locator("tbody").innerText();
+  const t = await page.locator("table[aria-label=Tasks] tbody").innerText();
   assert.ok(t.includes("Imported"));
   assert.ok(t.includes("Not judged yet") && t.includes("Not classified yet"));
   assert.ok(t.includes("Uncertain"), "an Uncertain judgment says so");
@@ -404,6 +404,13 @@ await test("Tasks Day view: a row per session, rung named on hover and focus, En
   const lanes = page.getByRole("listitem");
   assert.ok((await lanes.count()) >= 3, "one row per session");
   assert.equal(await page.locator("table[aria-label=Tasks]").count(), 0, "the list is replaced by the Day view");
+  // Item 5a: one line sums the day; blocks carry their rung number; rows are named by kind.
+  assert.match(await page.getByTestId("day-summary").innerText(), /^7 tasks( · \d+ kinds? of task)? · mostly \w+ \(\d\) · \d+ not judged yet · .* inside tasks · \d+ sessions?/);
+  assert.match(await page.locator(".dv-task:not(.dv-none) .dv-n").first().innerText(), /^[1-5]$/);
+  assert.equal(await page.locator(".dv-task.dv-none .dv-n").first().innerText(), "–");
+  const names = await page.locator(".dv-name .dv-t b").allInnerTexts();
+  assert.ok(names.some((n) => n === "Not judged yet"), names.join("|"));
+  assert.ok(await page.locator(".dv-break").count() > 0, "gaps of hours shrink to breaks");
   // Row summary on focus: tool, folder, time span, tasks, prompts.
   const name = page.locator(".dv-name").first();
   await name.focus();
@@ -822,21 +829,47 @@ await test("kind of task: the pack's step, copy starter, judge words as text, Th
   await page.context().close();
 });
 
-await test("Tasks: kinds of task listed with their state; job column names the kind", async () => {
-  const page = await open("coaching", { hash: "#tasks" });
-  const kinds = await page.getByRole("list", { name: "Kinds of task" }).innerText();
-  for (const k of ["Writing tests", "Writing a spec or PRD", "Fixing a bug or failing test", "Right rung", "Refactoring or cleaning up", "Too few tasks yet"]) assert.ok(kinds.includes(k), k);
-  assert.match(await page.locator("tbody").innerText(), /Code a change · Writing tests/);
-  // The chosen view sits directly under the List | Day switch; the kinds list comes after it, never between.
-  const afterHeader = () => page.evaluate(() => {
-    const n = document.querySelector("main header.head")?.nextElementSibling;
-    return n ? (n.matches(".tablewrap") ? "list" : n.querySelector("#dayhd") ? "day" : n.outerHTML.slice(0, 80)) : "none";
-  });
-  assert.equal(await afterHeader(), "list", "List view is the first section after the header");
-  await page.getByRole("button", { name: "Day", exact: true }).click();
-  assert.equal(await afterHeader(), "day", "Day view is the first section after the header");
-  assert.ok(await page.locator("#dayhd").isVisible() && (await page.locator("#dayhd").boundingBox()).y < 800, "Day view starts on screen");
+await test("Tasks opens on kinds of task: rung today, could be, a week, the 14-day move; a row opens the kind (item 4)", async () => {
+  const page = await open("progress", { hash: "#tasks" });
+  assert.equal(await page.getByRole("button", { name: "Kinds", exact: true }).getAttribute("aria-pressed"), "true", "Kinds is the default");
+  const table = page.getByRole("table", { name: "Kinds of task" });
+  const rows = table.locator("tbody tr");
+  assert.equal(await rows.count(), 4);
+  const t = await table.innerText();
+  assert.match(t, /Writing tests[\s\S]*Code a change[\s\S]*↑ up from Directed \(2\)/);
+  assert.match(t, /Writing a spec or PRD[\s\S]*↓ down from Delegated \(3\)/);
+  assert.match(t, /Fixing a bug or failing test[\s\S]*– same rung/);
+  assert.match(t, /Refactoring or cleaning up[\s\S]*Too few tasks to say/);
+  assert.match(await page.locator("main header.head").innerText(), /Kinds\s+All tasks\s+Day/);
+  assert.equal(await page.locator("table[aria-label=Tasks]").count(), 0, "the task list waits under All tasks");
+  assert.deepEqual(await axe(page), []);
+  await rows.first().click();
+  await page.waitForFunction(() => location.hash.startsWith("#kind/"));
   await page.context().close();
+
+  const c = await open("coaching", { hash: "#tasks" });
+  const ct = await c.getByRole("table", { name: "Kinds of task" }).innerText();
+  for (const k of ["Writing tests", "Writing a spec or PRD", "Fixing a bug or failing test", "Right rung", "Refactoring or cleaning up", "Too few tasks yet"]) assert.ok(ct.includes(k), k);
+  assert.equal(await c.getByRole("list", { name: "Kinds of task" }).count(), 0, "no second kinds list below");
+  // The chosen view sits directly under the switch.
+  const afterHeader = () => c.evaluate(() => {
+    const n = document.querySelector("main header.head")?.nextElementSibling;
+    return n ? (n.matches(".tablewrap") ? n.querySelector("table")?.getAttribute("aria-label") : n.querySelector("#dayhd") ? "day" : n.outerHTML.slice(0, 80)) : "none";
+  });
+  assert.equal(await afterHeader(), "Kinds of task");
+  await c.getByRole("button", { name: "All tasks", exact: true }).click();
+  assert.equal(await afterHeader(), "Tasks");
+  assert.match(await c.locator("tbody").innerText(), /Code a change · Writing tests/);
+  await c.getByRole("button", { name: "Day", exact: true }).click();
+  assert.equal(await afterHeader(), "day");
+  assert.ok((await c.locator("#dayhd").boundingBox()).y < 800, "Day view starts on screen");
+  await c.context().close();
+
+  // No kinds yet: no Kinds button, the list first.
+  const f = await open("full", { hash: "#tasks" });
+  assert.equal(await f.getByRole("button", { name: "Kinds", exact: true }).count(), 0);
+  assert.equal(await f.locator("table[aria-label=Tasks]").count(), 1);
+  await f.context().close();
 });
 
 await test("Habits: words for each state, seen in n of m, banners, imported footnote", async () => {
@@ -1069,24 +1102,30 @@ await test("no terminal needed: Include a set-aside folder, Disconnect a tool, s
   await st.context().close();
 });
 
-await test("projects: Your projects ranks folders, the picker scopes Home and Tasks, rename saves", async () => {
-  const page = await open("coaching");
+await test("projects: Your projects ranks folders on Tasks, the picker scopes Home and Tasks, rename saves", async () => {
+  const home = await open("coaching");
+  assert.equal(await home.getByRole("table", { name: "Your projects" }).count(), 0, "Your projects moved from Home to Tasks");
+  await home.context().close();
+  const page = await open("coaching", { hash: "#tasks" });
   const table = page.getByRole("table", { name: "Your projects" });
   const rows = table.locator("tbody tr");
   assert.equal(await rows.count(), 2);
   assert.match(await rows.nth(0).innerText(), /aiq[\s\S]*12[\s\S]*Delegated \(3\)[\s\S]*45%[\s\S]*3 \(27%\)/);
   assert.match(await rows.nth(1).innerText(), /foresight[\s\S]*4[\s\S]*Directed \(2\)[\s\S]*Too few judged/);
-  // Selecting a name scopes Home: the headline, the note, and no table.
+  // Selecting a name scopes Tasks, and the table goes.
   await page.getByRole("button", { name: "Show foresight only" }).click();
+  await page.waitForFunction(() => !document.querySelector("table[aria-label='Your projects']"));
+  assert.equal(await page.getByLabel("Project").inputValue(), "c:\\users\\imran\\source\\repos\\foresight");
+  assert.deepEqual(await axe(page), []);
+  // The choice carries to Home.
+  await page.locator("nav a", { hasText: "Home" }).click();
   await page.waitForSelector("[data-testid=project-note]");
   const t = await page.locator("main").innerText();
   assert.match(t, /Showing foresight only\. Tips and Set aside cover all projects\./);
   assert.match(t, /Not enough judged tasks yet/);
-  assert.equal(await page.getByRole("table", { name: "Your projects" }).count(), 0);
-  assert.equal(await page.getByLabel("Project").inputValue(), "c:\\users\\imran\\source\\repos\\foresight");
-  assert.deepEqual(await axe(page), []);
-  // The choice carries to Tasks: only foresight's four tasks.
+  // On Tasks: only foresight's four tasks.
   await page.locator("nav a", { hasText: "Tasks" }).click();
+  await page.getByRole("button", { name: "All tasks", exact: true }).click();
   await page.waitForSelector("table[aria-label=Tasks]");
   assert.equal(await page.locator("table[aria-label=Tasks] tbody tr").count(), 4);
   assert.match(await page.locator("main").innerText(), /4 tasks in the last 30 days/);
@@ -1094,7 +1133,7 @@ await test("projects: Your projects ranks folders, the picker scopes Home and Ta
   assert.equal(await page.locator("table[aria-label=Tasks] tbody tr").count(), 16);
   await page.context().close();
 
-  const r = await open("coaching");
+  const r = await open("coaching", { hash: "#tasks" });
   await r.getByRole("button", { name: "Rename aiq" }).click();
   await r.getByLabel("New name for aiq").fill("AI coach");
   await r.getByRole("button", { name: "Save" }).click();
@@ -1104,7 +1143,7 @@ await test("projects: Your projects ranks folders, the picker scopes Home and Ta
   await r.context().close();
 
   // One project: no picker, no table.
-  const solo = await open("full", { edit: (s) => (s.projects = s.projects.slice(0, 1)) });
+  const solo = await open("full", { hash: "#tasks", edit: (s) => (s.projects = s.projects.slice(0, 1)) });
   assert.equal(await solo.getByLabel("Project").count(), 0);
   assert.equal(await solo.getByRole("table", { name: "Your projects" }).count(), 0);
   await solo.context().close();
