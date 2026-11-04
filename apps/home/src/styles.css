@@ -399,3 +399,26 @@ li+li>.kindrow{border-top:1px solid var(--hairline)}
 [data-theme="contrast"] .rmix span,[data-theme="contrast"] .mix-col span,[data-theme="contrast"] .mix-r i{outline:1px solid var(--ink);outline-offset:-1px}
 @media (forced-colors:active){.rmix span,.mix-col span,.mix-r i{forced-color-adjust:none;outline:1px solid CanvasText;outline-offset:-1px}}
 @media (max-width:760px){.mix-wrap{grid-template-columns:minmax(0,1fr)}.lad-cols,.lad-row{grid-template-columns:minmax(110px,1fr) repeat(5,48px) 52px}.lad-cols span{font-size:10px;overflow:hidden;text-overflow:ellipsis}.step-row{grid-template-columns:minmax(0,1fr) auto}.step-row .h{grid-column:1/-1;grid-row:2}}
+
+/* Habits grouped by state (UI review item 6): one line per habit, a bar for seen in n of m. */
+.habits{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:var(--s2)}
+.hb{display:grid;grid-template-columns:minmax(0,1fr) minmax(120px,220px) 150px;gap:var(--s4);align-items:center;padding:var(--s3) var(--s4);
+  background:var(--surface);border:1px solid var(--hairline);border-radius:var(--r-md)}
+.hb .hb-none{grid-column:2/-1}
+@media (max-width:720px){.hb{grid-template-columns:minmax(0,1fr)}.hb .hb-none{grid-column:auto}}
+
+/* Kind page "Moving up?" (UI review item 9): rung of each judged task over the window. */
+.km{margin:var(--s3) 0 0;display:grid;grid-template-columns:auto minmax(0,1fr);grid-template-rows:120px auto;column-gap:var(--s4);row-gap:var(--s2)}
+.km-y{position:relative;min-width:110px;font:var(--t-caption);color:var(--ink-mute);text-align:right}
+.km-y span{position:absolute;right:0;transform:translateY(-50%);white-space:nowrap}
+.km-plot{position:relative;margin:0 var(--s2)}
+.km-plot svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.km-plot polyline{fill:none;stroke:var(--ink);stroke-width:2;vector-effect:non-scaling-stroke;stroke-linejoin:round}
+.km-grid{position:absolute;left:0;right:0;border-top:1px solid var(--hairline)}
+.km-could{position:absolute;left:0;right:0;border-top:1.5px dashed var(--primary)}
+.km-split{position:absolute;top:-6px;bottom:-6px;border-left:1px dashed var(--ink-mute)}
+.km-dot{position:absolute;width:10px;height:10px;transform:translate(-50%,-50%);border-radius:var(--r-pill);background:var(--primary);box-shadow:0 0 0 2px var(--surface)}
+.km-dot.unsure{background:var(--surface);border:2px solid var(--ink-mute);box-shadow:none}
+.km-x{grid-column:2;position:relative;height:18px;margin:0 var(--s2)}
+.km-x span{position:absolute;white-space:nowrap}
+@media (forced-colors:active){.km-dot{forced-color-adjust:none;background:Highlight}.km-dot.unsure{background:Canvas;border-color:CanvasText}.km-plot polyline{stroke:CanvasText}.km-could{border-color:LinkText}}

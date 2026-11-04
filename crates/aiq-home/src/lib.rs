@@ -378,6 +378,18 @@ pub struct TipRow {
     pub why: String,
     pub try_this: String,
     pub opened: bool,
+    /// The pack's tip id (`next_rung.<move>` for a next-step tip); "" when the card is unreadable.
+    pub tip_id: String,
+    /// A next-step tip's habit in the tasks after it (UI review item 6); None for tips with no habit behind them.
+    pub after: Option<TipAfter>,
+}
+
+/// Of the first `checked` judged tasks after a tip where its habit fits (at most `coach::AFTER_TIP_TASKS`),
+/// how many showed the habit.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct TipAfter {
+    pub seen: u32,
+    pub checked: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -655,6 +667,8 @@ fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()>
         t.cost_usd = (!costs.is_empty()).then(|| costs.iter().sum());
     }
     coaching(store, pack, now, &tasks, &judgments, s)?;
+    // Every judged task in the window, for what happened after each next-step tip.
+    let judged_all = judged_tasks(&tasks.iter().collect::<Vec<_>>(), &judgments);
     s.tasks = tasks;
     if s.settings.live_trend {
         s.live = live(store, pack, now.utc_ms, s)?;
@@ -684,11 +698,19 @@ fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()>
         for r in it {
             let (card_id, tool, at, json, opened) = q(r)?;
             let card = json.and_then(|j| serde_json::from_str::<CardV1>(&j).ok());
-            let (noticed, why, try_this) = match card {
-                Some(c) => (c.noticed, c.why, c.try_this),
-                None => (String::new(), String::new(), String::new()),
+            let (noticed, why, try_this, tip_id) = match card {
+                Some(c) => (c.noticed, c.why, c.try_this, c.tip_id),
+                None => (String::new(), String::new(), String::new(), String::new()),
             };
-            s.tips.push(TipRow { card_id, tool, delivered_ms: at, noticed, why, try_this, opened });
+            let after = tip_id
+                .strip_prefix(&format!("{}.", aiq_domain::coach::OPPORTUNITY))
+                .and_then(|id| pack.moves.iter().find(|m| m.move_id == id))
+                .map(|m| {
+                    let (seen, checked) =
+                        aiq_domain::coach::after_tip(&judged_all, m, at, aiq_domain::coach::AFTER_TIP_TASKS);
+                    TipAfter { seen, checked }
+                });
+            s.tips.push(TipRow { card_id, tool, delivered_ms: at, noticed, why, try_this, opened, tip_id, after });
         }
     }
 

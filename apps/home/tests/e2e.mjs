@@ -872,16 +872,38 @@ await test("Tasks opens on kinds of task: rung today, could be, a week, the 14-d
   await f.context().close();
 });
 
-await test("Habits: words for each state, seen in n of m, banners, imported footnote", async () => {
+await test("Habits grouped by state with a bar; a habit two jobs share is one line; tips folded with what happened after (item 6)", async () => {
   const page = await open("coaching", { hash: "#tips" });
   const t = await page.locator("main").innerText();
-  assert.ok(!t.includes("Habit tracking comes in a later version"));
-  assert.match(t, /Give the agent a written brief or instructions file\s+Not yet\s+Seen in 0 of 6 tasks in 14 days/);
-  assert.match(t, /Hand over the whole task with a done test\s+Adopted\s+Seen in 6 of 6 tasks in 14 days/);
-  const banners = await page.locator(".banner.info").count();
-  assert.ok(banners >= 1 && banners <= 3, `one to three banners, got ${banners}`);
-  assert.match(t, /You adopted a habit:/);
+  // Groups in order, Trying now only when something is being tried.
+  const heads = await page.locator("main h2").allInnerTexts();
+  assert.deepEqual(heads.map((h) => h.replace(/\s*\d+$/, "")), ["Adopted", "Not yet", "Tip history"]);
+  const adopted = await page.getByRole("list", { name: "Adopted" }).innerText();
+  assert.match(adopted, /Hand over the whole task with a done test\s+Code a change[\s\S]*?Seen in 6 of 6 tasks/);
+  const notYet = await page.getByRole("list", { name: "Not yet" }).innerText();
+  assert.match(notYet, /Give the agent a written brief or instructions file\s+Code a change, Write a spec or doc[\s\S]*?Seen in 0 of 9 tasks/, "one line for both jobs, counts added");
+  assert.equal(await page.locator(".banner.info").count(), 0, "no banners repeating the rows");
+  assert.match(adopted, /Adopted \w{3} \d+ \w{3}/, "a recent move shows its date on the row");
+  // Tip history: what happened after each next-step tip.
+  const tips = await page.getByRole("table", { name: "Tip history" }).innerText();
+  assert.match(tips, /Check the diff or run the tests before using the result\.[\s\S]*Did it in 3 of the next 3 tasks/);
+  assert.match(tips, /Ask for the whole draft with what done means\.[\s\S]*Did it in 0 of the next 3 tasks/);
+  assert.deepEqual(await axe(page), []);
+  // Stop tips like this goes through the core.
+  await page.getByRole("button", { name: "Stop tips like this" }).first().click();
+  await page.waitForFunction(() => window.__AIQ_FIXTURE__.calls.some((c) => c.cmd === "tip_off"));
+  const call = await page.evaluate(() => window.__AIQ_FIXTURE__.calls.find((c) => c.cmd === "tip_off").args);
+  assert.deepEqual(call, { tipId: "next_rung.check_code" });
   assert.ok(!t.includes("Includes tasks AIQ imported"), "no imported tasks in this fixture");
+  await page.context().close();
+
+  // A tip shown twice is one row; a tip with no habit says so.
+  const full = await open("full", { hash: "#tips" });
+  const ft = await full.getByRole("table", { name: "Tip history" }).innerText();
+  assert.equal(await full.locator("table[aria-label='Tip history'] tbody tr").count(), 1);
+  assert.match(ft, /Shown 2 times[\s\S]*×2[\s\S]*You opened it[\s\S]*Copilot CLI, Claude Code[\s\S]*No habit to follow/);
+  await full.context().close();
+
   const imp = await open("coaching", { hash: "#tips", edit: (s) => (s.coaching.habits_imported = true) });
   assert.match(await imp.locator("main").innerText(), /Includes tasks AIQ imported from your history\./);
   await imp.context().close();
@@ -891,12 +913,29 @@ await test("Habits: words for each state, seen in n of m, banners, imported foot
       s.coaching.habits = [{ ...s.coaching.habits[0], state: "tried", moved_to: "tried", moved_ms: s.now_ms - 86_400_000, moved_back: true, seen: 1, eligible: 4 }];
     },
   });
-  assert.match(await lapse.locator("main").innerText(), /Back to Tried: .* You did it in 1 of 4 recent tasks where it fits\./);
+  const lt = await lapse.getByRole("list", { name: "Trying now" }).innerText();
+  assert.match(lt, /Back to trying since \w{3} \d+ \w{3}[\s\S]*Seen in 1 of 4 tasks/);
   await lapse.context().close();
   const empty = await open("empty", { hash: "#tips" });
   assert.match(await empty.locator("main").innerText(), /No habits to show yet\./);
   await empty.context().close();
+});
+
+await test("Kind page: Moving up? draws each judged task's rung, says the 14-day move, names every dot for screen readers (item 9)", async () => {
+  const page = await open("progress", { hash: "#kind/code_change/tests" });
+  const card = page.locator("section", { has: page.locator("#km") });
+  assert.match(await card.innerText(), /Moved up\s*Directed \(2\) → Delegated \(3\), last 14 days against the 14 before\./);
+  const label = await page.getByRole("img", { name: /Rung of each judged task/ }).getAttribute("aria-label");
+  const dots = await page.locator(".km-dot").count();
+  assert.equal(label.split(";").length, dots, "every dot is named in the label");
+  assert.ok(dots >= 6);
+  assert.deepEqual(await axe(page), []);
   await page.context().close();
+  const c = await open("coaching", { hash: "#kind/code_change/tests" });
+  assert.match(await c.locator("section", { has: c.locator("#km") }).innerText(), /Too few tasks to say/);
+  assert.equal(await c.locator(".km-dot.unsure").count(), 1, "the Uncertain task is a hollow dot");
+  assert.equal(await c.locator(".km-could").count(), 1, "dashed line where the kind could reach");
+  await c.context().close();
 });
 
 await test("Settings: next-step tips auto/on/off, AIQ's self-check stop with Turn back on, a switch per tip", async () => {

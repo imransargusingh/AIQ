@@ -267,7 +267,9 @@
       "noticed": "You reworded the same request 3 times in this task.",
       "why": "Rewording often means the agent is missing context, not words.",
       "try_this": "Say what is wrong with the last answer and add the one fact it lacked.",
-      "opened": false
+      "opened": false,
+      "tip_id": "reprompt.restate",
+      "after": null
     },
     {
       "card_id": "019000000006-0000-7000-8000-000000000000",
@@ -276,7 +278,9 @@
       "noticed": "You reworded the same request 3 times in this task.",
       "why": "Rewording often means the agent is missing context, not words.",
       "try_this": "Say what is wrong with the last answer and add the one fact it lacked.",
-      "opened": true
+      "opened": true,
+      "tip_id": "reprompt.restate",
+      "after": null
     }
   ],
   "data": {
