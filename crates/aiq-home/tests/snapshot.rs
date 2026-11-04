@@ -462,6 +462,21 @@ fn live_trend_reads_the_open_task_turn_by_turn() {
     assert!(!json.contains("tighten the wording") && !json.contains("Write the spec"), "no prompt text in the card");
 }
 
+/// Judging off says since when only from a stored setting change (UI review item 8); never switched, no time.
+#[test]
+fn judging_says_when_it_was_last_switched() {
+    let d = tempfile::tempdir().unwrap();
+    let p = Paths::at(d.path());
+    standard(&p, false);
+    assert_eq!(snap(&p).settings.judge_since_ms, None, "never switched: no time");
+    let mut seed = Seed::new(&p);
+    seed.setting("judge", "auto", NOW - 3 * 60 * MIN);
+    seed.setting("judge", "off", NOW - 2 * 60 * MIN);
+    let s = snap(&p);
+    assert_eq!(s.settings.judge, "off");
+    assert_eq!(s.settings.judge_since_ms, Some(NOW - 2 * 60 * MIN), "the newest change");
+}
+
 #[test]
 fn live_trend_goes_when_the_task_ends_or_is_switched_off() {
     let d = tempfile::tempdir().unwrap();

@@ -429,3 +429,12 @@ li+li>.kindrow{border-top:1px solid var(--hairline)}
 .ck .mark{width:22px;height:22px;flex:none;border-radius:50%;border:1.5px solid var(--ink-mute);display:grid;place-items:center;font-weight:700;font-size:12px}
 .ck .mark.on{background:var(--primary);border-color:var(--primary);color:var(--on-primary)}
 @media (forced-colors:active){.ck .mark.on{forced-color-adjust:none;background:Highlight;color:HighlightText;border-color:Highlight}}
+
+/* Settings section index and folded groups (UI review 2026-11-04, item 8). */
+.secnav{position:sticky;top:0;z-index:2;display:flex;flex-wrap:wrap;gap:var(--s1) var(--s5);padding:var(--s2) 0;margin:calc(-1 * var(--s4)) 0;background:var(--canvas);border-bottom:1px solid var(--hairline)}
+.card h2[tabindex]:focus{outline:none}
+.card h2[tabindex]:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}
+.fold{border-top:1px solid var(--hairline);padding-top:var(--s3)}
+.fold > summary{cursor:pointer;width:max-content;max-width:100%}
+.fold[open] > summary{margin-bottom:var(--s3)}
+main:has(.secnav){scroll-padding-top:56px}

@@ -433,6 +433,8 @@ pub struct Settings {
     /// auto (judge new tasks in the background) or off. "off" until `aiq install` connects a tool or the person first runs `aiq judge`.
     pub judge: String,
     pub judge_daily_tasks: u32,
+    /// When judging was last switched on or off; None when it was never switched (store facts, not a guess).
+    pub judge_since_ms: Option<i64>,
     /// on or off: read Copilot's own history file for messages sent while the agent works (no hook fires).
     pub copilot_mid_turn: String,
     /// on or off: read the tool's own log at each turn's end and store what the agent did, as counts.
@@ -546,6 +548,7 @@ fn empty(paths: &Paths, pack: &PackV1, now: Now) -> Snapshot {
             live_trend: true,
             judge: "off".into(),
             judge_daily_tasks: aiq_domain::rung::DEFAULT_DAILY_TASKS,
+            judge_since_ms: None,
             copilot_mid_turn: "on".into(),
             agent_actions: "on".into(),
             next_rung_tips: "auto".into(),
@@ -624,6 +627,7 @@ fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()>
         }
         if let Some(v) = store.setting("judge").ok().flatten() {
             s.settings.judge = v;
+            s.settings.judge_since_ms = store.setting_since("judge").ok().flatten();
         }
         if let Some(n) = store.setting("judge_daily_tasks").ok().flatten().and_then(|v| v.parse().ok()) {
             s.settings.judge_daily_tasks = n;

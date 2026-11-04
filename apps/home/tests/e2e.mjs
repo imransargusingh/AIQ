@@ -358,6 +358,10 @@ await test("Settings change through the core; tips a day", async () => {
   assert.equal(await page.getByRole("button", { name: "3", exact: true }).getAttribute("aria-pressed"), "true");
   await page.getByRole("button", { name: "5", exact: true }).click();
   await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Tips a day set to 5.");
+  // Where tips show and how long they stay is folded under one line that says how it's set (item 8).
+  const fold = page.locator("details.fold > summary");
+  assert.equal((await fold.innerText()).replace(/\s+/g, " "), "Where tips show and how long they stay · 3 of 3 on · until your next prompt");
+  await fold.click();
   await page.getByLabel("Until you open it").check();
   await page.getByRole("group", { name: /Tasks judged a day/ }).getByRole("button", { name: "100", exact: true }).click();
   await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Tasks judged a day set to 100.");
@@ -386,6 +390,48 @@ await test("Settings change through the core; tips a day", async () => {
     { key: "tip_popup", value: "off" },
   ]);
   await page.context().close();
+});
+
+await test("Settings: a section index, Sharing and Keyboard folded in, judging off says since when (item 8)", async () => {
+  const page = await open("full", { hash: "#settings" });
+  const nav = page.getByRole("navigation", { name: "Settings sections" });
+  assert.deepEqual(await nav.getByRole("button").allInnerTexts(), ["Tips", "What AIQ records", "Judging", "Updates", "Tools"]);
+  assert.deepEqual(await page.locator("main h2").allInnerTexts(), ["Tips", "What AIQ records", "Judging", "Updates", "Tools and keyboard"]);
+  await nav.getByRole("button", { name: "Updates" }).click();
+  await page.waitForFunction(() => document.activeElement?.id === "st6");
+  // The index stays in view while the page scrolls.
+  await page.waitForFunction(() => document.querySelector("main").scrollTop > 0 && document.querySelector(".secnav").getBoundingClientRect().top < 80);
+  assert.equal(await page.evaluate(() => scrollY), 0, "only the page scrolls, not the window");
+  assert.match(await page.getByTestId("privacy-line").innerText(), /^Sharing is off: AIQ shares nothing with anyone\. .*Read the privacy page/);
+  assert.equal(await page.getByRole("switch", { name: /Single-key shortcuts/ }).count(), 1);
+  // Off and never switched (no stored time): no invented "since", and today's counts say they're judged, not running.
+  const judging = page.locator("section[aria-labelledby=st3]");
+  assert.equal(await judging.locator(".chip").innerText(), "Off");
+  assert.equal(await page.getByTestId("judge-today").innerText(), "AIQ judges no new task while this is off. Judged today: 3 tasks, 6 calls, $0.04 reported by Claude Code.");
+  assert.deepEqual(await axe(page), []);
+  if (shots) await page.screenshot({ path: join(shots, "settings-index.png") });
+  await page.context().close();
+  // Switched off this morning, after judging 3 tasks: the counts say they came before.
+  const off = await open("full", {
+    hash: "#settings",
+    edit: (s) => {
+      s.settings.judge = "off";
+      s.settings.judge_since_ms = s.now_ms - 3_600_000;
+      s.home.judge_today = { tasks: 3, calls: 6, failed_calls: 0, cost_usd: null };
+    },
+  });
+  assert.match(await off.locator("section[aria-labelledby=st3] .chip").innerText(), /^Off since \d\d:\d\d$/);
+  assert.equal(await off.getByTestId("judge-today").innerText(), "AIQ judges no new task while this is off. Earlier today, before it was off: 3 tasks, 6 calls.");
+  await off.getByRole("switch", { name: "Judge finished tasks in the background" }).click();
+  await off.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Judging is on.");
+  assert.match(await off.getByTestId("judge-today").innerText(), /^Up to 50 tasks a day\. Today: 3 tasks, 6 calls\.$/);
+  await off.context().close();
+  for (const theme of ["dark", "contrast"]) {
+    const p = await open("full", { hash: "#settings", theme });
+    await p.locator("details.fold > summary").click();
+    assert.deepEqual(await axe(p), [], theme);
+    await p.context().close();
+  }
 });
 
 await test("core down: banner with stored time on every page; settings disabled", async () => {
