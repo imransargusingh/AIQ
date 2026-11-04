@@ -49,6 +49,32 @@ foreach ($exe in 'aiq.exe', 'aiq-home.exe') {
 # The hook budget in `aiq status` counts from the last time the exes changed (same line shape as upgrade.ps1).
 $ver = try { ((& (Join-Path $bin 'aiq.exe') version) -replace '^aiq\s+', '').Trim() } catch { 'unknown' }
 Add-Content -Path (Join-Path $home_ 'upgrade-log.txt') -Value ("{0:u} Installed AIQ {1} (install.ps1)." -f (Get-Date).ToUniversalTime(), $ver)
+# An update downloaded before this install and waiting in .aiq\update is now this version or older: drop it, so
+# `aiq update` and AIQ home stop offering it and auto-update never swaps it in over the same or a newer build
+# (laptop, 2026-11-04: 0.1.2 staged by 0.1.1's check, then 0.1.2 installed with install.cmd). A newer one stays.
+$stateFile = Join-Path $home_ 'update.json'
+$installedV = $null
+if ([version]::TryParse($ver, [ref]$installedV) -and (Test-Path $stateFile)) {
+    try {
+        $st = @{}
+        (Get-Content -Raw $stateFile | ConvertFrom-Json).PSObject.Properties | ForEach-Object { $st[$_.Name] = $_.Value }
+        $stagedV = $null
+        $tag = if ($st.available) { "$($st.available)" } elseif ("$($st.staged)" -match '^aiq-(.+)-windows-x64\.zip$') { $Matches[1] } else { '' }
+        if ($st.state -eq 'waiting' -and [version]::TryParse(($tag -replace '^v', ''), [ref]$stagedV) -and $stagedV -le $installedV) {
+            foreach ($k in 'available', 'staged', 'blocked') { $st.Remove($k) }
+            $st.state = 'current'
+            $st.installed = $ver
+            $tmp = "$stateFile.tmp"
+            $st | ConvertTo-Json | Set-Content -Encoding UTF8 $tmp
+            Move-Item -Force $tmp $stateFile
+            Remove-Item -Recurse -Force (Join-Path $home_ 'update') -ErrorAction SilentlyContinue
+            Add-Content -Path (Join-Path $home_ 'upgrade-log.txt') -Value ("{0:u} AIQ-INSTALL-CLEARED-WAITING: dropped the waiting {1}; AIQ {2} is installed." -f (Get-Date).ToUniversalTime(), $tag, $ver)
+            Write-Host "Removed: the waiting update $tag (AIQ $ver is now installed)."
+        }
+    } catch {
+        Write-Host "Could not read $stateFile ($($_.Exception.Message)); left as it is."
+    }
+}
 $up = Join-Path $src 'upgrade.ps1'
 if (Test-Path $up) {
     Copy-Item -Force $up (Join-Path $bin 'upgrade.ps1')

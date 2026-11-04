@@ -242,4 +242,14 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <ul><li><strong>Control (tests):</strong> <code>packaging/windows/tests/upgrade-network.ps1</code> on the Windows runner (release.yml) runs the</li></ul>
 <p>script against a local stand-in: redirect path makes no API call; no tag falls back to the API; a rate-limited API leaves <code>retry_at</code> at the reset. <code>a_rate_limited_check_waits_for_the_reset_not_the_hour</code> and <code>the_kicker_wakes_a_minute_after_a_reset_that_comes_before_the_hour</code> in <code>crates/aiq-core/src/update.rs</code>.</p>
 <ul><li><strong>Rule:</strong> a call the product makes by itself on every install never uses an unauthenticated API with a</li></ul>
-<p>per-address quota when an unmetered route exists; if it must, it reads the quota headers and waits for the reset.</p></main></body></html>
+<p>per-address quota when an unmetered route exists; if it must, it reads the quota headers and waits for the reset.</p>
+<h3>DC-024 — A second install path that leaves the first path&#x27;s pending state behind</h3>
+<ul><li><strong>Signature:</strong> 2026-11-04, Imran&#x27;s laptop: 0.1.1&#x27;s <code>aiq update --now</code> staged 0.1.2 (update.json `state</li></ul>
+<p>waiting<code>, </code>staged aiq-0.1.2-windows-x64.zip<code>, </code>blocked AIQ home is open<code>). He then installed 0.1.2 with install.cmd. update.json still said waiting, so </code>aiq update` offered 0.1.2 &quot;when AIQ is idle&quot; and auto-update could swap 0.1.2 in over itself.</p>
+<ul><li><strong>Why it survives:</strong> install.ps1 and upgrade.ps1 both put exes in <code>.aiq\bin</code>, but only upgrade.ps1 knew about</li></ul>
+<p>update.json. Each path&#x27;s tests started from a clean state.</p>
+<ul><li><strong>Control (product):</strong> install.ps1 drops <code>available</code>/<code>staged</code>/<code>blocked</code>, sets <code>state current</code> and removes</li></ul>
+<p><code>.aiq\update</code> when the waiting release is this version or older (<code>AIQ-INSTALL-CLEARED-WAITING</code> in upgrade-log.txt); a newer waiting release stays.</p>
+<ul><li><strong>Control (tests):</strong> release.yml step &quot;install.ps1 drops a waiting update of the same version, keeps a newer</li></ul>
+<p>one&quot; on the Windows runner.</p>
+<ul><li><strong>Rule:</strong> every path that changes the installed version reconciles the state the other paths keep about it.</li></ul></main></body></html>

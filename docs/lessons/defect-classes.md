@@ -378,3 +378,17 @@ summary: >-
   `the_kicker_wakes_a_minute_after_a_reset_that_comes_before_the_hour` in `crates/aiq-core/src/update.rs`.
 - **Rule:** a call the product makes by itself on every install never uses an unauthenticated API with a
   per-address quota when an unmetered route exists; if it must, it reads the quota headers and waits for the reset.
+
+### DC-024 — A second install path that leaves the first path's pending state behind
+- **Signature:** 2026-11-04, Imran's laptop: 0.1.1's `aiq update --now` staged 0.1.2 (update.json `state
+  waiting`, `staged aiq-0.1.2-windows-x64.zip`, `blocked AIQ home is open`). He then installed 0.1.2 with
+  install.cmd. update.json still said waiting, so `aiq update` offered 0.1.2 "when AIQ is idle" and auto-update
+  could swap 0.1.2 in over itself.
+- **Why it survives:** install.ps1 and upgrade.ps1 both put exes in `.aiq\bin`, but only upgrade.ps1 knew about
+  update.json. Each path's tests started from a clean state.
+- **Control (product):** install.ps1 drops `available`/`staged`/`blocked`, sets `state current` and removes
+  `.aiq\update` when the waiting release is this version or older (`AIQ-INSTALL-CLEARED-WAITING` in
+  upgrade-log.txt); a newer waiting release stays.
+- **Control (tests):** release.yml step "install.ps1 drops a waiting update of the same version, keeps a newer
+  one" on the Windows runner.
+- **Rule:** every path that changes the installed version reconciles the state the other paths keep about it.
