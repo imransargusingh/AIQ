@@ -70,7 +70,8 @@ seen. A deleted first prompt gives no estimate rather than a guessed one.
 | # | Decision | Why |
 |---|---|---|
 | D1 | **C: Right now card** at the top of Home, only while a task is open (last event within the 30-minute idle gap) and at least one turn has ended | No empty card. Imran: dislikes wasted whitespace |
-| D2 | The card shows the kind, tool, prompts and minutes, "Heading for X · could reach Y", a step trace per turn, the tip at the turn it showed, the reasons in words, and Open task | The render he liked. Rung named in text, never colour alone |
+| D2 | The card shows the kind, tool, start time ("since 14:49"), prompts and minutes, "Heading for X · could reach Y", a step trace per turn, the tip at the turn it showed, the reasons in words, and Open task | The render he liked. Rung named in text, never colour alone |
+| D2b | A turn not recorded says why, in words (e.g. "AIQ restarted during the turn" for `no_start`); with no estimate at all the chart is hidden | Imran, 2026-11-04: "what is the time period that this view covers?"; an empty chart read as data |
 | D3 | "Could reach" is the coaching row's potential for the same kind (a coached move one rung up), shown only when above the estimate | Derived from judgments already made, not a new guess |
 | D4 | **D: Copilot CLI status line**, between tips: `AIQ: heading for Directed (2) so far · could reach Delegated (3) · turn 4`. Plain text, no yellow badge | A tip still stands out when one comes. Tips always win the line |
 | D5 | One switch, Settings > Tips > "Show where an open task is heading", on by default; `aiq config set live-trend off` too | AIQ decides, easy override, setting in the app |

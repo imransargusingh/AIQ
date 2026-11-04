@@ -453,6 +453,7 @@ fn live_trend_reads_the_open_task_turn_by_turn() {
     let rungs: Vec<Option<u8>> = l.trend.steps.iter().map(|x| x.rung).collect();
     assert_eq!(rungs, [Some(1), Some(3), Some(2), Some(2)]);
     assert_eq!(l.trend.unrecorded, [4]);
+    assert_eq!(l.trend.unrecorded_why, ["read_error"]);
     assert_eq!((l.trend.rung, l.trend.could), (Some(2), Some(3)), "could reach comes from the spec kind's row");
     assert_eq!(l.kind, Some("Writing a spec or PRD"));
     assert_eq!(l.trend.tip.as_ref().map(|t| t.turn), Some(3));
@@ -471,4 +472,20 @@ fn live_trend_goes_when_the_task_ends_or_is_switched_off() {
     assert!(snapshot(&p, &BundledPack.load().unwrap(), later).live.is_none(), "idle gap passed: the task ended");
     seed.setting("live_trend", "off", NOW - MIN);
     assert!(snap(&p).live.is_none());
+}
+
+/// A turn whose stop has no turn_action row (the core never read its log) is not recorded, with the reason
+/// `not_read`; a one-turn task with only that turn has no estimate.
+#[test]
+fn live_trend_names_a_turn_the_core_never_read() {
+    let d = tempfile::tempdir().unwrap();
+    let p = Paths::at(d.path());
+    let mut s = seed::Seed::new(&p);
+    let brief = "Fix the failing parser test in tests/parse.rs. Context: it fails only on Windows paths; keep the \
+                 public API unchanged and run the suite after";
+    s.prompt("vscode", "vs9", NOW - 44 * MIN, Some(AIQ), brief);
+    s.stop("vscode", "vs9", NOW - 2 * MIN);
+    let l = snap(&p).live.expect("a task is open");
+    assert_eq!((l.trend.unrecorded.clone(), l.trend.unrecorded_why.clone()), (vec![1], vec!["not_read".to_string()]));
+    assert_eq!(l.trend.rung, None);
 }
