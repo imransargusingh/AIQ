@@ -1135,6 +1135,7 @@ fn versions_cli(store: &Store, homes: &Homes) -> ExitCode {
         .collect();
     let (mut current, mut restamped, mut no_actions, mut no_text, mut held) = (0, 0, 0, 0, 0);
     let mut again: BTreeMap<String, u32> = BTreeMap::new();
+    let mut why_again: BTreeMap<String, u32> = BTreeMap::new();
     for t in &tasks {
         let Some(j) = judged.get(&t.task_id) else { continue };
         let read: Value = serde_json::from_str(&j.read).unwrap_or_default();
@@ -1152,10 +1153,24 @@ fn versions_cli(store: &Store, homes: &Homes) -> ExitCode {
         let turns = task_turns(store, homes, t).unwrap_or_default();
         if turns.is_empty() {
             no_text += 1;
-        } else if restamp(j, &rung::log_facts(&turns)).is_some() {
-            restamped += 1;
         } else {
-            *again.entry(t.tool.clone()).or_default() += 1;
+            let log = rung::log_facts(&turns);
+            if restamp(j, &log).is_some() {
+                restamped += 1;
+            } else {
+                *again.entry(t.tool.clone()).or_default() += 1;
+                // Why: the stored F3 against today's, and whether a turn is now "not recorded".
+                let was = aiq_contracts::judge::parse_stored_facts(&j.facts).remove("F3").and_then(|f| f.checker);
+                let why = format!(
+                    "{} {}: F3 {} -> {}{}",
+                    t.tool,
+                    j.fact_set_version,
+                    was.as_deref().unwrap_or("unknown"),
+                    log.checks_by.map_or("unknown", rung::Checker::as_str),
+                    if log.unrecorded > 0 { ", a turn not recorded" } else { "" }
+                );
+                *why_again.entry(why).or_default() += 1;
+            }
         }
     }
     println!(
@@ -1168,6 +1183,9 @@ fn versions_cli(store: &Store, homes: &Homes) -> ExitCode {
     println!("  current: {current}\n  kept without a model call: {restamped}");
     for (tool, n) in &again {
         println!("  judged again ({tool}): {n}");
+    }
+    for (why, n) in &why_again {
+        println!("    {why}: {n}");
     }
     println!("  outdated, no prompt text left (never sent): {no_text}");
     println!("  outdated, not queued (still open, or gave up after {GIVE_UP} failures): {held}");
