@@ -145,6 +145,8 @@ jobs:
           $v = '${{ steps.version.outputs.version }}'
           $up = Join-Path $env:USERPROFILE '.aiq\bin\upgrade.ps1'
           if (-not (Test-Path $up)) { Write-Error 'install did not copy upgrade.ps1'; exit 1 }
+          # Updates restart the core; its own hourly kicker must not reach the real GitHub during these tests.
+          & (Join-Path $env:USERPROFILE '.aiq\bin\aiq.exe') config set update off
           $bad = Join-Path $env:RUNNER_TEMP 'bad'
           New-Item -ItemType Directory -Force $bad | Out-Null
           Copy-Item "dist/aiq-$v-windows-x64.zip", dist/SHA256SUMS $bad
@@ -195,13 +197,23 @@ jobs:
           Stop-Process -Id $home_.Id -Force
           Start-Sleep -Seconds 1
 
-          # Idle: the waiting update installs, keeps .old copies, and says so.
+          # Idle: the waiting update installs, keeps .old copies, and says so. A core is running, as on a laptop.
+          Start-Process -WindowStyle Hidden -FilePath $exe -ArgumentList 'core'
+          Start-Sleep -Seconds 2
           powershell -ExecutionPolicy Bypass -File $up -Apply
           if ($LASTEXITCODE -ne 0) { Fail "apply when idle: exit $LASTEXITCODE" }
           $s = St
           if ($s.state -ne 'applied' -or $s.installed_tag -ne 'v99.0.0' -or $s.from -ne $v) { Fail "applied: $($s | ConvertTo-Json -Compress)" }
           if (Test-Path (Join-Path $aiq 'update')) { Fail 'staged files left after install' }
           foreach ($f in 'aiq.exe.old', 'aiq-home.exe.old') { if (-not (Test-Path (Join-Path $aiq "bin\$f"))) { Fail "no $f kept" } }
+          # The core is started again after the swap (laptop 2026-11-04: it stayed down until a hook started it).
+          $core = $null
+          foreach ($i in 1..25) {
+            $core = Get-CimInstance Win32_Process -Filter "Name='aiq.exe'" | Where-Object { $_.ExecutablePath -eq $exe -and $_.CommandLine -match '\score\s*$' }
+            if ($core) { break }
+            Start-Sleep -Milliseconds 200
+          }
+          if (-not $core) { Fail 'no AIQ core running after the update' }
           & $exe update
 
           # Go back: the release left is never installed again by itself.
@@ -210,6 +222,23 @@ jobs:
           if ((St).skip -ne 'v99.0.0') { Fail "rollback did not record the release left: $((St) | ConvertTo-Json -Compress)" }
           powershell -ExecutionPolicy Bypass -File $up -Check -Apply -Feed $feed
           if ((St).state -ne 'rolled_back' -or (Test-Path (Join-Path $aiq 'update'))) { Fail "reinstalled after rollback: $((St) | ConvertTo-Json -Compress)" }
+
+          # A waiting release that is not newer (installed another way after the check) is dropped, never swapped in:
+          # the .old copies stay, so Go back still works (laptop 2026-11-04 04:17:03Z).
+          $stage = Join-Path $aiq 'update'
+          New-Item -ItemType Directory -Force $stage | Out-Null
+          Copy-Item "dist/aiq-$v-windows-x64.zip", dist/SHA256SUMS $stage
+          @{ state = 'waiting'; available = "v$v"; staged = "aiq-$v-windows-x64.zip"; installed = $v } | ConvertTo-Json | Set-Content (Join-Path $aiq 'update.json')
+          $old = Join-Path $aiq 'bin\aiq-home.exe.old'
+          Add-Content -Path $old -Value 'marker: this .old must survive'
+          $oldHash = (Get-FileHash $old).Hash
+          powershell -ExecutionPolicy Bypass -File $up -Apply
+          if ($LASTEXITCODE -ne 0) { Fail "same-version apply: exit $LASTEXITCODE, want 0" }
+          $s = St
+          if ($s.state -ne 'current' -or $s.staged -or $s.available) { Fail "same version not dropped: $($s | ConvertTo-Json -Compress)" }
+          if (Test-Path $stage) { Fail 'same version left staged' }
+          if ((Get-FileHash $old).Hash -ne $oldHash) { Fail 'same-version apply overwrote the .old copies' }
+          if (-not (Select-String -Quiet -Path (Join-Path $aiq 'upgrade-log.txt') -Pattern 'AIQ-UPDATE-NOT-NEWER')) { Fail 'no AIQ-UPDATE-NOT-NEWER log line' }
           Get-Content (Join-Path $aiq 'upgrade-log.txt') -Tail 8
       - name: Smoke test - update check finds the tag from the releases/latest redirect, falls back to the API, records a rate-limit reset
         shell: pwsh

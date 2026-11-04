@@ -252,4 +252,15 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <p><code>.aiq\update</code> when the waiting release is this version or older (<code>AIQ-INSTALL-CLEARED-WAITING</code> in upgrade-log.txt); a newer waiting release stays.</p>
 <ul><li><strong>Control (tests):</strong> release.yml step &quot;install.ps1 drops a waiting update of the same version, keeps a newer</li></ul>
 <p>one&quot; on the Windows runner.</p>
-<ul><li><strong>Rule:</strong> every path that changes the installed version reconciles the state the other paths keep about it.</li></ul></main></body></html>
+<ul><li><strong>Rule:</strong> every path that changes the installed version reconciles the state the other paths keep about it.</li><li><strong>Recurrence (2026-11-04 04:17:03Z, laptop):</strong> before #120 shipped, Home still offered the stale 0.1.2 and</li></ul>
+<p>Imran&#x27;s <strong>Install now</strong> ran <code>upgrade.ps1 -Apply</code> on it: a same-for-same swap that overwrote the <code>.old</code> copies (the way back to 0.1.1 was lost). A second path, same class: <code>-Apply</code> trusted <code>state waiting</code> without checking the installed version. <strong>Control:</strong> <code>-Apply</code> drops a staged release that is not newer than the installed one (<code>AIQ-UPDATE-NOT-NEWER</code>) before anything is stopped; <code>-Check</code>&#x27;s up-to-date branch also clears <code>staged</code> and <code>blocked</code>. Test: release.yml auto-update step, &quot;a waiting release that is not newer is dropped&quot; (the <code>.old</code> copy&#x27;s hash must not change).</p>
+<h3>DC-025 — A process stopped to replace its exe and never started again</h3>
+<ul><li><strong>Signature:</strong> 2026-11-04 04:17:03Z, laptop: <code>upgrade.ps1 -Apply</code> (Home&#x27;s Install now) stopped <code>aiq.exe</code> and</li></ul>
+<p><code>aiq-home.exe</code>, swapped, and relaunched only Home (<code>-Relaunch</code>). home.log showed <code>core=false</code> until a hook started the core at 04:22:53Z; Home said &quot;AIQ isn&#x27;t running&quot; for almost six minutes.</p>
+<ul><li><strong>Why it survives:</strong> the CI smoke test checked the exes and update.json after the swap, never what was</li></ul>
+<p>running. A hook restarts the core sooner or later, so it looks like a delay, not a fault.</p>
+<ul><li><strong>Control (product):</strong> <code>Stop-Aiq</code> records whether an <code>aiq.exe</code> was running; <code>-Apply</code> (success and put-back</li></ul>
+<p>paths) and <code>-Rollback</code> start <code>aiq core</code> hidden again when one was (<code>AIQ-UPDATE-CORE</code>). A second core exits at once (<code>CORE_ALREADY_RUNNING</code>). <code>Stop-Aiq</code> now waits for the processes to end before the swap.</p>
+<ul><li><strong>Control (tests):</strong> release.yml auto-update step starts a core before the idle apply and fails unless an</li></ul>
+<p><code>aiq.exe core</code> from the bin folder is running afterwards.</p>
+<ul><li><strong>Rule:</strong> whatever an update stops, it starts again, and the test asserts the running set, not only the files.</li></ul></main></body></html>
