@@ -803,6 +803,15 @@ await test("Tasks: kinds of task listed with their state; job column names the k
   const kinds = await page.getByRole("list", { name: "Kinds of task" }).innerText();
   for (const k of ["Writing tests", "Writing a spec or PRD", "Fixing a bug or failing test", "Right rung", "Refactoring or cleaning up", "Too few tasks yet"]) assert.ok(kinds.includes(k), k);
   assert.match(await page.locator("tbody").innerText(), /Code a change · Writing tests/);
+  // The chosen view sits directly under the List | Day switch; the kinds list comes after it, never between.
+  const afterHeader = () => page.evaluate(() => {
+    const n = document.querySelector("main header.head")?.nextElementSibling;
+    return n ? (n.matches(".tablewrap") ? "list" : n.querySelector("#dayhd") ? "day" : n.outerHTML.slice(0, 80)) : "none";
+  });
+  assert.equal(await afterHeader(), "list", "List view is the first section after the header");
+  await page.getByRole("button", { name: "Day", exact: true }).click();
+  assert.equal(await afterHeader(), "day", "Day view is the first section after the header");
+  assert.ok(await page.locator("#dayhd").isVisible() && (await page.locator("#dayhd").boundingBox()).y < 800, "Day view starts on screen");
   await page.context().close();
 });
 
