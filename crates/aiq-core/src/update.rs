@@ -20,8 +20,10 @@ pub const CHECK_EVERY_MS: i64 = 24 * 3600 * 1000;
 /// The hourly cadence: after a check that failed (no release yet, no network, a proxy), and while AIQ home is
 /// open. Five minutes under an hour, so an hourly timer that fires a little early still finds it due.
 pub const HOURLY_MS: i64 = 55 * 60 * 1000;
-/// How long Home says "AIQ updated itself" after it did.
-pub const APPLIED_NOTE_MS: i64 = 7 * 24 * 3600 * 1000;
+/// How long Home says "AIQ updated itself" (or that an update failed or was undone) after it happened. A day:
+/// Home also hides the note once it has been seen and offers a dismiss (Imran, 2026-11-04: a week-long banner at
+/// the top of Home took prime space).
+pub const APPLIED_NOTE_MS: i64 = 24 * 3600 * 1000;
 const KICK_FIRST: Duration = Duration::from_secs(5 * 60);
 const KICK_EVERY: Duration = Duration::from_secs(3600);
 
@@ -280,13 +282,35 @@ pub struct View {
     pub can_rollback: bool,
 }
 
+/// Same release, whether or not either side carries the tag's `v`.
+fn same_version(a: &str, b: &str) -> bool {
+    a.trim().trim_start_matches('v') == b.trim().trim_start_matches('v')
+}
+
+/// `1.2.3` (a leading `v` allowed) as numbers; None for anything else (a pre-release is never "not newer").
+fn numbers(v: &str) -> Option<Vec<u64>> {
+    v.trim().trim_start_matches('v').split('.').map(|p| p.parse().ok()).collect()
+}
+
+/// A waiting release that is this version or older: nothing to install (2026-11-04, laptop: Home offered
+/// "AIQ 0.1.2 is ready, Install now" while it ran 0.1.2, and Install now swapped 0.1.2 over itself).
+fn not_newer(available: &str, running: &str) -> bool {
+    matches!((numbers(available), numbers(running)), (Some(a), Some(r)) if a <= r)
+}
+
 pub fn view(paths: &Paths, mode: Option<&str>, now_ms: i64) -> View {
     let st = read_state(paths);
+    let running = env!("CARGO_PKG_VERSION");
     let at_ms = st.at.as_deref().and_then(parse_utc_ms);
     let recent = at_ms.is_some_and(|t| now_ms - t < APPLIED_NOTE_MS);
+    // An "update" from this version to itself changed nothing (2026-11-04, laptop: a stale waiting 0.1.2 was
+    // applied over the hand-installed 0.1.2). Say nothing, and offer no "Go back": the `.old` copies are this
+    // same version, so the real previous version is gone.
+    let applied_to_itself =
+        st.state.as_deref() == Some("applied") && st.from.as_deref().is_some_and(|f| same_version(f, running));
     let note = match st.state.as_deref() {
-        Some("waiting") => "waiting",
-        Some("applied") if recent => "applied",
+        Some("waiting") if !st.available.as_deref().is_some_and(|a| not_newer(a, running)) => "waiting",
+        Some("applied") if recent && st.from.is_some() && !applied_to_itself => "applied",
         Some("failed") if recent => "failed",
         Some("rolled_back") if recent => "rolled_back",
         _ => "none",
@@ -294,7 +318,7 @@ pub fn view(paths: &Paths, mode: Option<&str>, now_ms: i64) -> View {
     View {
         supported: supported(paths),
         mode: mode.filter(|m| MODES.contains(m)).unwrap_or(DEFAULT_MODE).to_owned(),
-        running: env!("CARGO_PKG_VERSION").to_owned(),
+        running: running.to_owned(),
         note,
         available: st.available.clone(),
         blocked: st.blocked.clone(),
@@ -303,7 +327,7 @@ pub fn view(paths: &Paths, mode: Option<&str>, now_ms: i64) -> View {
         message: st.message.clone(),
         checked_ms: st.checked_at.as_deref().and_then(parse_utc_ms),
         check_error: st.check_error.clone(),
-        can_rollback: paths.data.join("bin").join("aiq.exe.old").is_file(),
+        can_rollback: !applied_to_itself && paths.data.join("bin").join("aiq.exe.old").is_file(),
     }
 }
 
@@ -458,6 +482,43 @@ mod tests {
         std::fs::write(state_path(&p), format!(r#"{{"state":"applied","from":"0.1.0","at":"{T0}"}}"#)).unwrap();
         assert_eq!(view(&p, None, t0() + 1000).note, "applied");
         assert_eq!(view(&p, None, t0() + APPLIED_NOTE_MS).note, "none");
+        assert_eq!(APPLIED_NOTE_MS, 24 * 3600 * 1000, "the note lasts a day, not a week");
+    }
+
+    #[test]
+    fn an_update_to_the_same_version_shows_nothing_and_offers_no_go_back() {
+        let d = tempfile::tempdir().unwrap();
+        let p = Paths::at(d.path());
+        std::fs::create_dir_all(d.path().join("bin")).unwrap();
+        std::fs::write(d.path().join("bin").join("aiq.exe.old"), b"x").unwrap();
+        let me = env!("CARGO_PKG_VERSION");
+        for from in [me.to_owned(), format!("v{me}")] {
+            std::fs::write(state_path(&p), format!(r#"{{"state":"applied","from":"{from}","at":"{T0}"}}"#)).unwrap();
+            let v = view(&p, None, t0() + 1000);
+            assert_eq!(v.note, "none", "from {from}");
+            assert!(!v.can_rollback, "the .old copy is this same version");
+        }
+        std::fs::write(state_path(&p), format!(r#"{{"state":"applied","from":"0.0.1","at":"{T0}"}}"#)).unwrap();
+        let v = view(&p, None, t0() + 1000);
+        assert_eq!((v.note, v.from.as_deref(), v.can_rollback), ("applied", Some("0.0.1"), true));
+        std::fs::write(state_path(&p), format!(r#"{{"state":"applied","at":"{T0}"}}"#)).unwrap();
+        assert_eq!(view(&p, None, t0() + 1000).note, "none", "no previous version known: nothing to name");
+    }
+
+    #[test]
+    fn a_waiting_release_that_is_not_newer_is_not_offered() {
+        let d = tempfile::tempdir().unwrap();
+        let p = Paths::at(d.path());
+        let me = env!("CARGO_PKG_VERSION");
+        for (tag, want) in [
+            (format!("v{me}"), "none"),
+            ("v0.0.1".into(), "none"),
+            ("v99.0.0".into(), "waiting"),
+            ("v99.0.0-rc1".into(), "waiting"),
+        ] {
+            std::fs::write(state_path(&p), format!(r#"{{"state":"waiting","available":"{tag}"}}"#)).unwrap();
+            assert_eq!(view(&p, None, t0()).note, want, "{tag}");
+        }
     }
 
     #[test]

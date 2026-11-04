@@ -932,11 +932,25 @@ await test("auto-update: Home's one line, Install now and Go back, the Settings 
   await ask.context().close();
   const applied = (s) => Object.assign(s.update, { note: "applied", from: "0.0.9", at_ms: s.now_ms - 3_600_000 });
   const done = await open("full", { edit: applied });
-  assert.match(await done.getByTestId("update-line").innerText(), /AIQ updated itself to 0\.1\.0 \(Today .+\)\. Your data and settings are kept\./);
+  const line = done.getByTestId("update-line");
+  assert.equal(await line.evaluate((e) => e.tagName), "P", "a slim line, not a banner (U5g)");
+  assert.match(await line.innerText(), /^Updated to AIQ 0\.1\.0\./);
+  assert.ok((await line.boundingBox()).height <= 40, "one line high");
+  assert.deepEqual(await axe(done), []);
   await done.getByRole("button", { name: "Go back to 0.0.9" }).click();
   const back = await done.evaluate(() => window.__AIQ_FIXTURE__.calls.filter((c) => c.cmd === "run_update" && c.args.action !== "check_if_due").map((c) => c.args));
   assert.deepEqual(back, [{ action: "rollback" }]);
+  await done.getByRole("button", { name: "Dismiss update note" }).click();
+  assert.equal(await done.getByTestId("update-line").count(), 0, "dismissed");
+  // Seen once: the next time Home opens it says nothing.
+  await done.reload();
+  await done.waitForSelector("main h1");
+  assert.equal(await done.getByTestId("update-line").count(), 0, "seen on an earlier Home session: gone");
   await done.context().close();
+  // No previous version known: no Go back that names nothing.
+  const nofrom = await open("full", { edit: (s) => (applied(s), (s.update.from = null)) });
+  assert.equal(await nofrom.getByRole("button", { name: /Go back/ }).count(), 0);
+  await nofrom.context().close();
   const st = await open("full", { hash: "#settings" });
   assert.equal(await st.getByTestId("app-version").innerText(), "AIQ 0.1.0");
   assert.equal(await st.getByRole("radio", { name: /Update automatically/ }).isChecked(), true);
