@@ -162,7 +162,7 @@ function Tag-From-Redirect {
 # X-RateLimit-Reset is Unix seconds; Retry-After (a 429 or a secondary limit) is seconds from now.
 function Retry-At($resp) {
     if (-not $resp) { return $null }
-    function H([string]$n) {
+    function Resp-Header([string]$n) {
         $v = $null
         try { $v = $resp.Headers[$n] } catch { }
         if (-not $v) { try { $vals = $null; if ($resp.Headers.TryGetValues($n, [ref]$vals)) { $v = @($vals)[0] } } catch { } }
@@ -172,10 +172,10 @@ function Retry-At($resp) {
     try { $code = [int]$resp.StatusCode } catch { }
     if ($code -ne 403 -and $code -ne 429) { return $null }
     $sec = 0L
-    if ([long]::TryParse((H 'Retry-After'), [ref]$sec)) {
+    if ([long]::TryParse((Resp-Header 'Retry-After'), [ref]$sec)) {
         return (Get-Date).ToUniversalTime().AddSeconds($sec).ToString('yyyy-MM-ddTHH:mm:ssZ')
     }
-    if ((H 'X-RateLimit-Remaining') -eq '0' -and [long]::TryParse((H 'X-RateLimit-Reset'), [ref]$sec)) {
+    if ((Resp-Header 'X-RateLimit-Remaining') -eq '0' -and [long]::TryParse((Resp-Header 'X-RateLimit-Reset'), [ref]$sec)) {
         return [DateTimeOffset]::FromUnixTimeSeconds($sec).UtcDateTime.ToString('yyyy-MM-ddTHH:mm:ssZ')
     }
     return $null
