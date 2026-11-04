@@ -166,6 +166,13 @@ pub fn run_with(paths: &Paths, labeller: Option<crate::service::LabelRequester>)
     write_user_only(&paths.token(), token.as_bytes()).map_err(fail(codes::STORE_OPEN))?;
     let listener = ipc::listen(paths).map_err(fail(codes::CORE_ALREADY_RUNNING))?;
     info!(pid = std::process::id(), "core started");
+    // Windows starts AIQ at sign-in from here on (design aiq-home-app, "Core down"). Off the start path.
+    let login_paths = paths.clone();
+    std::thread::spawn(move || match crate::autostart::ensure_login_start(&login_paths) {
+        Ok(true) => info!("AIQ now starts when you sign in to Windows"),
+        Ok(false) => {}
+        Err(e) => warn!(error.code = codes::CORE_LOGIN_START, error = %e, "could not set AIQ to start at sign-in"),
+    });
 
     let (tx, rx) = mpsc::sync_channel::<Cmd>(CHANNEL_CAPACITY);
     let writer_paths = paths.clone();

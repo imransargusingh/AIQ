@@ -27,6 +27,7 @@ fn main() {
     aiq_core::control::finish_setup(&full).unwrap();
     let mut s = aiq_home::snapshot(&full, &pack, now);
     s.status.core = true;
+    s.status.core_state = aiq_home::CoreState::Running;
     s.status.read_ms = 12; // fixed, so screenshots and tests do not churn
     write(&out, "full", &s);
 
@@ -37,6 +38,7 @@ fn main() {
     aiq_core::control::finish_setup(&live).unwrap();
     let mut l = aiq_home::snapshot(&live, &pack, now);
     l.status.core = true;
+    l.status.core_state = aiq_home::CoreState::Running;
     l.status.read_ms = 12;
     write(&out, "live", &l);
 
@@ -47,11 +49,14 @@ fn main() {
     std::fs::write(out.join("task.json"), serde_json::to_string_pretty(&det).unwrap()).unwrap();
 
     s.status.core = false;
+    s.status.core_state = aiq_home::CoreState::Failed;
+    s.status.core_error = Some("AIQ-STORE-OPEN".into());
     write(&out, "down", &s);
 
     aiq_core::control::set_paused(&full, true, std::time::Duration::from_millis(20)).unwrap();
     let mut p = aiq_home::snapshot(&full, &pack, now);
     p.status.core = true;
+    p.status.core_state = aiq_home::CoreState::Running;
     p.status.read_ms = 12;
     write(&out, "paused", &p);
 
@@ -61,6 +66,7 @@ fn main() {
     aiq_core::control::finish_setup(&coached).unwrap();
     let mut c = aiq_home::snapshot(&coached, &pack, now);
     c.status.core = true;
+    c.status.core_state = aiq_home::CoreState::Running;
     c.status.read_ms = 12;
     write(&out, "coaching", &c);
 
@@ -70,12 +76,14 @@ fn main() {
     aiq_core::control::finish_setup(&moving).unwrap();
     let mut m = aiq_home::snapshot(&moving, &pack, now);
     m.status.core = true;
+    m.status.core_state = aiq_home::CoreState::Running;
     m.status.read_ms = 12;
     write(&out, "progress", &m);
 
     let empty = Paths::at(&tmp.join("empty"));
     let mut e = aiq_home::snapshot(&empty, &pack, now);
     e.status.core = true;
+    e.status.core_state = aiq_home::CoreState::Running;
     write(&out, "first-run", &e);
     e.setup.done = true;
     write(&out, "empty", &e);

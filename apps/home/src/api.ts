@@ -37,7 +37,7 @@ function fixture<T>(cmd: string, args: Record<string, unknown>): Promise<T> {
       out = s;
       break;
     case "set_setting":
-      if (!s.status.core) out = { ok: false, message: "AIQ isn't running, so settings can't change right now. It starts with your next prompt in Claude Code or Copilot." };
+      if (!s.status.core) out = { ok: false, message: "AIQ is starting, so this can't change yet. Try again in a moment." };
       else {
         if (args.key === "daily_cap") s.settings.daily_cap = Number(args.value);
         if (args.key === "judge") s.settings.judge = args.value as Snapshot["settings"]["judge"];
@@ -72,7 +72,6 @@ function fixture<T>(cmd: string, args: Record<string, unknown>): Promise<T> {
         s.tasks = [];
         s.tips = [];
         s.home = { ...s.home, tasks_in_window: 0, imported_in_window: 0, by_tool: [], tips_today: 0, weeks: s.home.weeks.map((w) => ({ ...w, tasks: 0 })) };
-        s.status.last_event_ms = null;
         out = { ok: true };
       }
       break;
@@ -133,7 +132,7 @@ function fixture<T>(cmd: string, args: Record<string, unknown>): Promise<T> {
       break;
     }
     case "include_folder":
-      if (!s.status.core) out = { ok: false, message: "AIQ isn't running, so this can't change right now. It starts with your next prompt in Claude Code or Copilot." };
+      if (!s.status.core) out = { ok: false, message: "AIQ is starting, so this can't change yet. Try again in a moment." };
       else if (!s.home.set_aside.some((x) => x.folder === args.folder)) out = { ok: false, message: "Not changed: that folder isn't set aside." };
       else {
         s.home.set_aside = s.home.set_aside.filter((x) => x.folder !== args.folder);

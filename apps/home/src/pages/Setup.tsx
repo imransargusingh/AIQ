@@ -276,8 +276,7 @@ export function Setup(ctx: Ctx & { rerun: boolean; finish: (s: Snapshot) => void
             </div>
             {down && (
               <p className="mute">
-                AIQ isn't running yet, so this stays at {snap.settings.daily_cap} for now. It starts with your next prompt in Claude Code or
-                Copilot, and you can change it in Settings then.
+                AIQ is starting, so this stays at {snap.settings.daily_cap} for now. You can change it in Settings later.
               </p>
             )}
             {msg && (

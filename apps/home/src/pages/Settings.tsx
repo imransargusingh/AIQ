@@ -127,7 +127,7 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
       <Banners {...ctx} />
       <header className="group">
         <Title>Settings</Title>
-        {down && <p className="mute">AIQ isn't running, so tip settings can't change right now. It starts with your next prompt in Claude Code or Copilot.</p>}
+        {down && <p className="mute">AIQ is starting, so tip settings can't change yet.</p>}
         {msg && !down && <p className="errtext" role="alert">{msg}</p>}
       </header>
 

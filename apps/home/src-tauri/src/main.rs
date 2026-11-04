@@ -15,8 +15,7 @@ use std::time::{Duration, Instant};
 
 const CORE_TIMEOUT: Duration = Duration::from_secs(3);
 const LOG_MAX: u64 = 256 * 1024;
-const NOT_RUNNING: &str =
-    "AIQ isn't running, so this can't change right now. It starts with your next prompt in Claude Code or Copilot.";
+const NOT_RUNNING: &str = "AIQ is starting, so this can't change yet. Try again in a moment.";
 
 #[derive(Debug, Serialize)]
 #[serde(untagged)]
@@ -43,10 +42,37 @@ fn log(paths: &Paths, cmd: &str, started: Instant, result: &str) {
     let _ = aiq_core::paths::bounded_append(&paths.data.join("home.log"), &line, LOG_MAX);
 }
 
+/// This window's starts since the core last answered (`aiq_home::keep_core`).
+static CORE_TRIES: std::sync::Mutex<u32> = std::sync::Mutex::new(0);
+
 fn read(paths: &Paths) -> Snapshot {
     let pack = BundledPack.load().expect("bundled pack is validated at build time by aiq-core's tests");
     let s = aiq_home::snapshot(paths, &pack, aiq_core::sysclock::SystemClock.now());
-    aiq_home::with_core(s, paths)
+    let mut s = aiq_home::with_core(s, paths);
+    // Home starts the core when none runs (design aiq-home-app, "Core down"), so the person never has to.
+    let t = Instant::now();
+    let mut tries = CORE_TRIES.lock().unwrap_or_else(|e| e.into_inner());
+    match aiq_home::keep_core(&mut s, paths, &aiq_exe(), &mut tries) {
+        aiq_home::StartOutcome::None => {}
+        aiq_home::StartOutcome::Started => log(paths, "core_start", t, &format!("started try={}", *tries)),
+        aiq_home::StartOutcome::Refused(e) => log(paths, "core_start", t, &format!("refused try={} {e}", *tries)),
+    }
+    s
+}
+
+/// `aiq-home.exe --start-core`: what Windows runs at sign-in. Starts the core when none runs, then exits without
+/// opening a window (Home is a windowless exe, so nothing flashes).
+fn start_core_only() {
+    let t = Instant::now();
+    let paths = Paths::from_env();
+    let answered = aiq_home::core_answers(&paths, Duration::from_secs(2));
+    let (state, _, outcome) = aiq_home::ensure_core(&paths, answered, &aiq_exe(), &mut 0);
+    let r = match outcome {
+        aiq_home::StartOutcome::None => format!("not needed state={state:?}"),
+        aiq_home::StartOutcome::Started => "started".to_owned(),
+        aiq_home::StartOutcome::Refused(e) => format!("refused {e}"),
+    };
+    log(&paths, "start_core", t, &r);
 }
 
 async fn blocking<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> Result<T, String> {
@@ -98,8 +124,7 @@ fn allowed_setting(key: &str) -> bool {
             | "agent_actions"
             | "live_trend"
             | "update"
-    )
-        || key.starts_with("keep_on.")
+    ) || key.starts_with("keep_on.")
         || key.starts_with(aiq_home::PROJECT_NAME)
 }
 
@@ -480,6 +505,9 @@ fn show_open_window(app: &tauri::AppHandle, cwd: &str) {
 }
 
 fn main() {
+    if std::env::args().skip(1).any(|a| a == "--start-core") {
+        return start_core_only();
+    }
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _argv, cwd| show_open_window(app, &cwd)))
         .invoke_handler(tauri::generate_handler![
@@ -513,7 +541,9 @@ mod tests {
         assert!(allowed_setting("daily_cap"));
         assert!(allowed_setting("copilot_tip_stays"));
         assert!(allowed_setting("next_rung_tips"));
-        assert!(allowed_setting("tip_popup") && allowed_setting("copilot_tip_in_chat") && allowed_setting("tip_highlight"));
+        assert!(
+            allowed_setting("tip_popup") && allowed_setting("copilot_tip_in_chat") && allowed_setting("tip_highlight")
+        );
         assert!(allowed_setting("judge_daily_tasks"));
         assert!(allowed_setting("copilot_mid_turn"));
         assert!(allowed_setting("agent_actions"));

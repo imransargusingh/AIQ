@@ -145,7 +145,6 @@ fn tips_settings_and_data() {
     assert!(deleted[0].text.is_none());
     assert!(s.data.items.iter().filter(|i| i.kind == "stop").all(|i| !i.deleted && i.text.is_none()));
     assert!(s.data.items.windows(2).all(|w| w[0].ts_ms >= w[1].ts_ms), "newest first");
-    assert_eq!(s.status.last_event_ms, Some(NOW - 30 * MIN));
     assert!(s.data.store_bytes > 0);
 }
 

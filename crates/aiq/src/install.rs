@@ -411,6 +411,17 @@ pub fn uninstall_all(yes: bool) -> ExitCode {
             failed = true;
         }
     }
+    match aiq_core::autostart::remove_login_start() {
+        Ok(true) => {
+            changed = true;
+            println!("Removed: AIQ's start when you sign in to Windows");
+        }
+        Ok(false) => {}
+        Err(e) => {
+            println!("Couldn't remove AIQ's start at sign-in: {e}");
+            failed = true;
+        }
+    }
     if !changed {
         println!("No tool had AIQ connected. Nothing changed.");
     }

@@ -155,7 +155,7 @@ rows. No backfill (a backfill would guess).
 | Tauri 2 commands, capabilities, CSP | Tauri 2.12 docs; built in CI | Verified by building (see Test plan) |
 
 ### Exposed
-`Snapshot` (JSON, `aiq.home.v1`): `status {core, paused, last_event_ms, read_ms}`, `home {window_days,
+`Snapshot` (JSON, `aiq.home.v1`): `status {core, core_state, core_error, paused, read_ms}`, `home {window_days,
 tasks_30d, judged, weeks[4], by_tool, set_aside}`, `tasks[]`, `tips[]`, `data {events, prompts,
 store_bytes, items[≤500]}`, `settings {daily_cap, copilot_tip_stays}`.
 
@@ -169,7 +169,7 @@ mockup's design region, harness removed. States per page:
 
 | Page | loading | empty | core down | paused | error |
 |---|---|---|---|---|---|
-| Home | skeleton | "AIQ is watching quietly" | banner + last stored data | banner + Resume (P) | "AIQ can't open its data" + Try again |
+| Home | skeleton | "AIQ is watching quietly" | stored data; banner only when a start failed | banner + Resume (P) | "AIQ can't open its data" + Try again |
 | Tasks | skeleton rows | "No tasks yet" teaching state | banner | banner | same |
 | Habits and tips | — | "No tips yet" | banner | banner | same |
 | Your data | — | "AIQ has no stored history. Capture is still on." | banner; Delete everything still works (files) | banner | same |
@@ -198,13 +198,22 @@ last committed state. All reads of one snapshot run in one read transaction, so 
 agree with each other. A timeout surfaces as `AIQ-HOME-STORE-READ` with Try again. No write ever
 happens through the read connection (`query_only` pragma as a second guard).
 
+## Keeping the core running (0.1.4)
+
+Imran, 2026-11-04: the "AIQ isn't running … starts with your next prompt" banner put the work on the person. Now AIQ starts its own core; the person never has to.
+
+- **Starters.** A prompt's hook (as before), AIQ home on every read when no core answers, and Windows at sign-in: the core writes a per-user Run entry `AIQ` = `"<data>\bin\aiq-home.exe" --start-core` at each start (so updates reach it too), only for an install.ps1 install still in place (`windows-install.json` present). `aiq-home.exe --start-core` starts the core when needed and exits without a window. `aiq uninstall --all` removes the entry; turning AIQ off in Task Manager's Startup apps is Windows' own switch and is left alone.
+- **One core.** All starters share the hook's start-time file (`core-start.lock`, 10 s grace) and the core's own lock turns away a second core. Home tells a busy core (holds its lock, missed the 400 ms ask) from a stopped one by probing that lock, so a slow core is never "not running" and never gets a twin.
+- **States.** `running`; `busy` and `starting` (Home looks again after 2 s; status line "Starting"); `failed` (a start left no core: the core wrote `core-error`, or the grace passed with no lock, or the `aiq` exe could not run, `AIQ-HOME-CORE-START`). Home retries every 10 s while open.
+- **After a crash.** The core comes back with the next prompt (hook), the next Home read, or the next sign-in. With Home closed and no prompts, it stays down until one of those; nothing is lost, as hooks spool while it is down.
+
 ## Failure-mode analysis
 
 | Mode | Disposition | Test |
 |---|---|---|
 | Store file missing (fresh install) | Empty snapshot, empty states | `snapshot_missing_store_is_empty` |
 | Store locked by a write | Busy timeout, then error state with code | `snapshot_busy_reports_code` |
-| Core down | `core: false`; banner; reads still work; setting changes refused with message | e2e fixture + Rust test |
+| Core down | Home starts it (see Keeping the core running); `core_state` starting/busy shows "Starting" in the status line, no banner; only `failed` shows "AIQ couldn't start. It keeps trying. (code)" + Try again; reads still work; setting changes refused with "AIQ is starting…" | `autostart` unit tests, `crates/aiq/tests/keep_core.rs` (real binary), e2e fixtures `down` + starting/busy |
 | Import tables absent | No imported tasks | `snapshot_without_import_tables` |
 | Prompt text deleted | Your data shows "(deleted)" | `snapshot_deleted_content` |
 | Huge store | Items capped at 500 newest; counts exact | `snapshot_caps_items` |

@@ -83,9 +83,11 @@ export interface Update {
 
 export interface Status {
   core: boolean;
+  /** Only "failed" shows a banner; Home starts the core itself when none runs. */
+  core_state: "running" | "busy" | "starting" | "failed";
+  core_error: string | null;
   paused: boolean;
   store_found: boolean;
-  last_event_ms: number | null;
   read_ms: number;
   error: string | null;
 }
