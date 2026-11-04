@@ -40,6 +40,8 @@ export interface Live {
   /** The first prompt had room for a goal and context; null when its text is gone. */
   brief: boolean | null;
   unrecorded: number[];
+  /** For each of `unrecorded`: no_log, read_error, too_large, unparsed, no_start or not_read. */
+  unrecorded_why: string[];
   subagents: number;
   tip: { card_id: string; turn: number; try_this: string } | null;
   task_id: string;

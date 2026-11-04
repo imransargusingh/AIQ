@@ -429,11 +429,11 @@ for (const theme of ["light", "dark", "contrast"]) {
     const card = page.getByTestId("right-now");
     const t = await card.innerText();
     assert.match(t, /Right now · Writing a spec or PRD/);
-    assert.match(t, /Copilot CLI · 5 prompts · 22 min · agent working/);
+    assert.match(t, /Copilot CLI · since 11:38 · 5 prompts · 22 min · agent working/);
     assert.match(t, /Heading for Directed \(2\)\s*· could reach Delegated \(3\)/);
     assert.match(t, /Agent made the edits itself \(turns 2, 3\)/);
     assert.match(t, /Asked a piece at a time: 5 prompts/);
-    assert.match(t, /Turn 4: not recorded/);
+    assert.match(t, /Turn 4: not recorded \(the log couldn't be read\)/);
     assert.match(t, /AIQ tip:.*from turn 3/);
     assert.match(t, /judge's rung replaces it/);
     const img = await card.getByRole("img").getAttribute("aria-label");
@@ -453,6 +453,14 @@ await test("Right now card: gone with no open task and when switched off; the sw
   const none = await open("full");
   assert.equal(await none.getByTestId("right-now").count(), 0);
   await none.context().close();
+  const unread = await open("live", {
+    edit: (s) => Object.assign(s.live, { rung: null, could: null, did_turns: [], steps: [{ turn: 1, at_ms: s.live.first_ms, rung: null, recorded: false }], unrecorded: [1], unrecorded_why: ["no_start"] }),
+  });
+  const ut = await unread.getByTestId("right-now").innerText();
+  assert.match(ut, /No estimate yet/);
+  assert.match(ut, /Turn 1: not recorded \(AIQ restarted during the turn\)/);
+  assert.equal(await unread.getByTestId("right-now").getByRole("img").count(), 0, "no empty chart");
+  await unread.context().close();
   const off = await open("live", { edit: (s) => (s.live = null) });
   assert.equal(await off.getByTestId("right-now").count(), 0);
   await off.context().close();

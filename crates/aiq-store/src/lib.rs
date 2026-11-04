@@ -326,6 +326,8 @@ pub struct SessionEvent {
     /// JSON {tool name: calls}, when recorded.
     pub tools: Option<String>,
     pub subagents: Option<i64>,
+    /// Why a stop's turn was not recorded (`turn_action.why`): no_log, read_error, too_large, unparsed, no_start.
+    pub why: Option<String>,
 }
 
 /// One answer to a tip (schema v6 `tip_feedback`).
@@ -715,8 +717,11 @@ impl Store {
     /// deleted or never stored) and each stop with its turn's recorded actions (None before v9, or when no row
     /// was written). The live rung trend reads this (design live-rung-trend T2).
     pub fn session_events(&self, surface: &str, session: &str, since_ms: i64) -> Result<Vec<SessionEvent>> {
-        let actions =
-            if self.has_table("turn_action")? { "a.outcome, a.tools, a.subagents" } else { "NULL, NULL, NULL" };
+        let actions = if self.has_table("turn_action")? {
+            "a.outcome, a.tools, a.subagents, a.why"
+        } else {
+            "NULL, NULL, NULL, NULL"
+        };
         let join =
             if self.has_table("turn_action")? { "LEFT JOIN turn_action a ON a.stop_event_id = e.event_id" } else { "" };
         let sql = format!(
@@ -736,6 +741,7 @@ impl Store {
                     action_outcome: r.get(4)?,
                     tools: r.get(5)?,
                     subagents: r.get(6)?,
+                    why: r.get(7)?,
                 })
             })
             .map_err(err(codes::STORE_OPEN))?;

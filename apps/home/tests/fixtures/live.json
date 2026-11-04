@@ -2141,6 +2141,9 @@
     "unrecorded": [
       4
     ],
+    "unrecorded_why": [
+      "read_error"
+    ],
     "subagents": 0,
     "tip": {
       "card_id": "019000010008-0000-7000-8000-000000000000",

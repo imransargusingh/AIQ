@@ -1,11 +1,20 @@
 // Right now card at the top of Home (design live-rung-trend C): while a task is open, where it is heading after
 // each turn, the rung tasks of its kind could reach, and the tip at the turn it showed. An estimate from what the
 // agent did; the judge's rung replaces it when the task ends. Every rung is also named in text.
-import { jobName, plural, rungLabel, toolName } from "../format";
+import { clock, jobName, plural, rungLabel, toolName } from "../format";
 import type { Ctx } from "../ui";
 import type { Live } from "../types";
 
 const RN = ["Assisted", "Directed", "Delegated", "Orchestrated"];
+/** Why a turn's actions were not recorded (`turn_action.why`), in plain words. */
+const WHY: Record<string, string> = {
+  no_log: "AIQ found no log for it",
+  read_error: "the log couldn't be read",
+  too_large: "too much log to read at once",
+  unparsed: "a log line AIQ didn't understand",
+  no_start: "AIQ restarted during the turn",
+  not_read: "AIQ didn't read its log",
+};
 const turns = (ts: number[]) => (ts.length === 1 ? `turn ${ts[0]}` : `turns ${ts.join(", ")}`);
 
 /** The reasons behind the estimate, in plain words (no model text). */
@@ -17,7 +26,10 @@ export function reasons(l: Live): { ok: boolean; text: string }[] {
   if (l.brief === false) out.push({ ok: false, text: "First prompt was short: say the goal, context and limits up front" });
   if (l.prompts >= 3) out.push({ ok: false, text: `Asked a piece at a time: ${plural(l.prompts, "prompt")}` });
   if (l.subagents > 0) out.push({ ok: true, text: `Split across ${plural(l.subagents, "sub-agent")}` });
-  for (const t of l.unrecorded) out.push({ ok: false, text: `Turn ${t}: not recorded` });
+  l.unrecorded.forEach((t, i) => {
+    const why = WHY[l.unrecorded_why[i] ?? ""];
+    out.push({ ok: false, text: `Turn ${t}: not recorded${why ? ` (${why})` : ""}` });
+  });
   return out;
 }
 
@@ -91,7 +103,7 @@ export function RightNow(ctx: Ctx) {
           {what}
         </h2>
         <span className="meta num">
-          {toolName(l.surface)} · {plural(l.prompts, "prompt")} · {mins} min{l.working && " · agent working"}
+          {toolName(l.surface)} · since {clock(l.first_ms, ctx.snap.offset_min)} · {plural(l.prompts, "prompt")} · {mins} min{l.working && " · agent working"}
         </span>
       </div>
       <p className="rn-head">
@@ -108,7 +120,7 @@ export function RightNow(ctx: Ctx) {
           <span className="mute">No estimate yet: {l.working ? "the first turn hasn't ended" : "the turns so far weren't recorded"}</span>
         )}
       </p>
-      {l.steps.length > 0 && (
+      {l.steps.some((s) => s.rung !== null) && (
         <div className="rn-scroll">
           <Trace l={l} />
         </div>
