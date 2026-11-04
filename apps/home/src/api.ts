@@ -9,7 +9,7 @@ export type FlagReason = "evidence_wrong" | "not_useful" | "blocked" | "other";
 declare global {
   interface Window {
     __TAURI_INTERNALS__?: unknown;
-    __AIQ_FIXTURE__?: { snapshot: Snapshot; task?: TaskDetail; calls: { cmd: string; args: unknown }[]; fail?: string[] };
+    __AIQ_FIXTURE__?: { snapshot: Snapshot; task?: TaskDetail; calls: { cmd: string; args: unknown }[]; fail?: string[]; checkFinds?: string };
   }
 }
 
@@ -120,8 +120,19 @@ function fixture<T>(cmd: string, args: Record<string, unknown>): Promise<T> {
       out = { ok: true, changed: ["C:\\Users\\you\\.copilot\\hooks\\aiq.json"] };
       break;
     case "run_update":
-      // The real shell closes the window after replying; the fixture only records the call.
+      // The real shell closes the window after replying; the fixture only records the call. A "check" behaves
+      // like upgrade.ps1 when the test sets `checkFinds`: a version stages it (waiting), "none" finds nothing,
+      // "error" can't reach GitHub; it writes its check time.
       out = f.fail?.includes(cmd) ? { ok: false, message: "Could not start: updates run only for AIQ installed with install.ps1 on Windows." } : { ok: true };
+      if (args.action === "check" && f.checkFinds !== undefined && !f.fail?.includes(cmd)) {
+        const found = f.checkFinds;
+        setTimeout(() => {
+          s.update.checked_ms = Date.now();
+          s.update.check_error = found === "error" ? "Unable to connect to the remote server" : null;
+          if (found !== "none" && found !== "error") Object.assign(s.update, { note: "waiting", available: found, latest: found });
+          else if (found === "none") s.update.latest = `v${s.update.running}`;
+        }, 300);
+      }
       break;
     case "disconnect_tool": {
       const t = s.setup.tools.find((x) => x.tool === args.tool);
@@ -183,5 +194,5 @@ export const api = {
   openPrivacy: () => invoke<Outcome>("open_privacy"),
   /** Install the waiting update or go back (AIQ home closes and reopens), or check now (it stays open);
    * `check_if_due` checks only when an hour has passed since the last check (Home's own hourly ask). */
-  runUpdate: (action: "install" | "rollback" | "check" | "check_if_due") => invoke<Outcome>("run_update", { action }),
+  runUpdate: (action: "install" | "rollback" | "check" | "check_if_due" | "check_on_open") => invoke<Outcome>("run_update", { action }),
 };

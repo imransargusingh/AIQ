@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api } from "./api";
 import type { Snapshot } from "./types";
 import { RUNGS, rungLabel, when } from "./format";
+import { ver, type UpdatePhase } from "./updateNow";
 
 /** Nav pages, plus places outside the nav: one task's detail, one kind of task (from Home or Tasks), setup. */
 export type Page = "home" | "tasks" | "tips" | "data" | "settings" | "task" | "kind" | "setup";
@@ -28,6 +29,8 @@ export interface Ctx {
   /** The project Home and Tasks show (a folder key, "" for no folder), or null for all (design project-filter P3). */
   project: string | null;
   setProject: (key: string | null) => void;
+  /** "Update now" (design auto-update U5h): what it is doing, its last result, and the press itself. */
+  update: { phase: UpdatePhase; msg: string | null; run: () => void };
 }
 
 /** The picker's "All projects" value: a NUL can't be in any folder path, so no project key equals it. */
@@ -128,46 +131,49 @@ function seenBefore(key: string): boolean {
   return before;
 }
 
-/** Home's one line about updates (design auto-update U5, U5g). A waiting update is a banner with Install now.
- * Installed, failed or undone is a slim line: shown on one Home session, a day at most (core), with a dismiss. */
+/** The titlebar's update marker, on every page (design auto-update U5h): "Update to x.y.z" while one waits,
+ * else what Update now is doing or found. Nothing otherwise, so it takes no space in the page. */
+export function UpdateChip({ snap, update }: Pick<Ctx, "snap" | "update">) {
+  const u = snap.update;
+  if (!u.supported) return null;
+  if (update.phase === "idle" && u.note === "waiting") {
+    const when = u.mode === "auto" ? " It also installs by itself when you close AIQ home." : "";
+    const waited = u.blocked ? ` Last try waited: ${u.blocked}.` : "";
+    return (
+      <button className="chip updchip" data-testid="update-chip" onClick={update.run} title={`AIQ home closes, installs AIQ ${ver(u.available)} and opens again.${when}${waited}`}>
+        Update to {ver(u.available)}
+      </button>
+    );
+  }
+  if (!update.msg) return null;
+  return (
+    <span className={`chip${update.phase === "idle" ? "" : " tried"}`} data-testid="update-chip">
+      {update.msg}
+    </span>
+  );
+}
+
+/** Home's one line after an update ran (design auto-update U5, U5g): installed, failed or undone, a slim line
+ * shown on one Home session, a day at most (core), with a dismiss. A waiting update is the titlebar's marker. */
 export function UpdateLine({ snap, announce }: Pick<Ctx, "snap" | "announce">) {
   const u = snap.update;
   const [msg, setMsg] = useState<string | null>(null);
   const key = `${u.note}:${u.at_ms ?? ""}`;
   const [hidden, setHidden] = useState(() => u.note !== "none" && u.note !== "waiting" && seenBefore(key));
-  if (!u.supported || u.note === "none") return null;
-  const run = async (action: "install" | "rollback") => {
-    const r = await api.runUpdate(action);
-    const m = r.ok ? (action === "install" ? "Installing the update. AIQ home closes and opens again." : "Going back. AIQ home closes and opens again.") : r.message;
+  if (!u.supported || u.note === "none" || u.note === "waiting" || hidden) return null;
+  const run = async () => {
+    const r = await api.runUpdate("rollback");
+    const m = r.ok ? "Going back. AIQ home closes and opens again." : r.message;
     setMsg(m);
     announce(m);
   };
-  const ver = (v: string | null) => (v ?? "").replace(/^v/, "");
-  if (u.note === "waiting") {
-    return (
-      <div className="banner" data-testid="update-line">
-        <div className="grow">
-          {u.mode === "auto" ? (
-            <>AIQ {ver(u.available)} is ready. It installs by itself when you close AIQ home.</>
-          ) : (
-            <>AIQ {ver(u.available)} is ready to install.</>
-          )}
-          {msg && <span className="meta"> {msg}</span>}
-        </div>
-        <button className="btn" onClick={() => run("install")}>
-          Install now
-        </button>
-      </div>
-    );
-  }
-  if (hidden) return null;
   let text: ReactNode;
   let action: ReactNode = null;
   if (u.note === "applied") {
     text = <>Updated to AIQ {ver(u.running)}.</>;
     if (u.can_rollback && u.from)
       action = (
-        <button className="btnlink" onClick={() => run("rollback")}>
+        <button className="btnlink" onClick={run}>
           Go back to {ver(u.from)}
         </button>
       );

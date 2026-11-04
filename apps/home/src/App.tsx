@@ -6,7 +6,7 @@ import { singleFlight } from "./refresh";
 import { toolName } from "./format";
 import type { Snapshot } from "./types";
 import { scoped } from "./project";
-import { Dialog, PAGES, Sk, type Ctx, type Page } from "./ui";
+import { Dialog, PAGES, Sk, UpdateChip, type Ctx, type Page } from "./ui";
 import { Home } from "./pages/Home";
 import { Tasks } from "./pages/Tasks";
 import { Tips } from "./pages/Tips";
@@ -15,6 +15,7 @@ import { Settings } from "./pages/Settings";
 import { Task } from "./pages/Task";
 import { Setup } from "./pages/Setup";
 import { Kind } from "./pages/Kind";
+import { CHECK_POLL_MS, CHECK_WAIT_MS, checkOutcome, outcomeText, ver, type UpdatePhase } from "./updateNow";
 
 const REFRESH_MS = 15_000;
 const UPDATE_ASK_MS = 3_600_000;
@@ -53,6 +54,8 @@ export function App() {
   // The project Home, Tasks and a kind's page show; all until the person picks one (design project-filter P3).
   const [project, setProjectState] = useState<string | null>(null);
   const gPending = useRef(0);
+  // "Update now" (U5h): one press checks, downloads and installs; its state shows in the titlebar and beside it.
+  const [upd, setUpd] = useState<{ phase: UpdatePhase; since: number; msg: string | null }>({ phase: "idle", since: 0, msg: null });
 
   const announce = useCallback((m: string) => {
     setSaid("");
@@ -94,6 +97,50 @@ export function App() {
       () => announce("Could not change the pause setting."),
     );
   }, [snap, announce]);
+  const say = useCallback(
+    (phase: UpdatePhase, msg: string | null, since = 0) => {
+      setUpd({ phase, since, msg });
+      if (msg) announce(msg);
+    },
+    [announce],
+  );
+  const install = useCallback(
+    async (available: string | null) => {
+      say("installing", `Installing AIQ ${ver(available)}. AIQ home closes and opens again.`);
+      const r = await api.runUpdate("install");
+      if (!r.ok) say("idle", r.message);
+    },
+    [say],
+  );
+  const updateNow = useCallback(async () => {
+    if (!snap || !snap.update.supported || upd.phase !== "idle") return;
+    if (snap.update.note === "waiting") return install(snap.update.available);
+    const since = Date.now();
+    say("checking", "Checking for a newer AIQ…", since);
+    const r = await api.runUpdate("check");
+    if (!r.ok) say("idle", r.message);
+    else refresh();
+  }, [snap, upd.phase, install, say, refresh]);
+  // While a check runs, read the snapshot every 2 s; install the moment the download is checked.
+  useEffect(() => {
+    if (upd.phase !== "checking") return;
+    const t = setInterval(refresh, CHECK_POLL_MS);
+    return () => clearInterval(t);
+  }, [upd.phase, refresh]);
+  useEffect(() => {
+    if (upd.phase !== "checking" || !snap) return;
+    const o = checkOutcome(snap.update, upd.since);
+    if (o === "found") void install(snap.update.available);
+    else if (o !== "pending") say("idle", outcomeText(o, snap.update));
+    else if (Date.now() - upd.since > CHECK_WAIT_MS) say("idle", "Still checking. Update to the new version shows here once it's downloaded.");
+  }, [snap, upd.phase, upd.since, install, say]);
+  // A result line clears itself after 20 s.
+  useEffect(() => {
+    if (upd.phase !== "idle" || !upd.msg) return;
+    const t = setTimeout(() => setUpd((u) => (u.phase === "idle" ? { ...u, msg: null } : u)), 20_000);
+    return () => clearTimeout(t);
+  }, [upd]);
+
   const setSingleKeys = (on: boolean) => {
     setSingleKeysState(on);
     try {
@@ -123,7 +170,8 @@ export function App() {
   // updates off), so this is cheap; the next snapshot read shows the line once the download is checked.
   useEffect(() => {
     const ask = () => void api.runUpdate("check_if_due").catch(() => undefined);
-    ask();
+    // On open the bar is 10 minutes since the last check, not 55 (update::HOME_OPEN_MS).
+    void api.runUpdate("check_on_open").catch(() => undefined);
     const t = setInterval(ask, UPDATE_ASK_MS);
     window.addEventListener("focus", ask);
     return () => {
@@ -175,7 +223,8 @@ export function App() {
     },
     [snap, announce],
   );
-  const ctx: Ctx | null = snap && { snap, go, openTask, openKind, announce, togglePause, refresh, project, setProject };
+  const update = useMemo(() => ({ phase: upd.phase, msg: upd.msg, run: updateNow }), [upd.phase, upd.msg, updateNow]);
+  const ctx: Ctx | null = snap && { snap, go, openTask, openKind, announce, togglePause, refresh, project, setProject, update };
   const one: Ctx | null = ctx && { ...ctx, snap: scoped(ctx.snap, project) };
   const watching = snap?.home.by_tool.map(([t]) => toolName(t)) ?? [];
 
@@ -217,6 +266,7 @@ export function App() {
       <div className="titlebar">
         <b style={{ color: "var(--ink)" }}>AIQ</b>
         {snap?.status.paused && <span className="chip pausedchip">Paused</span>}
+        {ctx && <UpdateChip {...ctx} />}
         <button className="search" onClick={() => setPalette(true)} aria-label="Command palette (Ctrl+K)">
           Search or jump to… <kbd>Ctrl K</kbd>
         </button>
@@ -248,7 +298,17 @@ export function App() {
                   Tips today: {snap.home.tips_today} of {snap.settings.daily_cap}
                 </span>
                 {singleKeys && <span>P to {snap.status.paused ? "resume" : "pause"}</span>}
-                <span data-testid="app-version">AIQ {snap.update.running}</span>
+                <span>
+                  <span data-testid="app-version">AIQ {snap.update.running}</span>
+                  {snap.update.supported && (
+                    <>
+                      {" · "}
+                      <button className="btnlink" onClick={update.run} disabled={update.phase !== "idle"} title="Check for a newer AIQ and install it">
+                        Update now
+                      </button>
+                    </>
+                  )}
+                </span>
               </>
             )}
           </div>
@@ -310,6 +370,7 @@ function Palette({ ctx, onClose }: { ctx: Ctx; onClose: () => void }) {
       { label: "Delete everything…", run: () => ctx.go("data") },
       { label: "Run setup again", run: () => ctx.go("setup") },
       { label: "Refresh", run: ctx.refresh },
+      ...(ctx.snap.update.supported ? [{ label: "Update AIQ now", run: ctx.update.run }] : []),
     ],
     [ctx],
   );

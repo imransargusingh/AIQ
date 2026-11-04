@@ -5,6 +5,7 @@ import { api, type SettingKey } from "../api";
 import type { Settings as S } from "../types";
 import { jobName, plural, when } from "../format";
 import { AccuracyPaused, Banners, Title, type Ctx } from "../ui";
+import { ver } from "../updateNow";
 
 const STAYS: { v: S["copilot_tip_stays"]; label: string; note?: string }[] = [
   { v: "next-prompt", label: "Until your next prompt", note: "Default" },
@@ -36,17 +37,11 @@ const UPDATE: { v: "auto" | "ask" | "off"; label: string; note?: string }[] = [
 const JUDGE_CAPS = [20, 50, 100, 200];
 
 export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: boolean) => void }) {
-  const { snap, announce, refresh, singleKeys, setSingleKeys } = ctx;
+  const { snap, announce, refresh, singleKeys, setSingleKeys, update } = ctx;
   const [msg, setMsg] = useState<string | null>(null);
   const down = !snap.status.core;
   const st = snap.settings;
   const up = snap.update;
-  const checkNow = async () => {
-    const r = await api.runUpdate("check");
-    const m = r.ok ? "Checking GitHub for a newer AIQ. If there is one, Home offers to install it." : r.message;
-    setMsg(r.ok ? null : m);
-    announce(m);
-  };
   const goBack = async () => {
     const r = await api.runUpdate("rollback");
     const m = r.ok ? "Going back to the previous version. AIQ home closes and opens again." : r.message;
@@ -409,15 +404,18 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
             </span>
             )}
             <div className="row">
-                <button className="btn" onClick={checkNow}>
-                  Check for updates now
-                </button>
-                {up.can_rollback && (
+              <button className="btn" onClick={update.run} disabled={update.phase !== "idle"}>
+                {update.phase === "checking" ? "Checking…" : update.phase === "installing" ? "Installing…" : up.note === "waiting" ? `Update to ${ver(up.available)} now` : "Update now"}
+              </button>
+              {up.can_rollback && (
                 <button className="btn" onClick={goBack}>
                   Go back to the previous version
                 </button>
-                )}
-              </div>
+              )}
+            </div>
+            <span className="meta" data-testid="update-progress">
+              {update.msg ?? (up.note === "waiting" ? `AIQ ${ver(up.available)} is downloaded and checked.${up.blocked ? ` Last try waited: ${up.blocked}.` : ""}` : "Checks for a newer AIQ and installs it.")}
+            </span>
           </>
         ) : (
           <p className="mute">This copy of AIQ wasn't installed from a release, so it doesn't update itself.</p>

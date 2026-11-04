@@ -1481,6 +1481,7 @@
     "message": null,
     "checked_ms": 1793530800000,
     "check_error": null,
+    "latest": null,
     "can_rollback": true
   },
   "projects": [

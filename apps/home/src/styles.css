@@ -344,3 +344,7 @@ li+li>.kindrow{border-top:1px solid var(--hairline)}
 .rn-badge{background:#f9f1a5;color:#000;font-weight:700;padding:0 4px;border-radius:3px}
 .rn-why{list-style:none;padding:0;margin:var(--s2) 0;display:grid;gap:2px}
 @media (forced-colors:active){.rn-line,.rn-pt,.rn-could{stroke:CanvasText}.rn-last{fill:Highlight}.rn-tipbox,.rn-badge{forced-color-adjust:none}}
+/* The titlebar's update marker (design auto-update U5h): one chip, primary while an update waits. */
+.titlebar .updchip{cursor:pointer;color:var(--primary);border-color:var(--primary);font-weight:600}
+.titlebar .updchip:hover{background:var(--primary);color:var(--surface)}
+.titlebar .updchip:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
