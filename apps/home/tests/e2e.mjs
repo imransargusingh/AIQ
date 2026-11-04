@@ -164,10 +164,41 @@ await test("every rung name says what it means on hover: Home ladder, Tasks colu
 });
 
 await test("Home answers the headline without scrolling at 1280x800", async () => {
-  const page = await open("full");
+  const page = await open("coaching");
   const box = await page.locator("#kr").boundingBox();
   assert.ok(box && box.y + box.height < 800, `headline at ${box?.y}`);
+  assert.equal(await page.locator("#gs").count(), 0, "no getting-started card once the numbers show");
   await page.context().close();
+  // Before the first numbers, the getting-started card is the answer to "is it working?".
+  const early = await open("full");
+  const gs = await early.locator("#gs").boundingBox();
+  assert.ok(gs && gs.y + gs.height < 800, `getting started at ${gs?.y}`);
+  await early.context().close();
+});
+
+await test("Getting started ticks itself from the snapshot (item 7)", async () => {
+  const page = await open("empty");
+  assert.equal(await page.locator("main h1").innerText(), "AIQ is getting to know your work");
+  const items = await page.locator("ul.cklist li").allInnerTexts();
+  assert.equal(items.length, 5, items.join("|"));
+  assert.match(items[0], /Claude Code connected[\s\S]*GitHub Copilot is on this computer but not connected\. Connect/);
+  assert.match(items[1], /No prompt captured yet/);
+  assert.match(items[2], /Judging is off[\s\S]*Turn on in Settings/);
+  assert.match(items[3], /No task judged yet/);
+  assert.match(items[4], /Your first numbers[\s\S]*0 of 10 judged tasks/);
+  assert.equal(await page.locator("ul.cklist .mark.on").count(), 1);
+  assert.deepEqual(await page.locator("ul.cklist .sr").allInnerTexts(), ["Done: ", "Not yet: ", "Not yet: ", "Not yet: ", "Not yet: "].map((x) => x.trim()));
+  assert.deepEqual(await axe(page), []);
+  if (shots) await page.screenshot({ path: join(shots, "home-getting-started.png") });
+  await page.getByRole("button", { name: "Turn on in Settings" }).click();
+  await page.waitForFunction(() => location.hash === "#settings");
+  await page.context().close();
+  const full = await open("full");
+  const card = full.locator("section[aria-labelledby=gs]");
+  assert.match(await card.innerText(), /Getting started\s+3 of 5 done[\s\S]*Prompts captured[\s\S]*11 prompts and 7 tasks so far in Copilot CLI, Claude Code, VS Code[\s\S]*3 tasks judged[\s\S]*4 tasks waiting\.[\s\S]*2 of 10 judged tasks/);
+  assert.deepEqual(await axe(full), []);
+  assert.deepEqual(full.errors, []);
+  await full.context().close();
 });
 
 await test("screen readers hear clean names: nav, rung rows, skip link", async () => {
@@ -376,7 +407,7 @@ await test("paused: banner with Resume on every page, and in the nav", async () 
 });
 
 await test("empty store: teaching empty states, no errors", async () => {
-  for (const [id, , expect] of [["home", 0, "AIQ is watching quietly"], ["tasks", 0, "No tasks yet."], ["tips", 0, "No tips yet."], ["data", 0, "AIQ has no stored history."]]) {
+  for (const [id, , expect] of [["home", 0, "AIQ is getting to know your work"], ["tasks", 0, "No tasks yet."], ["tips", 0, "No tips yet."], ["data", 0, "AIQ has no stored history."]]) {
     const page = await open("empty", { hash: `#${id}` });
     assert.ok((await page.locator("main").innerText()).includes(expect), id);
     assert.deepEqual(await axe(page), []);
@@ -615,7 +646,7 @@ await test("setup: first run walks five steps with Back; Start only after I unde
   if (shots) await page.screenshot({ path: join(shots, "setup-last.png"), fullPage: true });
   await start.click();
   // The empty store's Home is its teaching state.
-  await page.waitForFunction(() => document.querySelector("main h1")?.textContent === "AIQ is watching quietly");
+  await page.waitForFunction(() => document.querySelector("main h1")?.textContent === "AIQ is getting to know your work");
   await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Setup done. AIQ is watching.");
   assert.equal(await page.locator("nav").count(), 1);
   const calls = await page.evaluate(() => window.__AIQ_FIXTURE__.calls.filter((c) => !String(c.args?.action ?? "").startsWith("check_")).map((c) => c.cmd).filter((c) => c !== "snapshot"));

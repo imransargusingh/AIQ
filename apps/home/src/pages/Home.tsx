@@ -8,6 +8,7 @@ import { DAY, rungCounts, shift } from "../mix";
 import { RUNGS, day, folderName, plural, rungLabel, sentence, toolName, when } from "../format";
 import { AccuracyPaused, Banners, ProjectPicker, Rung, Title, UpdateLine, type Ctx } from "../ui";
 import { RightNow } from "./RightNow";
+import { GettingStartedCard, GettingStartedPage } from "./GettingStarted";
 
 export function Home(ctx: Ctx) {
   const { snap, go, announce, refresh } = ctx;
@@ -23,17 +24,7 @@ export function Home(ctx: Ctx) {
       <div className="page">
         <Banners {...ctx} />
         <UpdateLine {...ctx} />
-        <header className="group">
-          <Title>AIQ is watching quietly</Title>
-          <p className="mute">Keep working as usual. Patterns show after about 10 tasks of the same kind. Tips can start sooner.</p>
-        </header>
-        <div className="card" style={{ maxWidth: 520 }}>
-          <p>AIQ watches Claude Code, Copilot CLI and VS Code agent mode once they're connected. Setup connects the ones it finds.</p>
-          <p className="meta">
-            <button className="btnlink" onClick={() => go("data")}>See what AIQ has captured</button> ·{" "}
-            <button className="btnlink" onClick={() => go("setup")}>See which tools are connected</button>
-          </p>
-        </div>
+        <GettingStartedPage snap={snap} go={go} />
       </div>
     );
   }
@@ -62,6 +53,7 @@ export function Home(ctx: Ctx) {
           Showing {one.name} only. Tips and Set aside cover all projects.
         </p>
       )}
+      {ctx.project === null && !ready && <GettingStartedCard snap={snap} go={go} />}
       <section
         className="mainrung"
         role="img"
