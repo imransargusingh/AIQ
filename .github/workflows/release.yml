@@ -177,6 +177,9 @@ jobs:
           powershell -ExecutionPolicy Bypass -File $up -Check -Apply -Feed $feed
           if ((St).state -ne 'rolled_back' -or (Test-Path (Join-Path $aiq 'update'))) { Fail "reinstalled after rollback: $((St) | ConvertTo-Json -Compress)" }
           Get-Content (Join-Path $aiq 'upgrade-log.txt') -Tail 8
+      - name: Smoke test - update check finds the tag from the releases/latest redirect, falls back to the API, records a rate-limit reset
+        shell: pwsh
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File packaging/windows/tests/upgrade-network.ps1 (Join-Path $env:USERPROFILE '.aiq\bin\upgrade.ps1')
       - name: Smoke test - uninstall --all removes hooks, user PATH entry and shortcut, keeps the data
         shell: pwsh
         run: |
