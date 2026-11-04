@@ -333,7 +333,7 @@ fn segment_check_rule(toks: &[&str]) -> Option<&'static str> {
             break;
         }
     }
-    let Some(first) = toks.get(i) else { return None };
+    let first = toks.get(i)?;
     let p = program(first);
     if CHECK_PROGRAMS.contains(&p) {
         return Some(if LINTERS_ADDED_FS2.contains(&p) { "linter (fs2)" } else { "test or lint program" });
