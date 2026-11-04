@@ -15,7 +15,7 @@ use aiq_domain::rung::{self, Turn};
 use aiq_home::TaskRow;
 use aiq_store::{CallOutcome, JudgmentRow, NewJudgeCall, Store};
 use serde_json::{Value, json};
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
@@ -1136,6 +1136,7 @@ fn versions_cli(store: &Store, homes: &Homes) -> ExitCode {
     let (mut current, mut restamped, mut no_actions, mut no_text, mut held) = (0, 0, 0, 0, 0);
     let mut again: BTreeMap<String, u32> = BTreeMap::new();
     let mut why_again: BTreeMap<String, u32> = BTreeMap::new();
+    let mut rules_now: BTreeMap<&str, u32> = BTreeMap::new();
     for t in &tasks {
         let Some(j) = judged.get(&t.task_id) else { continue };
         let read: Value = serde_json::from_str(&j.read).unwrap_or_default();
@@ -1170,6 +1171,18 @@ fn versions_cli(store: &Store, homes: &Homes) -> ExitCode {
                     if log.unrecorded > 0 { ", a turn not recorded" } else { "" }
                 );
                 *why_again.entry(why).or_default() += 1;
+                if was.as_deref() != Some("agent") && log.checks_by == Some(rung::Checker::Agent) {
+                    // Which rule now reads a check: rule names only, never the command (it is the person's).
+                    let rules: BTreeSet<&str> = turns
+                        .iter()
+                        .filter_map(|t| t.actions.as_ref())
+                        .flat_map(|a| a.commands.iter())
+                        .filter_map(|c| rung::check_rule(c))
+                        .collect();
+                    for r in rules {
+                        *rules_now.entry(r).or_default() += 1;
+                    }
+                }
             }
         }
     }
@@ -1186,6 +1199,12 @@ fn versions_cli(store: &Store, homes: &Homes) -> ExitCode {
     }
     for (why, n) in &why_again {
         println!("    {why}: {n}");
+    }
+    if !rules_now.is_empty() {
+        println!("  tasks whose F3 now reads agent, by the rule that matched (a task can count under several):");
+        for (r, n) in &rules_now {
+            println!("    {r}: {n}");
+        }
     }
     println!("  outdated, no prompt text left (never sent): {no_text}");
     println!("  outdated, not queued (still open, or gave up after {GIVE_UP} failures): {held}");
