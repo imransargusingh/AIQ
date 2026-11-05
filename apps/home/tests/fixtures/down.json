@@ -34,7 +34,7 @@
       "waiting": 3,
       "analyzed": 3,
       "today": 3,
-      "daily": 50,
+      "daily": 500,
       "done_by_ms": 1793534400000,
       "blocked": null
     },
@@ -439,7 +439,7 @@
     "tip_highlight": true,
     "live_trend": true,
     "judge": "off",
-    "judge_daily_tasks": 50,
+    "judge_daily_tasks": 500,
     "judge_since_ms": null,
     "copilot_mid_turn": "on",
     "agent_actions": "on",

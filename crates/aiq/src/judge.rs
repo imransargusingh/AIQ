@@ -2234,9 +2234,9 @@ mod tests {
         store.set_setting(rung::SETTING_JUDGE, "off", NOW + 2).unwrap();
         assert_eq!(turn_on_at_install(&store, NOW + 3).unwrap(), AtInstall::KeptOff);
         assert_eq!(settings(&store).mode.as_deref(), Some("off"), "a reinstall keeps it off");
-        let t = at_install_text(AtInstall::TurnedOn, 50);
+        let t = at_install_text(AtInstall::TurnedOn, rung::DEFAULT_DAILY_TASKS);
         assert!(
-            t.starts_with("Judging: turned on.") && t.contains("What is sent:") && t.contains("up to 50 new tasks")
+            t.starts_with("Judging: turned on.") && t.contains("What is sent:") && t.contains("up to 500 new tasks")
         );
         assert!(t.contains("Undo: aiq config set judge off"));
     }

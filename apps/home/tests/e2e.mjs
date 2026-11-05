@@ -119,7 +119,7 @@ await test("Home shows judged rungs, progress toward the split, and only measure
   const page = await open("full", { edit: (s) => Object.assign(s.home.analysis, { state: "working" }) });
   const t = await page.locator("main").innerText();
   // Analysis under way: progress, a forecast from the daily share, nothing to do, and the first results.
-  assert.match(t, /Tasks agents finished\s+Analyzing your tasks\s+3 of 6 analyzed · about 50 a day, all by today/);
+  assert.match(t, /Tasks agents finished\s+Analyzing your tasks\s+3 of 6 analyzed · about 500 a day, all by today/);
   assert.match(t, /Nothing to do\. AIQ works in the background, newest first\./);
   assert.match(t, /So far, from 2 tasks: mostly Directed/);
   assert.match(t, /How much agents finish shows here from 10 analyzed tasks \(2 so far; 1 task AIQ isn't sure about doesn't count\)/);
@@ -150,22 +150,22 @@ await test("first-run analysis: says what AIQ is doing, that nothing is needed, 
     s.settings.judge = "auto";
     Object.assign(s.home, { judged: 0, rungs: [0, 0, 0, 0, 0], most_common_rung: null, uncertain: 0 });
     Object.assign(s.coaching.split, { tasks: 0, uncertain: 0 });
-    Object.assign(s.home.analysis, { state: "working", waiting: 221, analyzed: 0, today: 0, done_by_ms: s.now_ms + 4 * 86400000, blocked: null }, a);
+    Object.assign(s.home.analysis, { state: "working", waiting: 221, analyzed: 0, today: 0, done_by_ms: s.now_ms, blocked: null }, a);
   };
   const page = await open("full", { edit: fresh({}) });
   let t = await page.locator("main").innerText();
   assert.match(t, /Your most common rung\s+Not analyzed yet\s+Analyzing 221 tasks, newest first/);
-  assert.match(t, /Analyzing your tasks\s+0 of 221 analyzed · about 50 a day, all by /);
+  assert.match(t, /Analyzing your tasks\s+0 of 221 analyzed · about 500 a day, all by today/);
   assert.match(t, /Nothing to do\./);
   const card = await page.locator("section", { has: page.locator("h2#kr") }).innerText();
   assert.doesNotMatch((await page.locator("section.mainrung").innerText()) + card.split("How AIQ counts")[0], /judg/i, "new text says analyze");
-  assert.match(await page.locator("section[aria-labelledby=gs]").innerText(), /Analysis is on: 0 of 221 tasks\s+About 50 a day, newest first\. Nothing to do\./);
+  assert.match(await page.locator("section[aria-labelledby=gs]").innerText(), /Analysis is on: 0 of 221 tasks\s+About 500 a day, newest first\. Nothing to do\./);
   assert.equal(await page.getByRole("button", { name: /Sign in/ }).count(), 0, "no action while it works");
   assert.deepEqual(await axe(page), []);
   if (shots) await page.screenshot({ path: join(shots, "home-analysis-working.png") });
   await page.context().close();
   // Today's share used up: the header says more come tomorrow.
-  const later = await open("full", { edit: fresh({ state: "today_done", analyzed: 50, waiting: 171, today: 50 }) });
+  const later = await open("full", { edit: fresh({ state: "today_done", analyzed: 50, waiting: 171, today: 50, daily: 50 }) });
   t = await later.locator("main").innerText();
   assert.match(t, /Today's analysis is done[\s\S]*AIQ does the next 50 tomorrow\./);
   await later.context().close();
@@ -466,7 +466,7 @@ await test("Settings: a section index, Sharing and Keyboard folded in, judging o
   assert.equal(await off.getByTestId("judge-today").innerText(), "AIQ judges no new task while this is off. Earlier today, before it was off: 3 tasks, 6 calls.");
   await off.getByRole("switch", { name: "Judge finished tasks in the background" }).click();
   await off.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Judging is on.");
-  assert.match(await off.getByTestId("judge-today").innerText(), /^Up to 50 tasks a day\. Today: 3 tasks, 6 calls\.$/);
+  assert.match(await off.getByTestId("judge-today").innerText(), /^Up to 500 tasks a day\. Today: 3 tasks, 6 calls\.$/);
   await off.context().close();
   for (const theme of ["dark", "contrast"]) {
     const p = await open("full", { hash: "#settings", theme });
@@ -708,7 +708,7 @@ await test("setup: first run walks five steps with Back; Start only after I unde
   t = await page.locator("main").innerText();
   assert.ok(!t.includes("later version"), "the rung model is here, not coming");
   assert.ok(t.includes("Judging is on. AIQ turned it on when it connected your tools"), t);
-  assert.ok(t.includes("Up to 50 tasks a day"), t);
+  assert.ok(t.includes("Up to 500 tasks a day"), t);
   assert.ok(t.includes("AIQ never reads or stores your sign-in."));
   const jsw = page.getByRole("switch", { name: "Judge finished tasks in the background" });
   assert.equal(await jsw.getAttribute("aria-checked"), "true");

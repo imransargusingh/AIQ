@@ -20,8 +20,9 @@ and could not tell what AIQ was doing or whether to act. Imran picked option A o
 
 - Analysis runs from the core's kicker (first check 2 min after core start, then every 10 min). On 0.1.4 the core
   starts only from a hook, so nothing ran until the first prompt after setup.
-- Up to 50 tasks a day (default), newest first: 221 tasks take about 5 days. Each task is 2 calls through the
-  person's own tool.
+- Up to 50 tasks a day (the old default), newest first: 221 tasks took about 5 days. Each task is 2 calls through
+  the person's own tool. Imran raised the default to 500 a day (01:40Z 11-05), so a first install's history is
+  analyzed in a day.
 - A missing or signed-out tool was recorded as a call outcome and in `judge.log`; Home never said so.
 
 ## Design (option A)
@@ -34,7 +35,7 @@ and could not tell what AIQ was doing or whether to act. Imran picked option A o
 - **AIQ starts it.** When `state` is working and no call ran for 10 minutes, Home starts `aiq judge --auto`
   hidden, at most once per 10 minutes per Home. The judge lock keeps it to one run with the core's kicker.
 - **Card.** "Tasks agents finished" until 10 analyzed tasks: a headline for the state, a progress bar
-  ("7 of 221 analyzed · about 50 a day, all by Mon 9 Nov"), "✓ Nothing to do.", early results (the rung mix so
+  ("7 of 221 analyzed · about 500 a day, all by today"), "✓ Nothing to do.", early results (the rung mix so
   far), and how many analyzed tasks the numbers need. Blocked: the reason, one button (Sign in to Copilot opens
   `copilot` in a new terminal; a missing tool opens its install page), and "AIQ tries again by itself every 10
   minutes". With one project picked the card says only "Not enough analyzed tasks yet" (progress is global).
@@ -45,4 +46,3 @@ and could not tell what AIQ was doing or whether to act. Imran picked option A o
 ## Not done
 
 - The core starting from Home (PR #128) is separate; with it the kicker runs too. This change does not depend on it.
-- The daily share against a person's premium-request plan (about 100 requests a day at 50 tasks) is Imran's call.

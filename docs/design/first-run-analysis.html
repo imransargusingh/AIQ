@@ -27,8 +27,8 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <h2>What was wrong (read from the code)</h2>
 <ul><li>Analysis runs from the core&#x27;s kicker (first check 2 min after core start, then every 10 min). On 0.1.4 the core</li></ul>
 <p>starts only from a hook, so nothing ran until the first prompt after setup.</p>
-<ul><li>Up to 50 tasks a day (default), newest first: 221 tasks take about 5 days. Each task is 2 calls through the</li></ul>
-<p>person&#x27;s own tool.</p>
+<ul><li>Up to 50 tasks a day (the old default), newest first: 221 tasks took about 5 days. Each task is 2 calls through</li></ul>
+<p>the person&#x27;s own tool. Imran raised the default to 500 a day (01:40Z 11-05), so a first install&#x27;s history is analyzed in a day.</p>
 <ul><li>A missing or signed-out tool was recorded as a call outcome and in <code>judge.log</code>; Home never said so.</li></ul>
 <h2>Design (option A)</h2>
 <ul><li><strong>Read model.</strong> <code>home.analysis</code> over Home&#x27;s 30-day window, so &quot;of N&quot; matches the weekly chart:</li></ul>
@@ -36,7 +36,7 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <ul><li><strong>AIQ starts it.</strong> When <code>state</code> is working and no call ran for 10 minutes, Home starts <code>aiq judge --auto</code></li></ul>
 <p>hidden, at most once per 10 minutes per Home. The judge lock keeps it to one run with the core&#x27;s kicker.</p>
 <ul><li><strong>Card.</strong> &quot;Tasks agents finished&quot; until 10 analyzed tasks: a headline for the state, a progress bar</li></ul>
-<p>(&quot;7 of 221 analyzed · about 50 a day, all by Mon 9 Nov&quot;), &quot;✓ Nothing to do.&quot;, early results (the rung mix so far), and how many analyzed tasks the numbers need. Blocked: the reason, one button (Sign in to Copilot opens <code>copilot</code> in a new terminal; a missing tool opens its install page), and &quot;AIQ tries again by itself every 10 minutes&quot;. With one project picked the card says only &quot;Not enough analyzed tasks yet&quot; (progress is global).</p>
+<p>(&quot;7 of 221 analyzed · about 500 a day, all by today&quot;), &quot;✓ Nothing to do.&quot;, early results (the rung mix so far), and how many analyzed tasks the numbers need. Blocked: the reason, one button (Sign in to Copilot opens <code>copilot</code> in a new terminal; a missing tool opens its install page), and &quot;AIQ tries again by itself every 10 minutes&quot;. With one project picked the card says only &quot;Not enough analyzed tasks yet&quot; (progress is global).</p>
 <ul><li><strong>Rung header.</strong> One status line under the rung until all tasks are analyzed.</li><li><strong>Getting started.</strong> Its three judging steps become one analysis step that says the same as the card.</li><li><strong>Wording.</strong> New text says analyze/analyzed (Imran 01:12Z 11-05). Internal names stay.</li></ul>
 <h2>Not done</h2>
-<ul><li>The core starting from Home (PR #128) is separate; with it the kicker runs too. This change does not depend on it.</li><li>The daily share against a person&#x27;s premium-request plan (about 100 requests a day at 50 tasks) is Imran&#x27;s call.</li></ul></main></body></html>
+<ul><li>The core starting from Home (PR #128) is separate; with it the kicker runs too. This change does not depend on it.</li></ul></main></body></html>
