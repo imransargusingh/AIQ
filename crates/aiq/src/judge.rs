@@ -1319,7 +1319,7 @@ pub fn render(rep: &Report, daily: u32) -> String {
         o += &format!("{} could not be analyzed this time; AIQ tries again later.\n", rep.failed);
     }
     if rep.restamped > 0 {
-        o += &format!("{} kept their judgment: today's rules read them the same, so no model call.\n", rep.restamped);
+        o += &format!("{} kept their analysis: today's rules read them the same, so no model call.\n", rep.restamped);
     }
     if rep.skipped_no_text > 0 {
         o += &format!(
@@ -2022,7 +2022,7 @@ pub fn check_report(store: &Store) -> aiq_store::Result<String> {
     // Candidate rules for no-job tasks (design no-job-tasks R1-R2): measured here, not in use.
     let no_job_rows: Vec<&JudgmentRow> = judged.values().filter(|j| j.job == "unclassified").collect();
     if no_job_rows.iter().any(|j| job_runs(j).is_some()) {
-        o += "  Rules AIQ could use for tasks with no job (not in use; measured on your judgments):\n";
+        o += "  Rules AIQ could use for tasks with no job (not in use; measured on your analyses):\n";
         for (rule, words) in rung::CANDIDATE_RULES {
             let mut gives = 0u32;
             let mut agree = Count::default();
@@ -2049,7 +2049,7 @@ pub fn check_report(store: &Store) -> aiq_store::Result<String> {
     o += &format!("  Rung within one: {}\n", ag.rung_within_one.show());
     o += &format!("  Analysis model's own rung exact (before AIQ's rules): {}\n", ag.model_rung_exact.show());
     o += &format!(
-        "  Confident judgments only (the ones AIQ coaches): job {}; kind {}; rung exact {}\n",
+        "  Confident analyses only (the ones AIQ coaches): job {}; kind {}; rung exact {}\n",
         ag.confident_job.show(),
         ag.confident_type.show(),
         ag.confident_rung_exact.show()

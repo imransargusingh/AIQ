@@ -1168,7 +1168,7 @@ fn render_tips(
     days: u32,
 ) -> String {
     let mut o = format!(
-        "Next-step tips, on your analyzed tasks from the last {days} days (measured from your judgments, no model call).\n\
+        "Next-step tips, on your analyzed tasks from the last {days} days (measured from your analyses, no model call).\n\
          A tip shows in the moment only for a kind of task you repeat whose next step it is.\n\
          Next-step tips: {mode}{}\n\n",
         if on_now { "" } else { " (not showing now)" }
