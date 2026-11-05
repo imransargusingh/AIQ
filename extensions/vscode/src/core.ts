@@ -232,7 +232,7 @@ export function statusText(s: State): { text: string; label: string; tooltip: st
 function plainStatusText(s: Exclude<State, "tip">): { text: string; tooltip: string } {
   switch (s) {
     case "on":
-      return { text: "AIQ on", tooltip: "AIQ watches quietly. Click for tips, pause or resume." };
+      return { text: "AIQ on", tooltip: "AIQ runs quietly in the background. Click for tips, pause or resume." };
     case "paused":
       return { text: "AIQ paused", tooltip: "Nothing is captured and no tips show. Click to resume." };
     case "down":

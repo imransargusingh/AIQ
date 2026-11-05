@@ -486,7 +486,7 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
             <button className="btn" onClick={() => ctx.go("setup")}>Run setup again</button>
           </div>
         </div>
-        <ul className="group" aria-label="Tools AIQ watches" style={{ listStyle: "none", margin: 0, padding: 0 }}>
+        <ul className="group" aria-label="Tools AIQ connects to" style={{ listStyle: "none", margin: 0, padding: 0 }}>
           {snap.setup.tools.filter((t) => t.present || t.hooked).map((t) => (
             <li className="row" key={t.tool} style={{ justifyContent: "space-between" }}>
               <span>

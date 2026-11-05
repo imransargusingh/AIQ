@@ -661,7 +661,7 @@ await test("setup: first run walks five steps with Back; Start only after I unde
   assert.deepEqual(await axe(page), []);
   const cont = page.getByRole("button", { name: "Continue" });
   await cont.click();
-  assert.equal(await h1(), "Tools AIQ will watch");
+  assert.equal(await h1(), "Tools AIQ connects to");
   assert.equal(await page.evaluate(() => document.activeElement?.tagName), "H1", "focus moves to the step's heading");
   assert.match(await page.locator(".steps li.done").innerText(), /Privacy\s*\(done\)/);
   // First run connects the tool it found by itself, and says how to undo it.
@@ -710,7 +710,7 @@ await test("setup: first run walks five steps with Back; Start only after I unde
   await start.click();
   // The empty store's Home is its teaching state.
   await page.waitForFunction(() => document.querySelector("main h1")?.textContent === "AIQ is getting to know your work");
-  await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Setup done. AIQ is watching.");
+  await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Setup done. AIQ is on.");
   assert.equal(await page.locator("nav").count(), 1);
   const calls = await page.evaluate(() => window.__AIQ_FIXTURE__.calls.filter((c) => !String(c.args?.action ?? "").startsWith("check_")).map((c) => c.cmd).filter((c) => c !== "snapshot"));
   assert.deepEqual(calls, ["connect_tools", "set_setting", "set_setting", "set_setting", "finish_setup"], "connected once, not again on Back");
@@ -771,7 +771,7 @@ await test("setup: a tool that isn't installed says so, even with AIQ's hooks in
   assert.equal(await page.getByRole("button", { name: "Disconnect Claude Code" }).count(), 1, "the hooks can still be removed");
   const foot = await page.locator("nav .foot").innerText();
   assert.ok(!foot.includes("Claude Code"), foot);
-  assert.ok(foot.includes("Watching Copilot"), foot);
+  assert.ok(foot.includes("Connected: Copilot"), foot);
   await page.getByRole("button", { name: "Run setup again" }).click();
   await page.getByRole("button", { name: "Continue" }).click();
   const t = await page.locator("main").innerText();
@@ -1262,7 +1262,7 @@ await test("no terminal needed: Include a set-aside folder, Disconnect a tool, s
   assert.equal(await home.locator("section[aria-labelledby=hb] details").getAttribute("open"), null, "folded by default");
   assert.equal(await home.getByRole("button", { name: "Include run0" }).first().isVisible(), false);
   await home.getByRole("button", { name: "Include pipeline" }).click();
-  await home.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "AIQ will watch sessions in pipeline again.");
+  await home.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "AIQ will include sessions in pipeline again.");
   const inc = await home.evaluate(() => window.__AIQ_FIXTURE__.calls.filter((c) => c.cmd === "include_folder").map((c) => c.args));
   assert.deepEqual(inc, [{ folder: "c:\\users\\imran\\source\\repos\\pipeline" }]);
   assert.ok(!(await home.locator("main").innerText()).includes("aiq include"));
