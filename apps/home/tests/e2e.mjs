@@ -435,8 +435,8 @@ await test("Settings change through the core; tips a day", async () => {
 await test("Settings: a section index, Sharing and Keyboard folded in, analysis off says since when (item 8)", async () => {
   const page = await open("full", { hash: "#settings" });
   const nav = page.getByRole("navigation", { name: "Settings sections" });
-  assert.deepEqual(await nav.getByRole("button").allInnerTexts(), ["Tips", "What AIQ keeps", "Analysis", "Updates", "Tools"]);
-  assert.deepEqual(await page.locator("main h2").allInnerTexts(), ["Tips", "What AIQ keeps", "Analysis", "Updates", "Tools and keyboard"]);
+  assert.deepEqual(await nav.getByRole("button").allInnerTexts(), ["Tips", "What AIQ keeps", "Analysis", "Updates", "Theme", "Tools"]);
+  assert.deepEqual(await page.locator("main h2").allInnerTexts(), ["Tips", "What AIQ keeps", "Analysis", "Updates", "Theme", "Tools and keyboard"]);
   await nav.getByRole("button", { name: "Updates" }).click();
   await page.waitForFunction(() => document.activeElement?.id === "st6");
   // The index stays in view while the page scrolls.
@@ -1525,6 +1525,54 @@ await test("tour: Esc on any step, arrows move, focus stays in the coach mark, t
     await s.waitForFunction(() => !document.querySelector(".tour-pop"));
     await s.context().close();
   }
+});
+
+await test("Theme: Match Windows by default, Light or Dark win over Windows, kept after a restart, also in Ctrl K", async () => {
+  // Windows set to dark: the default follows it.
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, colorScheme: "dark" });
+  const page = await ctx.newPage();
+  const snapshot = JSON.parse(readFileSync(join(fixtures, "full.json"), "utf8"));
+  await page.addInitScript((s) => (window.__AIQ_FIXTURE__ = { snapshot: s, calls: [] }), snapshot);
+  const bg = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  const attr = () => page.evaluate(() => document.documentElement.dataset.theme ?? null);
+  const DARK = "rgb(27, 29, 30)";
+  const LIGHT = "rgb(243, 244, 244)";
+  await page.goto(base + "#settings");
+  await page.waitForSelector("main h1");
+  const group = page.getByRole("group", { name: "Theme" });
+  assert.deepEqual(await group.getByRole("button").allInnerTexts(), ["Match Windows", "Light", "Dark"]);
+  assert.equal(await group.getByRole("button", { name: "Match Windows" }).getAttribute("aria-pressed"), "true");
+  assert.equal(await attr(), null);
+  assert.equal(await bg(), DARK);
+  // Light wins over a dark Windows, at once, and says so.
+  await group.getByRole("button", { name: "Light" }).click();
+  await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Theme: light.");
+  assert.equal(await attr(), "light");
+  assert.equal(await bg(), LIGHT);
+  assert.equal(await group.getByRole("button", { name: "Light" }).getAttribute("aria-pressed"), "true");
+  assert.deepEqual(await axe(page), []);
+  if (shots) await page.screenshot({ path: join(shots, "theme-light.png") });
+  // Dark, kept after AIQ home opens again: set before React draws, so no light flash.
+  await group.getByRole("button", { name: "Dark" }).click();
+  assert.equal(await attr(), "dark");
+  await page.reload();
+  assert.equal(await attr(), "dark");
+  await page.waitForSelector("main h1");
+  assert.equal(await page.getByRole("group", { name: "Theme" }).getByRole("button", { name: "Dark" }).getAttribute("aria-pressed"), "true");
+  if (shots) await page.screenshot({ path: join(shots, "theme-dark.png") });
+  // Ctrl K offers the other two; Match Windows goes back to following Windows and clears the saved choice.
+  await page.keyboard.press("Control+k");
+  await page.keyboard.type("theme");
+  const opts = await page.locator(".pal-dlg [role=option]").allInnerTexts();
+  assert.ok(opts.some((o) => o.includes("Theme: match Windows")) && opts.some((o) => o.includes("Theme: light")) && !opts.some((o) => o.includes("Theme: dark")), opts.join(" | "));
+  await page.keyboard.press("Enter");
+  await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Theme matches Windows.");
+  assert.equal(await attr(), null);
+  assert.equal(await page.evaluate(() => localStorage.getItem("aiq.theme")), null);
+  await page.emulateMedia({ colorScheme: "light" });
+  assert.equal(await bg(), LIGHT, "follows Windows again");
+  assert.deepEqual(page.errors ?? [], []);
+  await ctx.close();
 });
 
 await browser.close();

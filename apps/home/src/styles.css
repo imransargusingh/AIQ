@@ -1,5 +1,5 @@
 /* AIQ home styles: DESIGN.md tokens, ported from the signed-off mockup's design region
-   (docs/mockups/aiq-home.html). Themes follow Windows; data-theme overrides for tests. */
+   (docs/mockups/aiq-home.html). Themes follow Windows unless the person picks Light or Dark in Settings (theme.ts sets data-theme). */
 /* ---- TOKENS (mirror DESIGN.md) ---- */
 :root{
   --primary:#0b6b6b; --on-primary:#ffffff; --canvas:#f3f4f4; --canvas-soft:#eaeeee; --surface:#ffffff;

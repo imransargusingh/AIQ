@@ -4,6 +4,7 @@ import { api } from "./api";
 import type { Snapshot } from "./types";
 import { RUNGS, rungLabel } from "./format";
 import { ver, type UpdatePhase } from "./updateNow";
+import type { Theme } from "./theme";
 
 /** Nav pages, plus places outside the nav: one task's detail, one kind of task (from Home or Tasks), setup. */
 export type Page = "home" | "tasks" | "guide" | "tips" | "data" | "settings" | "task" | "kind" | "setup";
@@ -34,6 +35,9 @@ export interface Ctx {
   update: { phase: UpdatePhase; msg: string | null; run: () => void };
   /** Start the tour (design home-tour): Ctrl K, Settings and the getting-started list. */
   startTour: () => void;
+  /** The theme picked in Settings or Ctrl K (theme.ts); "system" follows Windows. */
+  theme: Theme;
+  setTheme: (t: Theme) => void;
 }
 
 /** The picker's "All projects" value: a NUL can't be in any folder path, so no project key equals it. */
