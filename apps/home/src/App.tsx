@@ -5,6 +5,7 @@ import { api } from "./api";
 import { singleFlight } from "./refresh";
 import type { Snapshot } from "./types";
 import { scoped } from "./project";
+import { Guide } from "./pages/Guide";
 import { Dialog, PAGES, Sk, UpdateChip, type Ctx, type Page } from "./ui";
 import { Home } from "./pages/Home";
 import { Tasks } from "./pages/Tasks";
@@ -382,6 +383,7 @@ export function App() {
           )}
           {one && page === "home" && <Home key="home" {...one} />}
           {one && page === "tasks" && <Tasks key={`tasks-${step?.view ?? ""}`} {...one} start={step?.view} />}
+          {ctx && page === "guide" && <Guide key="guide" {...ctx} />}
           {ctx && page === "tips" && <Tips key="tips" {...ctx} />}
           {ctx && page === "data" && <Data key="data" {...ctx} />}
           {ctx && page === "settings" && <Settings key="settings" {...ctx} singleKeys={singleKeys} setSingleKeys={setSingleKeys} />}

@@ -17,6 +17,20 @@ export interface Snapshot {
   projects: Project[];
   /** The open task's live rung trend (design live-rung-trend C); null when no task is open or it is off. */
   live: Live | null;
+  /** The rung guide: every next-step move in pack order (pack data, the same for everyone). */
+  guide: GuideMove[];
+}
+
+export interface GuideMove {
+  move_id: string;
+  /** The rung the move climbs from (1 to 4). */
+  step: number;
+  /** A job id, or "any". */
+  job: string;
+  habit: string;
+  why: string;
+  try_this: string;
+  starter: string;
 }
 
 /** Mirrors crates/aiq-core `live_trend::LiveTrend` plus Home's task id and kind name. An estimate from what the

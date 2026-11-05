@@ -66,6 +66,7 @@ async function axe(page) {
 const pages = [
   ["home", "Home"],
   ["tasks", "Tasks"],
+  ["guide", "Rung guide"],
   ["tips", "Habits and tips"],
   ["data", "Your data"],
   ["settings", "Settings"],
@@ -584,6 +585,37 @@ await test("Right now card at 720 px: no page scroll", async () => {
   const page = await open("live", { width: 720, height: 520 });
   const w = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   assert.ok(w <= 0, `page scrolls by ${w}px`);
+  await page.context().close();
+});
+
+await test("rung guide: steps by kind of work, where you are, your next step open, copy a starter", async () => {
+  const page = await open("progress", { hash: "#guide" });
+  assert.equal(await page.locator("main h1").innerText(), "Rung guide");
+  const grid = page.getByRole("table", { name: "Habits by rung step and kind of work" });
+  assert.equal(await grid.getByRole("row").count(), 5, "a header and four steps");
+  // Every pack move shows in each cell its job fits ("any" moves in all four).
+  const s = JSON.parse(readFileSync(join(fixtures, "progress.json"), "utf8"));
+  const cells = s.guide.reduce((n, m) => n + (m.job === "any" ? 4 : 1), 0);
+  assert.equal(await grid.locator(".gd-pill").count(), cells);
+  // Each job's cell at its most common rung says so; the first job with a coached next step opens first.
+  const head = await grid.getByRole("columnheader", { name: /Write a spec or doc/ }).innerText();
+  assert.match(head, /Mostly Directed \(2\)/);
+  assert.equal(await grid.locator(".gd-cell.here").count(), 2, "one per job with analyzed kinds");
+  const side = page.getByRole("complementary", { name: "The habit you picked" });
+  assert.match(await side.locator("h2").innerText(), /Give the agent a written brief or instructions file/);
+  assert.match(await side.innerText(), /Code a change · Delegated \(3\) → Orchestrated \(4\)/);
+  assert.match(await side.innerText(), /Your next step for writing tests/);
+  await grid.getByRole("button", { name: /Ask for the whole draft with what done means/ }).click();
+  assert.match(await side.innerText(), /Your next step for writing a spec or PRD/);
+  // Pick another habit: the side panel follows; the starter copies.
+  await grid.getByRole("button", { name: "Give all your notes at once, then review the draft" }).click();
+  assert.match(await side.locator("h2").innerText(), /Give all your notes at once/);
+  assert.match(await side.innerText(), /Write a spec or doc · Directed \(2\) → Delegated \(3\)/);
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await side.getByRole("button", { name: "Copy starter" }).click();
+  await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent?.startsWith("Starter copied"));
+  assert.deepEqual(await axe(page), []);
+  assert.deepEqual(page.errors, []);
   await page.context().close();
 });
 
