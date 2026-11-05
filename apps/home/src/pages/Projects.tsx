@@ -27,7 +27,7 @@ export function Projects(ctx: Ctx) {
       <div className="head">
         <h2 id="pj">Your projects</h2>
         <span className="meta">
-          A project is the folder you worked in. Most tasks that could move up a rung first. Counts are measured; rungs are AIQ's analysis.
+          A project is the folder you worked in. Most tasks with an easy next step first. Counts are measured; rungs are AIQ's analysis.
         </span>
       </div>
       <div className="tablewrap">
@@ -38,7 +38,7 @@ export function Projects(ctx: Ctx) {
               <th className="r">Tasks</th>
               <th>Most common rung</th>
               <th className="r">Agents finished</th>
-              <th className="r">Could move up a rung</th>
+              <th className="r">Easy next step</th>
               <th><span className="sr">Rename</span></th>
             </tr>
           </thead>
@@ -48,7 +48,7 @@ export function Projects(ctx: Ctx) {
               const enough = sp.tasks >= min;
               return (
                 <tr key={p.key}>
-                  <td title={p.key || "Tasks from before AIQ recorded the folder, or from tools that don't send it"}>
+                  <td title={p.key || "Tasks from before AIQ saved the folder, or from tools that don't send it"}>
                     {editing === p.key ? (
                       <form
                         className="row"
@@ -115,7 +115,7 @@ export function Projects(ctx: Ctx) {
         </table>
       </div>
       <p className="meta">
-        "Could move up a rung" counts analyzed tasks not finished by agents where AIQ's analysis sees a next step at least one rung up. A project needs {min} analyzed tasks before AIQ shows its numbers.
+        "Easy next step" counts analyzed tasks not finished by agents where AIQ's analysis sees a next step at least one rung up. A project needs {min} analyzed tasks before AIQ shows its numbers.
       </p>
     </section>
   );

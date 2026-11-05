@@ -43,24 +43,24 @@ do about it. Anything marked **Planned** is not in this version.
 
 ## What AIQ keeps on your computer
 
-When you use a connected tool, AIQ records:
+When you use a connected tool, AIQ stores:
 
 - **Your prompts**, as you typed them. Before storing a prompt, AIQ replaces common secret shapes
   (API keys, access tokens, private keys, connection strings) with `[secret removed]`. It cannot catch
   every secret, so avoid pasting them. This includes Copilot messages you send while the agent is
   still working: Copilot doesn't pass those to AIQ, so AIQ reads them from Copilot's own history file
-  on your computer when the agent stops. Settings > What AIQ records turns this off.
+  on your computer when the agent stops. Settings > What AIQ keeps turns this off.
 - **When things happened**: when you sent a prompt, when the agent stopped, which tool, and the folder
   you worked in.
 - **A summary of what the agent did** in each turn. For past sessions (`aiq import`): which tools it
   used, which files it touched and which commands it ran. For live turns: counts only (tool calls by
   tool name, commands, files and helper agents), with no command text or file names. AIQ reads this
   from your tools' own history files on your computer when the agent stops, and only reads them. It
-  does not store the agent's replies or your file contents. Settings > What AIQ records turns the
+  does not store the agent's replies or your file contents. Settings > What AIQ keeps turns the
   live counts off.
 - **Past sessions**, if you run `aiq import` (the installer starts it once). It reads your Claude
   Code and Copilot CLI history from this computer. Runs that look automated (a script or app driving
-  the tool) are set aside; `aiq include <folder>` brings a folder back.
+  the tool) are automated and not counted; `aiq include <folder>` counts a folder again.
 - **AIQ's own results**: tips shown, what you said about them, analyses of your tasks, and your
   settings.
 
@@ -101,7 +101,7 @@ suggests a next step. To do that, it asks an AI model to read the task.
   project instructions, so it cannot act on your computer or repos. A Copilot analysis call runs in its
   own empty AIQ folder, which AIQ deletes after reading the answer (to keep them instead:
   `aiq config set analysis-copilot-sessions keep`). A Claude Code analysis call saves no session.
-- **It uses your plan.** Each task takes two calls. AIQ analyzes at most 50 tasks a day by default; you
+- **It uses your plan.** Each task takes two calls. AIQ analyzes at most 500 tasks a day by default; you
   can set 0 to 500 (`aiq config set analysis-daily-tasks <n>`, or in Settings).
 - **Your account's rules apply.** On a work account, your organisation's policies, logging and
   retention cover these calls, as they cover anything else you send through that tool. The provider

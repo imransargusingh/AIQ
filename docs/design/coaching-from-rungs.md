@@ -161,6 +161,19 @@ tasks in the first week; if not, the list is re-cut from the `other` tasks' judg
 | `written_brief` | 3 → 4 | F7 written spec, brief or instructions file | any | Give the agent a written brief or instructions file | "this looks like {type}. A written brief would let the agent plan it alone." |
 | `agent_checks` | 3 → 4 | F3 agent ran the checks | code | Ask the agent to run the tests itself | "this looks like {type}. Last times, you ran the checks yourself." |
 | `split_and_check` | 3 → 4 | F8 sub-agent with an automated check between steps | any | Split the work with an automated check between steps | "this looks like {type}. Splitting it with a check between steps lets agents run it end to end." |
+| `let_agent_write` | 2 → 3 | F1 agent wrote the file | doc | Let the agent write the doc in the file | "this looks like {type}. Last times, you wrote most of it yourself." |
+| `doc_one_go` | 2 → 3 | not F12 (steered step by step) | doc | Give all your notes at once, then review the draft | "this looks like {type}. Last times, you steered it one change at a time." |
+| `ask_one_go` | 2 → 3 | not F12 | research | Ask once with everything you need, then let it dig | "this looks like {type}. Last times, you steered it one follow-up at a time." |
+| `run_one_go` | 2 → 3 | not F12 | run | Give the whole run up front, not one command at a time | "this looks like {type}. Last times, you steered it one command at a time." |
+| `agent_checks_doc` | 3 → 4 | F3 agent ran the checks | doc | Ask the agent to check the doc itself | "this looks like {type}. Last times, you checked the doc yourself." |
+| `agent_checks_run` | 3 → 4 | F3 agent ran the checks | run | Ask the agent to run the health check itself | "this looks like {type}. Last times, you ran the checks yourself." |
+| `agent_checks_answer` | 4 → 5 | F3 agent ran the checks | research | Ask the agent to prove its answer with a run | "this looks like {type}. Last times, the agent didn't test its answer." |
+| `saved_workflow` | 4 → 5 | F9 saved workflow others run (not readable yet, so no tip fires) | any | Save it as a workflow others can run | "this looks like {type}. You do this often; a saved workflow could run it." |
+
+Added 2026-11-05 (Imran: tips apply to every kind of work). The control is
+`every_guardrail_fact_a_job_can_fail_has_a_move` in `crates/aiq-core/src/pack.rs`: for each job and step it
+fails a fact that the next rung's guardrail checks, on a task that can sit at that step, and asserts a move
+of that step and job answers it. Before these moves it found 11 gaps.
 
 Each move also carries `why` (one line), `try_this` (one line) and a `starter` prompt template with
 `<placeholders>` (copied, never sent: aiq-home US-H4). Example for `agent_checks` on `tests`:

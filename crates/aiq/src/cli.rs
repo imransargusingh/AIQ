@@ -123,9 +123,9 @@ fn status_text(paths: &Paths) -> (String, Vec<String>) {
         Some(s) => {
             let events: u64 = s.events_by_kind.iter().map(|(_, n)| n).sum();
             if s.paused {
-                out += "AIQ is paused. Nothing is captured and no tips show. Resume with: aiq resume\n";
+                out += "AIQ is paused. It saves nothing new and shows no tips. Resume with: aiq resume\n";
             } else if events == 0 {
-                out += "No activity yet. Use Claude Code or Copilot as usual; AIQ watches quietly.\n";
+                out += "No activity yet. Use Claude Code or Copilot as usual; AIQ runs quietly in the background.\n";
             } else {
                 out += "AIQ is running.\n";
             }
@@ -145,7 +145,7 @@ fn status_text(paths: &Paths) -> (String, Vec<String>) {
             for (folder, reason) in &s.automated_folders {
                 if reason == "projects" {
                     out += &format!(
-                        "Sessions Claude ran for you through claude.ai Projects or Remote Control are ignored in \
+                        "Sessions Claude ran for you through claude.ai Projects or Remote Control aren't counted in \
                          {folder}. To count them: aiq include \"{folder}\"\n"
                     );
                     continue;
@@ -156,7 +156,7 @@ fn status_text(paths: &Paths) -> (String, Vec<String>) {
                     "the same first prompt over and over"
                 };
                 out += &format!(
-                    "Automated sessions ignored in {folder} ({why}). If that is your own work: aiq include \"{folder}\"\n"
+                    "Automated, not counted: {folder} ({why}). If that is your own work: aiq include \"{folder}\"\n"
                 );
             }
             if let Some(c) = &s.coach {
@@ -186,7 +186,7 @@ fn status_text(paths: &Paths) -> (String, Vec<String>) {
                 out += &render_actions(a);
             }
             if let Some((_, n)) = ignored {
-                out += &format!("Automated prompts ignored since the core started: {n}\n");
+                out += &format!("Automated prompts not counted since the core started: {n}\n");
             }
             if let Some((_, n)) = s.core_counters.iter().find(|(k, _)| k == aiq_contracts::codes::INGEST_SECRET_REMOVED)
             {
@@ -524,7 +524,7 @@ pub fn show(card_id: &str) -> ExitCode {
 }
 
 pub fn render_show(r: &ShowReply) -> String {
-    let Some(c) = &r.card else { return "No card with that id.\n".into() };
+    let Some(c) = &r.card else { return "No tip with that id.\n".into() };
     let mut out = format!("AIQ tip: {}\nWhy: {}\nTry this: {}\n\n", c.noticed, c.why, c.try_this);
     let status =
         if r.delivered { "shown".to_string() } else { r.outcome.clone().unwrap_or_default().replace('_', "-") };
@@ -548,7 +548,7 @@ pub fn render_show(r: &ShowReply) -> String {
         return out;
     }
     if r.evidence.iter().all(|e| e.text.is_none()) {
-        out += "The evidence for this card was deleted.\n";
+        out += "The prompts behind this tip were deleted.\n";
         return out;
     }
     out += "The prompts it counted:\n";
@@ -568,7 +568,7 @@ pub fn pause(on: bool) -> ExitCode {
     println!(
         "{}",
         if on {
-            "AIQ is paused. Nothing is captured and no tips show. Resume with: aiq resume"
+            "AIQ is paused. It saves nothing new and shows no tips. Resume with: aiq resume"
         } else {
             "AIQ resumed."
         }
@@ -587,7 +587,7 @@ pub fn include_folder(folder: &str) -> ExitCode {
         .and_then(|l| serde_json::from_str::<OkReply>(&l).ok());
     match r {
         Some(OkReply { ok: true, .. }) => {
-            println!("AIQ will watch sessions in {folder} again.");
+            println!("AIQ will include sessions in {folder} again.");
             ExitCode::SUCCESS
         }
         Some(OkReply { message, .. }) => {
@@ -809,7 +809,7 @@ pub fn confirm(question: &str, yes: bool) -> bool {
 
 pub fn forget_all(yes: bool) -> ExitCode {
     let paths = Paths::from_env();
-    if !confirm("Delete every prompt, signal and card AIQ stored on this machine? This cannot be undone.", yes) {
+    if !confirm("Delete every prompt, tip and count AIQ saved on this computer? This cannot be undone.", yes) {
         println!("Nothing deleted.");
         return ExitCode::SUCCESS;
     }
@@ -842,13 +842,16 @@ mod tests {
     fn report_shows_no_folder_name_and_no_home() {
         let folders = vec![r"C:\Users\canary\src\secret-project".to_owned(), r"C:\Users\canary\src".to_owned()];
         let homes = vec![r"C:\Users\canary".to_owned()];
-        let text = "Automated sessions ignored in C:\\Users\\canary\\src\\secret-project (burst).\n\
-                    Automated sessions ignored in C:\\Users\\canary\\src (burst).\n\
+        let text = "Automated, not counted: C:\\Users\\canary\\src\\secret-project (burst).\n\
+                    Automated, not counted: C:\\Users\\canary\\src (burst).\n\
                     Copilot: installed in C:/Users/canary/.copilot\n\
                     Claude Code: installed in C:\\Users\\canary\\.claude\\settings.json\n";
         let out = redact(text, &folders, &homes);
         assert!(!out.contains("canary") && !out.contains("secret-project"), "{out}");
-        assert!(out.contains("ignored in folder-1 (burst)") && out.contains("ignored in folder-2 (burst)"), "{out}");
+        assert!(
+            out.contains("not counted: folder-1 (burst)") && out.contains("not counted: folder-2 (burst)"),
+            "{out}"
+        );
         assert!(out.contains("installed in ~/.copilot"), "{out}");
     }
 
@@ -1000,7 +1003,7 @@ mod tests {
             evidence: vec![],
             leaned_on: vec![],
         };
-        assert_eq!(render_show(&none), "No card with that id.\n");
+        assert_eq!(render_show(&none), "No tip with that id.\n");
     }
 
     #[test]
@@ -1046,7 +1049,7 @@ mod tests {
         assert!(out.contains("Write tests for <function>.") && out.contains("copilot-cli  Writing tests"));
         assert!(out.contains("aiq helpful c") && !out.contains("pwned"));
         let gone = ShowReply { evidence: vec![EvidencePrompt { ts: "t".into(), text: None }], ..r };
-        assert!(render_show(&gone).contains("The evidence for this card was deleted."));
+        assert!(render_show(&gone).contains("The prompts behind this tip were deleted."));
     }
 }
 

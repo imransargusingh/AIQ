@@ -130,7 +130,7 @@ impl Seed {
             .unwrap();
         let card = serde_json::json!({
             "schema": "aiq.card.v1", "card_id": card_id, "opportunity_id": "reprompt", "tip_id": "reprompt.restate",
-            "noticed": "You reworded the same request 3 times in this task.",
+            "noticed": "This request went round 3 times. The agent may need one new detail.",
             "why": "Rewording often means the agent is missing context, not words.",
             "try_this": "Say what is wrong with the last answer and add the one fact it lacked.",
             "evidence_ref": format!("aiq show {card_id}"), "pack_version": "bundled-4"

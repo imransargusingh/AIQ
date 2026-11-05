@@ -17,6 +17,20 @@ export interface Snapshot {
   projects: Project[];
   /** The open task's live rung trend (design live-rung-trend C); null when no task is open or it is off. */
   live: Live | null;
+  /** The rung guide: every next-step move in pack order (pack data, the same for everyone). */
+  guide: GuideMove[];
+}
+
+export interface GuideMove {
+  move_id: string;
+  /** The rung the move climbs from (1 to 4). */
+  step: number;
+  /** A job id, or "any". */
+  job: string;
+  habit: string;
+  why: string;
+  try_this: string;
+  starter: string;
 }
 
 /** Mirrors crates/aiq-core `live_trend::LiveTrend` plus Home's task id and kind name. An estimate from what the
@@ -107,6 +121,8 @@ export interface Home {
   rungs: [number, number, number, number, number];
   most_common_rung: number | null;
   judge_today: JudgeToday;
+  /** Where background analysis stands, for the first-run state (design first-run-analysis). */
+  analysis: Analysis;
   imported_in_window: number;
   weeks: { start_ms: number; tasks: number }[];
   by_tool: [string, number][];
@@ -251,6 +267,27 @@ export interface HabitRow {
   moved_ms: number | null;
   /** The move was back from Adopted to Tried. */
   moved_back: boolean;
+}
+
+/** Background analysis, all measured from the store and the run lock; nothing estimated except `done_by_ms`. */
+export interface Analysis {
+  /** off: the person turned analysis off · paused: AIQ is paused · blocked: the last call to a tool failed so
+   *  that no task of that tool can be analyzed · working: tasks wait and today's share is not used up ·
+   *  today_done: tasks wait for tomorrow's share · done: nothing waits. */
+  state: "off" | "paused" | "blocked" | "working" | "today_done" | "done";
+  /** Finished tasks with no analysis yet (any age), that AIQ will analyze. */
+  waiting: number;
+  /** Tasks with a current analysis (any age). */
+  analyzed: number;
+  /** Tasks analyzed since local midnight, and the daily share. */
+  today: number;
+  daily: number;
+  /** A run holds the lock right now. */
+  running: boolean;
+  /** The day the waiting tasks are all analyzed at `daily` a day; null when nothing waits. */
+  done_by_ms: number | null;
+  /** Why analysis can't run, and for which tool. Null unless state is blocked. */
+  blocked: { tool: "claude-code" | "copilot-cli"; why: "missing" | "not_signed_in" } | null;
 }
 
 export interface JudgeToday {

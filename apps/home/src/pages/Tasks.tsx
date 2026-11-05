@@ -94,7 +94,7 @@ export function Tasks({ start, ...ctx }: Ctx & { start?: View }) {
       ) : snap.tasks.length === 0 ? (
         <div className="empty">
           <b>No tasks yet.</b>
-          <span className="mute">A task shows here after you work with Claude Code, Copilot CLI or VS Code agent mode while AIQ is watching.</span>
+          <span className="mute">A task shows here after you work with Claude Code, Copilot CLI or VS Code agent mode while AIQ is on.</span>
         </div>
       ) : (
         <div className="tablewrap">
@@ -136,7 +136,7 @@ export function Tasks({ start, ...ctx }: Ctx & { start?: View }) {
                     {toolName(t.tool)} {t.origin === "imported" && <Chip>Imported</Chip>}
                   </td>
                   <td className="r num">{t.prompts}</td>
-                  <td title={t.folder ?? "Not recorded for tasks before this version"}>{projectName(snap, projectOf(t))}</td>
+                  <td title={t.folder ?? "Unknown for tasks before this version"}>{projectName(snap, projectOf(t))}</td>
                   <td className={t.job ? undefined : "mute"}>
                     {jobOf(t)}
                     {t.judgment?.task_type_label && <span className="meta"> · {t.judgment.task_type_label}</span>}

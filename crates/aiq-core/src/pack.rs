@@ -37,7 +37,7 @@ mod tests {
     #[test]
     fn bundled_moves_carry_no_rung_name_number_or_model_text_and_fit_the_status_line() {
         let p = BundledPack.load().unwrap();
-        assert_eq!(p.moves.len(), 20);
+        assert_eq!(p.moves.len(), 28);
         for m in &p.moves {
             for t in [&m.noticed, &m.why, &m.try_this, &m.habit] {
                 assert!(!aiq_domain::rung::RUNG_NAMES.iter().any(|r| t.contains(r)), "{t}");
@@ -60,12 +60,53 @@ mod tests {
                 assert!(p.moves.iter().any(|m| m.step == step && (m.job == job || m.job == "any")), "{job} {step}");
             }
         }
-        // Goal, context and limits (F4) is coached in each job's own words, and only when the judge is sure.
+        // Goal, context and limits (F4) is coached in each job's own words, and only when the analysis is sure.
         for job in aiq_domain::rung::PACK_JOBS {
             let f4: Vec<_> = p.moves.iter().filter(|m| m.facts == ["F4"] && m.job == job).collect();
             assert_eq!(f4.len(), 1, "{job}");
             assert_eq!(f4[0].min_confidence, Some(0.8), "{job}");
         }
+    }
+
+    /// Every fact a job's next rung can confidently fail, at a rung the task can really sit at, has a move of
+    /// that step and job (Imran 2026-11-05: tips apply to every kind of work). Before this, a doc or a run
+    /// driven one step at a time (F12) had no next step, so its kind read "AIQ isn't sure yet".
+    #[test]
+    fn every_guardrail_fact_a_job_can_fail_has_a_move() {
+        use aiq_domain::rung::{self, Gate};
+        let p = BundledPack.load().unwrap();
+        let ids = ["F1", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F12", "F13", "F14", "F15"];
+        let mut gaps = Vec::new();
+        for job in rung::PACK_JOBS {
+            for step in 1..=4u8 {
+                for bad in ids {
+                    let fact = |id: &str| {
+                        let good = id != "F12";
+                        let v = if id == bad { !good } else { good };
+                        if id == "F3" {
+                            let who = if id == bad { "person" } else { "agent" };
+                            format!(r#""F3":{{"value":"{who}","confidence":1.0,"source":"log"}}"#)
+                        } else {
+                            format!(r#""{id}":{{"value":{v},"confidence":0.9}}"#)
+                        }
+                    };
+                    let json = format!("{{{}}}", ids.iter().map(|i| fact(i)).collect::<Vec<_>>().join(","));
+                    let f = rung::facts_from_json(&json, 2, job);
+                    // The task must be able to sit at `step` with this fact failing.
+                    if !matches!(rung::gate(&f, step), Gate::Holds) {
+                        continue;
+                    }
+                    let fails = rung::missing(&f, step + 1).contains(&Gate::Fails(bad));
+                    let covered = p.moves.iter().any(|m| {
+                        m.step == step && (m.job == job || m.job == "any") && m.facts.iter().any(|x| x == bad)
+                    });
+                    if fails && !covered {
+                        gaps.push(format!("{job} step {step} {bad}"));
+                    }
+                }
+            }
+        }
+        assert!(gaps.is_empty(), "no move for: {gaps:?}");
     }
 
     #[test]

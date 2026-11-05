@@ -10,12 +10,13 @@ import { AccuracyPaused, Banners, ProjectPicker, Rung, Title, UpdateLine, type C
 import type { SetAside } from "../types";
 import { RightNow } from "./RightNow";
 import { GettingStartedCard, GettingStartedPage } from "./GettingStarted";
+import { AnalysisCard, analysisLine } from "./Analysis";
 
 export function Home(ctx: Ctx) {
   const { snap, go, announce, refresh } = ctx;
   const include = async (folder: string) => {
     const r = await api.includeFolder(folder);
-    announce(r.ok ? `AIQ will watch sessions in ${folderName(folder)} again.` : r.message);
+    announce(r.ok ? `AIQ will include sessions in ${folderName(folder)} again.` : r.message);
     if (r.ok) refresh();
   };
   const h = snap.home;
@@ -51,7 +52,7 @@ export function Home(ctx: Ctx) {
       <RightNow {...ctx} />
       {one && (
         <p className="meta" data-testid="project-note">
-          Showing {one.name} only. Tips and Set aside cover all projects.
+          Showing {one.name} only. Tips and Automated, not counted cover all projects.
         </p>
       )}
       {ctx.project === null && !ready && <GettingStartedCard snap={snap} go={go} />}
@@ -65,10 +66,11 @@ export function Home(ctx: Ctx) {
           {mc ? (
             <span style={{ font: "var(--t-heading)" }}>{rungLabel(mc)}</span>
           ) : (
-            <span className="meta">Not judged yet</span>
+            <span className="meta">{h.analysis.state === "off" ? "Analysis is off" : "Not analyzed yet"}</span>
           )}
           <span className="meta">
-            {h.judged > 0 ? `${plural(h.judged, "task")} judged in ${h.window_days} days` : "No task judged yet"}
+            {(ctx.project === null && analysisLine(h.analysis)) ||
+              (h.judged > 0 ? `${plural(h.judged, "task")} analyzed in ${h.window_days} days` : "No task analyzed yet")}
           </span>
           {mc && <span className="meta means">{RUNGS[mc - 1].means}</span>}
         </div>
@@ -98,7 +100,7 @@ export function Home(ctx: Ctx) {
               </div>
               {sp.up > 0 && sp.up_to != null && (
                 <p>
-                  <b>{pct(sp.up, sp.tasks)}%</b> could move up a rung, most often to <Rung r={sp.up_to} />.
+                  <b>{pct(sp.up, sp.tasks)}%</b> have an easy next step, most often to <Rung r={sp.up_to} />.
                 </p>
               )}
               <p className="meta">
@@ -108,26 +110,7 @@ export function Home(ctx: Ctx) {
               </p>
             </>
           ) : (
-            <>
-              <div className="hl">
-                <span style={{ font: "var(--t-title)" }}>{h.judged > 0 ? "Not enough judged tasks yet" : "Not judged yet"}</span>
-              </div>
-              <p className="mute">
-                {h.judged > 0
-                  ? `${sp.tasks} of ${c.split_min} judged tasks needed to show what agents finished${sp.uncertain > 0 ? ` (${plural(sp.uncertain, "task")} AIQ isn't sure about ${sp.uncertain === 1 ? "doesn't" : "don't"} count)` : ""}.`
-                  : snap.settings.judge === "auto"
-                    ? "AIQ judges your finished tasks in the background, through your own Claude Code or Copilot CLI."
-                    : "Judging is off, so AIQ can't place your tasks on a rung."}
-              </p>
-              {h.judged === 0 && snap.settings.judge !== "auto" && (
-                <p className="meta">
-                  <button className="btnlink" onClick={() => go("settings")}>Turn judging on in Settings</button>
-                </p>
-              )}
-              {h.judged > 0 && (
-                <progress max={c.split_min} value={Math.min(sp.tasks, c.split_min)} aria-label={`${sp.tasks} of ${c.split_min} judged tasks`} />
-              )}
-            </>
+            <AnalysisCard {...ctx} />
           )}
           <details className="how">
             <summary className="meta">How AIQ counts</summary>
@@ -261,7 +244,7 @@ export function Home(ctx: Ctx) {
             <span className="hero">
               <b className="num">{mv.up}</b>
               <span className="meta">
-                of {mv.read} {mv.read === 1 ? "kind" : "kinds"} moved up a rung{mv.down > 0 ? ` · ${mv.down} moved down` : ""}
+                of {mv.read} {mv.read === 1 ? "kind" : "kinds"} moved up a rung{mv.down > 0 ? ` · ${mv.down} at a lower rung` : ""}
               </span>
             </span>
           )}
@@ -296,7 +279,7 @@ export function Home(ctx: Ctx) {
 
       <section className="group" aria-labelledby="hb">
         <div className="head">
-          <h2 id="hb">Set aside</h2>
+          <h2 id="hb">Automated, not counted</h2>
         </div>
         <SetAsideList {...ctx} include={include} />
       </section>
@@ -315,7 +298,7 @@ const WHY: Record<string, string> = {
 function SetAsideList(ctx: Ctx & { include: (folder: string) => void }) {
   const { snap, include } = ctx;
   const all = snap.home.set_aside;
-  if (all.length === 0) return <p className="mute">Nothing set aside. AIQ sets a folder aside when an app or script drives the AI there.</p>;
+  if (all.length === 0) return <p className="mute">Nothing here yet. When an app or script drives the AI in a folder, AIQ doesn't count those runs.</p>;
   const mine = all.filter((f) => !f.own);
   const own = all.filter((f) => f.own);
   const ownRuns = own.reduce((n, f) => n + f.runs, 0);
@@ -341,10 +324,10 @@ function SetAsideList(ctx: Ctx & { include: (folder: string) => void }) {
           className="btn small"
           disabled={!snap.status.core}
           onClick={() => include(f.folder)}
-          aria-label={`Include ${folderName(f.folder)}`}
+          aria-label={`Count ${folderName(f.folder)}`}
           title="Count every session in this folder from now on"
         >
-          Include
+          Count this folder
         </button>
       </li>
     );

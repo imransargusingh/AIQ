@@ -344,6 +344,15 @@ li+li>.kindrow{border-top:1px solid var(--hairline)}
 .titlebar .updchip{cursor:pointer;color:var(--primary);border-color:var(--primary);font-weight:600}
 .titlebar .updchip:hover{background:var(--primary);color:var(--surface)}
 .titlebar .updchip:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+/* A ready update beside the version, bottom left (U5i, option B): a small box with the titlebar chip's action. */
+nav.side .foot .updbox{display:flex;flex-direction:column;gap:var(--s2);margin-top:var(--s2);padding:var(--s3) var(--s4);border:1px solid var(--primary);border-radius:var(--r-md);background:color-mix(in srgb,var(--primary) 8%,var(--surface));color:var(--ink)}
+nav.side .foot .updbox b{display:flex;align-items:center;gap:var(--s3);font:600 12px/1.4 var(--f-text)}
+nav.side .foot .updrow{display:flex;flex-wrap:nowrap;white-space:nowrap;align-items:center;justify-content:space-between;gap:var(--s3);color:var(--ink-mute)}
+nav.side .foot .updbtn{all:unset;cursor:pointer;display:inline-flex;align-items:center;min-height:24px;padding:0 var(--s4);border-radius:var(--r-pill);background:var(--primary);color:var(--on-primary);font:600 12px/1.4 var(--f-text)}
+nav.side .foot .updbtn:hover{filter:brightness(1.1)}
+nav.side .foot .updbtn:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}
+.newdot{width:8px;height:8px;border-radius:50%;background:var(--rung-5);flex:none}
+@media (forced-colors:active){nav.side .foot .updbox{border-color:CanvasText;background:Canvas}nav.side .foot .updbtn{border:1px solid ButtonText;background:ButtonFace;color:ButtonText}.newdot{background:CanvasText}}
 
 /* How you work with agents: the rung mix (share bar, change, weekly mix, kinds on a rung). */
 .mix-head{font:var(--t-heading);margin:0}
@@ -459,3 +468,42 @@ main:has(.secnav){scroll-padding-top:56px}
 .tour-offer p{margin:0 0 var(--s4)}
 .titlebar .examplechip{color:var(--warning);border-color:var(--warning)}
 @media (forced-colors:active){.tour-spot{outline-color:Highlight}.tour-tip,.tour-tip .b{forced-color-adjust:none}}
+
+/* Rung guide (Imran 2026-11-05, option B): steps down, kinds of work across, the picked habit beside. */
+.gd{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:var(--s4);align-items:start}
+.gd-grid{padding:var(--s3) var(--s4)}
+.gd-gr{display:grid;grid-template-columns:110px repeat(4,minmax(0,1fr));gap:var(--s2);padding:var(--s2) 0;border-top:1px solid var(--hairline)}
+.gd-gh{border-top:0}
+.gd-jh{display:flex;flex-direction:column}
+.gd-sh{display:flex;flex-direction:column;align-items:flex-start;gap:var(--s1)}
+.gd-r{display:inline-grid;place-items:center;min-width:22px;height:22px;border-radius:var(--r-sm);font:var(--t-caption);font-weight:600}
+.gd-cell{display:flex;flex-direction:column;gap:var(--s1);padding:var(--s1);border-radius:var(--r-sm);border:1px solid transparent}
+.gd-cell.here{background:var(--canvas-soft);border-color:var(--ink-mute)}
+.gd-here{font-weight:600;color:var(--ink)}
+.gd-jn{display:none}
+.gd-pill{all:unset;box-sizing:border-box;cursor:pointer;font:var(--t-caption);padding:var(--s1) var(--s2);border:1px solid var(--hairline);border-radius:var(--r-sm);background:var(--surface);display:flex;flex-direction:column;gap:2px}
+.gd-pill.next{border-color:var(--success);border-width:2px}
+.gd-pill.on{background:var(--primary);color:var(--on-primary);border-color:var(--primary)}
+.gd-pill:focus-visible{outline:2px solid var(--focus-ring);outline-offset:1px}
+.gd-tag{font-weight:600;color:var(--success)}
+.gd-pill.on .gd-tag{color:inherit}
+.gd-side{position:sticky;top:var(--s4)}
+@media (max-width:1100px){.gd{grid-template-columns:minmax(0,1fr)}.gd-side{position:static}}
+@media (max-width:900px){
+  .gd-gh{display:none}
+  .gd-gh + .gd-gr{border-top:0}
+  .gd-gr{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  .gd-sh{grid-column:1/-1;flex-direction:row;align-items:center}
+  .gd-jn{display:block}
+}
+@media (forced-colors:active){.gd-pill.on{forced-color-adjust:none;background:Highlight;color:HighlightText}.gd-cell.here{border-color:CanvasText}}
+
+/* First-run analysis (design first-run-analysis) */
+.an-prog{display:flex;flex-direction:column;gap:var(--s2)}
+.an-prog progress{width:100%;height:10px;accent-color:var(--primary)}
+.an-ok{margin:0;color:var(--ink)}
+.an-ok span{color:var(--success);font-weight:700;margin-right:var(--s1)}
+.an-act{display:flex;gap:var(--s4);align-items:center;flex-wrap:wrap;margin:0}
+.an-sofar{display:flex;flex-direction:column;gap:var(--s2)}
+.rmix.sm{height:18px}
+.rmix.sm span{font-size:11px}

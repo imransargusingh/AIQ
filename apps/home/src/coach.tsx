@@ -13,7 +13,7 @@ export const KIND_STATE: Record<KindState, string> = {
   right_rung: "Right rung",
   blocked: "Capped by a blocker",
   not_sure: "AIQ isn't sure yet",
-  flagged: "You flagged the step",
+  flagged: "You said it doesn't fit",
 };
 
 /** Whole percent of `part` in `n`. */
@@ -108,7 +108,7 @@ function Track({ r }: { r: LadderRow }) {
 
 function ladderLabel(r: LadderRow, d: number): string {
   const parts = [r.label, `${rungLabel(r.now)} in the last ${d} days`];
-  if (r.before != null) parts.push(`${r.now > r.before ? "moved up" : "moved down"} from ${rungLabel(r.before)}`);
+  if (r.before != null) parts.push(`${r.now > r.before ? "moved up from" : "at a lower rung than"} ${rungLabel(r.before)}`);
   else if (r.recent != null) parts.push("same rung");
   if (r.next != null) parts.push(`next step reaches ${rungLabel(r.next)}`);
   parts.push(r.recent != null ? `${r.recent} tasks in the last ${d} days, ${r.earlier} before` : `${r.tasks} tasks, too few in one half to say if it moved`);
@@ -178,7 +178,7 @@ export function LadderMap({ c, open }: { c: Coaching; open: (job: string, type: 
           <button className="btnlink" aria-expanded={all} onClick={() => setAll(!all)}>{all ? "Hide" : "Show"}</button>
         </p>
       )}
-      {m.down > 0 && <p className="sr">{m.down} {m.down === 1 ? "kind" : "kinds"} of task moved down.</p>}
+      {m.down > 0 && <p className="sr">{m.down} {m.down === 1 ? "kind" : "kinds"} of task at a lower rung.</p>}
     </>
   );
 }

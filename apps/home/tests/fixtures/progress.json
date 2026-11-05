@@ -31,6 +31,15 @@
       "failed_calls": 0,
       "cost_usd": null
     },
+    "analysis": {
+      "state": "off",
+      "waiting": 0,
+      "analyzed": 22,
+      "today": 0,
+      "daily": 500,
+      "done_by_ms": null,
+      "blocked": null
+    },
     "imported_in_window": 0,
     "weeks": [
       {
@@ -1292,7 +1301,7 @@
     "tip_highlight": true,
     "live_trend": true,
     "judge": "off",
-    "judge_daily_tasks": 50,
+    "judge_daily_tasks": 500,
     "judge_since_ms": null,
     "copilot_mid_turn": "on",
     "agent_actions": "on",
@@ -1344,6 +1353,16 @@
         "job": "write_doc"
       },
       {
+        "tip_id": "next_rung.let_agent_write",
+        "habit": "Let the agent write the doc in the file",
+        "job": "write_doc"
+      },
+      {
+        "tip_id": "next_rung.doc_one_go",
+        "habit": "Give all your notes at once, then review the draft",
+        "job": "write_doc"
+      },
+      {
         "tip_id": "next_rung.let_agent_edit",
         "habit": "Let the agent make the edits",
         "job": "code_change"
@@ -1361,6 +1380,11 @@
       {
         "tip_id": "next_rung.let_agent_look",
         "habit": "Let the agent look it up itself",
+        "job": "ask_research"
+      },
+      {
+        "tip_id": "next_rung.ask_one_go",
+        "habit": "Ask once with everything you need, then let it dig",
         "job": "ask_research"
       },
       {
@@ -1384,6 +1408,11 @@
         "job": "run_ship"
       },
       {
+        "tip_id": "next_rung.run_one_go",
+        "habit": "Give the whole run up front, not one command at a time",
+        "job": "run_ship"
+      },
+      {
         "tip_id": "next_rung.written_brief",
         "habit": "Give the agent a written brief or instructions file",
         "job": "any"
@@ -1394,6 +1423,16 @@
         "job": "code_change"
       },
       {
+        "tip_id": "next_rung.agent_checks_doc",
+        "habit": "Ask the agent to check the doc itself",
+        "job": "write_doc"
+      },
+      {
+        "tip_id": "next_rung.agent_checks_run",
+        "habit": "Ask the agent to run the health check itself",
+        "job": "run_ship"
+      },
+      {
         "tip_id": "next_rung.split_and_check",
         "habit": "Split the work with an automated check between steps",
         "job": "any"
@@ -1402,6 +1441,16 @@
         "tip_id": "next_rung.split_question",
         "habit": "Split a big question across sub-agents",
         "job": "ask_research"
+      },
+      {
+        "tip_id": "next_rung.agent_checks_answer",
+        "habit": "Ask the agent to prove its answer with a run",
+        "job": "ask_research"
+      },
+      {
+        "tip_id": "next_rung.saved_workflow",
+        "habit": "Save it as a workflow others can run",
+        "job": "any"
       }
     ],
     "accuracy_paused": []
@@ -1738,8 +1787,41 @@
       },
       {
         "job": "write_doc",
+        "move_id": "let_agent_write",
+        "name": "Let the agent write the doc in the file",
+        "state": "adopted",
+        "eligible": 3,
+        "seen": 3,
+        "moved_to": "adopted",
+        "moved_ms": 1792065540000,
+        "moved_back": false
+      },
+      {
+        "job": "write_doc",
+        "move_id": "doc_one_go",
+        "name": "Give all your notes at once, then review the draft",
+        "state": "adopted",
+        "eligible": 3,
+        "seen": 3,
+        "moved_to": "adopted",
+        "moved_ms": 1792065540000,
+        "moved_back": false
+      },
+      {
+        "job": "write_doc",
         "move_id": "written_brief",
         "name": "Give the agent a written brief or instructions file",
+        "state": "not_yet",
+        "eligible": 3,
+        "seen": 0,
+        "moved_to": null,
+        "moved_ms": null,
+        "moved_back": false
+      },
+      {
+        "job": "write_doc",
+        "move_id": "agent_checks_doc",
+        "name": "Ask the agent to check the doc itself",
         "state": "not_yet",
         "eligible": 3,
         "seen": 0,
@@ -2180,8 +2262,41 @@
           },
           {
             "job": "write_doc",
+            "move_id": "let_agent_write",
+            "name": "Let the agent write the doc in the file",
+            "state": "adopted",
+            "eligible": 3,
+            "seen": 3,
+            "moved_to": "adopted",
+            "moved_ms": 1792065540000,
+            "moved_back": false
+          },
+          {
+            "job": "write_doc",
+            "move_id": "doc_one_go",
+            "name": "Give all your notes at once, then review the draft",
+            "state": "adopted",
+            "eligible": 3,
+            "seen": 3,
+            "moved_to": "adopted",
+            "moved_ms": 1792065540000,
+            "moved_back": false
+          },
+          {
+            "job": "write_doc",
             "move_id": "written_brief",
             "name": "Give the agent a written brief or instructions file",
+            "state": "not_yet",
+            "eligible": 3,
+            "seen": 0,
+            "moved_to": null,
+            "moved_ms": null,
+            "moved_back": false
+          },
+          {
+            "job": "write_doc",
+            "move_id": "agent_checks_doc",
+            "name": "Ask the agent to check the doc itself",
             "state": "not_yet",
             "eligible": 3,
             "seen": 0,
@@ -2254,5 +2369,259 @@
       }
     }
   ],
-  "live": null
+  "live": null,
+  "guide": [
+    {
+      "move_id": "brief",
+      "step": 1,
+      "job": "code_change",
+      "habit": "Give the agent the goal, context and limits up front",
+      "why": "a request with the goal, the context and the limits lets the agent get it right the first time.",
+      "try_this": "start with what done looks like, what it touches, and what it must not change.",
+      "starter": "Goal: <what done looks like>. Context: <files, background>. Limits: <what not to change>. Then: <the task>."
+    },
+    {
+      "move_id": "brief_doc",
+      "step": 1,
+      "job": "write_doc",
+      "habit": "Say who the doc is for, what it must do, and its limits",
+      "why": "a draft aimed at a named reader and purpose needs far less rewriting.",
+      "try_this": "say who will read it, what they should do after, what to draw on, and the length or tone.",
+      "starter": "Write <doc> for <reader> so they can <decide or do what>. Use <sources>. Limits: <length, tone, what to leave out>."
+    },
+    {
+      "move_id": "brief_question",
+      "step": 1,
+      "job": "ask_research",
+      "habit": "Say why you're asking, what you know, and what to leave out",
+      "why": "the reason behind a question and what you already know let the agent answer the right question.",
+      "try_this": "say what you'll do with the answer, what you already know, and where not to look.",
+      "starter": "I'm asking because <decision or task>. I already know <what you know>. Look at <where>, not <where not>. Answer: <question>."
+    },
+    {
+      "move_id": "new_info",
+      "step": 1,
+      "job": "any",
+      "habit": "Say what was wrong before asking again",
+      "why": "rewording alone rarely changes the result; the agent needs something new to go on.",
+      "try_this": "when an answer misses, say what was wrong and add one example, file or constraint.",
+      "starter": "That missed because <what was wrong>. Here is <an example, file or constraint>. Try again with that."
+    },
+    {
+      "move_id": "check_code",
+      "step": 1,
+      "job": "code_change",
+      "habit": "Check the diff or run the tests before using the result",
+      "why": "a quick look at the diff or a test run catches most agent mistakes before they cost you.",
+      "try_this": "read the diff or run the tests before you use the change.",
+      "starter": "Show me the diff, then run <test command> and tell me what passed and failed."
+    },
+    {
+      "move_id": "check_sources",
+      "step": 1,
+      "job": "write_doc",
+      "habit": "Check drafted claims against a source",
+      "why": "drafted claims can sound right and be wrong; a source check keeps the doc true.",
+      "try_this": "ask the agent to list each claim with its source, then spot-check them.",
+      "starter": "List every factual claim in the draft with the source it came from. Mark any claim without a source."
+    },
+    {
+      "move_id": "hand_over",
+      "step": 2,
+      "job": "code_change",
+      "habit": "Hand over the whole task with a done test",
+      "why": "an agent with the whole task and a done test can plan the steps itself.",
+      "try_this": "give the whole outcome and how you'll know it's done, then review the result.",
+      "starter": "<The whole change>. Done means <test or check that passes>. Make all the edits, then show me the diff."
+    },
+    {
+      "move_id": "hand_over_doc",
+      "step": 2,
+      "job": "write_doc",
+      "habit": "Ask for the whole draft with what done means",
+      "why": "asking for the whole draft with what done means lets the agent keep it consistent.",
+      "try_this": "ask for the complete draft and say what a finished one must contain.",
+      "starter": "Write the whole <doc>. Done means it covers <sections> for <reader>. Then list what you were unsure of."
+    },
+    {
+      "move_id": "let_agent_write",
+      "step": 2,
+      "job": "write_doc",
+      "habit": "Let the agent write the doc in the file",
+      "why": "when the agent writes the file, you review one draft instead of moving text back and forth.",
+      "try_this": "point the agent at the file and let it write there, then review the changes.",
+      "starter": "Write <doc> in <file path>. Use <notes or sources>. When you're done, tell me what you changed and what you were unsure of."
+    },
+    {
+      "move_id": "doc_one_go",
+      "step": 2,
+      "job": "write_doc",
+      "habit": "Give all your notes at once, then review the draft",
+      "why": "all your notes in one go let the agent shape the whole draft, and you review it once.",
+      "try_this": "collect your changes into one message, then review the next draft as a whole.",
+      "starter": "Revise <doc> with all of these: <change>, <change>, <change>. Then show me the full draft and list what you changed."
+    },
+    {
+      "move_id": "let_agent_edit",
+      "step": 2,
+      "job": "code_change",
+      "habit": "Let the agent make the edits",
+      "why": "when the agent makes the edits, you review one result instead of steering each step.",
+      "try_this": "let the agent edit the files, and review the diff when it's done.",
+      "starter": "Make the change in <files> yourself. When you're done, show me the diff and what you checked."
+    },
+    {
+      "move_id": "check_answer",
+      "step": 1,
+      "job": "ask_research",
+      "habit": "Check the answer before acting on it",
+      "why": "an answer can sound sure and still be wrong; one check against a source catches most of it.",
+      "try_this": "ask where the answer comes from, and check one source or run before you act on it.",
+      "starter": "Answer <question>. Show the source, file or command each point comes from, and say how sure you are."
+    },
+    {
+      "move_id": "whole_question",
+      "step": 2,
+      "job": "ask_research",
+      "habit": "Ask the whole question and say what a good answer covers",
+      "why": "the whole question and what a good answer covers lets the agent dig in and report back once.",
+      "try_this": "say what you need to decide and what a good answer must cover, then let the agent find it.",
+      "starter": "I need to decide <decision>. Find out <question>. A good answer covers <points>, with sources."
+    },
+    {
+      "move_id": "let_agent_look",
+      "step": 2,
+      "job": "ask_research",
+      "habit": "Let the agent look it up itself",
+      "why": "an agent that reads the files, logs or docs itself often finds what a pasted excerpt leaves out.",
+      "try_this": "point the agent at where to look instead of pasting the material in.",
+      "starter": "Look in <files, logs or docs> to answer <question>. Tell me what you read and what you found."
+    },
+    {
+      "move_id": "ask_one_go",
+      "step": 2,
+      "job": "ask_research",
+      "habit": "Ask once with everything you need, then let it dig",
+      "why": "one full ask lets the agent plan its search instead of waiting for your next nudge.",
+      "try_this": "put the follow-ups you expect into the first ask, then read the whole answer.",
+      "starter": "Find out <question>. Also cover <follow-up> and <follow-up>. Report back once, with sources."
+    },
+    {
+      "move_id": "brief_run",
+      "step": 1,
+      "job": "run_ship",
+      "habit": "Say what should run, where, and what must not break",
+      "why": "an agent that knows what should run, where, and what must not break avoids most failed runs.",
+      "try_this": "say what should be running or released, in which place, and what must stay untouched.",
+      "starter": "Goal: <what should be running or released>. Where: <app, environment, account>. Must not: <what must not break or change>. Then: <the task>."
+    },
+    {
+      "move_id": "check_running",
+      "step": 1,
+      "job": "run_ship",
+      "habit": "Check it really runs before you move on",
+      "why": "a command can succeed while the app, release or tool still does not work.",
+      "try_this": "ask for proof it worked: the status, the page loading, the version or the log line.",
+      "starter": "After <the step>, show me proof it worked: the status, the URL loading, the version number or the log line."
+    },
+    {
+      "move_id": "hand_over_run",
+      "step": 2,
+      "job": "run_ship",
+      "habit": "Hand over the whole run with a done check and a stop",
+      "why": "an agent with the whole run, a done check and a stop point can do the steps and still leave you the risky one.",
+      "try_this": "give the whole outcome, how you'll know it's done, and the step where it must stop and ask.",
+      "starter": "Do <the whole release or run>. Done means <the check that passes>. Stop and ask before <the risky step>."
+    },
+    {
+      "move_id": "let_agent_run",
+      "step": 2,
+      "job": "run_ship",
+      "habit": "Let the agent run the commands",
+      "why": "an agent that runs the commands sees the errors itself and can fix them before it hands back.",
+      "try_this": "let the agent run the commands and report what each printed.",
+      "starter": "Run the commands yourself to <goal>. Tell me each command and what it printed."
+    },
+    {
+      "move_id": "run_one_go",
+      "step": 2,
+      "job": "run_ship",
+      "habit": "Give the whole run up front, not one command at a time",
+      "why": "with the whole run up front, the agent can do the steps and fix errors before it hands back.",
+      "try_this": "say the end state and the steps you expect, then let it run and report.",
+      "starter": "Get <app or release> to <end state>. Steps I expect: <step>, <step>. Stop and ask before <risky step>. Report each command and what it printed."
+    },
+    {
+      "move_id": "written_brief",
+      "step": 3,
+      "job": "any",
+      "habit": "Give the agent a written brief or instructions file",
+      "why": "a written brief or instructions file carries the context every time, so the agent can plan alone.",
+      "try_this": "save the goal, rules and checks for this kind of task in a file and point the agent at it.",
+      "starter": "Read <brief or instructions file>. Plan the steps, do them, and check each one against the brief."
+    },
+    {
+      "move_id": "agent_checks",
+      "step": 3,
+      "job": "code_change",
+      "habit": "Ask the agent to run the tests itself",
+      "why": "an agent that runs the checks can fix what fails before it hands back.",
+      "try_this": "ask the agent to run the tests and keep fixing until they pass.",
+      "starter": "<The task>. Run the tests with <command>. Keep fixing until they all pass, then show me the diff and the test output."
+    },
+    {
+      "move_id": "agent_checks_doc",
+      "step": 3,
+      "job": "write_doc",
+      "habit": "Ask the agent to check the doc itself",
+      "why": "an agent that runs the link and style checks can fix what fails before it hands back.",
+      "try_this": "ask the agent to run the doc checks, such as links and spelling, and fix what fails.",
+      "starter": "<The doc task>. Then run <doc check, such as markdownlint or a link check> and fix what fails. Show me the output."
+    },
+    {
+      "move_id": "agent_checks_run",
+      "step": 3,
+      "job": "run_ship",
+      "habit": "Ask the agent to run the health check itself",
+      "why": "an agent that runs the smoke test or health check can fix what fails before it hands back.",
+      "try_this": "name the check that proves it works, and ask the agent to run it after each step.",
+      "starter": "<The run or release>. After each step, run <smoke test or health check>. Fix what fails, then show me the output."
+    },
+    {
+      "move_id": "split_and_check",
+      "step": 3,
+      "job": "any",
+      "habit": "Split the work with an automated check between steps",
+      "why": "an automated check between steps catches a bad step before the next one builds on it.",
+      "try_this": "split the work into steps for sub-agents, with a test or check the agent runs between them.",
+      "starter": "Split <the task> into steps. Give each step to a sub-agent, and run <check> after each before going on."
+    },
+    {
+      "move_id": "split_question",
+      "step": 3,
+      "job": "ask_research",
+      "habit": "Split a big question across sub-agents",
+      "why": "sub-agents can each look into one part, and you get one combined answer back.",
+      "try_this": "ask the agent to split the question and send a sub-agent to each part.",
+      "starter": "Split <question> into parts. Send a sub-agent to each, then combine what they found into one answer with sources."
+    },
+    {
+      "move_id": "agent_checks_answer",
+      "step": 4,
+      "job": "ask_research",
+      "habit": "Ask the agent to prove its answer with a run",
+      "why": "an answer the agent has proved with a command, query or test can be reused without checking again.",
+      "try_this": "ask the agent to prove each finding with a command, query or test it runs.",
+      "starter": "Answer <question>. For each finding, run <command, query or test> that proves it, and show the output."
+    },
+    {
+      "move_id": "saved_workflow",
+      "step": 4,
+      "job": "any",
+      "habit": "Save it as a workflow others can run",
+      "why": "a saved, versioned workflow runs the same way every time, for you and for others.",
+      "try_this": "save the brief, the steps and the checks as a prompt file or script, and share it.",
+      "starter": "Turn what we just did into a reusable <prompt file or script> in <path>: its inputs, steps, checks, and when to stop and ask."
+    }
+  ]
 }
