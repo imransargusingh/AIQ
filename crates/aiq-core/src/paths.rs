@@ -69,6 +69,11 @@ impl Paths {
     pub fn setup_flag(&self) -> PathBuf {
         self.data.join("setup-done")
     }
+    /// AIQ home's tour was taken, skipped or declined once, so it is not offered again. App state, like
+    /// `setup_flag`: delete everything keeps it.
+    pub fn tour_flag(&self) -> PathBuf {
+        self.data.join("tour-seen")
+    }
     pub fn log(&self) -> PathBuf {
         self.data.join("aiq.log")
     }

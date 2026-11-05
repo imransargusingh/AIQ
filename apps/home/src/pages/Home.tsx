@@ -24,7 +24,7 @@ export function Home(ctx: Ctx) {
       <div className="page">
         <Banners {...ctx} />
         <UpdateLine {...ctx} />
-        <GettingStartedPage snap={snap} go={go} />
+        <GettingStartedPage snap={snap} go={go} startTour={ctx.startTour} />
       </div>
     );
   }

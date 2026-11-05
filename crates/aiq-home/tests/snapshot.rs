@@ -278,6 +278,16 @@ fn setup_done_follows_the_flag() {
     assert_eq!(s.setup.tools.iter().map(|t| t.tool).collect::<Vec<_>>(), vec!["claude-code", "copilot"]);
 }
 
+#[test]
+fn tour_seen_follows_its_own_flag() {
+    let d = tempfile::tempdir().unwrap();
+    let p = Paths::at(d.path());
+    aiq_core::control::finish_setup(&p).unwrap();
+    assert!(!snap(&p).setup.tour_seen, "finishing setup doesn't count as seeing the tour");
+    aiq_core::control::mark_tour_seen(&p).unwrap();
+    assert!(snap(&p).setup.tour_seen);
+}
+
 /// A coaching judgment: Delegated, the person ran the checks (the kind coaches the step-3 moves).
 
 #[test]

@@ -161,6 +161,10 @@ function fixture<T>(cmd: string, args: Record<string, unknown>): Promise<T> {
       s.setup.done = true;
       out = s;
       break;
+    case "tour_seen":
+      s.setup.tour_seen = true;
+      out = s;
+      break;
     default:
       return Promise.reject(new Error(`unknown command ${cmd}`));
   }
@@ -175,6 +179,8 @@ export const api = {
   task: (taskId: string) => invoke<TaskDetail | null>("task", { taskId }),
   forgetItem: (eventId: string) => invoke<Outcome>("forget_item", { eventId }),
   finishSetup: () => invoke<Snapshot>("finish_setup"),
+  /** The tour was taken, skipped or declined: Home stops offering it. */
+  tourSeen: () => invoke<Snapshot>("tour_seen"),
   /** Connect every tool found but not hooked yet (runs `aiq install --yes`). */
   connectTools: () => invoke<{ ok: boolean; message?: string; changed: string[] }>("connect_tools"),
   /** "This doesn't fit" (flag, with a reason) or its undo, for one kind of task's next step. */
