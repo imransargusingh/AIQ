@@ -312,4 +312,34 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <ul><li><strong>Sweep:</strong> other background work with a silent failure: the kind label (<code>kind_label</code> calls, shown in Settings),</li></ul>
 <p>the update check (<code>check_error</code> shown in Settings &gt; Updates). Both already surface a reason.</p>
 <ul><li><strong>Rule:</strong> background work ships with a state the person can see: what it is doing, how far, what (if anything)</li></ul>
-<p>they must do, and why it stopped.</p></main></body></html>
+<p>they must do, and why it stopped.</p>
+<h3>DC-030 — A coverage test that checks a step has some move, not that each failing fact has one</h3>
+<ul><li><strong>Signature:</strong> 2026-11-05, Imran asked how users move from Directed to Delegated. Reading <code>rung::delegated</code> against</li></ul>
+<p>the pack showed a doc written in the chat, or a doc, question or run steered one step at a time (F12), had no next step, so its kind read &quot;AIQ isn&#x27;t sure yet&quot;. 11 job × step × fact gaps in all (docs F1/F12/F3, questions F12/F3, runs F12/F3, every job F9).</p>
+<ul><li><strong>Why it survives:</strong> <code>bundled_moves_…</code> asserted only that each job had <em>a</em> move at steps 1 to 3. One move per</li></ul>
+<p>step passed while the other facts of that step&#x27;s guardrail had none, and step 4 was not checked at all.</p>
+<ul><li><strong>Control (tests):</strong> <code>pack::tests::every_guardrail_fact_a_job_can_fail_has_a_move</code> fails each fact the next</li></ul>
+<p>rung&#x27;s guardrail reads, for each job and step 1 to 4, on a task that can sit at that step, and asserts a move of that step and job names it. Red on bundled-8 with the 11 gaps; green on bundled-9.</p>
+<ul><li><strong>Sweep:</strong> the guardrails are the only source of moves (<code>coach::moves_for</code>), so the test covers every way a</li></ul>
+<p>move is chosen. F9 is unknown until it is read from the log, so <code>saved_workflow</code> is guide text only for now.</p>
+<ul><li><strong>Rule:</strong> test coverage against the rule&#x27;s own inputs (each fact it reads), never against a count per group.</li></ul>
+<h3>DC-031 — A usage guard that runs after the paid work it guards</h3>
+<ul><li><strong>Signature:</strong> 2026-11-05, one-call study: <code>aiq analyze --eval --runs 8 --cases … --record f</code> made 272 Claude</li></ul>
+<p>calls ($4.51), then printed &quot;--record needs every case (drop --cases)&quot; and threw the answers away. The check sat after the run loop, next to the write it protects.</p>
+<ul><li><strong>Why it survives:</strong> the guard is correct and tested by reading the code; nobody runs the bad flag mix, so the</li></ul>
+<p>cost of checking late is never seen.</p>
+<ul><li><strong>Control:</strong> <code>parse_opts</code> refuses <code>--record</code> with <code>--cases</code> before any call;</li></ul>
+<p><code>judge_eval::tests::record_with_cases_is_refused_before_any_call</code>.</p>
+<ul><li><strong>Sweep:</strong> no other flag check sits after the paid loop in <code>judge_eval.rs</code> (read). <code>aiq label --eval</code> and</li></ul>
+<p><code>aiq analyze --check</code> were not read for this shape (assume: they parse first; if not, the same loss repeats there).</p>
+<ul><li><strong>Rule:</strong> validate every argument before the first paid or slow call, never beside the step that uses it.</li></ul>
+<h3>DC-032 — An accessibility check that reads colours while a theme change is still fading in</h3>
+<ul><li><strong>Signature:</strong> 2026-11-05, PR #150 CI: &quot;coaching: every page … (dark)&quot; failed once with a color-contrast hit on</li></ul>
+<p>the Settings nav link (<code>#5cc8c2</code> on <code>#ffffff</code>, 2:1), then passed on a re-run. The e2e <code>open()</code> set <code>data-theme</code> after load and ran axe at once; nav links and buttons fade their background over 100 ms, so axe sometimes read the new dark ink on the old light background. Reproduced 5 of 60 runs locally; real dark contrast is fine.</p>
+<ul><li><strong>Why it survives:</strong> most runs finish the fade before axe reads, so it looks like a one-off flake and a re-run</li></ul>
+<p>turns it green.</p>
+<ul><li><strong>Control:</strong> <code>tests/e2e.mjs</code> <code>settle()</code> waits for every running animation and transition to finish after a theme</li></ul>
+<p>switch (in <code>open()</code> and the Theme test) before axe runs: 0 of 60 locally, e2e 67/67 three times.</p>
+<ul><li><strong>Sweep:</strong> <code>open()</code> is the only place a test changes <code>data-theme</code>. The Theme test&#x27;s switch by click ran axe</li></ul>
+<p>straight after it, so it now settles too. No other test changes theme mid-page (<code>emulateMedia</code> in the Theme test runs no axe after it).</p>
+<ul><li><strong>Rule:</strong> after any change that restyles the page, wait for transitions to finish before measuring colours.</li></ul></main></body></html>

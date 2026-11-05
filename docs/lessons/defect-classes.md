@@ -509,3 +509,17 @@ summary: >-
 - **Sweep:** no other flag check sits after the paid loop in `judge_eval.rs` (read). `aiq label --eval` and
   `aiq analyze --check` were not read for this shape (assume: they parse first; if not, the same loss repeats there).
 - **Rule:** validate every argument before the first paid or slow call, never beside the step that uses it.
+
+### DC-032 — An accessibility check that reads colours while a theme change is still fading in
+- **Signature:** 2026-11-05, PR #150 CI: "coaching: every page … (dark)" failed once with a color-contrast hit on
+  the Settings nav link (`#5cc8c2` on `#ffffff`, 2:1), then passed on a re-run. The e2e `open()` set `data-theme`
+  after load and ran axe at once; nav links and buttons fade their background over 100 ms, so axe sometimes read the
+  new dark ink on the old light background. Reproduced 5 of 60 runs locally; real dark contrast is fine.
+- **Why it survives:** most runs finish the fade before axe reads, so it looks like a one-off flake and a re-run
+  turns it green.
+- **Control:** `tests/e2e.mjs` `settle()` waits for every running animation and transition to finish after a theme
+  switch (in `open()` and the Theme test) before axe runs: 0 of 60 locally, e2e 67/67 three times.
+- **Sweep:** `open()` is the only place a test changes `data-theme`. The Theme test's switch by click ran axe
+  straight after it, so it now settles too. No other test changes theme mid-page (`emulateMedia` in the Theme test
+  runs no axe after it).
+- **Rule:** after any change that restyles the page, wait for transitions to finish before measuring colours.
