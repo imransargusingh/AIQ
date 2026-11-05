@@ -14,6 +14,8 @@ pub fn core() -> ExitCode {
     let paths = Paths::from_env();
     crate::judge::start_background(paths.clone());
     aiq_core::update::start_background(paths.clone());
+    // A tool installed after setup is connected at the next core start (or AIQ home open), not left waiting.
+    std::thread::spawn(|| crate::install::install_new(true));
     match server::run_with(&paths, Some(crate::label::requester())) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) if e.code == aiq_contracts::codes::CORE_ALREADY_RUNNING => {

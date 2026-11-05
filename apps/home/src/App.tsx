@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api";
 import { singleFlight } from "./refresh";
-import { toolName } from "./format";
 import type { Snapshot } from "./types";
 import { scoped } from "./project";
 import { Dialog, PAGES, Sk, UpdateChip, type Ctx, type Page } from "./ui";
@@ -226,7 +225,9 @@ export function App() {
   const update = useMemo(() => ({ phase: upd.phase, msg: upd.msg, run: updateNow }), [upd.phase, upd.msg, updateNow]);
   const ctx: Ctx | null = snap && { snap, go, openTask, openKind, announce, togglePause, refresh, project, setProject, update };
   const one: Ctx | null = ctx && { ...ctx, snap: scoped(ctx.snap, project) };
-  const watching = snap?.home.by_tool.map(([t]) => toolName(t)) ?? [];
+  // The tools AIQ is connected to and that are installed, not the tools it holds tasks from (an imported or
+  // disconnected tool isn't being watched).
+  const watching = snap?.setup.tools.filter((t) => t.hooked && t.present).map((t) => (t.tool === "copilot" ? "Copilot" : "Claude Code")) ?? [];
 
   if (ctx && inSetup) {
     return (
@@ -292,7 +293,7 @@ export function App() {
               <>
                 <span>
                   <span className={`dot${snap.status.paused || !snap.status.core ? " paused" : ""}`} aria-hidden="true" />
-                  {snap.status.paused ? "Paused" : !snap.status.core ? "Not running" : watching.length ? `Watching ${watching.join(", ")}` : "Watching quietly"}
+                  {snap.status.paused ? "Paused" : !snap.status.core ? "Not running" : watching.length ? `Watching ${watching.join(", ")}` : "No tool connected"}
                 </span>
                 <span>
                   Tips today: {snap.home.tips_today} of {snap.settings.daily_cap}

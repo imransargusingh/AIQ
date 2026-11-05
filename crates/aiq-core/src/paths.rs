@@ -88,6 +88,11 @@ impl Paths {
     pub fn start_lock(&self) -> PathBuf {
         self.data.join("core-start.lock")
     }
+    /// The tools AIQ has seen installed since setup (`tools::newly_installed`): a tool that appears later is
+    /// connected once by itself; one seen before is never reconnected after the person disconnects it.
+    pub fn tools_seen(&self) -> PathBuf {
+        self.data.join("tools-seen.json")
+    }
     pub fn install_record(&self) -> PathBuf {
         self.data.join("claude-code-install.json")
     }

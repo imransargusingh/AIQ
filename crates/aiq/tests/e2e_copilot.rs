@@ -44,6 +44,15 @@ impl Env {
     fn run(&self, args: &[&str], stdin: &[u8]) -> Output {
         self.run_with(self.cmd(args), stdin)
     }
+    /// With a PATH that holds no `claude`, so a Claude Code installed on the machine running the tests
+    /// doesn't count as found (tool detection reads PATH).
+    fn run_clean(&self, args: &[&str]) -> Output {
+        let bin = self.dir.path().join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        let mut c = self.cmd(args);
+        c.env("PATH", &bin);
+        self.run_with(c, b"")
+    }
     fn run_with(&self, mut c: Command, stdin: &[u8]) -> Output {
         let mut ch = c.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
         ch.stdin.take().unwrap().write_all(stdin).unwrap();
@@ -424,16 +433,22 @@ fn e2e_install_with_no_tool_connects_every_tool_found_and_names_the_undo() {
     let e = Env::new();
     let claude = e.home().parent().unwrap().join("claude");
     // Nothing found: says so and changes nothing.
-    let o = e.run(&["install", "--yes"], b"");
+    let o = e.run_clean(&["install", "--yes"]);
     assert!(o.status.success());
     assert!(String::from_utf8_lossy(&o.stdout).contains("No supported AI tool found"));
     assert!(!String::from_utf8_lossy(&o.stdout).contains("Judging"), "nothing connected: judging untouched");
     assert!(!e.copilot().exists() && !claude.exists());
 
-    // Both tools present (their folders exist): both get AIQ's hooks.
+    // A bare Claude Code folder (other tools and people make one) is not Claude Code: nothing written to it.
+    std::fs::create_dir_all(claude.join("skills")).unwrap();
+    let o = e.run_clean(&["install", "--yes"]);
+    assert!(String::from_utf8_lossy(&o.stdout).contains("No supported AI tool found"));
+    assert!(!claude.join("settings.json").exists(), "no settings created for a tool that isn't there");
+
+    // Both tools present (Copilot's folder; Claude Code's own transcripts): both get AIQ's hooks.
     std::fs::create_dir_all(e.copilot()).unwrap();
-    std::fs::create_dir_all(&claude).unwrap();
-    let o = e.run(&["install", "--yes"], b"");
+    std::fs::create_dir_all(claude.join("projects").join("C--repos-a")).unwrap();
+    let o = e.run_clean(&["install", "--yes"]);
     let out = String::from_utf8_lossy(&o.stdout).to_string();
     assert!(o.status.success(), "{out}\n{}", String::from_utf8_lossy(&o.stderr));
     assert!(e.copilot().join("hooks").join("aiq.json").exists());
@@ -452,7 +467,7 @@ fn e2e_install_with_no_tool_connects_every_tool_found_and_names_the_undo() {
     assert!(out.contains("up to 50 new tasks a day") && out.contains("Undo: aiq config set judge off"), "{out}");
 
     // Run again: nothing left to connect.
-    let again = String::from_utf8_lossy(&e.run(&["install", "--yes"], b"").stdout).to_string();
+    let again = String::from_utf8_lossy(&e.run_clean(&["install", "--yes"]).stdout).to_string();
     assert!(
         again.contains("Claude Code is already connected.") && again.contains("GitHub Copilot is already connected."),
         "{again}"
@@ -466,8 +481,58 @@ fn e2e_install_with_no_tool_connects_every_tool_found_and_names_the_undo() {
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64;
     store.set_setting("judge", "off", now + 1_000).unwrap();
     drop(store);
-    let off = String::from_utf8_lossy(&e.run(&["install", "--yes"], b"").stdout).to_string();
+    let off = String::from_utf8_lossy(&e.run_clean(&["install", "--yes"]).stdout).to_string();
     assert!(off.contains("Judging stays off, as you set it."), "{off}");
+}
+
+/// After setup, a tool installed later is connected once by `aiq install --new` (AIQ home and the core run it
+/// at start); one the person disconnected stays disconnected. Hooks AIQ 0.1.4 wrote for a Claude Code that
+/// isn't installed are reported as such, not as connected.
+#[test]
+fn e2e_install_new_connects_a_tool_installed_after_setup_once() {
+    let e = Env::new();
+    let claude = e.home().parent().unwrap().join("claude");
+    std::fs::create_dir_all(e.copilot()).unwrap();
+    // Before setup is done, --new does nothing (setup connects).
+    assert!(e.run_clean(&["install", "--new", "--yes"]).status.success());
+    assert!(!e.copilot().join("hooks").join("aiq.json").exists());
+
+    assert!(e.run_clean(&["install", "--yes"]).status.success(), "setup connects Copilot");
+    std::fs::write(e.home().join("setup-done"), "done\n").unwrap();
+    assert!(e.run_clean(&["uninstall", "copilot", "--yes"]).status.success(), "the person disconnects Copilot");
+    let o = e.run_clean(&["install", "--new", "--yes"]);
+    assert!(o.stdout.is_empty(), "nothing new: {}", String::from_utf8_lossy(&o.stdout));
+    assert!(!e.copilot().join("hooks").join("aiq.json").exists(), "a disconnected tool stays disconnected");
+
+    // Claude Code installed after setup: connected once, and only it.
+    std::fs::create_dir_all(claude.join("projects").join("C--repos-a")).unwrap();
+    let out = String::from_utf8_lossy(&e.run_clean(&["install", "--new", "--yes"]).stdout).to_string();
+    let s: Value = serde_json::from_str(&std::fs::read_to_string(claude.join("settings.json")).unwrap()).unwrap();
+    assert!(aiq_core::tools::claude_has_aiq(&s), "{out}");
+    assert!(out.contains(&format!("Changed: {}", claude.join("settings.json").display())), "{out}");
+    assert!(!e.copilot().join("hooks").join("aiq.json").exists(), "{out}");
+
+    // The person disconnects it: the next start leaves it alone.
+    assert!(e.run_clean(&["uninstall", "claude-code", "--yes"]).status.success());
+    assert!(e.run_clean(&["install", "--new", "--yes"]).stdout.is_empty());
+    assert!(!claude.join("settings.json").exists());
+}
+
+#[test]
+fn e2e_hooks_left_in_a_claude_folder_without_claude_code_are_not_called_connected() {
+    let e = Env::new();
+    let claude = e.home().parent().unwrap().join("claude");
+    std::fs::create_dir_all(&claude).unwrap();
+    // What AIQ 0.1.4's setup wrote on a computer with only a bare folder.
+    let v =
+        json!({"hooks":{"Stop":[{"hooks":[{"type":"command","command":"aiq","args":["hook","claude-code","Stop"]}]}]}});
+    std::fs::write(claude.join("settings.json"), v.to_string()).unwrap();
+    let out = String::from_utf8_lossy(&e.run_clean(&["install", "--yes"]).stdout).to_string();
+    assert!(!out.contains("Claude Code is already connected"), "{out}");
+    assert!(
+        out.contains("Claude Code isn't installed on this computer") && out.contains("aiq uninstall claude-code"),
+        "{out}"
+    );
 }
 
 #[test]
@@ -475,10 +540,10 @@ fn e2e_uninstall_all_puts_every_tool_back_and_keeps_the_data() {
     let e = Env::new();
     let claude = e.home().parent().unwrap().join("claude");
     std::fs::create_dir_all(e.copilot()).unwrap();
-    std::fs::create_dir_all(&claude).unwrap();
+    std::fs::create_dir_all(claude.join("projects").join("C--repos-a")).unwrap();
     let mine = r#"{"model":"opus"}"#;
     std::fs::write(claude.join("settings.json"), mine).unwrap();
-    assert!(e.run(&["install", "--yes"], b"").status.success());
+    assert!(e.run_clean(&["install", "--yes"]).status.success());
     std::fs::create_dir_all(e.home()).unwrap();
     std::fs::write(e.home().join("keep.txt"), "data").unwrap();
 
