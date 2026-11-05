@@ -113,6 +113,22 @@ gpt-6-luna through Copilot ("low" price tier; at most 1 request per call is infe
 Sol + Luna is level with or better than Sol twice on every rung and sure-answer measure (job and kind 1-3 points
 lower, within noise). The gains are small for 34 tasks, but all point the same way, and Luna is a lower price tier.
 
+## Sol + Astra (2026-11-05 15:44Z, measured; Imran approved the cost)
+
+gpt-6-astra through Copilot ("very high" price tier; the real charge per call was not read), 3 answers per task,
+102 calls, 1,416 s, p50 13.3 s, no failed calls.
+
+| Measure | Sol twice | Astra once | Sol + Astra | Sol + Luna |
+|---|---|---|---|---|
+| Rung exact | 65.6% | 67.7% | 65.6% | 68.4% |
+| Rung too high | 15.6% | 15.6% | 15.6% | 10.4% |
+| Shown as sure and right | 61.8% | 63.7% | 60.8% | 62.1% |
+| Shown as sure but wrong | 30.4% | 30.4% | 31.4% | 29.1% |
+| Job right | 98.0% | 100.0% | 98.0% | 97.1% |
+| Kind right | 94.8% | 97.9% | 94.8% | 91.7% |
+
+Astra answers almost exactly like Sol, so it adds nothing as a second call and costs more. Not adopted.
+
 ## Decision (2026-11-05 15:20Z, proposed)
 
 **Copilot tasks: first call gpt-6.1-sol, second call gpt-6-luna** (`analysis-copilot-second-model`, `same` = Sol
