@@ -89,12 +89,14 @@ try {
     if ($a.hits -match '/api/') { Fail "redirect: asked the API anyway: $($a.hits -join '; ')" }
     if (-not ($a.hits -contains 'HEAD /o/redirect/releases/latest')) { Fail "redirect: no HEAD of releases/latest: $($a.hits -join '; ')" }
     if ($a.log -notmatch 'AIQ-UPDATE-SOURCE: the redirect named v99\.0\.0') { Fail "redirect: log does not name the source" }
+    if ($a.state.source -ne 'redirect') { Fail "redirect: update.json source is '$($a.state.source)', want redirect" }
 
     $b = Run 'api'
     if ($b.code -ne 0) { Fail "api: exit $($b.code)" }
     if ($b.state.state -ne 'waiting' -or $b.state.available -ne 'v99.0.0' -or -not $b.staged) { Fail "api: $($b.state | ConvertTo-Json -Compress)" }
     if (-not ($b.hits -contains 'GET /api/repos/o/api/releases/latest')) { Fail "api: fallback not asked: $($b.hits -join '; ')" }
     if ($b.log -notmatch 'AIQ-UPDATE-REDIRECT') { Fail 'api: log does not say why it fell back' }
+    if ($b.state.source -ne 'api') { Fail "api: update.json source is '$($b.state.source)', want api" }
 
     $c = Run 'limited'
     if ($c.code -ne 1) { Fail "limited: exit $($c.code), want 1" }

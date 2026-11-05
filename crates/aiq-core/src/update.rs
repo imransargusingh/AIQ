@@ -1,7 +1,7 @@
 //! Auto-update (design `docs/design/auto-update.md`). One mechanism: the installed `upgrade.ps1` does the
 //! network call, the checksum and the swap; this module decides *when*, starts it, and reads back its outcome
 //! (`update.json`) for `aiq update` and AIQ home. The core's kicker asks once an hour; a check runs once a day,
-//! or hourly after one failed or while AIQ home is open (`home_check_due`); a waiting update is applied only under "Update automatically", and only when AIQ is idle (the script
+//! hourly after one failed, or every 15 minutes while AIQ home is open (`home_check_due`); a waiting update is applied only under "Update automatically", and only when AIQ is idle (the script
 //! decides idle, because only it sees the processes at the moment of the swap).
 use crate::paths::Paths;
 use crate::sysclock::parse_rfc3339_ms as parse_utc_ms;
@@ -18,8 +18,16 @@ pub const DEFAULT_MODE: &str = "auto";
 /// A check is due once this long has passed since the last successful one.
 pub const CHECK_EVERY_MS: i64 = 24 * 3600 * 1000;
 /// The hourly cadence: after a check that failed (no release yet, no network, a proxy), and while AIQ home is
-/// open. Five minutes under an hour, so an hourly timer that fires a little early still finds it due.
+/// open when the last check had to use api.github.com. Five minutes under an hour, so an hourly timer that fires
+/// a little early still finds it due.
 pub const HOURLY_MS: i64 = 55 * 60 * 1000;
+/// While AIQ home is open it checks this often (Imran, 2026-11-05: 0.1.8 went live just after an 18:02Z check
+/// and Home showed it at 18:58Z). Home asks every minute; this bar keeps it to one check per 15 minutes. A check
+/// is one HEAD of github.com/<repo>/releases/latest, which is not on GitHub's 60-an-hour API limit (measured
+/// 2026-11-05: 30 in a row all answered 302 with no rate-limit headers). Only when the last check had to use the
+/// API (`source` = "api") does Home fall back to HOURLY_MS, so a shared office address spends at most one API
+/// call an hour per person.
+pub const HOME_EVERY_MS: i64 = 15 * 60 * 1000;
 /// When AIQ home opens it checks if the last check is this old (Imran, 2026-11-04: 0.1.3 was out at 14:33Z and a
 /// Home opened after a 14:17Z check would not have seen it until ~15:12Z). The hourly timer and focus keep HOURLY_MS.
 pub const HOME_OPEN_MS: i64 = 10 * 60 * 1000;
@@ -62,6 +70,9 @@ pub struct State {
     /// After a check GitHub's API refused for its rate limit (403/429): when the limit resets. The next check
     /// waits for it rather than the hour (2026-11-04: a shared office address had used all 60 calls).
     pub retry_at: Option<String>,
+    /// Which source answered the last good check: "redirect" (github.com, no API limit) or "api". Missing (a
+    /// script before 0.1.9, or the test feed) reads as the redirect, the source every release so far used.
+    pub source: Option<String>,
 }
 
 pub fn state_path(paths: &Paths) -> PathBuf {
@@ -135,7 +146,7 @@ pub fn decide(now_ms: i64, st: &State, mode: Option<&str>) -> Option<Action> {
     }
 }
 
-/// A check is due `every` after the last one, or an hour after one that failed (a 404 before the first release
+/// A check is due `every` after the last one, or about an hour after one that failed (a 404 before the first release
 /// is published made the laptop wait a full day on 2026-11-03). After a rate-limited one it is due when the limit
 /// resets (`retry_at`, at most a day on). Never checked, or an unreadable time: due.
 fn check_due(now_ms: i64, st: &State, every: i64) -> bool {
@@ -145,7 +156,7 @@ fn check_due(now_ms: i64, st: &State, every: i64) -> bool {
     }
     match retry_at_ms(st) {
         Some(r) => now_ms >= r.min(t + CHECK_EVERY_MS),
-        None => now_ms - t >= every.min(HOURLY_MS),
+        None => now_ms - t >= HOURLY_MS,
     }
 }
 
@@ -162,20 +173,22 @@ fn kick_sleep(now_ms: i64, st: &State) -> Duration {
     }
 }
 
-/// AIQ home asks this when it opens and every hour while open, then starts a check (download, no install) when
-/// it says so: a person who keeps Home open sees a new release within the hour and can Install now, instead of
-/// waiting for the daily check. Not with updates off, and not while an update already waits (that would only
-/// download it again).
+/// AIQ home asks this every minute while open, then starts a check (download, no install) when it says so: a
+/// person who keeps Home open sees a new release within about 15 minutes and can Install now, instead of waiting
+/// for the daily check. Not with updates off, and not while an update already waits (that would only download
+/// it again).
 pub fn home_check_due(now_ms: i64, st: &State, mode: Option<&str>) -> bool {
-    home_due(now_ms, st, mode, HOURLY_MS)
+    home_due(now_ms, st, mode, HOME_EVERY_MS)
 }
 
-/// As `home_check_due`, for the moment AIQ home opens: due 10 minutes after the last check, not 55.
+/// As `home_check_due`, for the moment AIQ home opens: due 10 minutes after the last check, not 15.
 pub fn home_open_check_due(now_ms: i64, st: &State, mode: Option<&str>) -> bool {
     home_due(now_ms, st, mode, HOME_OPEN_MS)
 }
 
+/// After a check that needed api.github.com, Home waits the hour so it never spends the shared API limit faster.
 fn home_due(now_ms: i64, st: &State, mode: Option<&str>, every: i64) -> bool {
+    let every = if st.source.as_deref() == Some("api") { HOURLY_MS } else { every };
     mode != Some("off") && st.state.as_deref() != Some("waiting") && check_due(now_ms, st, every)
 }
 
@@ -428,19 +441,47 @@ mod tests {
     }
 
     #[test]
-    fn home_checks_hourly_while_open_but_never_with_updates_off_or_one_waiting() {
+    fn home_checks_every_15_minutes_while_open_but_never_with_updates_off_or_one_waiting() {
         assert!(home_check_due(t0(), &State::default(), None), "never checked");
         let ok = st(Some("current"), Some(T0));
-        assert!(!home_check_due(t0() + HOURLY_MS - 1, &ok, None));
-        assert!(home_check_due(t0() + HOURLY_MS, &ok, None));
-        assert!(home_check_due(t0() + HOURLY_MS, &ok, Some("ask")));
+        assert!(!home_check_due(t0() + HOME_EVERY_MS - 1, &ok, None));
+        assert!(home_check_due(t0() + HOME_EVERY_MS, &ok, None));
+        assert!(home_check_due(t0() + HOME_EVERY_MS, &ok, Some("ask")));
         assert!(!home_check_due(t0() + HOURLY_MS, &ok, Some("off")));
+        let redirect = State { source: Some("redirect".into()), ..ok.clone() };
+        assert!(home_check_due(t0() + HOME_EVERY_MS, &redirect, None));
         assert!(!home_check_due(t0() + CHECK_EVERY_MS, &st(Some("waiting"), Some(T0)), None));
         // On open: 10 minutes, not 55; still never with updates off or while one waits.
         assert!(!home_open_check_due(t0() + HOME_OPEN_MS - 1, &ok, None));
         assert!(home_open_check_due(t0() + HOME_OPEN_MS, &ok, None));
         assert!(!home_open_check_due(t0() + HOURLY_MS, &ok, Some("off")));
         assert!(!home_open_check_due(t0() + CHECK_EVERY_MS, &st(Some("waiting"), Some(T0)), None));
+    }
+
+    #[test]
+    fn home_keeps_the_hour_after_an_api_check_or_a_failed_one_so_a_shared_address_keeps_its_api_limit() {
+        let api = State { source: Some("api".into()), ..st(Some("current"), Some(T0)) };
+        assert!(!home_check_due(t0() + HOME_EVERY_MS, &api, None));
+        assert!(!home_open_check_due(t0() + HOME_OPEN_MS, &api, None));
+        assert!(home_check_due(t0() + HOURLY_MS, &api, None));
+        let failed = State { check_error: Some("404".into()), ..st(Some("current"), Some(T0)) };
+        assert!(!home_check_due(t0() + HOME_EVERY_MS, &failed, None));
+        assert!(!home_open_check_due(t0() + HOME_OPEN_MS, &failed, None));
+        assert!(home_check_due(t0() + HOURLY_MS, &failed, None));
+        // Home's one-minute ask: at most 4 checks an hour after redirect checks, 1 after API checks.
+        let checks = |mut s: State| {
+            let mut n = 0;
+            for m in 1..=60 {
+                let now = t0() + m * 60_000;
+                if home_check_due(now, &s, None) {
+                    n += 1;
+                    s.checked_at = Some(crate::sysclock::format_rfc3339_ms(now));
+                }
+            }
+            n
+        };
+        assert_eq!(checks(st(Some("current"), Some(T0))), 4);
+        assert_eq!(checks(api), 1);
     }
 
     #[test]

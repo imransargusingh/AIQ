@@ -25,6 +25,8 @@
 # newest tag) and that release's download URLs. Neither counts against GitHub's API limit of 60 calls an hour per
 # address, which a shared office address used up on 2026-11-04 (403). api.github.com is asked only when the
 # redirect gives no tag; when it refuses for its limit, update.json gets retry_at (when the limit resets).
+# update.json's `source` names which one answered the last good check (redirect or api): AIQ home checks every
+# 15 minutes only after the redirect answered, hourly after the API did, so it asks the API at most once an hour.
 [CmdletBinding()]
 param(
     [switch]$Rollback,
@@ -282,10 +284,10 @@ if ($Check -or $Apply) {
         if (-not $newV -or ($haveV -and $newV -le $haveV)) {
             Remove-Item -Recurse -Force $stage -ErrorAction SilentlyContinue
             $keep = if ($st.state -in 'applied', 'rolled_back', 'failed') { $st.state } else { 'current' }
-            Write-State @{ checked_at = (Now-Utc); installed = $have; latest = $rel.tag; state = $keep; check_error = $null; retry_at = $null; available = $null; staged = $null; blocked = $null }
+            Write-State @{ checked_at = (Now-Utc); installed = $have; latest = $rel.tag; source = $rel.via; state = $keep; check_error = $null; retry_at = $null; available = $null; staged = $null; blocked = $null }
             Log "AIQ $have is up to date (newest release $($rel.tag))."
         } elseif ($rel.tag -eq $st.skip) {
-            Write-State @{ checked_at = (Now-Utc); installed = $have; latest = $rel.tag; check_error = $null; retry_at = $null }
+            Write-State @{ checked_at = (Now-Utc); installed = $have; latest = $rel.tag; source = $rel.via; check_error = $null; retry_at = $null }
             Log "Release $($rel.tag) is the one you rolled back from. AIQ won't install it by itself."
         } else {
             Remove-Item -Recurse -Force $stage -ErrorAction SilentlyContinue
@@ -307,7 +309,7 @@ if ($Check -or $Apply) {
                 Log "AIQ-UPGRADE-CHECKSUM: $($rel.zipName) does not match SHA256SUMS. Deleted; nothing changed."
                 exit 1
             }
-            Write-State @{ checked_at = (Now-Utc); installed = $have; latest = $rel.tag; state = 'waiting'; available = $rel.tag; staged = $rel.zipName; check_error = $null; retry_at = $null; message = $null }
+            Write-State @{ checked_at = (Now-Utc); installed = $have; latest = $rel.tag; source = $rel.via; state = 'waiting'; available = $rel.tag; staged = $rel.zipName; check_error = $null; retry_at = $null; message = $null }
             Log "AIQ $($rel.tag) downloaded and checked. It installs when AIQ is idle."
         }
     }
