@@ -491,28 +491,43 @@ pub fn replay(replay_json: &str) -> Result<(Value, Vec<CaseResult>), String> {
 
 /// One call vs two calls per task, scored on recorded answers (design one-call-analysis). Each policy is
 /// scored over every way to pick its answers from a case's n recorded ones (n picks for one call, n(n-1)
-/// ordered pairs for two), through today's placement, so the two columns read the same answers.
-pub fn compare_calls(rec: &Value) -> Result<String, String> {
+/// ordered pairs for two), through today's placement, so the columns read the same answers. With `other`
+/// (answers from a second model) two more columns: that model alone, and one answer from each.
+pub fn compare_calls(rec: &Value, other: Option<&Value>) -> Result<String, String> {
     let g = golden();
-    let mut cols: Vec<BTreeMap<&'static str, Count>> = Vec::new();
-    for calls in [1usize, 2] {
-        let mut t: BTreeMap<&'static str, Count> = BTreeMap::new();
-        let mut add = |k: &'static str, v: Option<bool>| t.entry(k).or_default().add(v);
-        for c in &g.cases {
-            let a = rec["answers"][&c.id].as_array().ok_or_else(|| format!("no recorded answers for {}", c.id))?;
-            let n = a.len();
-            if n < 2 {
-                return Err(format!("{} has {n} recorded answer(s); comparing needs 2 or more (--runs)", c.id));
-            }
-            let picks: Vec<Vec<Value>> = if calls == 1 {
-                a.iter().map(|x| vec![x.clone()]).collect()
-            } else {
-                (0..n)
-                    .flat_map(|i| (0..n).filter(move |j| *j != i).map(move |j| vec![a[i].clone(), a[j].clone()]))
-                    .collect()
-            };
-            for s in &picks {
-                let r = score_case_with(c, s, calls);
+    let answers = |r: &Value, id: &str| -> Result<Vec<Value>, String> {
+        let a = r["answers"][id].as_array().ok_or_else(|| format!("no recorded answers for {id}"))?;
+        if a.len() < 2 {
+            return Err(format!("{id} has {} recorded answer(s); comparing needs 2 or more (--runs)", a.len()));
+        }
+        Ok(a.clone())
+    };
+    let name = |r: &Value| r["model"].as_str().unwrap_or("?").to_owned();
+    let mut heads = vec!["1 call A", "2 calls A+A"];
+    let mut models = format!("A = {}", name(rec));
+    if let Some(o) = other {
+        heads.extend(["1 call B", "2 calls A+B"]);
+        models.push_str(&format!(", B = {}", name(o)));
+    }
+    let mut cols: Vec<BTreeMap<&'static str, Count>> = vec![BTreeMap::new(); heads.len()];
+    for c in &g.cases {
+        let a = answers(rec, &c.id)?;
+        let b = other.map(|o| answers(o, &c.id)).transpose()?;
+        let singles = |x: &[Value]| x.iter().map(|v| vec![v.clone()]).collect::<Vec<_>>();
+        let pairs = |x: &[Value]| {
+            (0..x.len())
+                .flat_map(|i| (0..x.len()).filter(move |j| *j != i).map(move |j| vec![x[i].clone(), x[j].clone()]))
+                .collect::<Vec<_>>()
+        };
+        let mut sets = vec![singles(&a), pairs(&a)];
+        if let Some(b) = &b {
+            sets.push(singles(b));
+            sets.push(a.iter().flat_map(|x| b.iter().map(move |y| vec![x.clone(), y.clone()])).collect());
+        }
+        for (t, picks) in cols.iter_mut().zip(&sets) {
+            let mut add = |k: &'static str, v: Option<bool>| t.entry(k).or_default().add(v);
+            for s in picks {
+                let r = score_case_with(c, s, s.len());
                 let Some(p) = &r.placed else {
                     add("answered", Some(false));
                     continue;
@@ -525,12 +540,13 @@ pub fn compare_calls(rec: &Value) -> Result<String, String> {
                 add("resisted", r.resisted);
                 add("rung_higher", c.expect.rung.as_ref().map(|x| x.iter().all(|e| p.rung > *e)));
                 add("not_sure", Some(p.state == "uncertain"));
-                // Shown as a sure answer but the job or the rung is wrong: the error a person would act on.
+                // Shown as a sure answer: the result a person would act on, right or wrong.
                 let sure = p.state != "uncertain" && (p.job != "other" || c.expect.job.iter().any(|j| j == "other"));
-                add("sure_and_wrong", Some(sure && (r.job_ok == Some(false) || r.rung_exact == Some(false))));
+                let wrong = r.job_ok == Some(false) || r.rung_exact == Some(false);
+                add("sure_and_wrong", Some(sure && wrong));
+                add("sure_and_right", Some(sure && !wrong));
             }
         }
-        cols.push(t);
     }
     let rows = [
         ("job", "Job right"),
@@ -538,6 +554,7 @@ pub fn compare_calls(rec: &Value) -> Result<String, String> {
         ("rung_exact", "Rung exact"),
         ("rung_within_one", "Rung within one"),
         ("rung_higher", "Rung too high"),
+        ("sure_and_right", "Shown as sure and right"),
         ("sure_and_wrong", "Shown as sure but wrong"),
         ("not_sure", "Marked not sure"),
         ("resisted", "Injection resisted"),
@@ -551,17 +568,21 @@ pub fn compare_calls(rec: &Value) -> Result<String, String> {
         }
     };
     let mut out = format!(
-        "One call vs two calls per task: {} answers per case, {} {}\n\n{:<26}{:<22}{}\n",
+        "One call vs two calls per task: {} answers per case, {} ({models})\n\n{:<26}",
         rec["runs"],
         rec["provider"].as_str().unwrap_or("?"),
-        rec["model"].as_str().unwrap_or(""),
-        "",
-        "1 call",
-        "2 calls"
+        ""
     );
+    for h in &heads {
+        out.push_str(&format!("{h:<24}"));
+    }
+    out.push('\n');
     for (k, label) in rows {
-        let get = |i: usize| cols[i].get(k).copied().unwrap_or_default();
-        out.push_str(&format!("{label:<26}{:<22}{}\n", pct(get(0)), pct(get(1))));
+        out.push_str(&format!("{label:<26}"));
+        for col in &cols {
+            out.push_str(&format!("{:<24}", pct(col.get(k).copied().unwrap_or_default())));
+        }
+        out.push('\n');
     }
     Ok(out)
 }
@@ -807,7 +828,25 @@ pub fn cli(args: &[&str], paths: &Paths) -> ExitCode {
             },
             None => REPLAY.to_owned(),
         };
-        return match serde_json::from_str(&src).map_err(|e| e.to_string()).and_then(|v| compare_calls(&v)) {
+        // `--with <file>`: answers from a second model, scored alone and paired one-each with the first.
+        let other = match arg(args, "--with").map(|f| std::fs::read_to_string(f).map_err(|e| format!("{f}: {e}"))) {
+            Some(Ok(t)) => match serde_json::from_str::<Value>(&t) {
+                Ok(v) => Some(v),
+                Err(e) => {
+                    eprintln!("--with: {e}");
+                    return ExitCode::from(1);
+                }
+            },
+            Some(Err(e)) => {
+                eprintln!("{e}");
+                return ExitCode::from(1);
+            }
+            None => None,
+        };
+        return match serde_json::from_str(&src)
+            .map_err(|e| e.to_string())
+            .and_then(|v| compare_calls(&v, other.as_ref()))
+        {
             Ok(t) => {
                 print!("{t}");
                 ExitCode::SUCCESS
@@ -1066,7 +1105,7 @@ mod tests {
     #[test]
     fn compare_calls_scores_the_same_answers_both_ways() {
         let rec: Value = serde_json::from_str(REPLAY).unwrap();
-        let t = compare_calls(&rec).unwrap();
+        let t = compare_calls(&rec, None).unwrap();
         println!("{t}");
         let row =
             |label: &str| t.lines().find(|l| l.starts_with(label)).unwrap_or_else(|| panic!("{label}: {t}")).to_owned();
@@ -1074,6 +1113,12 @@ mod tests {
         assert!(row("Answered").matches("100.0%").count() == 2, "{t}");
         assert!(row("Injection resisted").matches("100.0%").count() == 2, "{t}");
         let one = json!({"runs": 1, "answers": {"h01": [rec["answers"]["h01"][0]]}});
-        assert!(compare_calls(&one).unwrap_err().contains("2 or more"));
+        assert!(compare_calls(&one, None).unwrap_err().contains("2 or more"));
+        // A second model's columns: alone, and one answer from each. Same answers both sides = same scores.
+        let t2 = compare_calls(&rec, Some(&rec)).unwrap();
+        let exact = t2.lines().find(|l| l.starts_with("Rung exact")).unwrap().to_owned();
+        let cells: Vec<&str> = exact.split("  ").map(str::trim).filter(|c| c.contains('%')).collect();
+        assert_eq!(cells.len(), 4, "{t2}");
+        assert_eq!(cells[0].split(' ').next(), cells[2].split(' ').next(), "{t2}");
     }
 }

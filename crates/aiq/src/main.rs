@@ -74,8 +74,9 @@ Usage:
                                       n runs each (default 2): accuracy and whether runs agree (no data of yours)
   aiq analyze --eval --replay           The same score from answers recorded in the repo (free, no model call)
   aiq analyze --eval-report             The latest eval again, and what moved since the one before
-  aiq analyze --eval --compare-calls [file]  One call vs two calls per task, scored on recorded answers
-                                      (a file from --eval --runs n --record <file>; free, no model call)
+  aiq analyze --eval --compare-calls [file] [--with file2]  One call vs two calls per task, scored on
+                                      recorded answers (files from --eval --runs n --record <file>; free).
+                                      --with: a second model's answers, alone and paired one each
   aiq config set analysis <auto|off>     Analyze new tasks in the background (aiq install turns it on)
   aiq config set analysis-daily-tasks <n>  Most tasks analyzed per day (0-500, default 50)
   aiq config set analysis-copilot-sessions <delete|keep>  Delete AIQ's own Copilot analysis sessions (default)
