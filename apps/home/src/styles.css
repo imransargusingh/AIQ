@@ -507,3 +507,14 @@ main:has(.secnav){scroll-padding-top:56px}
 .an-sofar{display:flex;flex-direction:column;gap:var(--s2)}
 .rmix.sm{height:18px}
 .rmix.sm span{font-size:11px}
+
+/* Habits by rung (Imran 2026-11-05, option B): a section per rung with its swatch, meaning and an adopted bar. */
+.hb-rh{display:flex;align-items:center;gap:var(--s2)}
+.hb-prog{display:inline-grid;grid-template-columns:140px auto;gap:var(--s2);align-items:center}
+.hb-prog .meter i.rg-1{background:var(--rung-1)}.hb-prog .meter i.rg-2{background:var(--rung-2)}.hb-prog .meter i.rg-3{background:var(--rung-3)}
+.hb-prog .meter i.rg-4{background:var(--rung-4)}.hb-prog .meter i.rg-5{background:var(--rung-5)}
+.hb-means{margin:calc(-1 * var(--s2)) 0 0}
+.hb-state{font-weight:600}
+.hb-adopted{color:var(--success)} .hb-tried{color:var(--primary)} .hb-not_yet{color:var(--ink-mute)}
+.rmark{display:inline-flex;align-items:center;gap:var(--s2);font:var(--t-caption);font-weight:600;white-space:nowrap}
+@media (forced-colors:active){.hb-prog .meter i{forced-color-adjust:none;background:CanvasText}.gd-r{border:1px solid CanvasText}}

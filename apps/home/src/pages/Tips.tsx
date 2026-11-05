@@ -1,19 +1,20 @@
-// Habits and tips (spec US-H5; UI review 2026-11-04, item 6). Habits are replayed from judged tasks with
-// coaching-loop D5 (design coaching-from-rungs D7), never stored and never self-reported. They are grouped by
-// state, so what you're trying now comes first, with a bar for "seen in n of m". Tip history folds a tip shown
-// more than once into one row, and says what happened after a next-step tip: whether its habit showed in the
-// first judged tasks after it where it fits. States carry words, not colour alone.
+// Habits and tips (spec US-H5; UI review 2026-11-04, item 6; Imran 2026-11-05, option B). Habits are replayed from
+// judged tasks with coaching-loop D5 (design coaching-from-rungs D7), never stored and never self-reported. They are
+// grouped by the rung each one helps you reach (the pack move's step + 1, read from the rung guide), with how many of
+// that rung's habits you've adopted; inside a rung what you're trying comes first. Tip history folds a tip shown more
+// than once into one row, names the rung of a next-step tip, and says what happened after it: whether its habit
+// showed in the first judged tasks after it where it fits. Rungs and states carry words, not colour alone.
 import { useState } from "react";
 import { api } from "../api";
-import { day, jobName, plural, sentence, toolName, when } from "../format";
-import type { HabitRow, TipRow } from "../types";
+import { RUNGS, day, jobName, plural, sentence, toolName, when } from "../format";
+import type { GuideMove, HabitRow, TipRow } from "../types";
 import { Banners, Chip, Title, type Ctx } from "../ui";
 
 /** A habit's move shows its date for the habit window (14 days). */
 const RECENT_MS = 14 * 86_400_000;
 
 /** One habit as shown: rows with the same name and state across jobs are one line, their counts added. */
-interface Habit {
+export interface Habit {
   key: string;
   name: string;
   state: HabitRow["state"];
@@ -23,10 +24,30 @@ interface Habit {
   moved: HabitRow | null;
 }
 
-function habitsByState(rows: HabitRow[]): Record<HabitRow["state"], Habit[]> {
-  const out: Record<HabitRow["state"], Habit[]> = { tried: [], adopted: [], not_yet: [] };
+/** The habits that help you reach one rung; `rung` is null for a move the guide doesn't know (shown last). */
+export interface RungGroup {
+  rung: number | null;
+  habits: Habit[];
+  adopted: number;
+}
+
+const STATE_ORDER: HabitRow["state"][] = ["tried", "adopted", "not_yet"];
+const STATE_WORD: Record<HabitRow["state"], string> = { tried: "Trying", adopted: "Adopted", not_yet: "Not yet" };
+
+/** The rung a move helps you reach: its guide step (the rung it climbs from) + 1, or null when the guide lacks it. */
+export const reaches = (guide: GuideMove[], moveId: string): number | null => {
+  const m = guide.find((g) => g.move_id === moveId);
+  return m ? m.step + 1 : null;
+};
+
+/** Habits grouped by the rung they help you reach, lowest rung first; trying, then adopted, then not yet inside. */
+export function habitsByRung(rows: HabitRow[], guide: GuideMove[]): RungGroup[] {
+  const groups = new Map<number | null, Habit[]>();
   for (const h of rows) {
-    const same = out[h.state].find((x) => x.name === h.name);
+    const r = reaches(guide, h.move_id);
+    const list = groups.get(r) ?? [];
+    groups.set(r, list);
+    const same = list.find((x) => x.name === h.name && x.state === h.state);
     const moved = h.moved_to && h.moved_ms != null ? h : null;
     if (same) {
       same.jobs.push(h.job);
@@ -34,10 +55,15 @@ function habitsByState(rows: HabitRow[]): Record<HabitRow["state"], Habit[]> {
       same.eligible += h.eligible;
       if (moved && (!same.moved || moved.moved_ms! > same.moved.moved_ms!)) same.moved = moved;
     } else {
-      out[h.state].push({ key: `${h.job}/${h.move_id}`, name: h.name, state: h.state, jobs: [h.job], seen: h.seen, eligible: h.eligible, moved });
+      list.push({ key: `${h.job}/${h.move_id}/${h.state}`, name: h.name, state: h.state, jobs: [h.job], seen: h.seen, eligible: h.eligible, moved });
     }
   }
-  return out;
+  return [...groups.entries()]
+    .sort(([a], [b]) => (a ?? 99) - (b ?? 99))
+    .map(([rung, hs]) => {
+      const habits = hs.map((h, i) => [h, i] as const).sort(([x, i], [y, j]) => STATE_ORDER.indexOf(x.state) - STATE_ORDER.indexOf(y.state) || i - j).map(([h]) => h);
+      return { rung, habits, adopted: habits.filter((h) => h.state === "adopted").length };
+    });
 }
 
 /** Tips with the same tip and wording, newest first; the newest delivery leads. */
@@ -50,16 +76,18 @@ function foldTips(tips: TipRow[]): TipRow[][] {
   return [...groups.values()];
 }
 
-const GROUPS: { state: HabitRow["state"]; title: string; note: string }[] = [
-  { state: "tried", title: "Trying now", note: "You've done these at least once. They count as adopted past half the tasks where they fit." },
-  { state: "adopted", title: "Adopted", note: "You do these in more than half the tasks where they fit." },
-  { state: "not_yet", title: "Not yet", note: "Not seen yet in a task where they fit." },
-];
+/** A rung as its numbered swatch (in the rung's colour) and its name; hovering says what the rung means. */
+const RungMark = ({ r }: { r: number }) => (
+  <span className="rmark" title={RUNGS[r - 1].means}>
+    <span className={`gd-r rg-${r}`} aria-hidden="true">{r}</span>
+    {RUNGS[r - 1].name}
+  </span>
+);
 
 export function Tips(ctx: Ctx) {
   const { snap, announce, refresh } = ctx;
   const c = snap.coaching;
-  const groups = habitsByState(c.habits);
+  const groups = habitsByRung(c.habits, snap.guide);
   const off = new Set(snap.settings.tips_off);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -87,7 +115,7 @@ export function Tips(ctx: Ctx) {
       <Banners {...ctx} />
       <header className="group">
         <Title>Habits and tips</Title>
-        <p className="mute">A habit counts as adopted when you do it in more than half of the tasks where it fits, over 14 days.</p>
+        <p className="mute">Habits by the rung they help you reach. A habit counts as adopted when you do it in more than half of the tasks where it fits, over 14 days.</p>
         {msg && <p className="errtext" role="alert">{msg}</p>}
       </header>
       {c.habits.length === 0 ? (
@@ -101,44 +129,57 @@ export function Tips(ctx: Ctx) {
           </div>
         </section>
       ) : (
-        GROUPS.filter((g) => groups[g.state].length > 0).map((g) => (
-          <section className="group" aria-labelledby={`hab-${g.state}`} key={g.state}>
-            <div className="head">
-              <h2 id={`hab-${g.state}`}>
-                {g.title} <span className="meta">{groups[g.state].length}</span>
-              </h2>
-              <span className="meta">{g.note}</span>
-            </div>
-            <ul className="habits" aria-label={g.title}>
-              {groups[g.state].map((h) => {
-                const moved = moveText(h);
-                return (
-                  <li key={h.key} className="hb">
-                    <span className="group" style={{ gap: "var(--s1)" }}>
-                      <b>{h.name}</b>
-                      <span className="meta">
-                        {h.jobs.map(jobName).join(", ")}
-                        {moved && <> · {moved}</>}
+        groups.map((g) => {
+          const id = `hab-r${g.rung ?? "x"}`;
+          const title = g.rung ? `${RUNGS[g.rung - 1].name} habits` : "Other habits";
+          return (
+            <section className="group" aria-labelledby={id} key={id}>
+              <div className="head">
+                <h2 id={id} className="hb-rh">
+                  {g.rung && <span className={`gd-r rg-${g.rung}`} aria-hidden="true">{g.rung}</span>}
+                  {title} <span className="meta">{g.habits.length}</span>
+                </h2>
+                <span className="hb-prog">
+                  <span className="meter" aria-hidden="true">
+                    <i className={g.rung ? `rg-${g.rung}` : undefined} style={{ width: `${(100 * g.adopted) / g.habits.length}%` }} />
+                  </span>
+                  <span className="meta">
+                    {g.adopted} of {g.habits.length} adopted
+                  </span>
+                </span>
+              </div>
+              {g.rung && <p className="meta hb-means">{RUNGS[g.rung - 1].means}</p>}
+              <ul className="habits" aria-label={title}>
+                {g.habits.map((h) => {
+                  const moved = moveText(h);
+                  return (
+                    <li key={h.key} className="hb">
+                      <span className="group" style={{ gap: "var(--s1)" }}>
+                        <b>{h.name}</b>
+                        <span className="meta">
+                          {h.jobs.map(jobName).join(", ")} · <span className={`hb-state hb-${h.state}`}>{STATE_WORD[h.state]}</span>
+                          {moved && <> · {moved}</>}
+                        </span>
                       </span>
-                    </span>
-                    {h.eligible > 0 ? (
-                      <>
-                        <span className="meter" aria-hidden="true">
-                          <i style={{ width: `${(100 * h.seen) / h.eligible}%` }} />
-                        </span>
-                        <span className="num">
-                          Seen in {h.seen} of {plural(h.eligible, "task")}
-                        </span>
-                      </>
-                    ) : (
-                      <span className="meta hb-none">No task where it fits in 14 days</span>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          </section>
-        ))
+                      {h.eligible > 0 ? (
+                        <>
+                          <span className="meter" aria-hidden="true">
+                            <i style={{ width: `${(100 * h.seen) / h.eligible}%` }} />
+                          </span>
+                          <span className="num">
+                            Seen in {h.seen} of {plural(h.eligible, "task")}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="meta hb-none">No task where it fits in 14 days</span>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          );
+        })
       )}
       {c.habits_imported && c.habits.length > 0 && <p className="meta">Includes tasks AIQ imported from your history.</p>}
       <p className="meta">
@@ -161,6 +202,7 @@ export function Tips(ctx: Ctx) {
               <thead>
                 <tr>
                   <th>When</th>
+                  <th>Rung</th>
                   <th>Tip</th>
                   <th>Where</th>
                   <th>After the tip</th>
@@ -174,6 +216,7 @@ export function Tips(ctx: Ctx) {
                   const t = g[0];
                   const tools = [...new Set(g.map((x) => toolName(x.tool)))];
                   const isOff = t.tip_id !== "" && off.has(t.tip_id);
+                  const rung = t.tip_id.startsWith("next_rung.") ? reaches(snap.guide, t.tip_id.slice("next_rung.".length)) : null;
                   return (
                     <tr key={t.card_id}>
                       <td className="num" style={{ whiteSpace: "nowrap" }}>
@@ -184,6 +227,7 @@ export function Tips(ctx: Ctx) {
                           </div>
                         )}
                       </td>
+                      <td>{rung ? <RungMark r={rung} /> : <span className="meta" title="This tip is about one task, not a rung's habit.">—</span>}</td>
                       <td>
                         <div className="group" style={{ gap: "var(--s1)" }}>
                           <span>
@@ -193,7 +237,7 @@ export function Tips(ctx: Ctx) {
                           <span className="meta">{g.some((x) => x.opened) ? "You opened it" : "Not opened"}</span>
                         </div>
                       </td>
-                      <td>{tools.join(", ")}</td>
+                      <td style={{ whiteSpace: "nowrap" }}>{tools.join(", ")}</td>
                       <td>
                         {!t.after ? (
                           <span className="meta" title="This tip is about one task, not a habit AIQ can follow.">No habit to follow</span>
@@ -205,7 +249,7 @@ export function Tips(ctx: Ctx) {
                           </Chip>
                         )}
                       </td>
-                      <td>
+                      <td style={{ whiteSpace: "nowrap" }}>
                         {t.tip_id !== "" && (
                           <button className="btnlink" disabled={!snap.status.core} onClick={() => toggle(t.tip_id, isOff)}>
                             {isOff ? "Turn back on" : "Stop tips like this"}

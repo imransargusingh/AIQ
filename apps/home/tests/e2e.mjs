@@ -1086,22 +1086,24 @@ await test("Tasks opens on kinds of task: rung today, could be, a week, the 14-d
   await f.context().close();
 });
 
-await test("Habits grouped by state with a bar; a habit two jobs share is one line; tips folded with what happened after (item 6)", async () => {
+await test("Habits grouped by the rung they help you reach, with an adopted bar; a habit two jobs share is one line; tips name their rung and fold with what happened after (item 6, option B)", async () => {
   const page = await open("coaching", { hash: "#tips" });
   const t = await page.locator("main").innerText();
-  // Groups in order, Trying now only when something is being tried.
+  // One section per rung a habit helps you reach, lowest first, each with what the rung means and how many are adopted.
   const heads = await page.locator("main h2").allInnerTexts();
-  assert.deepEqual(heads.map((h) => h.replace(/\s*\d+$/, "")), ["Adopted", "Not yet", "Tip history"]);
-  const adopted = await page.getByRole("list", { name: "Adopted" }).innerText();
-  assert.match(adopted, /Hand over the whole task with a done test\s+Code a change[\s\S]*?Seen in 6 of 6 tasks/);
-  const notYet = await page.getByRole("list", { name: "Not yet" }).innerText();
-  assert.match(notYet, /Give the agent a written brief or instructions file\s+Code a change, Write a spec or doc[\s\S]*?Seen in 0 of 9 tasks/, "one line for both jobs, counts added");
+  assert.deepEqual(heads.map((h) => h.replace(/\s+/g, " ").trim()), ["2 Directed habits 4", "3 Delegated habits 5", "4 Orchestrated habits 4", "Tip history"]);
+  assert.match(t, /Directed habits[\s\S]*?4 of 4 adopted\s+You give the agent a clear goal/);
+  assert.match(t, /Orchestrated habits[\s\S]*?0 of 4 adopted/);
+  const adopted = await page.getByRole("list", { name: "Delegated habits" }).innerText();
+  assert.match(adopted, /Hand over the whole task with a done test\s+Code a change · Adopted[\s\S]*?Seen in 6 of 6 tasks/);
+  const notYet = await page.getByRole("list", { name: "Orchestrated habits" }).innerText();
+  assert.match(notYet, /Give the agent a written brief or instructions file\s+Code a change, Write a spec or doc · Not yet[\s\S]*?Seen in 0 of 9 tasks/, "one line for both jobs, counts added");
   assert.equal(await page.locator(".banner.info").count(), 0, "no banners repeating the rows");
   assert.match(adopted, /Adopted \w{3} \d+ \w{3}/, "a recent move shows its date on the row");
   // Tip history: what happened after each next-step tip.
   const tips = await page.getByRole("table", { name: "Tip history" }).innerText();
-  assert.match(tips, /Check the diff or run the tests before using the result\.[\s\S]*Did it in 3 of the next 3 tasks/);
-  assert.match(tips, /Ask for the whole draft with what done means\.[\s\S]*Did it in 0 of the next 3 tasks/);
+  assert.match(tips, /2\s*Directed\s+This looks like a kind of task you repeat\.\s+Try this: Check the diff or run the tests before using the result\.[\s\S]*Did it in 3 of the next 3 tasks/);
+  assert.match(tips, /3\s*Delegated\s+This looks like a kind of task you repeat\.\s+Try this: Ask for the whole draft with what done means\.[\s\S]*Did it in 0 of the next 3 tasks/);
   assert.deepEqual(await axe(page), []);
   // Stop tips like this goes through the core.
   await page.getByRole("button", { name: "Stop tips like this" }).first().click();
@@ -1127,8 +1129,8 @@ await test("Habits grouped by state with a bar; a habit two jobs share is one li
       s.coaching.habits = [{ ...s.coaching.habits[0], state: "tried", moved_to: "tried", moved_ms: s.now_ms - 86_400_000, moved_back: true, seen: 1, eligible: 4 }];
     },
   });
-  const lt = await lapse.getByRole("list", { name: "Trying now" }).innerText();
-  assert.match(lt, /Back to trying since \w{3} \d+ \w{3}[\s\S]*Seen in 1 of 4 tasks/);
+  const lt = await lapse.getByRole("list", { name: "Directed habits" }).innerText();
+  assert.match(lt, /Trying · Back to trying since \w{3} \d+ \w{3}[\s\S]*Seen in 1 of 4 tasks/);
   await lapse.context().close();
   const empty = await open("empty", { hash: "#tips" });
   assert.match(await empty.locator("main").innerText(), /No habits to show yet\./);
