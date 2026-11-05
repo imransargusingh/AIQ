@@ -1,6 +1,7 @@
 name: release
 
-# Private-alpha design A1: one Windows zip (aiq.exe, aiq-home.exe, install.cmd, install.ps1, README.txt) plus SHA256SUMS.
+# Private-alpha design A1: one Windows zip (aiq.exe, aiq-home.exe, aiq.vsix, install.cmd, install.ps1, upgrade.ps1, README.txt)
+# plus SHA256SUMS. aiq.vsix is AIQ's VS Code extension; `aiq install` adds it when VS Code is installed.
 # A version tag v* builds it, smoke-tests install.ps1 on the runner, and attaches both files to a DRAFT
 # GitHub release: nothing is public until a person presses Publish. workflow_dispatch builds and tests the
 # zip as a workflow artifact only, or, with draft_release on, also a draft release v<version> targeting that commit
@@ -12,6 +13,8 @@ on:
     paths:
       - "packaging/**"
       - "crates/aiq/src/install.rs"
+      - "crates/aiq/src/install_vscode.rs"
+      - "extensions/vscode/**"
       - "crates/aiq-core/src/update.rs"
       - "crates/aiq-core/src/autostart.rs"
       - ".github/workflows/release.yml"
@@ -64,13 +67,18 @@ jobs:
         run: |
           npm ci
           npx tauri build --no-bundle -- --locked
+      - name: Build the VS Code extension (aiq.vsix)
+        working-directory: extensions/vscode
+        run: |
+          npm ci
+          npm run package
       - name: Zip and checksum
         shell: pwsh
         run: |
           $v = '${{ steps.version.outputs.version }}'
           $stage = Join-Path $env:RUNNER_TEMP "aiq-$v-windows-x64"
           New-Item -ItemType Directory -Force $stage | Out-Null
-          Copy-Item target/release/aiq.exe, apps/home/src-tauri/target/release/aiq-home.exe, packaging/windows/install.cmd, packaging/windows/install.ps1, packaging/windows/upgrade.ps1, packaging/windows/README.txt $stage
+          Copy-Item target/release/aiq.exe, apps/home/src-tauri/target/release/aiq-home.exe, extensions/vscode/aiq.vsix, packaging/windows/install.cmd, packaging/windows/install.ps1, packaging/windows/upgrade.ps1, packaging/windows/README.txt $stage
           New-Item -ItemType Directory -Force dist | Out-Null
           $zip = "dist/aiq-$v-windows-x64.zip"
           Compress-Archive -Path "$stage/*" -DestinationPath $zip
@@ -94,10 +102,10 @@ jobs:
           cmd /c (Join-Path $un 'install.cmd') -NoLaunch -AllowElevated
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $bin = Join-Path $env:USERPROFILE '.aiq\bin'
-          foreach ($f in 'aiq.exe', 'aiq-home.exe') { if (-not (Test-Path (Join-Path $bin $f))) { Write-Error "missing $f"; exit 1 } }
+          foreach ($f in 'aiq.exe', 'aiq-home.exe', 'aiq.vsix') { if (-not (Test-Path (Join-Path $bin $f))) { Write-Error "missing $f"; exit 1 } }
           if (-not ([Environment]::GetEnvironmentVariable('Path', 'User') -split ';' -contains $bin)) { Write-Error 'user PATH not set'; exit 1 }
           if (-not (Select-String -Quiet -Path (Join-Path $env:USERPROFILE '.aiq\upgrade-log.txt') -Pattern 'Z Installed AIQ ')) { Write-Error 'install wrote no upgrade-log line'; exit 1 }
-          foreach ($f in 'aiq.exe', 'aiq-home.exe', 'upgrade.ps1') { if (Get-Item (Join-Path $bin $f) -Stream Zone.Identifier -ErrorAction SilentlyContinue) { Write-Error "$f still marked as downloaded"; exit 1 } }
+          foreach ($f in 'aiq.exe', 'aiq-home.exe', 'upgrade.ps1', 'aiq.vsix') { if (Get-Item (Join-Path $bin $f) -Stream Zone.Identifier -ErrorAction SilentlyContinue) { Write-Error "$f still marked as downloaded"; exit 1 } }
           if (-not (Test-Path (Join-Path ([Environment]::GetFolderPath('Programs')) 'AIQ.lnk'))) { Write-Error 'no shortcut'; exit 1 }
           if (-not (Test-Path (Join-Path $env:USERPROFILE '.copilot\hooks\aiq.json'))) { Write-Error 'Copilot not connected'; exit 1 }
           & (Join-Path $bin 'aiq.exe') version

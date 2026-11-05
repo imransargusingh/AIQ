@@ -1,6 +1,6 @@
 // The bridge to the Tauri shell (apps/home/src-tauri). Eighteen commands; nothing else leaves the page.
 // Outside Tauri (the UI tests) a fixture stands in, set on window by the test before the page loads.
-import type { Outcome, Snapshot, TaskDetail } from "./types";
+import type { Outcome, Snapshot, TaskDetail, ToolFound } from "./types";
 
 export type SettingKey = "daily_cap" | "copilot_tip_stays" | "copilot_tip_in_chat" | "tip_popup" | "tip_highlight" | "live_trend" | "next_rung_tips" | "judge" | "judge_daily_tasks" | "copilot_mid_turn" | "agent_actions" | "update" | `keep_on.${string}` | `project_name.${string}`;
 /** The reasons the core accepts (crates/aiq-core/src/coaching.rs FLAG_REASONS). */
@@ -139,7 +139,8 @@ function fixture<T>(cmd: string, args: Record<string, unknown>): Promise<T> {
       if (!t || !t.hooked) out = { ok: false, message: "Not changed: AIQ isn't connected to that tool.", changed: [] };
       else {
         t.hooked = false;
-        out = { ok: true, changed: [t.tool === "copilot" ? "C:\\Users\\you\\.copilot\\hooks\\aiq.json" : "C:\\Users\\you\\.claude\\settings.json"] };
+        const file = { copilot: "C:\\Users\\you\\.copilot\\hooks\\aiq.json", "claude-code": "C:\\Users\\you\\.claude\\settings.json", vscode: "C:\\Users\\you\\.vscode\\extensions\\extensions.json" };
+        out = { ok: true, changed: [file[t.tool]] };
       }
       break;
     }
@@ -195,7 +196,7 @@ export const api = {
   /** Settings' per-tip switch: turn a tip off before it shows (same as "Don't show this again"). */
   tipOff: (tipId: string) => invoke<Outcome>("tip_off", { tipId }),
   /** Settings' Disconnect: `aiq uninstall <tool> --yes`, which restores the tool's settings from AIQ's backup. */
-  disconnectTool: (tool: "claude-code" | "copilot") => invoke<{ ok: boolean; message?: string; changed: string[] }>("disconnect_tool", { tool }),
+  disconnectTool: (tool: ToolFound["tool"]) => invoke<{ ok: boolean; message?: string; changed: string[] }>("disconnect_tool", { tool }),
   /** Home's Include: AIQ watches a folder it set aside as automated again. */
   includeFolder: (folder: string) => invoke<Outcome>("include_folder", { folder }),
   /** What judging would send for the next task (`aiq judge --dry-run`). Nothing is sent. */

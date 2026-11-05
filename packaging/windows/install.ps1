@@ -5,11 +5,12 @@
 #   powershell -ExecutionPolicy Bypass -File .\install.ps1 -NoLaunch  same, without starting import or AIQ home
 #
 # What it does, in order, printing each change:
-#   1. copies aiq.exe and aiq-home.exe to %USERPROFILE%\.aiq\bin (keeps any old copy as .old), and upgrade.ps1
+#   1. copies aiq.exe and aiq-home.exe to %USERPROFILE%\.aiq\bin (keeps any old copy as .old), upgrade.ps1, and
+#      aiq.vsix (AIQ's VS Code extension, which step 5 adds to VS Code when it is installed)
 #   2. adds that folder to your user PATH (not the machine PATH)
 #   3. adds an "AIQ" Start menu shortcut for AIQ home
 #   4. records 2 and 3 in %USERPROFILE%\.aiq\windows-install.json, so `aiq uninstall --all` can put them back
-#   5. runs `aiq install --yes`: connects every AI tool it finds (Copilot, Claude Code), lists each file changed,
+#   5. runs `aiq install --yes`: connects every AI tool it finds (Copilot, Claude Code, VS Code), lists each file changed,
 #      and turns background judging on unless the person turned it off (undo: aiq config set judge off)
 #   6. starts `aiq import` in the background and opens AIQ home
 # Undo: aiq uninstall --all (your data stays; aiq forget --all deletes it).
@@ -75,17 +76,19 @@ if ([version]::TryParse($ver, [ref]$installedV) -and (Test-Path $stateFile)) {
         Write-Host "Could not read $stateFile ($($_.Exception.Message)); left as it is."
     }
 }
-$up = Join-Path $src 'upgrade.ps1'
-if (Test-Path $up) {
-    Copy-Item -Force $up (Join-Path $bin 'upgrade.ps1')
-    Write-Host "Copied: $(Join-Path $bin 'upgrade.ps1')"
+foreach ($f in 'upgrade.ps1', 'aiq.vsix') {
+    $from = Join-Path $src $f
+    if (Test-Path $from) {
+        Copy-Item -Force $from (Join-Path $bin $f)
+        Write-Host "Copied: $(Join-Path $bin $f)"
+    }
 }
 # Copies keep the zip's "downloaded from the internet" mark. Running install.cmd was the person's yes, so take
 # the mark off the installed files: otherwise Windows can stop every later launch of AIQ home (Start menu,
 # update relaunch) on an "Open File - Security Warning" prompt, and a hidden launch would wait on it forever
 # (CI runner, 2026-11-03, measured: with the mark kept, the auto-update step hung 35 min where it starts
 # aiq-home.exe; that the prompt caused it is Inferred, and this smoke test now proves the fix or not).
-Get-ChildItem -File $bin | Where-Object { $_.Name -in 'aiq.exe', 'aiq-home.exe', 'upgrade.ps1' } | Unblock-File
+Get-ChildItem -File $bin | Where-Object { $_.Name -in 'aiq.exe', 'aiq-home.exe', 'upgrade.ps1', 'aiq.vsix' } | Unblock-File
 
 # 2. User PATH. SetEnvironmentVariable at User scope writes HKCU\Environment and tells running programs.
 $record = @{ path_added = $false; shortcut = $null }

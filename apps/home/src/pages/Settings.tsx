@@ -93,8 +93,8 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
     setPreviewing(false);
   };
   const [changedFiles, setChangedFiles] = useState<string[]>([]);
-  const TOOL_NAME = { "claude-code": "Claude Code", copilot: "GitHub Copilot" } as const;
-  const disconnect = async (tool: "claude-code" | "copilot") => {
+  const TOOL_NAME = { "claude-code": "Claude Code", copilot: "GitHub Copilot", vscode: "VS Code" } as const;
+  const disconnect = async (tool: keyof typeof TOOL_NAME) => {
     const r = await api.disconnectTool(tool);
     setChangedFiles(r.changed);
     const m = r.ok ? `Disconnected ${TOOL_NAME[tool]}. AIQ no longer sees its prompts.` : (r.message ?? "AIQ couldn't disconnect it.");
@@ -506,7 +506,14 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
           {snap.setup.tools.filter((t) => t.present || t.hooked).map((t) => (
             <li className="row" key={t.tool} style={{ justifyContent: "space-between" }}>
               <span>
-                <b>{TOOL_NAME[t.tool]}</b> · {!t.present ? "not installed, AIQ's hooks still in its settings" : t.hooked ? "connected" : "not connected"}
+                <b>{TOOL_NAME[t.tool]}</b> ·{" "}
+                {!t.present
+                  ? t.tool === "vscode"
+                    ? "VS Code's code command not found, AIQ's extension still installed"
+                    : "not installed, AIQ's hooks still in its settings"
+                  : t.hooked
+                    ? "connected"
+                    : "not connected"}
               </span>
               {t.hooked && (
                 <button className="btn" onClick={() => disconnect(t.tool)} aria-label={`Disconnect ${TOOL_NAME[t.tool]}`}>
@@ -525,7 +532,7 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
             ))}
           </ul>
         )}
-        <p className="mute">Disconnect puts the tool's settings back as they were. Run setup again to connect a tool, or go through the privacy and tips steps again.</p>
+        <p className="mute">Disconnect puts the tool's settings back as they were (for VS Code, it removes AIQ's extension). Run setup again to connect a tool, or go through the privacy and tips steps again.</p>
         <div className="row" style={{ justifyContent: "space-between" }}>
           <span id="sk">Single-key shortcuts: G then a letter to go, P to pause, J and K in tables</span>
           <button className="switch" role="switch" aria-checked={singleKeys} aria-labelledby="sk" onClick={() => setSingleKeys(!singleKeys)} />

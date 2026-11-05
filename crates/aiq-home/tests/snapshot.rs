@@ -276,7 +276,7 @@ fn setup_done_follows_the_flag() {
     aiq_core::control::finish_setup(&p).unwrap();
     let s = snap(&p);
     assert!(s.setup.done);
-    assert_eq!(s.setup.tools.iter().map(|t| t.tool).collect::<Vec<_>>(), vec!["claude-code", "copilot"]);
+    assert_eq!(s.setup.tools.iter().map(|t| t.tool).collect::<Vec<_>>(), vec!["claude-code", "copilot", "vscode"]);
 }
 
 #[test]

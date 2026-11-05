@@ -31,11 +31,19 @@ impl Env {
         self.dir.path().join("copilot")
     }
     fn cmd(&self, args: &[&str]) -> Command {
-        let mut c = Command::new(BIN);
+        self.cmd_of(BIN.as_ref(), args)
+    }
+    /// VS Code's extensions folder for this test (never the machine's).
+    fn vscode_ext(&self) -> PathBuf {
+        self.dir.path().join("vscode-extensions")
+    }
+    fn cmd_of(&self, exe: &std::path::Path, args: &[&str]) -> Command {
+        let mut c = Command::new(exe);
         c.args(args)
             .env("AIQ_HOME", self.home())
             .env("CLAUDE_CONFIG_DIR", self.dir.path().join("claude"))
             .env("COPILOT_HOME", self.copilot())
+            .env("VSCODE_EXTENSIONS", self.vscode_ext())
             .env("NO_COLOR", "1")
             .env_remove("AIQ_INTERNAL")
             .current_dir(self.dir.path());
@@ -44,13 +52,18 @@ impl Env {
     fn run(&self, args: &[&str], stdin: &[u8]) -> Output {
         self.run_with(self.cmd(args), stdin)
     }
-    /// With a PATH that holds no `claude`, so a Claude Code installed on the machine running the tests
-    /// doesn't count as found (tool detection reads PATH).
+    /// With a PATH that holds no `claude` or `code`, and no VS Code install folders, so tools installed on
+    /// the machine running the tests don't count as found (tool detection reads PATH and those folders).
     fn run_clean(&self, args: &[&str]) -> Output {
+        self.run_clean_of(BIN.as_ref(), args)
+    }
+    fn run_clean_of(&self, exe: &std::path::Path, args: &[&str]) -> Output {
         let bin = self.dir.path().join("bin");
         std::fs::create_dir_all(&bin).unwrap();
-        let mut c = self.cmd(args);
-        c.env("PATH", &bin);
+        let mut c = self.cmd_of(exe, args);
+        c.env("PATH", &bin)
+            .env("LOCALAPPDATA", self.dir.path().join("lad"))
+            .env("ProgramFiles", self.dir.path().join("pf"));
         self.run_with(c, b"")
     }
     fn run_with(&self, mut c: Command, stdin: &[u8]) -> Output {
@@ -584,4 +597,80 @@ fn e2e_install_with_no_tool_adds_the_status_line_only_when_experimental_is_alrea
     let after: Value =
         serde_json::from_str(&std::fs::read_to_string(e.copilot().join("settings.json")).unwrap()).unwrap();
     assert_eq!(after, original, "uninstall puts back exactly what was there");
+}
+
+/// A stand-in for VS Code's `code` command in the test's PATH: logs its arguments and adds or removes the
+/// extension in `extensions.json` the way VS Code does (the shape `aiq_core::tools::vscode_has_aiq` reads).
+fn fake_code(e: &Env) -> PathBuf {
+    let bin = e.dir.path().join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    let (log, list) = (e.dir.path().join("code-log.txt"), e.vscode_ext().join("extensions.json"));
+    std::fs::create_dir_all(e.vscode_ext()).unwrap();
+    let ours = r#"[{"identifier":{"id":"aiq-local.aiq-coach"},"version":"0.2.0"}]"#;
+    if cfg!(windows) {
+        let script = format!(
+            "@echo off\r\necho %*>>\"{log}\"\r\nif \"%1\"==\"--install-extension\" (echo {ours}>\"{list}\")\r\nif \"%1\"==\"--uninstall-extension\" (echo []>\"{list}\")\r\n",
+            log = log.display(),
+            list = list.display(),
+        );
+        std::fs::write(bin.join("code.cmd"), script).unwrap();
+    } else {
+        let script = format!(
+            "#!/bin/sh\necho \"$@\" >> '{log}'\ncase \"$1\" in\n  --install-extension) echo '{ours}' > '{list}' ;;\n  --uninstall-extension) echo '[]' > '{list}' ;;\nesac\n",
+            log = log.display(),
+            list = list.display(),
+        );
+        let p = bin.join("code");
+        std::fs::write(&p, script).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+    }
+    log
+}
+
+/// VS Code found: `aiq install` adds AIQ's extension with VS Code's own command, from the `aiq.vsix` beside
+/// aiq, lists VS Code's extension list as changed and names the undo; a copy of AIQ without the file skips
+/// VS Code instead of failing setup; uninstall removes it. VS Code alone doesn't turn analysis on.
+#[test]
+fn e2e_install_adds_the_vscode_extension_beside_aiq_and_uninstall_removes_it() {
+    let e = Env::new();
+    let log = fake_code(&e);
+    let read_log = || std::fs::read_to_string(&log).unwrap_or_default();
+
+    // A developer build (no aiq.vsix beside it): VS Code is skipped with one line; setup still succeeds.
+    let o = e.run_clean(&["install", "--yes"]);
+    let out = String::from_utf8_lossy(&o.stdout).to_string();
+    assert!(o.status.success(), "{out}");
+    assert!(out.contains("VS Code:") && out.contains("Skipped: this copy of AIQ has no aiq.vsix"), "{out}");
+    assert!(read_log().is_empty(), "VS Code's command not run without the file");
+    assert!(!e.run_clean(&["install", "vscode", "--yes"]).status.success(), "by name, a missing file fails");
+
+    // A release copy: aiq with aiq.vsix beside it.
+    let rel = e.dir.path().join("release");
+    std::fs::create_dir_all(&rel).unwrap();
+    let exe = rel.join(std::path::Path::new(BIN).file_name().unwrap());
+    std::fs::copy(BIN, &exe).unwrap();
+    std::fs::write(rel.join("aiq.vsix"), b"PK").unwrap();
+    let o = e.run_clean_of(&exe, &["install", "--yes"]);
+    let out = String::from_utf8_lossy(&o.stdout).to_string();
+    assert!(o.status.success(), "{out}\n{}", String::from_utf8_lossy(&o.stderr));
+    let ran = read_log();
+    assert!(ran.contains("--install-extension") && ran.contains("aiq.vsix") && ran.contains("--force"), "{ran}");
+    assert!(out.contains("Undo: aiq uninstall vscode"), "{out}");
+    assert!(out.contains("Agent mode with the session target set to Copilot"), "{out}");
+    let list = e.vscode_ext().join("extensions.json");
+    assert!(out.contains(&format!("Changed: {}", list.display())), "{out}");
+    assert!(!out.contains("Analysis"), "VS Code's extension alone doesn't turn analysis on: {out}");
+
+    let again = String::from_utf8_lossy(&e.run_clean_of(&exe, &["install", "--yes"]).stdout).to_string();
+    assert!(again.contains("VS Code is already connected."), "{again}");
+
+    let o = e.run_clean(&["uninstall", "vscode", "--yes"]);
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stdout));
+    assert!(read_log().contains("--uninstall-extension aiq-local.aiq-coach"), "{}", read_log());
+    let o = e.run_clean(&["uninstall", "vscode", "--yes"]);
+    assert!(String::from_utf8_lossy(&o.stdout).contains("isn't installed in VS Code"));
 }
