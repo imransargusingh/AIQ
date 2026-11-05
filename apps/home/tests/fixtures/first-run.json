@@ -29,6 +29,15 @@
       "failed_calls": 0,
       "cost_usd": null
     },
+    "analysis": {
+      "state": "off",
+      "waiting": 0,
+      "analyzed": 0,
+      "today": 0,
+      "daily": 50,
+      "done_by_ms": null,
+      "blocked": null
+    },
     "imported_in_window": 0,
     "weeks": [
       {

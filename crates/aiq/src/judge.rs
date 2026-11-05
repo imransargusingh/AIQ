@@ -12,6 +12,7 @@ use aiq_contracts::judge::{ActionSummary, Response, SCHEMA, extract_object, pars
 use aiq_core::paths::{Paths, bounded_append};
 use aiq_domain::clock::{DAY_MS, Now};
 use aiq_domain::rung::{self, Turn};
+use aiq_home::GIVE_UP;
 use aiq_home::TaskRow;
 use aiq_store::{CallOutcome, JudgmentRow, NewJudgeCall, Store};
 use serde_json::{Value, json};
@@ -23,9 +24,9 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// A call that runs longer is killed (spec: 60 s p95 per judgment; one slow call must not hold the run).
 pub const CALL_TIMEOUT: Duration = Duration::from_secs(120);
-/// Back-off after the Nth failed call of a task (D8); the task is given up after `GIVE_UP` failed calls.
+/// Back-off after the Nth failed call of a task (D8); the task is given up after `GIVE_UP` failed calls (shared
+/// with Home, which counts given-up tasks out of "waiting").
 const BACKOFF_MS: [i64; 5] = [3_600_000, 6 * 3_600_000, DAY_MS, DAY_MS, DAY_MS];
-const GIVE_UP: usize = 6;
 const LOG_MAX: u64 = 256 * 1024;
 const CLAUDE: &str = "claude-code";
 const COPILOT: &str = "copilot-cli";
@@ -454,11 +455,7 @@ pub fn settings(store: &Store) -> Settings {
 
 /// The provider that already saw a task (US-5, T-B5-1). VS Code agent mode fires Copilot's hooks (J1).
 pub fn provider_for(tool: &str) -> Option<&'static str> {
-    match tool {
-        "claude-code" => Some(CLAUDE),
-        "copilot-cli" | "vscode" => Some(COPILOT),
-        _ => None,
-    }
+    aiq_home::analysis_provider(tool)
 }
 
 fn current_version(j: &JudgmentRow) -> bool {

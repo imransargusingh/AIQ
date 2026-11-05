@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>First Run Analysis</title><style>
+:root { color-scheme: light dark; --bg:#f7f5ef; --panel:#fff; --text:#20201d;
+  --muted:#66645f; --line:#d9d5ca; --accent:#3157a4; --code:#f0eee7; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#171816; --panel:#20221f; --text:#f2f1eb; --muted:#b8b6ae;
+    --line:#3d403a; --accent:#8fb0ff; --code:#292c27; }
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text);
+  font:16px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif; }
+main { width:min(920px,calc(100% - 32px)); margin:32px auto; padding:40px;
+  background:var(--panel); border:1px solid var(--line); border-radius:12px; }
+h1,h2,h3,h4,h5,h6 { line-height:1.2; margin:1.5em 0 .55em; }
+h1 { margin-top:0; font-size:2.2rem; } h2 { border-bottom:1px solid var(--line); padding-bottom:.3em; }
+a { color:var(--accent); } code { background:var(--code); padding:.12em .35em; border-radius:4px; }
+pre { overflow:auto; padding:16px; background:var(--code); border-radius:8px; }
+pre code { padding:0; } blockquote { margin:1em 0; padding:.2em 1em; color:var(--muted);
+  border-left:4px solid var(--line); }
+table { width:100%; border-collapse:collapse; margin:1em 0; display:block; overflow:auto; }
+th,td { padding:.55em .75em; border:1px solid var(--line); text-align:left; vertical-align:top; }
+th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); }
+.source { color:var(--muted); font-size:.9rem; margin-bottom:2rem; }
+@media (max-width:640px) { main { width:100%; margin:0; padding:24px 18px; border:0; border-radius:0; } }
+</style></head><body><main><div class="source">Rendered from first-run-analysis.md</div><h1>First-run analysis state on Home</h1>
+<p><strong>Trigger.</strong> 2026-11-05, an outside user on 0.1.4 (Copilot only) saw &quot;Not judged yet&quot; over 221 imported tasks and could not tell what AIQ was doing or whether to act. Imran picked option A of the mockups (<code>/mnt/project-files/first-run/first-run-options.html</code>, project files) on the card 01:26Z.</p>
+<h2>What was wrong (read from the code)</h2>
+<ul><li>Analysis runs from the core&#x27;s kicker (first check 2 min after core start, then every 10 min). On 0.1.4 the core</li></ul>
+<p>starts only from a hook, so nothing ran until the first prompt after setup.</p>
+<ul><li>Up to 50 tasks a day (default), newest first: 221 tasks take about 5 days. Each task is 2 calls through the</li></ul>
+<p>person&#x27;s own tool.</p>
+<ul><li>A missing or signed-out tool was recorded as a call outcome and in <code>judge.log</code>; Home never said so.</li></ul>
+<h2>Design (option A)</h2>
+<ul><li><strong>Read model.</strong> <code>home.analysis</code> over Home&#x27;s 30-day window, so &quot;of N&quot; matches the weekly chart:</li></ul>
+<p><code>state</code> (off · paused · blocked · working · today_done · done), <code>waiting</code> (finished, a tool AIQ analyzes through, no analysis, not given up after 6 failures), <code>analyzed</code>, <code>today</code>, <code>daily</code>, <code>done_by_ms</code> (the only forecast: waiting at <code>daily</code> a day after today&#x27;s share), <code>blocked</code> (the provider whose newest call was <code>missing</code> or <code>not_signed_in</code>, only when its tasks wait).</p>
+<ul><li><strong>AIQ starts it.</strong> When <code>state</code> is working and no call ran for 10 minutes, Home starts <code>aiq judge --auto</code></li></ul>
+<p>hidden, at most once per 10 minutes per Home. The judge lock keeps it to one run with the core&#x27;s kicker.</p>
+<ul><li><strong>Card.</strong> &quot;Tasks agents finished&quot; until 10 analyzed tasks: a headline for the state, a progress bar</li></ul>
+<p>(&quot;7 of 221 analyzed · about 50 a day, all by Mon 9 Nov&quot;), &quot;✓ Nothing to do.&quot;, early results (the rung mix so far), and how many analyzed tasks the numbers need. Blocked: the reason, one button (Sign in to Copilot opens <code>copilot</code> in a new terminal; a missing tool opens its install page), and &quot;AIQ tries again by itself every 10 minutes&quot;. With one project picked the card says only &quot;Not enough analyzed tasks yet&quot; (progress is global).</p>
+<ul><li><strong>Rung header.</strong> One status line under the rung until all tasks are analyzed.</li><li><strong>Getting started.</strong> Its three judging steps become one analysis step that says the same as the card.</li><li><strong>Wording.</strong> New text says analyze/analyzed (Imran 01:12Z 11-05). Internal names stay.</li></ul>
+<h2>Not done</h2>
+<ul><li>The core starting from Home (PR #128) is separate; with it the kicker runs too. This change does not depend on it.</li><li>The daily share against a person&#x27;s premium-request plan (about 100 requests a day at 50 tasks) is Imran&#x27;s call.</li></ul></main></body></html>

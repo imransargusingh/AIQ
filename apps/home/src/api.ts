@@ -1,4 +1,4 @@
-// The bridge to the Tauri shell (apps/home/src-tauri). Sixteen commands; nothing else leaves the page.
+// The bridge to the Tauri shell (apps/home/src-tauri). Eighteen commands; nothing else leaves the page.
 // Outside Tauri (the UI tests) a fixture stands in, set on window by the test before the page loads.
 import type { Outcome, Snapshot, TaskDetail } from "./types";
 
@@ -157,6 +157,10 @@ function fixture<T>(cmd: string, args: Record<string, unknown>): Promise<T> {
     case "open_privacy":
       out = { ok: true };
       break;
+    case "open_sign_in":
+    case "open_tool_help":
+      out = f.fail?.includes(cmd) ? { ok: false, message: "Couldn't open it. Open a terminal and run copilot, then /login." } : { ok: true };
+      break;
     case "finish_setup":
       s.setup.done = true;
       out = s;
@@ -192,6 +196,10 @@ export const api = {
   judgePreview: () => invoke<{ ok: boolean; text: string }>("judge_preview"),
   /** Open the privacy page in the default browser (a fixed address). */
   openPrivacy: () => invoke<Outcome>("open_privacy"),
+  /** Open the tool in a new terminal so the person can sign in (fixed command per tool). */
+  openSignIn: (tool: "claude-code" | "copilot-cli") => invoke<Outcome>("open_sign_in", { tool }),
+  /** Open the tool's install page in the default browser (a fixed address per tool). */
+  openHelp: (tool: "claude-code" | "copilot-cli") => invoke<Outcome>("open_tool_help", { tool }),
   /** Install the waiting update or go back (AIQ home closes and reopens), or check now (it stays open);
    * `check_if_due` checks only when an hour has passed since the last check (Home's own hourly ask). */
   runUpdate: (action: "install" | "rollback" | "check" | "check_if_due" | "check_on_open") => invoke<Outcome>("run_update", { action }),

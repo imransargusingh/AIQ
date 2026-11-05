@@ -287,4 +287,17 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <p>(shaped like the laptop: foresight, the AIQ repo, an aiq-check folder, a pre-0.1.4 line, an automated run).</p>
 <ul><li><strong>Sweep:</strong> other readers of the folder list: <code>aiq status</code>&#x27;s folder listing (display only) and <code>aiq_home::tasks</code></li></ul>
 <p>(already per session). None else.</p>
-<ul><li><strong>Rule:</strong> when a set-aside rule changes, grep every reader of the folder list, not only the one in the change.</li></ul></main></body></html>
+<ul><li><strong>Rule:</strong> when a set-aside rule changes, grep every reader of the folder list, not only the one in the change.</li></ul>
+<h3>DC-028 — Background work whose start, progress and failure reason never reach the screen</h3>
+<ul><li><strong>Signature:</strong> 2026-11-05, first outside user on 0.1.4 (Copilot only, 221 imported tasks). Home said &quot;Not judged</li></ul>
+<p>yet&quot; and &quot;AIQ judges your finished tasks in the background&quot; with no progress, no &quot;nothing to do&quot;, and no reason. Read from the code: analysis ran only from the core&#x27;s kicker, the core started only from a hook (so nothing ran until the first prompt after setup), and a missing or signed-out Copilot CLI was written to <code>judge.log</code> only.</p>
+<ul><li><strong>Why it survives:</strong> every piece was correct on its own (cap, back-off, lock, failure outcome in <code>judge_call</code>);</li></ul>
+<p>no view read them together, and the developer&#x27;s laptop always had a running core and a signed-in tool.</p>
+<ul><li><strong>Control (product):</strong> <code>aiq_home::Analysis</code> (state, waiting, analyzed, today, daily, finish day, blocked tool and</li></ul>
+<p>why) read from the same task list as the chart and from each provider&#x27;s newest call; Home&#x27;s card and Getting started read only it. Home starts <code>aiq judge --auto</code> itself when work waits and no call ran for 10 minutes.</p>
+<ul><li><strong>Control (tests):</strong> <code>aiq_home::analysis_tests</code> (fresh install, used-up share, signed-out tool, give-up, off and</li></ul>
+<p>paused) and the e2e &quot;first-run analysis&quot; test (working, today done, blocked with its one action).</p>
+<ul><li><strong>Sweep:</strong> other background work with a silent failure: the kind label (<code>kind_label</code> calls, shown in Settings),</li></ul>
+<p>the update check (<code>check_error</code> shown in Settings &gt; Updates). Both already surface a reason.</p>
+<ul><li><strong>Rule:</strong> background work ships with a state the person can see: what it is doing, how far, what (if anything)</li></ul>
+<p>they must do, and why it stopped.</p></main></body></html>

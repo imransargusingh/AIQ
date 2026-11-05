@@ -29,6 +29,15 @@
       "failed_calls": 0,
       "cost_usd": 0.04
     },
+    "analysis": {
+      "state": "off",
+      "waiting": 3,
+      "analyzed": 3,
+      "today": 3,
+      "daily": 50,
+      "done_by_ms": 1793534400000,
+      "blocked": null
+    },
     "imported_in_window": 1,
     "weeks": [
       {
