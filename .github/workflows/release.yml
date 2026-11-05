@@ -274,17 +274,30 @@ jobs:
           # Go back: the release left is never installed again by itself.
           # Every start refused, and a hook brings the core back meanwhile: the script sees it and does not start a
           # second one; AIQ home can't be opened, which is logged, never an error that ends the script.
-          $hook = Start-Job -ArgumentList $ulog, $exe -ScriptBlock {
-            param($ulog, $exe)
-            foreach ($i in 1..150) {
-              if (Select-String -Quiet -Path $ulog -Pattern 'Rolled back to AIQ') { Start-Process -WindowStyle Hidden -FilePath $exe -ArgumentList 'core'; return }
-              Start-Sleep -Milliseconds 200
+          # The "hook" is its own powershell process (not a job), as a real hook is its own process.
+          $hookLog = Join-Path $env:RUNNER_TEMP 'hook.txt'
+          $hookPs = Join-Path $env:RUNNER_TEMP 'hook.ps1'
+          Set-Content -Path $hookPs -Value @'
+          param($ulog, $exe, $out)
+          foreach ($i in 1..150) {
+            if (Select-String -Quiet -Path $ulog -Pattern 'Rolled back to AIQ') {
+              Start-Process -WindowStyle Hidden -FilePath $exe -ArgumentList 'core'
+              Add-Content -Path $out -Value "started the core at $((Get-Date).ToUniversalTime().ToString('o'))"
+              return
             }
+            Start-Sleep -Milliseconds 200
           }
+          Add-Content -Path $out -Value 'never saw the rollback line'
+          '@
+          $hook = Start-Process -PassThru -WindowStyle Hidden -FilePath powershell -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $hookPs, $ulog, $exe, $hookLog
           powershell -ExecutionPolicy Bypass -File $up -Rollback -Relaunch -FailLaunches 99
           if ($LASTEXITCODE -ne 0) { Fail 'rollback failed' }
-          $hook | Wait-Job -Timeout 30 | Remove-Job -Force
-          if (-not (Select-String -Quiet -Path $ulog -Pattern 'AIQ-UPDATE-CORE: the AIQ core was already running again\.')) { Fail 'core that came back by itself was not seen' }
+          $hook | Wait-Process -Timeout 30 -ErrorAction SilentlyContinue
+          if (-not (Select-String -Quiet -Path $ulog -Pattern 'AIQ-UPDATE-CORE: the AIQ core was already running again\.')) {
+            Get-Content $hookLog -ErrorAction SilentlyContinue
+            Get-CimInstance Win32_Process -Filter "Name='aiq.exe'" | ForEach-Object { "$($_.ProcessId) $($_.CommandLine)" }
+            Fail 'core that came back by itself was not seen'
+          }
           if (-not (Select-String -Quiet -Path $ulog -Pattern 'AIQ-UPDATE-HOME: could not start AIQ home')) { Fail 'refused AIQ home start not logged' }
           $cores = @(Get-CimInstance Win32_Process -Filter "Name='aiq.exe'" | Where-Object { $_.ExecutablePath -eq $exe -and $_.CommandLine -match '\score\s*$' })
           if ($cores.Count -ne 1) { Fail "want one AIQ core after rollback, found $($cores.Count)" }
