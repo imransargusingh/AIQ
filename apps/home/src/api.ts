@@ -37,7 +37,7 @@ function fixture<T>(cmd: string, args: Record<string, unknown>): Promise<T> {
       out = s;
       break;
     case "set_setting":
-      if (!s.status.core) out = { ok: false, message: "AIQ isn't running, so settings can't change right now. It starts with your next prompt in Claude Code or Copilot." };
+      if (!s.status.core) out = { ok: false, message: "AIQ is starting, so this can't change yet. Try again in a moment." };
       else {
         if (args.key === "daily_cap") s.settings.daily_cap = Number(args.value);
         if (args.key === "judge") [s.settings.judge, s.settings.judge_since_ms] = [args.value as Snapshot["settings"]["judge"], s.now_ms];
@@ -144,7 +144,7 @@ function fixture<T>(cmd: string, args: Record<string, unknown>): Promise<T> {
       break;
     }
     case "include_folder":
-      if (!s.status.core) out = { ok: false, message: "AIQ isn't running, so this can't change right now. It starts with your next prompt in Claude Code or Copilot." };
+      if (!s.status.core) out = { ok: false, message: "AIQ is starting, so this can't change yet. Try again in a moment." };
       else if (!s.home.set_aside.some((x) => x.folder === args.folder)) out = { ok: false, message: "Not changed: that folder isn't set aside." };
       else {
         s.home.set_aside = s.home.set_aside.filter((x) => x.folder !== args.folder);
@@ -161,6 +161,10 @@ function fixture<T>(cmd: string, args: Record<string, unknown>): Promise<T> {
       s.setup.done = true;
       out = s;
       break;
+    case "tour_seen":
+      s.setup.tour_seen = true;
+      out = s;
+      break;
     default:
       return Promise.reject(new Error(`unknown command ${cmd}`));
   }
@@ -175,6 +179,8 @@ export const api = {
   task: (taskId: string) => invoke<TaskDetail | null>("task", { taskId }),
   forgetItem: (eventId: string) => invoke<Outcome>("forget_item", { eventId }),
   finishSetup: () => invoke<Snapshot>("finish_setup"),
+  /** The tour was taken, skipped or declined: Home stops offering it. */
+  tourSeen: () => invoke<Snapshot>("tour_seen"),
   /** Connect every tool found but not hooked yet (runs `aiq install --yes`). */
   connectTools: () => invoke<{ ok: boolean; message?: string; changed: string[] }>("connect_tools"),
   /** "This doesn't fit" (flag, with a reason) or its undo, for one kind of task's next step. */

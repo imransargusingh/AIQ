@@ -87,7 +87,7 @@ function List({ items }: { items: Step[] }) {
 }
 
 /** The whole of Home before anything is captured. */
-export function GettingStartedPage(ctx: Pick<Ctx, "snap" | "go">) {
+export function GettingStartedPage(ctx: Pick<Ctx, "snap" | "go" | "startTour">) {
   return (
     <>
       <header className="group">
@@ -99,6 +99,8 @@ export function GettingStartedPage(ctx: Pick<Ctx, "snap" | "go">) {
       </section>
       <p className="meta">
         <button className="btnlink" onClick={() => ctx.go("data")}>See what AIQ has captured</button>
+        {" · "}
+        <button className="btnlink" onClick={ctx.startTour}>Take the tour</button>
       </p>
     </>
   );

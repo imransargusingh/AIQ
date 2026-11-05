@@ -150,7 +150,7 @@ export function Setup(ctx: Ctx & { rerun: boolean; finish: (s: Snapshot) => void
                 <div className="opt" key={t.tool}>
                   <span>
                     <b>{TOOL[t.tool].name}</b> ·{" "}
-                    {t.hooked
+                    {t.hooked && t.present
                       ? connected.includes(t.tool)
                         ? "connected just now"
                         : "connected"
@@ -158,10 +158,10 @@ export function Setup(ctx: Ctx & { rerun: boolean; finish: (s: Snapshot) => void
                         ? connecting
                           ? "connecting…"
                           : "found, not connected yet"
-                        : "not found on this computer"}
+                        : "not installed"}
                     <br />
                     <span className="meta">
-                      {t.hooked ? (
+                      {t.hooked && t.present ? (
                         <>
                           {TOOL[t.tool].where}
                           {connected.includes(t.tool) && (
@@ -179,8 +179,10 @@ export function Setup(ctx: Ctx & { rerun: boolean; finish: (s: Snapshot) => void
                             AIQ adds its hooks and backs up the file first. Or run <code>{t.install}</code> in a terminal to see the change.
                           </>
                         )
+                      ) : t.hooked ? (
+                        "An earlier AIQ added its hooks to this tool's settings. They do nothing until you install it. To remove them, use Disconnect in Settings."
                       ) : (
-                        "Install it, then run setup again from Settings."
+                        "If you install it later, AIQ connects it the next time AIQ starts."
                       )}
                     </span>
                   </span>
@@ -211,7 +213,7 @@ export function Setup(ctx: Ctx & { rerun: boolean; finish: (s: Snapshot) => void
                 {msg}
               </p>
             )}
-            {snap.setup.tools.every((t) => !t.hooked) && !connecting && (
+            {snap.setup.tools.every((t) => !(t.hooked && t.present)) && !connecting && (
               <p className="mute">AIQ isn't connected to a tool yet. You can finish setup now and connect one later.</p>
             )}
             {nav()}
@@ -276,8 +278,7 @@ export function Setup(ctx: Ctx & { rerun: boolean; finish: (s: Snapshot) => void
             </div>
             {down && (
               <p className="mute">
-                AIQ isn't running yet, so this stays at {snap.settings.daily_cap} for now. It starts with your next prompt in Claude Code or
-                Copilot, and you can change it in Settings then.
+                AIQ is starting, so this stays at {snap.settings.daily_cap} for now. You can change it in Settings later.
               </p>
             )}
             {msg && (

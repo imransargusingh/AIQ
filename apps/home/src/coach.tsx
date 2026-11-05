@@ -202,8 +202,6 @@ export function NextSteps({ rows, open }: { rows: KindRow[]; open: (k: KindRow) 
   );
 }
 
-const SEG = (i: number) => `var(--rung-${i + 1})`;
-
 /** "How you work with agents": one sentence, the share on each rung with its change, the weekly mix, and the
  *  kinds of task on the rung you pick. Counts are measured; rungs are the judge's reading. */
 export function RungMix(props: {
@@ -235,7 +233,13 @@ export function RungMix(props: {
       <div className="mix-wrap">
         <div className="group" style={{ gap: "var(--s3)" }}>
           <div className="rmix" role="img" aria-label={label}>
-            {rungs.map((v, i) => (v > 0 ? <span key={i} style={{ flex: v, background: SEG(i) }} title={`${rungLabel(i + 1)}: ${plural(v, "task")}${shares ? `, ${share(v)}%` : ""}`} /> : null))}
+            {rungs.map((v, i) =>
+              v > 0 ? (
+                <span key={i} className={`rg-${i + 1}`} style={{ flex: v }} title={`${rungLabel(i + 1)}: ${plural(v, "task")}${shares ? `, ${share(v)}%` : ""}`}>
+                  {v / total >= 0.04 ? i + 1 : ""}
+                </span>
+              ) : null,
+            )}
           </div>
           <div className="mix-lab" role="group" aria-label="Rungs: select one to see its kinds of task">
             {rungs.map((v, i) => {
@@ -243,7 +247,7 @@ export function RungMix(props: {
               return (
                 <button key={i} className="mix-r" aria-pressed={pick === i} disabled={v === 0} onClick={() => setPick(i)}
                   aria-label={`${rungLabel(i + 1)}: ${plural(v, "task")}${v > 0 && shares ? `, ${share(v)}%` : ""}${s && (v > 0 || p !== 0) ? `, ${p === 0 ? "same share" : `${p > 0 ? "up" : "down"} ${Math.abs(p)} points`} on the ${props.shiftDays} days before` : ""}`}>
-                  <span><i style={{ background: SEG(i) }} /><span title={RUNGS[i].means}>{name(i)}</span></span>
+                  <span><i className={`rg-${i + 1}`} aria-hidden="true">{i + 1}</i><span title={RUNGS[i].means}>{name(i)}</span></span>
                   <b className="num">{big(v)}</b>
                   <span className="num">
                     {shares || v === 0 ? plural(v, "task") : v === 1 ? "task" : "tasks"}
@@ -263,7 +267,7 @@ export function RungMix(props: {
               return (
                 <div key={w.start_ms} className={`mix-col${few ? " few" : ""}`} role="img"
                   aria-label={`Week of ${w.label}: ${few ? "too few analyzed tasks to say" : w.rungs.map((v, i) => (v ? `${name(i)} ${Math.round((100 * v) / n)}%` : "")).filter(Boolean).join(", ")}`}>
-                  {!few && w.rungs.map((v, i) => (v > 0 ? <span key={i} style={{ height: `${(100 * v) / n}%`, background: SEG(i) }} /> : null))}
+                  {!few && w.rungs.map((v, i) => (v > 0 ? <span key={i} className={`rg-${i + 1}`} style={{ height: `${(100 * v) / n}%` }} /> : null))}
                 </div>
               );
             })}

@@ -7,6 +7,7 @@
 use aiq_contracts::card::CardV1;
 use aiq_contracts::codes;
 use aiq_contracts::pack::PackV1;
+pub use aiq_core::autostart::CoreState;
 use aiq_core::paths::Paths;
 use aiq_domain::automated::folder_key;
 use aiq_domain::clock::{DAY_MS, Now, deliveries_counted_today};
@@ -207,6 +208,8 @@ pub struct HabitRow {
 pub struct Setup {
     /// The person finished setup once; AIQ home then opens on Home.
     pub done: bool,
+    /// The tour was taken, skipped or declined once, so Home doesn't offer it again (design home-tour T3).
+    pub tour_seen: bool,
     pub tools: Vec<aiq_core::tools::ToolFound>,
 }
 
@@ -214,10 +217,15 @@ pub struct Setup {
 pub struct Status {
     /// The core answered just now. Filled by the caller (`with_core`); false until then.
     pub core: bool,
+    /// What Home says about the core: running, busy (holds its lock, slow to answer), starting, or failed (the
+    /// only state with a banner). Filled by `keep_core`; `with_core` alone gives running or failed.
+    pub core_state: CoreState,
+    /// Failed only: the code the core left in `core-error`, or why Home could not start it.
+    pub core_error: Option<String>,
     pub paused: bool,
     /// A store file exists (false on a fresh install).
     pub store_found: bool,
-    /// Newest stored event time, for "this shows what was stored at {time}".
+    /// Newest stored event time (Getting started: "the last {time}").
     pub last_event_ms: Option<i64>,
     /// Measured: how long this snapshot took to read.
     pub read_ms: u64,
@@ -480,7 +488,11 @@ pub fn snapshot(paths: &Paths, pack: &PackV1, now: Now) -> Snapshot {
     let started = Instant::now();
     let mut s = empty(paths, pack, now);
     s.status.paused = aiq_core::control::is_paused(paths);
-    s.setup = Setup { done: aiq_core::control::setup_done(paths), tools: aiq_core::tools::found() };
+    s.setup = Setup {
+        done: aiq_core::control::setup_done(paths),
+        tour_seen: aiq_core::control::tour_seen(paths),
+        tools: aiq_core::tools::found(),
+    };
     let db = paths.db();
     if db.exists() {
         s.status.store_found = true;
@@ -499,13 +511,83 @@ pub fn snapshot(paths: &Paths, pack: &PackV1, now: Now) -> Snapshot {
     s
 }
 
+/// The core answers a status request within `timeout`.
+pub fn core_answers(paths: &Paths, timeout: std::time::Duration) -> bool {
+    use aiq_contracts::frames::Request;
+    aiq_core::control::ask(paths, timeout, |token| Request::Status { token }).is_some()
+}
+
 /// Fill `status.core` by asking the core, with a short timeout (the window must not wait on it).
 pub fn with_core(mut s: Snapshot, paths: &Paths) -> Snapshot {
-    use aiq_contracts::frames::Request;
-    s.status.core =
-        aiq_core::control::ask(paths, std::time::Duration::from_millis(400), |token| Request::Status { token })
-            .is_some();
+    s.status.core = core_answers(paths, std::time::Duration::from_millis(400));
+    s.status.core_state = if s.status.core { CoreState::Running } else { CoreState::Failed };
     s
+}
+
+/// What `keep_core` did, for home.log.
+#[derive(Debug, Clone, PartialEq)]
+pub enum StartOutcome {
+    /// Nothing to start: the core runs, is busy, or a start is under way.
+    None,
+    Started,
+    /// The `aiq` exe could not be run.
+    Refused(String),
+}
+
+/// After `with_core`: fill `core_state` and `core_error`, starting the core when needed (`ensure_core`).
+pub fn keep_core(s: &mut Snapshot, paths: &Paths, aiq_exe: &std::path::Path, tries: &mut u32) -> StartOutcome {
+    let (state, error, outcome) = ensure_core(paths, s.status.core, aiq_exe, tries);
+    s.status.core_state = state;
+    s.status.core_error = error;
+    outcome
+}
+
+/// When no core answered, tell busy from down by its lock, and start `<aiq_exe> core` when no start is under
+/// way (design aiq-home-app, "Core down"). `tries` counts this caller's starts since the core last answered;
+/// the caller keeps it across looks. Returns the state, the failure code when failed, and what it did.
+pub fn ensure_core(
+    paths: &Paths,
+    answered: bool,
+    aiq_exe: &std::path::Path,
+    tries: &mut u32,
+) -> (CoreState, Option<String>, StartOutcome) {
+    use aiq_core::autostart::{self, Probe};
+    let now_s = autostart::now_s();
+    let probe = Probe {
+        answered,
+        lock_held: !answered && autostart::lock_held(paths),
+        error_file: paths.core_error().exists(),
+        last_start_s: autostart::last_start(paths),
+        now_s,
+        tries: *tries,
+    };
+    let (mut state, start) = autostart::decide(&probe);
+    let mut outcome = StartOutcome::None;
+    let mut error = None;
+    if start {
+        *tries += 1;
+        autostart::mark_start(paths, now_s);
+        outcome = match autostart::spawn_core(aiq_exe) {
+            Ok(()) => StartOutcome::Started,
+            Err(e) => {
+                state = CoreState::Failed;
+                error = Some(codes::HOME_CORE_START.to_owned());
+                let why = format!("{}: {e}", aiq_exe.display());
+                // Written where the core leaves its own start failure, so the next look still says failed; the
+                // core removes the file once it starts.
+                let line = format!("{}: {why}\n", codes::HOME_CORE_START);
+                let _ = aiq_core::paths::write_user_only(&paths.core_error(), line.as_bytes());
+                StartOutcome::Refused(why)
+            }
+        };
+    }
+    if matches!(state, CoreState::Running | CoreState::Busy) {
+        *tries = 0;
+    }
+    if state == CoreState::Failed && error.is_none() {
+        error = autostart::last_error_code(paths);
+    }
+    (state, error, outcome)
 }
 
 fn empty(paths: &Paths, pack: &PackV1, now: Now) -> Snapshot {
@@ -516,6 +598,8 @@ fn empty(paths: &Paths, pack: &PackV1, now: Now) -> Snapshot {
         offset_min: now.offset_min,
         status: Status {
             core: false,
+            core_state: CoreState::Failed,
+            core_error: None,
             paused: false,
             store_found: false,
             last_event_ms: None,
@@ -579,7 +663,7 @@ fn empty(paths: &Paths, pack: &PackV1, now: Now) -> Snapshot {
                 .collect(),
             accuracy_paused: vec![],
         },
-        setup: Setup { done: false, tools: vec![] },
+        setup: Setup { done: false, tour_seen: false, tools: vec![] },
         coaching: Coaching {
             split_min: pack.coach.split_min,
             week_min: pack.coach.week_min,

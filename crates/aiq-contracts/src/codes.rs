@@ -36,8 +36,12 @@ pub const STORE_WRITE: &str = "AIQ-STORE-WRITE";
 pub const STORE_APPEND_ONLY: &str = "AIQ-STORE-APPEND-ONLY";
 pub const CORE_ALREADY_RUNNING: &str = "AIQ-CORE-ALREADY-RUNNING";
 pub const CORE_START_BACKOFF: &str = "AIQ-CORE-START-BACKOFF";
+/// The core could not write the per-user Windows Run entry that starts AIQ at sign-in.
+pub const CORE_LOGIN_START: &str = "AIQ-CORE-LOGIN-START";
 /// AIQ home could not read the store (locked past the busy timeout, or unreadable).
 pub const HOME_STORE_READ: &str = "AIQ-HOME-STORE-READ";
+/// AIQ home could not run `aiq core` (the aiq exe beside it is missing or blocked).
+pub const HOME_CORE_START: &str = "AIQ-HOME-CORE-START";
 /// `aiq export` could not write its folder (not writable, disk full); the partial folder is removed.
 pub const EXPORT_WRITE: &str = "AIQ-EXPORT-WRITE";
 
@@ -83,7 +87,9 @@ pub const ALL: &[&str] = &[
     STORE_APPEND_ONLY,
     CORE_ALREADY_RUNNING,
     CORE_START_BACKOFF,
+    CORE_LOGIN_START,
     HOME_STORE_READ,
+    HOME_CORE_START,
     EXPORT_WRITE,
     JUDGE_MISSING,
     JUDGE_SIGNIN,

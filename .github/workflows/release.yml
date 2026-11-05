@@ -13,6 +13,7 @@ on:
       - "packaging/**"
       - "crates/aiq/src/install.rs"
       - "crates/aiq-core/src/update.rs"
+      - "crates/aiq-core/src/autostart.rs"
       - ".github/workflows/release.yml"
   workflow_dispatch:
     inputs:
@@ -243,16 +244,24 @@ jobs:
       - name: Smoke test - update check finds the tag from the releases/latest redirect, falls back to the API, records a rate-limit reset
         shell: pwsh
         run: powershell -NoProfile -ExecutionPolicy Bypass -File packaging/windows/tests/upgrade-network.ps1 (Join-Path $env:USERPROFILE '.aiq\bin\upgrade.ps1')
-      - name: Smoke test - uninstall --all removes hooks, user PATH entry and shortcut, keeps the data
+      - name: Smoke test - sign-in start; uninstall --all removes hooks, user PATH entry, shortcut and sign-in entry, keeps the data
         shell: pwsh
         run: |
           $bin = Join-Path $env:USERPROFILE '.aiq\bin'
           & (Join-Path $bin 'aiq.exe') install --yes
+          # What Windows runs at sign-in: Home's start-only mode starts the core, and the core writes the entry.
+          Start-Process -FilePath (Join-Path $bin 'aiq-home.exe') -ArgumentList '--start-core' -Wait
+          $run = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+          $deadline = (Get-Date).AddSeconds(20)
+          while (-not (Get-ItemProperty -Path $run -Name AIQ -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 250 }
+          $entry = (Get-ItemProperty -Path $run -Name AIQ -ErrorAction SilentlyContinue).AIQ
+          if ($entry -ne ('"{0}" --start-core' -f (Join-Path $bin 'aiq-home.exe'))) { Write-Error "sign-in entry missing or wrong: $entry"; exit 1 }
           & (Join-Path $bin 'aiq.exe') uninstall --all --yes
           if ($LASTEXITCODE -ne 0) { Write-Error 'uninstall --all failed'; exit 1 }
           if ([Environment]::GetEnvironmentVariable('Path', 'User') -split ';' -contains $bin) { Write-Error 'user PATH entry left behind'; exit 1 }
           if (Test-Path (Join-Path ([Environment]::GetFolderPath('Programs')) 'AIQ.lnk')) { Write-Error 'shortcut left behind'; exit 1 }
           if (Test-Path (Join-Path $env:USERPROFILE '.copilot\hooks\aiq.json')) { Write-Error 'Copilot hook left behind'; exit 1 }
+          if (Get-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name AIQ -ErrorAction SilentlyContinue) { Write-Error 'sign-in entry left behind'; exit 1 }
           if (-not (Test-Path (Join-Path $env:USERPROFILE '.aiq\upgrade-log.txt'))) { Write-Error 'data folder touched'; exit 1 }
           $again = & (Join-Path $bin 'aiq.exe') uninstall --all --yes
           if (-not ($again -match 'Nothing changed')) { Write-Error "second run changed something: $again"; exit 1 }

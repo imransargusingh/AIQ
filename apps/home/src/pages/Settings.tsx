@@ -151,7 +151,7 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
       <Banners {...ctx} />
       <header className="group">
         <Title>Settings</Title>
-        {down && <p className="mute">AIQ isn't running, so tip settings can't change right now. It starts with your next prompt in Claude Code or Copilot.</p>}
+        {down && <p className="mute">AIQ is starting, so tip settings can't change yet.</p>}
         {msg && !down && <p className="errtext" role="alert">{msg}</p>}
       </header>
       <div className="secnav" role="navigation" aria-label="Settings sections">
@@ -481,13 +481,16 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
       <section className="card" aria-labelledby="st5">
         <div className="head">
           <h2 id="st5" tabIndex={-1}>Tools and keyboard</h2>
-          <button className="btn" onClick={() => ctx.go("setup")}>Run setup again</button>
+          <div className="row">
+            <button className="btn" onClick={ctx.startTour}>Take the tour</button>
+            <button className="btn" onClick={() => ctx.go("setup")}>Run setup again</button>
+          </div>
         </div>
         <ul className="group" aria-label="Tools AIQ watches" style={{ listStyle: "none", margin: 0, padding: 0 }}>
-          {snap.setup.tools.filter((t) => t.present).map((t) => (
+          {snap.setup.tools.filter((t) => t.present || t.hooked).map((t) => (
             <li className="row" key={t.tool} style={{ justifyContent: "space-between" }}>
               <span>
-                <b>{TOOL_NAME[t.tool]}</b> · {t.hooked ? "connected" : "not connected"}
+                <b>{TOOL_NAME[t.tool]}</b> · {!t.present ? "not installed, AIQ's hooks still in its settings" : t.hooked ? "connected" : "not connected"}
               </span>
               {t.hooked && (
                 <button className="btn" onClick={() => disconnect(t.tool)} aria-label={`Disconnect ${TOOL_NAME[t.tool]}`}>

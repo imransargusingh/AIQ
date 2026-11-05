@@ -12,7 +12,7 @@ links:
 review-by: 2027-04-30
 summary: >-
   AIQ's Surface token system for AIQ home (the Tauri desktop app, Windows first): calm, specific,
-  private. Graphite neutrals with a teal accent and a single-hue teal rung ramp, Segoe UI Variable,
+  private. Graphite neutrals with a teal accent and five distinct rung hues, Segoe UI Variable,
   4px spacing grid, Fluent-like utility shell with Linear-style keyboard navigation. In-tool cards use
   host tokens and are out of this file's scope.
 designmd_version: alpha
@@ -32,11 +32,11 @@ colors:
   danger: "#b42318"
   focus-ring: "#0b6b6b"
   scrim: "#0a1414"
-  rung-1: "#c4e6e3"
-  rung-2: "#86c9c4"
-  rung-3: "#3f9f99"
-  rung-4: "#17706b"
-  rung-5: "#0b3f3d"
+  rung-1: "#1baf7a"
+  rung-2: "#255ebc"
+  rung-3: "#8a86ee"
+  rung-4: "#c2457f"
+  rung-5: "#e86531"
 typography:
   display:
     fontFamily: "Segoe UI Variable Display, Segoe UI, system-ui, sans-serif"
@@ -153,7 +153,13 @@ unless stated. Dark and high-contrast values are in §8.
 | `{colors.hairline}` | #d6dcdd | Dividers (decorative) | `{colors.surface}` | 1.39:1 | exempt (decorative); never the only control boundary |
 
 Rung ramp `{colors.rung-1}`…`{colors.rung-5}` fills bars only; every bar carries its rung name and
-value as text, so no meaning rests on the colour (WCAG 1.4.1).
+value as text, so no meaning rests on the colour (WCAG 1.4.1). Each rung has its own hue, walking the
+wheel aqua → blue → violet → magenta → orange, and the same five serve light and dark (a rung keeps its
+colour). Imran (2026-11-05): shades of one green can't be told apart; measured, five one-hue shades top out
+near OKLab ΔE 11 between neighbours. These five clear the dataviz gates over all pairs in both themes:
+normal-vision ΔE ≥ 15.7, protan/deutan ΔE ≥ 9.0, every fill ≥ 2:1 on both canvases. The success green
+stays reserved for status. Every rung swatch, segment and block also shows its rung number in
+`--on-rung-N` ink (at least 4.7:1 on its fill). `apps/home/src/palette.test.ts` enforces all of this.
 
 ## 3. Typography
 
@@ -237,7 +243,7 @@ Page changes are hard cuts. Nothing else moves. No layout shift: skeletons match
 | success | #1e7a45 | #6fd39a | #7ee2a8 |
 | warning | #8a5600 | #f0b860 | #ffd166 |
 | danger | #b42318 | #ff9a8f | #ffb4ab |
-| rung-1…5 | #c4e6e3 → #0b3f3d | #1d4a48 → #c4ece9 | outlines only, white |
+| rung-1…5 | aqua #1baf7a, blue #255ebc, violet #8a86ee, magenta #c2457f, orange #e86531 | same five | black fills, white outlines and numbers |
 
 Dark-mode audit (on surface): ink 12.77, ink-mute 6.37, primary 7.43, on-primary on primary 8.69,
 success 8.12, warning 8.31, danger 7.27. All pass AA. Density: Compact drops row padding from 12 to 8

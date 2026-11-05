@@ -4,6 +4,8 @@
   "offset_min": 0,
   "status": {
     "core": false,
+    "core_state": "failed",
+    "core_error": "AIQ-STORE-OPEN",
     "paused": false,
     "store_found": true,
     "last_event_ms": 1793532600000,
@@ -546,6 +548,7 @@
   },
   "setup": {
     "done": true,
+    "tour_seen": false,
     "tools": [
       {
         "tool": "claude-code",

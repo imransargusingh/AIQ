@@ -4,6 +4,8 @@
   "offset_min": 0,
   "status": {
     "core": true,
+    "core_state": "running",
+    "core_error": null,
     "paused": false,
     "store_found": true,
     "last_event_ms": 1793532600000,
@@ -546,6 +548,7 @@
   },
   "setup": {
     "done": true,
+    "tour_seen": false,
     "tools": [
       {
         "tool": "claude-code",
