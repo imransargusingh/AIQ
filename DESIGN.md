@@ -32,11 +32,11 @@ colors:
   danger: "#b42318"
   focus-ring: "#0b6b6b"
   scrim: "#0a1414"
-  rung-1: "#c4e6e3"
-  rung-2: "#86c9c4"
-  rung-3: "#3f9f99"
-  rung-4: "#17706b"
-  rung-5: "#0b3f3d"
+  rung-1: "#24bfb8"
+  rung-2: "#019993"
+  rung-3: "#02736e"
+  rung-4: "#014f4b"
+  rung-5: "#012d2b"
 typography:
   display:
     fontFamily: "Segoe UI Variable Display, Segoe UI, system-ui, sans-serif"
@@ -153,7 +153,11 @@ unless stated. Dark and high-contrast values are in §8.
 | `{colors.hairline}` | #d6dcdd | Dividers (decorative) | `{colors.surface}` | 1.39:1 | exempt (decorative); never the only control boundary |
 
 Rung ramp `{colors.rung-1}`…`{colors.rung-5}` fills bars only; every bar carries its rung name and
-value as text, so no meaning rests on the colour (WCAG 1.4.1).
+value as text, so no meaning rests on the colour (WCAG 1.4.1). One hue, even OKLCH lightness steps of
+about 0.115 (light 0.73 → 0.27, dark 0.47 → 0.94), the light end at least 2:1 against the canvas. Five
+shades of one hue cannot be told apart by colour alone (measured: the closest neighbours sit at OKLab
+ΔE 11, under the 15 a reader needs), so every rung swatch, segment and block also shows its rung
+number, in `--on-rung-N` ink (black or white, at least 5.3:1 on its fill).
 
 ## 3. Typography
 
@@ -237,7 +241,7 @@ Page changes are hard cuts. Nothing else moves. No layout shift: skeletons match
 | success | #1e7a45 | #6fd39a | #7ee2a8 |
 | warning | #8a5600 | #f0b860 | #ffd166 |
 | danger | #b42318 | #ff9a8f | #ffb4ab |
-| rung-1…5 | #c4e6e3 → #0b3f3d | #1d4a48 → #c4ece9 | outlines only, white |
+| rung-1…5 | #24bfb8 → #012d2b | #056965 → #a3fff8 | black fills, white outlines and numbers |
 
 Dark-mode audit (on surface): ink 12.77, ink-mute 6.37, primary 7.43, on-primary on primary 8.69,
 success 8.12, warning 8.31, danger 7.27. All pass AA. Density: Compact drops row padding from 12 to 8
