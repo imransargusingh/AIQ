@@ -859,6 +859,9 @@ await test("coaching Home: finished and could be, the rule, uncertain left out, 
   // The rung mix: 15 judged tasks, so shares show; the kinds on the highest rung reached are listed.
   const mix = await page.locator("section", { has: page.locator("h2#rg") }).innerText();
   assert.match(mix, /Delegated\s+40%\s+6 tasks/);
+  // Shades alone can't tell five rungs apart: every swatch and bar segment also carries the rung number.
+  assert.deepEqual(await page.locator(".mix-r i").allInnerTexts(), ["1", "2", "3", "4", "5"]);
+  assert.deepEqual(await page.locator(".rmix span").allInnerTexts(), ["1", "2", "3"]);
   assert.match(await page.locator(".mix-kinds").innerText(), /On Delegated:\s+Writing tests · 6/);
   assert.ok(!(await page.locator("main").innerHTML()).includes("Give the agent <b>"), "judge text is not on Home");
   // A week with fewer than 3 judged tasks says so instead of a share.

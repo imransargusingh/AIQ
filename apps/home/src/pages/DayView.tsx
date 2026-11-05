@@ -105,7 +105,7 @@ export function DayView(ctx: Ctx) {
       <div className="key" aria-hidden="true">
         {[1, 2, 3, 4, 5].map((r) => (
           <span key={r}>
-            <i className={`dv-r${r}`} />
+            <i className={`dv-r${r}`}>{r}</i>
             {rungLabel(r)}
           </span>
         ))}
