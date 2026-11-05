@@ -14,6 +14,7 @@ import { Settings } from "./pages/Settings";
 import { Task } from "./pages/Task";
 import { Setup } from "./pages/Setup";
 import { Kind } from "./pages/Kind";
+import { STEPS, Tour, TourOffer, exampleSnapshot } from "./tour";
 import { CHECK_POLL_MS, CHECK_WAIT_MS, checkOutcome, outcomeText, ver, type UpdatePhase } from "./updateNow";
 
 const REFRESH_MS = 15_000;
@@ -55,6 +56,8 @@ export function App() {
   const gPending = useRef(0);
   // "Update now" (U5h): one press checks, downloads and installs; its state shows in the titlebar and beside it.
   const [upd, setUpd] = useState<{ phase: UpdatePhase; since: number; msg: string | null }>({ phase: "idle", since: 0, msg: null });
+  // The tour (design home-tour): its step and the example snapshot the views show meanwhile; null when off.
+  const [tour, setTour] = useState<{ step: number; snap: Snapshot } | null>(null);
 
   const announce = useCallback((m: string) => {
     setSaid("");
@@ -96,6 +99,31 @@ export function App() {
       () => announce("Could not change the pause setting."),
     );
   }, [snap, announce]);
+  const markSeen = useCallback(() => {
+    api.tourSeen().then(setSnap, () => undefined);
+  }, []);
+  const startTour = useCallback(() => {
+    if (!snap) return;
+    if (!snap.setup.tour_seen) markSeen();
+    exampleSnapshot(snap).then(
+      (ex) => {
+        setTour({ step: 0, snap: ex });
+        setRoute({ page: STEPS[0].page, task: null });
+        announce("Tour started, on example data. Esc closes it.");
+      },
+      () => announce("The tour couldn't load."),
+    );
+  }, [snap, markSeen, announce]);
+  const tourStep = useCallback((n: number) => {
+    setTour((t) => t && { ...t, step: n });
+    setRoute({ page: STEPS[n].page, task: null });
+  }, []);
+  const endTour = useCallback(() => {
+    setTour(null);
+    go("home");
+    announce("Tour closed. Your own data is back.");
+    requestAnimationFrame(() => document.getElementById("main")?.focus());
+  }, [go, announce]);
   const say = useCallback(
     (phase: UpdatePhase, msg: string | null, since = 0) => {
       setUpd({ phase, since, msg });
@@ -184,7 +212,7 @@ export function App() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (inSetup) return;
+      if (inSetup || tour) return;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setPalette((p) => !p);
@@ -212,7 +240,7 @@ export function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [singleKeys, palette, go, togglePause, inSetup]);
+  }, [singleKeys, palette, go, togglePause, inSetup, tour]);
 
   const setProject = useCallback(
     (key: string | null) => {
@@ -223,8 +251,10 @@ export function App() {
     [snap, announce],
   );
   const update = useMemo(() => ({ phase: upd.phase, msg: upd.msg, run: updateNow }), [upd.phase, upd.msg, updateNow]);
-  const ctx: Ctx | null = snap && { snap, go, openTask, openKind, announce, togglePause, refresh, project, setProject, update };
-  const one: Ctx | null = ctx && { ...ctx, snap: scoped(ctx.snap, project) };
+  const ctx: Ctx | null = snap && { snap: tour?.snap ?? snap, go, openTask, openKind, announce, togglePause, refresh, project, setProject, update, startTour };
+  // The tour shows every project of the example; the person's project choice is back after it.
+  const one: Ctx | null = ctx && { ...ctx, snap: tour ? ctx.snap : scoped(ctx.snap, project), project: tour ? null : project };
+  const step = tour ? STEPS[tour.step] : null;
   // The tools AIQ is connected to and that are installed, not the tools it holds tasks from (an imported or
   // disconnected tool isn't being watched).
   const watching = snap?.setup.tools.filter((t) => t.hooked && t.present).map((t) => (t.tool === "copilot" ? "Copilot" : "Claude Code")) ?? [];
@@ -266,13 +296,15 @@ export function App() {
       </a>
       <div className="titlebar">
         <b style={{ color: "var(--ink)" }}>AIQ</b>
+        {tour && <span className="chip examplechip">Example data</span>}
         {snap?.status.paused && <span className="chip pausedchip">Paused</span>}
         {ctx && <UpdateChip {...ctx} />}
         <button className="search" onClick={() => setPalette(true)} aria-label="Command palette (Ctrl+K)">
           Search or jump to… <kbd>Ctrl K</kbd>
         </button>
       </div>
-      <div className="shell">
+      {/* inert while the tour is open: the page under it can't be clicked, focused or read out. */}
+      <div className="shell" inert={!!tour}>
         <nav className="side" aria-label="AIQ">
           {PAGES.map((p) => (
             <a
@@ -341,7 +373,7 @@ export function App() {
             </div>
           )}
           {one && page === "home" && <Home key="home" {...one} />}
-          {one && page === "tasks" && <Tasks key="tasks" {...one} />}
+          {one && page === "tasks" && <Tasks key={`tasks-${step?.view ?? ""}`} {...one} start={step?.view} />}
           {ctx && page === "tips" && <Tips key="tips" {...ctx} />}
           {ctx && page === "data" && <Data key="data" {...ctx} />}
           {ctx && page === "settings" && <Settings key="settings" {...ctx} singleKeys={singleKeys} setSingleKeys={setSingleKeys} />}
@@ -351,6 +383,8 @@ export function App() {
       </div>
       <p className="sr" role="status" aria-live="polite">{said}</p>
       {palette && ctx && <Palette ctx={ctx} onClose={() => setPalette(false)} />}
+      {tour && <Tour step={tour.step} setStep={tourStep} end={endTour} />}
+      {snap && !tour && page === "home" && snap.setup.done && !snap.setup.tour_seen && <TourOffer start={startTour} decline={markSeen} />}
     </div>
   );
 }
@@ -370,6 +404,7 @@ function Palette({ ctx, onClose }: { ctx: Ctx; onClose: () => void }) {
       { label: ctx.snap.status.paused ? "Resume AIQ" : "Pause AIQ", hint: "P", run: ctx.togglePause },
       { label: "Delete everything…", run: () => ctx.go("data") },
       { label: "Run setup again", run: () => ctx.go("setup") },
+      { label: "Take the tour", run: ctx.startTour },
       { label: "Refresh", run: ctx.refresh },
       ...(ctx.snap.update.supported ? [{ label: "Update AIQ now", run: ctx.update.run }] : []),
     ],

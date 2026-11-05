@@ -189,6 +189,7 @@
   },
   "setup": {
     "done": false,
+    "tour_seen": false,
     "tools": [
       {
         "tool": "claude-code",

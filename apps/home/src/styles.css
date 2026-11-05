@@ -444,3 +444,24 @@ li+li>.kindrow{border-top:1px solid var(--hairline)}
 .fold > summary{cursor:pointer;width:max-content;max-width:100%}
 .fold[open] > summary{margin-bottom:var(--s3)}
 main:has(.secnav){scroll-padding-top:56px}
+/* The tour (design home-tour): a click-blocking layer, a spotlight round the step's view, the coach mark, the offer. */
+.tour-block{position:fixed;inset:0;z-index:60}
+.tour-block.dim{background:rgba(10,20,20,.55)}
+.tour-spot{position:fixed;z-index:61;border-radius:var(--r-md);box-shadow:0 0 0 9999px rgba(10,20,20,.55);outline:2px solid var(--focus-ring);outline-offset:2px;pointer-events:none}
+.tour-pop{position:fixed;z-index:62;background:var(--surface);color:var(--ink);border:1px solid var(--hairline);border-radius:var(--r-md);box-shadow:var(--overlay);padding:var(--s5)}
+.tour-pop h2{font:var(--t-heading);margin:0 var(--s6) var(--s2) 0}
+.tour-pop p{margin:0}
+.tour-x{position:absolute;top:var(--s3);right:var(--s3);background:none;border:0;color:var(--ink-mute);font-size:16px;line-height:1;padding:var(--s2);cursor:pointer;border-radius:var(--r-sm)}
+.tour-x:focus-visible{outline:2px solid var(--focus-ring)}
+.tour-tip{margin-top:var(--s4)!important;background:#0c0c0c;color:#d4d4d4;font:var(--t-mono);border-radius:var(--r-sm);padding:var(--s3) var(--s4)}
+.tour-tip .b{background:#ffd400;color:#000;font-weight:600;padding:0 var(--s2);border-radius:2px}
+.tour-dots{display:flex;gap:var(--s2);margin-top:var(--s4)}
+.tour-dots i{width:6px;height:6px;border-radius:3px;background:var(--hairline)}
+.tour-dots i.on{width:16px;background:var(--primary)}
+.tour-row{margin-top:var(--s5)}
+.tour-row .meta{margin-right:auto}
+.tour-offer{position:fixed;right:var(--s6);bottom:var(--s6);z-index:40;width:300px;background:var(--surface);border:1px solid var(--hairline);border-radius:var(--r-md);box-shadow:var(--overlay);padding:var(--s5)}
+.tour-offer h2{font:var(--t-heading);margin:0 0 var(--s2)}
+.tour-offer p{margin:0 0 var(--s4)}
+.titlebar .examplechip{color:var(--warning);border-color:var(--warning)}
+@media (forced-colors:active){.tour-spot{outline-color:Highlight}.tour-tip,.tour-tip .b{forced-color-adjust:none}}

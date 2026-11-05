@@ -103,6 +103,16 @@ pub fn finish_setup(paths: &Paths) -> std::io::Result<()> {
     crate::paths::write_user_only(&paths.setup_flag(), b"done\n")
 }
 
+/// AIQ home's tour was taken, skipped or declined once.
+pub fn tour_seen(paths: &Paths) -> bool {
+    paths.tour_flag().exists()
+}
+
+pub fn mark_tour_seen(paths: &Paths) -> std::io::Result<()> {
+    paths.ensure_dirs()?;
+    crate::paths::write_user_only(&paths.tour_flag(), b"seen\n")
+}
+
 /// Record the person's answer to a tip (coaching-from-rungs D8): through the core when it runs, else
 /// directly in the store, as nobody else writes while the core is down.
 pub fn tip_feedback(
@@ -204,6 +214,15 @@ mod tests {
         assert!(!setup_done(&p));
         finish_setup(&p).unwrap();
         assert!(setup_done(&p));
+    }
+
+    #[test]
+    fn tour_flag_round_trip() {
+        let d = tempfile::tempdir().unwrap();
+        let p = Paths::at(&d.path().join("fresh"));
+        assert!(!tour_seen(&p));
+        mark_tour_seen(&p).unwrap();
+        assert!(tour_seen(&p));
     }
 
     #[test]

@@ -208,6 +208,8 @@ pub struct HabitRow {
 pub struct Setup {
     /// The person finished setup once; AIQ home then opens on Home.
     pub done: bool,
+    /// The tour was taken, skipped or declined once, so Home doesn't offer it again (design home-tour T3).
+    pub tour_seen: bool,
     pub tools: Vec<aiq_core::tools::ToolFound>,
 }
 
@@ -481,7 +483,11 @@ pub fn snapshot(paths: &Paths, pack: &PackV1, now: Now) -> Snapshot {
     let started = Instant::now();
     let mut s = empty(paths, pack, now);
     s.status.paused = aiq_core::control::is_paused(paths);
-    s.setup = Setup { done: aiq_core::control::setup_done(paths), tools: aiq_core::tools::found() };
+    s.setup = Setup {
+        done: aiq_core::control::setup_done(paths),
+        tour_seen: aiq_core::control::tour_seen(paths),
+        tools: aiq_core::tools::found(),
+    };
     let db = paths.db();
     if db.exists() {
         s.status.store_found = true;
@@ -580,7 +586,7 @@ fn empty(paths: &Paths, pack: &PackV1, now: Now) -> Snapshot {
                 .collect(),
             accuracy_paused: vec![],
         },
-        setup: Setup { done: false, tools: vec![] },
+        setup: Setup { done: false, tour_seen: false, tools: vec![] },
         coaching: Coaching {
             split_min: pack.coach.split_min,
             week_min: pack.coach.week_min,

@@ -417,6 +417,20 @@ async fn finish_setup() -> Result<Snapshot, String> {
     .await?
 }
 
+/// The tour was taken, skipped or declined (design home-tour T3): Home stops offering it.
+#[tauri::command]
+async fn tour_seen() -> Result<Snapshot, String> {
+    blocking(|| {
+        let t = Instant::now();
+        let paths = Paths::from_env();
+        let r = control::mark_tour_seen(&paths);
+        log(&paths, "tour_seen", t, if r.is_ok() { "ok" } else { "error" });
+        r.map_err(|e| format!("Could not save that the tour was seen: {e}"))?;
+        Ok(read(&paths))
+    })
+    .await?
+}
+
 /// "Install now" (`install`) or "Go back to the previous version" (`rollback`), design auto-update U5: start
 /// `upgrade.ps1`, which waits for this window to close, swaps the exes and opens AIQ home again. The window
 /// closes itself right after replying, so the swap never waits on it.
@@ -511,6 +525,7 @@ fn main() {
             task,
             forget_item,
             finish_setup,
+            tour_seen,
             guidance_flag,
             tip_on,
             tip_off,

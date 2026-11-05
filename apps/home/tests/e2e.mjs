@@ -72,7 +72,7 @@ const pages = [
 ];
 
 await test("contract: fixtures are aiq.home.v1 snapshots from the Rust read model", async () => {
-  for (const f of ["full", "down", "paused", "empty", "first-run", "coaching", "progress", "live"]) {
+  for (const f of ["full", "down", "paused", "empty", "first-run", "coaching", "progress", "live", "tour"]) {
     const s = JSON.parse(readFileSync(join(fixtures, `${f}.json`), "utf8"));
     assert.equal(s.schema, "aiq.home.v1");
     for (const k of ["status", "home", "tasks", "tips", "data", "settings", "setup", "coaching"]) assert.ok(k in s, `${f}: ${k}`);
@@ -1313,6 +1313,109 @@ await test("projects: Your projects ranks folders on Tasks, the picker scopes Ho
   assert.equal(await solo.getByLabel("Project").count(), 0);
   assert.equal(await solo.getByRole("table", { name: "Your projects" }).count(), 0);
   await solo.context().close();
+});
+
+// The tour (design home-tour): offered once after setup, eight steps on the example snapshot, Esc on any step.
+const TOUR = ["Right now", "How you work with agents", "Is each kind of task moving up?", "Tasks, by kind", "Your day", "Habits", "Tips show where you work", "Settings"];
+const READS = new Set(["snapshot", "run_update", "task"]);
+
+await test("tour: offered once after setup; Not now means never again", async () => {
+  const page = await open("empty");
+  await page.waitForSelector(".tour-offer");
+  assert.match(await page.locator(".tour-offer").innerText(), /New to AIQ\?/);
+  assert.deepEqual(await axe(page), []);
+  await page.getByRole("button", { name: "Not now" }).click();
+  await page.waitForFunction(() => !document.querySelector(".tour-offer"));
+  const calls = await page.evaluate(() => window.__AIQ_FIXTURE__.calls.map((c) => c.cmd));
+  assert.ok(calls.includes("tour_seen"), "Not now saves that the tour was seen");
+  // The getting-started list is still the whole of empty Home, and still starts the tour.
+  assert.match(await page.locator("main").innerText(), /AIQ is getting to know your work/);
+  assert.equal(await page.getByRole("button", { name: "Take the tour" }).count(), 1);
+  await page.context().close();
+
+  const seen = await open("full", { edit: (s) => (s.setup.tour_seen = true) });
+  await seen.waitForTimeout(200);
+  assert.equal(await seen.locator(".tour-offer").count(), 0, "no offer once seen");
+  await seen.context().close();
+
+  const setup = await open("first-run");
+  assert.equal(await setup.locator(".tour-offer").count(), 0, "no offer during setup");
+  await setup.context().close();
+
+  // Only on Home: another page never carries it.
+  const other = await open("full", { hash: "#tasks" });
+  await other.waitForTimeout(200);
+  assert.equal(await other.locator(".tour-offer").count(), 0);
+  await other.context().close();
+});
+
+await test("tour: eight steps on example data, every view found, own data back after", async () => {
+  const page = await open("empty");
+  await page.getByRole("button", { name: "Take the tour" }).first().click();
+  for (let i = 0; i < TOUR.length; i++) {
+    await page.waitForFunction((t) => document.querySelector("#tourhd")?.textContent === t, TOUR[i]);
+    // The spotlight found the step's view (no centred fallback on the example data).
+    await page.waitForSelector(".tour-spot", { timeout: 2000 });
+    assert.equal(await page.locator(".titlebar .examplechip").innerText(), "Example data");
+    assert.match(await page.locator(".tour-pop").innerText(), new RegExp(`${i + 1} of ${TOUR.length}`));
+    if (i === 0 || i === 4) assert.deepEqual(await axe(page), [], `step ${i + 1}`);
+    if (shots) await page.screenshot({ path: join(shots, `tour-${i + 1}.png`) });
+    await page.getByRole("button", { name: i === TOUR.length - 1 ? "Done" : "Next", exact: true }).click();
+  }
+  await page.waitForFunction(() => !document.querySelector(".tour-pop"));
+  assert.equal(await page.locator(".examplechip").count(), 0);
+  assert.match(await page.locator("main").innerText(), /AIQ is getting to know your work/, "the person's own (empty) Home is back");
+  assert.equal(await page.locator(".tour-offer").count(), 0, "taking the tour counts as seen");
+  const writes = await page.evaluate(() => window.__AIQ_FIXTURE__.calls.map((c) => c.cmd));
+  assert.deepEqual([...new Set(writes.filter((c) => !READS.has(c)))], ["tour_seen"], "the tour writes nothing but its flag");
+  assert.deepEqual(page.errors, []);
+  await page.context().close();
+});
+
+await test("tour: Esc on any step, arrows move, focus stays in the coach mark, the page can't be clicked", async () => {
+  const page = await open("full", { edit: (s) => (s.setup.tour_seen = true) });
+  await page.keyboard.press("Control+k");
+  await page.getByLabel("Type a page or action").fill("tour");
+  await page.keyboard.press("Enter");
+  await page.waitForSelector("#tourhd");
+  assert.equal(await page.evaluate(() => document.activeElement?.textContent), "Next", "focus on Next");
+  await page.keyboard.press("ArrowRight");
+  await page.waitForFunction((t) => document.querySelector("#tourhd")?.textContent === t, TOUR[1]);
+  await page.keyboard.press("ArrowLeft");
+  await page.waitForFunction((t) => document.querySelector("#tourhd")?.textContent === t, TOUR[0]);
+  for (let n = 0; n < 4; n++) {
+    await page.keyboard.press("Tab");
+    assert.ok(await page.evaluate(() => !!document.activeElement?.closest(".tour-pop")), "Tab stays in the coach mark");
+  }
+  // Single-key shortcuts are off while the tour is open.
+  await page.keyboard.press("g");
+  await page.keyboard.press("s");
+  assert.equal(await page.locator("#tourhd").innerText(), TOUR[0]);
+  // A click on the side nav lands on the blocking layer.
+  await page.mouse.click(60, 160);
+  assert.equal(await page.locator("#tourhd").innerText(), TOUR[0]);
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("ArrowRight");
+  await page.waitForFunction((t) => document.querySelector("#tourhd")?.textContent === t, TOUR[3]);
+  assert.match(page.url(), /#$|\/$|#home$/, "the tour moves pages without rewriting the address");
+  await page.keyboard.press("Escape");
+  await page.waitForFunction(() => !document.querySelector(".tour-pop"));
+  assert.equal(await page.locator("nav a[aria-current=page]").innerText(), "Home");
+  const calls = await page.evaluate(() => window.__AIQ_FIXTURE__.calls.map((c) => c.cmd));
+  assert.ok(!calls.includes("tour_seen"), "already seen: nothing written");
+  await page.context().close();
+
+  // From Settings, in dark and high contrast.
+  for (const theme of ["dark", "contrast"]) {
+    const s = await open("full", { hash: "#settings", theme });
+    await s.getByRole("button", { name: "Take the tour" }).click();
+    await s.waitForSelector(".tour-spot");
+    assert.deepEqual(await axe(s), [], theme);
+    await s.getByRole("button", { name: "Close the tour" }).click();
+    await s.waitForFunction(() => !document.querySelector(".tour-pop"));
+    await s.context().close();
+  }
 });
 
 await browser.close();
