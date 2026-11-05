@@ -1296,6 +1296,17 @@ await test("auto-update: the titlebar marker, one-press Update now, Go back, the
   assert.deepEqual(await upd(home), [{ action: "install" }]);
   assert.deepEqual(await axe(home), []);
   await home.context().close();
+  // A newer release while one waits (laptop 2026-11-05: 0.1.8 waited from 18:58Z; 0.1.9 at 20:32Z never showed):
+  // Home's timed check still runs, the newer download replaces the waiting one, and the box names it.
+  const newer = await open("full", { edit: (s) => Object.assign(s.update, { note: "waiting", available: "v0.1.8", latest: "v0.1.8", blocked: "AIQ home is open" }) });
+  const box = newer.locator("nav .foot").getByTestId("update-ready");
+  assert.match(await box.innerText(), /^AIQ 0\.1\.8 is ready/);
+  await newer.evaluate(() => Object.assign(window.__AIQ_FIXTURE__, { checkDue: true, checkFinds: "v0.1.9" }));
+  await newer.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await newer.waitForFunction(() => /^AIQ 0\.1\.9 is ready/.test(document.querySelector("nav .foot [data-testid=update-ready]")?.textContent ?? ""), null, { timeout: 20000 });
+  await box.getByRole("button", { name: "Update", exact: true }).click();
+  await newer.waitForFunction(() => window.__AIQ_FIXTURE__.calls.some((c) => c.cmd === "run_update" && c.args.action === "install"));
+  await newer.context().close();
   // Nothing known yet: Update now checks with Home open, shows each step, and installs once the download lands.
   const found = await open("full", { edit: (s) => (s.update.latest = "v0.1.0") });
   await found.evaluate(() => (window.__AIQ_FIXTURE__.checkFinds = "v0.2.0"));

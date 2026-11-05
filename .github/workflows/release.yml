@@ -170,7 +170,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { Write-Error 'rollback failed'; exit 1 }
           & (Join-Path $env:USERPROFILE '.aiq\bin\aiq.exe') version
           Get-Content (Join-Path $env:USERPROFILE '.aiq\upgrade-log.txt')
-      - name: Smoke test - auto-update refuses a tampered download, waits while AIQ home is open, installs when idle, never reinstalls a version rolled back from
+      - name: Smoke test - auto-update refuses a tampered download, waits while AIQ home is open, a newer release replaces the waiting one, installs when idle, never reinstalls a version rolled back from
         shell: pwsh
         run: |
           $v = '${{ steps.version.outputs.version }}'
@@ -203,6 +203,38 @@ jobs:
           if ($LASTEXITCODE -ne 3) { Fail "with AIQ home open, exit $LASTEXITCODE, want 3 (waiting)" }
           $s = St
           if ($s.state -ne 'waiting' -or $s.available -ne 'v99.0.0' -or $s.blocked -ne 'AIQ home is open') { Fail "waiting: $($s | ConvertTo-Json -Compress)" }
+
+          # Checks go on while an update waits (laptop 2026-11-05: 0.1.8 waited from 18:58Z and 0.1.9 at 20:32Z was
+          # never seen). Same release again: not downloaded again.
+          $staged = Join-Path $aiq "update\aiq-$v-windows-x64.zip"
+          $t0 = (Get-Item $staged).LastWriteTimeUtc
+          Start-Sleep -Seconds 1
+          powershell -ExecutionPolicy Bypass -File $up -Check -Feed $feed
+          if ($LASTEXITCODE -ne 0) { Fail "re-check of the waiting release: exit $LASTEXITCODE" }
+          if ((Get-Item $staged).LastWriteTimeUtc -ne $t0) { Fail 'the waiting release was downloaded again' }
+          if ((St).available -ne 'v99.0.0' -or -not (Select-String -Quiet -Path (Join-Path $aiq 'upgrade-log.txt') -Pattern 'AIQ-UPDATE-STILL-NEWEST')) { Fail "re-check: $((St) | ConvertTo-Json -Compress)" }
+          # A newer release replaces the waiting one, so AIQ home's box names the newest and Update installs it.
+          $feed2 = Join-Path $env:RUNNER_TEMP 'feed2'
+          Copy-Item -Recurse $feed $feed2
+          @{ tag_name = 'v99.0.1'; zip = "aiq-$v-windows-x64.zip" } | ConvertTo-Json | Set-Content (Join-Path $feed2 'latest.json')
+          powershell -ExecutionPolicy Bypass -File $up -Check -Feed $feed2
+          if ($LASTEXITCODE -ne 0) { Fail "newer release while one waits: exit $LASTEXITCODE" }
+          $s = St
+          if ($s.state -ne 'waiting' -or $s.available -ne 'v99.0.1' -or -not (Test-Path $staged)) { Fail "newer release did not replace the waiting one: $($s | ConvertTo-Json -Compress)" }
+          $view = (& $exe update) -join ' '
+          if ($view -notmatch '99\.0\.1') { Fail "aiq update does not name 99.0.1: $view" }
+          # A newer download that fails its checksum, or a check that fails, keeps the waiting release; with -Apply
+          # the run still goes on to install it (here AIQ home is open, so it waits: exit 3).
+          $bad2 = Join-Path $env:RUNNER_TEMP 'feed-bad2'
+          Copy-Item -Recurse $bad $bad2
+          @{ tag_name = 'v99.0.2'; zip = "aiq-$v-windows-x64.zip" } | ConvertTo-Json | Set-Content (Join-Path $bad2 'latest.json')
+          powershell -ExecutionPolicy Bypass -File $up -Check -Feed $bad2
+          if ($LASTEXITCODE -eq 0) { Fail 'tampered newer download was accepted' }
+          $s = St
+          if ($s.state -ne 'waiting' -or $s.available -ne 'v99.0.1' -or -not (Test-Path $staged)) { Fail "tampered newer download dropped the waiting one: $($s | ConvertTo-Json -Compress)" }
+          powershell -ExecutionPolicy Bypass -File $up -Check -Apply -Feed (Join-Path $env:RUNNER_TEMP 'no-such-feed')
+          if ($LASTEXITCODE -ne 3) { Fail "failed check with one waiting: exit $LASTEXITCODE, want 3 (went on to install, AIQ home open)" }
+          if ((St).available -ne 'v99.0.1') { Fail "failed check dropped the waiting one: $((St) | ConvertTo-Json -Compress)" }
           Stop-Process -Id $home_.Id -Force
           Start-Sleep -Seconds 1
 
@@ -212,7 +244,7 @@ jobs:
           powershell -ExecutionPolicy Bypass -File $up -Apply
           if ($LASTEXITCODE -ne 0) { Fail "apply when idle: exit $LASTEXITCODE" }
           $s = St
-          if ($s.state -ne 'applied' -or $s.installed_tag -ne 'v99.0.0' -or $s.from -ne $v) { Fail "applied: $($s | ConvertTo-Json -Compress)" }
+          if ($s.state -ne 'applied' -or $s.installed_tag -ne 'v99.0.1' -or $s.from -ne $v) { Fail "applied: $($s | ConvertTo-Json -Compress)" }
           if (Test-Path (Join-Path $aiq 'update')) { Fail 'staged files left after install' }
           foreach ($f in 'aiq.exe.old', 'aiq-home.exe.old') { if (-not (Test-Path (Join-Path $aiq "bin\$f"))) { Fail "no $f kept" } }
           # The core is started again after the swap (laptop 2026-11-04: it stayed down until a hook started it).
@@ -228,8 +260,8 @@ jobs:
           # Go back: the release left is never installed again by itself.
           powershell -ExecutionPolicy Bypass -File $up -Rollback
           if ($LASTEXITCODE -ne 0) { Fail 'rollback failed' }
-          if ((St).skip -ne 'v99.0.0') { Fail "rollback did not record the release left: $((St) | ConvertTo-Json -Compress)" }
-          powershell -ExecutionPolicy Bypass -File $up -Check -Apply -Feed $feed
+          if ((St).skip -ne 'v99.0.1') { Fail "rollback did not record the release left: $((St) | ConvertTo-Json -Compress)" }
+          powershell -ExecutionPolicy Bypass -File $up -Check -Apply -Feed $feed2
           if ((St).state -ne 'rolled_back' -or (Test-Path (Join-Path $aiq 'update'))) { Fail "reinstalled after rollback: $((St) | ConvertTo-Json -Compress)" }
 
           # A waiting release that is not newer (installed another way after the check) is dropped, never swapped in:

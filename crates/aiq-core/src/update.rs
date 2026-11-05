@@ -1,7 +1,9 @@
 //! Auto-update (design `docs/design/auto-update.md`). One mechanism: the installed `upgrade.ps1` does the
 //! network call, the checksum and the swap; this module decides *when*, starts it, and reads back its outcome
 //! (`update.json`) for `aiq update` and AIQ home. The core's kicker asks once an hour; a check runs once a day,
-//! hourly after one failed, or every 15 minutes while AIQ home is open (`home_check_due`); a waiting update is applied only under "Update automatically", and only when AIQ is idle (the script
+//! hourly after one failed, or every 15 minutes while AIQ home is open (`home_check_due`), also while an update waits
+//! (a newer release replaces the waiting one); a waiting update is applied only under "Update automatically", and
+//! only when AIQ is idle, after an hourly check for a newer one (the script
 //! decides idle, because only it sees the processes at the moment of the swap).
 use crate::paths::Paths;
 use crate::sysclock::parse_rfc3339_ms as parse_utc_ms;
@@ -137,9 +139,15 @@ pub fn decide(now_ms: i64, st: &State, mode: Option<&str>) -> Option<Action> {
         return None;
     }
     let auto = mode.unwrap_or(DEFAULT_MODE) == "auto";
+    let waiting = st.state.as_deref() == Some("waiting");
     if check_due(now_ms, st, CHECK_EVERY_MS) {
         Some(Action::Check { apply: auto })
-    } else if auto && st.state.as_deref() == Some("waiting") {
+    } else if auto && waiting && check_due(now_ms, st, HOURLY_MS) {
+        // Before installing what waits, ask whether something newer came out since it was downloaded, so AIQ home
+        // closing after hours never installs a stale release (2026-11-05, laptop: 0.1.8 waited from 18:58Z and
+        // 0.1.9 came out at 20:32Z). The script installs what waits even if this check fails.
+        Some(Action::Check { apply: true })
+    } else if auto && waiting {
         Some(Action::Apply)
     } else {
         None
@@ -175,8 +183,9 @@ fn kick_sleep(now_ms: i64, st: &State) -> Duration {
 
 /// AIQ home asks this every minute while open, then starts a check (download, no install) when it says so: a
 /// person who keeps Home open sees a new release within about 15 minutes and can Install now, instead of waiting
-/// for the daily check. Not with updates off, and not while an update already waits (that would only download
-/// it again).
+/// for the daily check. Not with updates off. It keeps checking while an update waits (2026-11-05, laptop: Home
+/// stopped checking once 0.1.8 waited at 18:58Z, so 0.1.9 at 20:32Z never showed): the script downloads only a
+/// newer release than the one waiting and replaces it, and keeps the one waiting when nothing newer is out.
 pub fn home_check_due(now_ms: i64, st: &State, mode: Option<&str>) -> bool {
     home_due(now_ms, st, mode, HOME_EVERY_MS)
 }
@@ -189,7 +198,7 @@ pub fn home_open_check_due(now_ms: i64, st: &State, mode: Option<&str>) -> bool 
 /// After a check that needed api.github.com, Home waits the hour so it never spends the shared API limit faster.
 fn home_due(now_ms: i64, st: &State, mode: Option<&str>, every: i64) -> bool {
     let every = if st.source.as_deref() == Some("api") { HOURLY_MS } else { every };
-    mode != Some("off") && st.state.as_deref() != Some("waiting") && check_due(now_ms, st, every)
+    mode != Some("off") && check_due(now_ms, st, every)
 }
 
 /// The script's arguments for one action. `wait_pid`: the caller about to exit (AIQ home, the CLI).
@@ -441,7 +450,7 @@ mod tests {
     }
 
     #[test]
-    fn home_checks_every_15_minutes_while_open_but_never_with_updates_off_or_one_waiting() {
+    fn home_checks_every_15_minutes_while_open_but_never_with_updates_off() {
         assert!(home_check_due(t0(), &State::default(), None), "never checked");
         let ok = st(Some("current"), Some(T0));
         assert!(!home_check_due(t0() + HOME_EVERY_MS - 1, &ok, None));
@@ -450,12 +459,21 @@ mod tests {
         assert!(!home_check_due(t0() + HOURLY_MS, &ok, Some("off")));
         let redirect = State { source: Some("redirect".into()), ..ok.clone() };
         assert!(home_check_due(t0() + HOME_EVERY_MS, &redirect, None));
-        assert!(!home_check_due(t0() + CHECK_EVERY_MS, &st(Some("waiting"), Some(T0)), None));
-        // On open: 10 minutes, not 55; still never with updates off or while one waits.
+        // On open: 10 minutes, not 55; still never with updates off.
         assert!(!home_open_check_due(t0() + HOME_OPEN_MS - 1, &ok, None));
         assert!(home_open_check_due(t0() + HOME_OPEN_MS, &ok, None));
         assert!(!home_open_check_due(t0() + HOURLY_MS, &ok, Some("off")));
-        assert!(!home_open_check_due(t0() + CHECK_EVERY_MS, &st(Some("waiting"), Some(T0)), None));
+    }
+
+    #[test]
+    fn a_waiting_update_does_not_stop_home_checking_so_a_newer_release_replaces_it() {
+        // Laptop 2026-11-05: 0.1.8 waiting since 18:58Z with Home open; 0.1.9 out at 20:32Z was never seen.
+        let waiting = State { available: Some("v0.1.8".into()), ..st(Some("waiting"), Some(T0)) };
+        assert!(!home_check_due(t0() + HOME_EVERY_MS - 1, &waiting, None));
+        assert!(home_check_due(t0() + HOME_EVERY_MS, &waiting, None));
+        assert!(home_check_due(t0() + HOME_EVERY_MS, &waiting, Some("ask")));
+        assert!(home_open_check_due(t0() + HOME_OPEN_MS, &waiting, None));
+        assert!(!home_check_due(t0() + CHECK_EVERY_MS, &waiting, Some("off")));
     }
 
     #[test]
@@ -487,9 +505,21 @@ mod tests {
     #[test]
     fn a_waiting_update_is_retried_hourly_only_under_auto() {
         let s = st(Some("waiting"), Some(T0));
-        assert_eq!(decide(t0() + 3_600_000, &s, None), Some(Action::Apply));
-        assert_eq!(decide(t0() + 3_600_000, &s, Some("auto")), Some(Action::Apply));
+        assert_eq!(decide(t0() + HOURLY_MS - 1, &s, None), Some(Action::Apply));
+        assert_eq!(decide(t0() + HOURLY_MS - 1, &s, Some("auto")), Some(Action::Apply));
         assert_eq!(decide(t0() + 3_600_000, &s, Some("ask")), None);
+    }
+
+    #[test]
+    fn the_kicker_checks_for_a_newer_release_before_installing_a_waiting_one_from_over_an_hour_ago() {
+        // Home closed hours after 0.1.8 was downloaded: ask first, so 0.1.9 is what installs. One run does both
+        // (-Check -Apply); a check that fails still installs what waits.
+        let s = st(Some("waiting"), Some(T0));
+        assert_eq!(decide(t0() + HOURLY_MS, &s, None), Some(Action::Check { apply: true }));
+        assert_eq!(decide(t0() + 3 * 3_600_000, &s, Some("auto")), Some(Action::Check { apply: true }));
+        assert_eq!(decide(t0() + 3 * 3_600_000, &s, Some("ask")), None);
+        // A check Home ran a few minutes ago is fresh enough: install straight away.
+        assert_eq!(decide(t0() + HOME_EVERY_MS, &s, None), Some(Action::Apply));
     }
 
     #[test]
