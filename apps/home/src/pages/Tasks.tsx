@@ -59,8 +59,8 @@ export function Tasks({ start, ...ctx }: Ctx & { start?: View }) {
         <div className="group">
           <Title>Tasks</Title>
           <p className="mute">
-            {plural(snap.home.tasks_in_window, "task")} in the last {snap.home.window_days} days, {snap.home.judged} judged.
-            {snap.home.judged < snap.home.tasks_in_window && " AIQ judges finished tasks through your own Claude Code or Copilot CLI, within a daily limit."}
+            {plural(snap.home.tasks_in_window, "task")} in the last {snap.home.window_days} days, {snap.home.judged} analyzed.
+            {snap.home.judged < snap.home.tasks_in_window && " AIQ analyzes finished tasks through your own Claude Code or Copilot CLI, within a daily limit."}
           </p>
         </div>
         {snap.tasks.length > 0 && (
@@ -94,7 +94,7 @@ export function Tasks({ start, ...ctx }: Ctx & { start?: View }) {
       ) : snap.tasks.length === 0 ? (
         <div className="empty">
           <b>No tasks yet.</b>
-          <span className="mute">A task shows here after you work with Claude Code, Copilot CLI or VS Code agent mode while AIQ is watching.</span>
+          <span className="mute">A task shows here after you work with Claude Code, Copilot CLI or VS Code agent mode while AIQ is on.</span>
         </div>
       ) : (
         <div className="tablewrap">
@@ -136,7 +136,7 @@ export function Tasks({ start, ...ctx }: Ctx & { start?: View }) {
                     {toolName(t.tool)} {t.origin === "imported" && <Chip>Imported</Chip>}
                   </td>
                   <td className="r num">{t.prompts}</td>
-                  <td title={t.folder ?? "Not recorded for tasks before this version"}>{projectName(snap, projectOf(t))}</td>
+                  <td title={t.folder ?? "Unknown for tasks before this version"}>{projectName(snap, projectOf(t))}</td>
                   <td className={t.job ? undefined : "mute"}>
                     {jobOf(t)}
                     {t.judgment?.task_type_label && <span className="meta"> · {t.judgment.task_type_label}</span>}
@@ -148,7 +148,7 @@ export function Tasks({ start, ...ctx }: Ctx & { start?: View }) {
                         {stateLabel(t.judgment.state) && <> <Chip>{stateLabel(t.judgment.state)}</Chip></>}
                       </>
                     ) : (
-                      "Not judged yet"
+                      "Not analyzed yet"
                     )}
                   </td>
                 </tr>
@@ -186,7 +186,7 @@ function Kinds(ctx: Ctx & { rows: KindRow[] }) {
             <tr>
               <th>Kind of task</th>
               <th>
-                <span className="rung" title="The rung most of this kind's judged tasks sit at.">Today</span>
+                <span className="rung" title="The rung most of this kind's analyzed tasks sit at.">Today</span>
               </th>
               <th>Could be</th>
               <th className="r">A week</th>
@@ -233,8 +233,8 @@ function Kinds(ctx: Ctx & { rows: KindRow[] }) {
         </table>
       </div>
       <p className="meta">
-        Most tasks first. The kind of each task and its rung are the judge's reading; counts are measured. Open a kind for its next step and a starter prompt.
-        {c.untyped > 0 && ` ${plural(c.untyped, "task")} judged before kinds existed ${c.untyped === 1 ? "isn't" : "aren't"} grouped.`}
+        Most tasks first. The kind of each task and its rung are AIQ's analysis; counts are measured. Open a kind for its next step and a starter prompt.
+        {c.untyped > 0 && ` ${plural(c.untyped, "task")} analyzed before kinds existed ${c.untyped === 1 ? "isn't" : "aren't"} grouped.`}
       </p>
     </>
   );

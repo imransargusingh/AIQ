@@ -171,7 +171,7 @@ export function notificationText(c: Card): string {
 }
 
 export function detailsText(r: ShowReply): string {
-  if (!r.card) return "No card with that id.\n";
+  if (!r.card) return "No tip with that id.\n";
   const c = r.card;
   let out = `AIQ tip: ${plain(c.noticed)}\nWhy: ${plain(c.why)}\nTry this: ${plain(c.try_this)}\n\n`;
   if (c.opportunity_id === "next_rung") {
@@ -185,7 +185,7 @@ export function detailsText(r: ShowReply): string {
     return out + "\nTurn off tips for now: AIQ: Pause\n";
   }
   const texts = r.evidence.map((e) => e.text);
-  if (texts.every((t) => t === null)) return out + "The evidence for this card was deleted.\n";
+  if (texts.every((t) => t === null)) return out + "The prompts behind this tip were deleted.\n";
   out += "The prompts it counted:\n";
   r.evidence.forEach((e, i) => {
     out += `  ${i + 1}. ${e.ts}  ${e.text === null ? "(deleted)" : plain(e.text)}\n`;
@@ -232,9 +232,9 @@ export function statusText(s: State): { text: string; label: string; tooltip: st
 function plainStatusText(s: Exclude<State, "tip">): { text: string; tooltip: string } {
   switch (s) {
     case "on":
-      return { text: "AIQ on", tooltip: "AIQ watches quietly. Click for tips, pause or resume." };
+      return { text: "AIQ on", tooltip: "AIQ runs quietly in the background. Click for tips, pause or resume." };
     case "paused":
-      return { text: "AIQ paused", tooltip: "Nothing is captured and no tips show. Click to resume." };
+      return { text: "AIQ paused", tooltip: "It saves nothing new and shows no tips. Click to resume." };
     case "down":
       return { text: "AIQ not running", tooltip: "Starts with your next agent prompt." };
   }

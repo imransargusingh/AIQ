@@ -57,8 +57,9 @@ pub const JOB_THRESHOLD: f64 = 0.7;
 pub const TASK_TYPE_THRESHOLD: f64 = 0.7;
 /// Potential confidence needed before a gap may be coached (US-6).
 pub const COACH_THRESHOLD: f64 = 0.8;
-/// Tasks judged per day unless the person sets another number (D5; a guess to tune, TR-8).
-pub const DEFAULT_DAILY_TASKS: u32 = 50;
+/// Tasks analyzed per day unless the person sets another number (D5; Imran 2026-11-05 raised it from 50 to 500 so a
+/// first install analyzes its imported history in a day, not about five).
+pub const DEFAULT_DAILY_TASKS: u32 = 500;
 /// Same-job tasks in 30 days before Factory can be the next step (US-2 repetition rule).
 pub const FACTORY_REPEATS: u32 = 3;
 
@@ -108,11 +109,11 @@ pub fn validate_setting(key: &str, value: &str) -> Option<Result<String, String>
     Some(match key {
         SETTING_JUDGE => match value {
             "auto" | "off" => Ok(value.to_owned()),
-            _ => Err("judge must be auto or off".into()),
+            _ => Err("analysis must be auto or off".into()),
         },
         SETTING_DAILY_TASKS => match value.parse::<u32>() {
             Ok(n) if n <= MAX_DAILY_TASKS => Ok(n.to_string()),
-            _ => Err(format!("judge-daily-tasks must be a whole number from 0 to {MAX_DAILY_TASKS}")),
+            _ => Err(format!("analysis-daily-tasks must be a whole number from 0 to {MAX_DAILY_TASKS}")),
         },
         SETTING_CLAUDE_MODEL | SETTING_CHECK_CLAUDE_MODEL if model_ok(value) => Ok(value.to_owned()),
         SETTING_COPILOT_MODEL | SETTING_CHECK_COPILOT_MODEL if value == "default" || model_ok(value) => {
@@ -123,7 +124,7 @@ pub fn validate_setting(key: &str, value: &str) -> Option<Result<String, String>
         }
         SETTING_COPILOT_SESSIONS => match value {
             "keep" | "delete" => Ok(value.to_owned()),
-            _ => Err("judge-copilot-sessions must be keep or delete".into()),
+            _ => Err("analysis-copilot-sessions must be keep or delete".into()),
         },
         _ => return None,
     })

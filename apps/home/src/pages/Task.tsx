@@ -101,7 +101,7 @@ export function Task(ctx: Ctx & { taskId: string }) {
           {toolName(t.tool)} · started {when(t.first_ms, snap.now_ms, snap.offset_min)}
           {minutes > 0 && <>, {plural(minutes, "minute")}</>} · {plural(t.prompts, "prompt")}
           {" · "}
-          <span title={t.folder ?? undefined}>{t.folder ? folderName(t.folder) : "Folder not recorded"}</span>
+          <span title={t.folder ?? undefined}>{t.folder ? folderName(t.folder) : "Folder unknown"}</span>
           {t.origin === "imported" && <> · <Chip>Imported</Chip></>}
         </p>
       </header>
@@ -131,18 +131,18 @@ export function Task(ctx: Ctx & { taskId: string }) {
           )}
           {j.blockers.length > 0 && <p className="mute">Outside your control: {j.blockers.join(" ")}</p>}
           <p className="meta">
-            Judged {when(j.judged_ms, snap.now_ms, snap.offset_min)} by your {toolName(j.provider)}
+            Analyzed {when(j.judged_ms, snap.now_ms, snap.offset_min)} by your {toolName(j.provider)}
             {j.model && <> ({j.model})</>}. It read {plural(j.read_prompts, "prompt")}, {plural(j.read_chars, "character")}
             {j.read_actions ? " and a summary of the agent's actions" : ""}.
           </p>
         </section>
       ) : (
         <div className="empty">
-          <b>Not judged yet.</b>
+          <b>Not analyzed yet.</b>
           <span className="mute">
             {snap.settings.judge === "auto"
-              ? "AIQ judges finished tasks in the background, through your own Claude Code or Copilot CLI."
-              : "Judging is off. Turn it on in Settings, under Judging."}
+              ? "AIQ analyzes finished tasks in the background, through your own Claude Code or Copilot CLI."
+              : "Analysis is off. Turn it on in Settings, under Analysis."}
           </span>
         </div>
       )}
@@ -152,8 +152,8 @@ export function Task(ctx: Ctx & { taskId: string }) {
         <ol className="prompts">
           {prompts.map((p) => (
             <li key={p.event_id}>
-              <span className="meta num">{p.ts_ms != null ? clock(p.ts_ms, snap.offset_min) : "Time not recorded"}</span>
-              <div className={p.text ? "wrap" : "mute"}>{p.text ? <Content text={p.text} /> : p.deleted ? "Text deleted" : "No text captured"}</div>
+              <span className="meta num">{p.ts_ms != null ? clock(p.ts_ms, snap.offset_min) : "Time unknown"}</span>
+              <div className={p.text ? "wrap" : "mute"}>{p.text ? <Content text={p.text} /> : p.deleted ? "Text deleted" : "No text saved"}</div>
             </li>
           ))}
         </ol>

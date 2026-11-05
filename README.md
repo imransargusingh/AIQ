@@ -1,7 +1,7 @@
 # AIQ
 
-A private coach for how you work with AI agents. It watches your prompts on your own machine and, at a
-natural pause, shows one short tip. Your prompts stay on your computer. What does go out (judge calls
+A private coach for how you work with AI agents. It learns from your prompts on your own machine and, at a
+natural pause, shows one short tip. Your prompts stay on your computer. What does go out (analysis calls
 through your own Copilot or Claude Code, and a daily update check) is in
 [AIQ privacy and terms](docs/privacy-and-terms.md).
 

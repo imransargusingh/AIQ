@@ -193,7 +193,7 @@ pub fn cli(args: &[&str]) -> ExitCode {
         (arg(args, "--task"), arg(args, "--surface"), arg(args, "--session"))
     else {
         println!(
-            "aiq label is started by AIQ itself. To measure labels on your judged tasks: aiq label --eval [--sample <n>]"
+            "aiq label is started by AIQ itself. To measure labels on your analyzed tasks: aiq label --eval [--sample <n>]"
         );
         return ExitCode::from(2);
     };
@@ -333,11 +333,11 @@ pub fn eval_report(e: &Eval) -> String {
     let med = ms.get(ms.len() / 2).map_or("-".to_owned(), |m| format!("{:.1} s", *m as f64 / 1000.0));
     let max = ms.last().map_or("-".to_owned(), |m| format!("{:.1} s", *m as f64 / 1000.0));
     format!(
-        "Labelled {} of your judged tasks from their first prompt only (measured; the judge read the whole task).\n\
+        "Labelled {} of your analyzed tasks from their first prompt only (measured; the analysis read the whole task).\n\
          Answered: {} of {}\n\
-         Job the same as the judge: {} of {}\n\
-         Kind the same as the judge: {} of {}\n\
-         Confident enough to coach from (both at least 0.8, a named kind): {}; of those, the judge's kind: {} of {}\n\
+         Job the same as the analysis: {} of {}\n\
+         Kind the same as the analysis: {} of {}\n\
+         Confident enough to coach from (both at least 0.8, a named kind): {}; of those, the analyzed kind: {} of {}\n\
          Call time: median {med}, longest {max}\n\
          Live, a confident label coaches only while AIQ's own check of labels stays at 8 in 10 or better.\n",
         e.sent,
@@ -363,13 +363,13 @@ fn eval_cli(args: &[&str], paths: &Paths, store: &Store) -> ExitCode {
     let cases = match eval_cases(store, n, only) {
         Ok(c) => c,
         Err(e) => {
-            println!("Couldn't read your judged tasks ({}).", e.code);
+            println!("Couldn't read your analyzed tasks ({}).", e.code);
             return ExitCode::from(1);
         }
     };
     let copilot = cases.iter().filter(|c| c.provider == "copilot-cli").count();
     println!(
-        "AIQ would label {} judged tasks from their first prompt: {} through your Copilot CLI (one premium request \
+        "AIQ would label {} analyzed tasks from their first prompt: {} through your Copilot CLI (one premium request \
          each), {} through your Claude Code. Outside the daily budgets; nothing is stored.",
         cases.len(),
         copilot,
@@ -550,7 +550,7 @@ mod tests {
         assert_eq!((e.sent, e.answered, e.job_right, e.kind_right), (3, 3, 2, 1));
         assert_eq!((e.confident, e.confident_right), (3, 1));
         let r = eval_report(&e);
-        assert!(r.contains("Kind the same as the judge: 1 of 3") && r.contains("median 4.0 s"), "{r}");
+        assert!(r.contains("Kind the same as the analysis: 1 of 3") && r.contains("median 4.0 s"), "{r}");
     }
 
     #[test]

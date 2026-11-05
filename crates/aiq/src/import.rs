@@ -550,7 +550,7 @@ pub fn render(rep: &Report, dry_run: bool) -> String {
     for (tool, t) in &rep.by_tool {
         let name = if *tool == CLAUDE { "Claude Code" } else { "Copilot CLI" };
         out += &format!(
-            "{name}: {} sessions found, {} imported, {} set aside as automated, {} unchanged or empty{}\n",
+            "{name}: {} sessions found, {} imported, {} automated and not counted, {} unchanged or empty{}\n",
             t[0],
             t[1],
             t[2],
@@ -566,14 +566,14 @@ pub fn render(rep: &Report, dry_run: bool) -> String {
     for (folder, s) in aside.iter().take(10) {
         if s.projects > 0 {
             out += &format!(
-                "{folder}: {} sessions Claude ran for you through claude.ai Projects or Remote Control set aside. \
+                "{folder}: {} sessions Claude ran for you through claude.ai Projects or Remote Control not counted. \
                  To count them: aiq include \"{folder}\", then aiq import\n",
                 s.projects
             );
         }
         if s.aiq_checks > 0 {
             out += &format!(
-                "{folder}: {} of AIQ's own test sessions set aside. If that is your own work: aiq include \
+                "{folder}: {} of AIQ's own test sessions not counted. If that is your own work: aiq include \
                  \"{folder}\", then aiq import\n",
                 s.aiq_checks
             );
@@ -584,13 +584,13 @@ pub fn render(rep: &Report, dry_run: bool) -> String {
         let rest = s.sessions - s.projects - s.aiq_checks;
         out += &match s.folder_reason {
             Some(_) => format!(
-                "{folder}: {} sessions an app or script started set aside, and new one-prompt sessions here will \
+                "{folder}: {} sessions an app or script started not counted, and new one-prompt sessions here will \
                  be too; sessions where you type more than one prompt still count. If the one-prompt runs are yours \
                  too: aiq include \"{folder}\", then aiq import\n",
                 rest
             ),
             None => format!(
-                "{folder}: {} sessions an app or script started (one prompt, no one typing) set aside; the rest of \
+                "{folder}: {} sessions an app or script started (one prompt, no one typing) not counted; the rest of \
                  this folder counts as your work\n",
                 rest
             ),
@@ -686,7 +686,7 @@ pub fn status_line(paths: &Paths) -> Option<String> {
         return None;
     }
     let n = |o: &str| rows.iter().filter(|r| r.1 == o).map(|r| r.2).sum::<u64>();
-    Some(format!("Imported history: {} sessions, {} set aside as automated\n", n("imported"), n("automated")))
+    Some(format!("Imported history: {} sessions, {} automated and not counted\n", n("imported"), n("automated")))
 }
 
 #[cfg(test)]
@@ -996,7 +996,7 @@ mod tests {
             .query_row("SELECT count(*) FROM import_event WHERE text LIKE '%aiq-probe%'", [], |r| r.get(0))
             .unwrap();
         assert_eq!(texts, 0, "the test prompt's text is gone");
-        assert!(render(&rep, false).contains("1 of AIQ's own test sessions set aside"));
+        assert!(render(&rep, false).contains("1 of AIQ's own test sessions not counted"));
         // A fresh store: set aside on the first import, and the folder gets a rule live capture and include use.
         let mut fresh = Store::open(&d.path().join("fresh.db")).unwrap();
         let rep = run(&mut fresh, &src, &HashSet::new(), &p, false, 3).unwrap();
@@ -1052,7 +1052,7 @@ mod tests {
         assert_eq!(store.import_counts().unwrap().len(), 2);
         assert_eq!(store.forget_imported().unwrap(), 2);
         assert!(store.import_counts().unwrap().is_empty());
-        assert!(render(&rep, false).contains("1 imported, 1 set aside"));
+        assert!(render(&rep, false).contains("1 imported, 1 automated and not counted"));
     }
 
     #[test]

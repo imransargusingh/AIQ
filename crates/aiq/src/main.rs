@@ -28,11 +28,11 @@ Usage:
   aiq install claude-code [--yes]     Add AIQ's hooks to ~/.claude/settings.json (shows the change first)
   aiq uninstall claude-code [--yes]   Remove only AIQ's hooks
   aiq uninstall --all [--yes]         Disconnect AIQ from every tool; your data stays (aiq forget --all deletes it)
-  aiq status                          What AIQ is doing, cards today, store size, hook times
+  aiq status                          What AIQ is doing, tips today, store size, hook times
   aiq status --report                 Write that to a file you can send for help (no prompt text,
                                       folders shown as folder-1, folder-2)
-  aiq show <card-id>                  A card, why it showed, and the prompts it counted
-  aiq pause | aiq resume              Stop or restart capture and tips
+  aiq show <card-id>                  A tip, why it showed, and the prompts behind it
+  aiq pause | aiq resume              Pause or resume AIQ (saving and tips)
   aiq endpoint                        Where the core listens (used by the VS Code extension)
   aiq install copilot [--yes]         Add AIQ's hooks and status line to Copilot (~/.copilot)
   aiq uninstall copilot [--yes]       Remove only AIQ's Copilot hooks and status line
@@ -43,11 +43,11 @@ Usage:
   aiq config set tip-highlight <on|off>         Yellow \"AIQ tip:\" label and VS Code colour (default on)
                                       How long a tip stays in Copilot CLI's status line
   aiq import [--dry-run]              Add your past Claude Code and Copilot CLI sessions to AIQ
-  aiq include <folder>                Watch a folder AIQ set aside as automated (an app or script's runs)
+  aiq include <folder>                Count a folder again that AIQ marked automated, not counted
   aiq helpful|not|snooze|off <card-id>  Tell AIQ what you thought of a tip (snooze: 7 days; off: never again)
   aiq on <tip-id>                     Let AIQ show a tip you turned off
   aiq flag <job>/<type> <move> <reason> [note]  This doesn't fit: stop a next step for one kind of task
-  aiq unflag <job>/<type> <move>      Undo a flag
+  aiq unflag <job>/<type> <move>      Undo that: AIQ may suggest the step again
   aiq config set next-rung-tips <auto|on|off>  Next-step tips for kinds of task you repeat (auto: AIQ
                                       turns them off itself if it guesses the kind of task wrong)
   aiq config set copilot-mid-turn <on|off>  Count Copilot messages you send while the agent is working
@@ -57,31 +57,31 @@ Usage:
   aiq config set keep-on.<job or job/type> <on|auto>  Keep next-step tips showing for a job or kind the
                                       accuracy check paused (auto: AIQ decides again)
   aiq tips                            Each next-step tip, whether it is on, and how often it would show
-                                      on your judged tasks (measured, no model call)
+                                      on your analyzed tasks (measured, no model call)
   aiq progress                        Each kind of task's typical rung, last 14 days against the 14
                                       before: which moved up or down (read-only, no model call)
-  aiq judge [--max <n>] [--only claude-code|copilot-cli] [--dry-run]
-                                      Judge your finished tasks through your own Claude Code / Copilot CLI
+  aiq analyze [--max <n>] [--only claude-code|copilot-cli] [--dry-run]
+                                      Analyze your finished tasks through your own Claude Code / Copilot CLI
                                       (--dry-run shows what would be sent, sends nothing)
-  aiq judge --check [--sample <n>] [--no-job | --job <job>] [--dry-run]
-                                      Check the judge: a second model reads n judged tasks blind (default 30)
+  aiq analyze --check [--sample <n>] [--no-job | --job <job>] [--dry-run]
+                                      Check the analysis: a second model reads n analyzed tasks blind (default 30)
                                       and AIQ reports how often they agree (--dry-run: sample and cost only)
-  aiq judge --check-report            The latest check's numbers again, and what AIQ measured itself
-  aiq judge --survey-other [--sample <n>] [--dry-run]
+  aiq analyze --check-report            The latest check's numbers again, and what AIQ measured itself
+  aiq analyze --survey-other [--sample <n>] [--dry-run]
                                       What kind of work your tasks with no job are (counts and generic labels only)
-  aiq judge --eval [--runs <n>] [--provider claude-code|copilot-cli] [--dry-run]
-                                      Score the judge on AIQ's fixed set of made-up tasks with known answers,
+  aiq analyze --eval [--runs <n>] [--provider claude-code|copilot-cli] [--dry-run]
+                                      Measure the analysis on AIQ's fixed set of made-up tasks with known answers,
                                       n runs each (default 2): accuracy and whether runs agree (no data of yours)
-  aiq judge --eval --replay           The same score from answers recorded in the repo (free, no model call)
-  aiq judge --eval-report             The latest eval again, and what moved since the one before
-  aiq config set judge <auto|off>     Judge new tasks in the background (aiq install turns it on)
-  aiq config set judge-daily-tasks <n>  Most tasks judged per day (0-500, default 50)
-  aiq config set judge-copilot-sessions <delete|keep>  Delete AIQ's own Copilot judge sessions (default)
+  aiq analyze --eval --replay           The same score from answers recorded in the repo (free, no model call)
+  aiq analyze --eval-report             The latest eval again, and what moved since the one before
+  aiq config set analysis <auto|off>     Analyze new tasks in the background (aiq install turns it on)
+  aiq config set analysis-daily-tasks <n>  Most tasks analyzed per day (0-500, default 50)
+  aiq config set analysis-copilot-sessions <delete|keep>  Delete AIQ's own Copilot analysis sessions (default)
   aiq config set kind-label <auto|off>  When word matching can't tell a new task's kind, a small model
-                                      names it from the first prompt, in the background (on while judging is on)
+                                      names it from the first prompt, in the background (on while analysis is on)
   aiq config set kind-label-daily <n>  Most kind labels per day (0-500, default 20; one call each)
   aiq label --eval [--sample <n>] [--only claude-code|copilot-cli] [--dry-run]
-                                      Measure kind labels against the judge on your judged tasks (stores nothing)
+                                      Measure kind labels against AIQ's analysis on your analyzed tasks (stores nothing)
   aiq export [<folder>]               Copy everything AIQ stored to plain JSON files you can read
                                       (default: a new folder under AIQ's own folder)
   aiq forget --imported [--yes]       Delete only what aiq import added
@@ -92,7 +92,7 @@ Usage:
   aiq core                            Run the background core in this terminal
   aiq version
 
-Your data stays on this machine. Judge calls go only through your own Copilot or Claude Code, and
+Your data stays on this machine. Analysis calls go only through your own Copilot or Claude Code, and
 once a day AIQ asks GitHub for a newer release (unless updates are off). Privacy and terms: docs/privacy-and-terms.md in the AIQ repo.";
 
 fn main() -> ExitCode {
@@ -128,7 +128,8 @@ fn main() -> ExitCode {
         ["update", rest @ ..] => cli::update(rest),
         ["import", rest @ ..] => import::cli(rest),
         ["export", rest @ ..] => export::cli(rest),
-        ["judge", rest @ ..] => judge::cli(rest),
+        // `analyze` is the name users see; `judge` stays as a hidden alias so older commands and scripts keep working.
+        ["analyze" | "judge", rest @ ..] => judge::cli(rest),
         ["label", rest @ ..] => label::cli(rest),
         ["forget", "--imported", ..] | ["forget", _, "--imported", ..] => import::forget(yes),
         ["forget", "--all", ..] | ["forget", _, "--all", ..] => cli::forget_all(yes),

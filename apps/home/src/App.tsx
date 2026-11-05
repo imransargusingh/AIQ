@@ -5,6 +5,7 @@ import { api } from "./api";
 import { singleFlight } from "./refresh";
 import type { Snapshot } from "./types";
 import { scoped } from "./project";
+import { Guide } from "./pages/Guide";
 import { Dialog, PAGES, Sk, UpdateChip, type Ctx, type Page } from "./ui";
 import { Home } from "./pages/Home";
 import { Tasks } from "./pages/Tasks";
@@ -96,7 +97,7 @@ export function App() {
     api.pause(on).then(
       (s) => {
         setSnap(s);
-        announce(on ? "AIQ is paused. Nothing is captured and no tips show." : "AIQ resumed.");
+        announce(on ? "AIQ is paused. It saves nothing new and shows no tips." : "AIQ resumed.");
       },
       () => announce("Could not change the pause setting."),
     );
@@ -264,8 +265,8 @@ export function App() {
   const one: Ctx | null = ctx && { ...ctx, snap: tour ? ctx.snap : scoped(ctx.snap, project), project: tour ? null : project };
   const step = tour ? STEPS[tour.step] : null;
   // The tools AIQ is connected to and that are installed, not the tools it holds tasks from (an imported or
-  // disconnected tool isn't being watched).
-  const watching = snap?.setup.tools.filter((t) => t.hooked && t.present).map((t) => (t.tool === "copilot" ? "Copilot" : "Claude Code")) ?? [];
+  // disconnected tool doesn't count).
+  const connected = snap?.setup.tools.filter((t) => t.hooked && t.present).map((t) => (t.tool === "copilot" ? "Copilot" : "Claude Code")) ?? [];
 
   if (ctx && inSetup) {
     return (
@@ -280,7 +281,7 @@ export function App() {
             finish={(s) => {
               setSnap(s);
               go("home");
-              announce("Setup done. AIQ is watching.");
+              announce("Setup done. AIQ is on.");
             }}
             close={() => go("settings")}
           />
@@ -333,7 +334,7 @@ export function App() {
               <>
                 <span>
                   <span className={`dot${snap.status.paused || !snap.status.core ? " paused" : ""}`} aria-hidden="true" />
-                  {snap.status.paused ? "Paused" : snap.status.core_state === "failed" ? "Not running" : !snap.status.core ? "Starting" : watching.length ? `Watching ${watching.join(", ")}` : "No tool connected"}
+                  {snap.status.paused ? "Paused" : snap.status.core_state === "failed" ? "Not running" : !snap.status.core ? "Starting" : connected.length ? `Connected: ${connected.join(", ")}` : "No tool connected"}
                 </span>
                 <span>
                   Tips today: {snap.home.tips_today} of {snap.settings.daily_cap}
@@ -398,6 +399,7 @@ export function App() {
           )}
           {one && page === "home" && <Home key="home" {...one} />}
           {one && page === "tasks" && <Tasks key={`tasks-${step?.view ?? ""}`} {...one} start={step?.view} />}
+          {ctx && page === "guide" && <Guide key="guide" {...ctx} />}
           {ctx && page === "tips" && <Tips key="tips" {...ctx} />}
           {ctx && page === "data" && <Data key="data" {...ctx} />}
           {ctx && page === "settings" && <Settings key="settings" {...ctx} singleKeys={singleKeys} setSingleKeys={setSingleKeys} />}

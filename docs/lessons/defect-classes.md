@@ -466,3 +466,34 @@ summary: >-
   creates `~/.copilot`; if one does, the same symptom appears for Copilot). `import` and `judge` read tool folders
   only to find transcripts, so a bare folder gives them nothing to do.
 - **Rule:** detect a tool by the tool (its program or the files only it writes), never by a folder others can make.
+
+### DC-029 — Background work whose start, progress and failure reason never reach the screen
+- **Signature:** 2026-11-05, first outside user on 0.1.4 (Copilot only, 221 imported tasks). Home said "Not judged
+  yet" and "AIQ judges your finished tasks in the background" with no progress, no "nothing to do", and no reason.
+  Read from the code: analysis ran only from the core's kicker, the core started only from a hook (so nothing ran
+  until the first prompt after setup), and a missing or signed-out Copilot CLI was written to `judge.log` only.
+- **Why it survives:** every piece was correct on its own (cap, back-off, lock, failure outcome in `judge_call`);
+  no view read them together, and the developer's laptop always had a running core and a signed-in tool.
+- **Control (product):** `aiq_home::Analysis` (state, waiting, analyzed, today, daily, finish day, blocked tool and
+  why) read from the same task list as the chart and from each provider's newest call; Home's card and Getting
+  started read only it. Home starts `aiq judge --auto` itself when work waits and no call ran for 10 minutes.
+- **Control (tests):** `aiq_home::analysis_tests` (fresh install, used-up share, signed-out tool, give-up, off and
+  paused) and the e2e "first-run analysis" test (working, today done, blocked with its one action).
+- **Sweep:** other background work with a silent failure: the kind label (`kind_label` calls, shown in Settings),
+  the update check (`check_error` shown in Settings > Updates). Both already surface a reason.
+- **Rule:** background work ships with a state the person can see: what it is doing, how far, what (if anything)
+  they must do, and why it stopped.
+
+### DC-030 — A coverage test that checks a step has some move, not that each failing fact has one
+- **Signature:** 2026-11-05, Imran asked how users move from Directed to Delegated. Reading `rung::delegated` against
+  the pack showed a doc written in the chat, or a doc, question or run steered one step at a time (F12), had no
+  next step, so its kind read "AIQ isn't sure yet". 11 job × step × fact gaps in all (docs F1/F12/F3, questions
+  F12/F3, runs F12/F3, every job F9).
+- **Why it survives:** `bundled_moves_…` asserted only that each job had *a* move at steps 1 to 3. One move per
+  step passed while the other facts of that step's guardrail had none, and step 4 was not checked at all.
+- **Control (tests):** `pack::tests::every_guardrail_fact_a_job_can_fail_has_a_move` fails each fact the next
+  rung's guardrail reads, for each job and step 1 to 4, on a task that can sit at that step, and asserts a move
+  of that step and job names it. Red on bundled-8 with the 11 gaps; green on bundled-9.
+- **Sweep:** the guardrails are the only source of moves (`coach::moves_for`), so the test covers every way a
+  move is chosen. F9 is unknown until it is read from the log, so `saved_workflow` is guide text only for now.
+- **Rule:** test coverage against the rule's own inputs (each fact it reads), never against a count per group.

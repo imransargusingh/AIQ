@@ -12,6 +12,7 @@ use aiq_contracts::judge::{ActionSummary, Response, SCHEMA, extract_object, pars
 use aiq_core::paths::{Paths, bounded_append};
 use aiq_domain::clock::{DAY_MS, Now};
 use aiq_domain::rung::{self, Turn};
+use aiq_home::GIVE_UP;
 use aiq_home::TaskRow;
 use aiq_store::{CallOutcome, JudgmentRow, NewJudgeCall, Store};
 use serde_json::{Value, json};
@@ -23,9 +24,9 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// A call that runs longer is killed (spec: 60 s p95 per judgment; one slow call must not hold the run).
 pub const CALL_TIMEOUT: Duration = Duration::from_secs(120);
-/// Back-off after the Nth failed call of a task (D8); the task is given up after `GIVE_UP` failed calls.
+/// Back-off after the Nth failed call of a task (D8); the task is given up after `GIVE_UP` failed calls (shared
+/// with Home, which counts given-up tasks out of "waiting").
 const BACKOFF_MS: [i64; 5] = [3_600_000, 6 * 3_600_000, DAY_MS, DAY_MS, DAY_MS];
-const GIVE_UP: usize = 6;
 const LOG_MAX: u64 = 256 * 1024;
 const CLAUDE: &str = "claude-code";
 const COPILOT: &str = "copilot-cli";
@@ -454,11 +455,7 @@ pub fn settings(store: &Store) -> Settings {
 
 /// The provider that already saw a task (US-5, T-B5-1). VS Code agent mode fires Copilot's hooks (J1).
 pub fn provider_for(tool: &str) -> Option<&'static str> {
-    match tool {
-        "claude-code" => Some(CLAUDE),
-        "copilot-cli" | "vscode" => Some(COPILOT),
-        _ => None,
-    }
+    aiq_home::analysis_provider(tool)
 }
 
 fn current_version(j: &JudgmentRow) -> bool {
@@ -770,7 +767,7 @@ pub fn judge_task(
         p.uncertain = true;
         p.coachable = false;
         p.state = rung::State::Uncertain;
-        p.notes.push("Only one of the two judge runs answered, so AIQ marks this uncertain.".into());
+        p.notes.push("Only one of the two analysis runs answered, so AIQ marks this uncertain.".into());
         p.evidence.push(p.notes.last().cloned().unwrap_or_default());
     }
     let facts_json: serde_json::Map<String, Value> = facts
@@ -907,7 +904,7 @@ pub fn run(r: &Run<'_>) -> Result<Report, String> {
         rep.cost_usd += results.iter().filter_map(|c| c.cost_usd).sum::<f64>();
         let line = match &j {
             Some(j) => format!(
-                "judged {} {} rung={} potential={} state={} ms={}",
+                "analyzed {} {} rung={} potential={} state={} ms={}",
                 t.task_id,
                 name,
                 j.row.current_rung,
@@ -1075,29 +1072,31 @@ pub fn turn_on_at_install(store: &Store, now_ms: i64) -> Result<AtInstall, Strin
 pub fn at_install_text(r: AtInstall, daily_tasks: u32) -> String {
     match r {
         AtInstall::TurnedOn => format!(
-            "Judging: turned on. {DISCLOSURE}\nAIQ judges up to {daily_tasks} new tasks a day in the background.\n\
-             Undo: aiq config set judge off (or Settings > Judging in AIQ home)\n"
+            "Analysis: turned on. {DISCLOSURE}\nAIQ analyzes up to {daily_tasks} new tasks a day in the background.\n\
+             Undo: aiq config set analysis off (or Settings > Analysis in AIQ home)\n"
         ),
         AtInstall::AlreadyOn => {
-            format!("Judging is already on (up to {daily_tasks} tasks a day). Turn it off: aiq config set judge off\n")
+            format!(
+                "Analysis is already on (up to {daily_tasks} tasks a day). Turn it off: aiq config set analysis off\n"
+            )
         }
-        AtInstall::KeptOff => "Judging stays off, as you set it. Turn it on: aiq config set judge auto\n".into(),
+        AtInstall::KeptOff => "Analysis stays off, as you set it. Turn it on: aiq config set analysis auto\n".into(),
     }
 }
 
 // ------------------------------------------------------------------ CLI
 
 pub(crate) const DISCLOSURE: &str =
-    "AIQ judges each task you finish with AI: the rung it was done at and the next step.
+    "AIQ analyzes each task you finish with AI: the rung it was done at and the next step.
 What is sent: the task's prompts and a summary of what the agent did (tools, files, commands). Never your
 own edits or diffs. Where: only to the tool that already saw the task, through your own sign-in:
   Claude Code tasks -> your Claude Code (`claude -p`, no tools, no hooks, no saved session)
   Copilot tasks     -> your Copilot CLI (no tools, none of your plugins or MCP servers; it runs in AIQ's
                       own folder, which AIQ deletes after each call unless you keep them:
-                      aiq config set judge-copilot-sessions keep)
+                      aiq config set analysis-copilot-sessions keep)
 When AIQ can't tell what kind of task you just started, it sends that task's first prompt once, the same
 way, to a small model, so a tip can show when your turn ends (up to 20 a day; aiq config set kind-label off).
-Judge calls use your plan's usage (two calls per task). A work account's admin policies, logging and
+Analysis calls use your plan's usage (two calls per task). A work account's admin policies, logging and
 retention apply to them. AIQ never reads or stores your sign-in.";
 
 fn now() -> Now {
@@ -1187,7 +1186,7 @@ fn versions_cli(store: &Store, homes: &Homes) -> ExitCode {
         }
     }
     println!(
-        "Judgments: {} (fact set {}, rubric {}, judge {})",
+        "Analyses: {} (fact set {}, rubric {}, analysis {})",
         current + restamped + no_text + held + again.values().sum::<u32>(),
         rung::FACT_SET_VERSION,
         rung::RUBRIC_VERSION,
@@ -1195,7 +1194,7 @@ fn versions_cli(store: &Store, homes: &Homes) -> ExitCode {
     );
     println!("  current: {current}\n  kept without a model call: {restamped}");
     for (tool, n) in &again {
-        println!("  judged again ({tool}): {n}");
+        println!("  analyzed again ({tool}): {n}");
     }
     for (why, n) in &why_again {
         println!("    {why}: {n}");
@@ -1208,7 +1207,7 @@ fn versions_cli(store: &Store, homes: &Homes) -> ExitCode {
     }
     println!("  outdated, no prompt text left (never sent): {no_text}");
     println!("  outdated, not queued (still open, or gave up after {GIVE_UP} failures): {held}");
-    println!("  judged with no agent actions in the log: {no_actions}");
+    println!("  analyzed with no agent actions in the log: {no_actions}");
     ExitCode::SUCCESS
 }
 
@@ -1228,7 +1227,7 @@ pub fn cli(args: &[&str]) -> ExitCode {
     }
     if aiq_core::control::is_paused(&paths) {
         if !auto {
-            println!("AIQ is paused, so it isn't judging. Resume with: aiq resume");
+            println!("AIQ is paused, so it isn't analyzing. Resume with: aiq resume");
         }
         return ExitCode::SUCCESS;
     }
@@ -1256,7 +1255,7 @@ pub fn cli(args: &[&str]) -> ExitCode {
     }
     let Some(_lock) = Lock::take(lock_path(&paths)) else {
         if !auto {
-            println!("AIQ is already judging in the background. Try again in a few minutes.");
+            println!("AIQ is already analyzing in the background. Try again in a few minutes.");
         }
         return ExitCode::SUCCESS;
     };
@@ -1272,7 +1271,7 @@ pub fn cli(args: &[&str]) -> ExitCode {
         println!("{DISCLOSURE}\n");
         let _ = store.set_setting(rung::SETTING_JUDGE, "auto", n.utc_ms);
         println!(
-            "From now on AIQ judges new tasks in the background, up to {} a day. Turn it off: aiq config set judge off\n",
+            "From now on AIQ analyzes new tasks in the background, up to {} a day. Turn it off: aiq config set analysis off\n",
             set.daily_tasks
         );
     }
@@ -1301,27 +1300,27 @@ pub fn cli(args: &[&str]) -> ExitCode {
         }
         Err(e) => {
             let _ = bounded_append(&paths.data.join("judge.log"), &format!("error {e}"), LOG_MAX);
-            eprintln!("AIQ could not judge: {e}");
+            eprintln!("AIQ could not analyze: {e}");
             ExitCode::from(1)
         }
     }
 }
 
 pub fn render(rep: &Report, daily: u32) -> String {
-    let mut o = format!("Judged {} task{}", rep.judged, if rep.judged == 1 { "" } else { "s" });
+    let mut o = format!("Analyzed {} task{}", rep.judged, if rep.judged == 1 { "" } else { "s" });
     if rep.uncertain > 0 {
         o += &format!(" ({} uncertain: shown, never coached)", rep.uncertain);
     }
     o += ".\n";
     if rep.failed > 0 {
-        o += &format!("{} could not be judged this time; AIQ tries again later.\n", rep.failed);
+        o += &format!("{} could not be analyzed this time; AIQ tries again later.\n", rep.failed);
     }
     if rep.restamped > 0 {
-        o += &format!("{} kept their judgment: today's rules read them the same, so no model call.\n", rep.restamped);
+        o += &format!("{} kept their analysis: today's rules read them the same, so no model call.\n", rep.restamped);
     }
     if rep.skipped_no_text > 0 {
         o += &format!(
-            "{} had no prompt text left (you deleted it), so there is nothing to judge.\n",
+            "{} had no prompt text left (you deleted it), so there is nothing to analyze.\n",
             rep.skipped_no_text
         );
     }
@@ -1330,7 +1329,7 @@ pub fn render(rep: &Report, daily: u32) -> String {
     }
     if rep.waiting > 0 {
         o += &format!(
-            "{} more wait{} for tomorrow's budget ({daily} tasks a day; change it: aiq config set judge-daily-tasks <n>).\n",
+            "{} more wait{} for tomorrow's budget ({daily} tasks a day; change it: aiq config set analysis-daily-tasks <n>).\n",
             rep.waiting,
             if rep.waiting == 1 { "s" } else { "" }
         );
@@ -1358,7 +1357,7 @@ fn dry_run(store: &Store, homes: &Homes, n: Now, only: Option<&str>) -> ExitCode
     let used = tasks_today(&calls, n.local_midnight_utc_ms()) as u32;
     println!("{DISCLOSURE}\n");
     println!(
-        "{} tasks are waiting to be judged; today's budget has {} of {} left. Nothing was sent.",
+        "{} tasks are waiting to be analyzed; today's budget has {} of {} left. Nothing was sent.",
         q.len(),
         set.daily_tasks.saturating_sub(used),
         set.daily_tasks
@@ -1508,7 +1507,7 @@ pub fn run_survey(
 /// Kinds with counts, most first; up to five distinct labels each.
 pub fn survey_report(s: &Survey) -> String {
     let mut o = format!(
-        "What your tasks with no job are (both judge runs said other). Read by the tool that already saw each, \
+        "What your tasks with no job are (both analyze runs said other). Read by the tool that already saw each, \
 not by you (Inferred). {} of {} sampled answered:\n",
         s.of - s.failed as usize,
         s.of
@@ -1554,7 +1553,7 @@ Nothing was sent."
         return ExitCode::SUCCESS;
     }
     let Some(_lock) = Lock::take(lock_path(paths)) else {
-        println!("AIQ is judging in the background. Try again in a few minutes.");
+        println!("AIQ is analyzing in the background. Try again in a few minutes.");
         return ExitCode::SUCCESS;
     };
     let set = settings(store);
@@ -1676,7 +1675,7 @@ fn check_candidates(
 fn no_job_group(j: &JudgmentRow) -> &'static str {
     match job_runs(j) {
         Some(r) => rung::no_job_cause(&r).map_or("no cause found", |c| c.words()),
-        None => "not recorded yet (judged before AIQ kept each run's pick)",
+        None => "not recorded yet (analyzed before AIQ kept each run's pick)",
     }
 }
 
@@ -1870,14 +1869,14 @@ fn kind_report(store: &Store) -> aiq_store::Result<String> {
     if !fallback.is_empty() {
         let w: Vec<String> =
             fallback.iter().map(|(k, c)| format!("{k} {} (second reading also other {})", c.n, c.k)).collect();
-        o += &format!("    Judge's kind was other because: {}\n", w.join("; "));
+        o += &format!("    The analysis named a kind of other because: {}\n", w.join("; "));
     }
     if !named_misses.is_empty() {
         let w: Vec<String> = named_misses.iter().map(|(k, n)| format!("{k} {n}")).collect();
-        o += &format!("    Judge named a kind, second reading named another: {}\n", w.join("; "));
+        o += &format!("    The analysis named a kind, the second reading named another: {}\n", w.join("; "));
     }
     if with_runs == 0 {
-        o += "    Rules for a kind of other: not measured yet (needs tasks judged by this build, then a check)\n";
+        o += "    Rules for a kind of other: not measured yet (needs tasks analyzed by this build, then a check)\n";
     } else {
         o += &format!(
             "    Rules for a kind of other (not in use; on the {with_runs} checks whose runs were kept, before -> after):\n"
@@ -1921,7 +1920,7 @@ pub fn check_report(store: &Store) -> aiq_store::Result<String> {
         }
     }
     o += &format!(
-        "  No job (judge said other, or its two runs disagreed; never coached): {} of {}\n",
+        "  No job (the analysis said other, or its two runs disagreed; never coached): {} of {}\n",
         no_job.k, no_job.n
     );
     // Why each no-job judgment has none (design no-job-tasks N1; recorded from judge j4 on).
@@ -1947,7 +1946,7 @@ pub fn check_report(store: &Store) -> aiq_store::Result<String> {
             guess.add(j.job == g.job && j.task_type.as_deref() == Some(g.task_type.as_str()));
         }
     }
-    o += &format!("  Live kind-of-task guess matched the judge: {}\n", guess.show());
+    o += &format!("  Live kind-of-task guess matched the analysis: {}\n", guess.show());
     // N4: answers to tips.
     let mut answers: std::collections::BTreeMap<String, u32> = Default::default();
     for f in store.tip_feedback_all()? {
@@ -1961,7 +1960,7 @@ pub fn check_report(store: &Store) -> aiq_store::Result<String> {
     );
 
     let Some(run) = store.latest_check_run()? else {
-        o += "\nNo accuracy check yet. Run: aiq judge --check --dry-run, then aiq judge --check\n";
+        o += "\nNo accuracy check yet. Run: aiq analyze --check --dry-run, then aiq analyze --check\n";
         return Ok(o);
     };
     let checks = store.checks_of_run(&run.run_id)?;
@@ -2004,14 +2003,14 @@ pub fn check_report(store: &Store) -> aiq_store::Result<String> {
     );
     if same_model > 0 {
         o += &format!(
-            "  Note: on {same_model} of them the second reader was the same model as the judge, so agreement reads high.\n"
+            "  Note: on {same_model} of them the second reader was the same model as the analysis, so agreement reads high.\n"
         );
     }
     o += &format!("  Job: {}\n", ag.job.show());
     if !ag.no_job_read_as.is_empty() {
         let picks: Vec<String> = ag.no_job_read_as.iter().map(|(j, n)| format!("{j} {n}")).collect();
         let total: u32 = ag.no_job_read_as.values().sum();
-        o += &format!("    Where the judge gave no job ({total}), the second reading said: {}\n", picks.join(", "));
+        o += &format!("    Where the analysis gave no job ({total}), the second reading said: {}\n", picks.join(", "));
         for (cause, said) in &no_job_said {
             let p: Vec<String> = said.iter().map(|(j, n)| format!("{j} {n}")).collect();
             o += &format!("      {cause}: {}\n", p.join(", "));
@@ -2020,7 +2019,7 @@ pub fn check_report(store: &Store) -> aiq_store::Result<String> {
     // Candidate rules for no-job tasks (design no-job-tasks R1-R2): measured here, not in use.
     let no_job_rows: Vec<&JudgmentRow> = judged.values().filter(|j| j.job == "unclassified").collect();
     if no_job_rows.iter().any(|j| job_runs(j).is_some()) {
-        o += "  Rules AIQ could use for tasks with no job (not in use; measured on your judgments):\n";
+        o += "  Rules AIQ could use for tasks with no job (not in use; measured on your analyses):\n";
         for (rule, words) in rung::CANDIDATE_RULES {
             let mut gives = 0u32;
             let mut agree = Count::default();
@@ -2045,18 +2044,18 @@ pub fn check_report(store: &Store) -> aiq_store::Result<String> {
     o += &kind_report(store)?;
     o += &format!("  Rung exact: {}\n", ag.rung_exact.show());
     o += &format!("  Rung within one: {}\n", ag.rung_within_one.show());
-    o += &format!("  Judge model's own rung exact (before AIQ's rules): {}\n", ag.model_rung_exact.show());
+    o += &format!("  Analysis model's own rung exact (before AIQ's rules): {}\n", ag.model_rung_exact.show());
     o += &format!(
-        "  Confident judgments only (the ones AIQ coaches): job {}; kind {}; rung exact {}\n",
+        "  Confident analyses only (the ones AIQ coaches): job {}; kind {}; rung exact {}\n",
         ag.confident_job.show(),
         ag.confident_type.show(),
         ag.confident_rung_exact.show()
     );
-    o += "  Facts (agree where both answered; can't settle; judge didn't know):\n";
+    o += "  Facts (agree where both answered; can't settle; analysis didn't know):\n";
     for id in aiq_contracts::check::FACTS {
         let t = ag.facts.get(id).copied().unwrap_or_default();
         o += &format!(
-            "    {id}: {}; can't settle {}; judge unknown {}\n",
+            "    {id}: {}; can't settle {}; analysis unknown {}\n",
             t.agree.show(),
             t.cant_settle,
             t.judge_unknown
@@ -2148,12 +2147,12 @@ fn check_cli(args: &[&str], paths: &Paths, store: &Store) -> ExitCode {
                 .count()
         };
         println!(
-            "AIQ would read {n} of your {} {} a second time, blind, through the tool that already saw each one:\n  Copilot: {} (about one premium request and ~11 s each, measured)\n  Claude Code: {} (billed to your Claude plan)\nIt picks them at random, spread across {}. The second reader is a different model from the same tool:\n  Claude Code: opus (check-claude-model to change)\n  Copilot: the first offered of gpt-6-astra, claude-sonnet-5.5, gpt-5.6-sol that the judge did not use (check-copilot-model to choose)\nNothing was sent.",
+            "AIQ would read {n} of your {} {} a second time, blind, through the tool that already saw each one:\n  Copilot: {} (about one premium request and ~11 s each, measured)\n  Claude Code: {} (billed to your Claude plan)\nIt picks them at random, spread across {}. The second reader is a different model from the same tool:\n  Claude Code: opus (check-claude-model to change)\n  Copilot: the first offered of gpt-6-astra, claude-sonnet-5.5, gpt-5.6-sol that the analysis did not use (check-copilot-model to choose)\nNothing was sent.",
             cands.len(),
             match scope {
-                CheckScope::All => "judged tasks".to_owned(),
-                CheckScope::NoJob => "judged tasks with no job".to_owned(),
-                CheckScope::Job(job) => format!("judged {job} tasks"),
+                CheckScope::All => "analyzed tasks".to_owned(),
+                CheckScope::NoJob => "analyzed tasks with no job".to_owned(),
+                CheckScope::Job(job) => format!("analyzed {job} tasks"),
             },
             by_tool(COPILOT),
             by_tool(CLAUDE),
@@ -2162,11 +2161,11 @@ fn check_cli(args: &[&str], paths: &Paths, store: &Store) -> ExitCode {
         return ExitCode::SUCCESS;
     }
     if n == 0 {
-        println!("No judged tasks yet, so there is nothing to check. AIQ judges new tasks in the background.");
+        println!("No analyzed tasks yet, so there is nothing to check. AIQ analyzes new tasks in the background.");
         return ExitCode::SUCCESS;
     }
     let Some(_lock) = Lock::take(lock_path(paths)) else {
-        println!("AIQ is judging in the background. Try again in a few minutes.");
+        println!("AIQ is analyzing in the background. Try again in a few minutes.");
         return ExitCode::SUCCESS;
     };
     let get = |k: &str| store.setting(k).ok().flatten();
@@ -2191,7 +2190,7 @@ fn check_cli(args: &[&str], paths: &Paths, store: &Store) -> ExitCode {
         },
     };
     let seed = now_ms() as u64 ^ 0xA1C0_C4EC;
-    println!("Reading {n} judged tasks a second time. This takes about {} minutes.", (n * 12).div_ceil(60));
+    println!("Reading {n} analyzed tasks a second time. This takes about {} minutes.", (n * 12).div_ceil(60));
     match run_check(store, paths, &Homes::from_env(), &claude, &copilot, now_ms(), size, seed, scope) {
         Ok(r) => {
             for (p, why) in &r.unavailable {
@@ -2237,11 +2236,11 @@ mod tests {
         store.set_setting(rung::SETTING_JUDGE, "off", NOW + 2).unwrap();
         assert_eq!(turn_on_at_install(&store, NOW + 3).unwrap(), AtInstall::KeptOff);
         assert_eq!(settings(&store).mode.as_deref(), Some("off"), "a reinstall keeps it off");
-        let t = at_install_text(AtInstall::TurnedOn, 50);
+        let t = at_install_text(AtInstall::TurnedOn, rung::DEFAULT_DAILY_TASKS);
         assert!(
-            t.starts_with("Judging: turned on.") && t.contains("What is sent:") && t.contains("up to 50 new tasks")
+            t.starts_with("Analysis: turned on.") && t.contains("What is sent:") && t.contains("up to 500 new tasks")
         );
-        assert!(t.contains("Undo: aiq config set judge off"));
+        assert!(t.contains("Undo: aiq config set analysis off"));
     }
 
     #[test]
@@ -2461,7 +2460,7 @@ mod tests {
         let judge = Fake::ok(2);
         go(&e, &judge, &judge, None);
         let judged = e.store.current_judgments().unwrap();
-        assert_eq!(judged.len(), 4, "three live tasks and one imported; the second copy of sv is not judged");
+        assert_eq!(judged.len(), 4, "three live tasks and one imported; the second copy of sv is not analyzed");
         assert!(judged.keys().all(|k| !k.starts_with("import:copilot-cli:sv")));
     }
 
@@ -2485,7 +2484,7 @@ mod tests {
         assert!(c.sent.borrow().iter().all(|(u, _)| !u.contains("refactor the parser") && !u.contains("migrate")));
         let j = e.store.current_judgments().unwrap();
         assert_eq!(j.len(), 4);
-        assert!(!j.contains_key("o1"), "an open task is not judged");
+        assert!(!j.contains_key("o1"), "an open task is not analyzed");
         assert_eq!(j["a1"].current_rung, 2);
         assert_eq!(j["a1"].provider, "claude-code");
         assert_eq!(j["import:copilot-cli:cs:0"].origin, "imported");
@@ -2625,7 +2624,7 @@ mod tests {
         let j = &e.store.current_judgments().unwrap()["v1"];
         assert_eq!(j.state, "uncertain");
         assert!(!j.coachable);
-        assert!(j.evidence.contains("Only one of the two judge runs answered"));
+        assert!(j.evidence.contains("Only one of the two analysis runs answered"));
     }
 
     #[test]
@@ -2735,7 +2734,7 @@ mod tests {
         };
         let hedged = r#"{"value":null,"confidence":0.55,"source":"model","disputed":false}"#;
         assert!(!current_version(&r1(hedged, r#"{"prompts":2,"reprompts":1}"#)));
-        assert!(!current_version(&r1(hedged, "{}")), "re-prompts not recorded: judge again");
+        assert!(!current_version(&r1(hedged, "{}")), "re-prompts not recorded: analyze again");
         assert!(current_version(&r1(hedged, r#"{"prompts":1,"reprompts":0}"#)));
         assert!(current_version(&r1(r#"{"value":null,"confidence":0.4,"source":"model","disputed":false}"#, "{}")));
         assert!(current_version(&r1(r#"{"value":null,"confidence":0.0,"source":"model","disputed":true}"#, "{}")));
@@ -2771,7 +2770,7 @@ mod tests {
         };
         assert!(!current_version(&fs2));
         let unrecorded = rung::log_facts(&[Turn { at_ms: 0, prompt: "x".into(), actions: None }]);
-        assert!(restamp(&fs2, &unrecorded).is_none(), "now not recorded: judge again");
+        assert!(restamp(&fs2, &unrecorded).is_none(), "now not recorded: analyze again");
         assert!(restamp(&fs2, &log("ls")).is_some(), "every turn read, same facts: no call");
         let yes = JudgmentRow {
             facts: r#"{"F1":{"value":true,"source":"log"},"F3":{"value":"agent","source":"log"}}"#.into(),

@@ -12,7 +12,7 @@ const card: Card = {
   card_id: "01J",
   opportunity_id: "reprompt",
   tip_id: "reprompt.add-what-changed",
-  noticed: "you've reworded this request 3 times without adding new details.",
+  noticed: "this request went round 3 times. The agent may need one new detail.",
   why: "rewording alone rarely changes the result.",
   try_this: "say what was wrong with the last answer.",
   evidence_ref: "aiq show 01J",
@@ -65,15 +65,15 @@ test("notificationText_plainText_controlAndMarkupNotInterpreted", () => {
   const t = notificationText(evil);
   assert.ok(!t.includes("\u001b") && !t.includes("\n"));
   assert.ok(t.includes("[click](command:workbench.action.reloadWindow)"), "shown literally; messages are not markdown");
-  assert.equal(notificationText(card), "AIQ tip: you've reworded this request 3 times without adding new details. Try this: say what was wrong with the last answer.");
+  assert.equal(notificationText(card), "AIQ tip: this request went round 3 times. The agent may need one new detail. Try this: say what was wrong with the last answer.");
 });
 
 test("detailsText_evidenceAndDeleted", () => {
   const r = { card, outcome: "show_ready", reason_code: "ok", delivered: true, evidence: [{ ts: "t1", text: "fix it" }, { ts: "t2", text: null }] };
   const d = detailsText(r);
   assert.ok(d.includes("1. t1  fix it") && d.includes("2. t2  (deleted)") && d.includes("AIQ: Pause"));
-  assert.ok(detailsText({ ...r, evidence: [{ ts: "t", text: null }] }).includes("evidence for this card was deleted"));
-  assert.equal(detailsText({ ...r, card: null }), "No card with that id.\n");
+  assert.ok(detailsText({ ...r, evidence: [{ ts: "t", text: null }] }).includes("prompts behind this tip were deleted"));
+  assert.equal(detailsText({ ...r, card: null }), "No tip with that id.\n");
 });
 
 test("statusText_everyStateHasTextAndTooltip", () => {

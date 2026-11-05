@@ -22,13 +22,13 @@ const WHERE: { k: "copilot_tip_in_chat" | "tip_popup" | "tip_highlight"; label: 
   { k: "tip_highlight", label: "Highlight tips in yellow", note: "The \u201cAIQ tip:\u201d label in terminals, and the AIQ item in the VS Code status bar." },
 ];
 
-const TREND = { label: "Show where an open task is heading", note: "On Home while you work, and in the Copilot CLI status line between tips. An estimate; the judge's rung replaces it when the task ends." };
+const TREND = { label: "Show where an open task is heading", note: "On Home while you work, and in the Copilot CLI status line between tips. An estimate; the analyzed rung replaces it when the task ends." };
 
 /** The section index: each entry scrolls to its card and moves focus to the heading. */
 const SECTIONS = [
   ["st1", "Tips"],
-  ["st7", "What AIQ records"],
-  ["st3", "Judging"],
+  ["st7", "What AIQ keeps"],
+  ["st3", "Analysis"],
   ["st6", "Updates"],
   ["st5", "Tools"],
 ] as const;
@@ -84,7 +84,7 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
     try {
       const r = await api.judgePreview();
       setPreview(r.text);
-      announce(r.ok ? "Showing what judging would send. Nothing was sent." : "AIQ couldn't make the preview.");
+      announce(r.ok ? "Showing what analysis would send. Nothing was sent." : "AIQ couldn't make the preview.");
     } catch (e) {
       setPreview(String((e as Error)?.message ?? e));
     }
@@ -222,13 +222,13 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
         ) : (
           <span className="meta">
             {st.guess_checked > 0
-              ? `AIQ checks its guesses of the kind of task against the judge: right ${st.guess_right} of ${st.guess_checked} times so far. Below 8 in 10, it stops these tips by itself.`
-              : "AIQ checks its guesses of the kind of task against the judge. Below 8 in 10 right, it stops these tips by itself."}
+              ? `AIQ checks its guesses of the kind of task against its analysis: right ${st.guess_right} of ${st.guess_checked} times so far. Below 8 in 10, it stops these tips by itself.`
+              : "AIQ checks its guesses of the kind of task against its analysis. Below 8 in 10 right, it stops these tips by itself."}
           </span>
         )}
         <AccuracyPaused {...ctx} />
         {st.next_rung_tips === "auto" && st.accuracy_paused.length === 0 && (
-          <span className="meta">AIQ also pauses the tips for a job or kind of task by itself when an accuracy check finds a second model agrees with its judge less than 8 in 10 times.</span>
+          <span className="meta">AIQ also pauses the tips for a job or kind of task by itself when an accuracy check finds a second model agrees with AIQ's analysis less than 8 in 10 times.</span>
         )}
         {st.next_tips.length > 0 && (
           <details className="group">
@@ -314,7 +314,7 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
       </section>
 
       <section className="card" aria-labelledby="st7">
-        <h2 id="st7" tabIndex={-1}>What AIQ records</h2>
+        <h2 id="st7" tabIndex={-1}>What AIQ keeps</h2>
         <div className="row" style={{ justifyContent: "space-between" }}>
           <span id="midturn">Copilot messages you send while the agent is still working</span>
           <button
@@ -325,8 +325,8 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
             disabled={down}
             onClick={() =>
               st.copilot_mid_turn === "on"
-                ? change("copilot_mid_turn", "off", "AIQ no longer records Copilot messages sent while the agent works.")
-                : change("copilot_mid_turn", "on", "AIQ records Copilot messages sent while the agent works.")
+                ? change("copilot_mid_turn", "off", "AIQ no longer keeps Copilot messages you send while the agent works.")
+                : change("copilot_mid_turn", "on", "AIQ keeps Copilot messages you send while the agent works.")
             }
           />
         </div>
@@ -344,8 +344,8 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
             disabled={down}
             onClick={() =>
               st.agent_actions === "on"
-                ? change("agent_actions", "off", "AIQ no longer records what the agent did in each turn.")
-                : change("agent_actions", "on", "AIQ records what the agent did in each turn.")
+                ? change("agent_actions", "off", "AIQ no longer counts what the agent did in each turn.")
+                : change("agent_actions", "on", "AIQ counts what the agent did in each turn.")
             }
           />
         </div>
@@ -357,16 +357,16 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
 
       <section className="card" aria-labelledby="st3">
         <div className="head">
-          <h2 id="st3" tabIndex={-1}>Judging</h2>
-          <span className="chip">{judging ? "Judging in the background" : st.judge_since_ms != null ? `Off since ${when(st.judge_since_ms, snap.now_ms, snap.offset_min).replace(/^Today /, "").replace(/^Yesterday/, "yesterday")}` : "Off"}</span>
+          <h2 id="st3" tabIndex={-1}>Analysis</h2>
+          <span className="chip">{judging ? "Analysis in the background" : st.judge_since_ms != null ? `Off since ${when(st.judge_since_ms, snap.now_ms, snap.offset_min).replace(/^Today /, "").replace(/^Yesterday/, "yesterday")}` : "Off"}</span>
         </div>
         <p className="mute">
-          AIQ judges each finished task through the tool that already saw it, with your own sign-in: Claude Code tasks through your
+          AIQ analyzes each finished task through the tool that already saw it, with your own sign-in: Claude Code tasks through your
           Claude Code, Copilot and VS Code tasks through your Copilot CLI. It sends the task's prompts and a summary of what the agent
-          did, never your own edits. Judge calls use your plan's usage, and a work account's policies and logging apply.
+          did, never your own edits. Analysis calls use your plan's usage, and a work account's policies and logging apply.
         </p>
         <div className="row" style={{ justifyContent: "space-between" }}>
-          <span id="jon">Judge finished tasks in the background</span>
+          <span id="jon">Analyze finished tasks in the background</span>
           <button
             className="switch"
             role="switch"
@@ -375,13 +375,13 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
             disabled={down}
             onClick={() =>
               st.judge === "auto"
-                ? change("judge", "off", "Judging is off. AIQ judges no new tasks.")
-                : change("judge", "auto", "Judging is on.")
+                ? change("judge", "off", "Analysis is off. AIQ analyzes no new tasks.")
+                : change("judge", "auto", "Analysis is on.")
             }
           />
         </div>
         <div className="group">
-          <span id="jcap">Tasks judged a day, two calls each on your own plan</span>
+          <span id="jcap">Tasks analyzed a day, two calls each on your own plan</span>
           <div className="row">
             <div className="seg" role="group" aria-labelledby="jcap">
               {JUDGE_CAPS.map((n) => (
@@ -389,7 +389,7 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
                   key={n}
                   aria-pressed={snap.settings.judge_daily_tasks === n}
                   disabled={down}
-                  onClick={() => change("judge_daily_tasks", String(n), `Tasks judged a day set to ${n}.`)}
+                  onClick={() => change("judge_daily_tasks", String(n), `Tasks analyzed a day set to ${n}.`)}
                 >
                   {n}
                 </button>
@@ -399,7 +399,7 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
           </div>
         </div>
         <p data-testid="judge-today">
-          {judging ? <>Up to {plural(st.judge_daily_tasks, "task")} a day. Today: </> : <>AIQ judges no new task while this is off. {jt.tasks > 0 && (offToday ? "Earlier today, before it was off: " : "Judged today: ")}</>}
+          {judging ? <>Up to {plural(st.judge_daily_tasks, "task")} a day. Today: </> : <>AIQ analyzes no new task while this is off. {jt.tasks > 0 && (offToday ? "Earlier today, before it was off: " : "Analyzed today: ")}</>}
           {(judging || jt.tasks > 0) && (
             <>
               {plural(jt.tasks, "task")}, {plural(jt.calls, "call")}
@@ -419,12 +419,12 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
           )}
         </div>
         {preview != null && (
-          <pre className="preview" tabIndex={0} aria-label="What judging would send for the next task. Nothing was sent.">
+          <pre className="preview" tabIndex={0} aria-label="What analysis would send for the next task. Nothing was sent.">
             {preview}
           </pre>
         )}
         <p className="meta" data-testid="privacy-line">
-          Sharing is off: AIQ shares nothing with anyone. Only judge calls and the update check, which sends nothing about you, leave this computer.{" "}
+          Sharing is off: AIQ shares nothing with anyone. Only analysis calls and the update check, which sends nothing about you, leave this computer.{" "}
           <button className="btnlink" onClick={privacy}>Read the privacy page</button> (opens in your browser)
         </p>
       </section>
@@ -486,7 +486,7 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
             <button className="btn" onClick={() => ctx.go("setup")}>Run setup again</button>
           </div>
         </div>
-        <ul className="group" aria-label="Tools AIQ watches" style={{ listStyle: "none", margin: 0, padding: 0 }}>
+        <ul className="group" aria-label="Tools AIQ connects to" style={{ listStyle: "none", margin: 0, padding: 0 }}>
           {snap.setup.tools.filter((t) => t.present || t.hooked).map((t) => (
             <li className="row" key={t.tool} style={{ justifyContent: "space-between" }}>
               <span>

@@ -182,7 +182,7 @@ fn e2e_copilot_reword_tip_in_status_line_after_turn_then_clears_on_next_prompt()
     assert_eq!(v.as_object().unwrap().len(), 2, "only type and message: {out}");
     assert_eq!(v["type"], "progress");
     let msg = v["message"].as_str().unwrap();
-    assert!(msg.starts_with("AIQ tip: you've reworded this request 3 times") && msg.contains("Try this: "), "{msg}");
+    assert!(msg.starts_with("AIQ tip: this request went round 3 times") && msg.contains("Try this: "), "{msg}");
     for t in TEXTS {
         assert!(!msg.contains(t), "the tip never quotes prompt text");
     }
@@ -190,7 +190,7 @@ fn e2e_copilot_reword_tip_in_status_line_after_turn_then_clears_on_next_prompt()
     e.wait_for("Tips today: 1 of"); // the hook's "printed" note is its own send, after the turn end (DC-022)
     let line = e.tip_line("c1", false);
     assert!(
-        line.starts_with("AIQ tip: you've reworded this request 3 times without adding new details · aiq show "),
+        line.starts_with("AIQ tip: this request went round 3 times. The agent may need one new detail · aiq show "),
         "{line}"
     );
     assert_eq!(line.lines().count(), 1);
@@ -255,7 +255,10 @@ fn e2e_copilot_tip_in_chat_off_leaves_it_to_the_status_line() {
     e.wait_for("1 stop");
     let line = e.tip_line("c1", false);
     let timings = std::fs::read_to_string(e.home().join("hook-timings.log")).unwrap_or_default();
-    assert!(line.starts_with("AIQ tip: you've reworded"), "the status line still shows it: {line:?}\n{timings}");
+    assert!(
+        line.starts_with("AIQ tip: this request went round"),
+        "the status line still shows it: {line:?}\n{timings}"
+    );
 }
 
 #[test]
@@ -436,7 +439,7 @@ fn e2e_install_with_no_tool_connects_every_tool_found_and_names_the_undo() {
     let o = e.run_clean(&["install", "--yes"]);
     assert!(o.status.success());
     assert!(String::from_utf8_lossy(&o.stdout).contains("No supported AI tool found"));
-    assert!(!String::from_utf8_lossy(&o.stdout).contains("Judging"), "nothing connected: judging untouched");
+    assert!(!String::from_utf8_lossy(&o.stdout).contains("Analysis"), "nothing connected: analysis untouched");
     assert!(!e.copilot().exists() && !claude.exists());
 
     // A bare Claude Code folder (other tools and people make one) is not Claude Code: nothing written to it.
@@ -463,8 +466,8 @@ fn e2e_install_with_no_tool_connects_every_tool_found_and_names_the_undo() {
     let want = [claude.join("settings.json"), e.copilot().join("hooks").join("aiq.json")];
     assert_eq!(changed, want.iter().map(|p| p.to_str().unwrap()).collect::<Vec<_>>(), "{out}");
     // A tool is connected, so background judging is on, with what is sent and how to undo it.
-    assert!(out.contains("Judging: turned on.") && out.contains("What is sent:"), "{out}");
-    assert!(out.contains("up to 50 new tasks a day") && out.contains("Undo: aiq config set judge off"), "{out}");
+    assert!(out.contains("Analysis: turned on.") && out.contains("What is sent:"), "{out}");
+    assert!(out.contains("up to 500 new tasks a day") && out.contains("Undo: aiq config set analysis off"), "{out}");
 
     // Run again: nothing left to connect.
     let again = String::from_utf8_lossy(&e.run_clean(&["install", "--yes"]).stdout).to_string();
@@ -473,7 +476,7 @@ fn e2e_install_with_no_tool_connects_every_tool_found_and_names_the_undo() {
         "{again}"
     );
     assert!(!again.contains("Undo:"), "{again}");
-    assert!(again.contains("Judging is already on"), "{again}");
+    assert!(again.contains("Analysis is already on"), "{again}");
 
     // The person turns judging off: a later install keeps it off. Written to the store directly, because
     // `aiq config set` starts a core this test would not stop (on Windows it then locks aiq.exe).
@@ -482,7 +485,7 @@ fn e2e_install_with_no_tool_connects_every_tool_found_and_names_the_undo() {
     store.set_setting("judge", "off", now + 1_000).unwrap();
     drop(store);
     let off = String::from_utf8_lossy(&e.run_clean(&["install", "--yes"]).stdout).to_string();
-    assert!(off.contains("Judging stays off, as you set it."), "{off}");
+    assert!(off.contains("Analysis stays off, as you set it."), "{off}");
 }
 
 /// After setup, a tool installed later is connected once by `aiq install --new` (AIQ home and the core run it

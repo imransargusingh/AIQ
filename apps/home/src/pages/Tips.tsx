@@ -97,7 +97,7 @@ export function Tips(ctx: Ctx) {
           </div>
           <div className="empty">
             <b>No habits to show yet.</b>
-            <span className="mute">Habits show once AIQ has judged a few of your tasks. Each tip names one habit to try.</span>
+            <span className="mute">Habits show once AIQ has analyzed a few of your tasks. Each tip names one habit to try.</span>
           </div>
         </section>
       ) : (
@@ -220,7 +220,7 @@ export function Tips(ctx: Ctx) {
           </div>
         )}
         <p className="meta">
-          "After the tip" reads the first 3 judged tasks after a next-step tip where its habit fits. It is the judge's reading of those tasks.
+          "After the tip" reads the first 3 analyzed tasks after a next-step tip where its habit fits. It is AIQ's analysis of those tasks.
         </p>
       </section>
     </div>

@@ -123,9 +123,9 @@ fn status_text(paths: &Paths) -> (String, Vec<String>) {
         Some(s) => {
             let events: u64 = s.events_by_kind.iter().map(|(_, n)| n).sum();
             if s.paused {
-                out += "AIQ is paused. Nothing is captured and no tips show. Resume with: aiq resume\n";
+                out += "AIQ is paused. It saves nothing new and shows no tips. Resume with: aiq resume\n";
             } else if events == 0 {
-                out += "No activity yet. Use Claude Code or Copilot as usual; AIQ watches quietly.\n";
+                out += "No activity yet. Use Claude Code or Copilot as usual; AIQ runs quietly in the background.\n";
             } else {
                 out += "AIQ is running.\n";
             }
@@ -145,7 +145,7 @@ fn status_text(paths: &Paths) -> (String, Vec<String>) {
             for (folder, reason) in &s.automated_folders {
                 if reason == "projects" {
                     out += &format!(
-                        "Sessions Claude ran for you through claude.ai Projects or Remote Control are ignored in \
+                        "Sessions Claude ran for you through claude.ai Projects or Remote Control aren't counted in \
                          {folder}. To count them: aiq include \"{folder}\"\n"
                     );
                     continue;
@@ -156,7 +156,7 @@ fn status_text(paths: &Paths) -> (String, Vec<String>) {
                     "the same first prompt over and over"
                 };
                 out += &format!(
-                    "Automated sessions ignored in {folder} ({why}). If that is your own work: aiq include \"{folder}\"\n"
+                    "Automated, not counted: {folder} ({why}). If that is your own work: aiq include \"{folder}\"\n"
                 );
             }
             if let Some(c) = &s.coach {
@@ -175,7 +175,7 @@ fn status_text(paths: &Paths) -> (String, Vec<String>) {
                     c.right, c.checked, c.coached_types
                 );
                 if let Some(o) = c.other_pct {
-                    out += &format!("Judged tasks typed \"other\": {o}%\n");
+                    out += &format!("Analyzed tasks typed \"other\": {o}%\n");
                 }
                 out += &render_accuracy_paused(&c.accuracy_paused);
                 if let Some(l) = &c.labels {
@@ -186,7 +186,7 @@ fn status_text(paths: &Paths) -> (String, Vec<String>) {
                 out += &render_actions(a);
             }
             if let Some((_, n)) = ignored {
-                out += &format!("Automated prompts ignored since the core started: {n}\n");
+                out += &format!("Automated prompts not counted since the core started: {n}\n");
             }
             if let Some((_, n)) = s.core_counters.iter().find(|(k, _)| k == aiq_contracts::codes::INGEST_SECRET_REMOVED)
             {
@@ -524,7 +524,7 @@ pub fn show(card_id: &str) -> ExitCode {
 }
 
 pub fn render_show(r: &ShowReply) -> String {
-    let Some(c) = &r.card else { return "No card with that id.\n".into() };
+    let Some(c) = &r.card else { return "No tip with that id.\n".into() };
     let mut out = format!("AIQ tip: {}\nWhy: {}\nTry this: {}\n\n", c.noticed, c.why, c.try_this);
     let status =
         if r.delivered { "shown".to_string() } else { r.outcome.clone().unwrap_or_default().replace('_', "-") };
@@ -548,7 +548,7 @@ pub fn render_show(r: &ShowReply) -> String {
         return out;
     }
     if r.evidence.iter().all(|e| e.text.is_none()) {
-        out += "The evidence for this card was deleted.\n";
+        out += "The prompts behind this tip were deleted.\n";
         return out;
     }
     out += "The prompts it counted:\n";
@@ -568,7 +568,7 @@ pub fn pause(on: bool) -> ExitCode {
     println!(
         "{}",
         if on {
-            "AIQ is paused. Nothing is captured and no tips show. Resume with: aiq resume"
+            "AIQ is paused. It saves nothing new and shows no tips. Resume with: aiq resume"
         } else {
             "AIQ resumed."
         }
@@ -587,7 +587,7 @@ pub fn include_folder(folder: &str) -> ExitCode {
         .and_then(|l| serde_json::from_str::<OkReply>(&l).ok());
     match r {
         Some(OkReply { ok: true, .. }) => {
-            println!("AIQ will watch sessions in {folder} again.");
+            println!("AIQ will include sessions in {folder} again.");
             ExitCode::SUCCESS
         }
         Some(OkReply { message, .. }) => {
@@ -630,11 +630,12 @@ pub fn render_actions(a: &aiq_contracts::frames::ActionsStatus) -> String {
 /// Kind labels (design kind-label): today's calls against the budget, and AIQ's own check of them.
 pub fn render_labels(l: &aiq_contracts::frames::LabelStatus) -> String {
     if !l.enabled {
-        return "Kind-of-task labels: off (on while background judging is on; aiq config set kind-label auto)\n".into();
+        return "Kind-of-task labels: off (on while background analysis is on; aiq config set kind-label auto)\n"
+            .into();
     }
     let ms = l.median_ms.map_or(String::new(), |m| format!(", median {:.1} s", m as f64 / 1000.0));
     format!(
-        "Kind-of-task labels today: {} of {} (answered {}, confident {}{ms}). Labels checked against the judge: \
+        "Kind-of-task labels today: {} of {} (answered {}, confident {}{ms}). Labels checked against the analysis: \
          right {} of {}\n",
         l.today, l.daily, l.answered, l.confident, l.right, l.checked
     )
@@ -645,14 +646,14 @@ pub fn render_accuracy_paused(p: &[aiq_contracts::frames::PausedScope]) -> Strin
     for s in p {
         if s.kept_on {
             out += &format!(
-                "Next-step tips for {}: kept on by you, though a second model agreed with the judge only {} of {} times. \
+                "Next-step tips for {}: kept on by you, though a second model agreed with AIQ's analysis only {} of {} times. \
                  Let AIQ decide again: aiq config set keep-on.{} auto\n",
                 s.label, s.agreed, s.checked, s.scope
             );
         } else {
             out += &format!(
-                "Next-step tips for {}: paused by AIQ. A second model agreed with the judge only {} of {} times \
-                 (under 8 in 10). They come back when a later check clears the bar (aiq judge --check). \
+                "Next-step tips for {}: paused by AIQ. A second model agreed with AIQ's analysis only {} of {} times \
+                 (under 8 in 10). They come back when a later check clears the bar (aiq analyze --check). \
                  Keep them showing: aiq config set keep-on.{} on\n",
                 s.label, s.agreed, s.checked, s.scope
             );
@@ -663,6 +664,9 @@ pub fn render_accuracy_paused(p: &[aiq_contracts::frames::PausedScope]) -> Strin
 
 /// `aiq config set <name> <value>`: one of the settings listed in the unknown-setting message.
 pub fn config_set(name: &str, value: &str) -> ExitCode {
+    // `analysis*` is the name users see; the stored keys and the old `judge*` names stay as they are.
+    let renamed = name.strip_prefix("analysis").map(|rest| format!("judge{rest}"));
+    let name = renamed.as_deref().unwrap_or(name);
     let keep_on = name.strip_prefix("keep-on.").map(|s| format!("keep_on.{s}"));
     let (key, done) = match name {
         _ if keep_on.is_some() => {
@@ -670,11 +674,11 @@ pub fn config_set(name: &str, value: &str) -> ExitCode {
         }
         "daily-cap" => ("daily_cap", format!("Daily tip limit set to {value}.")),
         "copilot-tip-stays" => ("copilot_tip_stays", format!("Copilot CLI tip stays: {value}.")),
-        "judge" => ("judge", format!("Background judging: {value}.")),
-        "judge-daily-tasks" => ("judge_daily_tasks", format!("Most tasks judged per day: {value}.")),
-        "judge-claude-model" => ("judge_claude_model", format!("Claude judge model: {value}.")),
-        "judge-copilot-model" => ("judge_copilot_model", format!("Copilot judge model: {value}.")),
-        "judge-copilot-sessions" => ("judge_copilot_sessions", format!("Copilot judge sessions: {value}.")),
+        "judge" => ("judge", format!("Background analysis: {value}.")),
+        "judge-daily-tasks" => ("judge_daily_tasks", format!("Most tasks analyzed per day: {value}.")),
+        "judge-claude-model" => ("judge_claude_model", format!("Claude analysis model: {value}.")),
+        "judge-copilot-model" => ("judge_copilot_model", format!("Copilot analysis model: {value}.")),
+        "judge-copilot-sessions" => ("judge_copilot_sessions", format!("Copilot analysis sessions: {value}.")),
         "next-rung-tips" => ("next_rung_tips", format!("Next-step tips: {value}.")),
         "copilot-tip-in-chat" => ("copilot_tip_in_chat", format!("Copilot CLI tip in the conversation: {value}.")),
         "tip-popup" => ("tip_popup", format!("Windows pop-up for tips: {value}.")),
@@ -692,8 +696,8 @@ pub fn config_set(name: &str, value: &str) -> ExitCode {
         _ => {
             println!(
                 "Unknown setting {name}. Settings: daily-cap, copilot-tip-stays, copilot-tip-in-chat, tip-popup, \
-                 tip-highlight, judge, judge-daily-tasks, \
-                 judge-claude-model, judge-copilot-model, judge-copilot-sessions, next-rung-tips, check-claude-model, \
+                 tip-highlight, analysis, analysis-daily-tasks, \
+                 analysis-claude-model, analysis-copilot-model, analysis-copilot-sessions, next-rung-tips, check-claude-model, \
                  check-copilot-model, update, kind-label, kind-label-daily, kind-label-claude-model, kind-label-copilot-model, \
                  copilot-mid-turn, agent-actions, live-trend, keep-on.<job or job/kind>."
             );
@@ -804,7 +808,7 @@ pub fn confirm(question: &str, yes: bool) -> bool {
 
 pub fn forget_all(yes: bool) -> ExitCode {
     let paths = Paths::from_env();
-    if !confirm("Delete every prompt, signal and card AIQ stored on this machine? This cannot be undone.", yes) {
+    if !confirm("Delete every prompt, tip and count AIQ saved on this computer? This cannot be undone.", yes) {
         println!("Nothing deleted.");
         return ExitCode::SUCCESS;
     }
@@ -816,7 +820,7 @@ pub fn forget_all(yes: bool) -> ExitCode {
         Ok(()) => {
             let n = crate::judge::forget_judge_sessions(&paths, &crate::judge::Homes::from_env());
             if n > 0 {
-                println!("Also deleted {n} Copilot session(s) AIQ's judge had left.");
+                println!("Also deleted {n} Copilot session(s) AIQ's analysis had left.");
             }
             println!("Deleted. AIQ starts fresh with your next Claude Code prompt.");
             ExitCode::SUCCESS
@@ -837,13 +841,16 @@ mod tests {
     fn report_shows_no_folder_name_and_no_home() {
         let folders = vec![r"C:\Users\canary\src\secret-project".to_owned(), r"C:\Users\canary\src".to_owned()];
         let homes = vec![r"C:\Users\canary".to_owned()];
-        let text = "Automated sessions ignored in C:\\Users\\canary\\src\\secret-project (burst).\n\
-                    Automated sessions ignored in C:\\Users\\canary\\src (burst).\n\
+        let text = "Automated, not counted: C:\\Users\\canary\\src\\secret-project (burst).\n\
+                    Automated, not counted: C:\\Users\\canary\\src (burst).\n\
                     Copilot: installed in C:/Users/canary/.copilot\n\
                     Claude Code: installed in C:\\Users\\canary\\.claude\\settings.json\n";
         let out = redact(text, &folders, &homes);
         assert!(!out.contains("canary") && !out.contains("secret-project"), "{out}");
-        assert!(out.contains("ignored in folder-1 (burst)") && out.contains("ignored in folder-2 (burst)"), "{out}");
+        assert!(
+            out.contains("not counted: folder-1 (burst)") && out.contains("not counted: folder-2 (burst)"),
+            "{out}"
+        );
         assert!(out.contains("installed in ~/.copilot"), "{out}");
     }
 
@@ -995,7 +1002,7 @@ mod tests {
             evidence: vec![],
             leaned_on: vec![],
         };
-        assert_eq!(render_show(&none), "No card with that id.\n");
+        assert_eq!(render_show(&none), "No tip with that id.\n");
     }
 
     #[test]
@@ -1041,7 +1048,7 @@ mod tests {
         assert!(out.contains("Write tests for <function>.") && out.contains("copilot-cli  Writing tests"));
         assert!(out.contains("aiq helpful c") && !out.contains("pwned"));
         let gone = ShowReply { evidence: vec![EvidencePrompt { ts: "t".into(), text: None }], ..r };
-        assert!(render_show(&gone).contains("The evidence for this card was deleted."));
+        assert!(render_show(&gone).contains("The prompts behind this tip were deleted."));
     }
 }
 
@@ -1117,14 +1124,14 @@ fn render_progress(c: &aiq_home::Coaching) -> String {
     use aiq_domain::rung::{job_label, rung_name};
     let (d, min) = (c.progress_days, c.progress_min);
     let mut o = format!(
-        "Rung progress by kind of task: the typical rung (most common) of your judged tasks in the last {d} days\n\
-         against the {d} days before. Task counts are measured; rungs are the judge's reading. A kind needs\n\
-         at least {min} judged tasks in each half before AIQ says it moved.\n\n"
+        "Rung progress by kind of task: the typical rung (most common) of your analyzed tasks in the last {d} days\n\
+         against the {d} days before. Task counts are measured; rungs are AIQ's analysis. A kind needs\n\
+         at least {min} analyzed tasks in each half before AIQ says it moved.\n\n"
     );
     let up = c.progress.iter().filter(|r| r.trend == "up").count();
     let down = c.progress.iter().filter(|r| r.trend == "down").count();
     if c.progress.is_empty() {
-        o += &format!("No judged tasks with a kind in the last {} days yet.\n", 2 * d);
+        o += &format!("No analyzed tasks with a kind in the last {} days yet.\n", 2 * d);
         return o;
     }
     o += &format!("Moved up a rung: {up}. Moved down: {down}.\n\n");
@@ -1146,7 +1153,7 @@ fn render_progress(c: &aiq_home::Coaching) -> String {
             _ => "too few tasks to say".to_owned(),
         };
         o += &format!(
-            "{} [{}]: {what}\n  {} judged in the last {d} days, {} in the {d} before{}\n",
+            "{} [{}]: {what}\n  {} analyzed in the last {d} days, {} in the {d} before{}\n",
             r.label,
             job_label(&r.job),
             r.recent,
@@ -1166,20 +1173,20 @@ fn render_tips(
     days: u32,
 ) -> String {
     let mut o = format!(
-        "Next-step tips, on your judged tasks from the last {days} days (measured from your judgments, no model call).\n\
+        "Next-step tips, on your analyzed tasks from the last {days} days (measured from your analyses, no model call).\n\
          A tip shows in the moment only for a kind of task you repeat whose next step it is.\n\
          Next-step tips: {mode}{}\n\n",
         if on_now { "" } else { " (not showing now)" }
     );
     let jobs: Vec<String> = f4.iter().map(|(j, (n, k))| format!("{j} {k} of {n}")).collect();
     o += &format!(
-        "Requests the judge was sure had no goal, context or limits (any rung): {}\n\n",
-        if jobs.is_empty() { "no judged tasks yet".to_owned() } else { jobs.join(", ") }
+        "Requests AIQ's analysis was sure had no goal, context or limits (any rung): {}\n\n",
+        if jobs.is_empty() { "no analyzed tasks yet".to_owned() } else { jobs.join(", ") }
     );
     for (r, is_off) in reach.iter().zip(off) {
         let kinds: Vec<String> = r.kinds.iter().map(|(l, n)| format!("{l} ({n} tasks)")).collect();
         o += &format!(
-            "{} [{}{}]\n  applies to {} judged {}; can show now for: {}\n",
+            "{} [{}{}]\n  applies to {} analyzed {}; can show now for: {}\n",
             r.habit,
             if r.job == "any" { "every job" } else { r.job.as_str() },
             if *is_off { ", turned off" } else { "" },
@@ -1220,16 +1227,16 @@ mod tips_tests {
             ..Default::default()
         };
         let o = render_progress(&c);
-        assert!(o.contains("last 14 days") && o.contains("at least 3 judged tasks in each half"), "{o}");
+        assert!(o.contains("last 14 days") && o.contains("at least 3 analyzed tasks in each half"), "{o}");
         assert!(o.contains("Moved up a rung: 1. Moved down: 0."), "{o}");
         assert!(
-            o.contains("Writing tests [Code a change]: moved up 1 rung: Directed (2) -> Delegated (3)\n  4 judged in the last 14 days, 3 in the 14 before; 1 AIQ isn't sure about left out"),
+            o.contains("Writing tests [Code a change]: moved up 1 rung: Directed (2) -> Delegated (3)\n  4 analyzed in the last 14 days, 3 in the 14 before; 1 AIQ isn't sure about left out"),
             "{o}"
         );
         assert!(o.contains("same rung: Assisted (1)"), "{o}");
-        assert!(o.contains("Refactoring or cleaning up [Code a change]: too few tasks to say\n  1 judged"), "{o}");
+        assert!(o.contains("Refactoring or cleaning up [Code a change]: too few tasks to say\n  1 analyzed"), "{o}");
         let empty = aiq_home::Coaching { progress_days: 14, progress_min: 3, ..Default::default() };
-        assert!(render_progress(&empty).contains("No judged tasks with a kind in the last 28 days yet."));
+        assert!(render_progress(&empty).contains("No analyzed tasks with a kind in the last 28 days yet."));
     }
 
     #[test]
@@ -1254,9 +1261,9 @@ mod tips_tests {
         let o = render_tips(&r, &[false, true], &f4, "auto", true, 30);
         assert!(o.contains("last 30 days"));
         assert!(o.contains("no goal, context or limits (any rung): code_change 5 of 32"));
-        assert!(o.contains("Give the agent the goal [code_change]\n  applies to 4 judged tasks; can show now for: Writing tests (6 tasks)"));
+        assert!(o.contains("Give the agent the goal [code_change]\n  applies to 4 analyzed tasks; can show now for: Writing tests (6 tasks)"));
         assert!(o.contains(
-            "Give a written brief [every job, turned off]\n  applies to 1 judged task; can show now for: none yet"
+            "Give a written brief [every job, turned off]\n  applies to 1 analyzed task; can show now for: none yet"
         ));
         assert!(
             render_tips(&r, &[false, false], &Default::default(), "off", false, 30).contains("off (not showing now)")

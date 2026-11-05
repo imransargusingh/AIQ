@@ -6,11 +6,12 @@ import { RUNGS, rungLabel } from "./format";
 import { ver, type UpdatePhase } from "./updateNow";
 
 /** Nav pages, plus places outside the nav: one task's detail, one kind of task (from Home or Tasks), setup. */
-export type Page = "home" | "tasks" | "tips" | "data" | "settings" | "task" | "kind" | "setup";
+export type Page = "home" | "tasks" | "guide" | "tips" | "data" | "settings" | "task" | "kind" | "setup";
 
 export const PAGES: { id: Exclude<Page, "task" | "kind" | "setup">; label: string; key: string }[] = [
   { id: "home", label: "Home", key: "H" },
   { id: "tasks", label: "Tasks", key: "T" },
+  { id: "guide", label: "Rung guide", key: "R" },
   { id: "tips", label: "Habits and tips", key: "B" },
   { id: "data", label: "Your data", key: "D" },
   { id: "settings", label: "Settings", key: "S" },
@@ -101,7 +102,7 @@ export function Banners({ snap, togglePause, refresh }: Pick<Ctx, "snap" | "togg
       {s.paused && (
         <div className="banner">
           <div className="grow">
-            <b>AIQ is paused.</b> Nothing is captured and no tips show.
+            <b>AIQ is paused.</b> It saves nothing new and shows no tips.
           </div>
           <button className="btn" onClick={togglePause}>
             Resume <kbd>P</kbd>
@@ -289,11 +290,11 @@ export function AccuracyPaused({ snap, announce, refresh }: Pick<Ctx, "snap" | "
           <div className="grow">
             {p.kept_on ? (
               <>
-                <b>{p.label}:</b> next-step tips stay on because you chose to keep them, though a second model agreed with AIQ's judge only {p.agreed} of {p.checked} times.
+                <b>{p.label}:</b> next-step tips stay on because you chose to keep them, though a second model agreed with AIQ's analysis only {p.agreed} of {p.checked} times.
               </>
             ) : (
               <>
-                <b>{p.label}:</b> AIQ paused these next-step tips. A second model agreed with its judge only {p.agreed} of {p.checked} times, under 8 in 10. They come back by
+                <b>{p.label}:</b> AIQ paused these next-step tips. A second model agreed with AIQ's analysis only {p.agreed} of {p.checked} times, under 8 in 10. They come back by
                 themselves when a later accuracy check clears the bar.
               </>
             )}

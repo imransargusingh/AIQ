@@ -13,7 +13,7 @@ export const KIND_STATE: Record<KindState, string> = {
   right_rung: "Right rung",
   blocked: "Capped by a blocker",
   not_sure: "AIQ isn't sure yet",
-  flagged: "You flagged the step",
+  flagged: "You said it doesn't fit",
 };
 
 /** Whole percent of `part` in `n`. */
@@ -30,7 +30,7 @@ export function perWeek(n: number): string {
 export function judgedBy(tasks: TaskRow[]): string | null {
   const names = { "copilot-cli": "Copilot CLI", "claude-code": "Claude Code" } as const;
   const seen = [...new Set(tasks.flatMap((t) => (t.judgment ? [names[t.judgment.provider] ?? t.judgment.provider] : [])))].sort();
-  return seen.length ? `Judged by your ${seen.join(" and ")}` : null;
+  return seen.length ? `Analyzed by your ${seen.join(" and ")}` : null;
 }
 
 /** One kind of task as a row: its label, job, rungs (names then numbers) and the next step's habit. */
@@ -108,7 +108,7 @@ function Track({ r }: { r: LadderRow }) {
 
 function ladderLabel(r: LadderRow, d: number): string {
   const parts = [r.label, `${rungLabel(r.now)} in the last ${d} days`];
-  if (r.before != null) parts.push(`${r.now > r.before ? "moved up" : "moved down"} from ${rungLabel(r.before)}`);
+  if (r.before != null) parts.push(`${r.now > r.before ? "moved up from" : "at a lower rung than"} ${rungLabel(r.before)}`);
   else if (r.recent != null) parts.push("same rung");
   if (r.next != null) parts.push(`next step reaches ${rungLabel(r.next)}`);
   parts.push(r.recent != null ? `${r.recent} tasks in the last ${d} days, ${r.earlier} before` : `${r.tasks} tasks, too few in one half to say if it moved`);
@@ -136,7 +136,7 @@ function LadderRows({ rows, d, open, label }: { rows: LadderRow[]; d: number; op
                       ) : r.recent != null ? (
                         <span title={`${r.recent} in the last ${d} days · ${r.earlier} before`}>{r.recent} · {r.earlier}</span>
                       ) : (
-                        <span title="Too few judged tasks in one half to say if it moved">{r.tasks} {r.tasks === 1 ? "task" : "tasks"}</span>
+                        <span title="Too few analyzed tasks in one half to say if it moved">{r.tasks} {r.tasks === 1 ? "task" : "tasks"}</span>
                       )}
                     </span>
                   </button>
@@ -167,18 +167,18 @@ export function LadderMap({ c, open }: { c: Coaching; open: (job: string, type: 
         {RUNGS.map((r, i) => (
           <span key={i} title={r.means}>{r.name}</span>
         ))}
-        <span className="lad-n" title={`Judged tasks, last ${d} days · the ${d} before`}>Tasks</span>
+        <span className="lad-n" title={`Analyzed tasks, last ${d} days · the ${d} before`}>Tasks</span>
       </div>
       {shown.length > 0 && <LadderRows rows={shown} d={d} open={open} label="Rung progress by kind of task" />}
       {all && more.length > 0 && <LadderRows rows={more} d={d} open={open} label="Kinds of task with too few tasks to say" />}
       {more.length > 0 && (
         <p className="meta">
           {more.length} {shown.length > 0 ? "more " : ""}
-          {more.length === 1 ? "kind" : "kinds"} of task: too few to say if {more.length === 1 ? "it" : "they"} moved. Each needs at least {c.progress_min} judged tasks in both halves.{" "}
+          {more.length === 1 ? "kind" : "kinds"} of task: too few to say if {more.length === 1 ? "it" : "they"} moved. Each needs at least {c.progress_min} analyzed tasks in both halves.{" "}
           <button className="btnlink" aria-expanded={all} onClick={() => setAll(!all)}>{all ? "Hide" : "Show"}</button>
         </p>
       )}
-      {m.down > 0 && <p className="sr">{m.down} {m.down === 1 ? "kind" : "kinds"} of task moved down.</p>}
+      {m.down > 0 && <p className="sr">{m.down} {m.down === 1 ? "kind" : "kinds"} of task at a lower rung.</p>}
     </>
   );
 }
@@ -266,7 +266,7 @@ export function RungMix(props: {
               const few = n < props.weekMin;
               return (
                 <div key={w.start_ms} className={`mix-col${few ? " few" : ""}`} role="img"
-                  aria-label={`Week of ${w.label}: ${few ? "too few judged tasks to say" : w.rungs.map((v, i) => (v ? `${name(i)} ${Math.round((100 * v) / n)}%` : "")).filter(Boolean).join(", ")}`}>
+                  aria-label={`Week of ${w.label}: ${few ? "too few analyzed tasks to say" : w.rungs.map((v, i) => (v ? `${name(i)} ${Math.round((100 * v) / n)}%` : "")).filter(Boolean).join(", ")}`}>
                   {!few && w.rungs.map((v, i) => (v > 0 ? <span key={i} className={`rg-${i + 1}`} style={{ height: `${(100 * v) / n}%` }} /> : null))}
                 </div>
               );
@@ -284,11 +284,11 @@ export function RungMix(props: {
         </p>
       )}
       {!s && total > 0 && (
-        <p className="meta">The change shows once the last {props.shiftDays} days and the {props.shiftDays} before each have {props.shiftMin} judged tasks.</p>
+        <p className="meta">The change shows once the last {props.shiftDays} days and the {props.shiftDays} before each have {props.shiftMin} analyzed tasks.</p>
       )}
       {props.uncertain > 0 && (
         <p className="meta">
-          {props.uncertain} {props.uncertain === 1 ? "task" : "tasks"} the judge wasn't sure about {props.uncertain === 1 ? "is" : "are"} left out ·{" "}
+          {props.uncertain} {props.uncertain === 1 ? "task" : "tasks"} AIQ wasn't sure about {props.uncertain === 1 ? "is" : "are"} left out ·{" "}
           <button className="btnlink" onClick={props.seeUncertain}>See them</button>
         </p>
       )}

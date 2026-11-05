@@ -1,8 +1,10 @@
 // Getting started (UI review 2026-11-04, item 7): until Home has its first numbers, a short list that ticks
 // itself from the snapshot, so "is it working?" has an answer without asking the person to do anything. Every
-// line is measured: tools connected now, prompts captured, judging on or off, judged tasks against the minimum.
+// line is measured: tools connected now, prompts captured, analysis on, off or blocked, analyzed tasks against the minimum.
 import { plural, toolName, when } from "../format";
 import { Title, type Ctx } from "../ui";
+import type { Snapshot } from "../types";
+import { analysisLine } from "./Analysis";
 
 const TOOL = { "claude-code": "Claude Code", copilot: "GitHub Copilot" } as const;
 
@@ -21,7 +23,6 @@ function steps({ snap, go }: Pick<Ctx, "snap" | "go">): Step[] {
   const c = snap.coaching;
   const seen = snap.data.prompts > 0;
   const tools_seen = h.by_tool.map(([t]) => toolName(t));
-  const judging = snap.settings.judge === "auto";
   return [
     {
       done: on.length > 0,
@@ -31,30 +32,33 @@ function steps({ snap, go }: Pick<Ctx, "snap" | "go">): Step[] {
     },
     {
       done: seen,
-      title: seen ? "Prompts captured" : "No prompt captured yet",
+      title: seen ? "Prompts arriving" : "No prompt yet",
       detail: seen
         ? `${plural(snap.data.prompts, "prompt")} and ${plural(h.tasks_in_window, "task")} so far${tools_seen.length ? ` in ${tools_seen.join(", ")}` : ""}${snap.status.last_event_ms ? `, the last ${when(snap.status.last_event_ms, snap.now_ms, snap.offset_min)}` : ""}.`
         : "Your next prompt in a connected tool shows here.",
     },
-    {
-      done: judging,
-      title: judging ? "Judging is on" : "Judging is off",
-      detail: judging
-        ? `Up to ${snap.settings.judge_daily_tasks} finished tasks a day, through your own Claude Code or Copilot CLI.`
-        : "Without it AIQ can't place your tasks on a rung. Tips still work.",
-      action: judging ? undefined : { label: "Turn on in Settings", run: () => go("settings") },
-    },
-    {
-      done: h.judged > 0,
-      title: h.judged > 0 ? `${plural(h.judged, "task")} judged` : "No task judged yet",
-      detail: h.judged > 0 ? `${plural(h.tasks_in_window - h.judged, "task")} waiting.` : "A task is judged once it ends: 30 minutes with no new prompt.",
-    },
+    analysisStep(snap, go),
     {
       done: c.split.tasks >= c.split_min,
       title: "Your first numbers",
-      detail: `${c.split.tasks} of ${c.split_min} judged tasks. Home shows how much agents finish from ${c.split_min}, so a few tasks can't swing it.`,
+      detail: `${c.split.tasks} of ${c.split_min} analyzed tasks. Home shows how much agents finish from ${c.split_min}, so a few tasks can't swing it.`,
     },
   ];
+}
+
+/** One step for analysis, saying the same as Home's card: on and how far, or why it can't run. */
+function analysisStep(snap: Snapshot, go: Ctx["go"]): Step {
+  const a = snap.home.analysis;
+  const total = a.analyzed + a.waiting;
+  if (a.state === "off")
+    return { done: false, title: "Analysis is off", detail: "Without it AIQ can't place your tasks on a rung. Tips still work.", action: { label: "Turn on in Settings", run: () => go("settings") } };
+  if (a.state === "blocked" && a.blocked)
+    return { done: false, title: "Analysis can't run", detail: analysisLine(a) ?? "", action: undefined };
+  return {
+    done: true,
+    title: total ? `Analysis is on: ${a.analyzed} of ${plural(total, "task")}` : "Analysis is on",
+    detail: a.state === "paused" ? "It waits while AIQ is paused." : `About ${a.daily} a day, newest first. Nothing to do.`,
+  };
 }
 
 function List({ items }: { items: Step[] }) {
@@ -98,7 +102,7 @@ export function GettingStartedPage(ctx: Pick<Ctx, "snap" | "go" | "startTour">) 
         <List items={steps(ctx)} />
       </section>
       <p className="meta">
-        <button className="btnlink" onClick={() => ctx.go("data")}>See what AIQ has captured</button>
+        <button className="btnlink" onClick={() => ctx.go("data")}>See what AIQ has saved</button>
         {" · "}
         <button className="btnlink" onClick={ctx.startTour}>Take the tour</button>
       </p>

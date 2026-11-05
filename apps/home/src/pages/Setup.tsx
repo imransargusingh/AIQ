@@ -6,7 +6,7 @@ import { api } from "../api";
 import type { Snapshot, ToolFound } from "../types";
 import { Title, type Ctx } from "../ui";
 
-const STEPS = ["Privacy", "Tools", "Judging", "Tips", "Your history"];
+const STEPS = ["Privacy", "Tools", "Analysis", "Tips", "Your history"];
 const TOOL: Record<ToolFound["tool"], { name: string; where: string }> = {
   "claude-code": { name: "Claude Code", where: "Tips show when Claude Code finishes a turn." },
   copilot: { name: "GitHub Copilot", where: "Copilot CLI and VS Code agent mode share these hooks. Tips show in Copilot CLI's status line." },
@@ -68,7 +68,7 @@ export function Setup(ctx: Ctx & { rerun: boolean; finish: (s: Snapshot) => void
     const r = await api.setSetting("judge", on ? "auto" : "off");
     if (r.ok) {
       setMsg(null);
-      announce(on ? "Judging is on." : "Judging is off. AIQ judges no new tasks.");
+      announce(on ? "Analysis is on." : "Analysis is off. AIQ analyzes no new tasks.");
       refresh();
     } else setMsg(r.message);
   };
@@ -114,7 +114,7 @@ export function Setup(ctx: Ctx & { rerun: boolean; finish: (s: Snapshot) => void
             <header className="group">
               <Title>Your coach, on your computer only</Title>
               <p className="mute">
-                AIQ watches how you work with AI agents and suggests one small change at a time, so agents finish more of your work with less
+                AIQ learns from how you work with AI agents and suggests one small change at a time, so agents finish more of your work with less
                 redoing.
               </p>
             </header>
@@ -142,8 +142,8 @@ export function Setup(ctx: Ctx & { rerun: boolean; finish: (s: Snapshot) => void
         {step === 1 && (
           <>
             <header className="group">
-              <Title>Tools AIQ will watch</Title>
-              <p className="mute">AIQ reads your prompts and when each turn ends. If AIQ stops, your tools work as before.</p>
+              <Title>Tools AIQ connects to</Title>
+              <p className="mute">AIQ keeps your prompts and turn times on this computer, so it can coach you. If AIQ stops, your tools work as before.</p>
             </header>
             <div className="group">
               {snap.setup.tools.map((t) => (
@@ -223,11 +223,11 @@ export function Setup(ctx: Ctx & { rerun: boolean; finish: (s: Snapshot) => void
         {step === 2 && (
           <>
             <header className="group">
-              <Title>How AIQ will judge your tasks</Title>
+              <Title>How AIQ will analyze your tasks</Title>
               <p className="mute">
                 {snap.settings.judge === "auto"
-                  ? "Judging is on. AIQ turned it on when it connected your tools, so it can show which rung each task was done at and coach the next step."
-                  : "Judging is off. Without it AIQ can't tell the rung of a task, so it shows no next-step tips."}
+                  ? "Analysis is on. AIQ turned it on when it connected your tools, so it can show which rung each task was done at and coach the next step."
+                  : "Analysis is off. Without it AIQ can't tell the rung of a task, so it shows no next-step tips."}
               </p>
             </header>
             <p className="mute">
@@ -235,14 +235,14 @@ export function Setup(ctx: Ctx & { rerun: boolean; finish: (s: Snapshot) => void
               saved workflow runs it for you and others).
             </p>
             <p>
-              AIQ judges each finished task through the tool that already saw it, with your own sign-in: Claude Code tasks through your Claude
+              AIQ analyzes each finished task through the tool that already saw it, with your own sign-in: Claude Code tasks through your Claude
               Code, Copilot and VS Code tasks through your Copilot CLI. It sends the task's prompts and a summary of what the agent did, never
               your own edits. Up to {snap.settings.judge_daily_tasks} tasks a day, two calls each on your own plan. AIQ never reads or stores
               your sign-in.
             </p>
             <p className="meta">On a work account, your organisation's policies apply to these calls, including logging and retention.</p>
             <div className="row" style={{ justifyContent: "space-between" }}>
-              <span id="sjon">Judge finished tasks in the background</span>
+              <span id="sjon">Analyze finished tasks in the background</span>
               <button
                 className="switch"
                 role="switch"
@@ -252,7 +252,7 @@ export function Setup(ctx: Ctx & { rerun: boolean; finish: (s: Snapshot) => void
                 onClick={() => setJudge(snap.settings.judge !== "auto")}
               />
             </div>
-            <p className="meta">Change it any time in Settings, under Judging.</p>
+            <p className="meta">Change it any time in Settings, under Analysis.</p>
             {msg && (
               <p className="errtext" role="alert">
                 {msg}
