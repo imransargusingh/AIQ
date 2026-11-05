@@ -83,6 +83,8 @@ Usage:
   aiq config set analysis-calls <1|2>  Model calls per analyzed task (default 2)
   aiq config set analysis-copilot-model <id|default>  Model for Copilot tasks (default gpt-6.1-sol,
                                       then Copilot's own pick if it is not offered; default = Copilot's pick)
+  aiq config set analysis-copilot-second-model <id|same>  Model for a Copilot task's second call
+                                      (default gpt-6-luna; same = the first call's model)
   aiq config set kind-label <auto|off>  When word matching can't tell a new task's kind, a small model
                                       names it from the first prompt, in the background (on while analysis is on)
   aiq config set kind-label-daily <n>  Most kind labels per day (0-500, default 20; one call each)

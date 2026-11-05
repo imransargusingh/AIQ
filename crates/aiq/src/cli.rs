@@ -680,6 +680,9 @@ pub fn config_set(name: &str, value: &str) -> ExitCode {
         "judge-copilot-model" => ("judge_copilot_model", format!("Copilot analysis model: {value}.")),
         "judge-copilot-sessions" => ("judge_copilot_sessions", format!("Copilot analysis sessions: {value}.")),
         "judge-calls" => ("judge_calls", format!("Model calls per analyzed task: {value}.")),
+        "judge-copilot-second-model" => {
+            ("judge_copilot_second_model", format!("Copilot analysis, second call's model: {value}."))
+        }
         "next-rung-tips" => ("next_rung_tips", format!("Next-step tips: {value}.")),
         "copilot-tip-in-chat" => ("copilot_tip_in_chat", format!("Copilot CLI tip in the conversation: {value}.")),
         "tip-popup" => ("tip_popup", format!("Windows pop-up for tips: {value}.")),
@@ -698,7 +701,7 @@ pub fn config_set(name: &str, value: &str) -> ExitCode {
             println!(
                 "Unknown setting {name}. Settings: daily-cap, copilot-tip-stays, copilot-tip-in-chat, tip-popup, \
                  tip-highlight, analysis, analysis-daily-tasks, \
-                 analysis-claude-model, analysis-copilot-model, analysis-copilot-sessions, analysis-calls, next-rung-tips, check-claude-model, \
+                 analysis-claude-model, analysis-copilot-model, analysis-copilot-sessions, analysis-calls, analysis-copilot-second-model, next-rung-tips, check-claude-model, \
                  check-copilot-model, update, kind-label, kind-label-daily, kind-label-claude-model, kind-label-copilot-model, \
                  copilot-mid-turn, agent-actions, live-trend, keep-on.<job or job/kind>."
             );

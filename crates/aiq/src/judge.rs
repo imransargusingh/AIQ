@@ -445,6 +445,8 @@ pub struct Settings {
     pub keep_copilot_sessions: bool,
     /// Answers each task needs (1 or 2, `SETTING_CALLS`).
     pub calls: u8,
+    /// Copilot's second call: a model id, or None for the first call's model (`same`).
+    pub copilot_second_model: Option<String>,
 }
 
 pub fn settings(store: &Store) -> Settings {
@@ -456,6 +458,11 @@ pub fn settings(store: &Store) -> Settings {
         copilot_model: get(rung::SETTING_COPILOT_MODEL).filter(|m| m != "default"),
         copilot_default: get(rung::SETTING_COPILOT_MODEL).is_none(),
         keep_copilot_sessions: get(rung::SETTING_COPILOT_SESSIONS).as_deref() == Some("keep"),
+        copilot_second_model: match get(rung::SETTING_COPILOT_SECOND_MODEL) {
+            None => Some(rung::DEFAULT_COPILOT_SECOND_MODEL.into()),
+            Some(m) if m == "same" => None,
+            Some(m) => Some(m),
+        },
         calls: get(rung::SETTING_CALLS)
             .and_then(|v| v.parse().ok())
             .filter(|n| (1..=2).contains(n))
@@ -705,7 +712,8 @@ fn same_job_recent(judged: &HashMap<String, JudgmentRow>, job: &str, now_ms: i64
     judged.values().filter(|j| j.job == job && j.judged_utc_ms >= now_ms - 30 * DAY_MS).count() as u32
 }
 
-/// Judge one task: `calls` answers (1 or 2) through `provider`, then placement. Returns None when no run
+/// Judge one task: `calls` answers (1 or 2) through `provider` (the second through `second` when given), then
+/// placement. Returns None when no run
 /// answered. With one call a failed call is tried once more, so a task never costs more than two calls.
 /// Every call is recorded, answered or not.
 #[allow(clippy::too_many_arguments)]
@@ -719,6 +727,7 @@ pub fn judge_task(
     judged: &HashMap<String, JudgmentRow>,
     reprompt: &aiq_contracts::pack::RepromptParams,
     calls: u8,
+    second: Option<&dyn Provider>,
 ) -> aiq_store::Result<(Option<Judged>, Vec<CallResult>)> {
     let log = rung::log_facts(turns);
     let fence = format!("AIQ-QUOTE-{}", uuid::Uuid::new_v4().simple());
@@ -739,7 +748,9 @@ pub fn judge_task(
         }
         let started = now_ms();
         let mut r =
-            provider.call(&CallReq { system: rung::SYSTEM, user: &user, schema: &schema, session_id: &session_id });
+            // Two calls: the second goes to `second` when there is one (a different model; design one-call-analysis).
+            if run == 2 && calls == 2 { second.unwrap_or(provider) } else { provider }
+                .call(&CallReq { system: rung::SYSTEM, user: &user, schema: &schema, session_id: &session_id });
         if let Outcome::Ok(v) = &r.outcome {
             match parse_response(v.clone()) {
                 Ok(resp) => runs.push(resp),
@@ -870,6 +881,8 @@ pub struct Run<'a> {
     pub homes: &'a Homes,
     pub claude: &'a dyn Provider,
     pub copilot: &'a dyn Provider,
+    /// Copilot's second call, when it goes to a different model.
+    pub copilot_second: Option<&'a dyn Provider>,
     pub now: Now,
     pub max: Option<u32>,
     /// `--only claude-code|copilot-cli`: judge only tasks that go to this provider.
@@ -911,9 +924,9 @@ pub fn run(r: &Run<'_>) -> Result<Report, String> {
             rep.restamped += 1;
             continue;
         }
-        let provider = if name == CLAUDE { r.claude } else { r.copilot };
+        let (provider, second) = if name == CLAUDE { (r.claude, None) } else { (r.copilot, r.copilot_second) };
         let (j, results) =
-            judge_task(r.store, r.paths, provider, name, t, &turns, &judged_now, &pack.reprompt, set.calls)
+            judge_task(r.store, r.paths, provider, name, t, &turns, &judged_now, &pack.reprompt, set.calls, second)
                 .map_err(|e| e.to_string())?;
         allowed -= 1;
         rep.budget_left = rep.budget_left.saturating_sub(1);
@@ -1133,6 +1146,14 @@ pub(crate) fn providers(paths: &Paths, set: &Settings) -> (ClaudeCli, CopilotCli
     )
 }
 
+/// The models a Copilot task's second call tries: the second model, then the first call's models. None when
+/// the second call uses the first call's model (`same`), or names it.
+pub(crate) fn analysis_copilot_second_models(set: &Settings) -> Option<Vec<Option<String>>> {
+    let first = analysis_copilot_models(set);
+    let m = set.copilot_second_model.clone()?;
+    (first.first() != Some(&Some(m.clone()))).then(|| std::iter::once(Some(m)).chain(first).collect())
+}
+
 /// The Copilot models analysis tries, in order: the person's choice alone, else AIQ's default model then
 /// Copilot's own pick.
 pub(crate) fn analysis_copilot_models(set: &Settings) -> Vec<Option<String>> {
@@ -1148,10 +1169,10 @@ pub(crate) fn analysis_copilot_models(set: &Settings) -> Vec<Option<String>> {
 /// every call and judgment, and shown on the task page.
 fn analysis_copilot<'a>(
     base: &'a CopilotCli,
-    set: &Settings,
+    models: Vec<Option<String>>,
 ) -> ModelChain<impl Fn(Option<&str>, &CallReq<'_>) -> CallResult + 'a> {
     ModelChain {
-        models: analysis_copilot_models(set),
+        models,
         at: std::cell::Cell::new(0),
         on_error: true,
         call: move |m: Option<&str>, req: &CallReq<'_>| {
@@ -1325,13 +1346,16 @@ pub fn cli(args: &[&str]) -> ExitCode {
         );
     }
     let (claude, copilot) = providers(&paths, &set);
-    let copilot = analysis_copilot(&copilot, &set);
+    let second_models = analysis_copilot_second_models(&set);
+    let copilot_second = second_models.map(|m| analysis_copilot(&copilot, m));
+    let copilot = analysis_copilot(&copilot, analysis_copilot_models(&set));
     let rep = run(&Run {
         store: &store,
         paths: &paths,
         homes: &homes,
         claude: &claude,
         copilot: &copilot,
+        copilot_second: copilot_second.as_ref().map(|p| p as &dyn Provider),
         now: n,
         max,
         only,
@@ -2472,6 +2496,7 @@ mod tests {
             homes: &e.homes,
             claude,
             copilot,
+            copilot_second: None,
             now: Now { utc_ms: NOW, offset_min: 0 },
             max,
             only,
@@ -3068,6 +3093,38 @@ mod tests {
         assert_eq!(analysis_copilot_models(&settings(&e.store)), vec![None], "default = Copilot's own pick");
         e.store.set_setting(rung::SETTING_COPILOT_MODEL, "gpt-6.1-sol", 0).unwrap();
         assert_eq!(analysis_copilot_models(&settings(&e.store)), vec![Some("gpt-6.1-sol".into())]);
+    }
+
+    #[test]
+    fn copilot_second_call_goes_to_the_second_model_by_default() {
+        let e = env();
+        let set = settings(&e.store);
+        assert_eq!(
+            analysis_copilot_second_models(&set),
+            Some(vec![Some(rung::DEFAULT_COPILOT_SECOND_MODEL.into()), Some(rung::DEFAULT_COPILOT_MODEL.into()), None]),
+            "Luna, then Sol, then Copilot's pick"
+        );
+        e.store.set_setting(rung::SETTING_COPILOT_SECOND_MODEL, "same", 0).unwrap();
+        assert_eq!(analysis_copilot_second_models(&settings(&e.store)), None);
+        e.store.set_setting(rung::SETTING_COPILOT_SECOND_MODEL, rung::DEFAULT_COPILOT_MODEL, 0).unwrap();
+        assert_eq!(analysis_copilot_second_models(&settings(&e.store)), None, "naming the first model = same");
+        // In a run: Copilot tasks send call 2 to the second provider; Claude Code tasks never do.
+        let e = env();
+        let (c, p, p2) = (Fake::ok(2), Fake::ok(2), Fake::ok(2));
+        let rep = run(&Run {
+            store: &e.store,
+            paths: &e.paths,
+            homes: &e.homes,
+            claude: &c,
+            copilot: &p,
+            copilot_second: Some(&p2),
+            now: Now { utc_ms: NOW, offset_min: 0 },
+            max: None,
+            only: None,
+        })
+        .unwrap();
+        assert_eq!(rep.judged, 4, "{rep:?}");
+        assert_eq!((c.calls(), p.calls(), p2.calls()), (4, 2, 2));
     }
 
     #[test]

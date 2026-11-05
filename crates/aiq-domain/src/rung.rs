@@ -104,6 +104,12 @@ pub const DEFAULT_CALLS: u8 = 2;
 /// = Copilot's own pick). Imran, 2026-11-05: prefer OpenAI models for Copilot tasks, Sol as the default. When it
 /// is not offered or a call to it fails, analysis falls back to Copilot's own pick.
 pub const DEFAULT_COPILOT_MODEL: &str = "gpt-6.1-sol";
+/// The model for a Copilot task's second call (`analysis-copilot-second-model`; `same` = the first call's model).
+/// Sol + gpt-6-luna scored at least as well as Sol twice on every measure (golden set through Copilot, 11-05:
+/// rung exact 68.4% vs 65.6%, too high 10.4% vs 15.6%, sure but wrong 29.1% vs 30.4%) and Luna is a lower price
+/// tier. Not offered or failing: the first call's model.
+pub const SETTING_COPILOT_SECOND_MODEL: &str = "judge_copilot_second_model";
+pub const DEFAULT_COPILOT_SECOND_MODEL: &str = "gpt-6-luna";
 /// The accuracy check's second reader (design judge-accuracy-check K3).
 pub const SETTING_CHECK_CLAUDE_MODEL: &str = "check_claude_model";
 pub const SETTING_CHECK_COPILOT_MODEL: &str = "check_copilot_model";
@@ -125,6 +131,8 @@ pub fn validate_setting(key: &str, value: &str) -> Option<Result<String, String>
             _ => Err(format!("analysis-daily-tasks must be a whole number from 0 to {MAX_DAILY_TASKS}")),
         },
         SETTING_CLAUDE_MODEL | SETTING_CHECK_CLAUDE_MODEL if model_ok(value) => Ok(value.to_owned()),
+        SETTING_COPILOT_SECOND_MODEL if value == "same" || model_ok(value) => Ok(value.to_owned()),
+        SETTING_COPILOT_SECOND_MODEL => Err("a model id is letters, digits and . _ : - [ ] / only, or same".into()),
         SETTING_COPILOT_MODEL | SETTING_CHECK_COPILOT_MODEL if value == "default" || model_ok(value) => {
             Ok(value.to_owned())
         }

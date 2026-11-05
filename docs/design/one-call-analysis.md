@@ -11,9 +11,9 @@ links:
   - { to: design-judge-evals, rel: depends-on }
 review-by: 2027-05-05
 summary: >-
-  Copilot tasks are analyzed by gpt-6.1-sol, two calls (Imran: OpenAI models, Sol default), falling back to
-  Copilot's own pick when it is not offered or a call fails. Measured on the golden set: the number of calls with
-  one model barely matters; the model matters a lot (sonnet sure-but-wrong 7% vs Sol 30%, recorded, not adopted).
+  Copilot tasks are analyzed twice: gpt-6.1-sol, then gpt-6-luna (Imran: OpenAI models, Sol default), each falling
+  back to Copilot's own pick. Measured on the golden set: Sol + Luna is level with or better than Sol twice; one
+  model's second call barely matters; the model matters most (sonnet recorded, not adopted).
 ---
 
 # One call per analyzed task
@@ -95,7 +95,31 @@ once 77.3%, 2.3%. Caveats: every expected label was written by a Claude session,
 (the result holds on Imran's 15); sonnet names the job and kind wrong more often and says "not sure" more, so
 fewer tasks get a tip; 1 request per sonnet call is inferred from its price tier, not measured.
 
-## Decision (2026-11-05 14:37Z, Imran)
+## Sol + Luna (2026-11-05 15:05Z, measured)
+
+gpt-6-luna through Copilot ("low" price tier; at most 1 request per call is inferred from the tier, not measured),
+3 answers per task, 102 calls, 1,627 s, p50 14.9 s (Sol 11.1 s), 1 failed call.
+
+| Measure | Sol once | Sol twice | Luna once | Sol + Luna |
+|---|---|---|---|---|
+| Job right | 100.0% | 98.0% | 99.0% | 97.1% |
+| Kind right | 95.8% | 94.8% | 93.8% | 91.7% |
+| Rung exact | 65.6% | 65.6% | 68.8% | 68.4% |
+| Rung too high | 15.6% | 15.6% | 10.4% | 10.4% |
+| Shown as sure and right | 61.8% | 61.8% | 65.3% | 62.1% |
+| Shown as sure but wrong | 32.4% | 30.4% | 30.7% | 29.1% |
+| Marked not sure | 5.9% | 7.8% | 4.0% | 8.8% |
+
+Sol + Luna is level with or better than Sol twice on every rung and sure-answer measure (job and kind 1-3 points
+lower, within noise). The gains are small for 34 tasks, but all point the same way, and Luna is a lower price tier.
+
+## Decision (2026-11-05 15:20Z, proposed)
+
+**Copilot tasks: first call gpt-6.1-sol, second call gpt-6-luna** (`analysis-copilot-second-model`, `same` = Sol
+twice). Luna not offered or failing: that call goes to Sol, then Copilot's own pick. Claude Code tasks unchanged.
+`aiq analyze --eval` scores one model per run; pairs are scored with `--compare-calls A --with B`.
+
+### Decision (2026-11-05 14:37Z, Imran): OpenAI models, Sol default
 
 **Copilot tasks stay on OpenAI models, gpt-6.1-sol by default, two calls.** Imran: "For sessions in Copilot,
 prefer OpenAI models (and Sol as the default)." The sonnet numbers above stay as a measurement, not a plan. The
