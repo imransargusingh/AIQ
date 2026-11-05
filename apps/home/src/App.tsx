@@ -96,7 +96,7 @@ export function App() {
     api.pause(on).then(
       (s) => {
         setSnap(s);
-        announce(on ? "AIQ is paused. Nothing is captured and no tips show." : "AIQ resumed.");
+        announce(on ? "AIQ is paused. It saves nothing new and shows no tips." : "AIQ resumed.");
       },
       () => announce("Could not change the pause setting."),
     );

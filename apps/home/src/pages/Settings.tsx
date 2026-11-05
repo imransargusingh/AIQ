@@ -27,7 +27,7 @@ const TREND = { label: "Show where an open task is heading", note: "On Home whil
 /** The section index: each entry scrolls to its card and moves focus to the heading. */
 const SECTIONS = [
   ["st1", "Tips"],
-  ["st7", "What AIQ records"],
+  ["st7", "What AIQ keeps"],
   ["st3", "Analysis"],
   ["st6", "Updates"],
   ["st5", "Tools"],
@@ -314,7 +314,7 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
       </section>
 
       <section className="card" aria-labelledby="st7">
-        <h2 id="st7" tabIndex={-1}>What AIQ records</h2>
+        <h2 id="st7" tabIndex={-1}>What AIQ keeps</h2>
         <div className="row" style={{ justifyContent: "space-between" }}>
           <span id="midturn">Copilot messages you send while the agent is still working</span>
           <button
@@ -325,8 +325,8 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
             disabled={down}
             onClick={() =>
               st.copilot_mid_turn === "on"
-                ? change("copilot_mid_turn", "off", "AIQ no longer records Copilot messages sent while the agent works.")
-                : change("copilot_mid_turn", "on", "AIQ records Copilot messages sent while the agent works.")
+                ? change("copilot_mid_turn", "off", "AIQ no longer keeps Copilot messages you send while the agent works.")
+                : change("copilot_mid_turn", "on", "AIQ keeps Copilot messages you send while the agent works.")
             }
           />
         </div>
@@ -344,8 +344,8 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
             disabled={down}
             onClick={() =>
               st.agent_actions === "on"
-                ? change("agent_actions", "off", "AIQ no longer records what the agent did in each turn.")
-                : change("agent_actions", "on", "AIQ records what the agent did in each turn.")
+                ? change("agent_actions", "off", "AIQ no longer counts what the agent did in each turn.")
+                : change("agent_actions", "on", "AIQ counts what the agent did in each turn.")
             }
           />
         </div>

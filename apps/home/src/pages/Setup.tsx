@@ -143,7 +143,7 @@ export function Setup(ctx: Ctx & { rerun: boolean; finish: (s: Snapshot) => void
           <>
             <header className="group">
               <Title>Tools AIQ connects to</Title>
-              <p className="mute">AIQ reads your prompts and when each turn ends. If AIQ stops, your tools work as before.</p>
+              <p className="mute">AIQ keeps your prompts and turn times on this computer, so it can coach you. If AIQ stops, your tools work as before.</p>
             </header>
             <div className="group">
               {snap.setup.tools.map((t) => (

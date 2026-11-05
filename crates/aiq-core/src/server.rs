@@ -267,7 +267,7 @@ fn writer_loop(mut svc: Service<SystemClock>, rx: Receiver<Cmd>, paths: &Paths, 
             Cmd::IncludeFolder { folder, reply } => {
                 let r = match svc.include_folder(&folder) {
                     Ok(true) => Ok(()),
-                    Ok(false) => Err("that folder is not set aside".into()),
+                    Ok(false) => Err("that folder is already counted".into()),
                     Err(e) => Err(e.code.into()),
                 };
                 let _ = reply.send(r);

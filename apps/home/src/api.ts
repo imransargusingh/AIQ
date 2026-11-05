@@ -145,7 +145,7 @@ function fixture<T>(cmd: string, args: Record<string, unknown>): Promise<T> {
     }
     case "include_folder":
       if (!s.status.core) out = { ok: false, message: "AIQ is starting, so this can't change yet. Try again in a moment." };
-      else if (!s.home.set_aside.some((x) => x.folder === args.folder)) out = { ok: false, message: "Not changed: that folder isn't set aside." };
+      else if (!s.home.set_aside.some((x) => x.folder === args.folder)) out = { ok: false, message: "Not changed: that folder is already counted." };
       else {
         s.home.set_aside = s.home.set_aside.filter((x) => x.folder !== args.folder);
         out = { ok: true };

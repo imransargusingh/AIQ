@@ -182,7 +182,7 @@ fn e2e_copilot_reword_tip_in_status_line_after_turn_then_clears_on_next_prompt()
     assert_eq!(v.as_object().unwrap().len(), 2, "only type and message: {out}");
     assert_eq!(v["type"], "progress");
     let msg = v["message"].as_str().unwrap();
-    assert!(msg.starts_with("AIQ tip: you've reworded this request 3 times") && msg.contains("Try this: "), "{msg}");
+    assert!(msg.starts_with("AIQ tip: this request went round 3 times") && msg.contains("Try this: "), "{msg}");
     for t in TEXTS {
         assert!(!msg.contains(t), "the tip never quotes prompt text");
     }
@@ -190,7 +190,7 @@ fn e2e_copilot_reword_tip_in_status_line_after_turn_then_clears_on_next_prompt()
     e.wait_for("Tips today: 1 of"); // the hook's "printed" note is its own send, after the turn end (DC-022)
     let line = e.tip_line("c1", false);
     assert!(
-        line.starts_with("AIQ tip: you've reworded this request 3 times without adding new details · aiq show "),
+        line.starts_with("AIQ tip: this request went round 3 times. The agent may need one new detail · aiq show "),
         "{line}"
     );
     assert_eq!(line.lines().count(), 1);
@@ -255,7 +255,10 @@ fn e2e_copilot_tip_in_chat_off_leaves_it_to_the_status_line() {
     e.wait_for("1 stop");
     let line = e.tip_line("c1", false);
     let timings = std::fs::read_to_string(e.home().join("hook-timings.log")).unwrap_or_default();
-    assert!(line.starts_with("AIQ tip: you've reworded"), "the status line still shows it: {line:?}\n{timings}");
+    assert!(
+        line.starts_with("AIQ tip: this request went round"),
+        "the status line still shows it: {line:?}\n{timings}"
+    );
 }
 
 #[test]

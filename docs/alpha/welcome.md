@@ -74,7 +74,7 @@ anything else you send through it. Full details: [AIQ privacy and terms](../priv
   background. You may see no tips at all at first. That is normal, not a fault.
 - **Tips are rare on purpose.** At most 5 a day, only when AIQ is confident, and never in the middle of
   your work. It shows a tip when the agent stops, or on the Copilot CLI status line.
-- **Some tips will be wrong.** This is early software. If a tip or an analysis doesn't fit how you work,
+- **Some tips won't fit.** This is early software. If a tip or an analysis doesn't fit how you work,
   press **This doesn't fit** in AIQ home. AIQ also checks itself and pauses a kind of tip when its own
   accuracy drops.
 - **AIQ updates itself** when there is a new version, while AIQ home is closed. To update straight

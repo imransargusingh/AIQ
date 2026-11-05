@@ -1737,7 +1737,7 @@
       "card_id": "019000010008-0000-7000-8000-000000000000",
       "tool": "copilot-cli",
       "delivered_ms": 1793533800000,
-      "noticed": "You reworded the same request 3 times in this task.",
+      "noticed": "This request went round 3 times. The agent may need one new detail.",
       "why": "Rewording often means the agent is missing context, not words.",
       "try_this": "Say what is wrong with the last answer and add the one fact it lacked.",
       "opened": false,

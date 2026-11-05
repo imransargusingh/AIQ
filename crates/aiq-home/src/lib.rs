@@ -39,7 +39,7 @@ pub const OPPORTUNITY_ROWS: usize = 3;
 /// A project's name the person chose: setting `project_name.<folder key>` (design project-filter P2).
 pub const PROJECT_NAME: &str = aiq_core::service::SETTING_PROJECT_NAME;
 /// The project of tasks with no folder recorded (design project-filter P1).
-pub const NO_FOLDER: &str = "Folder not recorded";
+pub const NO_FOLDER: &str = "Folder unknown";
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Snapshot {

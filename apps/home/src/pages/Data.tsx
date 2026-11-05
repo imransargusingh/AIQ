@@ -63,7 +63,7 @@ export function Data(ctx: Ctx) {
           <h2>AIQ has no stored history.</h2>
           <span className="mute">
             {deletedAt ? `Deleted at ${clock(deletedAt, snap.offset_min)}. ` : ""}
-            {snap.status.paused ? "AIQ is paused, so nothing new is captured." : "Capture is still on, so new activity will show here."}
+            {snap.status.paused ? "AIQ is paused, so it saves nothing new." : "New work will show here as you go."}
           </span>
           {pauseBtn}
         </div>
@@ -77,7 +77,7 @@ export function Data(ctx: Ctx) {
       <Banners {...ctx} />
       <header className="group">
         <Title>Your data</Title>
-        <p className="mute">Everything AIQ captured, stored only on this computer in a file only your account can read. It stays until you delete it.</p>
+        <p className="mute">Everything AIQ has saved, only on this computer, in a file only your account can read. It stays until you delete it.</p>
       </header>
       <div className="head">
         <p>
@@ -113,7 +113,7 @@ export function Data(ctx: Ctx) {
                   <td style={{ whiteSpace: "nowrap" }}>{toolName(i.tool)}</td>
                   <td>{i.kind === "prompt" ? "Prompt" : "Turn ended"}</td>
                   <td className={i.text ? "wrap" : "mute"}>
-                    {i.text ? <Content text={i.text} /> : i.deleted ? "Text deleted" : i.kind === "prompt" ? "No text captured" : "—"}
+                    {i.text ? <Content text={i.text} /> : i.deleted ? "Text deleted" : i.kind === "prompt" ? "No text saved" : "—"}
                   </td>
                   <td>
                     {i.kind === "prompt" && i.text != null && (
@@ -165,7 +165,7 @@ export function Data(ctx: Ctx) {
             <h2>Delete everything AIQ stored?</h2>
             <p>
               This deletes {plural(d.events, "event")}
-              {d.imported_sessions > 0 && <>, {plural(d.imported_sessions, "imported session")}</>}, {plural(snap.tips.length, "tip")} and their evidence. It can't be undone. Your tools and your work aren't affected.
+              {d.imported_sessions > 0 && <>, {plural(d.imported_sessions, "imported session")}</>}, {plural(snap.tips.length, "tip")} and the prompts behind them. It can't be undone. Your tools and your work aren't affected.
             </p>
             <div className="field">
               <label htmlFor="forget">Type forget to confirm</label>

@@ -215,7 +215,7 @@ fn reprompt_three_times_card_at_next_stop() {
     let mut h = H::new();
     let pid = h.reprompt_run("s");
     let card = h.stop("s", Some(&pid)).expect("card");
-    assert!(card.noticed.contains("reworded this request 3 times"));
+    assert!(card.noticed.contains("this request went round 3 times"));
     assert_eq!(card.evidence_ref, format!("aiq show {}", card.card_id));
     assert!(h.stop("s", Some(&pid)).is_none(), "a card is shown at most once");
 }
@@ -696,7 +696,7 @@ fn copilot_tip_shows_after_turn_ends_not_mid_turn() {
     assert_eq!(h.tip("c"), None, "mid-turn: the agent is still working");
     h.cp_stop("c");
     let card = full(h.tip("c"));
-    assert!(card.noticed.contains("reworded this request 3 times"));
+    assert!(card.noticed.contains("this request went round 3 times"));
     assert_eq!(h.decisions(), vec![d("shown", "ok", 1)]);
 }
 
@@ -1219,7 +1219,7 @@ fn copilot_tip_in_chat_off_leaves_delivery_to_the_status_line() {
     assert!(h.svc().set("copilot_tip_in_chat", "yes").is_err());
     h.cp_run("c");
     assert_eq!(h.cp_take("c"), None);
-    assert!(full(h.tip("c")).noticed.contains("reworded"));
+    assert!(full(h.tip("c")).noticed.contains("went round"));
 }
 
 #[test]

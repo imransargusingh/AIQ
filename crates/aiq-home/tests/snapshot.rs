@@ -134,7 +134,7 @@ fn tips_settings_and_data() {
     assert_eq!(s.tips[0].tool, "copilot-cli");
     assert!(!s.tips[0].opened);
     assert!(s.tips[1].opened);
-    assert!(s.tips[1].noticed.starts_with("You reworded"));
+    assert!(s.tips[1].noticed.starts_with("This request went round"));
     assert_eq!(s.home.tips_today, 1);
     assert_eq!(s.settings.daily_cap, 3);
     assert_eq!(s.settings.copilot_tip_stays, "next-prompt");
