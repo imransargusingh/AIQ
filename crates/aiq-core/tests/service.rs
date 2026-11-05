@@ -888,6 +888,24 @@ fn automated_folder_one_prompt_session_records_nothing() {
     );
 }
 
+/// The Set aside list counts the sessions it left out per folder (one row per session, no text). A person's session
+/// there that sends a second prompt is recorded, so it no longer counts as set aside.
+#[test]
+fn set_aside_sessions_are_counted_once_each_and_a_rescued_one_drops_out() {
+    let mut h = H::new();
+    h.svc().store().insert_folder_rule("/ep", "set_aside", "template", "live", T0).unwrap();
+    h.cp_in("/ep", "app1", "collect profile 4", MIN);
+    h.cp_stop("app1");
+    h.cp_in("/ep", "app2", "collect profile 5", MIN);
+    h.cp_in("/ep", "person", BASE, MIN);
+    let counts = h.svc().store().set_aside_session_counts().unwrap();
+    assert_eq!(counts.get("/ep").map(|c| c.0), Some(3), "three first prompts set aside, the stop adds nothing");
+    h.cp_in("/ep", "person", R1, MIN);
+    let (n, last) = h.svc().store().set_aside_session_counts().unwrap()["/ep"];
+    assert_eq!(n, 2, "the person's session is recorded now, so it is not counted as set aside");
+    assert!(last > T0);
+}
+
 #[test]
 fn template_in_a_folder_a_person_works_in_sets_aside_only_its_sessions() {
     let mut h = H::new();

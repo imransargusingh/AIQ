@@ -72,7 +72,8 @@ fn tasks_follow_the_task_rule_window_and_set_aside() {
     assert_eq!(s.tasks[1].folder.as_deref(), Some(AIQ));
     assert_eq!(s.tasks[4].folder, None, "vscode prompts carried no folder");
     assert!(s.tasks.iter().all(|t| t.folder.as_deref() != Some(PIPELINE)));
-    assert_eq!(s.home.set_aside.len(), 1);
+    assert_eq!(s.home.set_aside.len(), 3, "pipeline and two AIQ probe folders");
+    assert_eq!((s.home.set_aside[0].folder.as_str(), s.home.set_aside[0].runs), (PIPELINE, 12));
     // Weeks: oldest first, last ends now: [-28d,-21d) [-21d,-14d) [-14d,-7d) [-7d,now). Tasks at -20d, -16d | -9d x2 | -2d, -30min.
     let w: Vec<u32> = s.home.weeks.iter().map(|w| w.tasks).collect();
     assert_eq!(w, vec![0, 2, 2, 2]);
@@ -487,6 +488,48 @@ fn live_trend_goes_when_the_task_ends_or_is_switched_off() {
     assert!(snapshot(&p, &BundledPack.load().unwrap(), later).live.is_none(), "idle gap passed: the task ended");
     seed.setting("live_trend", "off", NOW - MIN);
     assert!(snap(&p).live.is_none());
+}
+
+/// The Set aside list (design aiq-home-app D11): per folder, the sessions AIQ still leaves out (live and imported) and the newest one, the
+/// person's own tasks there it kept, and AIQ's own check folders after the person's.
+#[test]
+fn set_aside_rows_count_runs_kept_tasks_and_put_aiq_checks_last() {
+    let d = tempfile::tempdir().unwrap();
+    let p = Paths::at(d.path());
+    let check = r"c:\users\imran\appdata\local\temp\aiq-copilot-probe-1\run0";
+    {
+        let mut s = Seed::new(&p);
+        s.store.insert_folder_rule(check, "set_aside", "aiq-check", "live", NOW - 5 * DAY).unwrap();
+        s.set_aside(PIPELINE, NOW - 3 * DAY);
+        for (sid, at) in [("a1", NOW - 3 * DAY), ("a2", NOW - 2 * DAY), ("me", NOW - DAY)] {
+            s.store.insert_set_aside_session("copilot-cli", sid, PIPELINE, "template", at).unwrap();
+        }
+        // The person's session there: its second prompt rescued it, so it is recorded and kept, not set aside.
+        s.prompt("copilot-cli", "me", NOW - DAY, Some(PIPELINE), "look at the failing job");
+        s.prompt("copilot-cli", "me", NOW - DAY + MIN, Some(PIPELINE), "now fix it");
+        s.imported_session(
+            "copilot-cli",
+            "old",
+            r"C:\Users\Imran\source\repos\Pipeline",
+            "automated",
+            &[(NOW - 9 * DAY, "summarise record 9")],
+        );
+    }
+    let s = snap(&p);
+    assert!(s.status.error.is_none(), "{:?}", s.status.error);
+    type Row<'a> = (&'a str, &'a str, bool, u32, Option<i64>, u32);
+    let rows: Vec<Row> = s
+        .home
+        .set_aside
+        .iter()
+        .map(|r| (r.folder.as_str(), r.reason.as_str(), r.own, r.runs, r.last_ms, r.kept))
+        .collect();
+    assert_eq!(
+        rows,
+        vec![(PIPELINE, "burst", false, 3, Some(NOW - 2 * DAY), 1), (check, "aiq-check", true, 0, None, 0),],
+        "2 live + 1 imported set aside; the rescued session is kept, not counted"
+    );
+    assert_eq!(s.home.set_aside[0].since_ms, NOW - 3 * DAY);
 }
 
 /// A turn whose stop has no turn_action row (the core never read its log) is not recorded, with the reason

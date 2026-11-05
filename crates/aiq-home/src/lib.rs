@@ -271,8 +271,20 @@ pub struct Week {
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SetAside {
+    /// The folder key (full path).
     pub folder: String,
+    /// aiq-check, template, burst (the rule that set it aside).
     pub reason: String,
+    /// When the folder was set aside.
+    pub since_ms: i64,
+    /// AIQ's own check and probe folders (reason aiq-check): Home folds them into one line.
+    pub own: bool,
+    /// Sessions AIQ set aside here and still leaves out: live (since v10) plus imported. Additive.
+    pub runs: u32,
+    /// The newest of those sessions. None when none is recorded (live set-asides before v10 left no row).
+    pub last_ms: Option<i64>,
+    /// Tasks of the person's here in the window: sessions they sent two or more prompts to, which AIQ keeps.
+    pub kept: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -646,10 +658,10 @@ fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()>
     } else {
         vec![]
     };
-    s.home.set_aside = set_aside.iter().map(|(f, r, _)| SetAside { folder: f.clone(), reason: r.clone() }).collect();
     let aside: BTreeSet<&str> = set_aside.iter().map(|(f, _, _)| f.as_str()).collect();
 
     let mut tasks = task_list(store, pack, window_start, &aside)?;
+    s.home.set_aside = set_aside_rows(store, &set_aside, &tasks)?;
     let judgments = store.current_judgments().map_err(|e| e.to_string())?;
     for t in tasks.iter_mut() {
         if let Some(j) = judgments.get(&t.task_id) {
@@ -818,6 +830,44 @@ pub fn tasks(store: &Store, pack: &PackV1, since_ms: i64) -> Result<Vec<TaskRow>
     };
     let aside: BTreeSet<&str> = aside.iter().map(String::as_str).collect();
     task_list(store, pack, since_ms, &aside)
+}
+
+/// The Set aside list: per folder, how many sessions AIQ left out and when last, and how many of the person's own
+/// tasks there it kept (window). The person's folders first, newest rule first; AIQ's own check folders last.
+fn set_aside_rows(store: &Store, set_aside: &[(String, String, i64)], tasks: &[TaskRow]) -> R<Vec<SetAside>> {
+    let live = store.set_aside_session_counts().map_err(|e| e.to_string())?;
+    let mut imported: std::collections::HashMap<String, (u32, Option<i64>)> = std::collections::HashMap::new();
+    if store.has_table("import_session").map_err(|e| e.to_string())? {
+        let mut st = q(store.raw().prepare(
+            "SELECT folder, COUNT(*), MAX(started_utc_ms) FROM import_session WHERE outcome = 'automated' GROUP BY folder",
+        ))?;
+        let it =
+            q(st.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, u32>(1)?, r.get::<_, Option<i64>>(2)?))))?;
+        for r in it {
+            let (f, n, last) = q(r)?;
+            let e = imported.entry(folder_key(&f)).or_default();
+            e.0 += n;
+            e.1 = e.1.max(last);
+        }
+    }
+    let mut rows: Vec<SetAside> = set_aside
+        .iter()
+        .map(|(f, r, at)| {
+            let (ln, llast) = live.get(f).map_or((0, None), |&(n, t)| (n, Some(t)));
+            let (inn, ilast) = imported.get(f).copied().unwrap_or_default();
+            SetAside {
+                folder: f.clone(),
+                reason: r.clone(),
+                since_ms: *at,
+                own: r == "aiq-check",
+                runs: ln + inn,
+                last_ms: llast.max(ilast),
+                kept: tasks.iter().filter(|t| t.folder.as_deref() == Some(f.as_str())).count() as u32,
+            }
+        })
+        .collect();
+    rows.sort_by_key(|r| r.own); // stable: newest rule first within each group
+    Ok(rows)
 }
 
 /// A live prompt: event id, surface, session, time, folder, text.
