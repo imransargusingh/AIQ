@@ -107,8 +107,25 @@ export interface Home {
   imported_in_window: number;
   weeks: { start_ms: number; tasks: number }[];
   by_tool: [string, number][];
-  set_aside: { folder: string; reason: string }[];
+  set_aside: SetAside[];
   tips_today: number;
+}
+
+/** A folder AIQ leaves out of coaching (design aiq-home-app D11). */
+export interface SetAside {
+  /** The full folder path (key). */
+  folder: string;
+  /** aiq-check, template, burst. */
+  reason: string;
+  since_ms: number;
+  /** AIQ's own check and probe folders: folded into one line. */
+  own: boolean;
+  /** Sessions AIQ left out here (live and imported). */
+  runs: number;
+  /** The newest of them; null when none is recorded. */
+  last_ms: number | null;
+  /** The person's own tasks here in the window, which AIQ kept. */
+  kept: number;
 }
 
 export interface TaskRow {

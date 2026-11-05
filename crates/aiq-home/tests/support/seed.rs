@@ -396,6 +396,30 @@ pub fn standard(paths: &Paths, with_import: bool) -> String {
     // A pipeline folder AIQ set aside: never a task.
     s.prompt("claude-code", "p1", now - 3 * DAY, Some(PIPELINE), "summarise record 1");
     s.set_aside(PIPELINE, now - 3 * DAY);
+    for i in 0..12 {
+        s.store
+            .insert_set_aside_session("claude-code", &format!("pa{i}"), PIPELINE, "burst", now - 3 * DAY + i * 90 * MIN)
+            .unwrap();
+    }
+    // AIQ's own probe folders (two `run0`s in different probes): Home folds them into one line.
+    for (i, f) in [
+        r"c:\users\imran\appdata\local\temp\aiq-copilot-probe-3glkf9fj\run0",
+        r"c:\users\imran\appdata\local\temp\aiq-copilot-probe-8qz2mk1d\run0",
+    ]
+    .iter()
+    .enumerate()
+    {
+        s.store.insert_folder_rule(f, "set_aside", "aiq-check", "live", now - 4 * DAY + i as i64 * MIN).unwrap();
+        s.store
+            .insert_set_aside_session(
+                "copilot-cli",
+                &format!("probe{i}"),
+                f,
+                "aiq-check",
+                now - 4 * DAY + i as i64 * MIN,
+            )
+            .unwrap();
+    }
     // A tip delivered today, not opened.
     let e = s.prompt("copilot-cli", "cp2", now - 30 * MIN, Some(FORESIGHT), "draft the release notes");
     s.tip("copilot-cli", "cp2", now - 20 * MIN, vec![e], false);

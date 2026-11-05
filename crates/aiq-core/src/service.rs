@@ -391,6 +391,18 @@ impl<C: Clock> Service<C> {
                     aiq.dir = ev.cwd.as_deref().and_then(aiq_domain::automated::folder_tag).unwrap_or_default(),
                     "event set aside"
                 );
+                // Home counts set-aside sessions per folder (one row per session, first prompt's time). A failed write
+                // only leaves the count short; it never stops the skip.
+                if let (EventBody::Prompt(_), "aiq-check" | "folder" | "template" | "burst", Some(folder)) =
+                    (&ev.body, reason, ev.cwd.as_deref().map(folder_key).filter(|k| !k.is_empty()))
+                {
+                    let now = self.clock.now().utc_ms;
+                    if let Err(e) =
+                        self.store.insert_set_aside_session(&ev.surface, &ev.surface_session_id, &folder, reason, now)
+                    {
+                        warn!(error.code = e.code, "set-aside session not noted");
+                    }
+                }
                 return Ok(()); // an app or script drove this session: record nothing (import spec US-12)
             }
             // A person in a held session: record its first prompt (no tip now, it is late), then this one.
