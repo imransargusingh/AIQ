@@ -25,7 +25,7 @@ function TaskTip({ t, off }: { t: TaskRow; off: number }) {
           {stateLabel(t.judgment.state) && ` · ${stateLabel(t.judgment.state)}`}
         </>
       ) : (
-        "Not judged yet"
+        "Not analyzed yet"
       )}
     </span>
   );
@@ -48,7 +48,7 @@ function LaneTip({ l, name, off }: { l: Lane; name: string; off: number }) {
       {l.not_judged > 0 && (
         <>
           <br />
-          {l.not_judged} not judged yet
+          {l.not_judged} not analyzed yet
         </>
       )}
       {l.usual_rung !== null && (
@@ -99,7 +99,7 @@ export function DayView(ctx: Ctx) {
             {" "}· mostly <b>{rungLabel(sum.usual)}</b>
           </>
         )}
-        {sum.not_judged > 0 && <> · {sum.not_judged} not judged yet</>} · {hm} inside tasks · {plural(ls.length, "session")}
+        {sum.not_judged > 0 && <> · {sum.not_judged} not analyzed yet</>} · {hm} inside tasks · {plural(ls.length, "session")}
         {tips > 0 && <> · {plural(tips, "tip")} shown</>}
       </p>
       <div className="key" aria-hidden="true">
@@ -111,13 +111,13 @@ export function DayView(ctx: Ctx) {
         ))}
         <span>
           <i className="dv-none" />
-          Not judged yet
+          Not analyzed yet
         </span>
       </div>
       <div className="dv" role="list" aria-label={`Sessions on ${day(key * 86_400_000, 0)}`} >
         {ls.map((l) => {
           const name = projectName(snap, projectOf(l.tasks[0]));
-          const title = l.kinds.length ? l.kinds.join(", ") : l.not_judged ? "Not judged yet" : "No kind yet";
+          const title = l.kinds.length ? l.kinds.join(", ") : l.not_judged ? "Not analyzed yet" : "No kind yet";
           return (
             <div className="dv-lane" role="listitem" key={l.key}>
               <div className="dv-name" tabIndex={0} aria-label={`${toolName(l.tool)} session in ${name}, ${span(l.first_ms, l.last_ms, off)}, ${plural(l.tasks.length, "task")}`}>
@@ -142,7 +142,7 @@ export function DayView(ctx: Ctx) {
                       key={t.task_id}
                       className={`dv-task ${r ? `dv-r${r}` : "dv-none"}`}
                       style={{ left: `min(${a}%, calc(100% - 24px))`, width: `max(24px, ${w}%)` }}
-                      aria-label={`${t.judgment?.task_type_label ?? jobOf(t)}, ${span(t.first_ms, t.last_ms, off)}, ${plural(t.prompts, "prompt")}, ${t.judgment ? rungLabel(t.judgment.current) : "not judged yet"}. Open task`}
+                      aria-label={`${t.judgment?.task_type_label ?? jobOf(t)}, ${span(t.first_ms, t.last_ms, off)}, ${plural(t.prompts, "prompt")}, ${t.judgment ? rungLabel(t.judgment.current) : "not analyzed yet"}. Open task`}
                       onClick={() => ctx.openTask(t.task_id)}
                     >
                       <span className="dv-n" aria-hidden="true">{r ?? "–"}</span>

@@ -155,7 +155,7 @@ export function Home(ctx: Ctx) {
                 const ws = c.weeks[n];
                 const fin = ready && ws && ws.start_ms === w.start_ms ? ws.finished : 0;
                 const few = ready && ws && ws.tasks < c.week_min;
-                const say = ready && ws ? (few ? "too few judged tasks to say" : `${ws.finished} of ${ws.tasks} judged finished by agents`) : null;
+                const say = ready && ws ? (few ? "too few analyzed tasks to say" : `${ws.finished} of ${ws.tasks} analyzed finished by agents`) : null;
                 return (
                   <div
                     key={w.start_ms}
@@ -228,8 +228,8 @@ export function Home(ctx: Ctx) {
           <h2 id="rg">How you work with agents</h2>
           <span className="meta">
             {onRung > 0
-              ? `Judged tasks, last ${h.window_days} days · change: last ${c.progress_days} days against the ${c.progress_days} before`
-              : "The five rungs. Your share on each shows once tasks are judged."}
+              ? `Analyzed tasks, last ${h.window_days} days · change: last ${c.progress_days} days against the ${c.progress_days} before`
+              : "The five rungs. Your share on each shows once tasks are analyzed."}
           </span>
         </div>
         {onRung > 0 ? (
@@ -269,7 +269,7 @@ export function Home(ctx: Ctx) {
         {c.progress.length === 0 && c.kinds.length === 0 ? (
           <p className="mute">
             {h.judged === 0
-              ? "Progress shows here once tasks are judged."
+              ? "Progress shows here once tasks are analyzed."
               : `Progress shows once AIQ knows the kind of your tasks from the last ${2 * c.progress_days} days.`}
           </p>
         ) : (
@@ -284,9 +284,9 @@ export function Home(ctx: Ctx) {
         {c.opportunities.length === 0 ? (
           <p className="mute">
             {h.judged === 0
-              ? "Next steps show here once tasks are judged."
+              ? "Next steps show here once tasks are analyzed."
               : c.kinds.length === 0
-                ? "Next steps show once AIQ knows the kind of each task. Tasks judged before this version don't have one yet."
+                ? "Next steps show once AIQ knows the kind of each task. Tasks analyzed before this version don't have one yet."
                 : "No next step yet: your kinds of task are at their right rung, too few to say, or capped by something outside your control."}
           </p>
         ) : (

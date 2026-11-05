@@ -152,7 +152,7 @@ function fixture<T>(cmd: string, args: Record<string, unknown>): Promise<T> {
       }
       break;
     case "judge_preview":
-      out = { ok: true, text: "AIQ judges each task you finish with AI.\n\n1 task is waiting to be judged. Nothing was sent.\n\nThe next task would be sent to your Copilot CLI like this:\n\n<task>refactor the login handler</task>" };
+      out = { ok: true, text: "AIQ analyzes each task you finish with AI.\n\n1 task is waiting to be analyzed. Nothing was sent.\n\nThe next task would be sent to your Copilot CLI like this:\n\n<task>refactor the login handler</task>" };
       break;
     case "open_privacy":
       out = { ok: true };

@@ -19,7 +19,7 @@ const REASONS: { v: FlagReason; label: string }[] = [
 
 const NO_STEP: Record<string, string> = {
   too_few: "AIQ isn't sure yet. It suggests a step once you've done a few more tasks of this kind.",
-  not_sure: "AIQ isn't sure yet. The judged tasks of this kind don't agree on one next step.",
+  not_sure: "AIQ isn't sure yet. The analyzed tasks of this kind don't agree on one next step.",
   right_rung: "This is the right rung for this task.",
   blocked: "Something outside your control caps this kind of task, such as a missing test command or a policy. AIQ won't coach it.",
 };
@@ -38,7 +38,7 @@ export function Kind(ctx: Ctx & { kindId: string }) {
       <div className="page">
         <Banners {...ctx} />
         <Title>Kind of task not found</Title>
-        <p className="mute">AIQ has no judged tasks of this kind in the last {snap.home.window_days} days.</p>
+        <p className="mute">AIQ has no analyzed tasks of this kind in the last {snap.home.window_days} days.</p>
         <p>
           <button className="btnlink" onClick={() => ctx.go("tasks")}>Back to Tasks</button>
         </p>
@@ -160,7 +160,7 @@ export function Kind(ctx: Ctx & { kindId: string }) {
           <h2 id="kg">For your last task</h2>
           <p>{k.last_gap}</p>
           <p className="meta">
-            The judge's own words, shown as written.{" "}
+            What the analysis said, word for word.{" "}
             {k.last_task_id && (
               <button className="btnlink" onClick={() => openTask(k.last_task_id!)}>Open that task</button>
             )}
@@ -186,7 +186,7 @@ export function Kind(ctx: Ctx & { kindId: string }) {
                       {t.judgment.state === "uncertain" && " · Uncertain"}
                     </>
                   ) : (
-                    "Not judged yet"
+                    "Not analyzed yet"
                   )}
                 </span>
               </li>
@@ -213,11 +213,11 @@ function MovingUp({ k, tasks, c, now, days, off }: { k: KindRow; tasks: TaskRow[
   const sure = judged.filter((t) => t.judgment!.state !== "uncertain");
   const split = x(now - c.progress_days * 86_400_000);
   const move = !p || p.trend === "too_few"
-    ? `Too few tasks to say: each half of ${c.progress_days} days needs ${c.progress_min} judged tasks.`
+    ? `Too few tasks to say: each half of ${c.progress_days} days needs ${c.progress_min} analyzed tasks.`
     : p.trend === "same"
       ? `Same rung, ${rungLabel(p.recent_rung!)}, in the last ${c.progress_days} days and the ${c.progress_days} before.`
       : `${rungLabel(p.earlier_rung!)} → ${rungLabel(p.recent_rung!)}, last ${c.progress_days} days against the ${c.progress_days} before.`;
-  const label = `Rung of each judged task of this kind, oldest first: ${judged
+  const label = `Rung of each analyzed task of this kind, oldest first: ${judged
     .map((t) => `${day(t.first_ms, off)} ${rungLabel(t.judgment!.current)}${t.judgment!.state === "uncertain" ? " (uncertain)" : ""}`)
     .join("; ")}.${k.potential != null && k.today != null && k.potential > k.today ? ` Could reach ${rungLabel(k.potential)}.` : ""}`;
   return (
@@ -259,8 +259,8 @@ function MovingUp({ k, tasks, c, now, days, off }: { k: KindRow; tasks: TaskRow[
         </div>
       </figure>
       <p className="meta">
-        One dot per judged task; a hollow dot is one AIQ isn't sure about. {k.potential != null && k.today != null && k.potential > k.today && "The dashed line is where this kind could reach. "}
-        Rungs are the judge's reading.
+        One dot per analyzed task; a hollow dot is one AIQ isn't sure about. {k.potential != null && k.today != null && k.potential > k.today && "The dashed line is where this kind could reach. "}
+        Rungs are AIQ's analysis.
       </p>
     </section>
   );

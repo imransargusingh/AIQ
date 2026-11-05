@@ -38,7 +38,7 @@ function steps({ snap, go }: Pick<Ctx, "snap" | "go">): Step[] {
     },
     {
       done: judging,
-      title: judging ? "Judging is on" : "Judging is off",
+      title: judging ? "Analysis is on" : "Analysis is off",
       detail: judging
         ? `Up to ${snap.settings.judge_daily_tasks} finished tasks a day, through your own Claude Code or Copilot CLI.`
         : "Without it AIQ can't place your tasks on a rung. Tips still work.",
@@ -46,13 +46,13 @@ function steps({ snap, go }: Pick<Ctx, "snap" | "go">): Step[] {
     },
     {
       done: h.judged > 0,
-      title: h.judged > 0 ? `${plural(h.judged, "task")} judged` : "No task judged yet",
-      detail: h.judged > 0 ? `${plural(h.tasks_in_window - h.judged, "task")} waiting.` : "A task is judged once it ends: 30 minutes with no new prompt.",
+      title: h.judged > 0 ? `${plural(h.judged, "task")} analyzed` : "No task analyzed yet",
+      detail: h.judged > 0 ? `${plural(h.tasks_in_window - h.judged, "task")} waiting.` : "A task is analyzed once it ends: 30 minutes with no new prompt.",
     },
     {
       done: c.split.tasks >= c.split_min,
       title: "Your first numbers",
-      detail: `${c.split.tasks} of ${c.split_min} judged tasks. Home shows how much agents finish from ${c.split_min}, so a few tasks can't swing it.`,
+      detail: `${c.split.tasks} of ${c.split_min} analyzed tasks. Home shows how much agents finish from ${c.split_min}, so a few tasks can't swing it.`,
     },
   ];
 }

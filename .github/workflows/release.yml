@@ -102,7 +102,7 @@ jobs:
           & (Join-Path $bin 'aiq.exe') version
           # install.ps1 turned background judging on (rung-judge D4): a second connect reads it back from the store.
           $again = & (Join-Path $bin 'aiq.exe') install --yes | Out-String
-          if ($again -notmatch 'Judging is already on') { Write-Error "judging not turned on at install: $again"; exit 1 }
+          if ($again -notmatch 'Analysis is already on') { Write-Error "analysis not turned on at install: $again"; exit 1 }
           & (Join-Path $bin 'aiq.exe') uninstall copilot --yes
           if (Test-Path (Join-Path $env:USERPROFILE '.copilot\hooks\aiq.json')) { Write-Error 'Copilot hook left behind'; exit 1 }
       - name: Smoke test - install.ps1 drops a waiting update of the same version, keeps a newer one

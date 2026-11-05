@@ -32,8 +32,7 @@ pub const TIP_DAYS: i64 = 90;
 /// Your data lists at most this many newest events; the counts are always exact.
 pub const MAX_ITEMS: usize = 500;
 /// Shown under "Tasks agents finished" (Imran 2026-11-02, Q-A: until AIQ can measure your own edits).
-pub const FINISHED_RULE: &str =
-    "A task counts as finished when it was judged Delegated or higher and you sent no re-prompt correcting the agent.";
+pub const FINISHED_RULE: &str = "A task counts as finished when it was analyzed as Delegated or higher and you sent no re-prompt correcting the agent.";
 /// Home shows at most this many kinds of task with a next step (aiq-home US-H3).
 pub const OPPORTUNITY_ROWS: usize = 3;
 /// A project's name the person chose: setting `project_name.<folder key>` (design project-filter P2).
