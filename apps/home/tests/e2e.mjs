@@ -438,11 +438,24 @@ await test("Settings: a section index, Sharing and Keyboard folded in, judging o
   }
 });
 
-await test("core down: banner with stored time on every page; settings disabled", async () => {
+await test("core failed to start: one short banner with its code on every page; settings disabled", async () => {
   for (const [id] of pages) {
     const page = await open("down", { hash: `#${id}` });
-    assert.match(await page.locator("main").innerText(), /AIQ isn't running, so this shows what was stored at Today 11:30/);
+    const alert = page.getByRole("alert").filter({ hasText: "AIQ couldn't start." });
+    assert.equal(await alert.count(), 1);
+    assert.match(await alert.innerText(), /AIQ couldn't start\. It keeps trying\. \(AIQ-STORE-OPEN\)/);
+    assert.equal(await alert.getByRole("button", { name: "Try again" }).count(), 1);
+    assert.doesNotMatch(await page.locator("main").innerText(), /isn't running|starts with your next prompt/);
     if (id === "settings") assert.equal(await page.getByRole("button", { name: "5", exact: true }).isDisabled(), true);
+    await page.context().close();
+  }
+});
+
+await test("core starting or busy: no banner, the status line says Starting", async () => {
+  for (const state of ["starting", "busy"]) {
+    const page = await open("full", { edit: (s) => ((s.status.core = false), (s.status.core_state = state)) });
+    assert.equal(await page.getByText("AIQ couldn't start.").count(), 0);
+    assert.match(await page.locator(".foot").innerText(), /Starting/);
     await page.context().close();
   }
 });
@@ -716,14 +729,14 @@ for (const theme of ["dark", "contrast"]) {
 }
 
 await test("setup: core down keeps the default tips a day and says so; keys don't leave setup", async () => {
-  const page = await open("first-run", { edit: (s) => (s.status.core = false) });
+  const page = await open("first-run", { edit: (s) => ((s.status.core = false), (s.status.core_state = "starting")) });
   await page.keyboard.press("g");
   await page.keyboard.press("d");
   await page.keyboard.press("Control+k");
   assert.equal(await page.locator("main h1").textContent(), "Your coach, on your computer only");
   assert.equal(await page.locator("dialog[open]").count(), 0);
   for (let i = 0; i < 3; i++) await page.getByRole("button", { name: "Continue" }).click();
-  assert.ok((await page.locator("main").innerText()).includes("AIQ isn't running yet, so this stays at 5 for now."));
+  assert.ok((await page.locator("main").innerText()).includes("AIQ is starting, so this stays at 5 for now."));
   assert.equal(await page.getByRole("button", { name: "5 (default)", exact: true }).isDisabled(), true);
   assert.deepEqual(await axe(page), []);
   await page.context().close();

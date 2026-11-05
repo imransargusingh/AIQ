@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api } from "./api";
 import type { Snapshot } from "./types";
-import { RUNGS, rungLabel, when } from "./format";
+import { RUNGS, rungLabel } from "./format";
 import { ver, type UpdatePhase } from "./updateNow";
 
 /** Nav pages, plus places outside the nav: one task's detail, one kind of task (from Home or Tasks), setup. */
@@ -90,16 +90,12 @@ export function Banners({ snap, togglePause, refresh }: Pick<Ctx, "snap" | "togg
           <button className="btn" onClick={refresh}>Try again</button>
         </div>
       )}
-      {!s.core && !s.error && (
-        <div className="banner">
+      {s.core_state === "failed" && !s.error && (
+        <div className="banner bad" role="alert">
           <div className="grow">
-            {s.last_event_ms != null ? (
-              <>AIQ isn't running, so this shows what was stored at {when(s.last_event_ms, snap.now_ms, snap.offset_min)}.</>
-            ) : (
-              <>AIQ isn't running.</>
-            )}{" "}
-            It starts with your next prompt in Claude Code or Copilot.
+            <b>AIQ couldn't start.</b> It keeps trying.{s.core_error && <> <span className="meta">({s.core_error})</span></>}
           </div>
+          <button className="btn" onClick={refresh}>Try again</button>
         </div>
       )}
       {s.paused && (

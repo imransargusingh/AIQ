@@ -18,6 +18,8 @@ import { STEPS, Tour, TourOffer, exampleSnapshot } from "./tour";
 import { CHECK_POLL_MS, CHECK_WAIT_MS, checkOutcome, outcomeText, ver, type UpdatePhase } from "./updateNow";
 
 const REFRESH_MS = 15_000;
+/** While the core starts (Home started it, or it is opening its store), look again soon. */
+const STARTING_MS = 2_000;
 const UPDATE_ASK_MS = 3_600_000;
 const KEYS_PREF = "aiq.singleKeys";
 
@@ -191,6 +193,12 @@ export function App() {
       document.removeEventListener("visibilitychange", tick);
     };
   }, [refresh]);
+  const coreState = snap && !snap.status.core ? snap.status.core_state : null;
+  useEffect(() => {
+    if (coreState !== "starting" && coreState !== "busy") return;
+    const t = setTimeout(refresh, STARTING_MS);
+    return () => clearTimeout(t);
+  }, [coreState, snap, refresh]);
 
   // A newer AIQ shows on Home within the hour (design auto-update U5c): on open, hourly, and when the window
   // gets focus, ask the shell to check. It checks only when one is due (an hour since the last, never with
@@ -325,7 +333,7 @@ export function App() {
               <>
                 <span>
                   <span className={`dot${snap.status.paused || !snap.status.core ? " paused" : ""}`} aria-hidden="true" />
-                  {snap.status.paused ? "Paused" : !snap.status.core ? "Not running" : watching.length ? `Watching ${watching.join(", ")}` : "No tool connected"}
+                  {snap.status.paused ? "Paused" : snap.status.core_state === "failed" ? "Not running" : !snap.status.core ? "Starting" : watching.length ? `Watching ${watching.join(", ")}` : "No tool connected"}
                 </span>
                 <span>
                   Tips today: {snap.home.tips_today} of {snap.settings.daily_cap}
