@@ -127,6 +127,16 @@
         "job": "write_doc"
       },
       {
+        "tip_id": "next_rung.let_agent_write",
+        "habit": "Let the agent write the doc in the file",
+        "job": "write_doc"
+      },
+      {
+        "tip_id": "next_rung.doc_one_go",
+        "habit": "Give all your notes at once, then review the draft",
+        "job": "write_doc"
+      },
+      {
         "tip_id": "next_rung.let_agent_edit",
         "habit": "Let the agent make the edits",
         "job": "code_change"
@@ -144,6 +154,11 @@
       {
         "tip_id": "next_rung.let_agent_look",
         "habit": "Let the agent look it up itself",
+        "job": "ask_research"
+      },
+      {
+        "tip_id": "next_rung.ask_one_go",
+        "habit": "Ask once with everything you need, then let it dig",
         "job": "ask_research"
       },
       {
@@ -167,6 +182,11 @@
         "job": "run_ship"
       },
       {
+        "tip_id": "next_rung.run_one_go",
+        "habit": "Give the whole run up front, not one command at a time",
+        "job": "run_ship"
+      },
+      {
         "tip_id": "next_rung.written_brief",
         "habit": "Give the agent a written brief or instructions file",
         "job": "any"
@@ -177,6 +197,16 @@
         "job": "code_change"
       },
       {
+        "tip_id": "next_rung.agent_checks_doc",
+        "habit": "Ask the agent to check the doc itself",
+        "job": "write_doc"
+      },
+      {
+        "tip_id": "next_rung.agent_checks_run",
+        "habit": "Ask the agent to run the health check itself",
+        "job": "run_ship"
+      },
+      {
         "tip_id": "next_rung.split_and_check",
         "habit": "Split the work with an automated check between steps",
         "job": "any"
@@ -185,6 +215,16 @@
         "tip_id": "next_rung.split_question",
         "habit": "Split a big question across sub-agents",
         "job": "ask_research"
+      },
+      {
+        "tip_id": "next_rung.agent_checks_answer",
+        "habit": "Ask the agent to prove its answer with a run",
+        "job": "ask_research"
+      },
+      {
+        "tip_id": "next_rung.saved_workflow",
+        "habit": "Save it as a workflow others can run",
+        "job": "any"
       }
     ],
     "accuracy_paused": []

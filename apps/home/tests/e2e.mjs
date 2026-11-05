@@ -1083,8 +1083,8 @@ await test("Settings: next-step tips auto/on/off, AIQ's self-check stop with Tur
   await page.getByText("Choose which next-step tips AIQ may show").click();
   const tips = page.getByRole("group", { name: "Next-step tips AIQ may show" });
   const checks = tips.getByRole("checkbox");
-  assert.equal(await checks.count(), 20);
-  assert.equal(await tips.getByRole("group", { name: "Run or ship it" }).getByRole("checkbox").count(), 4);
+  assert.equal(await checks.count(), 28);
+  assert.equal(await tips.getByRole("group", { name: "Run or ship it" }).getByRole("checkbox").count(), 6);
   const agentChecks = tips.getByLabel("Ask the agent to run the tests itself");
   assert.equal(await agentChecks.isChecked(), false);
   await agentChecks.check();
