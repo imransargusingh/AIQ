@@ -43,7 +43,7 @@ Usage:
   aiq config set tip-highlight <on|off>         Yellow \"AIQ tip:\" label and VS Code colour (default on)
                                       How long a tip stays in Copilot CLI's status line
   aiq import [--dry-run]              Add your past Claude Code and Copilot CLI sessions to AIQ
-  aiq include <folder>                Include a folder AIQ set aside as automated (an app or script's runs)
+  aiq include <folder>                Count a folder again that AIQ marked automated, not counted
   aiq helpful|not|snooze|off <card-id>  Tell AIQ what you thought of a tip (snooze: 7 days; off: never again)
   aiq on <tip-id>                     Let AIQ show a tip you turned off
   aiq flag <job>/<type> <move> <reason> [note]  This doesn't fit: stop a next step for one kind of task

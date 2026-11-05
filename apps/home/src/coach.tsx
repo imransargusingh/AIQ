@@ -108,7 +108,7 @@ function Track({ r }: { r: LadderRow }) {
 
 function ladderLabel(r: LadderRow, d: number): string {
   const parts = [r.label, `${rungLabel(r.now)} in the last ${d} days`];
-  if (r.before != null) parts.push(`${r.now > r.before ? "moved up" : "moved down"} from ${rungLabel(r.before)}`);
+  if (r.before != null) parts.push(`${r.now > r.before ? "moved up from" : "at a lower rung than"} ${rungLabel(r.before)}`);
   else if (r.recent != null) parts.push("same rung");
   if (r.next != null) parts.push(`next step reaches ${rungLabel(r.next)}`);
   parts.push(r.recent != null ? `${r.recent} tasks in the last ${d} days, ${r.earlier} before` : `${r.tasks} tasks, too few in one half to say if it moved`);
