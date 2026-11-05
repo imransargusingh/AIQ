@@ -23,6 +23,10 @@ pub const HOURLY_MS: i64 = 55 * 60 * 1000;
 /// When AIQ home opens it checks if the last check is this old (Imran, 2026-11-04: 0.1.3 was out at 14:33Z and a
 /// Home opened after a 14:17Z check would not have seen it until ~15:12Z). The hourly timer and focus keep HOURLY_MS.
 pub const HOME_OPEN_MS: i64 = 10 * 60 * 1000;
+/// While AIQ home is open it checks this often (Imran, 2026-11-05: 0.1.8 was out at 18:30Z, just after an 18:02Z
+/// check, and Home sat on 0.1.7 until 18:58Z). Two minutes under Home's 15-minute timer, so an early tick is due.
+/// The check reads GitHub's releases/latest redirect, not the rate-limited API.
+pub const HOME_POLL_MS: i64 = 13 * 60 * 1000;
 /// How long Home says "AIQ updated itself" (or that an update failed or was undone) after it happened. A day:
 /// Home also hides the note once it has been seen and offers a dismiss (Imran, 2026-11-04: a week-long banner at
 /// the top of Home took prime space).
@@ -162,15 +166,15 @@ fn kick_sleep(now_ms: i64, st: &State) -> Duration {
     }
 }
 
-/// AIQ home asks this when it opens and every hour while open, then starts a check (download, no install) when
-/// it says so: a person who keeps Home open sees a new release within the hour and can Install now, instead of
+/// AIQ home asks this every 15 minutes and on focus while open, then starts a check (download, no install) when
+/// it says so: a person who keeps Home open sees a new release within 15 minutes and can Install now, instead of
 /// waiting for the daily check. Not with updates off, and not while an update already waits (that would only
 /// download it again).
 pub fn home_check_due(now_ms: i64, st: &State, mode: Option<&str>) -> bool {
-    home_due(now_ms, st, mode, HOURLY_MS)
+    home_due(now_ms, st, mode, HOME_POLL_MS)
 }
 
-/// As `home_check_due`, for the moment AIQ home opens: due 10 minutes after the last check, not 55.
+/// As `home_check_due`, for the moment AIQ home opens: due 10 minutes after the last check, not 13.
 pub fn home_open_check_due(now_ms: i64, st: &State, mode: Option<&str>) -> bool {
     home_due(now_ms, st, mode, HOME_OPEN_MS)
 }
@@ -428,13 +432,16 @@ mod tests {
     }
 
     #[test]
-    fn home_checks_hourly_while_open_but_never_with_updates_off_or_one_waiting() {
+    fn home_checks_every_15_minutes_while_open_but_never_with_updates_off_or_one_waiting() {
         assert!(home_check_due(t0(), &State::default(), None), "never checked");
         let ok = st(Some("current"), Some(T0));
-        assert!(!home_check_due(t0() + HOURLY_MS - 1, &ok, None));
-        assert!(home_check_due(t0() + HOURLY_MS, &ok, None));
-        assert!(home_check_due(t0() + HOURLY_MS, &ok, Some("ask")));
-        assert!(!home_check_due(t0() + HOURLY_MS, &ok, Some("off")));
+        assert!(!home_check_due(t0() + HOME_POLL_MS - 1, &ok, None));
+        assert!(home_check_due(t0() + HOME_POLL_MS, &ok, None));
+        assert!(home_check_due(t0() + 15 * 60_000, &ok, None), "Home's 15-minute tick finds it due");
+        assert!(home_check_due(t0() + HOME_POLL_MS, &ok, Some("ask")));
+        assert!(!home_check_due(t0() + HOME_POLL_MS, &ok, Some("off")));
+        // The core's own cadence is unchanged: a day after a good check, never 15 minutes.
+        assert_eq!(decide(t0() + 15 * 60_000, &ok, None), None);
         assert!(!home_check_due(t0() + CHECK_EVERY_MS, &st(Some("waiting"), Some(T0)), None));
         // On open: 10 minutes, not 55; still never with updates off or while one waits.
         assert!(!home_open_check_due(t0() + HOME_OPEN_MS - 1, &ok, None));

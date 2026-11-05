@@ -22,7 +22,7 @@ import { CHECK_POLL_MS, CHECK_WAIT_MS, checkOutcome, outcomeText, ver, type Upda
 const REFRESH_MS = 15_000;
 /** While the core starts (Home started it, or it is opening its store), look again soon. */
 const STARTING_MS = 2_000;
-const UPDATE_ASK_MS = 3_600_000;
+const UPDATE_ASK_MS = 15 * 60_000;
 const KEYS_PREF = "aiq.singleKeys";
 
 function readPref(): boolean {
@@ -209,12 +209,12 @@ export function App() {
     return () => clearTimeout(t);
   }, [coreState, snap, refresh]);
 
-  // A newer AIQ shows on Home within the hour (design auto-update U5c): on open, hourly, and when the window
-  // gets focus, ask the shell to check. It checks only when one is due (an hour since the last, never with
-  // updates off), so this is cheap; the next snapshot read shows the line once the download is checked.
+  // A newer AIQ shows on Home within 15 minutes (design auto-update U5c): on open, every 15 minutes, and when the
+  // window gets focus, ask the shell to check. It checks only when one is due (13 minutes since the last, never
+  // with updates off), so this is cheap; the next snapshot read shows the line once the download is checked.
   useEffect(() => {
     const ask = () => void api.runUpdate("check_if_due").catch(() => undefined);
-    // On open the bar is 10 minutes since the last check, not 55 (update::HOME_OPEN_MS).
+    // On open the bar is 10 minutes since the last check, not 13 (update::HOME_OPEN_MS).
     void api.runUpdate("check_on_open").catch(() => undefined);
     const t = setInterval(ask, UPDATE_ASK_MS);
     window.addEventListener("focus", ask);

@@ -458,7 +458,7 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
             <span className="meta">
               {up.checked_ms != null ? `Last checked ${when(up.checked_ms, snap.now_ms, snap.offset_min)}.` : "Not checked yet."}
               {up.check_error ? " That check didn't reach GitHub; AIQ tries again within the hour." : ""} AIQ asks GitHub once a day, and every
-              hour while AIQ home is open, whether a newer version is out, checks the download's fingerprint, and keeps the version before so you can go back. Nothing about you is sent.
+              15 minutes while AIQ home is open, whether a newer version is out, checks the download's fingerprint, and keeps the version before so you can go back. Nothing about you is sent.
             </span>
             )}
             <div className="row">

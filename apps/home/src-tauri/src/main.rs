@@ -492,8 +492,8 @@ async fn run_update(app: tauri::AppHandle, action: String) -> Result<Outcome, St
     blocking(move || {
         let t = Instant::now();
         let paths = Paths::from_env();
-        // "check_if_due": AIQ home asks on open and hourly while open. It starts a check only when one is due
-        // (update::home_check_due), so a new release shows on Home within the hour; otherwise it does nothing.
+        // "check_if_due": AIQ home asks on open and every 15 minutes while open. It starts a check only when one is
+        // due (update::home_check_due), so a new release shows on Home within 15 minutes; otherwise it does nothing.
         // "check_on_open": the same, when AIQ home opens, due 10 minutes after the last check (update::HOME_OPEN_MS).
         if action == "check_if_due" || action == "check_on_open" {
             let now = aiq_core::sysclock::SystemClock.now().utc_ms;
