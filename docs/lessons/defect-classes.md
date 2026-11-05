@@ -442,3 +442,27 @@ summary: >-
 - **Sweep:** other readers of the folder list: `aiq status`'s folder listing (display only) and `aiq_home::tasks`
   (already per session). None else.
 - **Rule:** when a set-aside rule changes, grep every reader of the folder list, not only the one in the change.
+
+### DC-028 — A tool counted as installed because a folder with its name exists
+- **Signature:** 2026-11-05, an alpha user on 0.1.4 who never installed Claude Code: setup said "Claude Code ·
+  connected". `tools::found_at` set `present` when `~/.claude` existed, so first-run setup ran
+  `aiq install claude-code --yes`, created `~/.claude/settings.json` with AIQ's hooks, and "connected" (hooks in the
+  file) was then true of a tool that isn't there. Reproduced in a container: an empty `~/.claude` and no `claude`
+  program → `aiq install --yes` wrote the file. What created that user's folder is not known (skills, CLAUDE.md or
+  another tool's Claude support all can).
+- **Why it survives:** on every developer machine the folder and the tool go together, and the tests built a
+  "present" tool by making its folder, so the proxy was never tested against the thing it stood for.
+- **Control (product):** Claude Code counts as installed only when its `claude` program is on PATH or in its own
+  install folder (`~/.local/bin`, `<config>/local`), or its config folder holds session transcripts (`projects/<x>`).
+  Setup, Settings and the side panel say "connected" only for hooked **and** installed; hooks without the tool are
+  "not installed" and can be removed. `aiq install --new` (core start, Home open) connects a tool installed after
+  setup once; tools already seen (so one the person disconnected) are left alone (`tools-seen.json`).
+- **Control (tests):** `tools::tests::a_bare_claude_folder_is_not_claude_code` ;
+  `e2e_install_with_no_tool_connects_every_tool_found_and_names_the_undo` (bare folder → nothing written; red on 0.1.4, as the container repro showed);
+  `e2e_hooks_left_in_a_claude_folder_without_claude_code_are_not_called_connected`;
+  `e2e_install_new_connects_a_tool_installed_after_setup_once`; Home e2e "a tool that isn't installed says so".
+- **Sweep:** Copilot still counts as present when `~/.copilot` exists; Copilot CLI and VS Code agent mode both
+  create it and both read the hook file AIQ writes there, so the folder is the right signal (assume: no other tool
+  creates `~/.copilot`; if one does, the same symptom appears for Copilot). `import` and `judge` read tool folders
+  only to find transcripts, so a bare folder gives them nothing to do.
+- **Rule:** detect a tool by the tool (its program or the files only it writes), never by a folder others can make.

@@ -742,6 +742,45 @@ await test("setup: connecting fails, says why and offers Connect again", async (
   await page.context().close();
 });
 
+// Reported 2026-11-05: setup said "Claude Code · connected" on a computer without Claude Code, because 0.1.4
+// counted a bare ~/.claude folder and wrote its hooks there. A tool that isn't installed is "not installed" in
+// setup, Settings and the side panel, even when an earlier AIQ left its hooks in that tool's settings.
+await test("setup: a tool that isn't installed says so, even with AIQ's hooks in its settings", async () => {
+  const page = await open("full", {
+    hash: "#settings",
+    edit: (s) => {
+      Object.assign(s.setup.tools.find((x) => x.tool === "claude-code"), { hooked: true, present: false });
+      Object.assign(s.setup.tools.find((x) => x.tool === "copilot"), { hooked: true, present: true });
+    },
+  });
+  const settings = await page.locator("main").innerText();
+  assert.match(settings, /Claude Code · not installed, AIQ's hooks still in its settings/);
+  assert.equal(await page.getByRole("button", { name: "Disconnect Claude Code" }).count(), 1, "the hooks can still be removed");
+  const foot = await page.locator("nav .foot").innerText();
+  assert.ok(!foot.includes("Claude Code"), foot);
+  assert.ok(foot.includes("Watching Copilot"), foot);
+  await page.getByRole("button", { name: "Run setup again" }).click();
+  await page.getByRole("button", { name: "Continue" }).click();
+  const t = await page.locator("main").innerText();
+  assert.match(t, /Claude Code · not installed/);
+  assert.ok(!/Claude Code · connected/.test(t), t);
+  assert.ok(t.includes("They do nothing until you install it."), t);
+  if (shots) await page.screenshot({ path: join(shots, "setup-hooks-left-not-installed.png") });
+  assert.deepEqual(await axe(page), []);
+  await page.context().close();
+});
+
+await test("setup: a tool never installed says AIQ connects it once it is", async () => {
+  const page = await open("first-run", { edit: (s) => Object.assign(s.setup.tools.find((x) => x.tool === "claude-code"), { hooked: false, present: false }) });
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.waitForFunction(() => document.querySelector("main")?.innerText.includes("GitHub Copilot · connected just now"));
+  const t = await page.locator("main").innerText();
+  assert.match(t, /Claude Code · not installed/);
+  assert.ok(t.includes("If you install it later, AIQ connects it the next time AIQ starts."), t);
+  if (shots) await page.screenshot({ path: join(shots, "setup-not-installed.png") });
+  await page.context().close();
+});
+
 await test("setup: run again never reconnects by itself; Connect does", async () => {
   const page = await open("full", { hash: "#settings", edit: (s) => (s.setup.tools.find((x) => x.tool === "copilot").hooked = false) });
   await page.getByRole("button", { name: "Run setup again" }).click();
