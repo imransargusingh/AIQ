@@ -80,8 +80,8 @@ Usage:
   aiq config set analysis <auto|off>     Analyze new tasks in the background (aiq install turns it on)
   aiq config set analysis-daily-tasks <n>  Most tasks analyzed per day (0-500, default 50)
   aiq config set analysis-copilot-sessions <delete|keep>  Delete AIQ's own Copilot analysis sessions (default)
-  aiq config set analysis-calls <1|2>  Model calls per analyzed task (default 1)
-  aiq config set analysis-copilot-model <id|default>  Model for Copilot tasks (default claude-sonnet-5.5,
+  aiq config set analysis-calls <1|2>  Model calls per analyzed task (default 2)
+  aiq config set analysis-copilot-model <id|default>  Model for Copilot tasks (default gpt-6.1-sol,
                                       then Copilot's own pick if it is not offered; default = Copilot's pick)
   aiq config set kind-label <auto|off>  When word matching can't tell a new task's kind, a small model
                                       names it from the first prompt, in the background (on while analysis is on)

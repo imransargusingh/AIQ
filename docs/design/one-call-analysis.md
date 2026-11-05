@@ -11,9 +11,9 @@ links:
   - { to: design-judge-evals, rel: depends-on }
 review-by: 2027-05-05
 summary: >-
-  Copilot tasks are analyzed by claude-sonnet-5.5 with one call, falling back to Copilot's own pick when it is
-  not offered or a call fails. Measured on the golden set through Copilot: the model decides accuracy (sonnet
-  sure-but-wrong 7% vs gpt-6.1-sol 30%), the number of calls barely does (one vs two within noise on both).
+  Copilot tasks are analyzed by gpt-6.1-sol, two calls (Imran: OpenAI models, Sol default), falling back to
+  Copilot's own pick when it is not offered or a call fails. Measured on the golden set: the number of calls with
+  one model barely matters; the model matters a lot (sonnet sure-but-wrong 7% vs Sol 30%, recorded, not adopted).
 ---
 
 # One call per analyzed task
@@ -95,17 +95,16 @@ once 77.3%, 2.3%. Caveats: every expected label was written by a Claude session,
 (the result holds on Imran's 15); sonnet names the job and kind wrong more often and says "not sure" more, so
 fewer tasks get a tip; 1 request per sonnet call is inferred from its price tier, not measured.
 
-## Decision (2026-11-05, amended 14:40Z)
+## Decision (2026-11-05 14:37Z, Imran)
 
-**Copilot tasks are analyzed by claude-sonnet-5.5, one call.** The model, not the number of calls, decides
-accuracy: sonnet cuts shown-as-sure-but-wrong from 30% to 7% and too-high rungs from 16% to 3%. A second sonnet
-call scored within noise of one (6.0% vs 6.9% wrong, 70.0% vs 71.3% right), so one call: half the premium requests.
-When sonnet is not offered (an org that blocks Claude models: Copilot's "from --model flag is not available") AIQ
-uses Copilot's own pick for the rest of the run; when a call to it fails with an error, that call is tried once on
-Copilot's pick. The model that answered is recorded on every call and judgment and shown on the task page.
-Settings: `analysis-copilot-model <id|default>`, `analysis-calls 2`. Tasks already analyzed keep their result.
+**Copilot tasks stay on OpenAI models, gpt-6.1-sol by default, two calls.** Imran: "For sessions in Copilot,
+prefer OpenAI models (and Sol as the default)." The sonnet numbers above stay as a measurement, not a plan. The
+default model is now named (`gpt-6.1-sol`) rather than left to Copilot; when it is not offered or a call to it
+fails, Copilot's own pick answers, and the model that answered is recorded and shown on the task page. Two calls
+stay because on Sol the second call measurably catches a few confidently wrong results. Next: a second call on a
+different OpenAI model (gpt-6-luna, "low" price tier), scored with `--compare-calls sol --with luna`.
 
-### Earlier decision (08:30Z, superseded): keep two calls on gpt-6.1-sol
+### Earlier decision (08:30Z): keep two calls on gpt-6.1-sol
 
 
 **Keep two calls as the default.** On both models the second call moves the same way: it marks a few wrong

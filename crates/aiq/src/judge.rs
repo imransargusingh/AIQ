@@ -2526,7 +2526,7 @@ mod tests {
         let (c, p) = (Fake::ok(2), Fake::ok(2));
         let rep = go_only(&e, &c, &p, None, Some("copilot-cli"));
         assert_eq!(rep.judged, 2, "{rep:?}");
-        assert_eq!((c.calls(), p.calls()), (0, 2), "one call per task");
+        assert_eq!((c.calls(), p.calls()), (0, 4));
     }
 
     #[test]
@@ -2535,8 +2535,8 @@ mod tests {
         let (c, p) = (Fake::ok(2), Fake::ok(2));
         let rep = go(&e, &c, &p, None);
         assert_eq!(rep.judged, 4, "{rep:?}");
-        assert_eq!(c.calls(), 2, "two Claude Code tasks, one call each; the open task waits");
-        assert_eq!(p.calls(), 2, "VS Code and the imported Copilot task go to Copilot");
+        assert_eq!(c.calls(), 4, "two Claude Code tasks × two runs; the open task waits");
+        assert_eq!(p.calls(), 4, "VS Code and the imported Copilot task go to Copilot");
         assert!(c.sent.borrow().iter().all(|(u, _)| !u.contains("refactor the parser") && !u.contains("migrate")));
         let j = e.store.current_judgments().unwrap();
         assert_eq!(j.len(), 4);
@@ -2547,7 +2547,7 @@ mod tests {
         assert_eq!(j["v1"].provider, "copilot-cli");
         let read: Value = serde_json::from_str(&j["a1"].read).unwrap();
         assert_eq!(read["prompts"], 2);
-        assert_eq!(e.store.judge_calls_since(0).unwrap().len(), 4, "one recorded call per task");
+        assert_eq!(e.store.judge_calls_since(0).unwrap().len(), 8);
         // Copilot session ids are recorded before the call, so import never reads them (US-11).
         let ids = import::judge_ids(&e.paths);
         assert!(p.sent.borrow().iter().all(|(_, sid)| ids.contains(sid)));
