@@ -459,3 +459,13 @@ main:has(.secnav){scroll-padding-top:56px}
 .tour-offer p{margin:0 0 var(--s4)}
 .titlebar .examplechip{color:var(--warning);border-color:var(--warning)}
 @media (forced-colors:active){.tour-spot{outline-color:Highlight}.tour-tip,.tour-tip .b{forced-color-adjust:none}}
+
+/* First-run analysis (design first-run-analysis) */
+.an-prog{display:flex;flex-direction:column;gap:var(--s2)}
+.an-prog progress{width:100%;height:10px;accent-color:var(--primary)}
+.an-ok{margin:0;color:var(--ink)}
+.an-ok span{color:var(--success);font-weight:700;margin-right:var(--s1)}
+.an-act{display:flex;gap:var(--s4);align-items:center;flex-wrap:wrap;margin:0}
+.an-sofar{display:flex;flex-direction:column;gap:var(--s2)}
+.rmix.sm{height:18px}
+.rmix.sm span{font-size:11px}

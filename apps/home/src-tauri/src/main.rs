@@ -90,6 +90,9 @@ async fn snapshot() -> Result<Snapshot, String> {
             None => format!("ok read_ms={} open_ms={} core={}", s.status.read_ms, s.status.open_ms, s.status.core),
         };
         log(&paths, "snapshot", t, &r);
+        if s.home.analysis.start {
+            start_analysis(&paths);
+        }
         s
     })
     .await
@@ -251,6 +254,36 @@ async fn tip_switch(tip_id: String, answer: &'static str) -> Result<Outcome, Str
         Outcome::from(r)
     })
     .await
+}
+
+/// When Home last started an analysis run (ms since the epoch); 0 = not this session.
+static ANALYSIS_STARTED: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
+
+/// Start `aiq judge --auto` hidden when the snapshot says work waits and nothing ran in the last 10 minutes
+/// (design first-run-analysis): analysis begins right after setup instead of after the first prompt starts the
+/// core. At most once per 10 minutes per Home; the judge's own lock keeps it to one run with the core's kicker.
+fn start_analysis(paths: &Paths) {
+    use std::sync::atomic::Ordering;
+    let now = aiq_core::sysclock::SystemClock.now().utc_ms;
+    let last = ANALYSIS_STARTED.load(Ordering::Relaxed);
+    if now < last + aiq_home::START_AFTER_MS
+        || ANALYSIS_STARTED.compare_exchange(last, now, Ordering::Relaxed, Ordering::Relaxed).is_err()
+    {
+        return;
+    }
+    let t = Instant::now();
+    let mut c = std::process::Command::new(aiq_exe());
+    c.args(["judge", "--auto"])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        c.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    let r = c.spawn();
+    log(paths, "start_analysis", t, if r.is_ok() { "ok" } else { "error" });
 }
 
 /// The `aiq` binary beside AIQ home (both live in `<data>/bin`), else `aiq` on PATH.
@@ -415,13 +448,7 @@ async fn open_privacy() -> Result<Outcome, String> {
     blocking(|| {
         let t = Instant::now();
         let paths = Paths::from_env();
-        #[cfg(windows)]
-        let r = std::process::Command::new("explorer").arg(PRIVACY_URL).spawn();
-        #[cfg(target_os = "macos")]
-        let r = std::process::Command::new("open").arg(PRIVACY_URL).spawn();
-        #[cfg(all(unix, not(target_os = "macos")))]
-        let r = std::process::Command::new("xdg-open").arg(PRIVACY_URL).spawn();
-        let r = r.map(|_| ()).map_err(|e| format!("Could not open the browser ({e}). The page is at {PRIVACY_URL}"));
+        let r = open_url(PRIVACY_URL);
         log(&paths, "open_privacy", t, if r.is_ok() { "ok" } else { "error" });
         Outcome::from(r)
     })
@@ -538,6 +565,66 @@ fn connect_new_tools() {
     });
 }
 
+/// The tools Home can open for sign-in or point to an install page: the providers AIQ analyzes through.
+fn analysis_tool(tool: &str) -> Option<(&'static str, &'static str)> {
+    // assume: these install pages stay put; a moved page shows the browser's 404, never a wrong action.
+    match tool {
+        "copilot-cli" => Some(("copilot", "https://github.com/github/copilot-cli")),
+        "claude-code" => Some(("claude", "https://code.claude.com/docs/en/setup")),
+        _ => None,
+    }
+}
+
+/// Open the tool in a new terminal window so the person can sign in there (`/login`). A fixed command per
+/// tool: the page can't run anything else. Windows only, like the install.
+#[tauri::command]
+async fn open_sign_in(tool: String) -> Result<Outcome, String> {
+    blocking(move || {
+        let t = Instant::now();
+        let paths = Paths::from_env();
+        let r = match analysis_tool(&tool) {
+            None => Err("Not a tool AIQ analyzes through.".to_string()),
+            #[cfg(windows)]
+            Some((exe, _)) => std::process::Command::new("cmd")
+                .args(["/c", "start", "", "cmd", "/k", exe])
+                .spawn()
+                .map(|_| ())
+                .map_err(|e| format!("Couldn't open a terminal ({e}). Open one and run {exe}, then /login.")),
+            #[cfg(not(windows))]
+            Some((exe, _)) => Err(format!("Open a terminal and run {exe}, then /login.")),
+        };
+        log(&paths, "open_sign_in", t, if r.is_ok() { "ok" } else { "error" });
+        Outcome::from(r)
+    })
+    .await
+}
+
+/// Open the tool's install page in the default browser (a fixed address per tool).
+#[tauri::command]
+async fn open_tool_help(tool: String) -> Result<Outcome, String> {
+    blocking(move || {
+        let t = Instant::now();
+        let paths = Paths::from_env();
+        let r = match analysis_tool(&tool) {
+            None => Err("Not a tool AIQ analyzes through.".to_string()),
+            Some((_, url)) => open_url(url),
+        };
+        log(&paths, "open_tool_help", t, if r.is_ok() { "ok" } else { "error" });
+        Outcome::from(r)
+    })
+    .await
+}
+
+fn open_url(url: &str) -> Result<(), String> {
+    #[cfg(windows)]
+    let r = std::process::Command::new("explorer").arg(url).spawn();
+    #[cfg(target_os = "macos")]
+    let r = std::process::Command::new("open").arg(url).spawn();
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let r = std::process::Command::new("xdg-open").arg(url).spawn();
+    r.map(|_| ()).map_err(|e| format!("Could not open the browser ({e}). The page is at {url}"))
+}
+
 fn main() {
     if std::env::args().skip(1).any(|a| a == "--start-core") {
         return start_core_only();
@@ -562,7 +649,9 @@ fn main() {
             disconnect_tool,
             include_folder,
             judge_preview,
-            open_privacy
+            open_privacy,
+            open_sign_in,
+            open_tool_help
         ])
         .run(tauri::generate_context!())
         .expect("AIQ home could not start its window");

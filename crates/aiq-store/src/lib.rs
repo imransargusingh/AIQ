@@ -1663,6 +1663,22 @@ impl Store {
     }
 
     /// Judge calls started at or after `since_ms`, oldest first (budget and retry back-off are derived from these).
+    /// Each provider's newest judge call: (provider, outcome, started). Says whether that tool works right now.
+    pub fn newest_judge_call_per_provider(&self) -> Result<Vec<(String, String, i64)>> {
+        if !self.has_table("judge_call")? {
+            return Ok(vec![]);
+        }
+        let mut st = self
+            .conn
+            .prepare(
+                // SQLite takes a bare column from the row that holds the MAX (documented for min/max aggregates).
+                "SELECT provider, outcome, MAX(started_utc_ms) FROM judge_call GROUP BY provider ORDER BY provider",
+            )
+            .map_err(err(codes::STORE_OPEN))?;
+        let rows = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).map_err(err(codes::STORE_OPEN))?;
+        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(err(codes::STORE_OPEN))
+    }
+
     pub fn judge_calls_since(&self, since_ms: i64) -> Result<Vec<CallOutcome>> {
         if !self.has_table("judge_call")? {
             return Ok(vec![]);

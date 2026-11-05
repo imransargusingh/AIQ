@@ -57,8 +57,9 @@ pub const JOB_THRESHOLD: f64 = 0.7;
 pub const TASK_TYPE_THRESHOLD: f64 = 0.7;
 /// Potential confidence needed before a gap may be coached (US-6).
 pub const COACH_THRESHOLD: f64 = 0.8;
-/// Tasks judged per day unless the person sets another number (D5; a guess to tune, TR-8).
-pub const DEFAULT_DAILY_TASKS: u32 = 50;
+/// Tasks analyzed per day unless the person sets another number (D5; Imran 2026-11-05 raised it from 50 to 500 so a
+/// first install analyzes its imported history in a day, not about five).
+pub const DEFAULT_DAILY_TASKS: u32 = 500;
 /// Same-job tasks in 30 days before Factory can be the next step (US-2 repetition rule).
 pub const FACTORY_REPEATS: u32 = 3;
 
