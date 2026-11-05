@@ -340,17 +340,33 @@ export function App() {
                   Tips today: {snap.home.tips_today} of {snap.settings.daily_cap}
                 </span>
                 {singleKeys && <span>P to {snap.status.paused ? "resume" : "pause"}</span>}
-                <span>
-                  <span data-testid="app-version">AIQ {snap.update.running}</span>
-                  {snap.update.supported && (
-                    <>
-                      {" · "}
-                      <button className="btnlink" onClick={update.run} disabled={update.phase !== "idle"} title="Check for a newer AIQ and install it">
-                        Update now
+                {snap.update.supported && update.phase === "idle" && snap.update.note === "waiting" ? (
+                  // A ready update shows here too, not only in the titlebar (Imran 2026-11-05, option B; design U5i).
+                  <div className="updbox" data-testid="update-ready">
+                    <b>
+                      <span className="newdot" aria-hidden="true" />
+                      AIQ {ver(snap.update.available)} is ready
+                    </b>
+                    <span className="updrow">
+                      <span data-testid="app-version">You have {ver(snap.update.running)}</span>
+                      <button className="updbtn" onClick={update.run} title={`AIQ home closes, installs AIQ ${ver(snap.update.available)} and opens again.`}>
+                        Update
                       </button>
-                    </>
-                  )}
-                </span>
+                    </span>
+                  </div>
+                ) : (
+                  <span>
+                    <span data-testid="app-version">AIQ {snap.update.running}</span>
+                    {snap.update.supported && (
+                      <>
+                        {" · "}
+                        <button className="btnlink" onClick={update.run} disabled={update.phase !== "idle"} title="Check for a newer AIQ and install it">
+                          Update now
+                        </button>
+                      </>
+                    )}
+                  </span>
+                )}
               </>
             )}
           </div>
