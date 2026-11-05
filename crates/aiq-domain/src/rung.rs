@@ -95,6 +95,21 @@ pub const SETTING_DAILY_TASKS: &str = "judge_daily_tasks";
 pub const SETTING_CLAUDE_MODEL: &str = "judge_claude_model";
 pub const SETTING_COPILOT_MODEL: &str = "judge_copilot_model";
 pub const SETTING_COPILOT_SESSIONS: &str = "judge_copilot_sessions";
+/// Model calls per analyzed task: 2 asks twice and marks a disputed fact unknown (D2); 1 asks once (design
+/// one-call-analysis). On Copilot with gpt-6.1-sol the second call turned 2 of every 100 sure-but-wrong results
+/// into "not sure" at no loss of right ones (measured 11-05), so two stays the default (accuracy first).
+pub const SETTING_CALLS: &str = "judge_calls";
+pub const DEFAULT_CALLS: u8 = 2;
+/// The model Copilot tasks are analyzed with unless the person names one (`analysis-copilot-model`; `default`
+/// = Copilot's own pick). Imran, 2026-11-05: prefer OpenAI models for Copilot tasks, Sol as the default. When it
+/// is not offered or a call to it fails, analysis falls back to Copilot's own pick.
+pub const DEFAULT_COPILOT_MODEL: &str = "gpt-6.1-sol";
+/// The model for a Copilot task's second call (`analysis-copilot-second-model`; `same` = the first call's model).
+/// Sol + gpt-6-luna scored at least as well as Sol twice on every measure (golden set through Copilot, 11-05:
+/// rung exact 68.4% vs 65.6%, too high 10.4% vs 15.6%, sure but wrong 29.1% vs 30.4%) and Luna is a lower price
+/// tier. Not offered or failing: the first call's model.
+pub const SETTING_COPILOT_SECOND_MODEL: &str = "judge_copilot_second_model";
+pub const DEFAULT_COPILOT_SECOND_MODEL: &str = "gpt-6-luna";
 /// The accuracy check's second reader (design judge-accuracy-check K3).
 pub const SETTING_CHECK_CLAUDE_MODEL: &str = "check_claude_model";
 pub const SETTING_CHECK_COPILOT_MODEL: &str = "check_copilot_model";
@@ -116,12 +131,18 @@ pub fn validate_setting(key: &str, value: &str) -> Option<Result<String, String>
             _ => Err(format!("analysis-daily-tasks must be a whole number from 0 to {MAX_DAILY_TASKS}")),
         },
         SETTING_CLAUDE_MODEL | SETTING_CHECK_CLAUDE_MODEL if model_ok(value) => Ok(value.to_owned()),
+        SETTING_COPILOT_SECOND_MODEL if value == "same" || model_ok(value) => Ok(value.to_owned()),
+        SETTING_COPILOT_SECOND_MODEL => Err("a model id is letters, digits and . _ : - [ ] / only, or same".into()),
         SETTING_COPILOT_MODEL | SETTING_CHECK_COPILOT_MODEL if value == "default" || model_ok(value) => {
             Ok(value.to_owned())
         }
         SETTING_CLAUDE_MODEL | SETTING_COPILOT_MODEL | SETTING_CHECK_CLAUDE_MODEL | SETTING_CHECK_COPILOT_MODEL => {
             Err("a model id is letters, digits and . _ : - [ ] / only".into())
         }
+        SETTING_CALLS => match value {
+            "1" | "2" => Ok(value.to_owned()),
+            _ => Err("analysis-calls must be 1 or 2".into()),
+        },
         SETTING_COPILOT_SESSIONS => match value {
             "keep" | "delete" => Ok(value.to_owned()),
             _ => Err("analysis-copilot-sessions must be keep or delete".into()),
@@ -1012,23 +1033,20 @@ pub struct JobRun {
 /// Why a judgment has no pack job (design no-job-tasks). Derived from the recorded runs, never stored.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum NoJob {
-    /// Every run said `other` with enough confidence: the judge thinks no pack fits.
+    /// Every answer said `other` with enough confidence: the judge thinks no pack fits.
     AllOther,
     /// Runs named different jobs.
     Disagree,
-    /// Runs agreed on a pack job but at least one was below the job bar.
+    /// The answers agreed on a pack job but at least one was below the job bar.
     LowConfidence,
-    /// Only one run answered.
-    OneRun,
 }
 
 impl NoJob {
     pub fn words(self) -> &'static str {
         match self {
-            NoJob::AllOther => "both runs said other",
+            NoJob::AllOther => "the analysis said other",
             NoJob::Disagree => "the two runs named different jobs",
-            NoJob::LowConfidence => "both runs named a pack job, but not confidently",
-            NoJob::OneRun => "only one run answered",
+            NoJob::LowConfidence => "the analysis named a pack job, but not confidently",
         }
     }
 }
@@ -1036,9 +1054,6 @@ impl NoJob {
 /// The cause, or None when the runs give a pack job (or there are none).
 pub fn no_job_cause(runs: &[JobRun]) -> Option<NoJob> {
     let first = runs.first()?;
-    if runs.len() < 2 {
-        return (!PACK_JOBS.contains(&first.job.as_str()) || first.confidence < JOB_THRESHOLD).then_some(NoJob::OneRun);
-    }
     if runs.iter().any(|r| r.job != first.job) {
         return Some(NoJob::Disagree);
     }
@@ -1093,18 +1108,15 @@ pub enum KindOther {
     LowConfidence,
     /// Runs agreed on a kind that is not on the job's list.
     NotOnList,
-    /// Only one run answered.
-    OneRun,
 }
 
 impl KindOther {
     pub fn words(self) -> &'static str {
         match self {
-            KindOther::AllOther => "both runs said other",
+            KindOther::AllOther => "the analysis said other",
             KindOther::Disagree => "the two runs named different kinds",
-            KindOther::LowConfidence => "both runs named the kind, but not confidently",
+            KindOther::LowConfidence => "the analysis named the kind, but not confidently",
             KindOther::NotOnList => "the kind named is not on the job's list",
-            KindOther::OneRun => "only one run answered",
         }
     }
 }
@@ -1113,9 +1125,6 @@ impl KindOther {
 pub fn kind_other_cause(job: &str, runs: &[TypeRun]) -> Option<KindOther> {
     let first = runs.first()?;
     let listed = |t: &str| t != "other" && aiq_contracts::judge::task_type_label(job, t).is_some();
-    if runs.len() < 2 {
-        return (!listed(&first.task_type) || first.confidence < TASK_TYPE_THRESHOLD).then_some(KindOther::OneRun);
-    }
     if runs.iter().any(|r| r.task_type != first.task_type) {
         return Some(KindOther::Disagree);
     }
@@ -1673,7 +1682,9 @@ mod tests {
         assert_eq!(no_job_cause(&[jr("other", 0.9), jr("other", 0.8)]), Some(NoJob::AllOther));
         assert_eq!(no_job_cause(&[jr("ask_research", 0.9), jr("other", 0.8)]), Some(NoJob::Disagree));
         assert_eq!(no_job_cause(&[jr("ask_research", 0.9), jr("ask_research", 0.6)]), Some(NoJob::LowConfidence));
-        assert_eq!(no_job_cause(&[jr("other", 0.9)]), Some(NoJob::OneRun));
+        assert_eq!(no_job_cause(&[jr("other", 0.9)]), Some(NoJob::AllOther), "one call: the cause is in its answer");
+        assert_eq!(no_job_cause(&[jr("write_doc", 0.5)]), Some(NoJob::LowConfidence));
+        assert_eq!(no_job_cause(&[jr("write_doc", 0.9)]), None);
         assert_eq!(no_job_cause(&[jr("code_change", 0.9), jr("code_change", 0.7)]), None);
         assert_eq!(no_job_cause(&[]), None);
     }
@@ -1824,7 +1835,8 @@ mod tests {
             let (_, p) = place(&[a, b], &l, 0);
             assert_eq!(p.task_type.as_deref() != Some("other"), want.is_none(), "{t1} {t2}: {:?}", p.task_type);
         }
-        assert_eq!(kind_other_cause("code_change", &[tr("fix_bug", 0.6)]), Some(KindOther::OneRun));
+        assert_eq!(kind_other_cause("code_change", &[tr("fix_bug", 0.6)]), Some(KindOther::LowConfidence), "one call");
+        assert_eq!(kind_other_cause("code_change", &[tr("other", 0.9)]), Some(KindOther::AllOther));
         assert_eq!(kind_other_cause("code_change", &[]), None);
     }
 

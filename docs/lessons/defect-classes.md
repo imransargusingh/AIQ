@@ -497,3 +497,15 @@ summary: >-
 - **Sweep:** the guardrails are the only source of moves (`coach::moves_for`), so the test covers every way a
   move is chosen. F9 is unknown until it is read from the log, so `saved_workflow` is guide text only for now.
 - **Rule:** test coverage against the rule's own inputs (each fact it reads), never against a count per group.
+
+### DC-031 — A usage guard that runs after the paid work it guards
+- **Signature:** 2026-11-05, one-call study: `aiq analyze --eval --runs 8 --cases … --record f` made 272 Claude
+  calls ($4.51), then printed "--record needs every case (drop --cases)" and threw the answers away. The check sat
+  after the run loop, next to the write it protects.
+- **Why it survives:** the guard is correct and tested by reading the code; nobody runs the bad flag mix, so the
+  cost of checking late is never seen.
+- **Control:** `parse_opts` refuses `--record` with `--cases` before any call;
+  `judge_eval::tests::record_with_cases_is_refused_before_any_call`.
+- **Sweep:** no other flag check sits after the paid loop in `judge_eval.rs` (read). `aiq label --eval` and
+  `aiq analyze --check` were not read for this shape (assume: they parse first; if not, the same loss repeats there).
+- **Rule:** validate every argument before the first paid or slow call, never beside the step that uses it.

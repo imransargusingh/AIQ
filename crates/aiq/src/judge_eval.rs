@@ -23,8 +23,9 @@ use std::process::ExitCode;
 pub const GOLDEN: &str = include_str!("../../../evals/judge/golden.json");
 pub const REPLAY: &str = include_str!("../../../evals/judge/replay.json");
 pub const REPORT_SCHEMA: &str = "aiq.judge-eval.v1";
-/// Placement reads the first two answers, as `aiq judge` does; later runs only count toward agreement.
-const PLACED_RUNS: usize = 2;
+/// Placement reads the first `rung::DEFAULT_CALLS` answers, as `aiq judge` does; later runs only count toward
+/// agreement.
+const PLACED_RUNS: usize = rung::DEFAULT_CALLS as usize;
 const MAX_RUNS: usize = 10;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -201,11 +202,16 @@ fn all_same<T: PartialEq>(v: &[T]) -> Option<bool> {
 
 /// Score one case from its answers. Pure: the live, replay and CI paths all use it.
 pub fn score_case(c: &Case, answers: &[Value]) -> CaseResult {
+    score_case_with(c, answers, PLACED_RUNS)
+}
+
+/// `score_case` with placement reading the first `placed_runs` answers (1 or 2 calls per task).
+pub fn score_case_with(c: &Case, answers: &[Value], placed_runs: usize) -> CaseResult {
     let parsed: Vec<Response> = answers.iter().filter_map(|v| parse_response(v.clone()).ok()).collect();
     let t = turns(&c.steps);
     let log = rung::log_facts(&t);
     let placed = (!parsed.is_empty()).then(|| {
-        let (_, pl) = rung::place(&parsed[..parsed.len().min(PLACED_RUNS)], &log, 0);
+        let (_, pl) = rung::place(&parsed[..parsed.len().min(placed_runs)], &log, 0);
         let job = if pl.job == "unclassified" { "other".to_owned() } else { pl.job.clone() };
         Placed { job, kind: pl.task_type.clone(), rung: pl.current, state: pl.state.as_str().to_owned() }
     });
@@ -483,6 +489,104 @@ pub fn replay(replay_json: &str) -> Result<(Value, Vec<CaseResult>), String> {
     Ok((rep, results))
 }
 
+/// One call vs two calls per task, scored on recorded answers (design one-call-analysis). Each policy is
+/// scored over every way to pick its answers from a case's n recorded ones (n picks for one call, n(n-1)
+/// ordered pairs for two), through today's placement, so the columns read the same answers. With `other`
+/// (answers from a second model) two more columns: that model alone, and one answer from each.
+pub fn compare_calls(rec: &Value, other: Option<&Value>) -> Result<String, String> {
+    let g = golden();
+    let answers = |r: &Value, id: &str| -> Result<Vec<Value>, String> {
+        let a = r["answers"][id].as_array().ok_or_else(|| format!("no recorded answers for {id}"))?;
+        if a.len() < 2 {
+            return Err(format!("{id} has {} recorded answer(s); comparing needs 2 or more (--runs)", a.len()));
+        }
+        Ok(a.clone())
+    };
+    let name = |r: &Value| r["model"].as_str().unwrap_or("?").to_owned();
+    let mut heads = vec!["1 call A", "2 calls A+A"];
+    let mut models = format!("A = {}", name(rec));
+    if let Some(o) = other {
+        heads.extend(["1 call B", "2 calls A+B"]);
+        models.push_str(&format!(", B = {}", name(o)));
+    }
+    let mut cols: Vec<BTreeMap<&'static str, Count>> = vec![BTreeMap::new(); heads.len()];
+    for c in &g.cases {
+        let a = answers(rec, &c.id)?;
+        let b = other.map(|o| answers(o, &c.id)).transpose()?;
+        let singles = |x: &[Value]| x.iter().map(|v| vec![v.clone()]).collect::<Vec<_>>();
+        let pairs = |x: &[Value]| {
+            (0..x.len())
+                .flat_map(|i| (0..x.len()).filter(move |j| *j != i).map(move |j| vec![x[i].clone(), x[j].clone()]))
+                .collect::<Vec<_>>()
+        };
+        let mut sets = vec![singles(&a), pairs(&a)];
+        if let Some(b) = &b {
+            sets.push(singles(b));
+            sets.push(a.iter().flat_map(|x| b.iter().map(move |y| vec![x.clone(), y.clone()])).collect());
+        }
+        for (t, picks) in cols.iter_mut().zip(&sets) {
+            let mut add = |k: &'static str, v: Option<bool>| t.entry(k).or_default().add(v);
+            for s in picks {
+                let r = score_case_with(c, s, s.len());
+                let Some(p) = &r.placed else {
+                    add("answered", Some(false));
+                    continue;
+                };
+                add("answered", Some(true));
+                add("job", r.job_ok);
+                add("kind", r.kind_ok);
+                add("rung_exact", r.rung_exact);
+                add("rung_within_one", r.rung_within_one);
+                add("resisted", r.resisted);
+                add("rung_higher", c.expect.rung.as_ref().map(|x| x.iter().all(|e| p.rung > *e)));
+                add("not_sure", Some(p.state == "uncertain"));
+                // Shown as a sure answer: the result a person would act on, right or wrong.
+                let sure = p.state != "uncertain" && (p.job != "other" || c.expect.job.iter().any(|j| j == "other"));
+                let wrong = r.job_ok == Some(false) || r.rung_exact == Some(false);
+                add("sure_and_wrong", Some(sure && wrong));
+                add("sure_and_right", Some(sure && !wrong));
+            }
+        }
+    }
+    let rows = [
+        ("job", "Job right"),
+        ("kind", "Kind right"),
+        ("rung_exact", "Rung exact"),
+        ("rung_within_one", "Rung within one"),
+        ("rung_higher", "Rung too high"),
+        ("sure_and_right", "Shown as sure and right"),
+        ("sure_and_wrong", "Shown as sure but wrong"),
+        ("not_sure", "Marked not sure"),
+        ("resisted", "Injection resisted"),
+        ("answered", "Answered"),
+    ];
+    let pct = |c: Count| {
+        if c.of == 0 {
+            "-".to_owned()
+        } else {
+            format!("{:.1}% ({}/{})", 100.0 * c.right as f64 / c.of as f64, c.right, c.of)
+        }
+    };
+    let mut out = format!(
+        "One call vs two calls per task: {} answers per case, {} ({models})\n\n{:<26}",
+        rec["runs"],
+        rec["provider"].as_str().unwrap_or("?"),
+        ""
+    );
+    for h in &heads {
+        out.push_str(&format!("{h:<24}"));
+    }
+    out.push('\n');
+    for (k, label) in rows {
+        out.push_str(&format!("{label:<26}"));
+        for col in &cols {
+            out.push_str(&format!("{:<24}", pct(col.get(k).copied().unwrap_or_default())));
+        }
+        out.push('\n');
+    }
+    Ok(out)
+}
+
 /// A replay file from live answers: what CI replays until the judge prompt or a version changes.
 pub fn replay_file(rep: &Value, answers: &BTreeMap<String, Vec<Value>>) -> Value {
     let placed: BTreeMap<String, Value> = rep["cases"]
@@ -524,11 +628,16 @@ fn parse_opts(args: &[&str]) -> Result<Opts, String> {
     if provider.as_deref().is_some_and(|p| p != "claude-code" && p != "copilot-cli") {
         return Err("--provider takes claude-code or copilot-cli".into());
     }
+    let only: Vec<String> = arg(args, "--cases").map(|s| s.split(',').map(str::to_owned).collect()).unwrap_or_default();
+    // Checked before any call: found after the run, it threw the paid answers away.
+    if !only.is_empty() && arg(args, "--record").is_some() {
+        return Err("--record needs every case (drop --cases)".into());
+    }
     Ok(Opts {
         runs,
         provider,
         model: arg(args, "--model").map(str::to_owned),
-        only: arg(args, "--cases").map(|s| s.split(',').map(str::to_owned).collect()).unwrap_or_default(),
+        only,
         record: arg(args, "--record").map(PathBuf::from),
         out: arg(args, "--out").map(PathBuf::from),
         dry: args.contains(&"--dry-run"),
@@ -595,7 +704,12 @@ fn live(paths: &Paths, o: &Opts) -> ExitCode {
     };
     let copilot = CopilotCli {
         exe: find_exe("copilot"),
-        model: o.model.clone().or(set.and_then(|s| s.copilot_model)),
+        // The model analysis uses first: the person's, else AIQ's default (no fallback here: an eval names
+        // the model it scored, and a refused model is a failed call, not a silent switch).
+        model: o.model.clone().or_else(|| match &set {
+            Some(s) => crate::judge::analysis_copilot_models(s).into_iter().next().flatten(),
+            None => Some(rung::DEFAULT_COPILOT_MODEL.into()),
+        }),
         work: paths.data.join("judge-work"),
         keep_sessions: false,
     };
@@ -677,10 +791,6 @@ fn live(paths: &Paths, o: &Opts) -> ExitCode {
         eprintln!("Could not write the report: {e}");
     }
     if let Some(rec) = &o.record {
-        if cases.len() != g.cases.len() {
-            eprintln!("--record needs every case (drop --cases).");
-            return ExitCode::from(2);
-        }
         match write_json(rec, &replay_file(&rep, &answers)) {
             Ok(()) => println!("Recorded the answers for CI replay: {}", rec.display()),
             Err(e) => eprintln!("Could not write {}: {e}", rec.display()),
@@ -710,6 +820,47 @@ pub fn cli(args: &[&str], paths: &Paths) -> ExitCode {
             print!("\n{}", render_diff(&prev, &last));
         }
         return ExitCode::SUCCESS;
+    }
+    if args.contains(&"--compare-calls") {
+        // Free: recorded answers only. A file from `--eval --runs n --record <file>`, else replay.json.
+        let src = match arg(args, "--compare-calls").filter(|v| !v.starts_with("--")) {
+            Some(f) => match std::fs::read_to_string(f) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("{f}: {e}");
+                    return ExitCode::from(1);
+                }
+            },
+            None => REPLAY.to_owned(),
+        };
+        // `--with <file>`: answers from a second model, scored alone and paired one-each with the first.
+        let other = match arg(args, "--with").map(|f| std::fs::read_to_string(f).map_err(|e| format!("{f}: {e}"))) {
+            Some(Ok(t)) => match serde_json::from_str::<Value>(&t) {
+                Ok(v) => Some(v),
+                Err(e) => {
+                    eprintln!("--with: {e}");
+                    return ExitCode::from(1);
+                }
+            },
+            Some(Err(e)) => {
+                eprintln!("{e}");
+                return ExitCode::from(1);
+            }
+            None => None,
+        };
+        return match serde_json::from_str(&src)
+            .map_err(|e| e.to_string())
+            .and_then(|v| compare_calls(&v, other.as_ref()))
+        {
+            Ok(t) => {
+                print!("{t}");
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("{e}");
+                ExitCode::from(1)
+            }
+        };
     }
     if args.contains(&"--replay") {
         return match replay(REPLAY) {
@@ -822,8 +973,8 @@ mod tests {
         assert_eq!(r.rung_within_one, Some(shown.abs_diff(2) <= 1));
         assert_eq!((r.agree_job, r.agree_kind, r.agree_rung), (Some(true), Some(true), Some(true)));
 
-        let r = score_case(&c, &[answer("code_change", "fix_bug", 2), answer("write_doc", "spec", 2)]);
-        assert_eq!(r.placed.as_ref().unwrap().job, "other", "runs that disagree leave the job unclassified");
+        let r = score_case_with(&c, &[answer("code_change", "fix_bug", 2), answer("write_doc", "spec", 2)], 2);
+        assert_eq!(r.placed.as_ref().unwrap().job, "other", "two calls that disagree leave the job unclassified");
         assert_eq!((r.job_ok, r.kind_ok, r.agree_job), (Some(false), Some(false), Some(false)));
     }
 
@@ -925,6 +1076,12 @@ mod tests {
     }
 
     #[test]
+    fn record_with_cases_is_refused_before_any_call() {
+        let e = parse_opts(&["--eval", "--cases", "h01", "--record", "x.json"]).err().unwrap();
+        assert!(e.contains("--record needs every case"), "{e}");
+    }
+
+    #[test]
     fn diff_names_what_moved() {
         let c = case(&["code_change"], Some(&["fix_bug"]), Some(&[1]));
         let a = report(
@@ -948,5 +1105,25 @@ mod tests {
         assert!(d.contains("t: code_change / fix_bug / rung 1 -> write_doc / spec / rung"), "{d}");
         assert!(render_diff(&a, &a).contains("nothing moved"));
         assert!(render(&b).contains("t: missed job, kind"), "{}", render(&b));
+    }
+
+    #[test]
+    fn compare_calls_scores_the_same_answers_both_ways() {
+        let rec: Value = serde_json::from_str(REPLAY).unwrap();
+        let t = compare_calls(&rec, None).unwrap();
+        println!("{t}");
+        let row =
+            |label: &str| t.lines().find(|l| l.starts_with(label)).unwrap_or_else(|| panic!("{label}: {t}")).to_owned();
+        // Every pick answered, and no injection lifts a rung with either number of calls.
+        assert!(row("Answered").matches("100.0%").count() == 2, "{t}");
+        assert!(row("Injection resisted").matches("100.0%").count() == 2, "{t}");
+        let one = json!({"runs": 1, "answers": {"h01": [rec["answers"]["h01"][0]]}});
+        assert!(compare_calls(&one, None).unwrap_err().contains("2 or more"));
+        // A second model's columns: alone, and one answer from each. Same answers both sides = same scores.
+        let t2 = compare_calls(&rec, Some(&rec)).unwrap();
+        let exact = t2.lines().find(|l| l.starts_with("Rung exact")).unwrap().to_owned();
+        let cells: Vec<&str> = exact.split("  ").map(str::trim).filter(|c| c.contains('%')).collect();
+        assert_eq!(cells.len(), 4, "{t2}");
+        assert_eq!(cells[0].split(' ').next(), cells[2].split(' ').next(), "{t2}");
     }
 }
