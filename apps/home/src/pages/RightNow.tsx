@@ -138,7 +138,7 @@ export function RightNow(ctx: Ctx) {
         ))}
       </ul>
       <p className="meta">
-        An estimate from what the agent did, until the task ends. The judge's rung replaces it then.{" "}
+        An estimate from what the agent did, until the task ends. The analyzed rung replaces it then.{" "}
         <button className="btnlink" onClick={() => ctx.openTask(l.task_id)}>
           Open task
         </button>

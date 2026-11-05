@@ -289,11 +289,11 @@ export function AccuracyPaused({ snap, announce, refresh }: Pick<Ctx, "snap" | "
           <div className="grow">
             {p.kept_on ? (
               <>
-                <b>{p.label}:</b> next-step tips stay on because you chose to keep them, though a second model agreed with AIQ's judge only {p.agreed} of {p.checked} times.
+                <b>{p.label}:</b> next-step tips stay on because you chose to keep them, though a second model agreed with AIQ's analysis only {p.agreed} of {p.checked} times.
               </>
             ) : (
               <>
-                <b>{p.label}:</b> AIQ paused these next-step tips. A second model agreed with its judge only {p.agreed} of {p.checked} times, under 8 in 10. They come back by
+                <b>{p.label}:</b> AIQ paused these next-step tips. A second model agreed with AIQ's analysis only {p.agreed} of {p.checked} times, under 8 in 10. They come back by
                 themselves when a later accuracy check clears the bar.
               </>
             )}

@@ -436,7 +436,7 @@ fn e2e_install_with_no_tool_connects_every_tool_found_and_names_the_undo() {
     let o = e.run_clean(&["install", "--yes"]);
     assert!(o.status.success());
     assert!(String::from_utf8_lossy(&o.stdout).contains("No supported AI tool found"));
-    assert!(!String::from_utf8_lossy(&o.stdout).contains("Judging"), "nothing connected: judging untouched");
+    assert!(!String::from_utf8_lossy(&o.stdout).contains("Analysis"), "nothing connected: analysis untouched");
     assert!(!e.copilot().exists() && !claude.exists());
 
     // A bare Claude Code folder (other tools and people make one) is not Claude Code: nothing written to it.
@@ -463,8 +463,8 @@ fn e2e_install_with_no_tool_connects_every_tool_found_and_names_the_undo() {
     let want = [claude.join("settings.json"), e.copilot().join("hooks").join("aiq.json")];
     assert_eq!(changed, want.iter().map(|p| p.to_str().unwrap()).collect::<Vec<_>>(), "{out}");
     // A tool is connected, so background judging is on, with what is sent and how to undo it.
-    assert!(out.contains("Judging: turned on.") && out.contains("What is sent:"), "{out}");
-    assert!(out.contains("up to 50 new tasks a day") && out.contains("Undo: aiq config set judge off"), "{out}");
+    assert!(out.contains("Analysis: turned on.") && out.contains("What is sent:"), "{out}");
+    assert!(out.contains("up to 50 new tasks a day") && out.contains("Undo: aiq config set analysis off"), "{out}");
 
     // Run again: nothing left to connect.
     let again = String::from_utf8_lossy(&e.run_clean(&["install", "--yes"]).stdout).to_string();
@@ -473,7 +473,7 @@ fn e2e_install_with_no_tool_connects_every_tool_found_and_names_the_undo() {
         "{again}"
     );
     assert!(!again.contains("Undo:"), "{again}");
-    assert!(again.contains("Judging is already on"), "{again}");
+    assert!(again.contains("Analysis is already on"), "{again}");
 
     // The person turns judging off: a later install keeps it off. Written to the store directly, because
     // `aiq config set` starts a core this test would not stop (on Windows it then locks aiq.exe).
@@ -482,7 +482,7 @@ fn e2e_install_with_no_tool_connects_every_tool_found_and_names_the_undo() {
     store.set_setting("judge", "off", now + 1_000).unwrap();
     drop(store);
     let off = String::from_utf8_lossy(&e.run_clean(&["install", "--yes"]).stdout).to_string();
-    assert!(off.contains("Judging stays off, as you set it."), "{off}");
+    assert!(off.contains("Analysis stays off, as you set it."), "{off}");
 }
 
 /// After setup, a tool installed later is connected once by `aiq install --new` (AIQ home and the core run it

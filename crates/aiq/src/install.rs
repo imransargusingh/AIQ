@@ -383,14 +383,14 @@ fn judging() {
     let paths = Paths::from_env();
     let Ok(store) = crate::import::open_store(&paths) else {
         println!(
-            "Judging: AIQ couldn't open its store, so judging stays as it was. Turn it on: aiq config set judge auto"
+            "Analysis: AIQ couldn't open its store, so analysis stays as it was. Turn it on: aiq config set analysis auto"
         );
         return;
     };
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64);
     match crate::judge::turn_on_at_install(&store, now) {
         Ok(r) => print!("{}", crate::judge::at_install_text(r, crate::judge::settings(&store).daily_tasks)),
-        Err(e) => println!("Judging: not changed ({e}). Turn it on: aiq config set judge auto"),
+        Err(e) => println!("Analysis: not changed ({e}). Turn it on: aiq config set analysis auto"),
     }
 }
 

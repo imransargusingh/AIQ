@@ -332,7 +332,7 @@ pub fn render(rep: &Value) -> String {
     let mut o = String::new();
     let v = &rep["versions"];
     o += &format!(
-        "Judge eval ({}), {}: golden set {}, judge {} (facts {}, rubric {}), {} {}, {} run(s) per case\n",
+        "Analysis eval ({}), {}: golden set {}, analysis {} (facts {}, rubric {}), {} {}, {} run(s) per case\n",
         rep["mode"].as_str().unwrap_or("?"),
         rep["at_utc"].as_str().unwrap_or("?"),
         v["golden"].as_str().unwrap_or("?"),
@@ -344,7 +344,7 @@ pub fn render(rep: &Value) -> String {
         rep["runs"].as_u64().unwrap_or(0),
     );
     o += "Expected values are the case author's labels unless a case says human. Measured on synthetic tasks,\n\
-          not on your own work: your own work is what aiq judge --check measures.\n\n";
+          not on your own work: your own work is what aiq analyze --check measures.\n\n";
     for (k, label) in MEASURES {
         o += &format!("  {label:<40} {}\n", Count::from_json(&rep["totals"][k]).words());
     }
@@ -396,7 +396,7 @@ pub fn render(rep: &Value) -> String {
 /// What moved between two reports: each measure, and the cases whose shown answer changed.
 pub fn render_diff(prev: &Value, cur: &Value) -> String {
     let mut o = format!(
-        "Since the eval at {} (judge {}, {}):\n",
+        "Since the eval at {} (analysis {}, {}):\n",
         prev["at_utc"].as_str().unwrap_or("?"),
         prev["versions"]["judge"].as_str().unwrap_or("?"),
         prev["model"].as_str().unwrap_or("default model")
@@ -492,8 +492,8 @@ pub fn replay_file(rep: &Value, answers: &BTreeMap<String, Vec<Value>>) -> Value
         .map(|c| (c["id"].as_str().unwrap_or("").to_owned(), c["placed"].clone()))
         .collect();
     json!({
-        "about": "Recorded judge answers for the golden set, replayed by CI through today's parser and placement. \
-                  Re-record with: aiq judge --eval --record evals/judge/replay.json (needs a signed-in judge).",
+        "about": "Recorded analysis answers for the golden set, replayed by CI through today's parser and placement. \
+                  Re-record with: aiq analyze --eval --record evals/judge/replay.json (needs a signed-in Copilot or Claude Code).",
         "recorded_utc": rep["at_utc"], "versions": rep["versions"], "provider": rep["provider"], "model": rep["model"],
         "runs": rep["runs"], "totals": rep["totals"], "placed": placed, "answers": answers,
     })
@@ -615,7 +615,7 @@ fn live(paths: &Paths, o: &Opts) -> ExitCode {
             let session_id = uuid::Uuid::new_v4().to_string();
             // A Copilot call AIQ didn't record could later be imported as the person's own session (US-11).
             if pname == "copilot-cli" && record_judge_session(paths, &session_id).is_err() {
-                eprintln!("Could not record the judge session id; stopping.");
+                eprintln!("Could not record the analysis session id; stopping.");
                 return ExitCode::from(1);
             }
             let r = p.call(&CallReq { system: rung::SYSTEM, user: &user, schema: &schema, session_id: &session_id });
@@ -701,7 +701,7 @@ pub fn cli(args: &[&str], paths: &Paths) -> ExitCode {
         let saved = saved_reports(paths);
         let Some(last) = saved.last().and_then(|p| read_json(p)) else {
             println!(
-                "No judge eval yet. Start one with: aiq judge --eval (or free, from recorded answers: aiq judge --eval --replay)"
+                "No analysis eval yet. Start one with: aiq analyze --eval (or free, from recorded answers: aiq analyze --eval --replay)"
             );
             return ExitCode::SUCCESS;
         };
@@ -889,8 +889,8 @@ mod tests {
         assert_eq!(
             rec["versions"],
             versions(),
-            "The judge prompt, fact set, rubric or golden set changed since the answers were recorded. \
-             Re-record with a signed-in judge: aiq judge --eval --record evals/judge/replay.json"
+            "The analysis prompt, fact set, rubric or golden set changed since the answers were recorded. \
+             Re-record with a signed-in Copilot or Claude Code: aiq analyze --eval --record evals/judge/replay.json"
         );
         let (rep, results) = replay(REPLAY).unwrap();
         for r in &results {

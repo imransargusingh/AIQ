@@ -25,15 +25,15 @@ const ABOUT: &[(&str, &str)] = &[
     ("import_run", "each run of aiq import"),
     ("import_session", "each past session aiq import read"),
     ("import_event", "each prompt and turn end aiq import added from past sessions"),
-    ("judge_call", "each call AIQ made to your own Claude Code or Copilot to judge a task"),
-    ("judgment", "each judgment of a task: job, kind of task, rung and the facts behind it"),
+    ("judge_call", "each call AIQ made to your own Claude Code or Copilot to analyze a task"),
+    ("judgment", "each analysis of a task: job, kind of task, rung and the facts behind it"),
     ("type_guess", "each live guess of a task's kind, made at its first prompt (by word match or a quick label)"),
     ("kind_label", "each quick label call that named a new task's kind from its first prompt (ids and numbers only)"),
     ("turn_action", "what the agent did in each turn, read from the tool's own log (counts and tool names only)"),
     ("set_aside_session", "each session AIQ left out as automated (folder and time, no text)"),
     ("tip_feedback", "each answer you gave to a tip (helpful, not for me, snooze, off, on)"),
     ("guidance_flag", "each \"This doesn't fit\" you flagged or undid"),
-    ("judge_check_run", "each aiq judge --check run"),
+    ("judge_check_run", "each aiq analyze --check run"),
     ("judge_check", "each second reading in an accuracy check (ids and yes/no answers only)"),
 ];
 

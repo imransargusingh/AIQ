@@ -14,7 +14,7 @@ export const rungLabel = (rung: number) => `${RUNGS[rung - 1].name} (${rung})`;
 
 const JOBS: Record<string, string> = { code_change: "Code a change", write_doc: "Write a spec or doc", ask_research: "Ask or research", run_ship: "Run or ship it", unclassified: "No job fits" };
 /** The job a task was judged to be. */
-export const jobName = (j: string | null) => (j ? JOBS[j] ?? j : "Not judged yet");
+export const jobName = (j: string | null) => (j ? JOBS[j] ?? j : "Not analyzed yet");
 
 const STATES: Record<string, string> = {
   judged: "",
