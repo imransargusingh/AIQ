@@ -395,7 +395,8 @@ export interface Setup {
 }
 
 export interface ToolFound {
-  tool: "claude-code" | "copilot";
+  /** vscode: AIQ's VS Code extension (it shows tips; Copilot's hooks see the prompts). */
+  tool: "claude-code" | "copilot" | "vscode";
   hooked: boolean;
   present: boolean;
   install: string;

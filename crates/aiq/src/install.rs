@@ -358,12 +358,14 @@ fn connect(yes: bool, tools: &[aiq_core::tools::ToolFound], todo: Vec<&aiq_core:
         println!("\n{}:", tool_name(t.tool));
         let code = match t.tool {
             "claude-code" => install(yes),
+            "vscode" => crate::install_vscode::install_with(yes, false),
             _ => crate::install_copilot::install_with(yes, false),
         };
         failed |= code != ExitCode::SUCCESS;
         println!("Undo: aiq uninstall {}", t.tool);
     }
-    if aiq_core::tools::found().iter().any(|t| t.hooked) {
+    // Analysis judges prompts the hooks saved; VS Code's extension only shows tips, so it alone doesn't count.
+    if aiq_core::tools::found().iter().any(|t| t.hooked && t.tool != "vscode") {
         println!();
         judging();
     }
@@ -394,14 +396,15 @@ fn judging() {
     }
 }
 
-/// Every file connecting or disconnecting a tool can write.
-fn connect_files() -> [std::path::PathBuf; 4] {
+/// Every file connecting or disconnecting a tool can write (VS Code's extension list: VS Code's own command).
+fn connect_files() -> [std::path::PathBuf; 5] {
     let ch = aiq_core::tools::copilot_home();
     [
         settings_path(),
         crate::install_copilot::hook_file(&ch),
         crate::install_copilot::wrapper_file(&ch),
         ch.join("settings.json"),
+        aiq_core::tools::vscode_extensions_list(&aiq_core::tools::vscode_extensions_dir()),
     ]
 }
 
@@ -417,6 +420,7 @@ pub fn uninstall_all(yes: bool) -> ExitCode {
         println!("{}:", tool_name(t.tool));
         let code = match t.tool {
             "claude-code" => uninstall(yes),
+            "vscode" => crate::install_vscode::uninstall(yes),
             _ => crate::install_copilot::uninstall(yes),
         };
         failed |= code != ExitCode::SUCCESS;
@@ -540,6 +544,7 @@ fn set_user_path(_: &str) -> Result<(), String> {
 fn tool_name(tool: &str) -> &'static str {
     match tool {
         "claude-code" => "Claude Code",
+        "vscode" => "VS Code",
         _ => "GitHub Copilot",
     }
 }

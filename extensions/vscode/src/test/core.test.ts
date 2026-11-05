@@ -90,8 +90,10 @@ test("executableCandidates_settingFirstThenPathThenInstallDirs", () => {
   const c = executableCandidates(" C:\\x\\aiq.exe ", { Path: "C:\\a;C:\\b", LOCALAPPDATA: "C:\\L", USERPROFILE: "C:\\U" }, "win32");
   assert.equal(c[0], "C:\\x\\aiq.exe");
   assert.ok(c.some((p) => p.includes("AIQ") && p.endsWith("aiq.exe")));
+  // The installer's folder, right after PATH: an open VS Code doesn't see the PATH install.ps1 just set.
+  assert.ok(c[3].startsWith("C:\\U") && c[3].includes(".aiq") && c[3].endsWith("aiq.exe"), c[3]);
   const u = executableCandidates("", { PATH: "/usr/bin", HOME: "/h" }, "linux");
-  assert.deepEqual(u, ["/usr/bin/aiq", "/h/.local/bin/aiq"]);
+  assert.deepEqual(u, ["/usr/bin/aiq", "/h/.aiq/bin/aiq", "/h/.local/bin/aiq"]);
 });
 
 test("request_realSocket_sendsTokenAndParsesReply_wrongTokenGetsNull", async () => {

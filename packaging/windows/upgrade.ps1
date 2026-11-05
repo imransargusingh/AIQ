@@ -360,8 +360,12 @@ if ($Check -or $Apply) {
                 if (Test-Path $to) { Copy-Item -Force $to "$to.old" }
                 Copy-Item -Force (Join-Path $work $exe) $to
             }
-            $up = Join-Path $work 'upgrade.ps1'
-            if (Test-Path $up) { Copy-Item -Force $up (Join-Path $bin 'upgrade.ps1') }
+            # upgrade.ps1, and aiq.vsix (the VS Code extension): `aiq install --new` at the core's next start adds
+            # it to VS Code if VS Code is a tool AIQ hasn't seen before; an extension already added stays as it is.
+            foreach ($f in 'upgrade.ps1', 'aiq.vsix') {
+                $extra = Join-Path $work $f  # not $from: that holds the version being left
+                if (Test-Path $extra) { Copy-Item -Force $extra (Join-Path $bin $f) }
+            }
             $now = Installed-Version
             Remove-Item -Recurse -Force $stage -ErrorAction SilentlyContinue
             Write-State @{ state = 'applied'; from = $from; installed = $now; installed_tag = $st.available; at = (Now-Utc); available = $null; staged = $null; blocked = $null; message = $null; skip = $null }

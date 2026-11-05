@@ -443,6 +443,36 @@ US-12, H4), decided at a session's first prompt:
   The card belongs to the session of the prompt that fired and is delivered after that session's stop.
 - `detector_version = 2` in the pack, so signals record which rule produced them.
 
+## Follow-up: the installer adds the VS Code extension (2026-11-05)
+Why: Imran asked what a VS Code tip looks like and had never seen one. The extension was built in CI only;
+no release shipped it, so no VS Code tip could show on an installed AIQ (a VS Code card fell back to an open
+Copilot CLI status line, or waited).
+- **Release:** `release.yml` builds `aiq.vsix` (`npm run package`) into the Windows zip. `install.ps1` and
+  the auto-update swap copy it to `%USERPROFILE%\.aiq\bin` beside `aiq.exe`.
+- **A third tool, `vscode`:** `aiq_core::tools` finds VS Code by its `code` command (PATH, then
+  `%LOCALAPPDATA%\Programs\Microsoft VS Code\bin`, then `%ProgramFiles%\Microsoft VS Code\bin`) and calls it
+  connected when VS Code's `extensions.json` lists `aiq-local.aiq-coach`. It reads a file instead of running
+  `code --list-extensions`, which starts VS Code's runtime and would run on every `aiq status`.
+- **Install and undo:** `aiq install vscode` shows the exact command, asks y/N, then runs
+  `code --install-extension <bin>\aiq.vsix --force`. AIQ writes none of VS Code's files itself.
+  `aiq uninstall vscode` runs `code --uninstall-extension aiq-local.aiq-coach`. `aiq install` (setup),
+  `aiq install --new` (a VS Code installed later, once) and `aiq uninstall --all` include it. The connect
+  report lists VS Code's `extensions.json` under `Changed:`. AIQ home's setup and Settings show a VS Code row
+  with Disconnect.
+- **A copy without `aiq.vsix`** (a developer build) skips VS Code with one line during `aiq install`. Run by
+  name, it fails.
+- **The extension alone doesn't turn analysis on**: it only shows tips; Copilot's hooks save the prompts.
+- **The extension finds `aiq` in `~/.aiq/bin`** right after PATH. A VS Code that was open during install keeps
+  its old PATH until it restarts.
+- assume: `code --install-extension` adds the id to `extensions.json` before it exits, and VS Code honours
+  `VSCODE_EXTENSIONS` (else `~/.vscode/extensions`). Not measured: VS Code's download is blocked in the build
+  container. The e2e test uses a stand-in `code`. Confirm on the laptop: after setup, Settings shows
+  "VS Code · connected". If false, setup keeps offering Connect, and nothing is written anywhere else.
+- Not covered: VS Code Insiders, portable VS Code, a VS Code with no `code` command.
+- **Proposed, not built:** AIQ home could say when VS Code chats run with the "Local" target, which sends AIQ
+  nothing. VS Code's own chat history (`workspaceStorage/*/chatSessions`, counted for import) shows chats that
+  AIQ's hooks never saw.
+
 ## Conformance notes
 LOA F hot path (no model, no network, fail-open). Deviations: `seq` null for Copilot too; extension
 uses polling (`simplify:`); `DESIGN.md` not applicable (host-themed surfaces).

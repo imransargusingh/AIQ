@@ -7,9 +7,17 @@ import type { Snapshot, ToolFound } from "../types";
 import { Title, type Ctx } from "../ui";
 
 const STEPS = ["Privacy", "Tools", "Analysis", "Tips", "Your history"];
-const TOOL: Record<ToolFound["tool"], { name: string; where: string }> = {
-  "claude-code": { name: "Claude Code", where: "Tips show when Claude Code finishes a turn." },
-  copilot: { name: "GitHub Copilot", where: "Copilot CLI and VS Code agent mode share these hooks. Tips show in Copilot CLI's status line." },
+// adding: while AIQ connects it; offer: before. VS Code gets an extension, not hooks (VS Code's own command adds it).
+const HOOKS = { adding: "Adding AIQ's hooks. AIQ backs up the file first.", offer: "AIQ adds its hooks and backs up the file first." };
+const TOOL: Record<ToolFound["tool"], { name: string; where: string; adding: string; offer: string }> = {
+  "claude-code": { name: "Claude Code", where: "Tips show when Claude Code finishes a turn.", ...HOOKS },
+  copilot: { name: "GitHub Copilot", where: "Copilot CLI and VS Code agent mode share these hooks. Tips show in Copilot CLI's status line.", ...HOOKS },
+  vscode: {
+    name: "VS Code",
+    where: "Tips show in VS Code after a Copilot agent turn, when Copilot Chat is in Agent mode with the session target set to Copilot.",
+    adding: "Adding AIQ's extension with VS Code's own command.",
+    offer: "AIQ adds its extension with VS Code's own command.",
+  },
 };
 
 export function Setup(ctx: Ctx & { rerun: boolean; finish: (s: Snapshot) => void; close: () => void }) {
@@ -173,10 +181,10 @@ export function Setup(ctx: Ctx & { rerun: boolean; finish: (s: Snapshot) => void
                         </>
                       ) : t.present ? (
                         connecting ? (
-                          "Adding AIQ's hooks. AIQ backs up the file first."
+                          TOOL[t.tool].adding
                         ) : (
                           <>
-                            AIQ adds its hooks and backs up the file first. Or run <code>{t.install}</code> in a terminal to see the change.
+                            {TOOL[t.tool].offer} Or run <code>{t.install}</code> in a terminal to see the change.
                           </>
                         )
                       ) : t.hooked ? (

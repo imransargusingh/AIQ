@@ -6,7 +6,7 @@ import { Title, type Ctx } from "../ui";
 import type { Snapshot } from "../types";
 import { analysisLine } from "./Analysis";
 
-const TOOL = { "claude-code": "Claude Code", copilot: "GitHub Copilot" } as const;
+const TOOL = { "claude-code": "Claude Code", copilot: "GitHub Copilot", vscode: "VS Code" } as const;
 
 interface Step {
   done: boolean;

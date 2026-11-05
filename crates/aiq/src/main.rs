@@ -11,6 +11,7 @@ mod hook;
 mod import;
 mod install;
 mod install_copilot;
+mod install_vscode;
 mod judge;
 mod judge_eval;
 mod label;
@@ -22,7 +23,7 @@ use std::process::ExitCode;
 const HELP: &str = "AIQ - private coaching for how you work with AI agents.
 
 Usage:
-  aiq install [--yes]                 Connect every AI tool installed here (Claude Code, Copilot); shows each change first
+  aiq install [--yes]                 Connect every AI tool installed here (Claude Code, Copilot, VS Code); shows each change first
   aiq install --new [--yes]           After setup, connect only a tool installed since AIQ last looked (AIQ home
                                       and the core run this at start; a tool you disconnected stays disconnected)
   aiq install claude-code [--yes]     Add AIQ's hooks to ~/.claude/settings.json (shows the change first)
@@ -36,6 +37,8 @@ Usage:
   aiq endpoint                        Where the core listens (used by the VS Code extension)
   aiq install copilot [--yes]         Add AIQ's hooks and status line to Copilot (~/.copilot)
   aiq uninstall copilot [--yes]       Remove only AIQ's Copilot hooks and status line
+  aiq install vscode [--yes]          Add AIQ's VS Code extension (tips after a Copilot agent turn) with VS Code's code command
+  aiq uninstall vscode [--yes]        Remove AIQ's VS Code extension
   aiq config set daily-cap <n>        Most tips per day, all tools together (0-50, default 5)
   aiq config set copilot-tip-stays <next-prompt|two-prompts-or-5-min|until-opened>
   aiq config set copilot-tip-in-chat <on|off>   Copilot CLI tip also shown in the conversation (default on)
@@ -117,6 +120,8 @@ fn main() -> ExitCode {
         ["uninstall", "claude-code", ..] => install::uninstall(yes),
         ["install", "copilot", ..] => install_copilot::install(yes),
         ["uninstall", "copilot", ..] => install_copilot::uninstall(yes),
+        ["install", "vscode", ..] => install_vscode::install(yes),
+        ["uninstall", "vscode", ..] => install_vscode::uninstall(yes),
         ["status", rest @ ..] => cli::status(rest),
         ["show", id, ..] => cli::show(id),
         ["pause", ..] => cli::pause(true),

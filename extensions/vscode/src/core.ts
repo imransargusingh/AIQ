@@ -64,13 +64,19 @@ export const FEEDBACK_BUTTONS: [string, string][] = [
 export const SURFACE = "vscode";
 export const FRAME_TIMEOUT_MS = 500;
 
-/** Candidates for the aiq executable: the setting, PATH, then the usual install folders. */
+/**
+ * Candidates for the aiq executable: the setting, PATH, then the usual install folders. The installer's
+ * folder (~/.aiq/bin) comes right after PATH: install.ps1 adds it to the user PATH, but a VS Code that was
+ * already open keeps its old PATH until it restarts, and `aiq install` adds this extension to that VS Code.
+ */
 export function executableCandidates(setting: string, env: NodeJS.ProcessEnv, platform: string): string[] {
   const exe = platform === "win32" ? "aiq.exe" : "aiq";
   const out: string[] = [];
   if (setting.trim()) out.push(setting.trim());
   const sep = platform === "win32" ? ";" : ":";
   for (const dir of (env.PATH ?? env.Path ?? "").split(sep).filter(Boolean)) out.push(path.join(dir, exe));
+  const home = (platform === "win32" ? env.USERPROFILE : env.HOME) ?? os.homedir();
+  out.push(path.join(home, ".aiq", "bin", exe));
   if (platform === "win32" && env.LOCALAPPDATA) out.push(path.join(env.LOCALAPPDATA, "AIQ", "bin", exe));
   out.push(path.join(env.HOME ?? env.USERPROFILE ?? os.homedir(), ".local", "bin", exe));
   return out;

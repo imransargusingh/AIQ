@@ -355,7 +355,7 @@ fn run_aiq(args: &[&str]) -> Result<(bool, String, String), String> {
 
 /// The tools Settings can disconnect: the same names `aiq uninstall` takes.
 fn disconnectable(tool: &str) -> bool {
-    matches!(tool, "claude-code" | "copilot")
+    matches!(tool, "claude-code" | "copilot" | "vscode")
 }
 
 /// Settings' Disconnect: runs `aiq uninstall <tool> --yes`, which restores the tool's settings from AIQ's
@@ -719,7 +719,8 @@ mod tests {
         assert!(disconnectable("claude-code"));
         assert!(disconnectable("copilot"));
         assert!(!disconnectable("--all"));
-        assert!(!disconnectable("vscode"));
+        assert!(disconnectable("vscode"), "AIQ's VS Code extension");
+        assert!(!disconnectable("copilot-cli"));
     }
 
     #[test]

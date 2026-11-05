@@ -274,7 +274,7 @@ export function App() {
   const step = tour ? STEPS[tour.step] : null;
   // The tools AIQ is connected to and that are installed, not the tools it holds tasks from (an imported or
   // disconnected tool doesn't count).
-  const connected = snap?.setup.tools.filter((t) => t.hooked && t.present).map((t) => (t.tool === "copilot" ? "Copilot" : "Claude Code")) ?? [];
+  const connected = snap?.setup.tools.filter((t) => t.hooked && t.present).map((t) => ({ copilot: "Copilot", "claude-code": "Claude Code", vscode: "VS Code" })[t.tool]) ?? [];
 
   if (ctx && inSetup) {
     return (

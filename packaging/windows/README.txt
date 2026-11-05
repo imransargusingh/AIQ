@@ -1,4 +1,4 @@
-AIQ: a private coach for how you work with AI agents (GitHub Copilot, Claude Code).
+AIQ: a private coach for how you work with AI agents (GitHub Copilot, Claude Code, VS Code).
 
 Install (no admin rights needed):
   1. Unzip this folder anywhere.

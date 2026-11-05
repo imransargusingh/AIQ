@@ -872,6 +872,35 @@ await test("setup: a tool never installed says AIQ connects it once it is", asyn
   await page.context().close();
 });
 
+// VS Code found: setup adds AIQ's extension with the other tools, says where its tips show (Agent mode, target
+// Copilot: the "Local" target sends AIQ nothing), and Settings can remove it.
+await test("setup: VS Code gets AIQ's extension, says where tips show, and Settings can remove it", async () => {
+  const vscode = { tool: "vscode", hooked: false, present: true, install: "aiq install vscode" };
+  const page = await open("first-run", { edit: (s) => s.setup.tools.push({ ...vscode }) });
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.waitForFunction(() => document.querySelector("main")?.innerText.includes("VS Code · connected just now"));
+  const t = await page.locator("main").innerText();
+  assert.ok(t.includes("Tips show in VS Code after a Copilot agent turn, when Copilot Chat is in Agent mode with the session target set to Copilot."), t);
+  assert.deepEqual(await axe(page), []);
+  await page.context().close();
+
+  const s2 = await open("full", { hash: "#settings", edit: (s) => s.setup.tools.push({ ...vscode, hooked: true }) });
+  assert.match(await s2.locator("main").innerText(), /VS Code · connected/);
+  assert.ok((await s2.locator("nav .foot").innerText()).includes("VS Code"));
+  await s2.getByRole("button", { name: "Disconnect VS Code" }).click();
+  await s2.waitForFunction(() => document.querySelector("main")?.innerText.includes("VS Code · not connected"));
+  assert.ok((await s2.locator("main").innerText()).includes("extensions.json"));
+  await s2.context().close();
+
+  // Before connecting, the offer names VS Code's own command, not hooks or a backup.
+  const s3 = await open("full", { hash: "#settings", edit: (s) => s.setup.tools.push({ ...vscode }) });
+  await s3.getByRole("button", { name: "Run setup again" }).click();
+  await s3.getByRole("button", { name: "Continue" }).click();
+  const offer = await s3.locator("main").innerText();
+  assert.ok(offer.includes("AIQ adds its extension with VS Code's own command. Or run aiq install vscode"), offer);
+  await s3.context().close();
+});
+
 await test("setup: run again never reconnects by itself; Connect does", async () => {
   const page = await open("full", { hash: "#settings", edit: (s) => (s.setup.tools.find((x) => x.tool === "copilot").hooked = false) });
   await page.getByRole("button", { name: "Run setup again" }).click();
