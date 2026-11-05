@@ -464,7 +464,7 @@ fn e2e_install_with_no_tool_connects_every_tool_found_and_names_the_undo() {
     assert_eq!(changed, want.iter().map(|p| p.to_str().unwrap()).collect::<Vec<_>>(), "{out}");
     // A tool is connected, so background judging is on, with what is sent and how to undo it.
     assert!(out.contains("Analysis: turned on.") && out.contains("What is sent:"), "{out}");
-    assert!(out.contains("up to 50 new tasks a day") && out.contains("Undo: aiq config set analysis off"), "{out}");
+    assert!(out.contains("up to 500 new tasks a day") && out.contains("Undo: aiq config set analysis off"), "{out}");
 
     // Run again: nothing left to connect.
     let again = String::from_utf8_lossy(&e.run_clean(&["install", "--yes"]).stdout).to_string();

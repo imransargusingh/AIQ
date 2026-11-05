@@ -114,7 +114,7 @@ export function Setup(ctx: Ctx & { rerun: boolean; finish: (s: Snapshot) => void
             <header className="group">
               <Title>Your coach, on your computer only</Title>
               <p className="mute">
-                AIQ watches how you work with AI agents and suggests one small change at a time, so agents finish more of your work with less
+                AIQ learns from how you work with AI agents and suggests one small change at a time, so agents finish more of your work with less
                 redoing.
               </p>
             </header>
@@ -142,7 +142,7 @@ export function Setup(ctx: Ctx & { rerun: boolean; finish: (s: Snapshot) => void
         {step === 1 && (
           <>
             <header className="group">
-              <Title>Tools AIQ will watch</Title>
+              <Title>Tools AIQ connects to</Title>
               <p className="mute">AIQ reads your prompts and when each turn ends. If AIQ stops, your tools work as before.</p>
             </header>
             <div className="group">

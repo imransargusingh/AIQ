@@ -10,12 +10,13 @@ import { AccuracyPaused, Banners, ProjectPicker, Rung, Title, UpdateLine, type C
 import type { SetAside } from "../types";
 import { RightNow } from "./RightNow";
 import { GettingStartedCard, GettingStartedPage } from "./GettingStarted";
+import { AnalysisCard, analysisLine } from "./Analysis";
 
 export function Home(ctx: Ctx) {
   const { snap, go, announce, refresh } = ctx;
   const include = async (folder: string) => {
     const r = await api.includeFolder(folder);
-    announce(r.ok ? `AIQ will watch sessions in ${folderName(folder)} again.` : r.message);
+    announce(r.ok ? `AIQ will include sessions in ${folderName(folder)} again.` : r.message);
     if (r.ok) refresh();
   };
   const h = snap.home;
@@ -65,10 +66,11 @@ export function Home(ctx: Ctx) {
           {mc ? (
             <span style={{ font: "var(--t-heading)" }}>{rungLabel(mc)}</span>
           ) : (
-            <span className="meta">Not judged yet</span>
+            <span className="meta">{h.analysis.state === "off" ? "Analysis is off" : "Not analyzed yet"}</span>
           )}
           <span className="meta">
-            {h.judged > 0 ? `${plural(h.judged, "task")} judged in ${h.window_days} days` : "No task judged yet"}
+            {(ctx.project === null && analysisLine(h.analysis)) ||
+              (h.judged > 0 ? `${plural(h.judged, "task")} analyzed in ${h.window_days} days` : "No task analyzed yet")}
           </span>
           {mc && <span className="meta means">{RUNGS[mc - 1].means}</span>}
         </div>
@@ -108,26 +110,7 @@ export function Home(ctx: Ctx) {
               </p>
             </>
           ) : (
-            <>
-              <div className="hl">
-                <span style={{ font: "var(--t-title)" }}>{h.judged > 0 ? "Not enough judged tasks yet" : "Not judged yet"}</span>
-              </div>
-              <p className="mute">
-                {h.judged > 0
-                  ? `${sp.tasks} of ${c.split_min} judged tasks needed to show what agents finished${sp.uncertain > 0 ? ` (${plural(sp.uncertain, "task")} AIQ isn't sure about ${sp.uncertain === 1 ? "doesn't" : "don't"} count)` : ""}.`
-                  : snap.settings.judge === "auto"
-                    ? "AIQ judges your finished tasks in the background, through your own Claude Code or Copilot CLI."
-                    : "Judging is off, so AIQ can't place your tasks on a rung."}
-              </p>
-              {h.judged === 0 && snap.settings.judge !== "auto" && (
-                <p className="meta">
-                  <button className="btnlink" onClick={() => go("settings")}>Turn judging on in Settings</button>
-                </p>
-              )}
-              {h.judged > 0 && (
-                <progress max={c.split_min} value={Math.min(sp.tasks, c.split_min)} aria-label={`${sp.tasks} of ${c.split_min} judged tasks`} />
-              )}
-            </>
+            <AnalysisCard {...ctx} />
           )}
           <details className="how">
             <summary className="meta">How AIQ counts</summary>

@@ -101,7 +101,7 @@ suggests a next step. To do that, it asks an AI model to read the task.
   project instructions, so it cannot act on your computer or repos. A Copilot analysis call runs in its
   own empty AIQ folder, which AIQ deletes after reading the answer (to keep them instead:
   `aiq config set analysis-copilot-sessions keep`). A Claude Code analysis call saves no session.
-- **It uses your plan.** Each task takes two calls. AIQ analyzes at most 50 tasks a day by default; you
+- **It uses your plan.** Each task takes two calls. AIQ analyzes at most 500 tasks a day by default; you
   can set 0 to 500 (`aiq config set analysis-daily-tasks <n>`, or in Settings).
 - **Your account's rules apply.** On a work account, your organisation's policies, logging and
   retention cover these calls, as they cover anything else you send through that tool. The provider

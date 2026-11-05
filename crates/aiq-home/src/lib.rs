@@ -267,6 +267,8 @@ pub struct Home {
     pub most_common_rung: Option<u8>,
     /// Judging today: tasks sent, calls, cost where the tool reported it.
     pub judge_today: JudgeToday,
+    /// Where background analysis stands over the window's tasks (design first-run-analysis).
+    pub analysis: Analysis,
     pub imported_in_window: u32,
     /// Oldest first; the last one ends now.
     pub weeks: Vec<Week>,
@@ -274,6 +276,101 @@ pub struct Home {
     pub by_tool: Vec<(String, u32)>,
     pub set_aside: Vec<SetAside>,
     pub tips_today: u32,
+}
+
+/// Background analysis over the window's tasks, so "of N" matches the chart. Measured from the store; only
+/// `done_by_ms` is a forecast (waiting tasks at `daily` a day).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Analysis {
+    /// off · paused · blocked · working · today_done · done
+    pub state: &'static str,
+    /// Finished tasks of a tool AIQ analyzes through, with no analysis yet and not given up.
+    pub waiting: u32,
+    /// Tasks with a current analysis (same as `judged`).
+    pub analyzed: u32,
+    pub today: u32,
+    pub daily: u32,
+    pub done_by_ms: Option<i64>,
+    pub blocked: Option<Blocked>,
+    /// Home should start a run now: work waits, today's share is not used up, and no call in the last 10 minutes.
+    #[serde(skip)]
+    pub start: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Blocked {
+    /// claude-code or copilot-cli
+    pub tool: String,
+    /// missing or not_signed_in
+    pub why: String,
+}
+
+/// Failed calls after which the judge gives a task up (the judge's queue reads this too).
+pub const GIVE_UP: usize = 6;
+/// How long after the last call Home may start a run itself (the core's kicker runs every 10 minutes).
+pub const START_AFTER_MS: i64 = 10 * 60_000;
+
+/// The provider that analyzes a tool's tasks: the one that already saw it (VS Code agent mode fires Copilot's
+/// hooks). The judge's queue reads this too.
+pub fn analysis_provider(tool: &str) -> Option<&'static str> {
+    match tool {
+        "claude-code" => Some("claude-code"),
+        "copilot-cli" | "vscode" => Some("copilot-cli"),
+        _ => None,
+    }
+}
+
+/// Where analysis stands, from the window's tasks, the last week's calls and each provider's newest call.
+#[allow(clippy::too_many_arguments)] // simplify: one call site; a struct only if a second caller appears.
+pub fn analysis_state(
+    tasks: &[TaskRow],
+    calls: &[aiq_store::CallOutcome],
+    newest: &[(String, String, i64)],
+    on: bool,
+    paused: bool,
+    daily: u32,
+    today: u32,
+    now: Now,
+    idle_gap_ms: i64,
+) -> Analysis {
+    let mut fails: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    for c in calls.iter().filter(|c| c.outcome != "ok") {
+        *fails.entry(c.task_id.as_str()).or_default() += 1;
+    }
+    let pending: Vec<&TaskRow> = tasks
+        .iter()
+        .filter(|t| t.judgment.is_none() && t.last_ms + idle_gap_ms < now.utc_ms)
+        .filter(|t| analysis_provider(&t.tool).is_some())
+        .filter(|t| fails.get(t.task_id.as_str()).is_none_or(|n| *n < GIVE_UP))
+        .collect();
+    let waiting = pending.len() as u32;
+    let analyzed = tasks.iter().filter(|t| t.judgment.is_some()).count() as u32;
+    let blocked = newest
+        .iter()
+        .filter(|(_, o, _)| o == "missing" || o == "not_signed_in")
+        .find(|(p, _, _)| pending.iter().any(|t| analysis_provider(&t.tool) == Some(p.as_str())))
+        .map(|(p, o, _)| Blocked { tool: p.clone(), why: o.clone() });
+    let left = daily.saturating_sub(today);
+    let done_by_ms = (waiting > 0 && daily > 0).then(|| {
+        let after_today = waiting.saturating_sub(left);
+        now.utc_ms + i64::from(after_today.div_ceil(daily)) * DAY_MS
+    });
+    let state = if !on {
+        "off"
+    } else if paused {
+        "paused"
+    } else if blocked.is_some() {
+        "blocked"
+    } else if waiting == 0 {
+        "done"
+    } else if left == 0 {
+        "today_done"
+    } else {
+        "working"
+    };
+    let last = newest.iter().map(|(_, _, at)| *at).max();
+    let start = state == "working" && last.is_none_or(|at| now.utc_ms >= at + START_AFTER_MS);
+    Analysis { state, waiting, analyzed, today, daily, done_by_ms, blocked, start }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -630,6 +727,16 @@ fn empty(paths: &Paths, pack: &PackV1, now: Now) -> Snapshot {
             rungs: [0; 5],
             most_common_rung: None,
             judge_today: JudgeToday { tasks: 0, calls: 0, failed_calls: 0, cost_usd: None },
+            analysis: Analysis {
+                state: "off",
+                waiting: 0,
+                analyzed: 0,
+                today: 0,
+                daily: aiq_domain::rung::DEFAULT_DAILY_TASKS,
+                done_by_ms: None,
+                blocked: None,
+                start: false,
+            },
             imported_in_window: 0,
             weeks: (0..WEEKS).map(|i| Week { start_ms: week0 + i * 7 * DAY_MS, tasks: 0 }).collect(),
             by_tool: vec![],
@@ -792,6 +899,19 @@ fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()>
         t.tasks = calls.iter().map(|c| c.task_id.as_str()).collect::<BTreeSet<_>>().len() as u32;
         let costs: Vec<f64> = calls.iter().filter_map(|c| c.cost_usd).collect();
         t.cost_usd = (!costs.is_empty()).then(|| costs.iter().sum());
+        let week = store.judge_calls_since(now.utc_ms - 7 * DAY_MS).map_err(|e| e.to_string())?;
+        let newest = store.newest_judge_call_per_provider().map_err(|e| e.to_string())?;
+        s.home.analysis = analysis_state(
+            &tasks,
+            &week,
+            &newest,
+            s.settings.judge == "auto",
+            s.status.paused,
+            s.settings.judge_daily_tasks,
+            s.home.judge_today.tasks,
+            now,
+            pack.idle_gap_min as i64 * 60_000,
+        );
     }
     coaching(store, pack, now, &tasks, &judgments, s)?;
     // Every judged task in the window, for what happened after each next-step tip.
@@ -1461,5 +1581,131 @@ mod project_tests {
         let n = project_names([r"c:\repos\foresight", r"c:\repos\aiq"].into_iter(), &renames);
         assert_eq!(n[r"c:\repos\foresight"], ("Strategy".to_owned(), true));
         assert_eq!(n[r"c:\repos\aiq"], ("aiq".to_owned(), false));
+    }
+}
+
+#[cfg(test)]
+mod analysis_tests {
+    use super::*;
+
+    const NOW: i64 = 1_800_000_000_000;
+    const GAP: i64 = 30 * 60_000;
+
+    fn task(id: &str, tool: &str, last_ms: i64, analyzed: bool) -> TaskRow {
+        let mut t = row(
+            TaskSpan {
+                task_id: id.into(),
+                surface: tool.into(),
+                session: "s".into(),
+                first_ms: last_ms,
+                last_ms,
+                prompts: 1,
+                members: vec![],
+            },
+            None,
+            "imported",
+        );
+        if analyzed {
+            t.judgment = Some(TaskJudgment {
+                judged_ms: NOW,
+                state: "judged".into(),
+                current: 1,
+                potential: 2,
+                ceiling: 3,
+                current_confidence: 0.9,
+                potential_confidence: 0.9,
+                job: "code_change".into(),
+                task_type: None,
+                task_type_label: None,
+                coachable: true,
+                evidence: vec![],
+                gap: String::new(),
+                blockers: vec![],
+                provider: "copilot-cli".into(),
+                model: None,
+                read_prompts: 1,
+                read_chars: 1,
+                read_actions: true,
+                versions: String::new(),
+            });
+        }
+        t
+    }
+
+    fn call(task: &str, outcome: &str, at: i64) -> aiq_store::CallOutcome {
+        aiq_store::CallOutcome { task_id: task.into(), started_utc_ms: at, outcome: outcome.into(), cost_usd: None }
+    }
+
+    fn state(
+        tasks: &[TaskRow],
+        calls: &[aiq_store::CallOutcome],
+        newest: &[(&str, &str, i64)],
+        today: u32,
+    ) -> Analysis {
+        let newest: Vec<(String, String, i64)> =
+            newest.iter().map(|(p, o, at)| (p.to_string(), o.to_string(), *at)).collect();
+        analysis_state(tasks, calls, &newest, true, false, 50, today, Now { utc_ms: NOW, offset_min: 0 }, GAP)
+    }
+
+    #[test]
+    fn a_fresh_install_waits_on_every_finished_task_and_home_starts_the_first_run() {
+        let mut tasks: Vec<TaskRow> =
+            (0..221).map(|i| task(&format!("t{i}"), "copilot-cli", NOW - DAY_MS, false)).collect();
+        tasks.push(task("open", "copilot-cli", NOW - 60_000, false)); // still open: not counted
+        tasks.push(task("other", "cursor", NOW - DAY_MS, false)); // no provider: not counted
+        let a = state(&tasks, &[], &[], 0);
+        assert_eq!((a.state, a.waiting, a.analyzed), ("working", 221, 0));
+        assert!(a.start, "no call has ever run, so Home starts one");
+        // 50 today, then 171 at 50 a day: 4 more days.
+        assert_eq!(a.done_by_ms, Some(NOW + 4 * DAY_MS));
+    }
+
+    #[test]
+    fn analyzed_tasks_count_and_a_used_up_share_waits_for_tomorrow() {
+        let tasks: Vec<TaskRow> = (0..60).map(|i| task(&format!("t{i}"), "vscode", NOW - DAY_MS, i < 50)).collect();
+        let a = state(&tasks, &[], &[("copilot-cli", "ok", NOW - 60_000)], 50);
+        assert_eq!((a.state, a.waiting, a.analyzed), ("today_done", 10, 50));
+        assert!(!a.start);
+        assert_eq!(a.done_by_ms, Some(NOW + DAY_MS));
+        let done = state(&tasks[..50], &[], &[("copilot-cli", "ok", NOW - 60_000)], 50);
+        assert_eq!((done.state, done.done_by_ms), ("done", None));
+    }
+
+    #[test]
+    fn a_signed_out_or_missing_tool_blocks_only_while_its_newest_call_failed_that_way() {
+        let tasks = vec![task("a", "copilot-cli", NOW - DAY_MS, false)];
+        let a = state(
+            &tasks,
+            &[call("a", "not_signed_in", NOW - 60_000)],
+            &[("copilot-cli", "not_signed_in", NOW - 60_000)],
+            1,
+        );
+        assert_eq!(a.state, "blocked");
+        assert_eq!(a.blocked, Some(Blocked { tool: "copilot-cli".into(), why: "not_signed_in".into() }));
+        // A Claude Code failure doesn't block Copilot tasks.
+        let b = state(&tasks, &[], &[("claude-code", "missing", NOW - 60_000), ("copilot-cli", "ok", NOW - DAY_MS)], 0);
+        assert_eq!((b.state, b.blocked), ("working", None));
+        assert!(!b.start, "a call ran in the last 10 minutes, so the running kicker has it");
+        // Signed in again: the newest call worked.
+        let c = state(&tasks, &[], &[("copilot-cli", "ok", NOW - 60_000)], 1);
+        assert_eq!(c.state, "working");
+        assert!(!c.start, "a call ran in the last 10 minutes");
+    }
+
+    #[test]
+    fn a_task_given_up_after_six_failures_no_longer_waits() {
+        let tasks = vec![task("a", "copilot-cli", NOW - DAY_MS, false), task("b", "copilot-cli", NOW - DAY_MS, false)];
+        let calls: Vec<_> = (0..GIVE_UP as i64).map(|i| call("a", "timeout", NOW - DAY_MS + i)).collect();
+        assert_eq!(state(&tasks, &calls, &[("copilot-cli", "ok", NOW - DAY_MS)], 1).waiting, 1);
+    }
+
+    #[test]
+    fn off_and_paused_win_over_the_rest() {
+        let tasks = vec![task("a", "copilot-cli", NOW - DAY_MS, false)];
+        let n = Now { utc_ms: NOW, offset_min: 0 };
+        assert_eq!(analysis_state(&tasks, &[], &[], false, false, 50, 0, n, GAP).state, "off");
+        let p = analysis_state(&tasks, &[], &[], true, true, 50, 0, n, GAP);
+        assert_eq!(p.state, "paused");
+        assert!(!p.start);
     }
 }

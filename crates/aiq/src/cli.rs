@@ -125,7 +125,7 @@ fn status_text(paths: &Paths) -> (String, Vec<String>) {
             if s.paused {
                 out += "AIQ is paused. Nothing is captured and no tips show. Resume with: aiq resume\n";
             } else if events == 0 {
-                out += "No activity yet. Use Claude Code or Copilot as usual; AIQ watches quietly.\n";
+                out += "No activity yet. Use Claude Code or Copilot as usual; AIQ runs quietly in the background.\n";
             } else {
                 out += "AIQ is running.\n";
             }
@@ -587,7 +587,7 @@ pub fn include_folder(folder: &str) -> ExitCode {
         .and_then(|l| serde_json::from_str::<OkReply>(&l).ok());
     match r {
         Some(OkReply { ok: true, .. }) => {
-            println!("AIQ will watch sessions in {folder} again.");
+            println!("AIQ will include sessions in {folder} again.");
             ExitCode::SUCCESS
         }
         Some(OkReply { message, .. }) => {

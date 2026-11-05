@@ -467,7 +467,24 @@ summary: >-
   only to find transcripts, so a bare folder gives them nothing to do.
 - **Rule:** detect a tool by the tool (its program or the files only it writes), never by a folder others can make.
 
-### DC-029 — A coverage test that checks a step has some move, not that each failing fact has one
+### DC-029 — Background work whose start, progress and failure reason never reach the screen
+- **Signature:** 2026-11-05, first outside user on 0.1.4 (Copilot only, 221 imported tasks). Home said "Not judged
+  yet" and "AIQ judges your finished tasks in the background" with no progress, no "nothing to do", and no reason.
+  Read from the code: analysis ran only from the core's kicker, the core started only from a hook (so nothing ran
+  until the first prompt after setup), and a missing or signed-out Copilot CLI was written to `judge.log` only.
+- **Why it survives:** every piece was correct on its own (cap, back-off, lock, failure outcome in `judge_call`);
+  no view read them together, and the developer's laptop always had a running core and a signed-in tool.
+- **Control (product):** `aiq_home::Analysis` (state, waiting, analyzed, today, daily, finish day, blocked tool and
+  why) read from the same task list as the chart and from each provider's newest call; Home's card and Getting
+  started read only it. Home starts `aiq judge --auto` itself when work waits and no call ran for 10 minutes.
+- **Control (tests):** `aiq_home::analysis_tests` (fresh install, used-up share, signed-out tool, give-up, off and
+  paused) and the e2e "first-run analysis" test (working, today done, blocked with its one action).
+- **Sweep:** other background work with a silent failure: the kind label (`kind_label` calls, shown in Settings),
+  the update check (`check_error` shown in Settings > Updates). Both already surface a reason.
+- **Rule:** background work ships with a state the person can see: what it is doing, how far, what (if anything)
+  they must do, and why it stopped.
+
+### DC-030 — A coverage test that checks a step has some move, not that each failing fact has one
 - **Signature:** 2026-11-05, Imran asked how users move from Directed to Delegated. Reading `rung::delegated` against
   the pack showed a doc written in the chat, or a doc, question or run steered one step at a time (F12), had no
   next step, so its kind read "AIQ isn't sure yet". 11 job × step × fact gaps in all (docs F1/F12/F3, questions

@@ -68,7 +68,7 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <p>normally does.</p>
 <ul><li><strong>Sealed calls.</strong> The analysis call runs with no tools, none of your plugins or MCP servers, and no</li></ul>
 <p>project instructions, so it cannot act on your computer or repos. A Copilot analysis call runs in its own empty AIQ folder, which AIQ deletes after reading the answer (to keep them instead: <code>aiq config set analysis-copilot-sessions keep</code>). A Claude Code analysis call saves no session.</p>
-<ul><li><strong>It uses your plan.</strong> Each task takes two calls. AIQ analyzes at most 50 tasks a day by default; you</li></ul>
+<ul><li><strong>It uses your plan.</strong> Each task takes two calls. AIQ analyzes at most 500 tasks a day by default; you</li></ul>
 <p>can set 0 to 500 (<code>aiq config set analysis-daily-tasks &lt;n&gt;</code>, or in Settings).</p>
 <ul><li><strong>Your account&#x27;s rules apply.</strong> On a work account, your organisation&#x27;s policies, logging and</li></ul>
 <p>retention cover these calls, as they cover anything else you send through that tool. The provider sees the same kind of content it already saw when you did the task.</p>
