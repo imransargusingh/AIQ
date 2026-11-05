@@ -439,6 +439,8 @@ pub struct Settings {
     pub claude_model: String,
     pub copilot_model: Option<String>,
     pub keep_copilot_sessions: bool,
+    /// Answers each task needs (1 or 2, `SETTING_CALLS`).
+    pub calls: u8,
 }
 
 pub fn settings(store: &Store) -> Settings {
@@ -449,6 +451,10 @@ pub fn settings(store: &Store) -> Settings {
         claude_model: get(rung::SETTING_CLAUDE_MODEL).unwrap_or_else(|| rung::DEFAULT_CLAUDE_MODEL.into()),
         copilot_model: get(rung::SETTING_COPILOT_MODEL).filter(|m| m != "default"),
         keep_copilot_sessions: get(rung::SETTING_COPILOT_SESSIONS).as_deref() == Some("keep"),
+        calls: get(rung::SETTING_CALLS)
+            .and_then(|v| v.parse().ok())
+            .filter(|n| (1..=2).contains(n))
+            .unwrap_or(rung::DEFAULT_CALLS),
     }
 }
 
@@ -698,7 +704,8 @@ fn same_job_recent(judged: &HashMap<String, JudgmentRow>, job: &str, now_ms: i64
     judged.values().filter(|j| j.job == job && j.judged_utc_ms >= now_ms - 30 * DAY_MS).count() as u32
 }
 
-/// Judge one task: two runs through `provider`, then placement. Returns None when no run answered.
+/// Judge one task: `calls` answers (1 or 2) through `provider`, then placement. Returns None when no run
+/// answered. With one call a failed call is tried once more, so a task never costs more than two calls.
 /// Every call is recorded, answered or not.
 #[allow(clippy::too_many_arguments)]
 pub fn judge_task(
@@ -710,6 +717,7 @@ pub fn judge_task(
     turns: &[Turn],
     judged: &HashMap<String, JudgmentRow>,
     reprompt: &aiq_contracts::pack::RepromptParams,
+    calls: u8,
 ) -> aiq_store::Result<(Option<Judged>, Vec<CallResult>)> {
     let log = rung::log_facts(turns);
     let fence = format!("AIQ-QUOTE-{}", uuid::Uuid::new_v4().simple());
@@ -720,6 +728,9 @@ pub fn judge_task(
     let mut call_ids = Vec::new();
     let mut model = None;
     for run in 1..=2u8 {
+        if runs.len() >= calls as usize {
+            break;
+        }
         let session_id = uuid::Uuid::new_v4().to_string();
         if provider_name == COPILOT && record_judge_session(paths, &session_id).is_err() {
             // Never start a Copilot call AIQ could later mistake for the person's own session (US-11).
@@ -765,8 +776,8 @@ pub fn judge_task(
     }
     let job = runs[0].job.clone();
     let (facts, mut p) = rung::place(&runs, &log, same_job_recent(judged, &job, now_ms()));
-    if runs.len() < 2 {
-        // Consistency needs two runs; one answer is shown, never coached.
+    if runs.len() < calls as usize {
+        // Asked for two answers and got one: no consistency check, so shown, never coached.
         p.uncertain = true;
         p.coachable = false;
         p.state = rung::State::Uncertain;
@@ -900,8 +911,9 @@ pub fn run(r: &Run<'_>) -> Result<Report, String> {
             continue;
         }
         let provider = if name == CLAUDE { r.claude } else { r.copilot };
-        let (j, results) = judge_task(r.store, r.paths, provider, name, t, &turns, &judged_now, &pack.reprompt)
-            .map_err(|e| e.to_string())?;
+        let (j, results) =
+            judge_task(r.store, r.paths, provider, name, t, &turns, &judged_now, &pack.reprompt, set.calls)
+                .map_err(|e| e.to_string())?;
         allowed -= 1;
         rep.budget_left = rep.budget_left.saturating_sub(1);
         rep.cost_usd += results.iter().filter_map(|c| c.cost_usd).sum::<f64>();
@@ -1818,7 +1830,7 @@ fn type_runs(j: &JudgmentRow) -> Option<Vec<rung::TypeRun>> {
 /// stored confidence can say (the merge keeps the lower run's confidence, so below the bar = not confident).
 fn kind_other_words(j: &JudgmentRow) -> &'static str {
     match type_runs(j) {
-        Some(r) => rung::kind_other_cause(&j.job, &r).map_or("both runs said other", |c| c.words()),
+        Some(r) => rung::kind_other_cause(&j.job, &r).map_or("the analysis said other", |c| c.words()),
         None if j.task_type_confidence.is_some_and(|c| c < rung::TASK_TYPE_THRESHOLD) => {
             "not confident (runs not kept)"
         }
@@ -2631,6 +2643,47 @@ mod tests {
     }
 
     #[test]
+    fn one_call_setting_asks_once_and_coaches_on_that_answer() {
+        let e = env();
+        e.store.set_setting(rung::SETTING_CALLS, "1", 0).unwrap();
+        let (c, p) = (Fake::ok(2), Fake::ok(2));
+        let rep = go(&e, &c, &p, None);
+        assert_eq!(rep.judged, 4, "{rep:?}");
+        assert_eq!((c.calls(), p.calls()), (2, 2), "one call per task");
+        let j = &e.store.current_judgments().unwrap()["a1"];
+        assert_eq!((j.state.as_str(), j.coachable, j.current_rung), ("judged", true, 2));
+        assert!(!j.evidence.contains("Only one of the two"));
+    }
+
+    /// Times out on the first call, answers after.
+    struct Late(Fake, RefCell<u32>);
+    impl Provider for Late {
+        fn call(&self, req: &CallReq<'_>) -> CallResult {
+            *self.1.borrow_mut() += 1;
+            if *self.1.borrow() == 1 { CallResult::failed(Outcome::Timeout, 120_000) } else { self.0.call(req) }
+        }
+    }
+
+    #[test]
+    fn one_call_setting_tries_a_failed_call_once_more() {
+        let e = env();
+        e.store.set_setting(rung::SETTING_CALLS, "1", 0).unwrap();
+        e.store.set_setting(rung::SETTING_DAILY_TASKS, "1", 0).unwrap();
+        let p = Late(Fake::ok(2), RefCell::new(0));
+        let rep = go(&e, &Fake::ok(2), &p, None);
+        assert_eq!((rep.judged, *p.1.borrow()), (1, 2), "{rep:?}");
+        assert_eq!(e.store.current_judgments().unwrap()["v1"].state, "judged");
+    }
+
+    #[test]
+    fn calls_setting_takes_one_or_two() {
+        assert_eq!(rung::validate_setting(rung::SETTING_CALLS, "1"), Some(Ok("1".into())));
+        assert!(rung::validate_setting(rung::SETTING_CALLS, "3").unwrap().is_err());
+        let e = env();
+        assert_eq!(settings(&e.store).calls, rung::DEFAULT_CALLS);
+    }
+
+    #[test]
     fn queue_order_retry_and_give_up_rules() {
         let row = |id: &str, first: i64| TaskRow {
             task_id: id.into(),
@@ -3053,9 +3106,9 @@ mod tests {
         let g = grader("ask_research", "explain", 1);
         run_check(&e.store, &e.paths, &e.homes, &g, &g, NOW, 30, 1, CheckScope::NoJob).unwrap();
         let rep = check_report(&e.store).unwrap();
-        assert!(rep.contains("Why: both runs said other 4"), "{rep}");
+        assert!(rep.contains("Why: the analysis said other 4"), "{rep}");
         assert!(rep.contains("R1 (") && rep.contains("gives a job to 0 of 4"), "{rep}");
-        assert!(rep.contains("      both runs said other: ask_research 4"), "{rep}");
+        assert!(rep.contains("      the analysis said other: ask_research 4"), "{rep}");
         // The no-job sample takes only no-job judgments.
         let run = e.store.latest_check_run().unwrap().unwrap();
         assert_eq!(run.sample.len(), 4);
@@ -3083,7 +3136,10 @@ mod tests {
         run_check(&e.store, &e.paths, &e.homes, &g, &g, NOW + 1, 30, 2, CheckScope::All).unwrap();
         let rep = check_report(&e.store).unwrap();
         assert!(rep.contains("Kind of task, all 2 check runs (where the job matched): 0 of 8"), "{rep}");
-        assert!(rep.contains("both runs named the kind, but not confidently 8 (second reading also other 0)"), "{rep}");
+        assert!(
+            rep.contains("the analysis named the kind, but not confidently 8 (second reading also other 0)"),
+            "{rep}"
+        );
         assert!(rep.contains("K2 (") && rep.contains("gives a kind to 8; 0 of 8 (0-25%) -> 8 of 8"), "{rep}");
         assert!(rep.contains("K1 (") && rep.contains("gives a kind to 0;"), "{rep}");
     }

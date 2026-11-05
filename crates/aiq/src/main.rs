@@ -74,9 +74,12 @@ Usage:
                                       n runs each (default 2): accuracy and whether runs agree (no data of yours)
   aiq analyze --eval --replay           The same score from answers recorded in the repo (free, no model call)
   aiq analyze --eval-report             The latest eval again, and what moved since the one before
+  aiq analyze --eval --compare-calls [file]  One call vs two calls per task, scored on recorded answers
+                                      (a file from --eval --runs n --record <file>; free, no model call)
   aiq config set analysis <auto|off>     Analyze new tasks in the background (aiq install turns it on)
   aiq config set analysis-daily-tasks <n>  Most tasks analyzed per day (0-500, default 50)
   aiq config set analysis-copilot-sessions <delete|keep>  Delete AIQ's own Copilot analysis sessions (default)
+  aiq config set analysis-calls <1|2>  Model calls per analyzed task (default 2)
   aiq config set kind-label <auto|off>  When word matching can't tell a new task's kind, a small model
                                       names it from the first prompt, in the background (on while analysis is on)
   aiq config set kind-label-daily <n>  Most kind labels per day (0-500, default 20; one call each)
