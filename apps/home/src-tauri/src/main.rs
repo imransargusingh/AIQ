@@ -688,8 +688,11 @@ mod tests {
             src[start..].split(']').next().unwrap().split(',').map(str::trim).filter(|s| !s.is_empty()).collect();
         let build = include_str!("../build.rs");
         let cap: serde_json::Value = serde_json::from_str(include_str!("../capabilities/main.json")).unwrap();
-        let perms: Vec<String> =
+        let all: Vec<String> =
             cap["permissions"].as_array().unwrap().iter().map(|p| p.as_str().unwrap().to_string()).collect();
+        // Tauri's own permissions: only the title bar following the theme picked in Settings (theme.ts).
+        let (core, perms): (Vec<String>, Vec<String>) = all.into_iter().partition(|p| p.starts_with("core:"));
+        assert_eq!(core, ["core:window:allow-set-theme"], "the window may use no other Tauri permission");
         for c in &handler {
             assert!(build.contains(&format!("\"{c}\"")), "{c} missing from build.rs");
             assert!(
