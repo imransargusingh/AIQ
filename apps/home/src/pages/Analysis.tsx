@@ -47,7 +47,7 @@ function SoFar({ rungs }: { rungs: number[] }) {
       <div className="rmix sm" role="img" aria-label={rungs.map((v, i) => `${RUNGS[i].name} ${v}`).join(", ")}>
         {rungs.map((v, i) =>
           v > 0 ? (
-            <span key={i} className={`r${i + 1}`} style={{ flex: v, background: `var(--rung-${i + 1})` }} title={`${RUNGS[i].name}: ${plural(v, "task")}`}>
+            <span key={i} className={`rg-${i + 1}`} style={{ flex: v }} title={`${RUNGS[i].name}: ${plural(v, "task")}`}>
               {i + 1}
             </span>
           ) : null,

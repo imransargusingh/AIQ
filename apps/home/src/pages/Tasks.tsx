@@ -18,13 +18,14 @@ const COLS: { key: SortKey; label: string; right?: boolean }[] = [
   { key: "prompts", label: "Prompts", right: true },
 ];
 
-export function Tasks(ctx: Ctx) {
+/** `start`: open on this view (the tour's Day step). */
+export function Tasks({ start, ...ctx }: Ctx & { start?: View }) {
   const { snap } = ctx;
   const [sort, setSort] = useState<{ key: SortKey; dir: Dir }>({ key: "when", dir: -1 });
   const [job, setJob] = useState("All");
   const [sel, setSel] = useState(0);
   const hasKinds = snap.coaching.kinds.length > 0;
-  const [picked, setView] = useState<View | null>(null);
+  const [picked, setView] = useState<View | null>(start ?? null);
   // Kinds first when there are kinds; until then the list (nothing to group yet).
   const view: View = picked ?? (hasKinds ? "kinds" : "list");
   const body = useRef<HTMLTableSectionElement>(null);
@@ -58,8 +59,8 @@ export function Tasks(ctx: Ctx) {
         <div className="group">
           <Title>Tasks</Title>
           <p className="mute">
-            {plural(snap.home.tasks_in_window, "task")} in the last {snap.home.window_days} days, {snap.home.judged} judged.
-            {snap.home.judged < snap.home.tasks_in_window && " AIQ judges finished tasks through your own Claude Code or Copilot CLI, within a daily limit."}
+            {plural(snap.home.tasks_in_window, "task")} in the last {snap.home.window_days} days, {snap.home.judged} analyzed.
+            {snap.home.judged < snap.home.tasks_in_window && " AIQ analyzes finished tasks through your own Claude Code or Copilot CLI, within a daily limit."}
           </p>
         </div>
         {snap.tasks.length > 0 && (
@@ -147,7 +148,7 @@ export function Tasks(ctx: Ctx) {
                         {stateLabel(t.judgment.state) && <> <Chip>{stateLabel(t.judgment.state)}</Chip></>}
                       </>
                     ) : (
-                      "Not judged yet"
+                      "Not analyzed yet"
                     )}
                   </td>
                 </tr>
@@ -185,7 +186,7 @@ function Kinds(ctx: Ctx & { rows: KindRow[] }) {
             <tr>
               <th>Kind of task</th>
               <th>
-                <span className="rung" title="The rung most of this kind's judged tasks sit at.">Today</span>
+                <span className="rung" title="The rung most of this kind's analyzed tasks sit at.">Today</span>
               </th>
               <th>Could be</th>
               <th className="r">A week</th>
@@ -232,8 +233,8 @@ function Kinds(ctx: Ctx & { rows: KindRow[] }) {
         </table>
       </div>
       <p className="meta">
-        Most tasks first. The kind of each task and its rung are the judge's reading; counts are measured. Open a kind for its next step and a starter prompt.
-        {c.untyped > 0 && ` ${plural(c.untyped, "task")} judged before kinds existed ${c.untyped === 1 ? "isn't" : "aren't"} grouped.`}
+        Most tasks first. The kind of each task and its rung are AIQ's analysis; counts are measured. Open a kind for its next step and a starter prompt.
+        {c.untyped > 0 && ` ${plural(c.untyped, "task")} analyzed before kinds existed ${c.untyped === 1 ? "isn't" : "aren't"} grouped.`}
       </p>
     </>
   );

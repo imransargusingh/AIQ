@@ -27,8 +27,8 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <p>AIQ is a coach for how you work with AI agents such as GitHub Copilot and Claude Code. It runs on your own Windows computer. This page says, in plain words, what it keeps, what it sends, and what you can do about it. Anything marked <strong>Planned</strong> is not in this version.</p>
 <h2>The short version</h2>
 <ul><li><strong>Only you see your data.</strong> AIQ has no server, no account and no manager or team view.</li><li><strong>Your prompts stay on your computer.</strong> AIQ keeps them in a folder only your Windows account can read.</li><li><strong>Two things go out, both through tools you already use:</strong></li></ul>
-<ol><li>While judging is on (installing AIQ turns it on; one switch turns it off), AIQ asks <strong>your own</strong></li></ol>
-<p>Copilot or Claude Code to judge your finished tasks. That uses your plan, and your employer&#x27;s rules for that account apply.</p>
+<ol><li>While analysis is on (installing AIQ turns it on; one switch turns it off), AIQ asks <strong>your own</strong></li></ol>
+<p>Copilot or Claude Code to analyze your finished tasks. That uses your plan, and your employer&#x27;s rules for that account apply.</p>
 <ol><li>Once a day AIQ asks GitHub whether a newer AIQ is out. It sends nothing about you, and you can</li></ol>
 <p>turn it off.</p>
 <ul><li><strong>You are in control.</strong> Pause, export, delete or uninstall at any time. Uninstalling keeps your data</li></ul>
@@ -43,7 +43,7 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <p>used, which files it touched and which commands it ran. For live turns: counts only (tool calls by tool name, commands, files and helper agents), with no command text or file names. AIQ reads this from your tools&#x27; own history files on your computer when the agent stops, and only reads them. It does not store the agent&#x27;s replies or your file contents. Settings &gt; What AIQ records turns the live counts off.</p>
 <ul><li><strong>Past sessions</strong>, if you run <code>aiq import</code> (the installer starts it once). It reads your Claude</li></ul>
 <p>Code and Copilot CLI history from this computer. Runs that look automated (a script or app driving the tool) are set aside; <code>aiq include &lt;folder&gt;</code> brings a folder back.</p>
-<ul><li><strong>AIQ&#x27;s own results</strong>: tips shown, what you said about them, judgments of your tasks, and your</li></ul>
+<ul><li><strong>AIQ&#x27;s own results</strong>: tips shown, what you said about them, analyses of your tasks, and your</li></ul>
 <p>settings.</p>
 <h2>Where it is kept, and how it is protected</h2>
 <ul><li>Everything lives in <code>%USERPROFILE%\.aiq</code> on your computer. The files are readable only by your</li></ul>
@@ -56,25 +56,25 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <p>your AIQ history is gone. Your tools and your work are not affected.</p>
 <ul><li>AIQ keeps your data until you delete it.</li></ul>
 <h2>What leaves your computer</h2>
-<h3>1. Judge calls (only while judging is on)</h3>
+<h3>1. Analysis calls (only while analysis is on)</h3>
 <p>AIQ places each finished task on a ladder (Assisted, Directed, Delegated, Orchestrated, Factory) and suggests a next step. To do that, it asks an AI model to read the task.</p>
 <ul><li><strong>On from install, easy to turn off.</strong> When installing AIQ connects your tools (<code>install.ps1</code> or AIQ</li></ul>
-<p>home&#x27;s first-run setup), it turns judging on and prints what is sent, where, the daily cap and how to undo it. Turn it off any time: the switch in AIQ home <strong>Settings &gt; Judging</strong>, or <code>aiq config set judge off</code>. If you turned it off, installing again keeps it off. <code>aiq judge --dry-run</code> shows what would be sent and sends nothing.</p>
+<p>home&#x27;s first-run setup), it turns analysis on and prints what is sent, where, the daily cap and how to undo it. Turn it off any time: the switch in AIQ home <strong>Settings &gt; Analysis</strong>, or <code>aiq config set analysis off</code>. If you turned it off, installing again keeps it off. <code>aiq analyze --dry-run</code> shows what would be sent and sends nothing.</p>
 <ul><li><strong>What is sent:</strong> the task&#x27;s prompts (with secrets removed) and the summary of what the agent did</li></ul>
 <p>(tools, files, commands). Never your own edits or diffs.</p>
 <ul><li><strong>Where it goes:</strong> only to the tool that already saw the task, through your own sign-in.</li></ul>
 <p>Copilot tasks go to your Copilot CLI. Claude Code tasks go to your Claude Code. AIQ never sends a task to a different provider. If the tool is not available, the task waits.</p>
 <ul><li><strong>AIQ never reads or stores your sign-in.</strong> It runs your own copy of the tool, which signs in as it</li></ul>
 <p>normally does.</p>
-<ul><li><strong>Sealed calls.</strong> The judge call runs with no tools, none of your plugins or MCP servers, and no</li></ul>
-<p>project instructions, so it cannot act on your computer or repos. A Copilot judge call runs in its own empty AIQ folder, which AIQ deletes after reading the answer (to keep them instead: <code>aiq config set judge-copilot-sessions keep</code>). A Claude Code judge call saves no session.</p>
-<ul><li><strong>It uses your plan.</strong> Each task takes two calls. AIQ judges at most 500 tasks a day by default; you</li></ul>
-<p>can set 0 to 500 (<code>aiq config set judge-daily-tasks &lt;n&gt;</code>, or in Settings).</p>
+<ul><li><strong>Sealed calls.</strong> The analysis call runs with no tools, none of your plugins or MCP servers, and no</li></ul>
+<p>project instructions, so it cannot act on your computer or repos. A Copilot analysis call runs in its own empty AIQ folder, which AIQ deletes after reading the answer (to keep them instead: <code>aiq config set analysis-copilot-sessions keep</code>). A Claude Code analysis call saves no session.</p>
+<ul><li><strong>It uses your plan.</strong> Each task takes two calls. AIQ analyzes at most 500 tasks a day by default; you</li></ul>
+<p>can set 0 to 500 (<code>aiq config set analysis-daily-tasks &lt;n&gt;</code>, or in Settings).</p>
 <ul><li><strong>Your account&#x27;s rules apply.</strong> On a work account, your organisation&#x27;s policies, logging and</li></ul>
 <p>retention cover these calls, as they cover anything else you send through that tool. The provider sees the same kind of content it already saw when you did the task.</p>
-<ul><li><strong>Quick kind label of a new task.</strong> While judging is on, when AIQ can&#x27;t tell from your own past</li></ul>
-<p>tasks what kind of task you just started, it sends <strong>that task&#x27;s first prompt</strong> (secrets removed, cut to 4,000 characters) once to the same tool, sealed the same way, with a small model (Claude Code: <code>haiku</code>). The answer is only a job and a kind of task, so a tip can show when your turn ends. One call per new task, at most 20 a day by default (<code>aiq config set kind-label-daily &lt;n&gt;</code>, 0 to 500). On Copilot each label is one premium request. Turn labels off and keep judging: <code>aiq config set kind-label off</code>.</p>
-<ul><li><strong>Accuracy check, only when you run it.</strong> <code>aiq judge --check</code> asks a second model, through the same</li></ul>
+<ul><li><strong>Quick kind label of a new task.</strong> While analysis is on, when AIQ can&#x27;t tell from your own past</li></ul>
+<p>tasks what kind of task you just started, it sends <strong>that task&#x27;s first prompt</strong> (secrets removed, cut to 4,000 characters) once to the same tool, sealed the same way, with a small model (Claude Code: <code>haiku</code>). The answer is only a job and a kind of task, so a tip can show when your turn ends. One call per new task, at most 20 a day by default (<code>aiq config set kind-label-daily &lt;n&gt;</code>, 0 to 500). On Copilot each label is one premium request. Turn labels off and keep analysis on: <code>aiq config set kind-label off</code>.</p>
+<ul><li><strong>Accuracy check, only when you run it.</strong> <code>aiq analyze --check</code> asks a second model, through the same</li></ul>
 <p>sign-in, to re-read a sample of tasks so AIQ can measure how often the two agree. It also uses your plan; <code>--dry-run</code> shows the cost first.</p>
 <h3>2. The daily update check</h3>
 <ul><li>Once a day AIQ asks GitHub&#x27;s public release page whether a newer version of AIQ is published. It</li></ul>
@@ -93,19 +93,19 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <h2>Who can see your data</h2>
 <ul><li><strong>You.</strong> No one else: not your manager, your team, your company or the people who make AIQ. There is</li></ul>
 <p>no AIQ server to send it to.</p>
-<ul><li><strong>The AI provider</strong> sees judge calls, as described above, under the same account and rules as your</li></ul>
+<ul><li><strong>The AI provider</strong> sees analysis calls, as described above, under the same account and rules as your</li></ul>
 <p>normal use of that tool.</p>
 <ul><li><strong>Planned:</strong> opt-in, combined statistics across many users, so the team can see whether coaching</li></ul>
 <p>works. They are not built. If they come, they will be off unless you turn them on, will contain no prompt text, and can be turned off again.</p>
 <h2>Your controls</h2>
-<table><thead><tr><th>You want to</th><th>Do this</th></tr></thead><tbody><tr><td>Stop AIQ for a while</td><td><code>aiq pause</code>, then <code>aiq resume</code> (also in AIQ home)</td></tr><tr><td>See what AIQ has</td><td>AIQ home, <strong>Your data</strong>; <code>aiq show &lt;card-id&gt;</code> for one tip</td></tr><tr><td>Get a copy of everything</td><td><code>aiq export</code></td></tr><tr><td>Delete one prompt</td><td>AIQ home, <strong>Your data</strong></td></tr><tr><td>Delete only imported history</td><td><code>aiq forget --imported</code></td></tr><tr><td>Delete everything</td><td><code>aiq forget --all</code></td></tr><tr><td>Stop judging</td><td>AIQ home <strong>Settings &gt; Judging</strong>, or <code>aiq config set judge off</code></td></tr><tr><td>Judge fewer tasks a day</td><td><code>aiq config set judge-daily-tasks &lt;n&gt;</code></td></tr><tr><td>Stop quick kind labels</td><td><code>aiq config set kind-label off</code> (judging off stops them too)</td></tr><tr><td>Fewer tips</td><td><code>aiq config set daily-cap &lt;n&gt;</code> (default 5 a day), or turn one tip off</td></tr><tr><td>Be asked before updates</td><td><code>aiq config set update ask</code></td></tr><tr><td>Stop the daily update check</td><td>Settings, <strong>Don&#x27;t check for updates</strong>, or <code>aiq config set update off</code></td></tr><tr><td>Remove AIQ from your tools</td><td><code>aiq uninstall --all</code>. Your data stays; run <code>aiq forget --all</code> to delete it too</td></tr></tbody></table>
+<table><thead><tr><th>You want to</th><th>Do this</th></tr></thead><tbody><tr><td>Stop AIQ for a while</td><td><code>aiq pause</code>, then <code>aiq resume</code> (also in AIQ home)</td></tr><tr><td>See what AIQ has</td><td>AIQ home, <strong>Your data</strong>; <code>aiq show &lt;card-id&gt;</code> for one tip</td></tr><tr><td>Get a copy of everything</td><td><code>aiq export</code></td></tr><tr><td>Delete one prompt</td><td>AIQ home, <strong>Your data</strong></td></tr><tr><td>Delete only imported history</td><td><code>aiq forget --imported</code></td></tr><tr><td>Delete everything</td><td><code>aiq forget --all</code></td></tr><tr><td>Stop analyzing</td><td>AIQ home <strong>Settings &gt; Analysis</strong>, or <code>aiq config set analysis off</code></td></tr><tr><td>Analyze fewer tasks a day</td><td><code>aiq config set analysis-daily-tasks &lt;n&gt;</code></td></tr><tr><td>Stop quick kind labels</td><td><code>aiq config set kind-label off</code> (analysis off stops them too)</td></tr><tr><td>Fewer tips</td><td><code>aiq config set daily-cap &lt;n&gt;</code> (default 5 a day), or turn one tip off</td></tr><tr><td>Be asked before updates</td><td><code>aiq config set update ask</code></td></tr><tr><td>Stop the daily update check</td><td>Settings, <strong>Don&#x27;t check for updates</strong>, or <code>aiq config set update off</code></td></tr><tr><td>Remove AIQ from your tools</td><td><code>aiq uninstall --all</code>. Your data stays; run <code>aiq forget --all</code> to delete it too</td></tr></tbody></table>
 <p>When AIQ connects to a tool, it adds its own hook file or hook entries, backs up any settings file it edits, and lists every file it changed. <code>aiq uninstall --all</code> takes out the hooks, the PATH entry and the Start menu shortcut it added.</p>
 <h2>Terms of the private alpha</h2>
 <ul><li><strong>Invitation only.</strong> The alpha is a test with a small group of people. AIQ is free during it.</li><li><strong>It is early software.</strong> It may be wrong, slow or broken, and it may change or stop without</li></ul>
-<p>notice. Tips and judgments are suggestions, not assessments of you or your work.</p>
+<p>notice. Tips and analyses are suggestions, not assessments of you or your work.</p>
 <ul><li><strong>Windows only, unsigned.</strong> The program files are not code-signed yet (<strong>Planned</strong>), so Windows or</li></ul>
 <p>your company&#x27;s device rules may warn about or block them. Check your employer&#x27;s rules before you install software on a work computer.</p>
-<ul><li><strong>Your tools&#x27; terms still apply.</strong> Judge calls run through your own Copilot or Claude Code and count</li></ul>
+<ul><li><strong>Your tools&#x27; terms still apply.</strong> Analysis calls run through your own Copilot or Claude Code and count</li></ul>
 <p>as your use of them. Your plan&#x27;s limits, your provider&#x27;s terms and your employer&#x27;s policies apply.</p>
 <ul><li><strong>This page can change.</strong> Its history is kept in the AIQ repository. If a change affects what AIQ</li></ul>
 <p>keeps or sends, the alpha group will be told before the version that makes it.</p>
@@ -114,4 +114,4 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <ul><li><strong>License:</strong> not chosen yet. It will be added to the repository and this page before AIQ goes</li></ul>
 <p>beyond the private alpha.</p>
 <hr>
-<p><em>Where each statement comes from:</em> <code>docs/adr/0007-rung-judge-via-own-account.md</code> (judge), <code>docs/design/kind-label.md</code> (kind label), <code>docs/design/auto-update.md</code> (updates), <code>docs/design/private-alpha.md</code> (install, export, uninstall, help report), <code>docs/notes/note-20261031-encryption-deferred.md</code> (no encryption), <code>docs/security/privacy-review.md</code>, and the code on main (<code>crates/aiq/src/judge.rs</code>, <code>main.rs</code>, <code>crates/aiq-domain/src/secrets.rs</code>, <code>packaging/windows/</code>). Checked 2026-11-02 against main <code>6f89c0f</code>.</p></main></body></html>
+<p><em>Where each statement comes from:</em> <code>docs/adr/0007-rung-judge-via-own-account.md</code> (analysis), <code>docs/design/kind-label.md</code> (kind label), <code>docs/design/auto-update.md</code> (updates), <code>docs/design/private-alpha.md</code> (install, export, uninstall, help report), <code>docs/notes/note-20261031-encryption-deferred.md</code> (no encryption), <code>docs/security/privacy-review.md</code>, and the code on main (<code>crates/aiq/src/judge.rs</code>, <code>main.rs</code>, <code>crates/aiq-domain/src/secrets.rs</code>, <code>packaging/windows/</code>). Checked 2026-11-02 against main <code>6f89c0f</code>.</p></main></body></html>

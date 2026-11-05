@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api } from "./api";
 import type { Snapshot } from "./types";
-import { RUNGS, rungLabel, when } from "./format";
+import { RUNGS, rungLabel } from "./format";
 import { ver, type UpdatePhase } from "./updateNow";
 
 /** Nav pages, plus places outside the nav: one task's detail, one kind of task (from Home or Tasks), setup. */
@@ -31,6 +31,8 @@ export interface Ctx {
   setProject: (key: string | null) => void;
   /** "Update now" (design auto-update U5h): what it is doing, its last result, and the press itself. */
   update: { phase: UpdatePhase; msg: string | null; run: () => void };
+  /** Start the tour (design home-tour): Ctrl K, Settings and the getting-started list. */
+  startTour: () => void;
 }
 
 /** The picker's "All projects" value: a NUL can't be in any folder path, so no project key equals it. */
@@ -88,16 +90,12 @@ export function Banners({ snap, togglePause, refresh }: Pick<Ctx, "snap" | "togg
           <button className="btn" onClick={refresh}>Try again</button>
         </div>
       )}
-      {!s.core && !s.error && (
-        <div className="banner">
+      {s.core_state === "failed" && !s.error && (
+        <div className="banner bad" role="alert">
           <div className="grow">
-            {s.last_event_ms != null ? (
-              <>AIQ isn't running, so this shows what was stored at {when(s.last_event_ms, snap.now_ms, snap.offset_min)}.</>
-            ) : (
-              <>AIQ isn't running.</>
-            )}{" "}
-            It starts with your next prompt in Claude Code or Copilot.
+            <b>AIQ couldn't start.</b> It keeps trying.{s.core_error && <> <span className="meta">({s.core_error})</span></>}
           </div>
+          <button className="btn" onClick={refresh}>Try again</button>
         </div>
       )}
       {s.paused && (
@@ -291,11 +289,11 @@ export function AccuracyPaused({ snap, announce, refresh }: Pick<Ctx, "snap" | "
           <div className="grow">
             {p.kept_on ? (
               <>
-                <b>{p.label}:</b> next-step tips stay on because you chose to keep them, though a second model agreed with AIQ's judge only {p.agreed} of {p.checked} times.
+                <b>{p.label}:</b> next-step tips stay on because you chose to keep them, though a second model agreed with AIQ's analysis only {p.agreed} of {p.checked} times.
               </>
             ) : (
               <>
-                <b>{p.label}:</b> AIQ paused these next-step tips. A second model agreed with its judge only {p.agreed} of {p.checked} times, under 8 in 10. They come back by
+                <b>{p.label}:</b> AIQ paused these next-step tips. A second model agreed with AIQ's analysis only {p.agreed} of {p.checked} times, under 8 in 10. They come back by
                 themselves when a later accuracy check clears the bar.
               </>
             )}

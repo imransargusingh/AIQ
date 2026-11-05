@@ -27,7 +27,7 @@ export function Projects(ctx: Ctx) {
       <div className="head">
         <h2 id="pj">Your projects</h2>
         <span className="meta">
-          A project is the folder you worked in. Most tasks that could move up a rung first. Counts are measured; rungs are the judge's reading.
+          A project is the folder you worked in. Most tasks that could move up a rung first. Counts are measured; rungs are AIQ's analysis.
         </span>
       </div>
       <div className="tablewrap">
@@ -88,10 +88,10 @@ export function Projects(ctx: Ctx) {
                     ))}
                   </td>
                   <td className="r num">{p.tasks_in_window}</td>
-                  <td className={p.most_common_rung ? undefined : "mute"}>{p.most_common_rung ? <Rung r={p.most_common_rung} /> : "Not judged yet"}</td>
-                  <td className={`r num${enough ? "" : " mute"}`}>{enough ? `${pct(sp.finished, sp.tasks)}%` : p.judged > 0 ? "Too few judged" : "—"}</td>
+                  <td className={p.most_common_rung ? undefined : "mute"}>{p.most_common_rung ? <Rung r={p.most_common_rung} /> : "Not analyzed yet"}</td>
+                  <td className={`r num${enough ? "" : " mute"}`}>{enough ? `${pct(sp.finished, sp.tasks)}%` : p.judged > 0 ? "Too few analyzed" : "—"}</td>
                   <td className={`r num${enough ? "" : " mute"}`}>
-                    {enough ? `${sp.up} (${pct(sp.up, sp.tasks)}%)` : p.judged > 0 ? "Too few judged" : "—"}
+                    {enough ? `${sp.up} (${pct(sp.up, sp.tasks)}%)` : p.judged > 0 ? "Too few analyzed" : "—"}
                   </td>
                   <td>
                     {p.key !== "" && editing !== p.key && (
@@ -115,7 +115,7 @@ export function Projects(ctx: Ctx) {
         </table>
       </div>
       <p className="meta">
-        "Could move up a rung" counts judged tasks not finished by agents where the judge sees a next step at least one rung up. A project needs {min} judged tasks before AIQ shows its numbers.
+        "Could move up a rung" counts analyzed tasks not finished by agents where AIQ's analysis sees a next step at least one rung up. A project needs {min} analyzed tasks before AIQ shows its numbers.
       </p>
     </section>
   );

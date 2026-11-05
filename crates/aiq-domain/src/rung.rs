@@ -109,11 +109,11 @@ pub fn validate_setting(key: &str, value: &str) -> Option<Result<String, String>
     Some(match key {
         SETTING_JUDGE => match value {
             "auto" | "off" => Ok(value.to_owned()),
-            _ => Err("judge must be auto or off".into()),
+            _ => Err("analysis must be auto or off".into()),
         },
         SETTING_DAILY_TASKS => match value.parse::<u32>() {
             Ok(n) if n <= MAX_DAILY_TASKS => Ok(n.to_string()),
-            _ => Err(format!("judge-daily-tasks must be a whole number from 0 to {MAX_DAILY_TASKS}")),
+            _ => Err(format!("analysis-daily-tasks must be a whole number from 0 to {MAX_DAILY_TASKS}")),
         },
         SETTING_CLAUDE_MODEL | SETTING_CHECK_CLAUDE_MODEL if model_ok(value) => Ok(value.to_owned()),
         SETTING_COPILOT_MODEL | SETTING_CHECK_COPILOT_MODEL if value == "default" || model_ok(value) => {
@@ -124,7 +124,7 @@ pub fn validate_setting(key: &str, value: &str) -> Option<Result<String, String>
         }
         SETTING_COPILOT_SESSIONS => match value {
             "keep" | "delete" => Ok(value.to_owned()),
-            _ => Err("judge-copilot-sessions must be keep or delete".into()),
+            _ => Err("analysis-copilot-sessions must be keep or delete".into()),
         },
         _ => return None,
     })

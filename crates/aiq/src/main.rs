@@ -22,7 +22,9 @@ use std::process::ExitCode;
 const HELP: &str = "AIQ - private coaching for how you work with AI agents.
 
 Usage:
-  aiq install [--yes]                 Connect every AI tool found here (Claude Code, Copilot); shows each change first
+  aiq install [--yes]                 Connect every AI tool installed here (Claude Code, Copilot); shows each change first
+  aiq install --new [--yes]           After setup, connect only a tool installed since AIQ last looked (AIQ home
+                                      and the core run this at start; a tool you disconnected stays disconnected)
   aiq install claude-code [--yes]     Add AIQ's hooks to ~/.claude/settings.json (shows the change first)
   aiq uninstall claude-code [--yes]   Remove only AIQ's hooks
   aiq uninstall --all [--yes]         Disconnect AIQ from every tool; your data stays (aiq forget --all deletes it)
@@ -55,31 +57,31 @@ Usage:
   aiq config set keep-on.<job or job/type> <on|auto>  Keep next-step tips showing for a job or kind the
                                       accuracy check paused (auto: AIQ decides again)
   aiq tips                            Each next-step tip, whether it is on, and how often it would show
-                                      on your judged tasks (measured, no model call)
+                                      on your analyzed tasks (measured, no model call)
   aiq progress                        Each kind of task's typical rung, last 14 days against the 14
                                       before: which moved up or down (read-only, no model call)
-  aiq judge [--max <n>] [--only claude-code|copilot-cli] [--dry-run]
-                                      Judge your finished tasks through your own Claude Code / Copilot CLI
+  aiq analyze [--max <n>] [--only claude-code|copilot-cli] [--dry-run]
+                                      Analyze your finished tasks through your own Claude Code / Copilot CLI
                                       (--dry-run shows what would be sent, sends nothing)
-  aiq judge --check [--sample <n>] [--no-job | --job <job>] [--dry-run]
-                                      Check the judge: a second model reads n judged tasks blind (default 30)
+  aiq analyze --check [--sample <n>] [--no-job | --job <job>] [--dry-run]
+                                      Check the analysis: a second model reads n analyzed tasks blind (default 30)
                                       and AIQ reports how often they agree (--dry-run: sample and cost only)
-  aiq judge --check-report            The latest check's numbers again, and what AIQ measured itself
-  aiq judge --survey-other [--sample <n>] [--dry-run]
+  aiq analyze --check-report            The latest check's numbers again, and what AIQ measured itself
+  aiq analyze --survey-other [--sample <n>] [--dry-run]
                                       What kind of work your tasks with no job are (counts and generic labels only)
-  aiq judge --eval [--runs <n>] [--provider claude-code|copilot-cli] [--dry-run]
-                                      Score the judge on AIQ's fixed set of made-up tasks with known answers,
+  aiq analyze --eval [--runs <n>] [--provider claude-code|copilot-cli] [--dry-run]
+                                      Score the analysis on AIQ's fixed set of made-up tasks with known answers,
                                       n runs each (default 2): accuracy and whether runs agree (no data of yours)
-  aiq judge --eval --replay           The same score from answers recorded in the repo (free, no model call)
-  aiq judge --eval-report             The latest eval again, and what moved since the one before
-  aiq config set judge <auto|off>     Judge new tasks in the background (aiq install turns it on)
-  aiq config set judge-daily-tasks <n>  Most tasks judged per day (0-500, default 50)
-  aiq config set judge-copilot-sessions <delete|keep>  Delete AIQ's own Copilot judge sessions (default)
+  aiq analyze --eval --replay           The same score from answers recorded in the repo (free, no model call)
+  aiq analyze --eval-report             The latest eval again, and what moved since the one before
+  aiq config set analysis <auto|off>     Analyze new tasks in the background (aiq install turns it on)
+  aiq config set analysis-daily-tasks <n>  Most tasks analyzed per day (0-500, default 50)
+  aiq config set analysis-copilot-sessions <delete|keep>  Delete AIQ's own Copilot analysis sessions (default)
   aiq config set kind-label <auto|off>  When word matching can't tell a new task's kind, a small model
-                                      names it from the first prompt, in the background (on while judging is on)
+                                      names it from the first prompt, in the background (on while analysis is on)
   aiq config set kind-label-daily <n>  Most kind labels per day (0-500, default 20; one call each)
   aiq label --eval [--sample <n>] [--only claude-code|copilot-cli] [--dry-run]
-                                      Measure kind labels against the judge on your judged tasks (stores nothing)
+                                      Measure kind labels against AIQ's analysis on your analyzed tasks (stores nothing)
   aiq export [<folder>]               Copy everything AIQ stored to plain JSON files you can read
                                       (default: a new folder under AIQ's own folder)
   aiq forget --imported [--yes]       Delete only what aiq import added
@@ -90,7 +92,7 @@ Usage:
   aiq core                            Run the background core in this terminal
   aiq version
 
-Your data stays on this machine. Judge calls go only through your own Copilot or Claude Code, and
+Your data stays on this machine. Analysis calls go only through your own Copilot or Claude Code, and
 once a day AIQ asks GitHub for a newer release (unless updates are off). Privacy and terms: docs/privacy-and-terms.md in the AIQ repo.";
 
 fn main() -> ExitCode {
@@ -101,6 +103,7 @@ fn main() -> ExitCode {
         ["hook", host, event, ..] => hook::run(host, event),
         ["core", ..] => cli::core(),
         ["install"] | ["install", "--yes" | "-y"] => install::install_found(yes),
+        ["install", "--new", ..] => install::install_new(yes),
         ["install", "claude-code", ..] => install::install(yes),
         ["uninstall", "--all", ..] | ["uninstall", _, "--all", ..] => install::uninstall_all(yes),
         ["uninstall", "claude-code", ..] => install::uninstall(yes),
@@ -125,7 +128,8 @@ fn main() -> ExitCode {
         ["update", rest @ ..] => cli::update(rest),
         ["import", rest @ ..] => import::cli(rest),
         ["export", rest @ ..] => export::cli(rest),
-        ["judge", rest @ ..] => judge::cli(rest),
+        // `analyze` is the name users see; `judge` stays as a hidden alias so older commands and scripts keep working.
+        ["analyze" | "judge", rest @ ..] => judge::cli(rest),
         ["label", rest @ ..] => label::cli(rest),
         ["forget", "--imported", ..] | ["forget", _, "--imported", ..] => import::forget(yes),
         ["forget", "--all", ..] | ["forget", _, "--all", ..] => cli::forget_all(yes),

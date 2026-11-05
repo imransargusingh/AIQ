@@ -1,6 +1,6 @@
 // Getting started (UI review 2026-11-04, item 7): until Home has its first numbers, a short list that ticks
 // itself from the snapshot, so "is it working?" has an answer without asking the person to do anything. Every
-// line is measured: tools connected now, prompts captured, judging on or off, judged tasks against the minimum.
+// line is measured: tools connected now, prompts captured, analysis on, off or blocked, analyzed tasks against the minimum.
 import { plural, toolName, when } from "../format";
 import { Title, type Ctx } from "../ui";
 import type { Snapshot } from "../types";
@@ -91,7 +91,7 @@ function List({ items }: { items: Step[] }) {
 }
 
 /** The whole of Home before anything is captured. */
-export function GettingStartedPage(ctx: Pick<Ctx, "snap" | "go">) {
+export function GettingStartedPage(ctx: Pick<Ctx, "snap" | "go" | "startTour">) {
   return (
     <>
       <header className="group">
@@ -103,6 +103,8 @@ export function GettingStartedPage(ctx: Pick<Ctx, "snap" | "go">) {
       </section>
       <p className="meta">
         <button className="btnlink" onClick={() => ctx.go("data")}>See what AIQ has captured</button>
+        {" · "}
+        <button className="btnlink" onClick={ctx.startTour}>Take the tour</button>
       </p>
     </>
   );

@@ -6,7 +6,7 @@ import { api } from "../api";
 import type { Snapshot, ToolFound } from "../types";
 import { Title, type Ctx } from "../ui";
 
-const STEPS = ["Privacy", "Tools", "Judging", "Tips", "Your history"];
+const STEPS = ["Privacy", "Tools", "Analysis", "Tips", "Your history"];
 const TOOL: Record<ToolFound["tool"], { name: string; where: string }> = {
   "claude-code": { name: "Claude Code", where: "Tips show when Claude Code finishes a turn." },
   copilot: { name: "GitHub Copilot", where: "Copilot CLI and VS Code agent mode share these hooks. Tips show in Copilot CLI's status line." },
@@ -68,7 +68,7 @@ export function Setup(ctx: Ctx & { rerun: boolean; finish: (s: Snapshot) => void
     const r = await api.setSetting("judge", on ? "auto" : "off");
     if (r.ok) {
       setMsg(null);
-      announce(on ? "Judging is on." : "Judging is off. AIQ judges no new tasks.");
+      announce(on ? "Analysis is on." : "Analysis is off. AIQ analyzes no new tasks.");
       refresh();
     } else setMsg(r.message);
   };
@@ -150,7 +150,7 @@ export function Setup(ctx: Ctx & { rerun: boolean; finish: (s: Snapshot) => void
                 <div className="opt" key={t.tool}>
                   <span>
                     <b>{TOOL[t.tool].name}</b> ·{" "}
-                    {t.hooked
+                    {t.hooked && t.present
                       ? connected.includes(t.tool)
                         ? "connected just now"
                         : "connected"
@@ -158,10 +158,10 @@ export function Setup(ctx: Ctx & { rerun: boolean; finish: (s: Snapshot) => void
                         ? connecting
                           ? "connecting…"
                           : "found, not connected yet"
-                        : "not found on this computer"}
+                        : "not installed"}
                     <br />
                     <span className="meta">
-                      {t.hooked ? (
+                      {t.hooked && t.present ? (
                         <>
                           {TOOL[t.tool].where}
                           {connected.includes(t.tool) && (
@@ -179,8 +179,10 @@ export function Setup(ctx: Ctx & { rerun: boolean; finish: (s: Snapshot) => void
                             AIQ adds its hooks and backs up the file first. Or run <code>{t.install}</code> in a terminal to see the change.
                           </>
                         )
+                      ) : t.hooked ? (
+                        "An earlier AIQ added its hooks to this tool's settings. They do nothing until you install it. To remove them, use Disconnect in Settings."
                       ) : (
-                        "Install it, then run setup again from Settings."
+                        "If you install it later, AIQ connects it the next time AIQ starts."
                       )}
                     </span>
                   </span>
@@ -211,7 +213,7 @@ export function Setup(ctx: Ctx & { rerun: boolean; finish: (s: Snapshot) => void
                 {msg}
               </p>
             )}
-            {snap.setup.tools.every((t) => !t.hooked) && !connecting && (
+            {snap.setup.tools.every((t) => !(t.hooked && t.present)) && !connecting && (
               <p className="mute">AIQ isn't connected to a tool yet. You can finish setup now and connect one later.</p>
             )}
             {nav()}
@@ -221,11 +223,11 @@ export function Setup(ctx: Ctx & { rerun: boolean; finish: (s: Snapshot) => void
         {step === 2 && (
           <>
             <header className="group">
-              <Title>How AIQ will judge your tasks</Title>
+              <Title>How AIQ will analyze your tasks</Title>
               <p className="mute">
                 {snap.settings.judge === "auto"
-                  ? "Judging is on. AIQ turned it on when it connected your tools, so it can show which rung each task was done at and coach the next step."
-                  : "Judging is off. Without it AIQ can't tell the rung of a task, so it shows no next-step tips."}
+                  ? "Analysis is on. AIQ turned it on when it connected your tools, so it can show which rung each task was done at and coach the next step."
+                  : "Analysis is off. Without it AIQ can't tell the rung of a task, so it shows no next-step tips."}
               </p>
             </header>
             <p className="mute">
@@ -233,14 +235,14 @@ export function Setup(ctx: Ctx & { rerun: boolean; finish: (s: Snapshot) => void
               saved workflow runs it for you and others).
             </p>
             <p>
-              AIQ judges each finished task through the tool that already saw it, with your own sign-in: Claude Code tasks through your Claude
+              AIQ analyzes each finished task through the tool that already saw it, with your own sign-in: Claude Code tasks through your Claude
               Code, Copilot and VS Code tasks through your Copilot CLI. It sends the task's prompts and a summary of what the agent did, never
               your own edits. Up to {snap.settings.judge_daily_tasks} tasks a day, two calls each on your own plan. AIQ never reads or stores
               your sign-in.
             </p>
             <p className="meta">On a work account, your organisation's policies apply to these calls, including logging and retention.</p>
             <div className="row" style={{ justifyContent: "space-between" }}>
-              <span id="sjon">Judge finished tasks in the background</span>
+              <span id="sjon">Analyze finished tasks in the background</span>
               <button
                 className="switch"
                 role="switch"
@@ -250,7 +252,7 @@ export function Setup(ctx: Ctx & { rerun: boolean; finish: (s: Snapshot) => void
                 onClick={() => setJudge(snap.settings.judge !== "auto")}
               />
             </div>
-            <p className="meta">Change it any time in Settings, under Judging.</p>
+            <p className="meta">Change it any time in Settings, under Analysis.</p>
             {msg && (
               <p className="errtext" role="alert">
                 {msg}
@@ -276,8 +278,7 @@ export function Setup(ctx: Ctx & { rerun: boolean; finish: (s: Snapshot) => void
             </div>
             {down && (
               <p className="mute">
-                AIQ isn't running yet, so this stays at {snap.settings.daily_cap} for now. It starts with your next prompt in Claude Code or
-                Copilot, and you can change it in Settings then.
+                AIQ is starting, so this stays at {snap.settings.daily_cap} for now. You can change it in Settings later.
               </p>
             )}
             {msg && (

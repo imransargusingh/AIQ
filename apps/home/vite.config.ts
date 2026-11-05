@@ -8,5 +8,6 @@ export default defineConfig({
   base: "./",
   build: { target: "es2022", outDir: "dist", sourcemap: false },
   server: { port: 1420, strictPort: true },
-  test: { environment: "node", include: ["src/**/*.test.ts"] },
+  // css: the palette test reads styles.css as text (?raw); without it Vitest stubs every CSS import empty.
+  test: { environment: "node", include: ["src/**/*.test.ts"], css: true },
 });

@@ -45,7 +45,7 @@ step. Only you see any of this. There is no manager view, no team view and no AI
    Typing `.\install.ps1` on its own does not work: Windows refuses it because the script is not signed.
 
 That is all. AIQ connects to the AI tools it finds, lists every file it changed, reads your past
-sessions on this computer, turns on judging (below) and opens AIQ home. There is nothing to set up.
+sessions on this computer, turns on analysis (below) and opens AIQ home. There is nothing to set up.
 
 The program files are not code-signed yet, so Windows or your company's device rules may warn you.
 Check your employer's rules before installing on a work computer.
@@ -60,8 +60,8 @@ things do go out:
 
 | What | Where it goes | What it costs you | Turn it off |
 |---|---|---|---|
-| **Judging your finished tasks.** On from install. AIQ sends the task's prompts (secrets removed) and a summary of what the agent did. Never your files or diffs. | Only to the tool that did the task, through **your own** sign-in, in a sealed call with no tools, plugins or MCP servers. | Two calls per task, at most 500 tasks a day by default. On Copilot each call counts against your plan's premium requests. | AIQ home **Settings > Judging**, or `aiq config set judge off` |
-| **A quick label of a new task.** Only while judging is on, and only when AIQ can't tell the kind of task from your past ones. It sends that task's first prompt once (secrets removed). | Same tool, same sign-in, sealed the same way, with a small model. | At most 20 a day by default. On Copilot each label is one premium request. | `aiq config set kind-label off` (judging off stops it too) |
+| **Analyzing your finished tasks.** On from install. AIQ sends the task's prompts (secrets removed) and a summary of what the agent did. Never your files or diffs. | Only to the tool that did the task, through **your own** sign-in, in a sealed call with no tools, plugins or MCP servers. | Two calls per task, at most 500 tasks a day by default. On Copilot each call counts against your plan's premium requests. | AIQ home **Settings > Analysis**, or `aiq config set analysis off` |
+| **A quick label of a new task.** Only while analysis is on, and only when AIQ can't tell the kind of task from your past ones. It sends that task's first prompt once (secrets removed). | Same tool, same sign-in, sealed the same way, with a small model. | At most 20 a day by default. On Copilot each label is one premium request. | `aiq config set kind-label off` (analysis off stops it too) |
 | **A daily update check.** | GitHub's public release page. It sends nothing about you. | Nothing. | Settings **Don't check for updates**, or `aiq config set update off` |
 
 On a work account, your organisation's rules for that account cover these calls, as they cover
@@ -70,11 +70,11 @@ anything else you send through it. Full details: [AIQ privacy and terms](../priv
 
 ## What to expect in the first days
 
-- **Day one is mostly quiet.** AIQ reads your past sessions and judges your finished tasks in the
+- **Day one is mostly quiet.** AIQ reads your past sessions and analyzes your finished tasks in the
   background. You may see no tips at all at first. That is normal, not a fault.
 - **Tips are rare on purpose.** At most 5 a day, only when AIQ is confident, and never in the middle of
   your work. It shows a tip when the agent stops, or on the Copilot CLI status line.
-- **Some tips will be wrong.** This is early software. If a tip or a judgment doesn't fit how you work,
+- **Some tips will be wrong.** This is early software. If a tip or an analysis doesn't fit how you work,
   press **This doesn't fit** in AIQ home. AIQ also checks itself and pauses a kind of tip when its own
   accuracy drops.
 - **AIQ updates itself** when there is a new version, while AIQ home is closed. To update straight

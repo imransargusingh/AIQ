@@ -30,7 +30,7 @@ export function perWeek(n: number): string {
 export function judgedBy(tasks: TaskRow[]): string | null {
   const names = { "copilot-cli": "Copilot CLI", "claude-code": "Claude Code" } as const;
   const seen = [...new Set(tasks.flatMap((t) => (t.judgment ? [names[t.judgment.provider] ?? t.judgment.provider] : [])))].sort();
-  return seen.length ? `Judged by your ${seen.join(" and ")}` : null;
+  return seen.length ? `Analyzed by your ${seen.join(" and ")}` : null;
 }
 
 /** One kind of task as a row: its label, job, rungs (names then numbers) and the next step's habit. */
@@ -136,7 +136,7 @@ function LadderRows({ rows, d, open, label }: { rows: LadderRow[]; d: number; op
                       ) : r.recent != null ? (
                         <span title={`${r.recent} in the last ${d} days · ${r.earlier} before`}>{r.recent} · {r.earlier}</span>
                       ) : (
-                        <span title="Too few judged tasks in one half to say if it moved">{r.tasks} {r.tasks === 1 ? "task" : "tasks"}</span>
+                        <span title="Too few analyzed tasks in one half to say if it moved">{r.tasks} {r.tasks === 1 ? "task" : "tasks"}</span>
                       )}
                     </span>
                   </button>
@@ -167,14 +167,14 @@ export function LadderMap({ c, open }: { c: Coaching; open: (job: string, type: 
         {RUNGS.map((r, i) => (
           <span key={i} title={r.means}>{r.name}</span>
         ))}
-        <span className="lad-n" title={`Judged tasks, last ${d} days · the ${d} before`}>Tasks</span>
+        <span className="lad-n" title={`Analyzed tasks, last ${d} days · the ${d} before`}>Tasks</span>
       </div>
       {shown.length > 0 && <LadderRows rows={shown} d={d} open={open} label="Rung progress by kind of task" />}
       {all && more.length > 0 && <LadderRows rows={more} d={d} open={open} label="Kinds of task with too few tasks to say" />}
       {more.length > 0 && (
         <p className="meta">
           {more.length} {shown.length > 0 ? "more " : ""}
-          {more.length === 1 ? "kind" : "kinds"} of task: too few to say if {more.length === 1 ? "it" : "they"} moved. Each needs at least {c.progress_min} judged tasks in both halves.{" "}
+          {more.length === 1 ? "kind" : "kinds"} of task: too few to say if {more.length === 1 ? "it" : "they"} moved. Each needs at least {c.progress_min} analyzed tasks in both halves.{" "}
           <button className="btnlink" aria-expanded={all} onClick={() => setAll(!all)}>{all ? "Hide" : "Show"}</button>
         </p>
       )}
@@ -201,8 +201,6 @@ export function NextSteps({ rows, open }: { rows: KindRow[]; open: (k: KindRow) 
     </ul>
   );
 }
-
-const SEG = (i: number) => `var(--rung-${i + 1})`;
 
 /** "How you work with agents": one sentence, the share on each rung with its change, the weekly mix, and the
  *  kinds of task on the rung you pick. Counts are measured; rungs are the judge's reading. */
@@ -235,7 +233,13 @@ export function RungMix(props: {
       <div className="mix-wrap">
         <div className="group" style={{ gap: "var(--s3)" }}>
           <div className="rmix" role="img" aria-label={label}>
-            {rungs.map((v, i) => (v > 0 ? <span key={i} style={{ flex: v, background: SEG(i) }} title={`${rungLabel(i + 1)}: ${plural(v, "task")}${shares ? `, ${share(v)}%` : ""}`} /> : null))}
+            {rungs.map((v, i) =>
+              v > 0 ? (
+                <span key={i} className={`rg-${i + 1}`} style={{ flex: v }} title={`${rungLabel(i + 1)}: ${plural(v, "task")}${shares ? `, ${share(v)}%` : ""}`}>
+                  {v / total >= 0.04 ? i + 1 : ""}
+                </span>
+              ) : null,
+            )}
           </div>
           <div className="mix-lab" role="group" aria-label="Rungs: select one to see its kinds of task">
             {rungs.map((v, i) => {
@@ -243,7 +247,7 @@ export function RungMix(props: {
               return (
                 <button key={i} className="mix-r" aria-pressed={pick === i} disabled={v === 0} onClick={() => setPick(i)}
                   aria-label={`${rungLabel(i + 1)}: ${plural(v, "task")}${v > 0 && shares ? `, ${share(v)}%` : ""}${s && (v > 0 || p !== 0) ? `, ${p === 0 ? "same share" : `${p > 0 ? "up" : "down"} ${Math.abs(p)} points`} on the ${props.shiftDays} days before` : ""}`}>
-                  <span><i style={{ background: SEG(i) }} /><span title={RUNGS[i].means}>{name(i)}</span></span>
+                  <span><i className={`rg-${i + 1}`} aria-hidden="true">{i + 1}</i><span title={RUNGS[i].means}>{name(i)}</span></span>
                   <b className="num">{big(v)}</b>
                   <span className="num">
                     {shares || v === 0 ? plural(v, "task") : v === 1 ? "task" : "tasks"}
@@ -262,8 +266,8 @@ export function RungMix(props: {
               const few = n < props.weekMin;
               return (
                 <div key={w.start_ms} className={`mix-col${few ? " few" : ""}`} role="img"
-                  aria-label={`Week of ${w.label}: ${few ? "too few judged tasks to say" : w.rungs.map((v, i) => (v ? `${name(i)} ${Math.round((100 * v) / n)}%` : "")).filter(Boolean).join(", ")}`}>
-                  {!few && w.rungs.map((v, i) => (v > 0 ? <span key={i} style={{ height: `${(100 * v) / n}%`, background: SEG(i) }} /> : null))}
+                  aria-label={`Week of ${w.label}: ${few ? "too few analyzed tasks to say" : w.rungs.map((v, i) => (v ? `${name(i)} ${Math.round((100 * v) / n)}%` : "")).filter(Boolean).join(", ")}`}>
+                  {!few && w.rungs.map((v, i) => (v > 0 ? <span key={i} className={`rg-${i + 1}`} style={{ height: `${(100 * v) / n}%` }} /> : null))}
                 </div>
               );
             })}
@@ -280,11 +284,11 @@ export function RungMix(props: {
         </p>
       )}
       {!s && total > 0 && (
-        <p className="meta">The change shows once the last {props.shiftDays} days and the {props.shiftDays} before each have {props.shiftMin} judged tasks.</p>
+        <p className="meta">The change shows once the last {props.shiftDays} days and the {props.shiftDays} before each have {props.shiftMin} analyzed tasks.</p>
       )}
       {props.uncertain > 0 && (
         <p className="meta">
-          {props.uncertain} {props.uncertain === 1 ? "task" : "tasks"} the judge wasn't sure about {props.uncertain === 1 ? "is" : "are"} left out ·{" "}
+          {props.uncertain} {props.uncertain === 1 ? "task" : "tasks"} AIQ wasn't sure about {props.uncertain === 1 ? "is" : "are"} left out ·{" "}
           <button className="btnlink" onClick={props.seeUncertain}>See them</button>
         </p>
       )}

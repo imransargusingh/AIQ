@@ -400,6 +400,25 @@ fn e2e_config_daily_cap_validates() {
 }
 
 #[test]
+fn e2e_analysis_names_and_old_judge_names_both_work() {
+    let mut e = Env::new();
+    e.start_core();
+    // Users see "analysis"; the old "judge" names stay accepted so earlier commands keep working.
+    let set = e.run(&["config", "set", "analysis-daily-tasks", "7"], b"");
+    assert!(set.status.success(), "{}", String::from_utf8_lossy(&set.stdout));
+    assert!(String::from_utf8_lossy(&set.stdout).contains("Most tasks analyzed per day: 7."));
+    assert!(e.run(&["config", "set", "judge-daily-tasks", "8"], b"").status.success());
+    let bad = e.run(&["config", "set", "analysis", "maybe"], b"");
+    assert!(!bad.status.success());
+    assert!(String::from_utf8_lossy(&bad.stdout).contains("analysis must be auto or off"));
+    for verb in ["analyze", "judge"] {
+        let o = e.run(&[verb, "--dry-run"], b"");
+        let out = String::from_utf8_lossy(&o.stdout);
+        assert!(out.starts_with("AIQ analyzes each task you finish"), "{verb}: {out}");
+    }
+}
+
+#[test]
 fn e2e_no_color_card_is_plain_text() {
     let mut e = Env::new();
     e.start_core();

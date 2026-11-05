@@ -27,6 +27,7 @@ fn main() {
     aiq_core::control::finish_setup(&full).unwrap();
     let mut s = aiq_home::snapshot(&full, &pack, now);
     s.status.core = true;
+    s.status.core_state = aiq_home::CoreState::Running;
     s.status.read_ms = 12; // fixed, so screenshots and tests do not churn
     write(&out, "full", &s);
 
@@ -37,6 +38,7 @@ fn main() {
     aiq_core::control::finish_setup(&live).unwrap();
     let mut l = aiq_home::snapshot(&live, &pack, now);
     l.status.core = true;
+    l.status.core_state = aiq_home::CoreState::Running;
     l.status.read_ms = 12;
     write(&out, "live", &l);
 
@@ -47,11 +49,14 @@ fn main() {
     std::fs::write(out.join("task.json"), serde_json::to_string_pretty(&det).unwrap()).unwrap();
 
     s.status.core = false;
+    s.status.core_state = aiq_home::CoreState::Failed;
+    s.status.core_error = Some("AIQ-STORE-OPEN".into());
     write(&out, "down", &s);
 
     aiq_core::control::set_paused(&full, true, std::time::Duration::from_millis(20)).unwrap();
     let mut p = aiq_home::snapshot(&full, &pack, now);
     p.status.core = true;
+    p.status.core_state = aiq_home::CoreState::Running;
     p.status.read_ms = 12;
     write(&out, "paused", &p);
 
@@ -61,6 +66,7 @@ fn main() {
     aiq_core::control::finish_setup(&coached).unwrap();
     let mut c = aiq_home::snapshot(&coached, &pack, now);
     c.status.core = true;
+    c.status.core_state = aiq_home::CoreState::Running;
     c.status.read_ms = 12;
     write(&out, "coaching", &c);
 
@@ -70,12 +76,37 @@ fn main() {
     aiq_core::control::finish_setup(&moving).unwrap();
     let mut m = aiq_home::snapshot(&moving, &pack, now);
     m.status.core = true;
+    m.status.core_state = aiq_home::CoreState::Running;
     m.status.read_ms = 12;
     write(&out, "progress", &m);
+
+    // The tour's example data (design home-tour T2), shipped inside AIQ home: every view filled at once, with
+    // neutral folder names in place of the seed's.
+    let tour = Paths::at(&tmp.join("tour"));
+    seed::tour(&tour);
+    aiq_core::control::finish_setup(&tour).unwrap();
+    let mut t = aiq_home::snapshot(&tour, &pack, now);
+    t.status.core = true;
+    t.status.read_ms = 12;
+    // Fixed: four seeds open the store in turn, so its file size depends on when SQLite checkpoints.
+    t.data.store_bytes = 336_000;
+    write(&out, "tour", &t);
+    let path = out.join("tour.json");
+    let json = std::fs::read_to_string(&path).unwrap();
+    // Folder paths are JSON-escaped in the file (one backslash becomes two); project names are bare strings.
+    let esc = |p: &str| p.replace('\\', r"\\");
+    let neutral = json
+        .replace(&esc(seed::AIQ), &esc(r"c:\users\you\source\repos\shop-api"))
+        .replace(&esc(seed::FORESIGHT), &esc(r"c:\users\you\source\repos\docs-site"))
+        .replace("\"aiq\"", "\"shop-api\"")
+        .replace("\"foresight\"", "\"docs-site\"");
+    assert!(!neutral.to_lowercase().contains("imran"), "the shipped example names no real person");
+    std::fs::write(&path, neutral).unwrap();
 
     let empty = Paths::at(&tmp.join("empty"));
     let mut e = aiq_home::snapshot(&empty, &pack, now);
     e.status.core = true;
+    e.status.core_state = aiq_home::CoreState::Running;
     write(&out, "first-run", &e);
     e.setup.done = true;
     write(&out, "empty", &e);
