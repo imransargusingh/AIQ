@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AIQ: a private coach for working with AI agents</title>
+<meta name="description" content="AIQ shows you one small next step for working with AI agents such as GitHub Copilot. Everything stays on your computer. Private alpha for Windows.">
+<meta property="og:title" content="AIQ: a private coach for working with AI agents">
+<meta property="og:description" content="One small next step at a time. Everything stays on your computer. Private alpha for Windows.">
+<style>
+/* Tokens mirror DESIGN.md (AIQ home), so the page and the app look like one product. */
+:root{
+  --primary:#0b6b6b; --on-primary:#fff; --canvas:#f3f4f4; --canvas-soft:#eaeeee; --surface:#fff;
+  --ink:#1a1c1d; --ink-mute:#596164; --hairline:#d6dcdd; --tip:#f5c400; --on-tip:#1a1c1d;
+  --rung-1:#1baf7a; --rung-2:#255ebc; --rung-3:#8a86ee; --rung-4:#c2457f; --rung-5:#e86531;
+  --on-rung-1:#000; --on-rung-2:#fff; --on-rung-3:#000; --on-rung-4:#fff; --on-rung-5:#000;
+  --term:#1b1d1e; --on-term:#eceeee; --term-mute:#a3abae;
+  --f-text:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,sans-serif;
+  --f-display:"Segoe UI Variable Display","Segoe UI",system-ui,-apple-system,sans-serif;
+  --f-mono:"Cascadia Mono",Consolas,ui-monospace,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{
+  --primary:#5cc8c2; --on-primary:#0b1d1d; --canvas:#1b1d1e; --canvas-soft:#2d3234; --surface:#24282a;
+  --ink:#eceeee; --ink-mute:#a3abae; --hairline:#3a4143; --term:#111313; color-scheme:dark;
+}}
+@media (prefers-contrast:more){:root{
+  --primary:#ffd400; --on-primary:#000; --canvas:#000; --canvas-soft:#000; --surface:#000;
+  --ink:#fff; --ink-mute:#e8e8e8; --hairline:#fff; --term:#000;
+  --rung-1:#000; --rung-2:#000; --rung-3:#000; --rung-4:#000; --rung-5:#000;
+  --on-rung-1:#fff; --on-rung-2:#fff; --on-rung-3:#fff; --on-rung-4:#fff; --on-rung-5:#fff; color-scheme:dark;
+}}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--canvas);color:var(--ink);font:400 16px/1.55 var(--f-text)}
+a{color:var(--primary);text-underline-offset:3px}
+a:focus-visible,.btn:focus-visible{outline:2px solid var(--primary);outline-offset:3px;border-radius:4px}
+.wrap{max-width:1040px;margin:0 auto;padding:0 24px}
+header.top{display:flex;align-items:center;justify-content:space-between;padding:20px 0}
+.logo{font:600 20px/1 var(--f-display);color:var(--ink);text-decoration:none;display:flex;align-items:center;gap:10px}
+.mark{width:28px;height:28px;border-radius:8px;display:grid;grid-template-rows:repeat(5,1fr);overflow:hidden;border:1px solid var(--hairline)}
+.mark i:nth-child(1){background:var(--rung-5)} .mark i:nth-child(2){background:var(--rung-4)} .mark i:nth-child(3){background:var(--rung-3)}
+.mark i:nth-child(4){background:var(--rung-2)} .mark i:nth-child(5){background:var(--rung-1)}
+.top nav a{color:var(--ink-mute);text-decoration:none;margin-left:20px;font-size:15px}
+.top nav a:hover{color:var(--ink)}
+.hero{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:48px;align-items:center;padding:40px 0 56px}
+.pill{display:inline-block;font-size:13px;color:var(--ink-mute);border:1px solid var(--hairline);border-radius:999px;padding:3px 12px;margin-bottom:16px}
+h1{font:600 46px/1.08 var(--f-display);letter-spacing:-.6px;margin:0 0 16px}
+.lead{font-size:18px;color:var(--ink-mute);margin:0 0 28px;max-width:34ch}
+.ctas{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+.btn{display:inline-block;padding:11px 20px;border-radius:8px;font-weight:600;text-decoration:none;font-size:16px}
+.btn.primary{background:var(--primary);color:var(--on-primary)}
+.btn.ghost{color:var(--ink);border:1px solid var(--hairline);background:var(--surface)}
+.note{font-size:13px;color:var(--ink-mute);margin-top:12px}
+.term{background:var(--term);color:var(--on-term);border-radius:12px;padding:18px 20px;font:400 14px/1.6 var(--f-mono);border:1px solid var(--hairline);box-shadow:0 8px 28px rgba(10,20,20,.14)}
+.term .dots{display:flex;gap:6px;margin-bottom:14px}.term .dots i{width:10px;height:10px;border-radius:50%;background:#3a4143}
+.term .mute{color:var(--term-mute)}
+.term .badge{background:var(--tip);color:var(--on-tip);font-weight:700;padding:1px 6px;border-radius:4px}
+.term p{margin:0 0 6px}
+section{padding:48px 0;border-top:1px solid var(--hairline)}
+h2{font:600 28px/1.2 var(--f-display);letter-spacing:-.3px;margin:0 0 8px}
+.sub{color:var(--ink-mute);margin:0 0 28px;max-width:60ch}
+.ladder{display:flex;flex-direction:column-reverse;gap:8px;margin:0;padding:0;list-style:none}
+.ladder li{display:grid;grid-template-columns:44px 150px minmax(0,1fr);gap:16px;align-items:center;background:var(--surface);border:1px solid var(--hairline);border-radius:8px;padding:10px 16px 10px 10px}
+.num{width:44px;height:36px;border-radius:6px;display:grid;place-items:center;font-weight:700}
+.r1 .num{background:var(--rung-1);color:var(--on-rung-1)} .r2 .num{background:var(--rung-2);color:var(--on-rung-2)}
+.r3 .num{background:var(--rung-3);color:var(--on-rung-3)} .r4 .num{background:var(--rung-4);color:var(--on-rung-4)}
+.r5 .num{background:var(--rung-5);color:var(--on-rung-5)}
+@media (prefers-contrast:more){.num{border:1px solid #fff}}
+.ladder b{font-weight:600}
+.ladder span{color:var(--ink-mute)}
+.cols{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.card{background:var(--surface);border:1px solid var(--hairline);border-radius:8px;padding:20px}
+.card h3{font:600 17px/1.35 var(--f-text);margin:0 0 6px}
+.card p{margin:0;color:var(--ink-mute);font-size:15px}
+.step{font:600 13px/1 var(--f-text);color:var(--primary);margin-bottom:10px;display:block}
+.split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:32px;align-items:start}
+ul.plain{margin:0;padding:0;list-style:none}
+ul.plain li{padding:10px 0;border-bottom:1px solid var(--hairline)}
+ul.plain li:last-child{border-bottom:0}
+ul.plain b{font-weight:600}
+ul.plain span{display:block;color:var(--ink-mute);font-size:15px}
+code{font:400 14px/1.5 var(--f-mono);background:var(--canvas-soft);padding:1px 6px;border-radius:4px}
+ol.install{margin:0;padding-left:20px}
+ol.install li{margin-bottom:8px}
+.final{text-align:center}
+.final .ctas{justify-content:center}
+footer{padding:28px 0 40px;color:var(--ink-mute);font-size:14px;border-top:1px solid var(--hairline)}
+footer a{color:var(--ink-mute)}
+@media (max-width:820px){
+  .hero,.split{grid-template-columns:1fr;gap:32px}
+  .cols{grid-template-columns:1fr}
+  h1{font-size:36px}
+  .ladder li{grid-template-columns:44px minmax(0,1fr);row-gap:2px}
+  .ladder li .num{grid-column:1;grid-row:1 / span 2;align-self:start} .ladder li b,.ladder li span:not(.num){grid-column:2}
+  .top nav{display:none}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="logo" href="#"><span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>AIQ</a>
+    <nav aria-label="Page sections"><a href="#ladder">The ladder</a><a href="#how">How it works</a><a href="#private">Privacy</a><a href="#alpha">Alpha</a></nav>
+  </header>
+
+  <main>
+  <div class="hero">
+    <div>
+      <span class="pill">Private alpha · Windows</span>
+      <h1>Get more done with AI agents, one small step at a time.</h1>
+      <p class="lead">AIQ is a private coach for how you work with agents such as GitHub Copilot. It spots an easy next step and shows you one short tip.</p>
+      <div class="ctas">
+        <a class="btn primary" href="https://github.com/imransargusingh/AIQ/releases/latest">Download for Windows</a>
+        <a class="btn ghost" href="https://github.com/imransargusingh/AIQ">See the code</a>
+      </div>
+      <p class="note">Free. About two minutes to install. No admin rights.</p>
+    </div>
+    <div class="term" role="img" aria-label="Example: a Copilot CLI session ends and AIQ shows one tip">
+      <div class="dots" aria-hidden="true"><i></i><i></i><i></i></div>
+      <p class="mute">&gt; fix the date parsing bug in invoice.ts</p>
+      <p class="mute">  Edited src/invoice.ts (+6 −2)</p>
+      <p class="mute">  Done. Want me to run the tests?</p>
+      <p>&nbsp;</p>
+      <p><span class="badge">AIQ tip:</span> Give the agent the failing test and let it run it until it passes.</p>
+    </div>
+  </div>
+
+  <section id="ladder" aria-labelledby="ladder-h">
+    <h2 id="ladder-h">Five rungs, from asking to handing over</h2>
+    <p class="sub">AIQ places each task you finish on this ladder. Most people work on several rungs. The goal is that the tasks you repeat move up over a few weeks.</p>
+    <ol class="ladder">
+      <li class="r1"><span class="num">1</span><b>Assisted</b><span>You ask AI for answers or pieces, and you do the work.</span></li>
+      <li class="r2"><span class="num">2</span><b>Directed</b><span>You give the agent a clear goal, the context and the limits, and check what it gives you.</span></li>
+      <li class="r3"><span class="num">3</span><b>Delegated</b><span>You hand the agent a whole outcome with done criteria. It makes the changes; you review.</span></li>
+      <li class="r4"><span class="num">4</span><b>Orchestrated</b><span>A written spec drives several agents or steps, with automated checks between them.</span></li>
+      <li class="r5"><span class="num">5</span><b>Factory</b><span>A saved, versioned workflow runs the work, for you and for others.</span></li>
+    </ol>
+  </section>
+
+  <section id="how" aria-labelledby="how-h">
+    <h2 id="how-h">How it works</h2>
+    <p class="sub">Nothing to set up and nothing new to learn. You keep working in your own tools.</p>
+    <div class="cols">
+      <div class="card"><span class="step">1 · Install</span><h3>AIQ connects to your tools</h3><p>Copilot CLI, VS Code and Claude Code. It lists every file it changed, and one command undoes it all.</p></div>
+      <div class="card"><span class="step">2 · Work as usual</span><h3>AIQ analyzes finished tasks</h3><p>In the background, it learns the kinds of task you do and which rung each one is on.</p></div>
+      <div class="card"><span class="step">3 · Try one tip</span><h3>A short tip, when it helps</h3><p>At most 5 a day, never in the middle of your work. AIQ home has a starter prompt for it you can copy.</p></div>
+    </div>
+  </section>
+
+  <section id="private" aria-labelledby="private-h">
+    <div class="split">
+      <div>
+        <h2 id="private-h">Private by design</h2>
+        <p class="sub">Only you see your results. There is no manager view, no team view and no AIQ server.</p>
+        <ul class="plain">
+          <li><b>Your prompts stay on your computer.</b><span>AIQ keeps them in your user folder and sends no telemetry.</span></li>
+          <li><b>Analysis uses your own sign-in.</b><span>Each finished task goes to the same AI tool that did it, with secrets removed. Never your files or diffs. On Copilot it uses premium requests.</span></li>
+          <li><b>You can switch it off.</b><span>Analysis and the daily update check each have their own off switch in Settings.</span></li>
+        </ul>
+        <p class="note"><a href="https://github.com/imransargusingh/AIQ/blob/main/docs/privacy-and-terms.md">Read the full privacy and terms</a></p>
+      </div>
+      <div class="card">
+        <h3>Install</h3>
+        <ol class="install">
+          <li>Download the <code>aiq-…-windows-x64.zip</code> from the <a href="https://github.com/imransargusingh/AIQ/releases/latest">latest release</a> and unzip it.</li>
+          <li>Double-click <code>install.cmd</code>.</li>
+        </ol>
+        <p class="note">AIQ updates itself. To undo fully, run <code>aiq uninstall --all</code>, then <code>aiq forget --all</code> to delete your AIQ data.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="alpha" aria-labelledby="alpha-h">
+    <h2 id="alpha-h">This is an early alpha</h2>
+    <p class="sub">Thanks for trying it early. A few things to know first.</p>
+    <div class="cols">
+      <div class="card"><h3>Day one is quiet</h3><p>AIQ needs some finished tasks before it shows a tip. No tips at first is normal.</p></div>
+      <div class="card"><h3>Some tips won't fit</h3><p>Press <b>This doesn't fit</b> in AIQ home. AIQ also pauses a kind of tip on its own when its accuracy drops.</p></div>
+      <div class="card"><h3>Windows may warn you</h3><p>The files are not code-signed yet. On a work computer, check your employer's rules first.</p></div>
+    </div>
+  </section>
+
+  <section class="final" aria-labelledby="final-h">
+    <h2 id="final-h">Try it on your next task</h2>
+    <p class="sub" style="margin-left:auto;margin-right:auto">Questions or ideas? <a href="https://github.com/imransargusingh/AIQ/issues">Open an issue</a> or contact imrans.</p>
+    <div class="ctas"><a class="btn primary" href="https://github.com/imransargusingh/AIQ/releases/latest">Download for Windows</a></div>
+  </section>
+  </main>
+
+  <footer>AIQ · private alpha · <a href="https://github.com/imransargusingh/AIQ">GitHub</a> · <a href="https://github.com/imransargusingh/AIQ/blob/main/docs/privacy-and-terms.md">Privacy and terms</a></footer>
+</div>
+</body>
+</html>

@@ -1,0 +1,61 @@
+name: site
+
+# The public landing page (site/index.html) on GitHub Pages: https://imransargusingh.github.io/AIQ/
+# Pull requests run the check only; a push to main checks and then publishes.
+# One-time setup: Settings > Pages > Source: GitHub Actions.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - ".github/workflows/site.yml"
+  pull_request:
+    paths:
+      - "site/**"
+      - ".github/workflows/site.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      # Wording rules for anything users read: analyze, never judge; connected, never watching.
+      - name: Wording - no judge or watch words on the page
+        run: |
+          if grep -rniE 'judg|watch' site/; then
+            echo "::error::site/ uses judge or watch wording; write analyze or connected instead"
+            exit 1
+          fi
+      - name: Self-contained - no external scripts, styles or fonts
+        run: |
+          if grep -rniE '<script[^>]+src=|<link[^>]+stylesheet|@import|fonts\.googleapis' site/; then
+            echo "::error::site/ must stay a single self-contained page"
+            exit 1
+          fi
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
