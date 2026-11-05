@@ -32,7 +32,7 @@ function steps({ snap, go }: Pick<Ctx, "snap" | "go">): Step[] {
     },
     {
       done: seen,
-      title: seen ? "Prompts captured" : "No prompt captured yet",
+      title: seen ? "Prompts arriving" : "No prompt yet",
       detail: seen
         ? `${plural(snap.data.prompts, "prompt")} and ${plural(h.tasks_in_window, "task")} so far${tools_seen.length ? ` in ${tools_seen.join(", ")}` : ""}${snap.status.last_event_ms ? `, the last ${when(snap.status.last_event_ms, snap.now_ms, snap.offset_min)}` : ""}.`
         : "Your next prompt in a connected tool shows here.",
@@ -102,7 +102,7 @@ export function GettingStartedPage(ctx: Pick<Ctx, "snap" | "go" | "startTour">) 
         <List items={steps(ctx)} />
       </section>
       <p className="meta">
-        <button className="btnlink" onClick={() => ctx.go("data")}>See what AIQ has captured</button>
+        <button className="btnlink" onClick={() => ctx.go("data")}>See what AIQ has saved</button>
         {" · "}
         <button className="btnlink" onClick={ctx.startTour}>Take the tour</button>
       </p>

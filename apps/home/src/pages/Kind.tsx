@@ -142,7 +142,7 @@ export function Kind(ctx: Ctx & { kindId: string }) {
         </section>
       ) : k.state === "flagged" && k.next ? (
         <section className="card" aria-labelledby="ks">
-          <h2 id="ks">You flagged this step</h2>
+          <h2 id="ks">You said this step doesn't fit</h2>
           <p className="mute">AIQ doesn't suggest “{k.next.habit}” for {k.label} any more.</p>
           <div className="row">
             <button className="btn" onClick={() => flag("undo")}>Undo</button>

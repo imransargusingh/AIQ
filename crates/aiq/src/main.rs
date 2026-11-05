@@ -28,11 +28,11 @@ Usage:
   aiq install claude-code [--yes]     Add AIQ's hooks to ~/.claude/settings.json (shows the change first)
   aiq uninstall claude-code [--yes]   Remove only AIQ's hooks
   aiq uninstall --all [--yes]         Disconnect AIQ from every tool; your data stays (aiq forget --all deletes it)
-  aiq status                          What AIQ is doing, cards today, store size, hook times
+  aiq status                          What AIQ is doing, tips today, store size, hook times
   aiq status --report                 Write that to a file you can send for help (no prompt text,
                                       folders shown as folder-1, folder-2)
-  aiq show <card-id>                  A card, why it showed, and the prompts it counted
-  aiq pause | aiq resume              Stop or restart capture and tips
+  aiq show <card-id>                  A tip, why it showed, and the prompts behind it
+  aiq pause | aiq resume              Pause or resume AIQ (saving and tips)
   aiq endpoint                        Where the core listens (used by the VS Code extension)
   aiq install copilot [--yes]         Add AIQ's hooks and status line to Copilot (~/.copilot)
   aiq uninstall copilot [--yes]       Remove only AIQ's Copilot hooks and status line
@@ -47,7 +47,7 @@ Usage:
   aiq helpful|not|snooze|off <card-id>  Tell AIQ what you thought of a tip (snooze: 7 days; off: never again)
   aiq on <tip-id>                     Let AIQ show a tip you turned off
   aiq flag <job>/<type> <move> <reason> [note]  This doesn't fit: stop a next step for one kind of task
-  aiq unflag <job>/<type> <move>      Undo a flag
+  aiq unflag <job>/<type> <move>      Undo that: AIQ may suggest the step again
   aiq config set next-rung-tips <auto|on|off>  Next-step tips for kinds of task you repeat (auto: AIQ
                                       turns them off itself if it guesses the kind of task wrong)
   aiq config set copilot-mid-turn <on|off>  Count Copilot messages you send while the agent is working
@@ -70,7 +70,7 @@ Usage:
   aiq analyze --survey-other [--sample <n>] [--dry-run]
                                       What kind of work your tasks with no job are (counts and generic labels only)
   aiq analyze --eval [--runs <n>] [--provider claude-code|copilot-cli] [--dry-run]
-                                      Score the analysis on AIQ's fixed set of made-up tasks with known answers,
+                                      Measure the analysis on AIQ's fixed set of made-up tasks with known answers,
                                       n runs each (default 2): accuracy and whether runs agree (no data of yours)
   aiq analyze --eval --replay           The same score from answers recorded in the repo (free, no model call)
   aiq analyze --eval-report             The latest eval again, and what moved since the one before

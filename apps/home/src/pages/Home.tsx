@@ -100,7 +100,7 @@ export function Home(ctx: Ctx) {
               </div>
               {sp.up > 0 && sp.up_to != null && (
                 <p>
-                  <b>{pct(sp.up, sp.tasks)}%</b> could move up a rung, most often to <Rung r={sp.up_to} />.
+                  <b>{pct(sp.up, sp.tasks)}%</b> have an easy next step, most often to <Rung r={sp.up_to} />.
                 </p>
               )}
               <p className="meta">
@@ -244,7 +244,7 @@ export function Home(ctx: Ctx) {
             <span className="hero">
               <b className="num">{mv.up}</b>
               <span className="meta">
-                of {mv.read} {mv.read === 1 ? "kind" : "kinds"} moved up a rung{mv.down > 0 ? ` · ${mv.down} moved down` : ""}
+                of {mv.read} {mv.read === 1 ? "kind" : "kinds"} moved up a rung{mv.down > 0 ? ` · ${mv.down} at a lower rung` : ""}
               </span>
             </span>
           )}

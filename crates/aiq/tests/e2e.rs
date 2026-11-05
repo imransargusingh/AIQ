@@ -131,7 +131,7 @@ fn e2e_reword_three_times_one_card_second_run_held() {
     let text = msg["systemMessage"].as_str().unwrap();
     assert!(
         text.starts_with(
-            "\u{1b}[22;33m\u{1b}[1;30;43mAIQ tip:\u{1b}[22;49;33m you've reworded this request 3 times without adding new details."
+            "\u{1b}[22;33m\u{1b}[1;30;43mAIQ tip:\u{1b}[22;49;33m this request went round 3 times. The agent may need one new detail."
         ),
         "{text}"
     );
@@ -435,7 +435,7 @@ fn e2e_no_color_card_is_plain_text() {
     let o = ch.wait_with_output().unwrap();
     let msg: Value = serde_json::from_slice(&o.stdout).expect("a card at this Stop");
     let text = msg["systemMessage"].as_str().unwrap();
-    assert!(text.starts_with("AIQ tip: you've reworded"), "{text}");
+    assert!(text.starts_with("AIQ tip: this request went round"), "{text}");
     assert!(!text.contains('\u{1b}'), "NO_COLOR means no escape codes");
 }
 

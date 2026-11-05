@@ -23,12 +23,12 @@ export function reasons(l: Live): { ok: boolean; text: string }[] {
   const work = l.did_is_lookup ? "looked things up itself" : "made the edits itself";
   if (l.did_turns.length > 0) out.push({ ok: true, text: `Agent ${work} (${turns(l.did_turns)})` });
   else if (l.steps.some((s) => s.rung !== null)) out.push({ ok: false, text: l.did_is_lookup ? "Agent hasn't looked anything up yet" : "Agent hasn't edited anything yet" });
-  if (l.brief === false) out.push({ ok: false, text: "First prompt was short: say the goal, context and limits up front" });
-  if (l.prompts >= 3) out.push({ ok: false, text: `Asked a piece at a time: ${plural(l.prompts, "prompt")}` });
+  if (l.brief === false) out.push({ ok: false, text: "Short first prompt: the goal, context and limits help the agent" });
+  if (l.prompts >= 3) out.push({ ok: false, text: `Step by step: ${plural(l.prompts, "prompt")}` });
   if (l.subagents > 0) out.push({ ok: true, text: `Split across ${plural(l.subagents, "sub-agent")}` });
   l.unrecorded.forEach((t, i) => {
     const why = WHY[l.unrecorded_why[i] ?? ""];
-    out.push({ ok: false, text: `Turn ${t}: not recorded${why ? ` (${why})` : ""}` });
+    out.push({ ok: false, text: `Turn ${t}: no details${why ? ` (${why})` : ""}` });
   });
   return out;
 }
@@ -45,7 +45,7 @@ function Trace({ l }: { l: Live }) {
     d += started ? ` H${X(i)} V${Y(s.rung)}` : `M${X(i)},${Y(s.rung)}`;
     started = true;
   });
-  const label = l.steps.map((s) => `turn ${s.turn}: ${s.rung ? rungLabel(s.rung) : "no estimate"}${s.recorded ? "" : " (not recorded)"}`).join("; ");
+  const label = l.steps.map((s) => `turn ${s.turn}: ${s.rung ? rungLabel(s.rung) : "no estimate"}${s.recorded ? "" : " (no details)"}`).join("; ");
   return (
     <svg className="rn-trace" width={L + W + 24} height={H + 20} viewBox={`0 0 ${L + W + 24} ${H + 20}`} role="img" aria-label={`Estimate after each turn: ${label}`}>
       {[1, 2, 3, 4].map((r) => (

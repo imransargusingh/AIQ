@@ -13,7 +13,7 @@ export const KIND_STATE: Record<KindState, string> = {
   right_rung: "Right rung",
   blocked: "Capped by a blocker",
   not_sure: "AIQ isn't sure yet",
-  flagged: "You flagged the step",
+  flagged: "You said it doesn't fit",
 };
 
 /** Whole percent of `part` in `n`. */
@@ -178,7 +178,7 @@ export function LadderMap({ c, open }: { c: Coaching; open: (job: string, type: 
           <button className="btnlink" aria-expanded={all} onClick={() => setAll(!all)}>{all ? "Hide" : "Show"}</button>
         </p>
       )}
-      {m.down > 0 && <p className="sr">{m.down} {m.down === 1 ? "kind" : "kinds"} of task moved down.</p>}
+      {m.down > 0 && <p className="sr">{m.down} {m.down === 1 ? "kind" : "kinds"} of task at a lower rung.</p>}
     </>
   );
 }

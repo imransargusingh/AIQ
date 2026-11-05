@@ -14,7 +14,7 @@ use std::process::ExitCode;
 /// What each table holds, in words, for README.txt. A table not named here still exports.
 const ABOUT: &[(&str, &str)] = &[
     ("surface_session", "each Claude Code, Copilot or VS Code session AIQ saw"),
-    ("event", "each prompt and each agent turn end AIQ recorded (times and ids)"),
+    ("event", "each prompt and each agent turn end AIQ saved (times and ids)"),
     ("content", "the text of your prompts, with secrets already replaced by [secret removed]"),
     ("signal", "each time a coaching rule matched one of your tasks"),
     ("card_decision", "each decision to show, hold or drop a tip"),
@@ -32,7 +32,7 @@ const ABOUT: &[(&str, &str)] = &[
     ("turn_action", "what the agent did in each turn, read from the tool's own log (counts and tool names only)"),
     ("set_aside_session", "each session AIQ left out as automated (folder and time, no text)"),
     ("tip_feedback", "each answer you gave to a tip (helpful, not for me, snooze, off, on)"),
-    ("guidance_flag", "each \"This doesn't fit\" you flagged or undid"),
+    ("guidance_flag", "each \"This doesn't fit\" you chose or undid"),
     ("judge_check_run", "each aiq analyze --check run"),
     ("judge_check", "each second reading in an accuracy check (ids and yes/no answers only)"),
 ];

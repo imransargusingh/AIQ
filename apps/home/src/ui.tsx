@@ -101,7 +101,7 @@ export function Banners({ snap, togglePause, refresh }: Pick<Ctx, "snap" | "togg
       {s.paused && (
         <div className="banner">
           <div className="grow">
-            <b>AIQ is paused.</b> Nothing is captured and no tips show.
+            <b>AIQ is paused.</b> It saves nothing new and shows no tips.
           </div>
           <button className="btn" onClick={togglePause}>
             Resume <kbd>P</kbd>

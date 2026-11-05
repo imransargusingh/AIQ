@@ -136,7 +136,7 @@ export function Tasks({ start, ...ctx }: Ctx & { start?: View }) {
                     {toolName(t.tool)} {t.origin === "imported" && <Chip>Imported</Chip>}
                   </td>
                   <td className="r num">{t.prompts}</td>
-                  <td title={t.folder ?? "Not recorded for tasks before this version"}>{projectName(snap, projectOf(t))}</td>
+                  <td title={t.folder ?? "Unknown for tasks before this version"}>{projectName(snap, projectOf(t))}</td>
                   <td className={t.job ? undefined : "mute"}>
                     {jobOf(t)}
                     {t.judgment?.task_type_label && <span className="meta"> · {t.judgment.task_type_label}</span>}

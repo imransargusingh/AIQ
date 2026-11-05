@@ -48,7 +48,7 @@ export function Projects(ctx: Ctx) {
               const enough = sp.tasks >= min;
               return (
                 <tr key={p.key}>
-                  <td title={p.key || "Tasks from before AIQ recorded the folder, or from tools that don't send it"}>
+                  <td title={p.key || "Tasks from before AIQ saved the folder, or from tools that don't send it"}>
                     {editing === p.key ? (
                       <form
                         className="row"

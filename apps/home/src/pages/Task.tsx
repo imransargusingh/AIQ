@@ -101,7 +101,7 @@ export function Task(ctx: Ctx & { taskId: string }) {
           {toolName(t.tool)} · started {when(t.first_ms, snap.now_ms, snap.offset_min)}
           {minutes > 0 && <>, {plural(minutes, "minute")}</>} · {plural(t.prompts, "prompt")}
           {" · "}
-          <span title={t.folder ?? undefined}>{t.folder ? folderName(t.folder) : "Folder not recorded"}</span>
+          <span title={t.folder ?? undefined}>{t.folder ? folderName(t.folder) : "Folder unknown"}</span>
           {t.origin === "imported" && <> · <Chip>Imported</Chip></>}
         </p>
       </header>
@@ -152,8 +152,8 @@ export function Task(ctx: Ctx & { taskId: string }) {
         <ol className="prompts">
           {prompts.map((p) => (
             <li key={p.event_id}>
-              <span className="meta num">{p.ts_ms != null ? clock(p.ts_ms, snap.offset_min) : "Time not recorded"}</span>
-              <div className={p.text ? "wrap" : "mute"}>{p.text ? <Content text={p.text} /> : p.deleted ? "Text deleted" : "No text captured"}</div>
+              <span className="meta num">{p.ts_ms != null ? clock(p.ts_ms, snap.offset_min) : "Time unknown"}</span>
+              <div className={p.text ? "wrap" : "mute"}>{p.text ? <Content text={p.text} /> : p.deleted ? "Text deleted" : "No text saved"}</div>
             </li>
           ))}
         </ol>
