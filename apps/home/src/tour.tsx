@@ -68,7 +68,7 @@ export const STEPS: TourStep[] = [
     page: "settings",
     target: ".secnav",
     title: "Settings",
-    body: "Tips, analysis, what AIQ keeps, updates and tools. Take this tour again from Settings or Ctrl K.",
+    body: "Tips, analysis, what AIQ keeps, updates, theme and tools. Take this tour again from Settings or Ctrl K.",
   },
 ];
 

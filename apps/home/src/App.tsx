@@ -16,6 +16,7 @@ import { Task } from "./pages/Task";
 import { Setup } from "./pages/Setup";
 import { Kind } from "./pages/Kind";
 import { STEPS, Tour, TourOffer, exampleSnapshot } from "./tour";
+import { THEMES, readTheme, saveTheme, type Theme } from "./theme";
 import { CHECK_POLL_MS, CHECK_WAIT_MS, checkOutcome, outcomeText, ver, type UpdatePhase } from "./updateNow";
 
 const REFRESH_MS = 15_000;
@@ -54,6 +55,7 @@ export function App() {
   const [palette, setPalette] = useState(false);
   const [said, setSaid] = useState("");
   const [singleKeys, setSingleKeysState] = useState(readPref);
+  const [theme, setThemeState] = useState<Theme>(readTheme);
   // The project Home, Tasks and a kind's page show; all until the person picks one (design project-filter P3).
   const [project, setProjectState] = useState<string | null>(null);
   const gPending = useRef(0);
@@ -181,6 +183,12 @@ export function App() {
     announce(on ? "Single-key shortcuts on." : "Single-key shortcuts off.");
   };
 
+  const setTheme = (t: Theme) => {
+    setThemeState(t);
+    saveTheme(t);
+    announce(t === "system" ? "Theme matches Windows." : `Theme: ${t}.`);
+  };
+
   useEffect(() => {
     refresh();
     // No reads while the window is minimised or hidden; catch up as soon as it shows again.
@@ -260,7 +268,7 @@ export function App() {
     [snap, announce],
   );
   const update = useMemo(() => ({ phase: upd.phase, msg: upd.msg, run: updateNow }), [upd.phase, upd.msg, updateNow]);
-  const ctx: Ctx | null = snap && { snap: tour?.snap ?? snap, go, openTask, openKind, announce, togglePause, refresh, project, setProject, update, startTour };
+  const ctx: Ctx | null = snap && { snap: tour?.snap ?? snap, go, openTask, openKind, announce, togglePause, refresh, project, setProject, update, startTour, theme, setTheme };
   // The tour shows every project of the example; the person's project choice is back after it.
   const one: Ctx | null = ctx && { ...ctx, snap: tour ? ctx.snap : scoped(ctx.snap, project), project: tour ? null : project };
   const step = tour ? STEPS[tour.step] : null;
@@ -431,6 +439,7 @@ function Palette({ ctx, onClose }: { ctx: Ctx; onClose: () => void }) {
       { label: "Delete everything…", run: () => ctx.go("data") },
       { label: "Run setup again", run: () => ctx.go("setup") },
       { label: "Take the tour", run: ctx.startTour },
+      ...THEMES.filter((t) => t.v !== ctx.theme).map((t) => ({ label: t.v === "system" ? "Theme: match Windows" : `Theme: ${t.label.toLowerCase()}`, run: () => ctx.setTheme(t.v) })),
       { label: "Refresh", run: ctx.refresh },
       ...(ctx.snap.update.supported ? [{ label: "Update AIQ now", run: ctx.update.run }] : []),
     ],

@@ -8,6 +8,7 @@ import type { Settings as S } from "../types";
 import { jobName, plural, when } from "../format";
 import { AccuracyPaused, Banners, Title, type Ctx } from "../ui";
 import { ver } from "../updateNow";
+import { THEMES } from "../theme";
 
 const STAYS: { v: S["copilot_tip_stays"]; label: string; note?: string }[] = [
   { v: "next-prompt", label: "Until your next prompt", note: "Default" },
@@ -30,6 +31,7 @@ const SECTIONS = [
   ["st7", "What AIQ keeps"],
   ["st3", "Analysis"],
   ["st6", "Updates"],
+  ["st8", "Theme"],
   ["st5", "Tools"],
 ] as const;
 
@@ -476,6 +478,20 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
         ) : (
           <p className="mute">This copy of AIQ wasn't installed from a release, so it doesn't update itself.</p>
         )}
+      </section>
+
+      <section className="card" aria-labelledby="st8">
+        <h2 id="st8" tabIndex={-1}>Theme</h2>
+        <div className="row">
+          <div className="seg" role="group" aria-labelledby="st8">
+            {THEMES.map((t) => (
+              <button key={t.v} aria-pressed={ctx.theme === t.v} onClick={() => ctx.setTheme(t.v)}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <span className="meta">Match Windows is the default. Windows high contrast themes always apply.</span>
       </section>
 
       <section className="card" aria-labelledby="st5">
