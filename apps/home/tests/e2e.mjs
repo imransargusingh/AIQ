@@ -53,8 +53,15 @@ async function open(fixture, { theme, hash = "", width = 1280, height = 800, for
   await page.goto(base + hash);
   if (theme) await page.evaluate((t) => (document.documentElement.dataset.theme = t), theme);
   await page.waitForSelector("main h1");
+  if (theme) await settle(page);
   page.errors = errors;
   return page;
+}
+
+/** Wait out the colour fades a theme switch starts (nav links and buttons fade their background over 100 ms):
+ * axe reading mid-fade sees dark ink on the old light background (PR #150's flaky dark run, 5 in 60 runs locally). */
+async function settle(page) {
+  await page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => {}))));
 }
 
 async function axe(page) {
@@ -1550,6 +1557,7 @@ await test("Theme: Match Windows by default, Light or Dark win over Windows, kep
   assert.equal(await attr(), "light");
   assert.equal(await bg(), LIGHT);
   assert.equal(await group.getByRole("button", { name: "Light" }).getAttribute("aria-pressed"), "true");
+  await settle(page);
   assert.deepEqual(await axe(page), []);
   if (shots) await page.screenshot({ path: join(shots, "theme-light.png") });
   // Dark, kept after AIQ home opens again: set before React draws, so no light flash.
