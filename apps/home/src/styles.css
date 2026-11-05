@@ -344,6 +344,12 @@ li+li>.kindrow{border-top:1px solid var(--hairline)}
 .titlebar .updchip{cursor:pointer;color:var(--primary);border-color:var(--primary);font-weight:600}
 .titlebar .updchip:hover{background:var(--primary);color:var(--surface)}
 .titlebar .updchip:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+/* A ready update beside the version, bottom left (U5i): a filled button, the titlebar chip's words. */
+nav.side .foot .updready{all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;gap:var(--s3);width:100%;min-height:28px;margin-top:var(--s2);padding:0 var(--s4);border-radius:var(--r-pill);background:var(--primary);color:var(--on-primary);font:600 12px/1.4 var(--f-text)}
+nav.side .foot .updready:hover{filter:brightness(1.1)}
+nav.side .foot .updready:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}
+.newdot{width:8px;height:8px;border-radius:50%;background:var(--rung-5);flex:none}
+@media (forced-colors:active){nav.side .foot .updready{border:1px solid ButtonText;background:ButtonFace;color:ButtonText}.newdot{background:ButtonText}}
 
 /* How you work with agents: the rung mix (share bar, change, weekly mix, kinds on a rung). */
 .mix-head{font:var(--t-heading);margin:0}

@@ -343,10 +343,20 @@ export function App() {
                   <span data-testid="app-version">AIQ {snap.update.running}</span>
                   {snap.update.supported && (
                     <>
-                      {" · "}
-                      <button className="btnlink" onClick={update.run} disabled={update.phase !== "idle"} title="Check for a newer AIQ and install it">
-                        Update now
-                      </button>
+                      {update.phase === "idle" && snap.update.note === "waiting" ? (
+                        // A ready update shows here too, not only in the titlebar (Imran 2026-11-05; design U5i).
+                        <button className="updready" data-testid="update-ready" onClick={update.run} title={`AIQ home closes, installs AIQ ${ver(snap.update.available)} and opens again.`}>
+                          <span className="newdot" aria-hidden="true" />
+                          Update to {ver(snap.update.available)}
+                        </button>
+                      ) : (
+                        <>
+                          {" · "}
+                          <button className="btnlink" onClick={update.run} disabled={update.phase !== "idle"} title="Check for a newer AIQ and install it">
+                            Update now
+                          </button>
+                        </>
+                      )}
                     </>
                   )}
                 </span>
