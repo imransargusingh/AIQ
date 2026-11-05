@@ -7,7 +7,9 @@
 #
 # Auto-update (started by the AIQ core, or by AIQ home's "Install now" / "Go back"):
 #   -Check          ask GitHub for a newer published release; download it and its SHA256SUMS into
-#                   %USERPROFILE%\.aiq\update and check the SHA-256. Nothing is swapped.
+#                   %USERPROFILE%\.aiq\update and check the SHA-256. Nothing is swapped. A release already
+#                   waiting is kept until a newer one is downloaded and checked, then replaced by it; the same
+#                   release is not downloaded again. With -Apply, a failed check still installs what waits.
 #   -Apply          install the release -Check left waiting, only when AIQ is idle: AIQ home closed and no
 #                   hook, judge or import running. Swaps the exes only (tool connections are left as they
 #                   are). If the swap fails part-way, the exes it changed are put back.
@@ -268,6 +270,11 @@ if ($Check -or $Apply) {
         $st = Read-State
         $have = Installed-Version
         $script:retryAt = $null
+        # A release already waiting stays waiting until a newer one is downloaded and checked: a failed check or
+        # download never drops it, and with -Apply the run still goes on to install it (2026-11-05, laptop: 0.1.8
+        # waited from 18:58Z while AIQ home was open, and no check ran after it, so 0.1.9 at 20:32Z was never seen).
+        $waiting = $st.state -eq 'waiting' -and $st.staged -and (Test-Path (Join-Path $stage $st.staged))
+        $rel = $null
         try {
             $rel = Latest-Release
         } catch {
@@ -276,41 +283,62 @@ if ($Check -or $Apply) {
             Write-State @{ checked_at = (Now-Utc); installed = $have; check_error = "$($_.Exception.Message)"; retry_at = $script:retryAt }
             $after = if ($script:retryAt) { " Rate limited; retry after $($script:retryAt)." } else { '' }
             Log "AIQ-UPDATE-CHECK: could not ask for the newest release: $($_.Exception.Message)$after"
-            exit 1
+            if (-not ($Apply -and $waiting)) { exit 1 }
         }
-        if ($rel.via) { Log "AIQ-UPDATE-SOURCE: the $($rel.via) named $($rel.tag)." }
-        $newV = Ver $rel.tag
-        $haveV = Ver $have
-        if (-not $newV -or ($haveV -and $newV -le $haveV)) {
-            Remove-Item -Recurse -Force $stage -ErrorAction SilentlyContinue
-            $keep = if ($st.state -in 'applied', 'rolled_back', 'failed') { $st.state } else { 'current' }
-            Write-State @{ checked_at = (Now-Utc); installed = $have; latest = $rel.tag; source = $rel.via; state = $keep; check_error = $null; retry_at = $null; available = $null; staged = $null; blocked = $null }
-            Log "AIQ $have is up to date (newest release $($rel.tag))."
-        } elseif ($rel.tag -eq $st.skip) {
-            Write-State @{ checked_at = (Now-Utc); installed = $have; latest = $rel.tag; source = $rel.via; check_error = $null; retry_at = $null }
-            Log "Release $($rel.tag) is the one you rolled back from. AIQ won't install it by itself."
-        } else {
-            Remove-Item -Recurse -Force $stage -ErrorAction SilentlyContinue
-            New-Item -ItemType Directory -Force $stage | Out-Null
-            $zipPath = Join-Path $stage $rel.zipName
-            $sums = Join-Path $stage 'SHA256SUMS'
-            try {
-                Fetch $rel.zip $zipPath $rel.local
-                Fetch $rel.sums $sums $rel.local
-            } catch {
+        if ($rel) {
+            if ($rel.via) { Log "AIQ-UPDATE-SOURCE: the $($rel.via) named $($rel.tag)." }
+            $newV = Ver $rel.tag
+            $haveV = Ver $have
+            if (-not $newV -or ($haveV -and $newV -le $haveV)) {
                 Remove-Item -Recurse -Force $stage -ErrorAction SilentlyContinue
-                Write-State @{ checked_at = (Now-Utc); installed = $have; check_error = "$($_.Exception.Message)"; retry_at = $null }
-                Log "AIQ-UPDATE-CHECK: download of $($rel.tag) failed: $($_.Exception.Message)"
-                exit 1
+                $keep = if ($st.state -in 'applied', 'rolled_back', 'failed') { $st.state } else { 'current' }
+                Write-State @{ checked_at = (Now-Utc); installed = $have; latest = $rel.tag; source = $rel.via; state = $keep; check_error = $null; retry_at = $null; available = $null; staged = $null; blocked = $null }
+                Log "AIQ $have is up to date (newest release $($rel.tag))."
+            } elseif ($rel.tag -eq $st.skip) {
+                Write-State @{ checked_at = (Now-Utc); installed = $have; latest = $rel.tag; source = $rel.via; check_error = $null; retry_at = $null }
+                Log "Release $($rel.tag) is the one you rolled back from. AIQ won't install it by itself."
+            } elseif ($waiting -and $rel.tag -eq $st.available -and (Checksum-Ok (Join-Path $stage $st.staged) (Join-Path $stage 'SHA256SUMS'))) {
+                # AIQ-UPDATE-STILL-NEWEST: the waiting release is still the newest. Not downloaded again, so AIQ home
+                # can check every 15 minutes while one waits at the cost of one HEAD, not a 5 MB zip.
+                Write-State @{ checked_at = (Now-Utc); installed = $have; latest = $rel.tag; source = $rel.via; check_error = $null; retry_at = $null }
+                Log "AIQ-UPDATE-STILL-NEWEST: $($rel.tag) is already downloaded and waiting."
+            } else {
+                # Downloaded beside the waiting one and swapped in only once its checksum matches, so a failed
+                # download leaves the waiting release as it was.
+                $next = "$stage.new"
+                Remove-Item -Recurse -Force $next -ErrorAction SilentlyContinue
+                New-Item -ItemType Directory -Force $next | Out-Null
+                $zipPath = Join-Path $next $rel.zipName
+                $sums = Join-Path $next 'SHA256SUMS'
+                $got = $false
+                try {
+                    Fetch $rel.zip $zipPath $rel.local
+                    Fetch $rel.sums $sums $rel.local
+                    $got = $true
+                } catch {
+                    Write-State @{ checked_at = (Now-Utc); installed = $have; check_error = "$($_.Exception.Message)"; retry_at = $null }
+                    Log "AIQ-UPDATE-CHECK: download of $($rel.tag) failed: $($_.Exception.Message)"
+                }
+                if ($got -and -not (Checksum-Ok $zipPath $sums)) {
+                    $got = $false
+                    if ($waiting) {
+                        Write-State @{ checked_at = (Now-Utc); installed = $have; check_error = "the download of $($rel.tag) did not match its checksum"; retry_at = $null }
+                    } else {
+                        Write-State @{ checked_at = (Now-Utc); installed = $have; state = 'failed'; available = $null; message = "the download of $($rel.tag) did not match its checksum"; at = (Now-Utc); retry_at = $null }
+                    }
+                    Log "AIQ-UPGRADE-CHECKSUM: $($rel.zipName) does not match SHA256SUMS. Deleted; nothing changed."
+                }
+                if ($got) {
+                    Remove-Item -Recurse -Force $stage -ErrorAction SilentlyContinue
+                    Move-Item $next $stage
+                    $was = if ($waiting -and $st.available) { " It replaces $($st.available), which was waiting." } else { '' }
+                    Write-State @{ checked_at = (Now-Utc); installed = $have; latest = $rel.tag; source = $rel.via; state = 'waiting'; available = $rel.tag; staged = $rel.zipName; check_error = $null; retry_at = $null; message = $null }
+                    Log "AIQ $($rel.tag) downloaded and checked. It installs when AIQ is idle.$was"
+                } else {
+                    Remove-Item -Recurse -Force $next -ErrorAction SilentlyContinue
+                    if (-not ($Apply -and $waiting)) { exit 1 }
+                }
             }
-            if (-not (Checksum-Ok $zipPath $sums)) {
-                Remove-Item -Recurse -Force $stage -ErrorAction SilentlyContinue
-                Write-State @{ checked_at = (Now-Utc); installed = $have; state = 'failed'; available = $null; message = "the download of $($rel.tag) did not match its checksum"; at = (Now-Utc); retry_at = $null }
-                Log "AIQ-UPGRADE-CHECKSUM: $($rel.zipName) does not match SHA256SUMS. Deleted; nothing changed."
-                exit 1
-            }
-            Write-State @{ checked_at = (Now-Utc); installed = $have; latest = $rel.tag; source = $rel.via; state = 'waiting'; available = $rel.tag; staged = $rel.zipName; check_error = $null; retry_at = $null; message = $null }
-            Log "AIQ $($rel.tag) downloaded and checked. It installs when AIQ is idle."
         }
     }
     if ($Apply) {

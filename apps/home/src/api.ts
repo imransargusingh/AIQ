@@ -9,7 +9,7 @@ export type FlagReason = "evidence_wrong" | "not_useful" | "blocked" | "other";
 declare global {
   interface Window {
     __TAURI_INTERNALS__?: unknown;
-    __AIQ_FIXTURE__?: { snapshot: Snapshot; task?: TaskDetail; calls: { cmd: string; args: unknown }[]; fail?: string[]; checkFinds?: string };
+    __AIQ_FIXTURE__?: { snapshot: Snapshot; task?: TaskDetail; calls: { cmd: string; args: unknown }[]; fail?: string[]; checkFinds?: string; checkDue?: boolean };
   }
 }
 
@@ -122,9 +122,11 @@ function fixture<T>(cmd: string, args: Record<string, unknown>): Promise<T> {
     case "run_update":
       // The real shell closes the window after replying; the fixture only records the call. A "check" behaves
       // like upgrade.ps1 when the test sets `checkFinds`: a version stages it (waiting), "none" finds nothing,
-      // "error" can't reach GitHub; it writes its check time.
+      // "error" can't reach GitHub; it writes its check time. With `checkDue` set, Home's own timed asks
+      // (check_if_due, check_on_open) run that check too, as the shell does once one is due.
       out = f.fail?.includes(cmd) ? { ok: false, message: "Could not start: updates run only for AIQ installed with install.ps1 on Windows." } : { ok: true };
-      if (args.action === "check" && f.checkFinds !== undefined && !f.fail?.includes(cmd)) {
+      const asked = args.action === "check" || (f.checkDue && String(args.action).startsWith("check_"));
+      if (asked && f.checkFinds !== undefined && !f.fail?.includes(cmd)) {
         const found = f.checkFinds;
         setTimeout(() => {
           s.update.checked_ms = Date.now();
