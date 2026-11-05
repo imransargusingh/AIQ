@@ -1160,23 +1160,23 @@ await test("auto-update: the titlebar marker, one-press Update now, Go back, the
     assert.equal(await p.getByTestId("update-line").count(), 0, "no Home banner for a waiting update");
     await p.context().close();
   }
-  // The same ready update beside the version, bottom left (Imran 2026-11-05): the Update now link becomes a filled
-  // "Update to x.y.z" button on every page; one press installs. Nothing waiting: the plain link (checked below).
+  // The same ready update beside the version, bottom left (Imran 2026-11-05, option B): a small box replaces the
+  // version line on every page ("AIQ x.y.z is ready", "You have", Update); one press installs. Nothing waiting: the plain link (checked below).
   for (const hash of ["", "#tasks", "#settings"]) {
     const p = await open("full", { hash, edit: waiting });
     const nav = p.locator("nav .foot");
-    assert.equal(await nav.getByTestId("update-ready").innerText(), "Update to 0.2.0", `bottom-left notice on ${hash || "#home"}`);
+    assert.match(await nav.getByTestId("update-ready").innerText(), /^AIQ 0\.2\.0 is ready\s+You have 0\.1\.0\s+Update$/, `bottom-left notice on ${hash || "#home"}`);
     assert.equal(await nav.getByRole("button", { name: "Update now" }).count(), 0, "the ready button replaces the link");
     await p.context().close();
   }
   const side = await open("full", { edit: waiting });
-  await side.locator("nav").getByTestId("update-ready").click();
+  await side.locator("nav").getByRole("button", { name: "Update", exact: true }).click();
   await side.waitForFunction(() => window.__AIQ_FIXTURE__.calls.some((c) => c.cmd === "run_update" && c.args.action === "install"));
   assert.deepEqual(await upd(side), [{ action: "install" }]);
   await side.context().close();
   for (const theme of ["light", "dark"]) {
     const p = await open("full", { theme, edit: waiting });
-    assert.deepEqual(await axe(p), [], `ready button contrast, ${theme}`);
+    assert.deepEqual(await axe(p), [], `ready box contrast, ${theme}`);
     if (shots) await p.locator("nav.side").screenshot({ path: join(shots, `update-ready-${theme}.png`) });
     await p.context().close();
   }
@@ -1238,7 +1238,7 @@ await test("auto-update: the titlebar marker, one-press Update now, Go back, the
   const st = await open("full", { hash: "#settings" });
   assert.equal(await st.getByTestId("app-version").innerText(), "AIQ 0.1.0");
   assert.equal(await st.locator("nav").getByRole("button", { name: "Update now" }).count(), 1, "Update now beside the version");
-  assert.equal(await st.getByTestId("update-ready").count(), 0, "nothing waiting: no ready button");
+  assert.equal(await st.getByTestId("update-ready").count(), 0, "nothing waiting: no ready box");
   assert.equal(await st.getByRole("radio", { name: /Update automatically/ }).isChecked(), true);
   assert.equal(await st.locator("main").getByRole("button", { name: "Update now" }).count(), 1, "Update now is offered under every choice");
   await st.getByRole("radio", { name: "Tell me first" }).check();
