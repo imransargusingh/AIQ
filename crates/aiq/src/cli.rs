@@ -145,7 +145,7 @@ fn status_text(paths: &Paths) -> (String, Vec<String>) {
             for (folder, reason) in &s.automated_folders {
                 if reason == "projects" {
                     out += &format!(
-                        "Sessions Claude ran for you through claude.ai Projects or Remote Control are set aside in \
+                        "Sessions Claude ran for you through claude.ai Projects or Remote Control aren't counted in \
                          {folder}. To count them: aiq include \"{folder}\"\n"
                     );
                     continue;
@@ -156,7 +156,7 @@ fn status_text(paths: &Paths) -> (String, Vec<String>) {
                     "the same first prompt over and over"
                 };
                 out += &format!(
-                    "Sessions set aside in {folder} ({why}). If that is your own work: aiq include \"{folder}\"\n"
+                    "Automated, not counted: {folder} ({why}). If that is your own work: aiq include \"{folder}\"\n"
                 );
             }
             if let Some(c) = &s.coach {
@@ -186,7 +186,7 @@ fn status_text(paths: &Paths) -> (String, Vec<String>) {
                 out += &render_actions(a);
             }
             if let Some((_, n)) = ignored {
-                out += &format!("Automated prompts set aside since the core started: {n}\n");
+                out += &format!("Automated prompts not counted since the core started: {n}\n");
             }
             if let Some((_, n)) = s.core_counters.iter().find(|(k, _)| k == aiq_contracts::codes::INGEST_SECRET_REMOVED)
             {
@@ -841,14 +841,14 @@ mod tests {
     fn report_shows_no_folder_name_and_no_home() {
         let folders = vec![r"C:\Users\canary\src\secret-project".to_owned(), r"C:\Users\canary\src".to_owned()];
         let homes = vec![r"C:\Users\canary".to_owned()];
-        let text = "Sessions set aside in C:\\Users\\canary\\src\\secret-project (burst).\n\
-                    Sessions set aside in C:\\Users\\canary\\src (burst).\n\
+        let text = "Automated, not counted: C:\\Users\\canary\\src\\secret-project (burst).\n\
+                    Automated, not counted: C:\\Users\\canary\\src (burst).\n\
                     Copilot: installed in C:/Users/canary/.copilot\n\
                     Claude Code: installed in C:\\Users\\canary\\.claude\\settings.json\n";
         let out = redact(text, &folders, &homes);
         assert!(!out.contains("canary") && !out.contains("secret-project"), "{out}");
         assert!(
-            out.contains("set aside in folder-1 (burst)") && out.contains("set aside in folder-2 (burst)"),
+            out.contains("not counted: folder-1 (burst)") && out.contains("not counted: folder-2 (burst)"),
             "{out}"
         );
         assert!(out.contains("installed in ~/.copilot"), "{out}");

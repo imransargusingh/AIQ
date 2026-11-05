@@ -609,8 +609,8 @@ fn e2e_import_dry_run_then_import_status_and_forget_imported() {
     assert!(!run(&["status"]).contains("Imported history"));
     let done = run(&["import"]);
     assert!(done.contains("Import finished."), "{done}");
-    assert!(run(&["status"]).contains("Imported history: 1 sessions, 0 set aside"));
-    assert!(run(&["import"]).contains("0 imported, 0 set aside as automated, 1 unchanged"));
+    assert!(run(&["status"]).contains("Imported history: 1 sessions, 0 automated and not counted"));
+    assert!(run(&["import"]).contains("0 imported, 0 automated and not counted, 1 unchanged"));
     assert!(run(&["forget", "--imported", "--yes"]).contains("Deleted 1 imported sessions."));
     assert!(!run(&["status"]).contains("Imported history"));
 }

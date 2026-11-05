@@ -52,7 +52,7 @@ export function Home(ctx: Ctx) {
       <RightNow {...ctx} />
       {one && (
         <p className="meta" data-testid="project-note">
-          Showing {one.name} only. Tips and Set aside cover all projects.
+          Showing {one.name} only. Tips and Automated, not counted cover all projects.
         </p>
       )}
       {ctx.project === null && !ready && <GettingStartedCard snap={snap} go={go} />}
@@ -279,7 +279,7 @@ export function Home(ctx: Ctx) {
 
       <section className="group" aria-labelledby="hb">
         <div className="head">
-          <h2 id="hb">Set aside</h2>
+          <h2 id="hb">Automated, not counted</h2>
         </div>
         <SetAsideList {...ctx} include={include} />
       </section>
@@ -298,7 +298,7 @@ const WHY: Record<string, string> = {
 function SetAsideList(ctx: Ctx & { include: (folder: string) => void }) {
   const { snap, include } = ctx;
   const all = snap.home.set_aside;
-  if (all.length === 0) return <p className="mute">Nothing set aside. AIQ sets a folder aside when an app or script drives the AI there.</p>;
+  if (all.length === 0) return <p className="mute">Nothing here yet. When an app or script drives the AI in a folder, AIQ doesn't count those runs.</p>;
   const mine = all.filter((f) => !f.own);
   const own = all.filter((f) => f.own);
   const ownRuns = own.reduce((n, f) => n + f.runs, 0);
@@ -324,10 +324,10 @@ function SetAsideList(ctx: Ctx & { include: (folder: string) => void }) {
           className="btn small"
           disabled={!snap.status.core}
           onClick={() => include(f.folder)}
-          aria-label={`Include ${folderName(f.folder)}`}
+          aria-label={`Count ${folderName(f.folder)}`}
           title="Count every session in this folder from now on"
         >
-          Include
+          Count this folder
         </button>
       </li>
     );

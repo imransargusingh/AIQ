@@ -21,7 +21,7 @@ const ABOUT: &[(&str, &str)] = &[
     ("card_delivery", "each tip AIQ showed you, and where"),
     ("card_open", "each time you opened a tip's details"),
     ("setting_change", "each change to a setting; the newest row per setting is its current value"),
-    ("folder_rule", "folders AIQ set aside as automated, and folders you included again"),
+    ("folder_rule", "folders AIQ doesn't count as automated, and folders you counted again"),
     ("import_run", "each run of aiq import"),
     ("import_session", "each past session aiq import read"),
     ("import_event", "each prompt and turn end aiq import added from past sessions"),

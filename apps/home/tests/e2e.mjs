@@ -1299,8 +1299,8 @@ await test("no terminal needed: Include a set-aside folder, Disconnect a tool, s
   assert.match(aside, /pipeline ~\\source\\repos\\pipeline\nMany sessions at once · 12 runs left out · last /);
   assert.match(aside, /AIQ's own test folders \(2, 2 runs\)/);
   assert.equal(await home.locator("section[aria-labelledby=hb] details").getAttribute("open"), null, "folded by default");
-  assert.equal(await home.getByRole("button", { name: "Include run0" }).first().isVisible(), false);
-  await home.getByRole("button", { name: "Include pipeline" }).click();
+  assert.equal(await home.getByRole("button", { name: "Count run0" }).first().isVisible(), false);
+  await home.getByRole("button", { name: "Count pipeline" }).click();
   await home.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "AIQ will include sessions in pipeline again.");
   const inc = await home.evaluate(() => window.__AIQ_FIXTURE__.calls.filter((c) => c.cmd === "include_folder").map((c) => c.args));
   assert.deepEqual(inc, [{ folder: "c:\\users\\imran\\source\\repos\\pipeline" }]);
@@ -1342,7 +1342,7 @@ await test("projects: Your projects ranks folders on Tasks, the picker scopes Ho
   await page.locator("nav a", { hasText: "Home" }).click();
   await page.waitForSelector("[data-testid=project-note]");
   const t = await page.locator("main").innerText();
-  assert.match(t, /Showing foresight only\. Tips and Set aside cover all projects\./);
+  assert.match(t, /Showing foresight only\. Tips and Automated, not counted cover all projects\./);
   // This fixture has analysis off, which holds for every project.
   assert.match(t, /Tasks agents finished\s+Analysis is off/);
   // On Tasks: only foresight's four tasks.

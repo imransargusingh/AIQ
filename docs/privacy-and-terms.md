@@ -60,7 +60,7 @@ When you use a connected tool, AIQ stores:
   live counts off.
 - **Past sessions**, if you run `aiq import` (the installer starts it once). It reads your Claude
   Code and Copilot CLI history from this computer. Runs that look automated (a script or app driving
-  the tool) are set aside; `aiq include <folder>` brings a folder back.
+  the tool) are automated and not counted; `aiq include <folder>` counts a folder again.
 - **AIQ's own results**: tips shown, what you said about them, analyses of your tasks, and your
   settings.
 
