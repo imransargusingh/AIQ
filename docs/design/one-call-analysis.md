@@ -1,8 +1,8 @@
 ---
 id: design-one-call-analysis
-title: "Design: one model call per analyzed task (measured against two)"
+title: "Design: which model analyzes Copilot tasks, and how many calls (measured)"
 type: design
-status: accepted
+status: proposed
 owner: "Imran"
 phase: "5"
 tags: [design, rung-model, judge, cost, eval]
@@ -11,11 +11,9 @@ links:
   - { to: design-judge-evals, rel: depends-on }
 review-by: 2027-05-05
 summary: >-
-  Analysis asks the model twice per task and marks disputed facts unknown (rung-judge D1/D2). Measured on the
-  golden set with 8 answers per task, one call scores the same as two: the answers repeat almost every time, so
-  the second call rarely changes a placement. On Copilot (3 answers per task) the second call turned 2 of every
-  100 sure-but-wrong results into "not sure" and lost no right ones, so the default stays 2 (accuracy first). A
-  setting `analysis-calls 1` halves cost for anyone who prefers that.
+  Copilot tasks are analyzed by claude-sonnet-5.5 with one call, falling back to Copilot's own pick when it is
+  not offered or a call fails. Measured on the golden set through Copilot: the model decides accuracy (sonnet
+  sure-but-wrong 7% vs gpt-6.1-sol 30%), the number of calls barely does (one vs two within noise on both).
 ---
 
 # One call per analyzed task
@@ -75,7 +73,40 @@ Recording: `/mnt/project-files/one-call/copilot-gpt-6.1-sol-3-answers-20261105.j
 | Marked not sure | 5.9% | 7.8% |
 | Injection resisted | 100% | 100% |
 
-## Decision (2026-11-05)
+## Second call to a different model, and the model itself (2026-11-05 14:22Z, measured)
+
+Imran asked about two different models. Everyday analysis sent the same task twice to the same model; a
+different model only reads tasks in the accuracy check (`aiq analyze --check`). So the test: claude-sonnet-5.5
+through Copilot (same "medium" price tier as gpt-6.1-sol; gpt-6-astra skipped, priced "very high"), 3 answers
+per task, 102 calls, p50 6.9 s. `aiq analyze --eval --compare-calls A --with B`.
+
+| Measure | sol once | sol twice | sonnet once | sonnet twice | sol + sonnet |
+|---|---|---|---|---|---|
+| Job right | 100.0% | 98.0% | 92.1% | 91.0% | 89.1% |
+| Kind right | 95.8% | 94.8% | 80.0% | 77.7% | 78.9% |
+| Rung exact | 65.6% | 65.6% | 82.1% | 80.9% | 75.8% |
+| Rung too high | 15.6% | 15.6% | 3.2% | 3.2% | 3.2% |
+| Shown as sure and right | 61.8% | 61.8% | 71.3% | 70.0% | 63.4% |
+| Shown as sure but wrong | 32.4% | 30.4% | 6.9% | 6.0% | 16.8% |
+| Marked not sure | 5.9% | 7.8% | 21.8% | 24.0% | 19.8% |
+
+On the 15 tasks whose labels Imran confirmed (11-03): sol twice rung exact 60.0%, sure but wrong 35.6%; sonnet
+once 77.3%, 2.3%. Caveats: every expected label was written by a Claude session, which may favour a Claude model
+(the result holds on Imran's 15); sonnet names the job and kind wrong more often and says "not sure" more, so
+fewer tasks get a tip; 1 request per sonnet call is inferred from its price tier, not measured.
+
+## Decision (2026-11-05, amended 14:40Z)
+
+**Copilot tasks are analyzed by claude-sonnet-5.5, one call.** The model, not the number of calls, decides
+accuracy: sonnet cuts shown-as-sure-but-wrong from 30% to 7% and too-high rungs from 16% to 3%. A second sonnet
+call scored within noise of one (6.0% vs 6.9% wrong, 70.0% vs 71.3% right), so one call: half the premium requests.
+When sonnet is not offered (an org that blocks Claude models: Copilot's "from --model flag is not available") AIQ
+uses Copilot's own pick for the rest of the run; when a call to it fails with an error, that call is tried once on
+Copilot's pick. The model that answered is recorded on every call and judgment and shown on the task page.
+Settings: `analysis-copilot-model <id|default>`, `analysis-calls 2`. Tasks already analyzed keep their result.
+
+### Earlier decision (08:30Z, superseded): keep two calls on gpt-6.1-sol
+
 
 **Keep two calls as the default.** On both models the second call moves the same way: it marks a few wrong
 answers "not sure" (Copilot 2.0 points, Claude 0.5) and costs almost no right ones (Copilot 0, Claude 0.7). The

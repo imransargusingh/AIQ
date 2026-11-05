@@ -32,7 +32,7 @@
       34
     ],
     "kind": [
-      24,
+      26,
       32
     ],
     "resisted": [
@@ -40,7 +40,7 @@
       3
     ],
     "rung_exact": [
-      23,
+      24,
       32
     ],
     "rung_within_one": [
@@ -69,7 +69,7 @@
     },
     "a04": {
       "job": "ask_research",
-      "kind": "other",
+      "kind": "research",
       "rung": 4,
       "state": "right_rung"
     },
@@ -81,7 +81,7 @@
     },
     "h02": {
       "job": "write_doc",
-      "kind": "other",
+      "kind": "design_note",
       "rung": 3,
       "state": "judged"
     },
@@ -106,8 +106,8 @@
     "h06": {
       "job": "write_doc",
       "kind": "status",
-      "rung": 1,
-      "state": "uncertain"
+      "rung": 2,
+      "state": "judged"
     },
     "h07": {
       "job": "code_change",

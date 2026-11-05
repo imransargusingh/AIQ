@@ -96,9 +96,15 @@ pub const SETTING_CLAUDE_MODEL: &str = "judge_claude_model";
 pub const SETTING_COPILOT_MODEL: &str = "judge_copilot_model";
 pub const SETTING_COPILOT_SESSIONS: &str = "judge_copilot_sessions";
 /// Model calls per analyzed task: 2 asks twice and marks a disputed fact unknown (D2); 1 asks once (design
-/// one-call-analysis). A second answer repeats the first almost every time, so it rarely changes a placement.
+/// one-call-analysis). A second answer from the same model repeats the first almost every time: on Copilot
+/// with claude-sonnet-5.5 one call and two scored within noise (sure but wrong 6.9% vs 6.0%, measured 11-05).
 pub const SETTING_CALLS: &str = "judge_calls";
-pub const DEFAULT_CALLS: u8 = 2;
+pub const DEFAULT_CALLS: u8 = 1;
+/// The model Copilot tasks are analyzed with unless the person names one (`analysis-copilot-model`; `default`
+/// = Copilot's own pick). Measured on the golden set through Copilot, 11-05: rung exact 82.1% vs 65.6% for
+/// gpt-6.1-sol, shown as sure but wrong 6.9% vs 30.4%, same price tier. When it is not offered (an org that
+/// blocks Claude models) or a call fails, analysis falls back to Copilot's own pick.
+pub const DEFAULT_COPILOT_MODEL: &str = "claude-sonnet-5.5";
 /// The accuracy check's second reader (design judge-accuracy-check K3).
 pub const SETTING_CHECK_CLAUDE_MODEL: &str = "check_claude_model";
 pub const SETTING_CHECK_COPILOT_MODEL: &str = "check_copilot_model";

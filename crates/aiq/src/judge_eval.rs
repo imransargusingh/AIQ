@@ -704,7 +704,12 @@ fn live(paths: &Paths, o: &Opts) -> ExitCode {
     };
     let copilot = CopilotCli {
         exe: find_exe("copilot"),
-        model: o.model.clone().or(set.and_then(|s| s.copilot_model)),
+        // The model analysis uses first: the person's, else AIQ's default (no fallback here: an eval names
+        // the model it scored, and a refused model is a failed call, not a silent switch).
+        model: o.model.clone().or_else(|| match &set {
+            Some(s) => crate::judge::analysis_copilot_models(s).into_iter().next().flatten(),
+            None => Some(rung::DEFAULT_COPILOT_MODEL.into()),
+        }),
         work: paths.data.join("judge-work"),
         keep_sessions: false,
     };
@@ -968,8 +973,8 @@ mod tests {
         assert_eq!(r.rung_within_one, Some(shown.abs_diff(2) <= 1));
         assert_eq!((r.agree_job, r.agree_kind, r.agree_rung), (Some(true), Some(true), Some(true)));
 
-        let r = score_case(&c, &[answer("code_change", "fix_bug", 2), answer("write_doc", "spec", 2)]);
-        assert_eq!(r.placed.as_ref().unwrap().job, "other", "runs that disagree leave the job unclassified");
+        let r = score_case_with(&c, &[answer("code_change", "fix_bug", 2), answer("write_doc", "spec", 2)], 2);
+        assert_eq!(r.placed.as_ref().unwrap().job, "other", "two calls that disagree leave the job unclassified");
         assert_eq!((r.job_ok, r.kind_ok, r.agree_job), (Some(false), Some(false), Some(false)));
     }
 

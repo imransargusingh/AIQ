@@ -438,7 +438,10 @@ pub struct Settings {
     pub mode: Option<String>,
     pub daily_tasks: u32,
     pub claude_model: String,
+    /// The model the person named (None: Copilot's own pick, or AIQ's default when `copilot_default`).
     pub copilot_model: Option<String>,
+    /// No Copilot model set: analysis uses `rung::DEFAULT_COPILOT_MODEL`, falling back to Copilot's own pick.
+    pub copilot_default: bool,
     pub keep_copilot_sessions: bool,
     /// Answers each task needs (1 or 2, `SETTING_CALLS`).
     pub calls: u8,
@@ -451,6 +454,7 @@ pub fn settings(store: &Store) -> Settings {
         daily_tasks: get(rung::SETTING_DAILY_TASKS).and_then(|v| v.parse().ok()).unwrap_or(rung::DEFAULT_DAILY_TASKS),
         claude_model: get(rung::SETTING_CLAUDE_MODEL).unwrap_or_else(|| rung::DEFAULT_CLAUDE_MODEL.into()),
         copilot_model: get(rung::SETTING_COPILOT_MODEL).filter(|m| m != "default"),
+        copilot_default: get(rung::SETTING_COPILOT_MODEL).is_none(),
         keep_copilot_sessions: get(rung::SETTING_COPILOT_SESSIONS).as_deref() == Some("keep"),
         calls: get(rung::SETTING_CALLS)
             .and_then(|v| v.parse().ok())
@@ -1129,6 +1133,39 @@ pub(crate) fn providers(paths: &Paths, set: &Settings) -> (ClaudeCli, CopilotCli
     )
 }
 
+/// The Copilot models analysis tries, in order: the person's choice alone, else AIQ's default model then
+/// Copilot's own pick.
+pub(crate) fn analysis_copilot_models(set: &Settings) -> Vec<Option<String>> {
+    if set.copilot_default {
+        vec![Some(rung::DEFAULT_COPILOT_MODEL.into()), None]
+    } else {
+        vec![set.copilot_model.clone()]
+    }
+}
+
+/// Analysis through Copilot: AIQ's default model, falling back to Copilot's own pick when it is not offered
+/// (for the rest of the run) or a call to it fails (for that call). The model that answered is recorded on
+/// every call and judgment, and shown on the task page.
+fn analysis_copilot<'a>(
+    base: &'a CopilotCli,
+    set: &Settings,
+) -> ModelChain<impl Fn(Option<&str>, &CallReq<'_>) -> CallResult + 'a> {
+    ModelChain {
+        models: analysis_copilot_models(set),
+        at: std::cell::Cell::new(0),
+        on_error: true,
+        call: move |m: Option<&str>, req: &CallReq<'_>| {
+            CopilotCli {
+                exe: base.exe.clone(),
+                model: m.map(str::to_owned),
+                work: base.work.clone(),
+                keep_sessions: base.keep_sessions,
+            }
+            .call(req)
+        },
+    }
+}
+
 /// `aiq judge [--max <n>] [--only claude-code|copilot-cli] [--dry-run] [--auto]`
 /// `aiq judge --versions`: read-only. How the current judgments stand against today's versions: current,
 /// restamped without a model call, or judged again (by tool), and how many were judged with no agent actions
@@ -1288,6 +1325,7 @@ pub fn cli(args: &[&str]) -> ExitCode {
         );
     }
     let (claude, copilot) = providers(&paths, &set);
+    let copilot = analysis_copilot(&copilot, &set);
     let rep = run(&Run {
         store: &store,
         paths: &paths,
@@ -1617,10 +1655,12 @@ fn check_copilot_models(chosen: Option<String>, judge_models: &HashSet<String>) 
 }
 
 /// Calls through the first model that is offered; on "not available" moves to the next for the rest of the
-/// run (each miss costs Copilot's ~8 s refusal once, not once per task).
+/// run (each miss costs Copilot's ~8 s refusal once, not once per task). With `on_error`, a call that fails
+/// with an error is tried once on the next model too (timeouts and sign-in are not: the next would fail alike).
 struct ModelChain<F: Fn(Option<&str>, &CallReq<'_>) -> CallResult> {
     models: Vec<Option<String>>,
     at: std::cell::Cell<usize>,
+    on_error: bool,
     call: F,
 }
 
@@ -1632,6 +1672,9 @@ impl<F: Fn(Option<&str>, &CallReq<'_>) -> CallResult> Provider for ModelChain<F>
             if i + 1 < self.models.len() && model_not_available(&r.outcome) {
                 self.at.set(i + 1);
                 continue;
+            }
+            if self.on_error && i + 1 < self.models.len() && matches!(r.outcome, Outcome::Error(_)) {
+                return (self.call)(self.models[i + 1].as_deref(), req);
             }
             return r;
         }
@@ -2191,6 +2234,7 @@ fn check_cli(args: &[&str], paths: &Paths, store: &Store) -> ExitCode {
     let copilot = ModelChain {
         models: check_copilot_models(get(rung::SETTING_CHECK_COPILOT_MODEL), &judge_models),
         at: std::cell::Cell::new(0),
+        on_error: false,
         call: |m: Option<&str>, req: &CallReq<'_>| {
             CopilotCli {
                 exe: copilot.exe.clone(),
@@ -2482,7 +2526,7 @@ mod tests {
         let (c, p) = (Fake::ok(2), Fake::ok(2));
         let rep = go_only(&e, &c, &p, None, Some("copilot-cli"));
         assert_eq!(rep.judged, 2, "{rep:?}");
-        assert_eq!((c.calls(), p.calls()), (0, 4));
+        assert_eq!((c.calls(), p.calls()), (0, 2), "one call per task");
     }
 
     #[test]
@@ -2491,8 +2535,8 @@ mod tests {
         let (c, p) = (Fake::ok(2), Fake::ok(2));
         let rep = go(&e, &c, &p, None);
         assert_eq!(rep.judged, 4, "{rep:?}");
-        assert_eq!(c.calls(), 4, "two Claude Code tasks × two runs; the open task waits");
-        assert_eq!(p.calls(), 4, "VS Code and the imported Copilot task go to Copilot");
+        assert_eq!(c.calls(), 2, "two Claude Code tasks, one call each; the open task waits");
+        assert_eq!(p.calls(), 2, "VS Code and the imported Copilot task go to Copilot");
         assert!(c.sent.borrow().iter().all(|(u, _)| !u.contains("refactor the parser") && !u.contains("migrate")));
         let j = e.store.current_judgments().unwrap();
         assert_eq!(j.len(), 4);
@@ -2503,7 +2547,7 @@ mod tests {
         assert_eq!(j["v1"].provider, "copilot-cli");
         let read: Value = serde_json::from_str(&j["a1"].read).unwrap();
         assert_eq!(read["prompts"], 2);
-        assert_eq!(e.store.judge_calls_since(0).unwrap().len(), 8);
+        assert_eq!(e.store.judge_calls_since(0).unwrap().len(), 4, "one recorded call per task");
         // Copilot session ids are recorded before the call, so import never reads them (US-11).
         let ids = import::judge_ids(&e.paths);
         assert!(p.sent.borrow().iter().all(|(_, sid)| ids.contains(sid)));
@@ -2629,6 +2673,7 @@ mod tests {
     #[test]
     fn one_good_run_is_shown_as_uncertain_never_coached() {
         let e = env();
+        e.store.set_setting(rung::SETTING_CALLS, "2", 0).unwrap();
         e.store.set_setting(rung::SETTING_DAILY_TASKS, "1", 0).unwrap();
         let p = Once(Fake::ok(2), RefCell::new(0));
         let rep = go(&e, &Fake::ok(2), &p, None);
@@ -3014,11 +3059,68 @@ mod tests {
     }
 
     #[test]
+    fn analysis_uses_the_default_copilot_model_unless_the_person_names_one() {
+        let e = env();
+        let set = settings(&e.store);
+        assert!(set.copilot_default);
+        assert_eq!(analysis_copilot_models(&set), vec![Some(rung::DEFAULT_COPILOT_MODEL.into()), None]);
+        e.store.set_setting(rung::SETTING_COPILOT_MODEL, "default", 0).unwrap();
+        assert_eq!(analysis_copilot_models(&settings(&e.store)), vec![None], "default = Copilot's own pick");
+        e.store.set_setting(rung::SETTING_COPILOT_MODEL, "gpt-6.1-sol", 0).unwrap();
+        assert_eq!(analysis_copilot_models(&settings(&e.store)), vec![Some("gpt-6.1-sol".into())]);
+    }
+
+    #[test]
+    fn analysis_falls_back_to_copilots_pick_when_a_call_fails_or_the_model_is_not_offered() {
+        let asked = RefCell::new(Vec::<Option<String>>::new());
+        let fail = RefCell::new("boom");
+        let chain = ModelChain {
+            models: vec![Some("sonnet".into()), None],
+            at: std::cell::Cell::new(0),
+            on_error: true,
+            call: |m: Option<&str>, _req: &CallReq<'_>| {
+                asked.borrow_mut().push(m.map(str::to_owned));
+                let outcome = match (m, *fail.borrow()) {
+                    (Some(_), "boom") => Outcome::Error("exit 1: something broke".into()),
+                    (Some(_), "timeout") => Outcome::Timeout,
+                    (Some(_), _) => {
+                        Outcome::Error("Error: Model \"sonnet\" from --model flag is not available.".into())
+                    }
+                    (None, _) => Outcome::Ok(json!({})),
+                };
+                CallResult {
+                    outcome,
+                    model: m.map(str::to_owned),
+                    latency_ms: 1,
+                    cost_usd: None,
+                    tokens_in: None,
+                    tokens_out: None,
+                }
+            },
+        };
+        let schema = json!({});
+        let req = CallReq { system: "s", user: "u", schema: &schema, session_id: "x" };
+        // A failed call is tried once on Copilot's pick; the next call starts on sonnet again.
+        assert!(matches!(chain.call(&req).outcome, Outcome::Ok(_)));
+        assert_eq!(*asked.borrow(), vec![Some("sonnet".into()), None]);
+        // A timeout is not retried on another model.
+        *fail.borrow_mut() = "timeout";
+        assert!(matches!(chain.call(&req).outcome, Outcome::Timeout));
+        // Not offered: Copilot's pick for the rest of the run.
+        *fail.borrow_mut() = "blocked";
+        asked.borrow_mut().clear();
+        assert!(matches!(chain.call(&req).outcome, Outcome::Ok(_)));
+        assert!(matches!(chain.call(&req).outcome, Outcome::Ok(_)));
+        assert_eq!(*asked.borrow(), vec![Some("sonnet".into()), None, None]);
+    }
+
+    #[test]
     fn check_model_chain_moves_past_a_model_that_is_not_offered_once() {
         let asked = RefCell::new(Vec::<Option<String>>::new());
         let chain = ModelChain {
             models: vec![Some("a".into()), Some("b".into()), None],
             at: std::cell::Cell::new(0),
+            on_error: false,
             call: |m: Option<&str>, _req: &CallReq<'_>| {
                 asked.borrow_mut().push(m.map(str::to_owned));
                 let outcome = if m == Some("a") {
@@ -3089,6 +3191,7 @@ mod tests {
     #[test]
     fn no_job_judgments_record_each_runs_pick_and_the_report_explains_them() {
         let e = env();
+        e.store.set_setting(rung::SETTING_CALLS, "2", 0).unwrap();
         let mut judge = Fake::ok(1);
         if let Some(a) = judge.answer.as_mut() {
             a["job"] = json!("other");
@@ -3119,6 +3222,7 @@ mod tests {
     #[test]
     fn kind_report_pools_check_runs_explains_other_and_scores_rules_before_after() {
         let e = env();
+        e.store.set_setting(rung::SETTING_CALLS, "2", 0).unwrap();
         let mut judge = Fake::ok(2);
         if let Some(a) = judge.answer.as_mut() {
             a["task_type_confidence"] = json!(0.6);
