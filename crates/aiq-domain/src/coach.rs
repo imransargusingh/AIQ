@@ -729,6 +729,20 @@ pub fn habits(tasks: &[JudgedTask], moves: &[MoveDef], now_ms: i64, offset_min: 
     out
 }
 
+/// Tasks after a tip that a habit's outcome is read from (UI review 2026-11-04, item 6).
+pub const AFTER_TIP_TASKS: usize = 3;
+
+/// What happened after a next-step tip for move `m` delivered at `at_ms`: of the first `n` judged tasks that
+/// started after it and where the habit fits (its facts are known, Uncertain left out), how many showed it.
+/// Returns (seen, checked); checked is 0 until such a task exists. Measured from judgments, never self-reported.
+pub fn after_tip(tasks: &[JudgedTask], m: &MoveDef, at_ms: i64, n: usize) -> (u32, u32) {
+    let mut obs: Vec<(i64, bool)> =
+        tasks.iter().filter(|t| t.first_ms > at_ms).filter_map(|t| observe(t, m).map(|s| (t.first_ms, s))).collect();
+    obs.sort();
+    obs.truncate(n);
+    (obs.iter().filter(|(_, s)| *s).count() as u32, obs.len() as u32)
+}
+
 // ------------------------------------------------------------------ type guess (D5, D10)
 
 /// One judged task's first prompt as a neighbour: its type and word set (never stored, never shown).
@@ -1316,5 +1330,25 @@ mod tests {
         let strict = CoachParams { recurring_min: 4, ..params() };
         assert_eq!(progress(&ts, NOW, &strict)[0].trend, Trend::TooFew, "the minimum is the tips' recurring_min");
         assert!(progress(&[], NOW, &params()).is_empty());
+    }
+
+    #[test]
+    fn after_a_tip_counts_the_next_tasks_where_the_habit_fits() {
+        let m = mv("check_code", 1, &["F6"], "code_change");
+        let yes = facts(&[("F6", true)], None);
+        let no = facts(&[("F6", false)], None);
+        let ts = vec![
+            task("before", 9, "tests", 1, "judged", true, &yes, None),
+            task("a", 5, "tests", 1, "judged", true, &yes, None),
+            task("unknown", 4, "tests", 1, "judged", true, &facts(&[], None), None),
+            task("unsure", 4, "tests", 1, "uncertain", false, &yes, None),
+            task("b", 3, "tests", 1, "judged", true, &no, None),
+            task("c", 2, "tests", 1, "judged", true, &yes, None),
+            task("d", 1, "tests", 1, "judged", true, &no, None),
+        ];
+        let at = NOW - 6 * DAY_MS;
+        // a, b, c: the first three after the tip with F6 known; d is past the three.
+        assert_eq!(after_tip(&ts, &m, at, AFTER_TIP_TASKS), (2, 3));
+        assert_eq!(after_tip(&ts, &m, NOW, AFTER_TIP_TASKS), (0, 0));
     }
 }

@@ -67,12 +67,63 @@ export function lanes(tasks: TaskRow[], key: number, offsetMin: number): Lane[] 
   return out.sort((a, b) => a.first_ms - b.first_ms || a.key.localeCompare(b.key));
 }
 
-/** Whole hours the axis spans: from the hour of the first prompt to the hour after the last, at least 2 hours.
- *  With no lanes, an empty working day. */
-export function hours(ls: Lane[], key: number, offsetMin: number): [number, number] {
-  if (ls.length === 0) return [9, 17];
-  const a = Math.floor(Math.min(...ls.map((l) => minuteOf(l.first_ms, key, offsetMin))) / 60);
-  const b = Math.ceil((Math.max(...ls.map((l) => minuteOf(l.last_ms, key, offsetMin))) + 1) / 60);
-  // A task that runs past midnight extends the axis into the next day rather than being cut.
-  return [a, Math.max(b, a + 2)];
+/** A stretch of the day with work in it: tasks no more than `GAP_MIN` apart. */
+export interface Stretch {
+  a: number;
+  b: number;
+  /** Where it starts and ends on the axis, 0–100. */
+  from: number;
+  to: number;
+}
+
+/** Quiet gaps longer than this shrink to a fixed break on the Day view's axis. */
+export const GAP_MIN = 30;
+/** Axis room for a break, and the least room a stretch gets, in minutes of axis. */
+const BREAK_UNITS = 15;
+const MIN_UNITS = 10;
+
+/** The Day view's axis (UI review 2026-11-04, item 5a): stretches of work keep their length, quiet gaps over
+ *  `GAP_MIN` minutes become a short break, so a day of short tasks doesn't spread over empty hours. `pos` maps a
+ *  moment on the day to 0–100. */
+export function timeline(tasks: { first_ms: number; last_ms: number }[]): { stretches: Stretch[]; pos: (ms: number) => number } {
+  const spans = [...tasks].map((t) => [t.first_ms, Math.max(t.first_ms, t.last_ms)] as const).sort((x, y) => x[0] - y[0]);
+  const merged: [number, number][] = [];
+  for (const [a, b] of spans) {
+    const last = merged[merged.length - 1];
+    if (last && a - last[1] <= GAP_MIN * MIN) last[1] = Math.max(last[1], b);
+    else merged.push([a, b]);
+  }
+  const units = merged.map(([a, b]) => Math.max((b - a) / MIN, MIN_UNITS));
+  const total = units.reduce((n, u) => n + u, 0) + BREAK_UNITS * Math.max(merged.length - 1, 0) || 1;
+  let at = 0;
+  const stretches: Stretch[] = merged.map(([a, b], i) => {
+    const from = (at / total) * 100;
+    at += units[i];
+    const s = { a, b, from, to: (at / total) * 100 };
+    at += BREAK_UNITS;
+    return s;
+  });
+  // Inside a stretch a minute is one unit of axis, the same scale everywhere; a short stretch keeps spare room.
+  const pos = (ms: number) => {
+    const s = stretches.find((x) => ms <= x.b) ?? stretches[stretches.length - 1];
+    if (!s || ms <= s.a) return s ? s.from : 0;
+    return Math.min(s.to, s.from + ((ms - s.a) / MIN / total) * 100);
+  };
+  return { stretches, pos };
+}
+
+/** The day in one line (item 5a): tasks, kinds, the usual rung of judged tasks (Uncertain left out, lower wins a
+ *  tie), minutes inside tasks (first to last prompt, measured), and how many aren't judged yet. */
+export function daySummary(tasks: TaskRow[]): { tasks: number; kinds: number; usual: number | null; minutes: number; not_judged: number } {
+  const count = new Map<number, number>();
+  for (const t of tasks) if (t.judgment && t.judgment.state !== "uncertain") count.set(t.judgment.current, (count.get(t.judgment.current) ?? 0) + 1);
+  let usual: number | null = null;
+  for (const [r, n] of [...count].sort((a, b) => a[0] - b[0])) if (usual === null || n > count.get(usual)!) usual = r;
+  return {
+    tasks: tasks.length,
+    kinds: new Set(tasks.flatMap((t) => (t.judgment?.task_type_label ? [t.judgment.task_type_label] : []))).size,
+    usual,
+    minutes: Math.round(tasks.reduce((n, t) => n + Math.max(t.last_ms - t.first_ms, 0), 0) / MIN),
+    not_judged: tasks.filter((t) => !t.judgment).length,
+  };
 }

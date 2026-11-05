@@ -73,6 +73,7 @@ Quoted from the spec and architecture:
 | D8 | Imported tasks (`aiq import`, PR #15, merged 2026-11-01) | Shown, marked "Imported"; automated imported sessions never | Reads `import_session` / `import_event` (schema v4); a store from before v4 has none |
 | D9 | Theme | Follows Windows: light, dark (`prefers-color-scheme`), high contrast (`forced-colors`) | DESIGN.md modes; no setting needed |
 | D10 | Packaging | A separate `aiq-home.exe` (Tauri, WebView2), built in CI. No installer in this slice | Smallest thing Imran can run; installer when AIQ goes to others |
+| D11 | Set aside list (Imran, 2026-11-04: "I'm confused by what this view is intended to accomplish") | **One purpose line ("AIQ leaves out runs an app or script started here. A session where you send a second prompt still counts."). Two lines a folder: name and path (`~` for the user folder, full path in the title, so same-named folders differ), then why · runs left out · last · tasks of yours kept. AIQ's own test folders (`aiq-check`) fold into one closed line with their count.** Runs come from schema v10 `set_aside_session` (one row per live session set aside at its first prompt; a rescued session is derived out by its `surface_session` row) plus imported `automated` sessions; kept = the person's tasks there in the 30-day window | His screen showed nine AIQ probe folders (three `run0`s with no path) above his own, and foresight "the same first prompt over and over" with no sign that his two-prompt sessions there are kept. Live set-asides before v10 left no row, so their count starts at the 0.1.5 install |
 
 ## Responsibility
 
@@ -155,7 +156,7 @@ rows. No backfill (a backfill would guess).
 | Tauri 2 commands, capabilities, CSP | Tauri 2.12 docs; built in CI | Verified by building (see Test plan) |
 
 ### Exposed
-`Snapshot` (JSON, `aiq.home.v1`): `status {core, core_state, core_error, paused, read_ms}`, `home {window_days,
+`Snapshot` (JSON, `aiq.home.v1`): `status {core, core_state, core_error, paused, last_event_ms, read_ms}`, `home {window_days,
 tasks_30d, judged, weeks[4], by_tool, set_aside}`, `tasks[]`, `tips[]`, `data {events, prompts,
 store_bytes, items[≤500]}`, `settings {daily_cap, copilot_tip_stays}`.
 

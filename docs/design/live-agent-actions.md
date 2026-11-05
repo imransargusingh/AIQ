@@ -34,7 +34,7 @@ while a task is still open.
 | Step | Where | Notes |
 |---|---|---|
 | Stop arrives | hook → core | The hook never opens a log (opening the transcript cost ~0.4 s per hook, measured 2026-11-02). |
-| Read new bytes | core, after the stop's reply | Per-session offset; whole lines only; at most 16 MB. First read of a session since the core started reads the last 2 MB, not the whole file (16 MB took 296 ms on the laptop, 2026-11-04). |
+| Read new bytes | core, after the stop's reply | Per-session offset; whole lines only; at most 16 MB. First read of a session since the core started reads the last 2 MB, and twice as far back each time until it finds the turn's prompt, up to 16 MB (a fixed 16 MB took 296 ms on the laptop; a fixed 2 MB missed a 2.7 MB turn, 2026-11-04). |
 | Summarise | `aiq_core::agent_actions` | The same summariser `aiq import` uses, so live and imported turns count alike. Restarts at each typed prompt; a Copilot steering message stays in its turn. |
 | Store | `turn_action` (schema v9) | One row per stop: tool calls, tool names with counts, commands, files, sub-agents, bytes read, read ms. |
 

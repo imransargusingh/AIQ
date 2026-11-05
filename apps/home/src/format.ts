@@ -35,6 +35,11 @@ export function folderName(path: string | null): string {
   return parts[parts.length - 1] ?? path;
 }
 
+/** A path for a row: the user folder as `~`, so the distinguishing part fits. The full path is the title. */
+export function shortPath(path: string): string {
+  return path.replace(/^[a-z]:[\\/]users[\\/][^\\/]+(?=[\\/]|$)/i, "~").replace(/^\/(home|Users)\/[^/]+(?=\/|$)/, "~");
+}
+
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -99,3 +104,6 @@ export function jobOptions(tasks: TaskRow[]): { options: string[]; dropdown: boo
   const jobs = [...new Set(tasks.map(jobOf))].sort();
   return { options: ["All", ...jobs], dropdown: jobs.length > 4 };
 }
+
+/** Times a week for a table cell: "1.6", or "under 1". */
+export const perWeekShort = (n: number) => (n < 1 ? "under 1" : Number.isInteger(n) ? String(n) : n.toFixed(1));

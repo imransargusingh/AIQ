@@ -40,6 +40,8 @@ export interface Live {
   /** The first prompt had room for a goal and context; null when its text is gone. */
   brief: boolean | null;
   unrecorded: number[];
+  /** For each of `unrecorded`: no_log, read_error, too_large, unparsed, no_start or not_read. */
+  unrecorded_why: string[];
   subagents: number;
   tip: { card_id: string; turn: number; try_this: string } | null;
   task_id: string;
@@ -78,6 +80,8 @@ export interface Update {
   message: string | null;
   checked_ms: number | null;
   check_error: string | null;
+  /** The newest release the last good check saw. */
+  latest: string | null;
   can_rollback: boolean;
 }
 
@@ -88,6 +92,7 @@ export interface Status {
   core_error: string | null;
   paused: boolean;
   store_found: boolean;
+  last_event_ms: number | null;
   read_ms: number;
   error: string | null;
 }
@@ -105,8 +110,25 @@ export interface Home {
   imported_in_window: number;
   weeks: { start_ms: number; tasks: number }[];
   by_tool: [string, number][];
-  set_aside: { folder: string; reason: string }[];
+  set_aside: SetAside[];
   tips_today: number;
+}
+
+/** A folder AIQ leaves out of coaching (design aiq-home-app D11). */
+export interface SetAside {
+  /** The full folder path (key). */
+  folder: string;
+  /** aiq-check, template, burst. */
+  reason: string;
+  since_ms: number;
+  /** AIQ's own check and probe folders: folded into one line. */
+  own: boolean;
+  /** Sessions AIQ left out here (live and imported). */
+  runs: number;
+  /** The newest of them; null when none is recorded. */
+  last_ms: number | null;
+  /** The person's own tasks here in the window, which AIQ kept. */
+  kept: number;
 }
 
 export interface TaskRow {
@@ -247,6 +269,10 @@ export interface TipRow {
   why: string;
   try_this: string;
   opened: boolean;
+  /** The pack's tip id: `next_rung.<move>` for a next-step tip; "" when the card couldn't be read. */
+  tip_id: string;
+  /** A next-step tip's habit in the first judged tasks after it where it fits; null for tips with no habit. */
+  after: { seen: number; checked: number } | null;
 }
 
 export interface Data {
@@ -281,6 +307,8 @@ export interface Settings {
   live_trend: boolean;
   judge: "auto" | "off";
   judge_daily_tasks: number;
+  /** When judging was last switched on or off; null when it was never switched. */
+  judge_since_ms: number | null;
   /** Read Copilot's own history file for messages sent while the agent works. */
   copilot_mid_turn: "on" | "off";
   /** At each turn's end, count what the agent did (tool calls, commands, files, sub-agents). */

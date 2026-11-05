@@ -2,13 +2,14 @@
 // next step come from the rung judge (design rung-judge, coaching-from-rungs D9); Uncertain judgments are shown
 // on Tasks but never counted on a rung or in the split here. Until a task is judged it says so; nothing is
 // guessed. Model-written text renders as plain text only (TR-5).
-import { useState } from "react";
 import { api } from "../api";
-import { KindList, ProgressList, judgedBy, pct } from "../coach";
-import { RUNGS, day, folderName, plural, rungLabel, sentence, toolName, when } from "../format";
+import { LadderMap, NextSteps, RungMix, judgedBy, moved, pct } from "../coach";
+import { DAY, rungCounts, shift } from "../mix";
+import { RUNGS, day, folderName, plural, rungLabel, sentence, shortPath, toolName, when } from "../format";
 import { AccuracyPaused, Banners, ProjectPicker, Rung, Title, UpdateLine, type Ctx } from "../ui";
-import type { Project } from "../types";
+import type { SetAside } from "../types";
 import { RightNow } from "./RightNow";
+import { GettingStartedCard, GettingStartedPage } from "./GettingStarted";
 
 export function Home(ctx: Ctx) {
   const { snap, go, announce, refresh } = ctx;
@@ -18,24 +19,13 @@ export function Home(ctx: Ctx) {
     if (r.ok) refresh();
   };
   const h = snap.home;
-  const [open, setOpen] = useState<number | null>(null);
 
   if (h.tasks_in_window === 0 && snap.data.events === 0 && !snap.status.error) {
     return (
       <div className="page">
         <Banners {...ctx} />
         <UpdateLine {...ctx} />
-        <header className="group">
-          <Title>AIQ is watching quietly</Title>
-          <p className="mute">Keep working as usual. Patterns show after about 10 tasks of the same kind. Tips can start sooner.</p>
-        </header>
-        <div className="card" style={{ maxWidth: 520 }}>
-          <p>AIQ watches Claude Code, Copilot CLI and VS Code agent mode once they're connected. Setup connects the ones it finds.</p>
-          <p className="meta">
-            <button className="btnlink" onClick={() => go("data")}>See what AIQ has captured</button> ·{" "}
-            <button className="btnlink" onClick={() => go("setup")}>See which tools are connected</button>
-          </p>
-        </div>
+        <GettingStartedPage snap={snap} go={go} />
       </div>
     );
   }
@@ -43,7 +33,7 @@ export function Home(ctx: Ctx) {
   const max = Math.max(1, ...h.weeks.map((w) => w.tasks));
   const mc = h.most_common_rung;
   const onRung = h.rungs.reduce((a, b) => a + b, 0);
-  const rungMax = Math.max(1, ...h.rungs);
+  const mv = moved(snap.coaching);
   const c = snap.coaching;
   const sp = c.split;
   const ready = sp.tasks >= c.split_min;
@@ -64,6 +54,7 @@ export function Home(ctx: Ctx) {
           Showing {one.name} only. Tips and Set aside cover all projects.
         </p>
       )}
+      {ctx.project === null && !ready && <GettingStartedCard snap={snap} go={go} />}
       <section
         className="mainrung"
         role="img"
@@ -232,28 +223,63 @@ export function Home(ctx: Ctx) {
         </section>
       </div>
 
+      <section className="group" aria-labelledby="rg">
+        <div className="head">
+          <h2 id="rg">How you work with agents</h2>
+          <span className="meta">
+            {onRung > 0
+              ? `Judged tasks, last ${h.window_days} days · change: last ${c.progress_days} days against the ${c.progress_days} before`
+              : "The five rungs. Your share on each shows once tasks are judged."}
+          </span>
+        </div>
+        {onRung > 0 ? (
+          <RungMix
+            rungs={h.rungs}
+            shift={shift(snap.tasks, snap.now_ms, c.progress_days, c.split_min)}
+            shiftDays={c.progress_days}
+            shiftMin={c.split_min}
+            shareMin={c.split_min}
+            weeks={h.weeks.map((w) => ({ start_ms: w.start_ms, label: day(w.start_ms, snap.offset_min), rungs: rungCounts(snap.tasks, w.start_ms, w.start_ms + 7 * DAY) }))}
+            weekMin={c.week_min}
+            tasks={snap.tasks}
+            uncertain={h.uncertain}
+            seeUncertain={() => go("tasks")}
+          />
+        ) : (
+          <ul className="mix-lab" aria-label="The five rungs">
+            {RUNGS.map((_, i) => (
+              <li key={i}><Rung r={i + 1} /></li>
+            ))}
+          </ul>
+        )}
+      </section>
+
       <section className="group" aria-labelledby="pg">
         <div className="head">
           <h2 id="pg">Is each kind of task moving up?</h2>
-          <span className="meta">
-            Typical rung of your judged tasks, last {c.progress_days} days against the {c.progress_days} before. Counts are measured; rungs are the judge's reading.
-          </span>
+          {mv.read > 0 && (
+            <span className="hero">
+              <b className="num">{mv.up}</b>
+              <span className="meta">
+                of {mv.read} {mv.read === 1 ? "kind" : "kinds"} moved up a rung{mv.down > 0 ? ` · ${mv.down} moved down` : ""}
+              </span>
+            </span>
+          )}
         </div>
-        {c.progress.length === 0 ? (
+        {c.progress.length === 0 && c.kinds.length === 0 ? (
           <p className="mute">
             {h.judged === 0
               ? "Progress shows here once tasks are judged."
               : `Progress shows once AIQ knows the kind of your tasks from the last ${2 * c.progress_days} days.`}
           </p>
         ) : (
-          <ProgressList c={c} open={ctx.openKind} />
+          <LadderMap c={c} open={ctx.openKind} />
         )}
-      </section>
-
-      <section className="group" aria-labelledby="ns">
         <div className="head">
-          <h2 id="ns">Where agents could do more</h2>
-          <span className="meta">Kinds of task you repeat, with one next step each. Most often first.</span>
+          <h3 id="ns">Next steps</h3>
+          {c.kinds.length > 0 && (
+            <button className="btnlink meta" onClick={() => go("tasks")}>All kinds of task</button>
+          )}
         </div>
         {c.opportunities.length === 0 ? (
           <p className="mute">
@@ -264,189 +290,77 @@ export function Home(ctx: Ctx) {
                 : "No next step yet: your kinds of task are at their right rung, too few to say, or capped by something outside your control."}
           </p>
         ) : (
-          <KindList label="Kinds of task with a next step" rows={c.opportunities} open={(k) => ctx.openKind(k.job, k.task_type)} />
+          <NextSteps rows={c.opportunities} open={(k) => ctx.openKind(k.job, k.task_type)} />
         )}
-        {c.kinds.length > 0 && (
-          <p className="meta">
-            <button className="btnlink" onClick={() => go("tasks")}>All kinds of task</button>
-          </p>
-        )}
-      </section>
-
-      {!one && snap.projects.length > 1 && <Projects {...ctx} />}
-
-      <section className="group" aria-labelledby="rg">
-        <div className="head">
-          <h2 id="rg">How you work with agents</h2>
-          <span className="meta">
-            {onRung > 0
-              ? `Your judged tasks on each rung, last ${h.window_days} days${h.uncertain > 0 ? ` (${h.uncertain} uncertain not counted)` : ""}.`
-              : "The five rungs. Your share on each shows once tasks are judged."}
-          </span>
-        </div>
-        <div className="rungs">
-          {RUNGS.map((_, i) => i).reverse().map((i) => (
-            <div key={i}>
-              <button
-                className="rr"
-                aria-label={`${rungLabel(i + 1)}, ${onRung > 0 ? plural(h.rungs[i], "task") : "not judged yet"}`}
-                aria-expanded={open === i} aria-controls={`rx${i}`} onClick={() => setOpen(open === i ? null : i)}>
-                <span className="chev" aria-hidden="true">›</span>
-                <span>{rungLabel(i + 1)}</span>
-                <span className="track" aria-hidden="true">
-                  {h.rungs[i] > 0 && (
-                    <span className="now" style={{ width: `${(100 * h.rungs[i]) / rungMax}%`, background: "var(--primary)" }} />
-                  )}
-                </span>
-                <span className="v">{onRung > 0 ? plural(h.rungs[i], "task") : "Not judged yet"}</span>
-              </button>
-              <div className="rx" id={`rx${i}`} hidden={open !== i}>
-                <div>
-                  <h3>What it means</h3>
-                  <p>{RUNGS[i].means}</p>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
       </section>
 
       <section className="group" aria-labelledby="hb">
         <div className="head">
           <h2 id="hb">Set aside</h2>
         </div>
-        {h.set_aside.length === 0 ? (
-          <p className="mute">No folders set aside. AIQ sets a folder aside when an app or script drives its sessions.</p>
-        ) : (
-          h.set_aside.map((f) => (
-            <div className="row" key={f.folder}>
-              <span className="chip">Automated</span>
-              <span title={f.folder}>{folderName(f.folder)}</span>
-              <span className="meta">
-                {f.reason === "burst" ? "many sessions started at once" : f.reason === "template" ? "the same first prompt over and over" : f.reason}
-              </span>
-              <button className="btn" disabled={!snap.status.core} onClick={() => include(f.folder)} aria-label={`Include ${folderName(f.folder)}`}>
-                Include
-              </button>
-            </div>
-          ))
-        )}
-        {h.set_aside.length > 0 && <p className="meta">If a folder is your own work, select Include and AIQ watches its sessions again.</p>}
+        <SetAsideList {...ctx} include={include} />
       </section>
     </div>
   );
 }
 
-/** "Your projects" (design project-filter P5b): one row per project, most room to grow first. Selecting a name
- * shows that project; Rename keeps a name the person chose (empty goes back to the folder's name). */
-function Projects(ctx: Ctx) {
-  const { snap, setProject, announce, refresh } = ctx;
-  const [editing, setEditing] = useState<string | null>(null);
-  const [draft, setDraft] = useState("");
-  const min = snap.coaching.split_min;
-  const save = async (p: Project) => {
-    const r = await api.setSetting(`project_name.${p.key}`, draft);
-    announce(r.ok ? (draft.trim() ? `Renamed to ${draft.trim()}.` : "AIQ names this project from its folder again.") : r.message);
-    if (r.ok) {
-      setEditing(null);
-      refresh();
-    }
+const WHY: Record<string, string> = {
+  template: "Same first prompt each time",
+  burst: "Many sessions at once",
+  "aiq-check": "AIQ's own test",
+};
+
+/** Set aside (design aiq-home-app D11): what AIQ leaves out of coaching and why, with how much and when, so the
+ * person can tell an app's folder from their own. AIQ's own test folders fold into one line nobody needs to open. */
+function SetAsideList(ctx: Ctx & { include: (folder: string) => void }) {
+  const { snap, include } = ctx;
+  const all = snap.home.set_aside;
+  if (all.length === 0) return <p className="mute">Nothing set aside. AIQ sets a folder aside when an app or script drives the AI there.</p>;
+  const mine = all.filter((f) => !f.own);
+  const own = all.filter((f) => f.own);
+  const ownRuns = own.reduce((n, f) => n + f.runs, 0);
+  // Two lines a folder: which folder (name, then the path that tells same-named folders apart), then why and how much.
+  const row = (f: SetAside, path: string) => {
+    const last = f.last_ms !== null ? when(f.last_ms, snap.now_ms, snap.offset_min) : null;
+    const facts = [
+      f.own ? null : WHY[f.reason] ?? f.reason,
+      f.runs > 0 ? `${plural(f.runs, "run")} left out` : null,
+      last ? `last ${last.replace(/^(Today|Yesterday)/, (w) => w.toLowerCase())}` : null,
+      f.kept > 0 ? `${plural(f.kept, "task")} of yours kept` : null,
+    ].filter(Boolean);
+    return (
+      <li className="aside" key={f.folder}>
+        <div className="aside-text">
+          <span className="aside-name" title={f.folder}>
+            <b>{f.own ? path : folderName(f.folder)}</b>
+            {!f.own && <span className="meta"> {path}</span>}
+          </span>
+          {facts.length > 0 && <span className="meta">{facts.join(" · ")}</span>}
+        </div>
+        <button
+          className="btn small"
+          disabled={!snap.status.core}
+          onClick={() => include(f.folder)}
+          aria-label={`Include ${folderName(f.folder)}`}
+          title="Count every session in this folder from now on"
+        >
+          Include
+        </button>
+      </li>
+    );
   };
   return (
-    <section className="group" aria-labelledby="pj">
-      <div className="head">
-        <h2 id="pj">Your projects</h2>
-        <span className="meta">
-          A project is the folder you worked in. Most tasks that could move up a rung first. Counts are measured; rungs are the judge's reading.
-        </span>
-      </div>
-      <div className="tablewrap">
-        <table aria-label="Your projects">
-          <thead>
-            <tr>
-              <th>Project</th>
-              <th className="r">Tasks</th>
-              <th>Most common rung</th>
-              <th className="r">Agents finished</th>
-              <th className="r">Could move up a rung</th>
-              <th><span className="sr">Rename</span></th>
-            </tr>
-          </thead>
-          <tbody>
-            {snap.projects.map((p) => {
-              const sp = p.coaching.split;
-              const enough = sp.tasks >= min;
-              return (
-                <tr key={p.key}>
-                  <td title={p.key || "Tasks from before AIQ recorded the folder, or from tools that don't send it"}>
-                    {editing === p.key ? (
-                      <form
-                        className="row"
-                        onSubmit={(e) => {
-                          e.preventDefault();
-                          save(p);
-                        }}
-                      >
-                        <input
-                          className="input"
-                          aria-label={`New name for ${p.name}`}
-                          maxLength={60}
-                          value={draft}
-                          placeholder={folderName(p.key)}
-                          autoFocus
-                          onChange={(e) => setDraft(e.target.value)}
-                          onKeyDown={(e) => e.key === "Escape" && setEditing(null)}
-                        />
-                        <button className="btn pri" type="submit" disabled={!snap.status.core}>Save</button>
-                        <button className="btn" type="button" onClick={() => setEditing(null)}>Cancel</button>
-                      </form>
-                    ) : (
-                      <button
-                        className="btnlink"
-                        aria-label={`Show ${p.name} only`}
-                        onClick={() => {
-                          setProject(p.key);
-                          // Back to the top, on the picker, so the person sees the whole page change.
-                          requestAnimationFrame(() => document.getElementById("projsel")?.focus());
-                        }}
-                      >
-                        {p.name}
-                      </button>
-                    )}{" "}
-                    {p.by_tool.map(([t]) => (
-                      <span className="chip" key={t}>{toolName(t)}</span>
-                    ))}
-                  </td>
-                  <td className="r num">{p.tasks_in_window}</td>
-                  <td className={p.most_common_rung ? undefined : "mute"}>{p.most_common_rung ? <Rung r={p.most_common_rung} /> : "Not judged yet"}</td>
-                  <td className={`r num${enough ? "" : " mute"}`}>{enough ? `${pct(sp.finished, sp.tasks)}%` : p.judged > 0 ? "Too few judged" : "—"}</td>
-                  <td className={`r num${enough ? "" : " mute"}`}>
-                    {enough ? `${sp.up} (${pct(sp.up, sp.tasks)}%)` : p.judged > 0 ? "Too few judged" : "—"}
-                  </td>
-                  <td>
-                    {p.key !== "" && editing !== p.key && (
-                      <button
-                        className="btnlink"
-                        disabled={!snap.status.core}
-                        aria-label={`Rename ${p.name}`}
-                        onClick={() => {
-                          setEditing(p.key);
-                          setDraft(p.renamed ? p.name : "");
-                        }}
-                      >
-                        Rename
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      <p className="meta">
-        "Could move up a rung" counts judged tasks not finished by agents where the judge sees a next step at least one rung up. A project needs {min} judged tasks before AIQ shows its numbers.
-      </p>
-    </section>
+    <>
+      <p className="meta">AIQ leaves out runs an app or script started here. A session where you send a second prompt still counts.</p>
+      {mine.length > 0 && <ul className="asides">{mine.map((f) => row(f, shortPath(f.folder)))}</ul>}
+      {own.length > 0 && (
+        <details className="folded">
+          <summary>
+            AIQ's own test folders ({own.length}{ownRuns > 0 ? `, ${plural(ownRuns, "run")}` : ""})
+          </summary>
+          <ul className="asides">{own.map((f) => row(f, f.folder.replace(/^.*?[\\/]te?mp[\\/]/i, "")))}</ul>
+        </details>
+      )}
+    </>
   );
 }

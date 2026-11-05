@@ -453,17 +453,23 @@ async fn run_update(app: tauri::AppHandle, action: String) -> Result<Outcome, St
         let paths = Paths::from_env();
         // "check_if_due": AIQ home asks on open and hourly while open. It starts a check only when one is due
         // (update::home_check_due), so a new release shows on Home within the hour; otherwise it does nothing.
-        if action == "check_if_due" {
+        // "check_on_open": the same, when AIQ home opens, due 10 minutes after the last check (update::HOME_OPEN_MS).
+        if action == "check_if_due" || action == "check_on_open" {
             let now = aiq_core::sysclock::SystemClock.now().utc_ms;
             let mode = update::stored_mode(&paths);
-            let due = update::home_check_due(now, &update::read_state(&paths), mode.as_deref());
+            let st = update::read_state(&paths);
+            let due = if action == "check_on_open" {
+                update::home_open_check_due(now, &st, mode.as_deref())
+            } else {
+                update::home_check_due(now, &st, mode.as_deref())
+            };
             if !update::supported(&paths) || !due {
                 return Outcome::from(Ok(()));
             }
             let r = update::start(&paths, Action::Check { apply: false }, None, false)
                 .map_err(|e| format!("Could not start: {e}."));
             let result = if r.is_ok() { "started" } else { "refused" };
-            log(&paths, "run_update", t, &format!("action=check_if_due {result}"));
+            log(&paths, "run_update", t, &format!("action={action} {result}"));
             return Outcome::from(r);
         }
         // "check": look for a newer release and download it without installing (the person asked, so it runs

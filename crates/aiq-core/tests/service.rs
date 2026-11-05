@@ -888,6 +888,24 @@ fn automated_folder_one_prompt_session_records_nothing() {
     );
 }
 
+/// The Set aside list counts the sessions it left out per folder (one row per session, no text). A person's session
+/// there that sends a second prompt is recorded, so it no longer counts as set aside.
+#[test]
+fn set_aside_sessions_are_counted_once_each_and_a_rescued_one_drops_out() {
+    let mut h = H::new();
+    h.svc().store().insert_folder_rule("/ep", "set_aside", "template", "live", T0).unwrap();
+    h.cp_in("/ep", "app1", "collect profile 4", MIN);
+    h.cp_stop("app1");
+    h.cp_in("/ep", "app2", "collect profile 5", MIN);
+    h.cp_in("/ep", "person", BASE, MIN);
+    let counts = h.svc().store().set_aside_session_counts().unwrap();
+    assert_eq!(counts.get("/ep").map(|c| c.0), Some(3), "three first prompts set aside, the stop adds nothing");
+    h.cp_in("/ep", "person", R1, MIN);
+    let (n, last) = h.svc().store().set_aside_session_counts().unwrap()["/ep"];
+    assert_eq!(n, 2, "the person's session is recorded now, so it is not counted as set aside");
+    assert!(last > T0);
+}
+
 #[test]
 fn template_in_a_folder_a_person_works_in_sets_aside_only_its_sessions() {
     let mut h = H::new();
@@ -1516,4 +1534,52 @@ fn status_line_shows_the_live_trend_between_tips() {
     h.svc().set("live_trend", "on").unwrap();
     h.clock.advance(31 * MIN);
     assert_eq!(h.tip("t-1"), None, "idle gap passed: the task ended");
+}
+
+/// Laptop 2026-11-04 (0.1.3): a VS Code turn that began after a core restart wrote 2.7 MB before its stop, so the
+/// 2 MB tail read missed its prompt (no_start). The first read now widens back until it finds the prompt.
+#[test]
+fn a_long_turn_after_a_restart_is_read_from_its_prompt_not_the_tail() {
+    let mut h = H::new();
+    let home = TempDir::new().unwrap();
+    h.svc().set_copilot_home(home.path().to_owned());
+    let log = home.path().join("session-state").join("vs-long").join("events.jsonl");
+    std::fs::create_dir_all(log.parent().unwrap()).unwrap();
+    let pad = serde_json::json!({"type":"tool.execution_complete","data":{"result":"x".repeat(100_000)}}).to_string();
+    let filler = |n: usize| (0..n).map(|_| format!("{pad}\n")).collect::<String>();
+    // Earlier turns, before this core started.
+    let mut body = filler(5);
+    std::fs::write(&log, &body).unwrap();
+    h.clock.advance(MIN);
+    let id = h.id();
+    let p = ev_on(
+        "vscode",
+        &id,
+        "vs-long",
+        h.clock.now().utc_ms,
+        EventBody::Prompt(PromptPayload { text: Some("big job".into()), chars: 7, prompt_id: None, truncated: false }),
+    );
+    h.svc().ingest(&p, None);
+    // The turn: its prompt, one tool call, then > 2 MB of output before the stop.
+    body += &cc_lines(&[
+        serde_json::json!({"type":"user.message","data":{"content":"big job","delivery":"idle"}}),
+        serde_json::json!({"type":"tool.execution_start","data":{"toolName":"bash","arguments":"{\"command\":\"make\"}"}}),
+    ]);
+    body += &filler(25);
+    assert!(body.len() as u64 > aiq_core::agent_actions::TAIL_READ_BYTES + 5 * 100_000);
+    std::fs::write(&log, &body).unwrap();
+    h.clock.advance(MIN);
+    let id = h.id();
+    let s = ev_on(
+        "vscode",
+        &id,
+        "vs-long",
+        h.clock.now().utc_ms,
+        EventBody::Stop(StopPayload { stop_hook_active: false, prompt_id: None }),
+    );
+    h.svc().ingest(&s, None);
+    let rows = turn_rows(&mut h);
+    assert_eq!(rows.len(), 1);
+    assert_eq!((rows[0].outcome.as_str(), rows[0].why.as_deref()), ("recorded", None));
+    assert_eq!((rows[0].tool_calls, rows[0].commands), (Some(1), Some(1)));
 }

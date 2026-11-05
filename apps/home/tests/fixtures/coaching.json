@@ -8,6 +8,7 @@
     "core_error": null,
     "paused": false,
     "store_found": true,
+    "last_event_ms": 1793422980000,
     "read_ms": 12,
     "error": null
   },
@@ -684,14 +685,43 @@
       ]
     }
   ],
-  "tips": [],
+  "tips": [
+    {
+      "card_id": "019000000034-0000-7000-8000-000000000000",
+      "tool": "copilot-cli",
+      "delivered_ms": 1792753200000,
+      "noticed": "This looks like a kind of task you repeat.",
+      "why": "One step would let the agent take more of it.",
+      "try_this": "Check the diff or run the tests before using the result.",
+      "opened": true,
+      "tip_id": "next_rung.check_code",
+      "after": {
+        "seen": 3,
+        "checked": 3
+      }
+    },
+    {
+      "card_id": "019000000037-0000-7000-8000-000000000000",
+      "tool": "copilot-cli",
+      "delivered_ms": 1792195200000,
+      "noticed": "This looks like a kind of task you repeat.",
+      "why": "One step would let the agent take more of it.",
+      "try_this": "Ask for the whole draft with what done means.",
+      "opened": false,
+      "tip_id": "next_rung.hand_over_doc",
+      "after": {
+        "seen": 0,
+        "checked": 3
+      }
+    }
+  ],
   "data": {
     "events": 32,
     "prompts": 16,
     "turn_ends": 16,
     "imported_sessions": 0,
     "imported_events": 0,
-    "store_bytes": 282624,
+    "store_bytes": 294912,
     "items": [
       {
         "event_id": "019000000002-0000-7000-8000-000000000000",
@@ -962,6 +992,7 @@
     "live_trend": true,
     "judge": "off",
     "judge_daily_tasks": 50,
+    "judge_since_ms": null,
     "copilot_mid_turn": "on",
     "agent_actions": "on",
     "next_rung_tips": "auto",
@@ -1482,6 +1513,7 @@
     "message": null,
     "checked_ms": 1793530800000,
     "check_error": null,
+    "latest": null,
     "can_rollback": true
   },
   "projects": [

@@ -72,7 +72,8 @@ fn tasks_follow_the_task_rule_window_and_set_aside() {
     assert_eq!(s.tasks[1].folder.as_deref(), Some(AIQ));
     assert_eq!(s.tasks[4].folder, None, "vscode prompts carried no folder");
     assert!(s.tasks.iter().all(|t| t.folder.as_deref() != Some(PIPELINE)));
-    assert_eq!(s.home.set_aside.len(), 1);
+    assert_eq!(s.home.set_aside.len(), 3, "pipeline and two AIQ probe folders");
+    assert_eq!((s.home.set_aside[0].folder.as_str(), s.home.set_aside[0].runs), (PIPELINE, 12));
     // Weeks: oldest first, last ends now: [-28d,-21d) [-21d,-14d) [-14d,-7d) [-7d,now). Tasks at -20d, -16d | -9d x2 | -2d, -30min.
     let w: Vec<u32> = s.home.weeks.iter().map(|w| w.tasks).collect();
     assert_eq!(w, vec![0, 2, 2, 2]);
@@ -145,6 +146,7 @@ fn tips_settings_and_data() {
     assert!(deleted[0].text.is_none());
     assert!(s.data.items.iter().filter(|i| i.kind == "stop").all(|i| !i.deleted && i.text.is_none()));
     assert!(s.data.items.windows(2).all(|w| w[0].ts_ms >= w[1].ts_ms), "newest first");
+    assert_eq!(s.status.last_event_ms, Some(NOW - 30 * MIN));
     assert!(s.data.store_bytes > 0);
 }
 
@@ -452,12 +454,28 @@ fn live_trend_reads_the_open_task_turn_by_turn() {
     let rungs: Vec<Option<u8>> = l.trend.steps.iter().map(|x| x.rung).collect();
     assert_eq!(rungs, [Some(1), Some(3), Some(2), Some(2)]);
     assert_eq!(l.trend.unrecorded, [4]);
+    assert_eq!(l.trend.unrecorded_why, ["read_error"]);
     assert_eq!((l.trend.rung, l.trend.could), (Some(2), Some(3)), "could reach comes from the spec kind's row");
     assert_eq!(l.kind, Some("Writing a spec or PRD"));
     assert_eq!(l.trend.tip.as_ref().map(|t| t.turn), Some(3));
     assert!(s.tasks.iter().any(|t| t.task_id == l.task_id), "opens a task the list has");
     let json = serde_json::to_string(l).unwrap();
     assert!(!json.contains("tighten the wording") && !json.contains("Write the spec"), "no prompt text in the card");
+}
+
+/// Judging off says since when only from a stored setting change (UI review item 8); never switched, no time.
+#[test]
+fn judging_says_when_it_was_last_switched() {
+    let d = tempfile::tempdir().unwrap();
+    let p = Paths::at(d.path());
+    standard(&p, false);
+    assert_eq!(snap(&p).settings.judge_since_ms, None, "never switched: no time");
+    let mut seed = Seed::new(&p);
+    seed.setting("judge", "auto", NOW - 3 * 60 * MIN);
+    seed.setting("judge", "off", NOW - 2 * 60 * MIN);
+    let s = snap(&p);
+    assert_eq!(s.settings.judge, "off");
+    assert_eq!(s.settings.judge_since_ms, Some(NOW - 2 * 60 * MIN), "the newest change");
 }
 
 #[test]
@@ -470,4 +488,62 @@ fn live_trend_goes_when_the_task_ends_or_is_switched_off() {
     assert!(snapshot(&p, &BundledPack.load().unwrap(), later).live.is_none(), "idle gap passed: the task ended");
     seed.setting("live_trend", "off", NOW - MIN);
     assert!(snap(&p).live.is_none());
+}
+
+/// The Set aside list (design aiq-home-app D11): per folder, the sessions AIQ still leaves out (live and imported) and the newest one, the
+/// person's own tasks there it kept, and AIQ's own check folders after the person's.
+#[test]
+fn set_aside_rows_count_runs_kept_tasks_and_put_aiq_checks_last() {
+    let d = tempfile::tempdir().unwrap();
+    let p = Paths::at(d.path());
+    let check = r"c:\users\imran\appdata\local\temp\aiq-copilot-probe-1\run0";
+    {
+        let mut s = Seed::new(&p);
+        s.store.insert_folder_rule(check, "set_aside", "aiq-check", "live", NOW - 5 * DAY).unwrap();
+        s.set_aside(PIPELINE, NOW - 3 * DAY);
+        for (sid, at) in [("a1", NOW - 3 * DAY), ("a2", NOW - 2 * DAY), ("me", NOW - DAY)] {
+            s.store.insert_set_aside_session("copilot-cli", sid, PIPELINE, "template", at).unwrap();
+        }
+        // The person's session there: its second prompt rescued it, so it is recorded and kept, not set aside.
+        s.prompt("copilot-cli", "me", NOW - DAY, Some(PIPELINE), "look at the failing job");
+        s.prompt("copilot-cli", "me", NOW - DAY + MIN, Some(PIPELINE), "now fix it");
+        s.imported_session(
+            "copilot-cli",
+            "old",
+            r"C:\Users\Imran\source\repos\Pipeline",
+            "automated",
+            &[(NOW - 9 * DAY, "summarise record 9")],
+        );
+    }
+    let s = snap(&p);
+    assert!(s.status.error.is_none(), "{:?}", s.status.error);
+    type Row<'a> = (&'a str, &'a str, bool, u32, Option<i64>, u32);
+    let rows: Vec<Row> = s
+        .home
+        .set_aside
+        .iter()
+        .map(|r| (r.folder.as_str(), r.reason.as_str(), r.own, r.runs, r.last_ms, r.kept))
+        .collect();
+    assert_eq!(
+        rows,
+        vec![(PIPELINE, "burst", false, 3, Some(NOW - 2 * DAY), 1), (check, "aiq-check", true, 0, None, 0),],
+        "2 live + 1 imported set aside; the rescued session is kept, not counted"
+    );
+    assert_eq!(s.home.set_aside[0].since_ms, NOW - 3 * DAY);
+}
+
+/// A turn whose stop has no turn_action row (the core never read its log) is not recorded, with the reason
+/// `not_read`; a one-turn task with only that turn has no estimate.
+#[test]
+fn live_trend_names_a_turn_the_core_never_read() {
+    let d = tempfile::tempdir().unwrap();
+    let p = Paths::at(d.path());
+    let mut s = seed::Seed::new(&p);
+    let brief = "Fix the failing parser test in tests/parse.rs. Context: it fails only on Windows paths; keep the \
+                 public API unchanged and run the suite after";
+    s.prompt("vscode", "vs9", NOW - 44 * MIN, Some(AIQ), brief);
+    s.stop("vscode", "vs9", NOW - 2 * MIN);
+    let l = snap(&p).live.expect("a task is open");
+    assert_eq!((l.trend.unrecorded.clone(), l.trend.unrecorded_why.clone()), (vec![1], vec!["not_read".to_string()]));
+    assert_eq!(l.trend.rung, None);
 }

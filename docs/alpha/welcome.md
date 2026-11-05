@@ -32,8 +32,8 @@ step. Only you see any of this. There is no manager view, no team view and no AI
 
 ## Install (Windows, about two minutes, no admin rights)
 
-1. Download `aiq-0.1.0-windows-x64.zip` from
-   <https://github.com/imransargusingh/AIQ/releases/latest> and unzip it anywhere.
+1. Open <https://github.com/imransargusingh/AIQ/releases/latest>, download the
+   `aiq-<version>-windows-x64.zip` file listed there, and unzip it anywhere.
 2. Double-click `install.cmd` in that folder. A window shows each step and waits for you to close it.
 
    If you prefer a terminal, run this in a normal PowerShell window in that folder:
@@ -77,8 +77,8 @@ anything else you send through it. Full details: [AIQ privacy and terms](../priv
 - **Some tips will be wrong.** This is early software. If a tip or a judgment doesn't fit how you work,
   press **This doesn't fit** in AIQ home. AIQ also checks itself and pauses a kind of tip when its own
   accuracy drops.
-- **AIQ updates itself** about once a day when there is a new version, while AIQ home is closed. Your
-  data and settings stay.
+- **AIQ updates itself** when there is a new version, while AIQ home is closed. To update straight
+  away, press **Update now** in AIQ home. Your data and settings stay.
 - **Need a break?** `aiq pause`, then `aiq resume` when you're ready.
 - **Progress takes weeks.** AIQ needs several tasks of the same kind before it can show one moving up
   a step.

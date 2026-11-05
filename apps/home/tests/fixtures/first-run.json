@@ -8,6 +8,7 @@
     "core_error": null,
     "paused": false,
     "store_found": false,
+    "last_event_ms": null,
     "read_ms": 0,
     "error": null
   },
@@ -75,6 +76,7 @@
     "live_trend": true,
     "judge": "off",
     "judge_daily_tasks": 50,
+    "judge_since_ms": null,
     "copilot_mid_turn": "on",
     "agent_actions": "on",
     "next_rung_tips": "auto",
@@ -260,6 +262,7 @@
     "message": null,
     "checked_ms": 1793530800000,
     "check_error": null,
+    "latest": null,
     "can_rollback": true
   },
   "projects": [],

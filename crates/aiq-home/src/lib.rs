@@ -224,6 +224,8 @@ pub struct Status {
     pub paused: bool,
     /// A store file exists (false on a fresh install).
     pub store_found: bool,
+    /// Newest stored event time (Getting started: "the last {time}").
+    pub last_event_ms: Option<i64>,
     /// Measured: how long this snapshot took to read.
     pub read_ms: u64,
     /// Measured: the part of `read_ms` before the queries run: the pause check, opening the store and its read lock. Logged by the
@@ -275,8 +277,20 @@ pub struct Week {
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SetAside {
+    /// The folder key (full path).
     pub folder: String,
+    /// aiq-check, template, burst (the rule that set it aside).
     pub reason: String,
+    /// When the folder was set aside.
+    pub since_ms: i64,
+    /// AIQ's own check and probe folders (reason aiq-check): Home folds them into one line.
+    pub own: bool,
+    /// Sessions AIQ set aside here and still leaves out: live (since v10) plus imported. Additive.
+    pub runs: u32,
+    /// The newest of those sessions. None when none is recorded (live set-asides before v10 left no row).
+    pub last_ms: Option<i64>,
+    /// Tasks of the person's here in the window: sessions they sent two or more prompts to, which AIQ keeps.
+    pub kept: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -382,6 +396,18 @@ pub struct TipRow {
     pub why: String,
     pub try_this: String,
     pub opened: bool,
+    /// The pack's tip id (`next_rung.<move>` for a next-step tip); "" when the card is unreadable.
+    pub tip_id: String,
+    /// A next-step tip's habit in the tasks after it (UI review item 6); None for tips with no habit behind them.
+    pub after: Option<TipAfter>,
+}
+
+/// Of the first `checked` judged tasks after a tip where its habit fits (at most `coach::AFTER_TIP_TASKS`),
+/// how many showed the habit.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct TipAfter {
+    pub seen: u32,
+    pub checked: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -425,6 +451,8 @@ pub struct Settings {
     /// auto (judge new tasks in the background) or off. "off" until `aiq install` connects a tool or the person first runs `aiq judge`.
     pub judge: String,
     pub judge_daily_tasks: u32,
+    /// When judging was last switched on or off; None when it was never switched (store facts, not a guess).
+    pub judge_since_ms: Option<i64>,
     /// on or off: read Copilot's own history file for messages sent while the agent works (no hook fires).
     pub copilot_mid_turn: String,
     /// on or off: read the tool's own log at each turn's end and store what the agent did, as counts.
@@ -569,6 +597,7 @@ fn empty(paths: &Paths, pack: &PackV1, now: Now) -> Snapshot {
             core_error: None,
             paused: false,
             store_found: false,
+            last_event_ms: None,
             read_ms: 0,
             open_ms: 0,
             error: None,
@@ -609,6 +638,7 @@ fn empty(paths: &Paths, pack: &PackV1, now: Now) -> Snapshot {
             live_trend: true,
             judge: "off".into(),
             judge_daily_tasks: aiq_domain::rung::DEFAULT_DAILY_TASKS,
+            judge_since_ms: None,
             copilot_mid_turn: "on".into(),
             agent_actions: "on".into(),
             next_rung_tips: "auto".into(),
@@ -687,6 +717,7 @@ fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()>
         }
         if let Some(v) = store.setting("judge").ok().flatten() {
             s.settings.judge = v;
+            s.settings.judge_since_ms = store.setting_since("judge").ok().flatten();
         }
         if let Some(n) = store.setting("judge_daily_tasks").ok().flatten().and_then(|v| v.parse().ok()) {
             s.settings.judge_daily_tasks = n;
@@ -705,10 +736,10 @@ fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()>
     } else {
         vec![]
     };
-    s.home.set_aside = set_aside.iter().map(|(f, r, _)| SetAside { folder: f.clone(), reason: r.clone() }).collect();
     let aside: BTreeSet<&str> = set_aside.iter().map(|(f, _, _)| f.as_str()).collect();
 
     let mut tasks = task_list(store, pack, window_start, &aside)?;
+    s.home.set_aside = set_aside_rows(store, &set_aside, &tasks)?;
     let judgments = store.current_judgments().map_err(|e| e.to_string())?;
     for t in tasks.iter_mut() {
         if let Some(j) = judgments.get(&t.task_id) {
@@ -730,6 +761,8 @@ fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()>
         t.cost_usd = (!costs.is_empty()).then(|| costs.iter().sum());
     }
     coaching(store, pack, now, &tasks, &judgments, s)?;
+    // Every judged task in the window, for what happened after each next-step tip.
+    let judged_all = judged_tasks(&tasks.iter().collect::<Vec<_>>(), &judgments);
     s.tasks = tasks;
     if s.settings.live_trend {
         s.live = live(store, pack, now.utc_ms, s)?;
@@ -759,11 +792,19 @@ fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()>
         for r in it {
             let (card_id, tool, at, json, opened) = q(r)?;
             let card = json.and_then(|j| serde_json::from_str::<CardV1>(&j).ok());
-            let (noticed, why, try_this) = match card {
-                Some(c) => (c.noticed, c.why, c.try_this),
-                None => (String::new(), String::new(), String::new()),
+            let (noticed, why, try_this, tip_id) = match card {
+                Some(c) => (c.noticed, c.why, c.try_this, c.tip_id),
+                None => (String::new(), String::new(), String::new(), String::new()),
             };
-            s.tips.push(TipRow { card_id, tool, delivered_ms: at, noticed, why, try_this, opened });
+            let after = tip_id
+                .strip_prefix(&format!("{}.", aiq_domain::coach::OPPORTUNITY))
+                .and_then(|id| pack.moves.iter().find(|m| m.move_id == id))
+                .map(|m| {
+                    let (seen, checked) =
+                        aiq_domain::coach::after_tip(&judged_all, m, at, aiq_domain::coach::AFTER_TIP_TASKS);
+                    TipAfter { seen, checked }
+                });
+            s.tips.push(TipRow { card_id, tool, delivered_ms: at, noticed, why, try_this, opened, tip_id, after });
         }
     }
 
@@ -777,6 +818,7 @@ fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()>
         }
     }
     s.data.store_bytes = store.size_bytes();
+    s.status.last_event_ms = q(c.query_row("SELECT max(ts_utc_ms) FROM event", [], |r| r.get(0)))?;
     {
         let mut st = q(c.prepare(
             "SELECT e.event_id, e.ts_utc_ms, e.surface, e.kind, t.text,
@@ -866,6 +908,44 @@ pub fn tasks(store: &Store, pack: &PackV1, since_ms: i64) -> Result<Vec<TaskRow>
     };
     let aside: BTreeSet<&str> = aside.iter().map(String::as_str).collect();
     task_list(store, pack, since_ms, &aside)
+}
+
+/// The Set aside list: per folder, how many sessions AIQ left out and when last, and how many of the person's own
+/// tasks there it kept (window). The person's folders first, newest rule first; AIQ's own check folders last.
+fn set_aside_rows(store: &Store, set_aside: &[(String, String, i64)], tasks: &[TaskRow]) -> R<Vec<SetAside>> {
+    let live = store.set_aside_session_counts().map_err(|e| e.to_string())?;
+    let mut imported: std::collections::HashMap<String, (u32, Option<i64>)> = std::collections::HashMap::new();
+    if store.has_table("import_session").map_err(|e| e.to_string())? {
+        let mut st = q(store.raw().prepare(
+            "SELECT folder, COUNT(*), MAX(started_utc_ms) FROM import_session WHERE outcome = 'automated' GROUP BY folder",
+        ))?;
+        let it =
+            q(st.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, u32>(1)?, r.get::<_, Option<i64>>(2)?))))?;
+        for r in it {
+            let (f, n, last) = q(r)?;
+            let e = imported.entry(folder_key(&f)).or_default();
+            e.0 += n;
+            e.1 = e.1.max(last);
+        }
+    }
+    let mut rows: Vec<SetAside> = set_aside
+        .iter()
+        .map(|(f, r, at)| {
+            let (ln, llast) = live.get(f).map_or((0, None), |&(n, t)| (n, Some(t)));
+            let (inn, ilast) = imported.get(f).copied().unwrap_or_default();
+            SetAside {
+                folder: f.clone(),
+                reason: r.clone(),
+                since_ms: *at,
+                own: r == "aiq-check",
+                runs: ln + inn,
+                last_ms: llast.max(ilast),
+                kept: tasks.iter().filter(|t| t.folder.as_deref() == Some(f.as_str())).count() as u32,
+            }
+        })
+        .collect();
+    rows.sort_by_key(|r| r.own); // stable: newest rule first within each group
+    Ok(rows)
 }
 
 /// A live prompt: event id, surface, session, time, folder, text.

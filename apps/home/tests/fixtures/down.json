@@ -8,6 +8,7 @@
     "core_error": "AIQ-STORE-OPEN",
     "paused": false,
     "store_found": true,
+    "last_event_ms": 1793532600000,
     "read_ms": 12,
     "error": null
   },
@@ -66,7 +67,30 @@
     "set_aside": [
       {
         "folder": "c:\\users\\imran\\source\\repos\\pipeline",
-        "reason": "burst"
+        "reason": "burst",
+        "since_ms": 1793275200000,
+        "own": false,
+        "runs": 12,
+        "last_ms": 1793334600000,
+        "kept": 0
+      },
+      {
+        "folder": "c:\\users\\imran\\appdata\\local\\temp\\aiq-copilot-probe-8qz2mk1d\\run0",
+        "reason": "aiq-check",
+        "since_ms": 1793188860000,
+        "own": true,
+        "runs": 1,
+        "last_ms": 1793188860000,
+        "kept": 0
+      },
+      {
+        "folder": "c:\\users\\imran\\appdata\\local\\temp\\aiq-copilot-probe-3glkf9fj\\run0",
+        "reason": "aiq-check",
+        "since_ms": 1793188800000,
+        "own": true,
+        "runs": 1,
+        "last_ms": 1793188800000,
+        "kept": 0
       }
     ],
     "tips_today": 1
@@ -268,7 +292,9 @@
       "noticed": "You reworded the same request 3 times in this task.",
       "why": "Rewording often means the agent is missing context, not words.",
       "try_this": "Say what is wrong with the last answer and add the one fact it lacked.",
-      "opened": false
+      "opened": false,
+      "tip_id": "reprompt.restate",
+      "after": null
     },
     {
       "card_id": "019000000006-0000-7000-8000-000000000000",
@@ -277,7 +303,9 @@
       "noticed": "You reworded the same request 3 times in this task.",
       "why": "Rewording often means the agent is missing context, not words.",
       "try_this": "Say what is wrong with the last answer and add the one fact it lacked.",
-      "opened": true
+      "opened": true,
+      "tip_id": "reprompt.restate",
+      "after": null
     }
   ],
   "data": {
@@ -286,7 +314,7 @@
     "turn_ends": 2,
     "imported_sessions": 1,
     "imported_events": 6,
-    "store_bytes": 258048,
+    "store_bytes": 270336,
     "items": [
       {
         "event_id": "019000000018-0000-7000-8000-000000000000",
@@ -405,6 +433,7 @@
     "live_trend": true,
     "judge": "off",
     "judge_daily_tasks": 50,
+    "judge_since_ms": null,
     "copilot_mid_turn": "on",
     "agent_actions": "on",
     "next_rung_tips": "auto",
@@ -590,6 +619,7 @@
     "message": null,
     "checked_ms": 1793530800000,
     "check_error": null,
+    "latest": null,
     "can_rollback": true
   },
   "projects": [
