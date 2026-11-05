@@ -214,7 +214,7 @@ Page changes are hard cuts. Nothing else moves. No layout shift: skeletons match
 ## 7. UI copy — real strings
 
 - Home headline: "Tasks agents finished without you redoing them" · "{kept} of {judged} tasks in the last 30 days"
-- First weeks: "AIQ is watching quietly. Patterns show after about 10 tasks of the same kind."
+- First weeks: "AIQ runs quietly in the background. Patterns show after about 10 tasks of the same kind."
 - Queued: "{n} tasks are waiting to be judged. They're left out of these numbers until then."
 - Core down: "AIQ isn't running, so this shows what was stored at {time}. It starts with your next prompt in Claude Code."
 - Low confidence: "AIQ isn't sure enough to suggest a next step yet."

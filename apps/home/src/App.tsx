@@ -264,8 +264,8 @@ export function App() {
   const one: Ctx | null = ctx && { ...ctx, snap: tour ? ctx.snap : scoped(ctx.snap, project), project: tour ? null : project };
   const step = tour ? STEPS[tour.step] : null;
   // The tools AIQ is connected to and that are installed, not the tools it holds tasks from (an imported or
-  // disconnected tool isn't being watched).
-  const watching = snap?.setup.tools.filter((t) => t.hooked && t.present).map((t) => (t.tool === "copilot" ? "Copilot" : "Claude Code")) ?? [];
+  // disconnected tool doesn't count).
+  const connected = snap?.setup.tools.filter((t) => t.hooked && t.present).map((t) => (t.tool === "copilot" ? "Copilot" : "Claude Code")) ?? [];
 
   if (ctx && inSetup) {
     return (
@@ -280,7 +280,7 @@ export function App() {
             finish={(s) => {
               setSnap(s);
               go("home");
-              announce("Setup done. AIQ is watching.");
+              announce("Setup done. AIQ is on.");
             }}
             close={() => go("settings")}
           />
@@ -333,7 +333,7 @@ export function App() {
               <>
                 <span>
                   <span className={`dot${snap.status.paused || !snap.status.core ? " paused" : ""}`} aria-hidden="true" />
-                  {snap.status.paused ? "Paused" : snap.status.core_state === "failed" ? "Not running" : !snap.status.core ? "Starting" : watching.length ? `Watching ${watching.join(", ")}` : "No tool connected"}
+                  {snap.status.paused ? "Paused" : snap.status.core_state === "failed" ? "Not running" : !snap.status.core ? "Starting" : connected.length ? `Connected: ${connected.join(", ")}` : "No tool connected"}
                 </span>
                 <span>
                   Tips today: {snap.home.tips_today} of {snap.settings.daily_cap}

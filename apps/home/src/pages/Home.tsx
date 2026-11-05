@@ -16,7 +16,7 @@ export function Home(ctx: Ctx) {
   const { snap, go, announce, refresh } = ctx;
   const include = async (folder: string) => {
     const r = await api.includeFolder(folder);
-    announce(r.ok ? `AIQ will watch sessions in ${folderName(folder)} again.` : r.message);
+    announce(r.ok ? `AIQ will include sessions in ${folderName(folder)} again.` : r.message);
     if (r.ok) refresh();
   };
   const h = snap.home;
