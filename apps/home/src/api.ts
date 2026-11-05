@@ -207,6 +207,6 @@ export const api = {
   /** Open the tool's install page in the default browser (a fixed address per tool). */
   openHelp: (tool: "claude-code" | "copilot-cli") => invoke<Outcome>("open_tool_help", { tool }),
   /** Install the waiting update or go back (AIQ home closes and reopens), or check now (it stays open);
-   * `check_if_due` checks only when an hour has passed since the last check (Home's own hourly ask). */
+   * `check_if_due` checks only when 15 minutes have passed since the last check (Home asks every minute). */
   runUpdate: (action: "install" | "rollback" | "check" | "check_if_due" | "check_on_open") => invoke<Outcome>("run_update", { action }),
 };
