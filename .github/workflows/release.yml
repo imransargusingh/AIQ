@@ -239,10 +239,24 @@ jobs:
           Start-Sleep -Seconds 1
 
           # Idle: the waiting update installs, keeps .old copies, and says so. A core is running, as on a laptop.
+          # Windows refuses the first two starts (laptop 2026-11-05 23:22:12Z: "Access is denied" right after the swap):
+          # the core is started on a later try and AIQ home opens again (-Relaunch).
           Start-Process -WindowStyle Hidden -FilePath $exe -ArgumentList 'core'
           Start-Sleep -Seconds 2
-          powershell -ExecutionPolicy Bypass -File $up -Apply
+          powershell -ExecutionPolicy Bypass -File $up -Apply -Relaunch -FailLaunches 2
           if ($LASTEXITCODE -ne 0) { Fail "apply when idle: exit $LASTEXITCODE" }
+          $ulog = Join-Path $aiq 'upgrade-log.txt'
+          if (-not (Select-String -Quiet -Path $ulog -Pattern 'AIQ-UPDATE-CORE: started the AIQ core again\. \(Windows refused it first')) { Fail 'core not started again after two refusals' }
+          if (-not (Select-String -Quiet -Path $ulog -Pattern 'AIQ-UPDATE-HOME: started AIQ home again\.')) { Fail 'AIQ home not opened again (-Relaunch)' }
+          $homeBack = $null
+          foreach ($i in 1..25) {
+            $homeBack = Get-Process -Name 'aiq-home' -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq (Join-Path $aiq 'bin\aiq-home.exe') }
+            if ($homeBack) { break }
+            Start-Sleep -Milliseconds 200
+          }
+          if (-not $homeBack) { Fail 'no AIQ home running after -Relaunch' }
+          $homeBack | Stop-Process -Force
+          Start-Sleep -Seconds 1
           $s = St
           if ($s.state -ne 'applied' -or $s.installed_tag -ne 'v99.0.1' -or $s.from -ne $v) { Fail "applied: $($s | ConvertTo-Json -Compress)" }
           if (Test-Path (Join-Path $aiq 'update')) { Fail 'staged files left after install' }
@@ -258,8 +272,22 @@ jobs:
           & $exe update
 
           # Go back: the release left is never installed again by itself.
-          powershell -ExecutionPolicy Bypass -File $up -Rollback
+          # Every start refused, and a hook brings the core back meanwhile: the script sees it and does not start a
+          # second one; AIQ home can't be opened, which is logged, never an error that ends the script.
+          $hook = Start-Job -ArgumentList $ulog, $exe -ScriptBlock {
+            param($ulog, $exe)
+            foreach ($i in 1..150) {
+              if (Select-String -Quiet -Path $ulog -Pattern 'Rolled back to AIQ') { Start-Process -WindowStyle Hidden -FilePath $exe -ArgumentList 'core'; return }
+              Start-Sleep -Milliseconds 200
+            }
+          }
+          powershell -ExecutionPolicy Bypass -File $up -Rollback -Relaunch -FailLaunches 99
           if ($LASTEXITCODE -ne 0) { Fail 'rollback failed' }
+          $hook | Wait-Job -Timeout 30 | Remove-Job -Force
+          if (-not (Select-String -Quiet -Path $ulog -Pattern 'AIQ-UPDATE-CORE: the AIQ core was already running again\.')) { Fail 'core that came back by itself was not seen' }
+          if (-not (Select-String -Quiet -Path $ulog -Pattern 'AIQ-UPDATE-HOME: could not start AIQ home')) { Fail 'refused AIQ home start not logged' }
+          $cores = @(Get-CimInstance Win32_Process -Filter "Name='aiq.exe'" | Where-Object { $_.ExecutablePath -eq $exe -and $_.CommandLine -match '\score\s*$' })
+          if ($cores.Count -ne 1) { Fail "want one AIQ core after rollback, found $($cores.Count)" }
           if ((St).skip -ne 'v99.0.1') { Fail "rollback did not record the release left: $((St) | ConvertTo-Json -Compress)" }
           powershell -ExecutionPolicy Bypass -File $up -Check -Apply -Feed $feed2
           if ((St).state -ne 'rolled_back' -or (Test-Path (Join-Path $aiq 'update'))) { Fail "reinstalled after rollback: $((St) | ConvertTo-Json -Compress)" }

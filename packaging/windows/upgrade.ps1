@@ -14,7 +14,8 @@
 #                   hook, judge or import running. Swaps the exes only (tool connections are left as they
 #                   are). If the swap fails part-way, the exes it changed are put back.
 #   -WaitPid <id>   first wait up to 20 s for that process to end (AIQ home closing itself).
-#   -Relaunch       start AIQ home at the end.
+#   -Relaunch       start AIQ home at the end (tried again for up to 15 s if Windows refuses it; never an error).
+#   -FailLaunches <n>  tests only: the first n starts of the core or AIQ home fail as if Windows refused them.
 #   -Feed <folder>  tests only: latest.json and the files in that folder stand in for GitHub.
 #   -Site <url> -Api <url>   tests only: stand-ins for https://github.com and https://api.github.com.
 #
@@ -39,6 +40,7 @@ param(
     [switch]$Apply,
     [int]$WaitPid = 0,
     [switch]$Relaunch,
+    [int]$FailLaunches = 0,
     [string]$Feed,
     [string]$Site = 'https://github.com',
     [string]$Api = 'https://api.github.com'
@@ -70,16 +72,78 @@ function Stop-Aiq {
 }
 # Start the core again after Stop-Aiq stopped one. Without it AIQ stayed down until the next hook started it (laptop,
 # 2026-11-04: Home's Install now swapped at 04:17:03Z, core back at 04:22:53Z; Home said "AIQ isn't running").
-# A second core exits at once (CORE_ALREADY_RUNNING), so this is safe when one is already up.
+# A second core exits at once (CORE_ALREADY_RUNNING), so a start is harmless when one is already up; still, a core
+# that came back by itself (a hook) is not started again.
 $script:coreWasRunning = $false
+# Is an `aiq core` from bin running? $false when the process list can't be read (then a start is tried; it is harmless).
+function Core-Running {
+    try {
+        return [bool](@(Get-CimInstance Win32_Process -Filter "Name='aiq.exe'" | Where-Object {
+            $_.ExecutablePath -and $_.ExecutablePath.StartsWith($bin, [StringComparison]::OrdinalIgnoreCase) -and
+            ("$($_.CommandLine)" -replace '^\s*("[^"]*"|\S+)\s*', '').Trim() -eq 'core' }).Count)
+    } catch { return $false }
+}
+function Home-Running {
+    [bool](@(Get-Process -Name 'aiq-home' -ErrorAction SilentlyContinue |
+        Where-Object { $_.Path -and $_.Path.StartsWith($bin, [StringComparison]::OrdinalIgnoreCase) }).Count)
+}
+# Start an exe just swapped in, and never throw. Laptop, 2026-11-05 23:22:12Z: Microsoft Defender's attack surface
+# reduction rule "Use advanced protection against ransomware" (set by IT; events 1121) refused both the core and AIQ
+# home, started by this script's powershell.exe right after the swap of 0.1.8, and that error, uncaught, ended the
+# script, so AIQ home never reopened. The same aiq.exe, started by a hook 8 s later, ran. So: try again after 1, 2, 4
+# and 8 s, and stop as soon as $running says it is up (a hook started the core, the person opened AIQ home). With
+# $shell, a refused start is also tried through Explorer (the parent the Start menu gives it). Whether a later try or
+# Explorer gets past that rule is not measured: the log line says which way worked. $true when up.
+$script:failLaunches = $FailLaunches
+function Refused-For-Test {
+    if ($script:failLaunches -gt 0) { $script:failLaunches--; throw 'Access is denied (test).' }
+}
+function Start-Again([string]$exe, [string[]]$argv, [bool]$hidden, [bool]$shell, [scriptblock]$running, [string]$code, [string]$what) {
+    $last = ''
+    foreach ($wait in 0, 1, 2, 4, 8) {
+        if ($wait) { Start-Sleep -Seconds $wait }
+        if (& $running) { Log "${code}: $what was already running again."; return $true }
+        try {
+            Refused-For-Test
+            $a = @{ FilePath = $exe }
+            if ($argv) { $a.ArgumentList = $argv }
+            if ($hidden) { $a.WindowStyle = 'Hidden' }
+            Start-Process @a
+            $tries = if ($last) { " (Windows refused it first: $last)" } else { '' }
+            Log "${code}: started $what again.$tries"
+            return $true
+        } catch { $last = $_.Exception.Message }
+        if ($shell) {
+            try {
+                Refused-For-Test
+                # Explorer reports nothing back, so the process list says whether it opened.
+                Start-Process -FilePath (Join-Path $env:SystemRoot 'explorer.exe') -ArgumentList "`"$exe`""
+                foreach ($i in 1..15) {
+                    Start-Sleep -Milliseconds 200
+                    if (& $running) { Log "${code}: started $what again through Explorer (Windows refused the direct start: $last)."; return $true }
+                }
+            } catch { }
+        }
+    }
+    Log "${code}: could not start $what ($last)."
+    return $false
+}
 function Start-Core {
     $exe = Join-Path $bin 'aiq.exe'
     if (-not $script:coreWasRunning -or -not (Test-Path $exe)) { return }
-    try {
-        Start-Process -WindowStyle Hidden -FilePath $exe -ArgumentList 'core'
-        Log 'AIQ-UPDATE-CORE: started the AIQ core again.'
-    } catch {
-        Log "AIQ-UPDATE-CORE: could not start the AIQ core ($($_.Exception.Message)); the next hook starts it."
+    if (-not (Start-Again $exe @('core') $true $false { Core-Running } 'AIQ-UPDATE-CORE' 'the AIQ core')) {
+        Log 'AIQ-UPDATE-CORE: the next hook, AIQ home or the next sign-in starts it.'
+    }
+}
+# -Relaunch: open AIQ home again (it closed itself for the update).
+function Start-Home {
+    if (-not $Relaunch) { return }
+    $exe = Join-Path $bin 'aiq-home.exe'
+    if (-not (Test-Path $exe)) { return }
+    # The closing AIQ home must not count as "already running" (some paths return before the swap waited for it).
+    if ($WaitPid) { Wait-Process -Id $WaitPid -Timeout 20 -ErrorAction SilentlyContinue }
+    if (-not (Start-Again $exe @() $false $true { Home-Running } 'AIQ-UPDATE-HOME' 'AIQ home')) {
+        Log 'AIQ-UPDATE-HOME: open AIQ from the Start menu; AIQ home starts the core too.'
     }
 }
 function Installed-Version {
@@ -260,7 +324,7 @@ if ($Rollback) {
     Write-State @{ state = 'rolled_back'; from = $from; installed = $to; skip = $leaving; installed_tag = $null; at = (Now-Utc); blocked = $null; message = $null }
     Log "Rolled back to AIQ $to. AIQ won't install $from again by itself. Run -Rollback again to return to it."
     Start-Core
-    if ($Relaunch) { Start-Process -FilePath (Join-Path $bin 'aiq-home.exe') }
+    Start-Home
     exit 0
 }
 
@@ -345,7 +409,7 @@ if ($Check -or $Apply) {
         $st = Read-State
         $zipPath = if ($st.staged) { Join-Path $stage $st.staged } else { '' }
         if ($st.state -ne 'waiting' -or -not $zipPath -or -not (Test-Path $zipPath)) {
-            if ($Relaunch) { Start-Process -FilePath (Join-Path $bin 'aiq-home.exe') }
+            Start-Home
             exit $code
         }
         # AIQ-UPDATE-NOT-NEWER: a staged release that is not newer than what is installed (the person installed it
@@ -358,7 +422,7 @@ if ($Check -or $Apply) {
             Remove-Item -Recurse -Force $stage -ErrorAction SilentlyContinue
             Write-State @{ state = 'current'; installed = $have; available = $null; staged = $null; blocked = $null }
             Log "AIQ-UPDATE-NOT-NEWER: the waiting $($st.available) is not newer than AIQ $have. Dropped it; nothing changed."
-            if ($Relaunch) { Start-Process -FilePath (Join-Path $bin 'aiq-home.exe') }
+            Start-Home
             exit 0
         }
         if ($WaitPid) { Wait-Process -Id $WaitPid -Timeout 20 -ErrorAction SilentlyContinue }
@@ -366,7 +430,7 @@ if ($Check -or $Apply) {
         if ($busy) {
             Write-State @{ blocked = $busy }
             Log "AIQ $($st.available) is waiting: $busy."
-            if ($Relaunch) { Start-Process -FilePath (Join-Path $bin 'aiq-home.exe') }
+            Start-Home
             exit 3
         }
         # Checked again: the folder is the person's own, but a file changed since the check is not installed.
@@ -414,7 +478,7 @@ if ($Check -or $Apply) {
         }
         # Stop-Aiq stopped the core on both paths (updated, or put back after a failed swap).
         Start-Core
-        if ($Relaunch) { Start-Process -FilePath (Join-Path $bin 'aiq-home.exe') }
+        Start-Home
     }
     exit $code
 }
