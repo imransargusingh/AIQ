@@ -460,6 +460,35 @@ main:has(.secnav){scroll-padding-top:56px}
 .titlebar .examplechip{color:var(--warning);border-color:var(--warning)}
 @media (forced-colors:active){.tour-spot{outline-color:Highlight}.tour-tip,.tour-tip .b{forced-color-adjust:none}}
 
+/* Rung guide (Imran 2026-11-05, option B): steps down, kinds of work across, the picked habit beside. */
+.gd{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:var(--s4);align-items:start}
+.gd-grid{padding:var(--s3) var(--s4)}
+.gd-gr{display:grid;grid-template-columns:110px repeat(4,minmax(0,1fr));gap:var(--s2);padding:var(--s2) 0;border-top:1px solid var(--hairline)}
+.gd-gh{border-top:0}
+.gd-jh{display:flex;flex-direction:column}
+.gd-sh{display:flex;flex-direction:column;align-items:flex-start;gap:var(--s1)}
+.gd-r{display:inline-grid;place-items:center;min-width:22px;height:22px;border-radius:var(--r-sm);font:var(--t-caption);font-weight:600}
+.gd-cell{display:flex;flex-direction:column;gap:var(--s1);padding:var(--s1);border-radius:var(--r-sm);border:1px solid transparent}
+.gd-cell.here{background:var(--canvas-soft);border-color:var(--ink-mute)}
+.gd-here{font-weight:600;color:var(--ink)}
+.gd-jn{display:none}
+.gd-pill{all:unset;box-sizing:border-box;cursor:pointer;font:var(--t-caption);padding:var(--s1) var(--s2);border:1px solid var(--hairline);border-radius:var(--r-sm);background:var(--surface);display:flex;flex-direction:column;gap:2px}
+.gd-pill.next{border-color:var(--success);border-width:2px}
+.gd-pill.on{background:var(--primary);color:var(--on-primary);border-color:var(--primary)}
+.gd-pill:focus-visible{outline:2px solid var(--focus-ring);outline-offset:1px}
+.gd-tag{font-weight:600;color:var(--success)}
+.gd-pill.on .gd-tag{color:inherit}
+.gd-side{position:sticky;top:var(--s4)}
+@media (max-width:1100px){.gd{grid-template-columns:minmax(0,1fr)}.gd-side{position:static}}
+@media (max-width:900px){
+  .gd-gh{display:none}
+  .gd-gh + .gd-gr{border-top:0}
+  .gd-gr{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  .gd-sh{grid-column:1/-1;flex-direction:row;align-items:center}
+  .gd-jn{display:block}
+}
+@media (forced-colors:active){.gd-pill.on{forced-color-adjust:none;background:Highlight;color:HighlightText}.gd-cell.here{border-color:CanvasText}}
+
 /* First-run analysis (design first-run-analysis) */
 .an-prog{display:flex;flex-direction:column;gap:var(--s2)}
 .an-prog progress{width:100%;height:10px;accent-color:var(--primary)}

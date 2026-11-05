@@ -2,7 +2,7 @@
 # Every number here is uncalibrated pack data; the real-data week tunes it (design: assume: lines).
 schema = "aiq.pack.v1"
 pack_id = "aiq.core"
-version = "bundled-8"
+version = "bundled-9"
 idle_gap_min = 30
 
 [reprompt]
@@ -170,6 +170,29 @@ why = "asking for the whole draft with what done means lets the agent keep it co
 try_this = "ask for the complete draft and say what a finished one must contain."
 starter = "Write the whole <doc>. Done means it covers <sections> for <reader>. Then list what you were unsure of."
 
+
+[[moves]]
+move_id = "let_agent_write"
+step = 2
+facts = ["F1"]
+job = "write_doc"
+habit = "Let the agent write the doc in the file"
+noticed = "this looks like {type}. Last times, you wrote most of it yourself."
+why = "when the agent writes the file, you review one draft instead of moving text back and forth."
+try_this = "point the agent at the file and let it write there, then review the changes."
+starter = "Write <doc> in <file path>. Use <notes or sources>. When you're done, tell me what you changed and what you were unsure of."
+
+[[moves]]
+move_id = "doc_one_go"
+step = 2
+facts = ["F12"]
+job = "write_doc"
+habit = "Give all your notes at once, then review the draft"
+noticed = "this looks like {type}. Last times, you steered it one change at a time."
+why = "all your notes in one go let the agent shape the whole draft, and you review it once."
+try_this = "collect your changes into one message, then review the next draft as a whole."
+starter = "Revise <doc> with all of these: <change>, <change>, <change>. Then show me the full draft and list what you changed."
+
 [[moves]]
 move_id = "let_agent_edit"
 step = 2
@@ -215,6 +238,17 @@ noticed = "this looks like {type}. Recently, you pasted the material in yourself
 why = "an agent that reads the files, logs or docs itself often finds what a pasted excerpt leaves out."
 try_this = "point the agent at where to look instead of pasting the material in."
 starter = "Look in <files, logs or docs> to answer <question>. Tell me what you read and what you found."
+
+[[moves]]
+move_id = "ask_one_go"
+step = 2
+facts = ["F12"]
+job = "ask_research"
+habit = "Ask once with everything you need, then let it dig"
+noticed = "this looks like {type}. Last times, you steered it one follow-up at a time."
+why = "one full ask lets the agent plan its search instead of waiting for your next nudge."
+try_this = "put the follow-ups you expect into the first ask, then read the whole answer."
+starter = "Find out <question>. Also cover <follow-up> and <follow-up>. Report back once, with sources."
 
 # Run or ship it (Imran 2026-11-02, design run-or-ship-pack). Its Delegated rung reads F14 (the agent ran it
 # itself) instead of F1. The check comes before the hand-over moves, and no move hands over a live system
@@ -264,6 +298,18 @@ why = "an agent that runs the commands sees the errors itself and can fix them b
 try_this = "let the agent run the commands and report what each printed."
 starter = "Run the commands yourself to <goal>. Tell me each command and what it printed."
 
+
+[[moves]]
+move_id = "run_one_go"
+step = 2
+facts = ["F12"]
+job = "run_ship"
+habit = "Give the whole run up front, not one command at a time"
+noticed = "this looks like {type}. Last times, you steered it one command at a time."
+why = "with the whole run up front, the agent can do the steps and fix errors before it hands back."
+try_this = "say the end state and the steps you expect, then let it run and report."
+starter = "Get <app or release> to <end state>. Steps I expect: <step>, <step>. Stop and ask before <risky step>. Report each command and what it printed."
+
 [[moves]]
 move_id = "written_brief"
 step = 3
@@ -286,6 +332,29 @@ why = "an agent that runs the checks can fix what fails before it hands back."
 try_this = "ask the agent to run the tests and keep fixing until they pass."
 starter = "<The task>. Run the tests with <command>. Keep fixing until they all pass, then show me the diff and the test output."
 
+
+[[moves]]
+move_id = "agent_checks_doc"
+step = 3
+facts = ["F3"]
+job = "write_doc"
+habit = "Ask the agent to check the doc itself"
+noticed = "this looks like {type}. Last times, you checked the doc yourself."
+why = "an agent that runs the link and style checks can fix what fails before it hands back."
+try_this = "ask the agent to run the doc checks, such as links and spelling, and fix what fails."
+starter = "<The doc task>. Then run <doc check, such as markdownlint or a link check> and fix what fails. Show me the output."
+
+[[moves]]
+move_id = "agent_checks_run"
+step = 3
+facts = ["F3"]
+job = "run_ship"
+habit = "Ask the agent to run the health check itself"
+noticed = "this looks like {type}. Last times, you ran the checks yourself."
+why = "an agent that runs the smoke test or health check can fix what fails before it hands back."
+try_this = "name the check that proves it works, and ask the agent to run it after each step."
+starter = "<The run or release>. After each step, run <smoke test or health check>. Fix what fails, then show me the output."
+
 [[moves]]
 move_id = "split_and_check"
 step = 3
@@ -307,3 +376,27 @@ noticed = "this looks like {type}. Sub-agents could look into each part at once.
 why = "sub-agents can each look into one part, and you get one combined answer back."
 try_this = "ask the agent to split the question and send a sub-agent to each part."
 starter = "Split <question> into parts. Send a sub-agent to each, then combine what they found into one answer with sources."
+
+# Toward a saved workflow (step 4). F9 is not readable yet (rung.rs: unknown in slice 1), so `saved_workflow`
+# shows in the rung guide but no tip fires from it until F9 is read; `agent_checks_answer` can fire today.
+[[moves]]
+move_id = "agent_checks_answer"
+step = 4
+facts = ["F3"]
+job = "ask_research"
+habit = "Ask the agent to prove its answer with a run"
+noticed = "this looks like {type}. Last times, the agent didn't test its answer."
+why = "an answer the agent has proved with a command, query or test can be reused without checking again."
+try_this = "ask the agent to prove each finding with a command, query or test it runs."
+starter = "Answer <question>. For each finding, run <command, query or test> that proves it, and show the output."
+
+[[moves]]
+move_id = "saved_workflow"
+step = 4
+facts = ["F9"]
+job = "any"
+habit = "Save it as a workflow others can run"
+noticed = "this looks like {type}. You do this often; a saved workflow could run it."
+why = "a saved, versioned workflow runs the same way every time, for you and for others."
+try_this = "save the brief, the steps and the checks as a prompt file or script, and share it."
+starter = "Turn what we just did into a reusable <prompt file or script> in <path>: its inputs, steps, checks, and when to stop and ask."

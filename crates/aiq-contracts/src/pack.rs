@@ -109,7 +109,7 @@ pub struct MoveDef {
 }
 
 /// Facts a move may name (the rung guardrails' facts, rung-model fact set fs1).
-pub const MOVE_FACTS: [&str; 12] = ["F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F12", "F13", "F14", "F15"];
+pub const MOVE_FACTS: [&str; 13] = ["F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F12", "F13", "F14", "F15"];
 
 /// The import spec's automated-session rule, live side (docs/specs/history-import.md, US-12). Defaults are
 /// the spec's tested values.

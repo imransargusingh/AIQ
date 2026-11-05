@@ -483,3 +483,17 @@ summary: >-
   the update check (`check_error` shown in Settings > Updates). Both already surface a reason.
 - **Rule:** background work ships with a state the person can see: what it is doing, how far, what (if anything)
   they must do, and why it stopped.
+
+### DC-030 — A coverage test that checks a step has some move, not that each failing fact has one
+- **Signature:** 2026-11-05, Imran asked how users move from Directed to Delegated. Reading `rung::delegated` against
+  the pack showed a doc written in the chat, or a doc, question or run steered one step at a time (F12), had no
+  next step, so its kind read "AIQ isn't sure yet". 11 job × step × fact gaps in all (docs F1/F12/F3, questions
+  F12/F3, runs F12/F3, every job F9).
+- **Why it survives:** `bundled_moves_…` asserted only that each job had *a* move at steps 1 to 3. One move per
+  step passed while the other facts of that step's guardrail had none, and step 4 was not checked at all.
+- **Control (tests):** `pack::tests::every_guardrail_fact_a_job_can_fail_has_a_move` fails each fact the next
+  rung's guardrail reads, for each job and step 1 to 4, on a task that can sit at that step, and asserts a move
+  of that step and job names it. Red on bundled-8 with the 11 gaps; green on bundled-9.
+- **Sweep:** the guardrails are the only source of moves (`coach::moves_for`), so the test covers every way a
+  move is chosen. F9 is unknown until it is read from the log, so `saved_workflow` is guide text only for now.
+- **Rule:** test coverage against the rule's own inputs (each fact it reads), never against a count per group.

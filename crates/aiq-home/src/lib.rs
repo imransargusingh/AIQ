@@ -62,6 +62,21 @@ pub struct Snapshot {
     /// The open task's live rung trend (design live-rung-trend C): the newest live session whose last event is
     /// within the idle gap. None when no task is open, its first turn has not ended, or the person turned it off.
     pub live: Option<Live>,
+    /// The rung guide (Imran 2026-11-05, option B): every next-step move in pack order, with its text. Pack data,
+    /// the same for everyone; the person's own rung per job comes from `coaching.kinds`.
+    pub guide: Vec<GuideMove>,
+}
+
+/// One habit in the rung guide: the step it climbs from (1..=4), its job (or `any`), and the pack's own text.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct GuideMove {
+    pub move_id: String,
+    pub step: u8,
+    pub job: String,
+    pub habit: String,
+    pub why: String,
+    pub try_this: String,
+    pub starter: String,
 }
 
 /// The Right now card: the core's trend for the open task, with what Home adds (its task id, kind name).
@@ -783,6 +798,19 @@ fn empty(paths: &Paths, pack: &PackV1, now: Now) -> Snapshot {
         update: aiq_core::update::view(paths, None, now.utc_ms),
         projects: vec![],
         live: None,
+        guide: pack
+            .moves
+            .iter()
+            .map(|m| GuideMove {
+                move_id: m.move_id.clone(),
+                step: m.step,
+                job: m.job.clone(),
+                habit: m.habit.clone(),
+                why: m.why.clone(),
+                try_this: m.try_this.clone(),
+                starter: m.starter.clone(),
+            })
+            .collect(),
     }
 }
 
