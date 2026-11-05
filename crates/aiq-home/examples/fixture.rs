@@ -81,6 +81,8 @@ fn main() {
     let mut t = aiq_home::snapshot(&tour, &pack, now);
     t.status.core = true;
     t.status.read_ms = 12;
+    // Fixed: four seeds open the store in turn, so its file size depends on when SQLite checkpoints.
+    t.data.store_bytes = 336_000;
     write(&out, "tour", &t);
     let path = out.join("tour.json");
     let json = std::fs::read_to_string(&path).unwrap();
