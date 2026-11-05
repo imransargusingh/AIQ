@@ -352,6 +352,8 @@ export type Outcome = { ok: true } | { ok: false; message: string };
 /** First-run setup (design aiq-home-deferred-pages E5–E7). */
 export interface Setup {
   done: boolean;
+  /** The tour was taken, skipped or declined once, so Home doesn't offer it again. */
+  tour_seen: boolean;
   tools: ToolFound[];
 }
 

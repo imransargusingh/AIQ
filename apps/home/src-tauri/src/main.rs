@@ -442,6 +442,20 @@ async fn finish_setup() -> Result<Snapshot, String> {
     .await?
 }
 
+/// The tour was taken, skipped or declined (design home-tour T3): Home stops offering it.
+#[tauri::command]
+async fn tour_seen() -> Result<Snapshot, String> {
+    blocking(|| {
+        let t = Instant::now();
+        let paths = Paths::from_env();
+        let r = control::mark_tour_seen(&paths);
+        log(&paths, "tour_seen", t, if r.is_ok() { "ok" } else { "error" });
+        r.map_err(|e| format!("Could not save that the tour was seen: {e}"))?;
+        Ok(read(&paths))
+    })
+    .await?
+}
+
 /// "Install now" (`install`) or "Go back to the previous version" (`rollback`), design auto-update U5: start
 /// `upgrade.ps1`, which waits for this window to close, swaps the exes and opens AIQ home again. The window
 /// closes itself right after replying, so the swap never waits on it.
@@ -510,10 +524,25 @@ fn show_open_window(app: &tauri::AppHandle, cwd: &str) {
     log(&Paths::from_env(), "second_launch", Instant::now(), &format!("focused the open window cwd={cwd}"));
 }
 
+/// At open, connect a tool installed since setup (`aiq install --new --yes`), so a person who installs Claude Code
+/// or Copilot later doesn't have to run setup again. A tool AIQ saw before, so one the person disconnected, is
+/// left alone. Runs beside the window; home.log records what changed.
+fn connect_new_tools() {
+    std::thread::spawn(|| {
+        let t = Instant::now();
+        let detail = match run_aiq(&["install", "--new", "--yes"]) {
+            Ok((ok, out, _)) => format!("{} changed={}", if ok { "ok" } else { "error" }, changed_lines(&out).len()),
+            Err(m) => format!("error {m}"),
+        };
+        log(&Paths::from_env(), "connect_new_tools", t, &detail);
+    });
+}
+
 fn main() {
     if std::env::args().skip(1).any(|a| a == "--start-core") {
         return start_core_only();
     }
+    connect_new_tools();
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _argv, cwd| show_open_window(app, &cwd)))
         .invoke_handler(tauri::generate_handler![
@@ -524,6 +553,7 @@ fn main() {
             task,
             forget_item,
             finish_setup,
+            tour_seen,
             guidance_flag,
             tip_on,
             tip_off,

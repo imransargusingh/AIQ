@@ -296,7 +296,7 @@ pub fn uninstall(yes: bool) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-/// `aiq install` with no tool named: connect every supported tool found on this computer that AIQ
+/// `aiq install` with no tool named: connect every supported tool installed on this computer that AIQ
 /// isn't hooked into yet (Imran, 2026-11-02: "Why isn't this done automatically when AIQ is
 /// installed?"). Each tool's own install runs unchanged: it shows the change, keeps a backup, and
 /// asks unless `--yes`. AIQ home's first-run setup runs this with `--yes`. Copilot is connected without
@@ -306,9 +306,39 @@ pub fn uninstall(yes: bool) -> ExitCode {
 pub fn install_found(yes: bool) -> ExitCode {
     let tools = aiq_core::tools::found();
     let todo: Vec<_> = tools.iter().filter(|t| t.present && !t.hooked).collect();
-    for t in tools.iter().filter(|t| t.hooked) {
+    for t in tools.iter().filter(|t| t.hooked && t.present) {
         println!("{} is already connected.", tool_name(t.tool));
     }
+    for t in tools.iter().filter(|t| t.hooked && !t.present) {
+        println!(
+            "{} isn't installed on this computer. AIQ's hooks are in its settings and start working once you install it. To remove them: aiq uninstall {}",
+            tool_name(t.tool),
+            t.tool
+        );
+    }
+    // Setup has connected everything present; from here on these are all already seen.
+    let _ = aiq_core::tools::newly_installed(&Paths::from_env().tools_seen(), &tools);
+    connect(yes, &tools, todo)
+}
+
+/// `aiq install --new --yes` (AIQ home at open, and the core at start): after setup, connect a tool that was
+/// installed since AIQ last looked, the way setup would have. A tool AIQ saw before (and so one the person
+/// disconnected) is left alone. Prints nothing when there is nothing new.
+pub fn install_new(yes: bool) -> ExitCode {
+    let paths = Paths::from_env();
+    if !aiq_core::control::setup_done(&paths) {
+        return ExitCode::SUCCESS;
+    }
+    let tools = aiq_core::tools::found();
+    let new = aiq_core::tools::newly_installed(&paths.tools_seen(), &tools);
+    if new.is_empty() {
+        return ExitCode::SUCCESS;
+    }
+    let todo: Vec<_> = tools.iter().filter(|t| new.contains(&t.tool)).collect();
+    connect(yes, &tools, todo)
+}
+
+fn connect(yes: bool, tools: &[aiq_core::tools::ToolFound], todo: Vec<&aiq_core::tools::ToolFound>) -> ExitCode {
     if todo.is_empty() {
         if tools.iter().all(|t| !t.present) {
             println!(

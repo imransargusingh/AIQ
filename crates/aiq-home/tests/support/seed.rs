@@ -510,7 +510,13 @@ pub fn coach_row(
 /// a next step, fixing bugs is at the right rung, refactoring has too few tasks, one task is Uncertain.
 /// One tip is turned off, so Settings lists it.
 pub fn coaching(paths: &Paths) {
+    coaching_from(paths, 0);
+}
+
+/// `coaching` with its ids starting after `first`, so it can share a store with another seed.
+fn coaching_from(paths: &Paths, first: u32) {
     let mut s = Seed::new(paths);
+    s.n = first;
     let kinds: [(&str, &str, u8, &str, u32, &str); 16] = [
         ("code_change", "tests", 3, "judged", 0, "write unit tests for the parser"),
         ("code_change", "tests", 3, "judged", 0, "add tests for the date helpers"),
@@ -567,6 +573,32 @@ pub fn coaching(paths: &Paths) {
         "Ask for the whole draft with what done means.",
         false,
     );
+}
+
+/// The tour's example data (design home-tour T2): every Home view filled at once. The progress seed (rung mix,
+/// ladder map, kinds), the coaching seed (habits, tip history) and a task open right now, in one store.
+pub fn tour(paths: &Paths) {
+    progress(paths);
+    coaching_from(paths, 5_000);
+    // A morning of finished work before the open task, so the Day view has a full day: three kinds, three rungs,
+    // and a quiet gap of over 30 minutes that shrinks.
+    let mut s = Seed::new(paths);
+    s.n = 20_000;
+    let morning: [(&str, &str, u8, &str, i64, &str); 4] = [
+        ("code_change", "fix_bug", 1, "right_rung", 200, "the checkout total is off by one cent, fix it"),
+        ("code_change", "tests", 3, "judged", 160, "write tests for the cart discounts"),
+        ("code_change", "tests", 3, "judged", 120, "cover the refund path with tests"),
+        ("write_doc", "spec", 2, "judged", 50, "draft the spec for saved carts"),
+    ];
+    for (i, (job, ty, cur, state, ago, text)) in morning.iter().enumerate() {
+        let at = NOW - ago * MIN;
+        let se = format!("t{i}");
+        let id = s.prompt("copilot-cli", &se, at, Some(AIQ), text);
+        s.prompt("copilot-cli", &se, at + 6 * MIN, Some(AIQ), "keep going");
+        s.stop("copilot-cli", &se, at + 14 * MIN);
+        s.store.insert_judgment(&coach_row(&id, job, ty, *cur, state, 0)).unwrap();
+    }
+    open_task(paths);
 }
 
 /// Rung progress (the success measure): kinds of task judged in the last 14 days and the 14 before.

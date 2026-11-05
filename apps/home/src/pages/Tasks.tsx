@@ -18,13 +18,14 @@ const COLS: { key: SortKey; label: string; right?: boolean }[] = [
   { key: "prompts", label: "Prompts", right: true },
 ];
 
-export function Tasks(ctx: Ctx) {
+/** `start`: open on this view (the tour's Day step). */
+export function Tasks({ start, ...ctx }: Ctx & { start?: View }) {
   const { snap } = ctx;
   const [sort, setSort] = useState<{ key: SortKey; dir: Dir }>({ key: "when", dir: -1 });
   const [job, setJob] = useState("All");
   const [sel, setSel] = useState(0);
   const hasKinds = snap.coaching.kinds.length > 0;
-  const [picked, setView] = useState<View | null>(null);
+  const [picked, setView] = useState<View | null>(start ?? null);
   // Kinds first when there are kinds; until then the list (nothing to group yet).
   const view: View = picked ?? (hasKinds ? "kinds" : "list");
   const body = useRef<HTMLTableSectionElement>(null);

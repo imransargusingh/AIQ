@@ -72,7 +72,7 @@ const pages = [
 ];
 
 await test("contract: fixtures are aiq.home.v1 snapshots from the Rust read model", async () => {
-  for (const f of ["full", "down", "paused", "empty", "first-run", "coaching", "progress", "live"]) {
+  for (const f of ["full", "down", "paused", "empty", "first-run", "coaching", "progress", "live", "tour"]) {
     const s = JSON.parse(readFileSync(join(fixtures, `${f}.json`), "utf8"));
     assert.equal(s.schema, "aiq.home.v1");
     for (const k of ["status", "home", "tasks", "tips", "data", "settings", "setup", "coaching"]) assert.ok(k in s, `${f}: ${k}`);
@@ -755,6 +755,45 @@ await test("setup: connecting fails, says why and offers Connect again", async (
   await page.context().close();
 });
 
+// Reported 2026-11-05: setup said "Claude Code · connected" on a computer without Claude Code, because 0.1.4
+// counted a bare ~/.claude folder and wrote its hooks there. A tool that isn't installed is "not installed" in
+// setup, Settings and the side panel, even when an earlier AIQ left its hooks in that tool's settings.
+await test("setup: a tool that isn't installed says so, even with AIQ's hooks in its settings", async () => {
+  const page = await open("full", {
+    hash: "#settings",
+    edit: (s) => {
+      Object.assign(s.setup.tools.find((x) => x.tool === "claude-code"), { hooked: true, present: false });
+      Object.assign(s.setup.tools.find((x) => x.tool === "copilot"), { hooked: true, present: true });
+    },
+  });
+  const settings = await page.locator("main").innerText();
+  assert.match(settings, /Claude Code · not installed, AIQ's hooks still in its settings/);
+  assert.equal(await page.getByRole("button", { name: "Disconnect Claude Code" }).count(), 1, "the hooks can still be removed");
+  const foot = await page.locator("nav .foot").innerText();
+  assert.ok(!foot.includes("Claude Code"), foot);
+  assert.ok(foot.includes("Watching Copilot"), foot);
+  await page.getByRole("button", { name: "Run setup again" }).click();
+  await page.getByRole("button", { name: "Continue" }).click();
+  const t = await page.locator("main").innerText();
+  assert.match(t, /Claude Code · not installed/);
+  assert.ok(!/Claude Code · connected/.test(t), t);
+  assert.ok(t.includes("They do nothing until you install it."), t);
+  if (shots) await page.screenshot({ path: join(shots, "setup-hooks-left-not-installed.png") });
+  assert.deepEqual(await axe(page), []);
+  await page.context().close();
+});
+
+await test("setup: a tool never installed says AIQ connects it once it is", async () => {
+  const page = await open("first-run", { edit: (s) => Object.assign(s.setup.tools.find((x) => x.tool === "claude-code"), { hooked: false, present: false }) });
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.waitForFunction(() => document.querySelector("main")?.innerText.includes("GitHub Copilot · connected just now"));
+  const t = await page.locator("main").innerText();
+  assert.match(t, /Claude Code · not installed/);
+  assert.ok(t.includes("If you install it later, AIQ connects it the next time AIQ starts."), t);
+  if (shots) await page.screenshot({ path: join(shots, "setup-not-installed.png") });
+  await page.context().close();
+});
+
 await test("setup: run again never reconnects by itself; Connect does", async () => {
   const page = await open("full", { hash: "#settings", edit: (s) => (s.setup.tools.find((x) => x.tool === "copilot").hooked = false) });
   await page.getByRole("button", { name: "Run setup again" }).click();
@@ -833,6 +872,9 @@ await test("coaching Home: finished and could be, the rule, uncertain left out, 
   // The rung mix: 15 judged tasks, so shares show; the kinds on the highest rung reached are listed.
   const mix = await page.locator("section", { has: page.locator("h2#rg") }).innerText();
   assert.match(mix, /Delegated\s+40%\s+6 tasks/);
+  // Shades alone can't tell five rungs apart: every swatch and bar segment also carries the rung number.
+  assert.deepEqual(await page.locator(".mix-r i").allInnerTexts(), ["1", "2", "3", "4", "5"]);
+  assert.deepEqual(await page.locator(".rmix span").allInnerTexts(), ["1", "2", "3"]);
   assert.match(await page.locator(".mix-kinds").innerText(), /On Delegated:\s+Writing tests · 6/);
   assert.ok(!(await page.locator("main").innerHTML()).includes("Give the agent <b>"), "judge text is not on Home");
   // A week with fewer than 3 judged tasks says so instead of a share.
@@ -1287,6 +1329,109 @@ await test("projects: Your projects ranks folders on Tasks, the picker scopes Ho
   assert.equal(await solo.getByLabel("Project").count(), 0);
   assert.equal(await solo.getByRole("table", { name: "Your projects" }).count(), 0);
   await solo.context().close();
+});
+
+// The tour (design home-tour): offered once after setup, eight steps on the example snapshot, Esc on any step.
+const TOUR = ["Right now", "How you work with agents", "Is each kind of task moving up?", "Tasks, by kind", "Your day", "Habits", "Tips show where you work", "Settings"];
+const READS = new Set(["snapshot", "run_update", "task"]);
+
+await test("tour: offered once after setup; Not now means never again", async () => {
+  const page = await open("empty");
+  await page.waitForSelector(".tour-offer");
+  assert.match(await page.locator(".tour-offer").innerText(), /New to AIQ\?/);
+  assert.deepEqual(await axe(page), []);
+  await page.getByRole("button", { name: "Not now" }).click();
+  await page.waitForFunction(() => !document.querySelector(".tour-offer"));
+  const calls = await page.evaluate(() => window.__AIQ_FIXTURE__.calls.map((c) => c.cmd));
+  assert.ok(calls.includes("tour_seen"), "Not now saves that the tour was seen");
+  // The getting-started list is still the whole of empty Home, and still starts the tour.
+  assert.match(await page.locator("main").innerText(), /AIQ is getting to know your work/);
+  assert.equal(await page.getByRole("button", { name: "Take the tour" }).count(), 1);
+  await page.context().close();
+
+  const seen = await open("full", { edit: (s) => (s.setup.tour_seen = true) });
+  await seen.waitForTimeout(200);
+  assert.equal(await seen.locator(".tour-offer").count(), 0, "no offer once seen");
+  await seen.context().close();
+
+  const setup = await open("first-run");
+  assert.equal(await setup.locator(".tour-offer").count(), 0, "no offer during setup");
+  await setup.context().close();
+
+  // Only on Home: another page never carries it.
+  const other = await open("full", { hash: "#tasks" });
+  await other.waitForTimeout(200);
+  assert.equal(await other.locator(".tour-offer").count(), 0);
+  await other.context().close();
+});
+
+await test("tour: eight steps on example data, every view found, own data back after", async () => {
+  const page = await open("empty");
+  await page.getByRole("button", { name: "Take the tour" }).first().click();
+  for (let i = 0; i < TOUR.length; i++) {
+    await page.waitForFunction((t) => document.querySelector("#tourhd")?.textContent === t, TOUR[i]);
+    // The spotlight found the step's view (no centred fallback on the example data).
+    await page.waitForSelector(".tour-spot", { timeout: 2000 });
+    assert.equal(await page.locator(".titlebar .examplechip").innerText(), "Example data");
+    assert.match(await page.locator(".tour-pop").innerText(), new RegExp(`${i + 1} of ${TOUR.length}`));
+    if (i === 0 || i === 4) assert.deepEqual(await axe(page), [], `step ${i + 1}`);
+    if (shots) await page.screenshot({ path: join(shots, `tour-${i + 1}.png`) });
+    await page.getByRole("button", { name: i === TOUR.length - 1 ? "Done" : "Next", exact: true }).click();
+  }
+  await page.waitForFunction(() => !document.querySelector(".tour-pop"));
+  assert.equal(await page.locator(".examplechip").count(), 0);
+  assert.match(await page.locator("main").innerText(), /AIQ is getting to know your work/, "the person's own (empty) Home is back");
+  assert.equal(await page.locator(".tour-offer").count(), 0, "taking the tour counts as seen");
+  const writes = await page.evaluate(() => window.__AIQ_FIXTURE__.calls.map((c) => c.cmd));
+  assert.deepEqual([...new Set(writes.filter((c) => !READS.has(c)))], ["tour_seen"], "the tour writes nothing but its flag");
+  assert.deepEqual(page.errors, []);
+  await page.context().close();
+});
+
+await test("tour: Esc on any step, arrows move, focus stays in the coach mark, the page can't be clicked", async () => {
+  const page = await open("full", { edit: (s) => (s.setup.tour_seen = true) });
+  await page.keyboard.press("Control+k");
+  await page.getByLabel("Type a page or action").fill("tour");
+  await page.keyboard.press("Enter");
+  await page.waitForSelector("#tourhd");
+  assert.equal(await page.evaluate(() => document.activeElement?.textContent), "Next", "focus on Next");
+  await page.keyboard.press("ArrowRight");
+  await page.waitForFunction((t) => document.querySelector("#tourhd")?.textContent === t, TOUR[1]);
+  await page.keyboard.press("ArrowLeft");
+  await page.waitForFunction((t) => document.querySelector("#tourhd")?.textContent === t, TOUR[0]);
+  for (let n = 0; n < 4; n++) {
+    await page.keyboard.press("Tab");
+    assert.ok(await page.evaluate(() => !!document.activeElement?.closest(".tour-pop")), "Tab stays in the coach mark");
+  }
+  // Single-key shortcuts are off while the tour is open.
+  await page.keyboard.press("g");
+  await page.keyboard.press("s");
+  assert.equal(await page.locator("#tourhd").innerText(), TOUR[0]);
+  // A click on the side nav lands on the blocking layer.
+  await page.mouse.click(60, 160);
+  assert.equal(await page.locator("#tourhd").innerText(), TOUR[0]);
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("ArrowRight");
+  await page.waitForFunction((t) => document.querySelector("#tourhd")?.textContent === t, TOUR[3]);
+  assert.match(page.url(), /#$|\/$|#home$/, "the tour moves pages without rewriting the address");
+  await page.keyboard.press("Escape");
+  await page.waitForFunction(() => !document.querySelector(".tour-pop"));
+  assert.equal(await page.locator("nav a[aria-current=page]").innerText(), "Home");
+  const calls = await page.evaluate(() => window.__AIQ_FIXTURE__.calls.map((c) => c.cmd));
+  assert.ok(!calls.includes("tour_seen"), "already seen: nothing written");
+  await page.context().close();
+
+  // From Settings, in dark and high contrast.
+  for (const theme of ["dark", "contrast"]) {
+    const s = await open("full", { hash: "#settings", theme });
+    await s.getByRole("button", { name: "Take the tour" }).click();
+    await s.waitForSelector(".tour-spot");
+    assert.deepEqual(await axe(s), [], theme);
+    await s.getByRole("button", { name: "Close the tour" }).click();
+    await s.waitForFunction(() => !document.querySelector(".tour-pop"));
+    await s.context().close();
+  }
 });
 
 await browser.close();

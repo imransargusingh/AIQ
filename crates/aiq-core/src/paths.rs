@@ -69,6 +69,11 @@ impl Paths {
     pub fn setup_flag(&self) -> PathBuf {
         self.data.join("setup-done")
     }
+    /// AIQ home's tour was taken, skipped or declined once, so it is not offered again. App state, like
+    /// `setup_flag`: delete everything keeps it.
+    pub fn tour_flag(&self) -> PathBuf {
+        self.data.join("tour-seen")
+    }
     pub fn log(&self) -> PathBuf {
         self.data.join("aiq.log")
     }
@@ -87,6 +92,11 @@ impl Paths {
     }
     pub fn start_lock(&self) -> PathBuf {
         self.data.join("core-start.lock")
+    }
+    /// The tools AIQ has seen installed since setup (`tools::newly_installed`): a tool that appears later is
+    /// connected once by itself; one seen before is never reconnected after the person disconnects it.
+    pub fn tools_seen(&self) -> PathBuf {
+        self.data.join("tools-seen.json")
     }
     pub fn install_record(&self) -> PathBuf {
         self.data.join("claude-code-install.json")

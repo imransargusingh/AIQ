@@ -31,6 +31,8 @@ export interface Ctx {
   setProject: (key: string | null) => void;
   /** "Update now" (design auto-update U5h): what it is doing, its last result, and the press itself. */
   update: { phase: UpdatePhase; msg: string | null; run: () => void };
+  /** Start the tour (design home-tour): Ctrl K, Settings and the getting-started list. */
+  startTour: () => void;
 }
 
 /** The picker's "All projects" value: a NUL can't be in any folder path, so no project key equals it. */
