@@ -63,8 +63,14 @@ impl Env {
         let mut c = self.cmd_of(exe, args);
         c.env("PATH", &bin)
             .env("LOCALAPPDATA", self.dir.path().join("lad"))
-            .env("ProgramFiles", self.dir.path().join("pf"));
+            .env("ProgramFiles", self.dir.path().join("pf"))
+            .env("HOME", self.profile())
+            .env("USERPROFILE", self.profile());
         self.run_with(c, b"")
+    }
+    /// The user's home for `run_clean`: VS Code Insiders' extensions folder is under it.
+    fn profile(&self) -> PathBuf {
+        self.dir.path().join("profile")
     }
     fn run_with(&self, mut c: Command, stdin: &[u8]) -> Output {
         let mut ch = c.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
@@ -599,28 +605,29 @@ fn e2e_install_with_no_tool_adds_the_status_line_only_when_experimental_is_alrea
     assert_eq!(after, original, "uninstall puts back exactly what was there");
 }
 
-/// A stand-in for VS Code's `code` command in the test's PATH: logs its arguments and adds or removes the
-/// extension in `extensions.json` the way VS Code does (the shape `aiq_core::tools::vscode_has_aiq` reads).
-fn fake_code(e: &Env) -> PathBuf {
+/// A stand-in for a VS Code build's command (`code`, `code-insiders`) in the test's PATH: logs the command and
+/// its arguments and adds or removes the extension in that build's `extensions.json` the way VS Code does (the
+/// shape `aiq_core::tools::vscode_has_aiq` reads).
+fn fake_vscode(e: &Env, command: &str, ext_dir: &std::path::Path) -> PathBuf {
     let bin = e.dir.path().join("bin");
     std::fs::create_dir_all(&bin).unwrap();
-    let (log, list) = (e.dir.path().join("code-log.txt"), e.vscode_ext().join("extensions.json"));
-    std::fs::create_dir_all(e.vscode_ext()).unwrap();
+    let (log, list) = (e.dir.path().join("code-log.txt"), ext_dir.join("extensions.json"));
+    std::fs::create_dir_all(ext_dir).unwrap();
     let ours = r#"[{"identifier":{"id":"aiq-local.aiq-coach"},"version":"0.2.0"}]"#;
     if cfg!(windows) {
         let script = format!(
-            "@echo off\r\necho %*>>\"{log}\"\r\nif \"%1\"==\"--install-extension\" (echo {ours}>\"{list}\")\r\nif \"%1\"==\"--uninstall-extension\" (echo []>\"{list}\")\r\n",
+            "@echo off\r\necho {command} %*>>\"{log}\"\r\nif \"%1\"==\"--install-extension\" (echo {ours}>\"{list}\")\r\nif \"%1\"==\"--uninstall-extension\" (echo []>\"{list}\")\r\n",
             log = log.display(),
             list = list.display(),
         );
-        std::fs::write(bin.join("code.cmd"), script).unwrap();
+        std::fs::write(bin.join(format!("{command}.cmd")), script).unwrap();
     } else {
         let script = format!(
-            "#!/bin/sh\necho \"$@\" >> '{log}'\ncase \"$1\" in\n  --install-extension) echo '{ours}' > '{list}' ;;\n  --uninstall-extension) echo '[]' > '{list}' ;;\nesac\n",
+            "#!/bin/sh\necho {command} \"$@\" >> '{log}'\ncase \"$1\" in\n  --install-extension) echo '{ours}' > '{list}' ;;\n  --uninstall-extension) echo '[]' > '{list}' ;;\nesac\n",
             log = log.display(),
             list = list.display(),
         );
-        let p = bin.join("code");
+        let p = bin.join(command);
         std::fs::write(&p, script).unwrap();
         #[cfg(unix)]
         {
@@ -629,6 +636,20 @@ fn fake_code(e: &Env) -> PathBuf {
         }
     }
     log
+}
+
+fn fake_code(e: &Env) -> PathBuf {
+    fake_vscode(e, "code", &e.vscode_ext())
+}
+
+/// aiq with aiq.vsix beside it, as the release installs it.
+fn release_copy(e: &Env) -> PathBuf {
+    let rel = e.dir.path().join("release");
+    std::fs::create_dir_all(&rel).unwrap();
+    let exe = rel.join(std::path::Path::new(BIN).file_name().unwrap());
+    std::fs::copy(BIN, &exe).unwrap();
+    std::fs::write(rel.join("aiq.vsix"), b"PK").unwrap();
+    exe
 }
 
 /// VS Code found: `aiq install` adds AIQ's extension with VS Code's own command, from the `aiq.vsix` beside
@@ -648,12 +669,7 @@ fn e2e_install_adds_the_vscode_extension_beside_aiq_and_uninstall_removes_it() {
     assert!(read_log().is_empty(), "VS Code's command not run without the file");
     assert!(!e.run_clean(&["install", "vscode", "--yes"]).status.success(), "by name, a missing file fails");
 
-    // A release copy: aiq with aiq.vsix beside it.
-    let rel = e.dir.path().join("release");
-    std::fs::create_dir_all(&rel).unwrap();
-    let exe = rel.join(std::path::Path::new(BIN).file_name().unwrap());
-    std::fs::copy(BIN, &exe).unwrap();
-    std::fs::write(rel.join("aiq.vsix"), b"PK").unwrap();
+    let exe = release_copy(&e);
     let o = e.run_clean_of(&exe, &["install", "--yes"]);
     let out = String::from_utf8_lossy(&o.stdout).to_string();
     assert!(o.status.success(), "{out}\n{}", String::from_utf8_lossy(&o.stderr));
@@ -673,4 +689,46 @@ fn e2e_install_adds_the_vscode_extension_beside_aiq_and_uninstall_removes_it() {
     assert!(read_log().contains("--uninstall-extension aiq-local.aiq-coach"), "{}", read_log());
     let o = e.run_clean(&["uninstall", "vscode", "--yes"]);
     assert!(String::from_utf8_lossy(&o.stdout).contains("isn't installed in VS Code"));
+}
+
+/// Imran's laptop (2026-11-06): VS Code and VS Code Insiders both installed, Insiders used day to day. Setup
+/// adds AIQ's extension to both, each with its own command, and lists both extension lists as changed; a build
+/// that already has it still counts as connected only once the other has it too; uninstall removes both.
+#[test]
+fn e2e_install_adds_the_vscode_extension_to_insiders_too() {
+    let e = Env::new();
+    let insiders_ext = e.profile().join(".vscode-insiders").join("extensions");
+    fake_code(&e);
+    let log = fake_vscode(&e, "code-insiders", &insiders_ext);
+    let read_log = || std::fs::read_to_string(&log).unwrap_or_default();
+    let exe = release_copy(&e);
+
+    let o = e.run_clean_of(&exe, &["install", "--yes"]);
+    let out = String::from_utf8_lossy(&o.stdout).to_string();
+    assert!(o.status.success(), "{out}\n{}", String::from_utf8_lossy(&o.stderr));
+    assert!(out.contains("AIQ will add its extension to VS Code and VS Code Insiders"), "{out}");
+    let ran = read_log();
+    let installs: Vec<&str> = ran.lines().filter(|l| l.contains("--install-extension")).collect();
+    assert!(installs.iter().any(|l| l.starts_with("code --install-extension")), "{ran}");
+    assert!(installs.iter().any(|l| l.starts_with("code-insiders --install-extension")), "{ran}");
+    assert!(out.contains("Added to VS Code.") && out.contains("Added to VS Code Insiders."), "{out}");
+    for list in [e.vscode_ext().join("extensions.json"), insiders_ext.join("extensions.json")] {
+        assert!(out.contains(&format!("Changed: {}", list.display())), "{out}");
+    }
+    let again = String::from_utf8_lossy(&e.run_clean_of(&exe, &["install", "--yes"]).stdout).to_string();
+    assert!(again.contains("VS Code is already connected."), "{again}");
+
+    // Insiders lost it (removed in Insiders by hand): VS Code is no longer connected, so setup offers it again.
+    std::fs::write(insiders_ext.join("extensions.json"), "[]").unwrap();
+    let again = String::from_utf8_lossy(&e.run_clean_of(&exe, &["install", "--yes"]).stdout).to_string();
+    assert!(!again.contains("VS Code is already connected."), "{again}");
+    assert!(again.contains("Added to VS Code Insiders."), "{again}");
+
+    let o = e.run_clean(&["uninstall", "vscode", "--yes"]);
+    let out = String::from_utf8_lossy(&o.stdout).to_string();
+    assert!(o.status.success(), "{out}");
+    let ran = read_log();
+    assert!(ran.contains("code --uninstall-extension aiq-local.aiq-coach"), "{ran}");
+    assert!(ran.contains("code-insiders --uninstall-extension aiq-local.aiq-coach"), "{ran}");
+    assert!(out.contains("Removed the AIQ extension from VS Code Insiders."), "{out}");
 }

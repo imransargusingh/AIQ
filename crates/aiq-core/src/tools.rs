@@ -73,44 +73,85 @@ pub fn copilot_hook_file(home: &Path) -> PathBuf {
 /// The AIQ extension's id in VS Code: `<publisher>.<name>` from `extensions/vscode/package.json`.
 pub const VSCODE_EXTENSION_ID: &str = "aiq-local.aiq-coach";
 
-/// VS Code's `code` command: on PATH, else in VS Code's own install folders (per-user, then per-machine on
+/// One VS Code build AIQ can add its extension to: stable (`code`) or Insiders (`code-insiders`). Each has its
+/// own command, install folder and extensions folder, and a person may have both (Imran's laptop, 2026-11-06:
+/// both on PATH, Insiders used that day).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct VsCodeBuild {
+    /// What AIQ calls it when it talks to the person.
+    pub name: &'static str,
+    /// The command, without `.cmd`.
+    pub command: &'static str,
+    /// Its folder under `%LOCALAPPDATA%\Programs` or `%ProgramFiles%`.
+    pub folder: &'static str,
+    /// Its folder in the user's home that holds `extensions`.
+    pub home_dir: &'static str,
+}
+
+pub const VSCODE_BUILDS: [VsCodeBuild; 2] = [
+    VsCodeBuild { name: "VS Code", command: "code", folder: "Microsoft VS Code", home_dir: ".vscode" },
+    VsCodeBuild {
+        name: "VS Code Insiders",
+        command: "code-insiders",
+        folder: "Microsoft VS Code Insiders",
+        home_dir: ".vscode-insiders",
+    },
+];
+
+/// A VS Code build's command: on PATH, else in its own install folders (per-user, then per-machine on
 /// Windows). The installer puts `bin` on PATH by default, but a GUI app's PATH can predate that.
 pub fn vscode_cli_at(
+    build: &VsCodeBuild,
     path_var: Option<&std::ffi::OsStr>,
     local_app_data: Option<&Path>,
     program_files: Option<&Path>,
 ) -> Option<PathBuf> {
-    let names: &[&str] = if cfg!(windows) { &["code.cmd"] } else { &["code"] };
+    let name = if cfg!(windows) { format!("{}.cmd", build.command) } else { build.command.to_string() };
     let own = [local_app_data.map(|d| d.join("Programs")), program_files.map(Path::to_path_buf)]
         .into_iter()
         .flatten()
-        .map(|d| d.join("Microsoft VS Code").join("bin"));
-    path_var
-        .into_iter()
-        .flat_map(std::env::split_paths)
-        .chain(own)
-        .flat_map(|d| names.iter().map(move |n| d.join(n)))
-        .find(|p| p.is_file())
+        .map(|d| d.join(build.folder).join("bin"));
+    path_var.into_iter().flat_map(std::env::split_paths).chain(own).map(|d| d.join(&name)).find(|p| p.is_file())
 }
 
-pub fn vscode_cli() -> Option<PathBuf> {
+pub fn vscode_cli(build: &VsCodeBuild) -> Option<PathBuf> {
     vscode_cli_at(
+        build,
         std::env::var_os("PATH").as_deref(),
         std::env::var_os("LOCALAPPDATA").map(PathBuf::from).as_deref(),
         std::env::var_os("ProgramFiles").map(PathBuf::from).as_deref(),
     )
 }
 
-/// VS Code's user extensions folder: `$VSCODE_EXTENSIONS`, else `~/.vscode/extensions`.
-// assume: VS Code honours VSCODE_EXTENSIONS as its extensions folder and otherwise uses ~/.vscode/extensions
-// (stable, not portable mode). Confirm: on the laptop, extensions.json there gains the id after
-// `aiq install vscode`. If false, AIQ says "not connected" after a good
-// install and setup offers Connect again; nothing is written to the wrong place (AIQ only reads here).
-pub fn vscode_extensions_dir() -> PathBuf {
-    if let Some(d) = std::env::var_os("VSCODE_EXTENSIONS").filter(|v| !v.is_empty()) {
+/// A VS Code build's user extensions folder: `~/.vscode/extensions` or `~/.vscode-insiders/extensions`;
+/// for stable, `$VSCODE_EXTENSIONS` when set.
+// assume: VS Code honours VSCODE_EXTENSIONS as its extensions folder and otherwise uses ~/.vscode/extensions;
+// Insiders uses ~/.vscode-insiders/extensions (not portable mode). Partly confirmed: Imran's laptop has
+// ~/.vscode-insiders/extensions/extensions.json, written the day Insiders was used (2026-11-06). Confirm the
+// rest: extensions.json there gains the id after `aiq install vscode`. If false, AIQ says "not connected"
+// after a good install and setup offers Connect again; nothing is written to the wrong place (AIQ only reads).
+pub fn vscode_extensions_dir(build: &VsCodeBuild) -> PathBuf {
+    if build.command == "code"
+        && let Some(d) = std::env::var_os("VSCODE_EXTENSIONS").filter(|v| !v.is_empty())
+    {
         return PathBuf::from(d);
     }
-    user_home().join(".vscode").join("extensions")
+    user_home().join(build.home_dir).join("extensions")
+}
+
+/// What AIQ found of one VS Code build: its command, if any, and its extensions folder.
+#[derive(Debug, Clone, PartialEq)]
+pub struct VsCodeFound {
+    pub build: VsCodeBuild,
+    pub cli: Option<PathBuf>,
+    pub extensions: PathBuf,
+}
+
+pub fn vscode_builds() -> Vec<VsCodeFound> {
+    VSCODE_BUILDS
+        .iter()
+        .map(|b| VsCodeFound { build: *b, cli: vscode_cli(b), extensions: vscode_extensions_dir(b) })
+        .collect()
 }
 
 /// VS Code's list of installed extensions in that folder.
@@ -147,7 +188,12 @@ pub struct ToolFound {
 }
 
 /// What AIQ can see of each tool it supports, from the given settings locations.
-pub fn found_at(claude_settings: &Path, claude_installed: bool, copilot: &Path, vscode: &VsCodeAt) -> Vec<ToolFound> {
+pub fn found_at(
+    claude_settings: &Path,
+    claude_installed: bool,
+    copilot: &Path,
+    vscode: &[VsCodeFound],
+) -> Vec<ToolFound> {
     let claude = std::fs::read_to_string(claude_settings).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok());
     vec![
         ToolFound {
@@ -163,24 +209,24 @@ pub fn found_at(claude_settings: &Path, claude_installed: bool, copilot: &Path, 
             install: "aiq install copilot",
         },
         // After Copilot: VS Code tips come from Copilot's hooks, so `aiq install` connects Copilot first.
+        // One row for every VS Code build: present when any build's command is found; connected when every
+        // build found lists AIQ's extension, so a second build (Insiders) still gets it from setup. With no
+        // build found, connected means an extension list still names it (a leftover Disconnect can remove).
         ToolFound {
             tool: "vscode",
-            hooked: vscode_has_aiq(&vscode.extensions),
-            present: vscode.cli,
+            hooked: if vscode.iter().any(|v| v.cli.is_some()) {
+                vscode.iter().filter(|v| v.cli.is_some()).all(|v| vscode_has_aiq(&v.extensions))
+            } else {
+                vscode.iter().any(|v| vscode_has_aiq(&v.extensions))
+            },
+            present: vscode.iter().any(|v| v.cli.is_some()),
             install: "aiq install vscode",
         },
     ]
 }
 
-/// Where AIQ looks for VS Code: whether its `code` command was found, and its extensions folder.
-pub struct VsCodeAt {
-    pub cli: bool,
-    pub extensions: PathBuf,
-}
-
 pub fn found() -> Vec<ToolFound> {
-    let vscode = VsCodeAt { cli: vscode_cli().is_some(), extensions: vscode_extensions_dir() };
-    found_at(&claude_settings_path(), claude_installed(), &copilot_home(), &vscode)
+    found_at(&claude_settings_path(), claude_installed(), &copilot_home(), &vscode_builds())
 }
 
 /// Tools installed since AIQ last looked, for connecting once by themselves (Imran, 2026-11-02: AIQ connects
@@ -212,7 +258,7 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let claude = d.path().join(".claude").join("settings.json");
         let copilot = d.path().join(".copilot");
-        let nv = VsCodeAt { cli: false, extensions: d.path().join("ext") };
+        let nv = no_vscode(d.path());
         let none = found_at(&claude, false, &copilot, &nv);
         assert!(none.iter().all(|t| !t.hooked && !t.present));
 
@@ -239,7 +285,7 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let claude = d.path().join("settings.json");
         std::fs::write(&claude, "{ not json").unwrap();
-        let nv = VsCodeAt { cli: false, extensions: d.path().join("ext") };
+        let nv = no_vscode(d.path());
         assert!(!found_at(&claude, true, &d.path().join("c"), &nv)[0].hooked);
     }
 
@@ -273,49 +319,93 @@ mod tests {
         assert!(claude_installed_at(&config, &home, None), "Claude Code wrote transcripts here");
     }
 
+    /// Both VS Code builds, neither installed, with extension folders under `d`.
+    fn no_vscode(d: &Path) -> Vec<VsCodeFound> {
+        VSCODE_BUILDS
+            .iter()
+            .map(|b| VsCodeFound { build: *b, cli: None, extensions: d.join(b.home_dir).join("extensions") })
+            .collect()
+    }
+
+    const OURS: &str = r#"[{"identifier":{"id":"ms-python.python"}},{"identifier":{"id":"AIQ-local.aiq-coach","uuid":""},"version":"0.2.0"}]"#;
+
     /// VS Code counts as connected only when its own extension list names AIQ's extension; another
     /// extension, a folder named like AIQ's, or a broken list is not connected.
     #[test]
     fn vscode_is_connected_only_when_its_extension_list_names_aiq() {
         let d = tempfile::tempdir().unwrap();
-        let ext = d.path().join("extensions");
-        let at = |cli| VsCodeAt { cli, extensions: ext.clone() };
-        let vs = |a: &VsCodeAt| found_at(&d.path().join("s.json"), false, &d.path().join("c"), a)[2].clone();
-        assert_eq!((vs(&at(false)).hooked, vs(&at(false)).present), (false, false));
-        assert_eq!(
-            (vs(&at(true)).hooked, vs(&at(true)).present, vs(&at(true)).install),
-            (false, true, "aiq install vscode")
-        );
+        let mut vs = no_vscode(d.path());
+        let ext = vs[0].extensions.clone();
+        let row = |v: &[VsCodeFound]| found_at(&d.path().join("s.json"), false, &d.path().join("c"), v)[2].clone();
+        assert_eq!((row(&vs).hooked, row(&vs).present), (false, false));
+        vs[0].cli = Some(d.path().join("code"));
+        assert_eq!((row(&vs).hooked, row(&vs).present, row(&vs).install), (false, true, "aiq install vscode"));
 
         std::fs::create_dir_all(ext.join("aiq-local.aiq-coach-0.2.0")).unwrap();
         let other = r#"[{"identifier":{"id":"ms-python.python"},"version":"1.0.0"}]"#;
         std::fs::write(vscode_extensions_list(&ext), other).unwrap();
-        assert!(!vs(&at(true)).hooked, "a folder alone, with the list naming another extension");
+        assert!(!row(&vs).hooked, "a folder alone, with the list naming another extension");
         std::fs::write(vscode_extensions_list(&ext), "{ not json").unwrap();
-        assert!(!vs(&at(true)).hooked, "broken list");
-        let ours = r#"[{"identifier":{"id":"ms-python.python"}},{"identifier":{"id":"AIQ-local.aiq-coach","uuid":""},"version":"0.2.0"}]"#;
-        std::fs::write(vscode_extensions_list(&ext), ours).unwrap();
-        assert!(vs(&at(true)).hooked);
+        assert!(!row(&vs).hooked, "broken list");
+        std::fs::write(vscode_extensions_list(&ext), OURS).unwrap();
+        assert!(row(&vs).hooked);
+    }
+
+    /// Imran's laptop (2026-11-06): VS Code and VS Code Insiders both installed. VS Code is connected only when
+    /// every build found has AIQ's extension, so setup still adds it to the second build; with no build left,
+    /// a list that still names it counts, so Disconnect can remove it.
+    #[test]
+    fn vscode_with_both_builds_is_connected_only_when_each_has_the_extension() {
+        let d = tempfile::tempdir().unwrap();
+        let mut vs = no_vscode(d.path());
+        for v in &vs {
+            std::fs::create_dir_all(&v.extensions).unwrap();
+        }
+        vs[0].cli = Some(d.path().join("code"));
+        vs[1].cli = Some(d.path().join("code-insiders"));
+        let row = |v: &[VsCodeFound]| found_at(&d.path().join("s.json"), false, &d.path().join("c"), v)[2].clone();
+        std::fs::write(vscode_extensions_list(&vs[0].extensions), OURS).unwrap();
+        assert!(row(&vs).present && !row(&vs).hooked, "stable has it, Insiders doesn't");
+        std::fs::write(vscode_extensions_list(&vs[1].extensions), OURS).unwrap();
+        assert!(row(&vs).hooked, "both have it");
+        vs[0].cli = None;
+        std::fs::write(vscode_extensions_list(&vs[1].extensions), "[]").unwrap();
+        assert!(!row(&vs).hooked, "only Insiders is installed, and it doesn't have it");
+        vs[1].cli = None;
+        assert!(!row(&vs).present && row(&vs).hooked, "no build found; stable's list still names it");
     }
 
     #[test]
     fn vscode_cli_is_found_on_path_or_in_its_install_folders() {
+        for b in &VSCODE_BUILDS {
+            let d = tempfile::tempdir().unwrap();
+            let name = if cfg!(windows) { format!("{}.cmd", b.command) } else { b.command.to_string() };
+            let (path_dir, lad, pf) = (d.path().join("p"), d.path().join("lad"), d.path().join("pf"));
+            let path = std::env::join_paths([&path_dir]).unwrap();
+            assert_eq!(vscode_cli_at(b, Some(&path), Some(&lad), Some(&pf)), None);
+            let user = lad.join("Programs").join(b.folder).join("bin");
+            std::fs::create_dir_all(&user).unwrap();
+            std::fs::write(user.join(&name), "").unwrap();
+            assert_eq!(
+                vscode_cli_at(b, Some(&path), Some(&lad), Some(&pf)),
+                Some(user.join(&name)),
+                "per-user install"
+            );
+            std::fs::create_dir_all(&path_dir).unwrap();
+            std::fs::write(path_dir.join(&name), "").unwrap();
+            assert_eq!(vscode_cli_at(b, Some(&path), Some(&lad), Some(&pf)), Some(path_dir.join(&name)), "PATH first");
+            let machine = pf.join(b.folder).join("bin");
+            std::fs::create_dir_all(&machine).unwrap();
+            std::fs::write(machine.join(&name), "").unwrap();
+            assert_eq!(vscode_cli_at(b, None, None, Some(&pf)), Some(machine.join(&name)), "per-machine install");
+        }
+        // Each build finds only its own command: code-insiders is not VS Code stable.
         let d = tempfile::tempdir().unwrap();
-        let name = if cfg!(windows) { "code.cmd" } else { "code" };
-        let (path_dir, lad, pf) = (d.path().join("p"), d.path().join("lad"), d.path().join("pf"));
-        let path = std::env::join_paths([&path_dir]).unwrap();
-        assert_eq!(vscode_cli_at(Some(&path), Some(&lad), Some(&pf)), None);
-        let user = lad.join("Programs").join("Microsoft VS Code").join("bin");
-        std::fs::create_dir_all(&user).unwrap();
-        std::fs::write(user.join(name), "").unwrap();
-        assert_eq!(vscode_cli_at(Some(&path), Some(&lad), Some(&pf)), Some(user.join(name)), "per-user install");
-        std::fs::create_dir_all(&path_dir).unwrap();
-        std::fs::write(path_dir.join(name), "").unwrap();
-        assert_eq!(vscode_cli_at(Some(&path), Some(&lad), Some(&pf)), Some(path_dir.join(name)), "PATH first");
-        let machine = pf.join("Microsoft VS Code").join("bin");
-        std::fs::create_dir_all(&machine).unwrap();
-        std::fs::write(machine.join(name), "").unwrap();
-        assert_eq!(vscode_cli_at(None, None, Some(&pf)), Some(machine.join(name)), "per-machine install");
+        let ins = if cfg!(windows) { "code-insiders.cmd" } else { "code-insiders" };
+        std::fs::write(d.path().join(ins), "").unwrap();
+        let path = std::env::join_paths([d.path()]).unwrap();
+        assert_eq!(vscode_cli_at(&VSCODE_BUILDS[0], Some(&path), None, None), None);
+        assert_eq!(vscode_cli_at(&VSCODE_BUILDS[1], Some(&path), None, None), Some(d.path().join(ins)));
     }
 
     fn tool(tool: &'static str, hooked: bool, present: bool) -> ToolFound {
