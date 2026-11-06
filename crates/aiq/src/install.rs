@@ -396,16 +396,20 @@ fn judging() {
     }
 }
 
-/// Every file connecting or disconnecting a tool can write (VS Code's extension list: VS Code's own command).
-fn connect_files() -> [std::path::PathBuf; 5] {
+/// Every file connecting or disconnecting a tool can write (VS Code's extension lists, one per VS Code build:
+/// VS Code's own command writes them).
+fn connect_files() -> Vec<std::path::PathBuf> {
     let ch = aiq_core::tools::copilot_home();
-    [
+    let mut files = vec![
         settings_path(),
         crate::install_copilot::hook_file(&ch),
         crate::install_copilot::wrapper_file(&ch),
         ch.join("settings.json"),
-        aiq_core::tools::vscode_extensions_list(&aiq_core::tools::vscode_extensions_dir()),
-    ]
+    ];
+    files.extend(
+        aiq_core::tools::vscode_builds().iter().map(|v| aiq_core::tools::vscode_extensions_list(&v.extensions)),
+    );
+    files
 }
 
 /// `aiq uninstall --all` (private-alpha design A7): disconnect every tool AIQ is connected to, list each

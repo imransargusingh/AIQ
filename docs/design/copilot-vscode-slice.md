@@ -468,7 +468,13 @@ Copilot CLI status line, or waited).
   `VSCODE_EXTENSIONS` (else `~/.vscode/extensions`). Not measured: VS Code's download is blocked in the build
   container. The e2e test uses a stand-in `code`. Confirm on the laptop: after setup, Settings shows
   "VS Code · connected". If false, setup keeps offering Connect, and nothing is written anywhere else.
-- Not covered: VS Code Insiders, portable VS Code, a VS Code with no `code` command.
+- **VS Code Insiders too (2026-11-06):** Imran's laptop has VS Code and VS Code Insiders, both on PATH, and
+  Insiders was the one used that day. AIQ treats them as two builds of one tool. It finds `code` and
+  `code-insiders` (PATH, then each build's own install folders) and reads `~/.vscode/extensions` and
+  `~/.vscode-insiders/extensions`. Install runs each build's own command. VS Code counts as connected only
+  when every build found lists the extension, so setup still adds it to a build that lacks it. Uninstall
+  removes it from every build that lists it.
+- Not covered: portable VS Code, VSCodium, a VS Code with no command.
 - **Proposed, not built:** AIQ home could say when VS Code chats run with the "Local" target, which sends AIQ
   nothing. VS Code's own chat history (`workspaceStorage/*/chatSessions`, counted for import) shows chats that
   AIQ's hooks never saw.

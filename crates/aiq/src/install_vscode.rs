@@ -1,9 +1,10 @@
-//! `aiq install|uninstall vscode`: add or remove AIQ's VS Code extension with VS Code's own `code` command.
+//! `aiq install|uninstall vscode`: add or remove AIQ's VS Code extension with VS Code's own `code` command,
+//! in each VS Code build found (stable `code`, Insiders `code-insiders`).
 //! The extension (`extensions/vscode`) shows a tip after a Copilot agent turn ends; the release ships it as
 //! `aiq.vsix` beside `aiq.exe`. AIQ never writes VS Code's files itself: `code --install-extension` does,
 //! and `code --uninstall-extension` is the undo.
 use crate::cli::confirm;
-use aiq_core::tools::{VSCODE_EXTENSION_ID, vscode_cli, vscode_extensions_dir, vscode_has_aiq};
+use aiq_core::tools::{VSCODE_EXTENSION_ID, vscode_builds, vscode_has_aiq};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 
@@ -34,15 +35,16 @@ pub fn bundled_vsix(exe_dir: &Path) -> Option<PathBuf> {
     Some(exe_dir.join(VSIX)).filter(|p| p.is_file())
 }
 
-/// `aiq install vscode`. `strict`: run by name, so a missing `code` command or extension file is a failure;
-/// from `aiq install` (connect every tool found) a copy of AIQ without `aiq.vsix` (a developer build) skips
-/// VS Code with one line instead of failing setup.
+/// `aiq install vscode`: add AIQ's extension to every VS Code build found (stable and Insiders). `strict`:
+/// run by name, so no VS Code or no extension file is a failure; from `aiq install` (connect every tool found)
+/// a copy of AIQ without `aiq.vsix` (a developer build) skips VS Code with one line instead of failing setup.
 pub fn install_with(yes: bool, strict: bool) -> ExitCode {
     let fail = if strict { ExitCode::from(1) } else { ExitCode::SUCCESS };
-    let Some(cli) = vscode_cli() else {
+    let found: Vec<_> = vscode_builds().into_iter().filter_map(|v| v.cli.clone().map(|c| (v, c))).collect();
+    if found.is_empty() {
         println!("VS Code's code command wasn't found. Install VS Code, then run aiq install vscode.");
         return fail;
-    };
+    }
     let exe_dir = std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf)).unwrap_or_default();
     let Some(vsix) = bundled_vsix(&exe_dir) else {
         println!(
@@ -50,18 +52,30 @@ pub fn install_with(yes: bool, strict: bool) -> ExitCode {
         );
         return fail;
     };
-    println!("AIQ will add its extension to VS Code with VS Code's own command:\n");
-    println!("  {} --install-extension {} --force\n", cli.display(), vsix.display());
+    let names = found.iter().map(|(v, _)| v.build.name).collect::<Vec<_>>().join(" and ");
+    println!("AIQ will add its extension to {names} with VS Code's own command:\n");
+    for (_, cli) in &found {
+        println!("  {} --install-extension {} --force", cli.display(), vsix.display());
+    }
     println!(
-        "It shows an AIQ tip in VS Code after a Copilot agent turn ends. Your other extensions and settings stay as they are."
+        "\nIt shows an AIQ tip in VS Code after a Copilot agent turn ends. Your other extensions and settings stay as they are."
     );
-    if !confirm("Add the AIQ extension to VS Code?", yes) {
+    if !confirm(&format!("Add the AIQ extension to {names}?"), yes) {
         println!("Nothing changed.");
         return ExitCode::SUCCESS;
     }
-    // --force: a reinstall replaces an older AIQ extension with this release's.
-    if let Err(m) = run_code(&cli, &["--install-extension".as_ref(), vsix.as_os_str(), "--force".as_ref()]) {
-        println!("{m}");
+    let mut failed = false;
+    for (v, cli) in &found {
+        // --force: a reinstall replaces an older AIQ extension with this release's.
+        match run_code(cli, &["--install-extension".as_ref(), vsix.as_os_str(), "--force".as_ref()]) {
+            Ok(()) => println!("Added to {}.", v.build.name),
+            Err(m) => {
+                println!("{}: {m}", v.build.name);
+                failed = true;
+            }
+        }
+    }
+    if failed {
         return ExitCode::from(1);
     }
     println!(
@@ -74,29 +88,45 @@ pub fn install(yes: bool) -> ExitCode {
     install_with(yes, true)
 }
 
+/// `aiq uninstall vscode`: remove AIQ's extension from every VS Code build whose extension list names it.
 pub fn uninstall(yes: bool) -> ExitCode {
-    if !vscode_has_aiq(&vscode_extensions_dir()) {
+    let with: Vec<_> = vscode_builds().into_iter().filter(|v| vscode_has_aiq(&v.extensions)).collect();
+    if with.is_empty() {
         println!("The AIQ extension isn't installed in VS Code.");
         return ExitCode::SUCCESS;
     }
-    let Some(cli) = vscode_cli() else {
+    let mut failed = false;
+    for v in with.iter().filter(|v| v.cli.is_none()) {
         println!(
-            "VS Code lists the AIQ extension, but its code command wasn't found. Remove it in VS Code: Extensions, AIQ, Uninstall."
+            "{} lists the AIQ extension, but its {} command wasn't found. Remove it in {}: Extensions, AIQ, Uninstall.",
+            v.build.name, v.build.command, v.build.name
         );
+        failed = true;
+    }
+    let run: Vec<_> = with.iter().filter_map(|v| v.cli.as_ref().map(|c| (v.build.name, c))).collect();
+    if run.is_empty() {
         return ExitCode::from(1);
-    };
-    println!("AIQ will remove its extension from VS Code with VS Code's own command:\n");
-    println!("  {} --uninstall-extension {VSCODE_EXTENSION_ID}\n", cli.display());
-    if !confirm("Remove the AIQ extension from VS Code?", yes) {
+    }
+    let names = run.iter().map(|(n, _)| *n).collect::<Vec<_>>().join(" and ");
+    println!("AIQ will remove its extension from {names} with VS Code's own command:\n");
+    for (_, cli) in &run {
+        println!("  {} --uninstall-extension {VSCODE_EXTENSION_ID}", cli.display());
+    }
+    println!();
+    if !confirm(&format!("Remove the AIQ extension from {names}?"), yes) {
         println!("Nothing changed.");
         return ExitCode::SUCCESS;
     }
-    if let Err(m) = run_code(&cli, &["--uninstall-extension".as_ref(), VSCODE_EXTENSION_ID.as_ref()]) {
-        println!("{m}");
-        return ExitCode::from(1);
+    for (name, cli) in &run {
+        match run_code(cli, &["--uninstall-extension".as_ref(), VSCODE_EXTENSION_ID.as_ref()]) {
+            Ok(()) => println!("Removed the AIQ extension from {name}."),
+            Err(m) => {
+                println!("{name}: {m}");
+                failed = true;
+            }
+        }
     }
-    println!("Removed the AIQ extension from VS Code.");
-    ExitCode::SUCCESS
+    if failed { ExitCode::from(1) } else { ExitCode::SUCCESS }
 }
 
 #[cfg(test)]

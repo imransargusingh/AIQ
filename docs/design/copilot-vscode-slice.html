@@ -173,7 +173,9 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <p>its old PATH until it restarts.</p>
 <ul><li>assume: <code>code --install-extension</code> adds the id to <code>extensions.json</code> before it exits, and VS Code honours</li></ul>
 <p><code>VSCODE_EXTENSIONS</code> (else <code>~/.vscode/extensions</code>). Not measured: VS Code&#x27;s download is blocked in the build container. The e2e test uses a stand-in <code>code</code>. Confirm on the laptop: after setup, Settings shows &quot;VS Code · connected&quot;. If false, setup keeps offering Connect, and nothing is written anywhere else.</p>
-<ul><li>Not covered: VS Code Insiders, portable VS Code, a VS Code with no <code>code</code> command.</li><li><strong>Proposed, not built:</strong> AIQ home could say when VS Code chats run with the &quot;Local&quot; target, which sends AIQ</li></ul>
+<ul><li><strong>VS Code Insiders too (2026-11-06):</strong> Imran&#x27;s laptop has VS Code and VS Code Insiders, both on PATH, and</li></ul>
+<p>Insiders was the one used that day. AIQ treats them as two builds of one tool. It finds <code>code</code> and <code>code-insiders</code> (PATH, then each build&#x27;s own install folders) and reads <code>~/.vscode/extensions</code> and <code>~/.vscode-insiders/extensions</code>. Install runs each build&#x27;s own command. VS Code counts as connected only when every build found lists the extension, so setup still adds it to a build that lacks it. Uninstall removes it from every build that lists it.</p>
+<ul><li>Not covered: portable VS Code, VSCodium, a VS Code with no command.</li><li><strong>Proposed, not built:</strong> AIQ home could say when VS Code chats run with the &quot;Local&quot; target, which sends AIQ</li></ul>
 <p>nothing. VS Code&#x27;s own chat history (<code>workspaceStorage/*/chatSessions</code>, counted for import) shows chats that AIQ&#x27;s hooks never saw.</p>
 <h2>Conformance notes</h2>
 <p>LOA F hot path (no model, no network, fail-open). Deviations: <code>seq</code> null for Copilot too; extension uses polling (<code>simplify:</code>); <code>DESIGN.md</code> not applicable (host-themed surfaces).</p>
