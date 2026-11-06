@@ -523,3 +523,22 @@ summary: >-
   straight after it, so it now settles too. No other test changes theme mid-page (`emulateMedia` in the Theme test
   runs no axe after it).
 - **Rule:** after any change that restyles the page, wait for transitions to finish before measuring colours.
+
+### DC-033 — A best-effort step after the real work, with no error handling, in a script that stops on any error
+- **Signature:** 2026-11-05 23:22Z, Imran's laptop, Update from 0.1.7 to 0.1.8: the swap worked, then Microsoft
+  Defender's ASR rule C1DB55AB (event 1121, set by IT) refused upgrade.ps1's start of the new `aiq.exe` and
+  `aiq-home.exe`. `Start-Core` caught its error; the `-Relaunch` `Start-Process` had no `try`, so under
+  `$ErrorActionPreference = 'Stop'` it ended the script with no log line. AIQ home stayed closed.
+- **Why it survives:** CI never passed `-Relaunch` and Windows never refused a start on the runner, so the
+  unguarded line only ran on the person's machine, and only failed there when Defender stepped in.
+- **Sweep:** `Start-Process` in packaging/windows: upgrade.ps1's five `-Relaunch` lines (now `Start-Home`) and its
+  core start; install.ps1 lines 137–138 start the import and AIQ home as the last step of a manual install the
+  person watches, so an error there is shown to them; left as is.
+- **Control (product):** `Start-Again` in upgrade.ps1: never throws, tries again after 1, 2, 4 and 8 s, skips a
+  process already up, tries AIQ home through Explorer, and logs one `AIQ-UPDATE-CORE` / `AIQ-UPDATE-HOME` line for
+  every outcome.
+- **Control (tests):** release.yml auto-update step runs `-Apply -Relaunch -FailLaunches 2` (core started on the
+  third try, AIQ home reopened) and `-Rollback -Relaunch -FailLaunches 99` with a hook-like core start (no second
+  core; AIQ home refusal logged; exit 0).
+- **Rule:** a step that runs after the work is done (restart, reopen, tidy-up) is guarded and logged on every
+  path; its failure must never hide the work's outcome or end the script silently.
