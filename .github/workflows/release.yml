@@ -278,9 +278,9 @@ jobs:
           $hookLog = Join-Path $env:RUNNER_TEMP 'hook.txt'
           $hookPs = Join-Path $env:RUNNER_TEMP 'hook.ps1'
           Set-Content -Path $hookPs -Value @'
-          param($ulog, $exe, $out)
+          param($ulog, $exe, $out, [int]$before)
           foreach ($i in 1..150) {
-            if (Select-String -Quiet -Path $ulog -Pattern 'Rolled back to AIQ') {
+            if (@(Select-String -Path $ulog -Pattern 'Rolled back to AIQ').Count -gt $before) {
               Start-Process -WindowStyle Hidden -FilePath $exe -ArgumentList 'core'
               Add-Content -Path $out -Value "started the core at $((Get-Date).ToUniversalTime().ToString('o'))"
               return
@@ -289,7 +289,10 @@ jobs:
           }
           Add-Content -Path $out -Value 'never saw the rollback line'
           '@
-          $hook = Start-Process -PassThru -WindowStyle Hidden -FilePath powershell -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $hookPs, $ulog, $exe, $hookLog
+          # The earlier smoke step rolled back too, so the hook waits for a new "Rolled back" line, not any (main f2b8c3f:
+          # it saw the old line, started its core before this rollback stopped AIQ, and the rollback stopped it).
+          $before = @(Select-String -Path $ulog -Pattern 'Rolled back to AIQ').Count
+          $hook = Start-Process -PassThru -WindowStyle Hidden -FilePath powershell -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $hookPs, $ulog, $exe, $hookLog, $before
           powershell -ExecutionPolicy Bypass -File $up -Rollback -Relaunch -FailLaunches 99
           if ($LASTEXITCODE -ne 0) { Fail 'rollback failed' }
           $hook | Wait-Process -Timeout 30 -ErrorAction SilentlyContinue
