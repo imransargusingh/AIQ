@@ -229,17 +229,27 @@ pub fn found() -> Vec<ToolFound> {
     found_at(&claude_settings_path(), claude_installed(), &copilot_home(), &vscode_builds())
 }
 
+/// The name `newly_installed` records a tool under in `tools-seen.json`. VS Code's is "vscode-extension", not
+/// "vscode": AIQ 0.1.9 to 0.1.13 recorded "vscode" the first time it found `code`, even when the update had
+/// brought no aiq.vsix (0.1.8's updater copied only the exes), so on those computers VS Code was never offered
+/// again (Imran's laptop, 2026-11-06). Under the new name such a VS Code is offered once.
+fn seen_key(tool: &'static str) -> &'static str {
+    if tool == "vscode" { "vscode-extension" } else { tool }
+}
+
 /// Tools installed since AIQ last looked, for connecting once by themselves (Imran, 2026-11-02: AIQ connects
 /// what it finds; the person shouldn't have to run setup again). The first look after setup only records what
 /// is installed, so a tool the person disconnected (installed, so already seen) is never reconnected. Returns
 /// tools present and not hooked that weren't seen before; records every present tool as seen.
 pub fn newly_installed(seen_file: &Path, tools: &[ToolFound]) -> Vec<&'static str> {
-    let present: Vec<&'static str> = tools.iter().filter(|t| t.present).map(|t| t.tool).collect();
+    let present: Vec<&'static str> = tools.iter().filter(|t| t.present).map(|t| seen_key(t.tool)).collect();
     let seen: Option<Vec<String>> = std::fs::read_to_string(seen_file).ok().and_then(|t| serde_json::from_str(&t).ok());
     let new: Vec<&'static str> = match &seen {
-        Some(s) => {
-            tools.iter().filter(|t| t.present && !t.hooked && !s.iter().any(|x| x == t.tool)).map(|t| t.tool).collect()
-        }
+        Some(s) => tools
+            .iter()
+            .filter(|t| t.present && !t.hooked && !s.iter().any(|x| x == seen_key(t.tool)))
+            .map(|t| t.tool)
+            .collect(),
         None => Vec::new(),
     };
     let mut all: Vec<String> = seen.unwrap_or_default();
@@ -423,5 +433,19 @@ mod tests {
         let now = [tool("claude-code", false, true), tool("copilot", false, true)];
         assert_eq!(newly_installed(&seen, &now), vec!["claude-code"]);
         assert!(newly_installed(&seen, &now).is_empty(), "seen now, so a later disconnect sticks");
+    }
+
+    /// AIQ 0.1.9 to 0.1.13 wrote "vscode" when VS Code was found but its extension couldn't be added: that VS Code
+    /// is offered once more, then recorded under its new name so a disconnect sticks.
+    #[test]
+    fn a_vscode_recorded_by_an_older_aiq_is_offered_once_more() {
+        let d = tempfile::tempdir().unwrap();
+        let seen = d.path().join("tools-seen.json");
+        std::fs::write(&seen, r#"["copilot","vscode"]"#).unwrap();
+        let now = [tool("copilot", true, true), tool("vscode", false, true)];
+        assert_eq!(newly_installed(&seen, &now), vec!["vscode"]);
+        assert!(newly_installed(&seen, &now).is_empty());
+        let written: Vec<String> = serde_json::from_str(&std::fs::read_to_string(&seen).unwrap()).unwrap();
+        assert!(written.contains(&"vscode-extension".to_string()), "{written:?}");
     }
 }
