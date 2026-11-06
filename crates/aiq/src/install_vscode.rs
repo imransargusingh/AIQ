@@ -35,6 +35,12 @@ pub fn bundled_vsix(exe_dir: &Path) -> Option<PathBuf> {
     Some(exe_dir.join(VSIX)).filter(|p| p.is_file())
 }
 
+/// The extension beside the running aiq, if there is one.
+pub fn exe_vsix() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    bundled_vsix(exe.parent()?)
+}
+
 /// `aiq install vscode`: add AIQ's extension to every VS Code build found (stable and Insiders). `strict`:
 /// run by name, so no VS Code or no extension file is a failure; from `aiq install` (connect every tool found)
 /// a copy of AIQ without `aiq.vsix` (a developer build) skips VS Code with one line instead of failing setup.
@@ -45,8 +51,7 @@ pub fn install_with(yes: bool, strict: bool) -> ExitCode {
         println!("VS Code's code command wasn't found. Install VS Code, then run aiq install vscode.");
         return fail;
     }
-    let exe_dir = std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf)).unwrap_or_default();
-    let Some(vsix) = bundled_vsix(&exe_dir) else {
+    let Some(vsix) = exe_vsix() else {
         println!(
             "Skipped: this copy of AIQ has no {VSIX} beside it, so AIQ can't add its VS Code extension. Install AIQ from the release zip to get it."
         );

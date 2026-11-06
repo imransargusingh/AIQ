@@ -691,6 +691,43 @@ fn e2e_install_adds_the_vscode_extension_beside_aiq_and_uninstall_removes_it() {
     assert!(String::from_utf8_lossy(&o.stdout).contains("isn't installed in VS Code"));
 }
 
+/// Imran's laptop (2026-11-06): the update to 0.1.9 brought no aiq.vsix (0.1.8's updater copied only the exes),
+/// so the first `aiq install --new` couldn't add the extension, recorded VS Code as seen anyway, and no later
+/// update offered it again. VS Code now counts as seen only once the file is there, and a VS Code an older AIQ
+/// recorded that way is offered once more.
+#[test]
+fn e2e_install_new_adds_the_vscode_extension_once_an_update_brings_it() {
+    let e = Env::new();
+    let log = fake_code(&e);
+    let read_log = || std::fs::read_to_string(&log).unwrap_or_default();
+    let seen = e.home().join("tools-seen.json");
+    std::fs::create_dir_all(e.home()).unwrap();
+    std::fs::write(e.home().join("setup-done"), "done\n").unwrap();
+    std::fs::write(&seen, "[]").unwrap();
+
+    // No aiq.vsix yet: nothing added, nothing printed, VS Code not recorded.
+    let o = e.run_clean(&["install", "--new", "--yes"]);
+    assert!(o.status.success() && o.stdout.is_empty(), "{}", String::from_utf8_lossy(&o.stdout));
+    assert!(read_log().is_empty(), "{}", read_log());
+
+    // The next update brings the file: the extension is added once.
+    let exe = release_copy(&e);
+    let out = String::from_utf8_lossy(&e.run_clean_of(&exe, &["install", "--new", "--yes"]).stdout).to_string();
+    assert!(out.contains("Added to VS Code."), "{out}");
+    assert!(out.contains(&format!("Changed: {}", e.vscode_ext().join("extensions.json").display())), "{out}");
+
+    // The person removes it: it stays removed.
+    assert!(e.run_clean(&["uninstall", "vscode", "--yes"]).status.success());
+    let o = e.run_clean_of(&exe, &["install", "--new", "--yes"]);
+    assert!(o.stdout.is_empty(), "{}", String::from_utf8_lossy(&o.stdout));
+
+    // A computer where AIQ 0.1.9 to 0.1.13 recorded "vscode" without adding the extension: offered once more.
+    std::fs::write(&seen, r#"["vscode"]"#).unwrap();
+    let out = String::from_utf8_lossy(&e.run_clean_of(&exe, &["install", "--new", "--yes"]).stdout).to_string();
+    assert!(out.contains("Added to VS Code."), "{out}");
+    assert_eq!(read_log().matches("--install-extension").count(), 2, "{}", read_log());
+}
+
 /// Imran's laptop (2026-11-06): VS Code and VS Code Insiders both installed, Insiders used day to day. Setup
 /// adds AIQ's extension to both, each with its own command, and lists both extension lists as changed; a build
 /// that already has it still counts as connected only once the other has it too; uninstall removes both.

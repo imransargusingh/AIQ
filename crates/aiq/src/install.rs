@@ -317,7 +317,7 @@ pub fn install_found(yes: bool) -> ExitCode {
         );
     }
     // Setup has connected everything present; from here on these are all already seen.
-    let _ = aiq_core::tools::newly_installed(&Paths::from_env().tools_seen(), &tools);
+    let _ = aiq_core::tools::newly_installed(&Paths::from_env().tools_seen(), &as_seen(&tools));
     connect(yes, &tools, todo)
 }
 
@@ -330,12 +330,24 @@ pub fn install_new(yes: bool) -> ExitCode {
         return ExitCode::SUCCESS;
     }
     let tools = aiq_core::tools::found();
-    let new = aiq_core::tools::newly_installed(&paths.tools_seen(), &tools);
+    let new = aiq_core::tools::newly_installed(&paths.tools_seen(), &as_seen(&tools));
     if new.is_empty() {
         return ExitCode::SUCCESS;
     }
     let todo: Vec<_> = tools.iter().filter(|t| new.contains(&t.tool)).collect();
     connect(yes, &tools, todo)
+}
+
+/// The tools as `newly_installed` should record them: VS Code counts as found only once this copy of AIQ has its
+/// extension file (aiq.vsix) to add, so a VS Code found before an update brought the file is still offered when
+/// it does, instead of being recorded as seen and skipped for good.
+fn as_seen(tools: &[aiq_core::tools::ToolFound]) -> Vec<aiq_core::tools::ToolFound> {
+    let can_add_vscode = crate::install_vscode::exe_vsix().is_some();
+    let mut tools = tools.to_vec();
+    for t in tools.iter_mut().filter(|t| t.tool == "vscode") {
+        t.present &= can_add_vscode;
+    }
+    tools
 }
 
 fn connect(yes: bool, tools: &[aiq_core::tools::ToolFound], todo: Vec<&aiq_core::tools::ToolFound>) -> ExitCode {
