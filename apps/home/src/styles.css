@@ -488,6 +488,7 @@ main:has(.secnav){scroll-padding-top:56px}
 .gd-tag{font-weight:600;color:var(--success)}
 .gd-pill.on .gd-tag{color:inherit}
 .gd-side{position:sticky;top:var(--s4)}
+.gd-counts{margin:0;padding:var(--s2) var(--s3);background:var(--canvas-soft);border-left:3px solid var(--primary);border-radius:0 var(--r-sm) var(--r-sm) 0}
 @media (max-width:1100px){.gd{grid-template-columns:minmax(0,1fr)}.gd-side{position:static}}
 @media (max-width:900px){
   .gd-gh{display:none}

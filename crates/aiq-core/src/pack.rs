@@ -39,7 +39,7 @@ mod tests {
         let p = BundledPack.load().unwrap();
         assert_eq!(p.moves.len(), 28);
         for m in &p.moves {
-            for t in [&m.noticed, &m.why, &m.try_this, &m.habit] {
+            for t in [&m.noticed, &m.why, &m.try_this, &m.habit, &m.counts] {
                 assert!(!aiq_domain::rung::RUNG_NAMES.iter().any(|r| t.contains(r)), "{t}");
                 assert!(!t.chars().any(|c| ('1'..='5').contains(&c)), "{t}");
             }

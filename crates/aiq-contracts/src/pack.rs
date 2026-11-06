@@ -102,6 +102,10 @@ pub struct MoveDef {
     pub try_this: String,
     /// A starter prompt with `<placeholders>`, copied by the person, never sent.
     pub starter: String,
+    /// One plain sentence on what the analysis counts as doing this habit, shown under the habit in the Rung
+    /// guide (Imran 2026-11-06), so the guide never promises credit the analysis can't give.
+    #[serde(default)]
+    pub counts: String,
     /// A model-read fact must be at least this confident before its "no" is coached. For facts the real-data
     /// fact check found weak (F4 read right 10 of 15, PR #27). Log facts are always 1.0.
     #[serde(default)]
@@ -223,7 +227,7 @@ impl PackV1 {
             if !["any", "code_change", "write_doc", "ask_research", "run_ship"].contains(&m.job.as_str()) {
                 return Err(format!("move {}: job {}", m.move_id, m.job));
             }
-            let text = [&m.noticed, &m.why, &m.try_this, &m.starter, &m.habit];
+            let text = [&m.noticed, &m.why, &m.try_this, &m.starter, &m.habit, &m.counts];
             if text.iter().any(|t| t.is_empty() || t.contains('\n')) || !m.noticed.contains("{type}") {
                 return Err(format!("move {}: one-line text, noticed names {{type}}", m.move_id));
             }

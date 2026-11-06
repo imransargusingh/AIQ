@@ -1,7 +1,8 @@
 // Rung guide (Imran 2026-11-05, option B): every habit AIQ coaches, as a grid. Rung steps run down, kinds of work
 // across; pick a habit to read why, what to try and its starter beside the grid. The habits are the pack's moves
-// (pack text only, never model text). Where you are comes from the kinds of task (`coaching.kinds`): a job's cell
-// at its most common rung is marked "You're here", and a habit that is a kind's current next step says so.
+// (pack text only, never model text), each with what the analysis counts as doing it (Imran 2026-11-06). Where
+// you are comes from the kinds of task (`coaching.kinds`): a job's cell at its most common rung is marked
+// "You're here", and a habit that is a kind's current next step says so.
 import { useState } from "react";
 import { RUNGS, jobName, sentence } from "../format";
 import type { GuideMove, Snapshot } from "../types";
@@ -128,6 +129,11 @@ export function Guide(ctx: Ctx) {
               <p style={{ margin: 0 }}>
                 <b>Try this:</b> {m.try_this}
               </p>
+              {m.counts && (
+                <p className="gd-counts">
+                  <b>How AIQ notices it:</b> {m.counts}
+                </p>
+              )}
               <span id="gd-st" className="meta">A starter prompt. Fill in the parts in angle brackets; AIQ never sends it.</span>
               <pre className="starter" aria-labelledby="gd-st">{m.starter}</pre>
               <div className="row">

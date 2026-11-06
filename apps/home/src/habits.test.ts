@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { habitsByRung, reaches } from "./pages/Tips";
 import type { GuideMove, HabitRow } from "./types";
 
-const g = (move_id: string, step: number): GuideMove => ({ move_id, step, job: "any", habit: move_id, why: "", try_this: "", starter: "" });
+const g = (move_id: string, step: number): GuideMove => ({ move_id, step, job: "any", habit: move_id, why: "", try_this: "", starter: "", counts: "" });
 const guide = [g("brief", 1), g("hand_over", 2), g("written_brief", 3)];
 const h = (move_id: string, job: string, state: HabitRow["state"], seen = 0, eligible = 4): HabitRow => ({
   job, move_id, name: move_id, state, eligible, seen, moved_to: null, moved_ms: null, moved_back: false,

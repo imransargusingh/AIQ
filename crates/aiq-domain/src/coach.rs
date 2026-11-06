@@ -845,6 +845,7 @@ mod tests {
             why: "w".into(),
             try_this: "t".into(),
             starter: "s".into(),
+            counts: "c".into(),
             min_confidence: None,
         }
     }
