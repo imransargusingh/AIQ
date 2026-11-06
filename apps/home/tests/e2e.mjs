@@ -648,10 +648,11 @@ await test("rung guide: steps by kind of work, where you are, your next step ope
   assert.match(head, /Mostly Directed \(2\)/);
   assert.equal(await grid.locator(".gd-cell.here").count(), 2, "one per job with analyzed kinds");
   const side = page.getByRole("complementary", { name: "The habit you picked" });
-  assert.match(await side.locator("h2").innerText(), /Give the agent a written brief or instructions file/);
+  assert.match(await side.locator("h2").innerText(), /Keep an instructions file in the repo and point to it/);
   assert.match(await side.innerText(), /Code a change · Delegated \(3\) → Orchestrated \(4\)/);
+  assert.match(await side.innerText(), /How AIQ notices it: Counts when you give the agent a written brief, spec or instructions file\./);
   assert.match(await side.innerText(), /Your next step for writing tests/);
-  await grid.getByRole("button", { name: /Ask for the whole draft with what done means/ }).click();
+  await grid.getByRole("button", { name: /Ask for the whole draft with a "Done when" list/ }).click();
   assert.match(await side.innerText(), /Your next step for writing a spec or PRD/);
   // Pick another habit: the side panel follows; the starter copies.
   await grid.getByRole("button", { name: "Give all your notes at once, then review the draft" }).click();
@@ -975,7 +976,7 @@ await test("coaching Home: finished and could be, the rule, uncertain left out, 
   const rows = page.getByRole("list", { name: "Kinds of task with a next step" }).getByRole("listitem");
   assert.equal(await rows.count(), 2);
   const first = await rows.first().innerText();
-  assert.match(first, /Writing tests\s+Give the agent a written brief or instructions file\s+→ Orchestrated \(4\)/);
+  assert.match(first, /Writing tests\s+Keep an instructions file in the repo and point to it\s+→ Orchestrated \(4\)/);
   // The rung mix: 15 judged tasks, so shares show; the kinds on the highest rung reached are listed.
   const mix = await page.locator("section", { has: page.locator("h2#rg") }).innerText();
   assert.match(mix, /Delegated\s+40%\s+6 tasks/);
@@ -1036,7 +1037,7 @@ await test("kind of task: the pack's step, copy starter, analyze words as text, 
   const page = await open("coaching", { hash: "#kind/code_change/tests" });
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin: base });
   const t = await page.locator("main").innerText();
-  assert.match(t, /Next step: Give the agent a written brief or instructions file/);
+  assert.match(t, /Next step: Keep an instructions file in the repo and point to it/);
   assert.match(t, /1 task AIQ isn't sure about is left out of this\./);
   assert.match(t, /For your last task\s+Give the agent <b>a brief<\/b>\./, "model text rendered literally");
   assert.equal(await page.locator("main b:text('a brief')").count(), 0);
@@ -1052,7 +1053,7 @@ await test("kind of task: the pack's step, copy starter, analyze words as text, 
   await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent?.startsWith("AIQ won't suggest this step for Writing tests"));
   await page.waitForSelector(`main h2:text("You said this step doesn't fit")`);
   await page.getByRole("button", { name: "Undo" }).click();
-  await page.waitForSelector("main h2:text('Next step: Give the agent a written brief or instructions file')");
+  await page.waitForSelector("main h2:text('Next step: Keep an instructions file in the repo and point to it')");
   const calls = await page.evaluate(() => window.__AIQ_FIXTURE__.calls.filter((c) => c.cmd === "guidance_flag").map((c) => c.args));
   assert.deepEqual(calls, [
     { job: "code_change", taskType: "tests", moveId: "written_brief", action: "flag", reason: "not_useful" },
@@ -1124,9 +1125,9 @@ await test("Habits grouped by the rung they help you reach, with an adopted bar;
   assert.match(t, /Directed habits[\s\S]*?4 of 4 adopted\s+You give the agent a clear goal/);
   assert.match(t, /Orchestrated habits[\s\S]*?0 of 4 adopted/);
   const adopted = await page.getByRole("list", { name: "Delegated habits" }).innerText();
-  assert.match(adopted, /Hand over the whole task with a done test\s+Code a change · Adopted[\s\S]*?Seen in 6 of 6 tasks/);
+  assert.match(adopted, /Hand over the whole task with a "Done when" list\s+Code a change · Adopted[\s\S]*?Seen in 6 of 6 tasks/);
   const notYet = await page.getByRole("list", { name: "Orchestrated habits" }).innerText();
-  assert.match(notYet, /Give the agent a written brief or instructions file\s+Code a change, Write a spec or doc · Not yet[\s\S]*?Seen in 0 of 9 tasks/, "one line for both jobs, counts added");
+  assert.match(notYet, /Keep an instructions file in the repo and point to it\s+Code a change, Write a spec or doc · Not yet[\s\S]*?Seen in 0 of 9 tasks/, "one line for both jobs, counts added");
   assert.equal(await page.locator(".banner.info").count(), 0, "no banners repeating the rows");
   assert.match(adopted, /Adopted \w{3} \d+ \w{3}/, "a recent move shows its date on the row");
   // Tip history: what happened after each next-step tip.
@@ -1194,11 +1195,11 @@ await test("Settings: next-step tips auto/on/off, AIQ's self-check stop with Tur
   const checks = tips.getByRole("checkbox");
   assert.equal(await checks.count(), 28);
   assert.equal(await tips.getByRole("group", { name: "Run or ship it" }).getByRole("checkbox").count(), 6);
-  const agentChecks = tips.getByLabel("Ask the agent to run the tests itself");
+  const agentChecks = tips.getByLabel("Put the test command in your instructions file");
   assert.equal(await agentChecks.isChecked(), false);
   await agentChecks.check();
   await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent?.endsWith("tip turned back on."));
-  const docBrief = tips.getByRole("group", { name: "Write a spec or doc" }).getByLabel("Say who the doc is for, what it must do, and its limits");
+  const docBrief = tips.getByRole("group", { name: "Write a spec or doc" }).getByLabel("Name the reader, and give an example doc to copy");
   await docBrief.uncheck();
   await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent?.endsWith("tip turned off."));
   assert.equal(await docBrief.isChecked(), false);

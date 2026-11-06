@@ -31,6 +31,8 @@ export interface GuideMove {
   why: string;
   try_this: string;
   starter: string;
+  /** What the analysis counts as doing this habit. */
+  counts: string;
 }
 
 /** Mirrors crates/aiq-core `live_trend::LiveTrend` plus Home's task id and kind name. An estimate from what the

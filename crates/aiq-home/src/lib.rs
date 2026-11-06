@@ -77,6 +77,8 @@ pub struct GuideMove {
     pub why: String,
     pub try_this: String,
     pub starter: String,
+    /// What the analysis counts as doing this habit (pack `counts`).
+    pub counts: String,
 }
 
 /// The Right now card: the core's trend for the open task, with what Home adds (its task id, kind name).
@@ -809,6 +811,7 @@ fn empty(paths: &Paths, pack: &PackV1, now: Now) -> Snapshot {
                 why: m.why.clone(),
                 try_this: m.try_this.clone(),
                 starter: m.starter.clone(),
+                counts: m.counts.clone(),
             })
             .collect(),
     }
