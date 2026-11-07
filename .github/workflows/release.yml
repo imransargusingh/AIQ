@@ -333,6 +333,18 @@ jobs:
           try { powershell -ExecutionPolicy Bypass -File $up -Apply; $heldExit = $LASTEXITCODE } finally { $held.Dispose() }
           if ($heldExit -ne 0) { Fail "apply with the log held: exit $heldExit, want 0" }
           if ((St).state -ne 'current' -or (Test-Path $stage)) { Fail "apply with the log held did not finish: $((St) | ConvertTo-Json -Compress)" }
+          # Every direct start of the core refused (laptop 2026-11-07 18:21:04Z, 0.1.14 to 0.1.15): AIQ home's
+          # --start-core starts it instead.
+          New-Item -ItemType Directory -Force $stage | Out-Null
+          Copy-Item "dist/aiq-$v-windows-x64.zip", dist/SHA256SUMS $stage
+          @{ state = 'waiting'; available = 'v99.0.2'; staged = "aiq-$v-windows-x64.zip"; installed = $v } | ConvertTo-Json | Set-Content (Join-Path $aiq 'update.json')
+          Start-Process -WindowStyle Hidden -FilePath $exe -ArgumentList 'core'
+          Start-Sleep -Seconds 2
+          powershell -ExecutionPolicy Bypass -File $up -Apply -FailLaunches 99 -FailDirectOnly
+          if ($LASTEXITCODE -ne 0) { Fail "apply with direct core starts refused: exit $LASTEXITCODE" }
+          if (-not (Select-String -Quiet -Path $ulog -Pattern 'AIQ-UPDATE-CORE: started the AIQ core again through AIQ home')) { Fail 'core not started through AIQ home' }
+          $cores = @(Get-CimInstance Win32_Process -Filter "Name='aiq.exe'" | Where-Object { $_.ExecutablePath -eq $exe -and $_.CommandLine -match '\score\s*$' })
+          if ($cores.Count -ne 1) { Fail "want one AIQ core after the start through AIQ home, found $($cores.Count)" }
           Get-Content (Join-Path $aiq 'upgrade-log.txt') -Tail 8
       - name: Smoke test - update check finds the tag from the releases/latest redirect, falls back to the API, records a rate-limit reset
         shell: pwsh
