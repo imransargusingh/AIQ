@@ -542,3 +542,8 @@ summary: >-
   core; AIQ home refusal logged; exit 0).
 - **Rule:** a step that runs after the work is done (restart, reopen, tidy-up) is guarded and logged on every
   path; its failure must never hide the work's outcome or end the script silently.
+- **Recurrence (2026-11-07, release build of 0.1.15, main 9cfa689):** `Log`'s own `Add-Content` threw "Stream was
+  not readable" right after "Rolled back to AIQ" (the test's stand-in hook was reading the log), and the rollback
+  exited non-zero. Same class: the log write is best-effort too. **Control:** `Log` tries 5 times, 100 ms apart, and
+  never throws; release.yml runs a `-Apply` with the log held open and wants exit 0. install.ps1's two log lines are
+  left: the person watches that run.

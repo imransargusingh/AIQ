@@ -55,9 +55,15 @@ $stage = Join-Path $aiqHome 'update'
 $exes = 'aiq.exe', 'aiq-home.exe'
 New-Item -ItemType Directory -Force $aiqHome | Out-Null
 
+# Never throws: a log line is a record of the work, so a failed write must not end the update. Something reading the
+# log at that moment (`aiq status`, a scanner, a test) can make the append fail ("Stream was not readable", release
+# build of 0.1.15 on main 9cfa689, 2026-11-07, right after a rollback), so it is tried 5 times, 100 ms apart.
 function Log([string]$m) {
     Write-Host $m
-    Add-Content -Path $log -Value ("{0:u} {1}" -f (Get-Date).ToUniversalTime(), $m)
+    $line = "{0:u} {1}" -f (Get-Date).ToUniversalTime(), $m
+    foreach ($i in 1..5) {
+        try { Add-Content -Path $log -Value $line -ErrorAction Stop; return } catch { Start-Sleep -Milliseconds 100 }
+    }
 }
 function Now-Utc { (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ') }
 function Stop-Aiq {
