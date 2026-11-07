@@ -224,6 +224,9 @@ fn status_text(paths: &Paths) -> (String, Vec<String>) {
     }
     out += &format!("Claude Code: {}\n", crate::install::status_line());
     out += &format!("Copilot: {}\n", crate::install_copilot::status_line());
+    if let Some(l) = crate::install_vscode::status_line() {
+        out += &format!("VS Code: {l}\n");
+    }
     let now_ms = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64);
     let up = aiq_core::update::view(&paths, aiq_core::update::stored_mode(&paths).as_deref(), now_ms);
     if let Some(l) = update_status_line(&up) {
