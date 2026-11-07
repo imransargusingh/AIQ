@@ -2244,64 +2244,67 @@
       }
     }
   ],
-  "live": {
-    "surface": "copilot-cli",
-    "session": "live1",
-    "first_ms": 1793533080000,
-    "last_ms": 1793534340000,
-    "prompts": 5,
-    "working": true,
-    "job": "write_doc",
-    "task_type": "spec",
-    "steps": [
-      {
-        "turn": 1,
-        "at_ms": 1793533080000,
-        "rung": 1,
-        "recorded": true
-      },
-      {
-        "turn": 2,
-        "at_ms": 1793533320000,
-        "rung": 3,
-        "recorded": true
-      },
-      {
+  "live": [
+    {
+      "surface": "copilot-cli",
+      "session": "live1",
+      "first_ms": 1793533080000,
+      "last_ms": 1793534340000,
+      "prompts": 5,
+      "working": true,
+      "job": "write_doc",
+      "task_type": "spec",
+      "steps": [
+        {
+          "turn": 1,
+          "at_ms": 1793533080000,
+          "rung": 1,
+          "recorded": true
+        },
+        {
+          "turn": 2,
+          "at_ms": 1793533320000,
+          "rung": 3,
+          "recorded": true
+        },
+        {
+          "turn": 3,
+          "at_ms": 1793533680000,
+          "rung": 2,
+          "recorded": true
+        },
+        {
+          "turn": 4,
+          "at_ms": 1793533980000,
+          "rung": 2,
+          "recorded": false
+        }
+      ],
+      "rung": 2,
+      "could": 3,
+      "did_turns": [
+        2,
+        3
+      ],
+      "did_is_lookup": false,
+      "brief": true,
+      "unrecorded": [
+        4
+      ],
+      "unrecorded_why": [
+        "read_error"
+      ],
+      "subagents": 0,
+      "tip": {
+        "card_id": "019000010008-0000-7000-8000-000000000000",
         "turn": 3,
-        "at_ms": 1793533680000,
-        "rung": 2,
-        "recorded": true
+        "try_this": "Say what is wrong with the last answer and add the one fact it lacked."
       },
-      {
-        "turn": 4,
-        "at_ms": 1793533980000,
-        "rung": 2,
-        "recorded": false
-      }
-    ],
-    "rung": 2,
-    "could": 3,
-    "did_turns": [
-      2,
-      3
-    ],
-    "did_is_lookup": false,
-    "brief": true,
-    "unrecorded": [
-      4
-    ],
-    "unrecorded_why": [
-      "read_error"
-    ],
-    "subagents": 0,
-    "tip": {
-      "card_id": "019000010008-0000-7000-8000-000000000000",
-      "turn": 3,
-      "try_this": "Say what is wrong with the last answer and add the one fact it lacked."
-    },
-    "task_id": "019000010001-0000-7000-8000-000000000000",
-    "kind": "Writing a spec or PRD"
-  },
+      "task_id": "019000010001-0000-7000-8000-000000000000",
+      "kind": "Writing a spec or PRD",
+      "folder": "c:\\users\\imran\\source\\repos\\aiq"
+    }
+  ],
   "guide": [
     {
       "move_id": "brief",

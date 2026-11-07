@@ -2141,7 +2141,7 @@
       }
     }
   ],
-  "live": null,
+  "live": [],
   "guide": [
     {
       "move_id": "brief",

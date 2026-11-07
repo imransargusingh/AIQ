@@ -15,8 +15,8 @@ export interface Snapshot {
   update: Update;
   /** One row per project with a task in the window, most room to grow first (design project-filter). */
   projects: Project[];
-  /** The open task's live rung trend (design live-rung-trend C); null when no task is open or it is off. */
-  live: Live | null;
+  /** Every open task's live rung trend (design live-rung-trend C), newest activity first; empty when none is open or it is off. */
+  live: Live[];
   /** The rung guide: every next-step move in pack order (pack data, the same for everyone). */
   guide: GuideMove[];
 }
@@ -62,6 +62,8 @@ export interface Live {
   tip: { card_id: string; turn: number; try_this: string } | null;
   task_id: string;
   kind: string | null;
+  /** The task's folder, so a chip names its project under any project filter. */
+  folder: string | null;
 }
 
 /** One project: tasks whose session ran in one folder (crates/aiq-home `Project`, design project-filter). */
