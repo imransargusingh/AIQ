@@ -1030,7 +1030,7 @@
       },
       {
         "tip_id": "next_rung.new_info",
-        "habit": "Quote what was wrong, then add one new fact",
+        "habit": "Quote what the agent got wrong, then add one new detail",
         "job": "any"
       },
       {
@@ -1045,22 +1045,22 @@
       },
       {
         "tip_id": "next_rung.hand_over",
-        "habit": "Hand over the whole task with a \"Done when\" list",
+        "habit": "Hand over the whole task and list what done looks like",
         "job": "code_change"
       },
       {
         "tip_id": "next_rung.hand_over_doc",
-        "habit": "Ask for the whole draft with a \"Done when\" list",
+        "habit": "Ask for the whole draft and list what it must cover",
         "job": "write_doc"
       },
       {
         "tip_id": "next_rung.let_agent_write",
-        "habit": "Point the agent at the file and your notes",
+        "habit": "Have the agent write the doc file from your notes",
         "job": "write_doc"
       },
       {
         "tip_id": "next_rung.doc_one_go",
-        "habit": "Give all your notes at once, then review the draft",
+        "habit": "Send all your changes in one message, then review the draft",
         "job": "write_doc"
       },
       {
@@ -1075,12 +1075,12 @@
       },
       {
         "tip_id": "next_rung.whole_question",
-        "habit": "Ask the whole question and say what a good answer covers",
+        "habit": "Say what a good answer must cover",
         "job": "ask_research"
       },
       {
         "tip_id": "next_rung.let_agent_look",
-        "habit": "Say \"read the code and logs, don't guess\"",
+        "habit": "Let the agent read the files and logs instead of pasting them in",
         "job": "ask_research"
       },
       {
@@ -1095,12 +1095,12 @@
       },
       {
         "tip_id": "next_rung.check_running",
-        "habit": "Name the proof: a version, a page loading or a log line",
+        "habit": "Ask for proof it worked: a version, a page loading or a log line",
         "job": "run_ship"
       },
       {
         "tip_id": "next_rung.hand_over_run",
-        "habit": "Hand over the whole run with a done check and a stop",
+        "habit": "Hand over the whole run: say what done looks like and where to stop and ask",
         "job": "run_ship"
       },
       {
@@ -1110,7 +1110,7 @@
       },
       {
         "tip_id": "next_rung.run_one_go",
-        "habit": "Give the whole run up front, not one command at a time",
+        "habit": "Send the whole run in one message, not one command at a time",
         "job": "run_ship"
       },
       {
@@ -1130,7 +1130,7 @@
       },
       {
         "tip_id": "next_rung.agent_checks_run",
-        "habit": "Have the agent run a smoke test after each step",
+        "habit": "Have the agent run a quick \"does it work\" check after each step",
         "job": "run_ship"
       },
       {
@@ -1140,17 +1140,17 @@
       },
       {
         "tip_id": "next_rung.split_question",
-        "habit": "Send one sub-agent per source, then merge",
+        "habit": "Send one sub-agent per source, then combine the answers",
         "job": "ask_research"
       },
       {
         "tip_id": "next_rung.agent_checks_answer",
-        "habit": "Prove each finding with a query or test",
+        "habit": "Ask the agent to prove each claim with a query or test",
         "job": "ask_research"
       },
       {
         "tip_id": "next_rung.saved_workflow",
-        "habit": "Save it as a prompt file and run it by name",
+        "habit": "Save a task you repeat as a prompt file and run it by name",
         "job": "any"
       }
     ],
@@ -1252,7 +1252,7 @@
         "state": "coach",
         "next": {
           "move_id": "hand_over_doc",
-          "habit": "Ask for the whole draft with a \"Done when\" list",
+          "habit": "Ask for the whole draft and list what it must cover",
           "why": "asking for the whole draft with what done means lets the agent keep it consistent.",
           "try_this": "ask for the complete draft, and list the sections or questions a finished one must cover.",
           "starter": "Write the whole <doc>. Done when it covers <sections> for <reader>. Then list what you were unsure of."
@@ -1311,7 +1311,7 @@
         "state": "coach",
         "next": {
           "move_id": "hand_over_doc",
-          "habit": "Ask for the whole draft with a \"Done when\" list",
+          "habit": "Ask for the whole draft and list what it must cover",
           "why": "asking for the whole draft with what done means lets the agent keep it consistent.",
           "try_this": "ask for the complete draft, and list the sections or questions a finished one must cover.",
           "starter": "Write the whole <doc>. Done when it covers <sections> for <reader>. Then list what you were unsure of."
@@ -1392,7 +1392,7 @@
       {
         "job": "code_change",
         "move_id": "hand_over",
-        "name": "Hand over the whole task with a \"Done when\" list",
+        "name": "Hand over the whole task and list what done looks like",
         "state": "adopted",
         "eligible": 6,
         "seen": 6,
@@ -1469,7 +1469,7 @@
       {
         "job": "write_doc",
         "move_id": "hand_over_doc",
-        "name": "Ask for the whole draft with a \"Done when\" list",
+        "name": "Ask for the whole draft and list what it must cover",
         "state": "not_yet",
         "eligible": 3,
         "seen": 0,
@@ -1480,7 +1480,7 @@
       {
         "job": "write_doc",
         "move_id": "let_agent_write",
-        "name": "Point the agent at the file and your notes",
+        "name": "Have the agent write the doc file from your notes",
         "state": "adopted",
         "eligible": 3,
         "seen": 3,
@@ -1491,7 +1491,7 @@
       {
         "job": "write_doc",
         "move_id": "doc_one_go",
-        "name": "Give all your notes at once, then review the draft",
+        "name": "Send all your changes in one message, then review the draft",
         "state": "adopted",
         "eligible": 3,
         "seen": 3,
@@ -1804,7 +1804,7 @@
           {
             "job": "code_change",
             "move_id": "hand_over",
-            "name": "Hand over the whole task with a \"Done when\" list",
+            "name": "Hand over the whole task and list what done looks like",
             "state": "adopted",
             "eligible": 6,
             "seen": 6,
@@ -1986,7 +1986,7 @@
             "state": "coach",
             "next": {
               "move_id": "hand_over_doc",
-              "habit": "Ask for the whole draft with a \"Done when\" list",
+              "habit": "Ask for the whole draft and list what it must cover",
               "why": "asking for the whole draft with what done means lets the agent keep it consistent.",
               "try_this": "ask for the complete draft, and list the sections or questions a finished one must cover.",
               "starter": "Write the whole <doc>. Done when it covers <sections> for <reader>. Then list what you were unsure of."
@@ -2015,7 +2015,7 @@
             "state": "coach",
             "next": {
               "move_id": "hand_over_doc",
-              "habit": "Ask for the whole draft with a \"Done when\" list",
+              "habit": "Ask for the whole draft and list what it must cover",
               "why": "asking for the whole draft with what done means lets the agent keep it consistent.",
               "try_this": "ask for the complete draft, and list the sections or questions a finished one must cover.",
               "starter": "Write the whole <doc>. Done when it covers <sections> for <reader>. Then list what you were unsure of."
@@ -2057,7 +2057,7 @@
           {
             "job": "write_doc",
             "move_id": "hand_over_doc",
-            "name": "Ask for the whole draft with a \"Done when\" list",
+            "name": "Ask for the whole draft and list what it must cover",
             "state": "not_yet",
             "eligible": 3,
             "seen": 0,
@@ -2068,7 +2068,7 @@
           {
             "job": "write_doc",
             "move_id": "let_agent_write",
-            "name": "Point the agent at the file and your notes",
+            "name": "Have the agent write the doc file from your notes",
             "state": "adopted",
             "eligible": 3,
             "seen": 3,
@@ -2079,7 +2079,7 @@
           {
             "job": "write_doc",
             "move_id": "doc_one_go",
-            "name": "Give all your notes at once, then review the draft",
+            "name": "Send all your changes in one message, then review the draft",
             "state": "adopted",
             "eligible": 3,
             "seen": 3,
@@ -2177,7 +2177,7 @@
       "move_id": "new_info",
       "step": 1,
       "job": "any",
-      "habit": "Quote what was wrong, then add one new fact",
+      "habit": "Quote what the agent got wrong, then add one new detail",
       "why": "rewording alone rarely changes the result; the agent needs something new to go on.",
       "try_this": "quote the line that was wrong, say why, and add one example, file or limit.",
       "starter": "This part is wrong: \"<quote>\". Because <why>. Use <example, file or limit> and try again.",
@@ -2207,7 +2207,7 @@
       "move_id": "hand_over",
       "step": 2,
       "job": "code_change",
-      "habit": "Hand over the whole task with a \"Done when\" list",
+      "habit": "Hand over the whole task and list what done looks like",
       "why": "with the whole task and a short done list, the agent can plan the steps and finish without asking you.",
       "try_this": "describe the whole change, then add Done when with two or three things you can check, such as a test that passes.",
       "starter": "<The whole change>. Done when: <test that passes>, <what you can see>, <what stays untouched>. Make all the edits, then show me the diff.",
@@ -2217,7 +2217,7 @@
       "move_id": "hand_over_doc",
       "step": 2,
       "job": "write_doc",
-      "habit": "Ask for the whole draft with a \"Done when\" list",
+      "habit": "Ask for the whole draft and list what it must cover",
       "why": "asking for the whole draft with what done means lets the agent keep it consistent.",
       "try_this": "ask for the complete draft, and list the sections or questions a finished one must cover.",
       "starter": "Write the whole <doc>. Done when it covers <sections> for <reader>. Then list what you were unsure of.",
@@ -2227,7 +2227,7 @@
       "move_id": "let_agent_write",
       "step": 2,
       "job": "write_doc",
-      "habit": "Point the agent at the file and your notes",
+      "habit": "Have the agent write the doc file from your notes",
       "why": "when the agent reads your notes and writes the file, you review one draft instead of moving text back and forth.",
       "try_this": "give the file path to write in and the notes or folder to read, then review the changes.",
       "starter": "Write <doc> in <file path>. Read <notes or folder> first. When you're done, tell me what you changed and what you were unsure of.",
@@ -2237,7 +2237,7 @@
       "move_id": "doc_one_go",
       "step": 2,
       "job": "write_doc",
-      "habit": "Give all your notes at once, then review the draft",
+      "habit": "Send all your changes in one message, then review the draft",
       "why": "all your notes in one go let the agent shape the whole draft, and you review it once.",
       "try_this": "collect your changes into one message, then review the next draft as a whole.",
       "starter": "Revise <doc> with all of these: <change>, <change>, <change>. Then show me the full draft and list what you changed.",
@@ -2267,7 +2267,7 @@
       "move_id": "whole_question",
       "step": 2,
       "job": "ask_research",
-      "habit": "Ask the whole question and say what a good answer covers",
+      "habit": "Say what a good answer must cover",
       "why": "the whole question and what a good answer covers lets the agent dig in and report back once.",
       "try_this": "say what you need to decide and what a good answer must cover, then let the agent find it.",
       "starter": "I need to decide <decision>. Find out <question>. A good answer covers <points>, with sources.",
@@ -2277,7 +2277,7 @@
       "move_id": "let_agent_look",
       "step": 2,
       "job": "ask_research",
-      "habit": "Say \"read the code and logs, don't guess\"",
+      "habit": "Let the agent read the files and logs instead of pasting them in",
       "why": "an agent that reads the files, logs or docs itself often finds what a pasted excerpt leaves out.",
       "try_this": "name where to look and ask the agent to read it itself instead of pasting the material in.",
       "starter": "Read <files, logs or docs> to answer <question>. Don't guess. Tell me what you read and what you found.",
@@ -2307,7 +2307,7 @@
       "move_id": "check_running",
       "step": 1,
       "job": "run_ship",
-      "habit": "Name the proof: a version, a page loading or a log line",
+      "habit": "Ask for proof it worked: a version, a page loading or a log line",
       "why": "a command can succeed while the app, release or tool still does not work.",
       "try_this": "say what proves it worked, and ask the agent to show it before you move on.",
       "starter": "After <the step>, show me proof it worked: <the version number, the URL loading, or the log line>.",
@@ -2317,7 +2317,7 @@
       "move_id": "hand_over_run",
       "step": 2,
       "job": "run_ship",
-      "habit": "Hand over the whole run with a done check and a stop",
+      "habit": "Hand over the whole run: say what done looks like and where to stop and ask",
       "why": "an agent with the whole run, a done check and a stop point can do the steps and still leave you the risky one.",
       "try_this": "give the whole outcome, how you'll know it's done, and the risky step (deploy, delete, push) where it must stop and ask.",
       "starter": "Do <the whole release or run>. Done means <the check that passes>. Stop and ask before <the risky step>.",
@@ -2337,7 +2337,7 @@
       "move_id": "run_one_go",
       "step": 2,
       "job": "run_ship",
-      "habit": "Give the whole run up front, not one command at a time",
+      "habit": "Send the whole run in one message, not one command at a time",
       "why": "with the whole run up front, the agent can do the steps and fix errors before it hands back.",
       "try_this": "say the end state and the steps you expect, then let it run and report.",
       "starter": "Get <app or release> to <end state>. Steps I expect: <step>, <step>. Stop and ask before <risky step>. Report each command and what it printed.",
@@ -2360,7 +2360,7 @@
       "habit": "Put the test command in your instructions file",
       "why": "then every task ends with the agent running the tests and fixing what fails, without you asking.",
       "try_this": "add a line such as: before you finish, run <test command> and fix what fails until it passes.",
-      "starter": "<The task>. Run the tests with <command>. Keep fixing until they all pass, then show me the diff and the test output.",
+      "starter": "Add to <instructions file>: before you finish, run <test command> and fix what fails until it passes.",
       "counts": "Counts when the agent runs a test, build or lint command itself."
     },
     {
@@ -2377,7 +2377,7 @@
       "move_id": "agent_checks_run",
       "step": 3,
       "job": "run_ship",
-      "habit": "Have the agent run a smoke test after each step",
+      "habit": "Have the agent run a quick \"does it work\" check after each step",
       "why": "an agent that runs the smoke test or health check can fix what fails before it hands back.",
       "try_this": "name the script that proves it works, such as a smoke or verify script, and ask the agent to run it after each step.",
       "starter": "<The run or release>. After each step, run <smoke test or health check>. Fix what fails, then show me the output.",
@@ -2389,7 +2389,7 @@
       "job": "any",
       "habit": "Give each step to a sub-agent, with a test between steps",
       "why": "an automated check between steps catches a bad step before the next one builds on it.",
-      "try_this": "ask for a short plan, a sub-agent per step, and a test or check the agent runs before the next step starts.",
+      "try_this": "ask for a short plan, a sub-agent per step, and a test or check the agent runs before the next step starts. Plain words work, such as: use a sub-agent for each step.",
       "starter": "Split <the task> into steps. Give each step to a sub-agent, and run <check> after each before going on.",
       "counts": "Counts when sub-agents did the work and the agent ran a check."
     },
@@ -2397,7 +2397,7 @@
       "move_id": "split_question",
       "step": 3,
       "job": "ask_research",
-      "habit": "Send one sub-agent per source, then merge",
+      "habit": "Send one sub-agent per source, then combine the answers",
       "why": "each sub-agent reads one source well, and you get one combined answer back.",
       "try_this": "name the sources and ask for one sub-agent each, then one answer with sources.",
       "starter": "Split <question> by source: <source>, <source>, <source>. Send a sub-agent to each, then combine what they found into one answer with sources.",
@@ -2407,17 +2407,17 @@
       "move_id": "agent_checks_answer",
       "step": 4,
       "job": "ask_research",
-      "habit": "Prove each finding with a query or test",
+      "habit": "Ask the agent to prove each claim with a query or test",
       "why": "an answer the agent has proved with a command, query or test can be reused without checking again.",
-      "try_this": "ask the agent to prove each finding with a command, query or test it runs.",
-      "starter": "Answer <question>. For each finding, run <command, query or test> that proves it, and show the output.",
+      "try_this": "ask the agent to prove each claim with a command, query or test it runs.",
+      "starter": "Answer <question>. For each claim, run <command, query or test> that proves it, and show the output.",
       "counts": "Counts when the agent runs a test or check command itself."
     },
     {
       "move_id": "saved_workflow",
       "step": 4,
       "job": "any",
-      "habit": "Save it as a prompt file and run it by name",
+      "habit": "Save a task you repeat as a prompt file and run it by name",
       "why": "a saved prompt runs the same way every time, for you and for anyone you share it with.",
       "try_this": "save the steps as a prompt file in .github/prompts, commit it, then start the next one by its name.",
       "starter": "Turn what we just did into .github/prompts/<name>.prompt.md: its inputs, steps, checks, and when to stop and ask.",
