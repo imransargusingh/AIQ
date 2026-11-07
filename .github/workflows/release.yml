@@ -324,6 +324,15 @@ jobs:
           if (Test-Path $stage) { Fail 'same version left staged' }
           if ((Get-FileHash $old).Hash -ne $oldHash) { Fail 'same-version apply overwrote the .old copies' }
           if (-not (Select-String -Quiet -Path (Join-Path $aiq 'upgrade-log.txt') -Pattern 'AIQ-UPDATE-NOT-NEWER')) { Fail 'no AIQ-UPDATE-NOT-NEWER log line' }
+          # A log that can't be written (another process holds it; release build of 0.1.15, 2026-11-07: "Stream was not
+          # readable" ended a rollback) never ends the script: the same drop runs to the end with the log held.
+          New-Item -ItemType Directory -Force $stage | Out-Null
+          Copy-Item "dist/aiq-$v-windows-x64.zip", dist/SHA256SUMS $stage
+          @{ state = 'waiting'; available = "v$v"; staged = "aiq-$v-windows-x64.zip"; installed = $v } | ConvertTo-Json | Set-Content (Join-Path $aiq 'update.json')
+          $held = [IO.File]::Open((Join-Path $aiq 'upgrade-log.txt'), 'Open', 'Read', 'Read')
+          try { powershell -ExecutionPolicy Bypass -File $up -Apply; $heldExit = $LASTEXITCODE } finally { $held.Dispose() }
+          if ($heldExit -ne 0) { Fail "apply with the log held: exit $heldExit, want 0" }
+          if ((St).state -ne 'current' -or (Test-Path $stage)) { Fail "apply with the log held did not finish: $((St) | ConvertTo-Json -Compress)" }
           Get-Content (Join-Path $aiq 'upgrade-log.txt') -Tail 8
       - name: Smoke test - update check finds the tag from the releases/latest redirect, falls back to the API, records a rate-limit reset
         shell: pwsh
