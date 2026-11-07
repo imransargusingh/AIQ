@@ -402,9 +402,27 @@ await test("Delete everything: focus on Cancel, trapped, typed forget, empty sta
 
 await test("Settings change through the core; tips a day", async () => {
   const page = await open("full", { hash: "#settings" });
-  assert.equal(await page.getByRole("button", { name: "3", exact: true }).getAttribute("aria-pressed"), "true");
-  await page.getByRole("button", { name: "5", exact: true }).click();
+  // 5, 15, 30 and Custom (Imran 2026-11-07). The fixture's 3 isn't a button, so Custom is pressed and shows it.
+  const cap = page.getByRole("group", { name: "Tips a day, across all your tools" });
+  assert.deepEqual(await cap.getByRole("button").allInnerTexts(), ["5", "15", "30", "Custom"]);
+  assert.equal(await cap.getByRole("button", { name: "Custom" }).getAttribute("aria-pressed"), "true");
+  const box = page.getByLabel("Tips a day, 0 to 50");
+  assert.equal(await box.inputValue(), "3");
+  await cap.getByRole("button", { name: "5", exact: true }).click();
   await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Tips a day set to 5.");
+  assert.equal(await cap.getByRole("button", { name: "5", exact: true }).getAttribute("aria-pressed"), "true");
+  assert.equal(await box.count(), 0, "the number box folds away on a button value");
+  // Custom: any whole number up to 50; anything else can't be set and the hint turns red.
+  await cap.getByRole("button", { name: "Custom" }).click();
+  await box.fill("51");
+  assert.equal(await box.getAttribute("aria-invalid"), "true");
+  assert.equal(await page.getByRole("button", { name: "Set", exact: true }).isDisabled(), true);
+  await box.fill("12");
+  await box.press("Enter");
+  await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Tips a day set to 12.");
+  assert.equal(await cap.getByRole("button", { name: "Custom" }).getAttribute("aria-pressed"), "true");
+  assert.equal(await box.inputValue(), "12");
+  if (shots) await page.locator("section[aria-labelledby=st1]").screenshot({ path: join(shots, "settings-tips-custom.png") });
   // Where tips show and how long they stay is folded under one line that says how it's set (item 8).
   const fold = page.locator("details.fold > summary");
   assert.equal((await fold.innerText()).replace(/\s+/g, " "), "Where tips show and how long they stay · 3 of 3 on · until your next prompt");
@@ -431,6 +449,7 @@ await test("Settings change through the core; tips a day", async () => {
   const calls = await page.evaluate(() => window.__AIQ_FIXTURE__.calls.filter((c) => c.cmd === "set_setting").map((c) => c.args));
   assert.deepEqual(calls, [
     { key: "daily_cap", value: "5" },
+    { key: "daily_cap", value: "12" },
     { key: "copilot_tip_stays", value: "until-opened" },
     { key: "judge_daily_tasks", value: "100" },
     { key: "judge", value: "auto" },
