@@ -70,6 +70,7 @@ seen. A deleted first prompt gives no estimate rather than a guessed one.
 | # | Decision | Why |
 |---|---|---|
 | D1 | **C: Right now card** at the top of Home, only while a task is open (last event within the 30-minute idle gap) and at least one turn has ended | No empty card. Imran: dislikes wasted whitespace |
+| D1b | **Several open tasks** (Imran, 2026-11-07, option A of `/mnt/project-files/right-now-multi/`): every session with a turn ended inside the idle gap, at most 6. One chip per task, in start order so chips never jump: the rung it is heading for (number on its rung hue, rung in words for screen readers), kind, project, tool, prompts, and a green dot while the agent works. The chosen chip's chart and reasons show below. The newest activity is chosen first; a picked chip stays chosen while it is open. Two chips that would read the same show their start time. One open task looks as before, with no chips | Before, Home showed only the session with the newest event, so the card switched task each time either agent ended a turn and other open tasks were hidden |
 | D2 | The card shows the kind, tool, start time ("since 14:49"), prompts and minutes, "Heading for X · could reach Y", a step trace per turn, the tip at the turn it showed, the reasons in words, and Open task | The render he liked. Rung named in text, never colour alone |
 | D2b | A turn not recorded says why, in words (e.g. "AIQ restarted during the turn" for `no_start`); with no estimate at all the chart is hidden | Imran, 2026-11-04: "what is the time period that this view covers?"; an empty chart read as data |
 | D3 | "Could reach" is the coaching row's potential for the same kind (a coached move one rung up), shown only when above the estimate | Derived from judgments already made, not a new guess |
@@ -90,7 +91,7 @@ after install. If false: cache the estimate per session and refresh it at each t
 store (`Store::session_events`: a session's events with each stop's `turn_action`) → domain (`trend`) → core
 (`live_trend::open_task`, `status_text`, `could`; `Service::tip_line` → `TipLineOut::Trend`) → wire
 (`TipLineReply.trend`, optional, older cores omit it) → `aiq statusline copilot` → Home read model
-(`Snapshot.live`) → `types.ts` `Live` → `pages/RightNow.tsx` on Home → Settings switch (`live_trend`, core
+(`Snapshot.live`, every open task, newest activity first, each with its `folder`) → `types.ts` `Live[]` → `pages/RightNow.tsx` on Home → Settings switch (`live_trend`, core
 `SWITCH_SETTINGS`, Tauri allowlist, CLI `live-trend`).
 
 ## Tests
@@ -101,9 +102,14 @@ store (`Store::session_events`: a session's events with each stop's `turn_action
 - `aiq` `trend_matches_golden`: the scores above, as a gate.
 - `aiq-core` `status_line_shows_the_live_trend_between_tips`: nothing while the first turn runs, the trend after
   it, gone when switched off and after the idle gap.
-- `aiq-home` `live_trend_reads_the_open_task_turn_by_turn` and `..._goes_when_the_task_ends_or_is_switched_off`.
+- `aiq-home` `live_trend_reads_the_open_task_turn_by_turn`, `..._goes_when_the_task_ends_or_is_switched_off` and
+  `live_trend_lists_every_open_task_newest_activity_first` (running and idle sessions left out; each chip's folder).
+- `apps/home/src/rightnow.test.ts`: the newest activity chosen until a chip is picked, the fallback when it ends,
+  chips in start order.
 - `apps/home/tests/e2e.mjs`: the card in light, dark and contrast with no axe violations, rung in words, tip at
-  turn 3, Open task; gone with no open task; the Settings switch; no page scroll at 720 px.
+  turn 3, Open task; gone with no open task; the Settings switch; no page scroll at 720 px. Several open tasks
+  (`live-many` fixture): chips in three themes with no axe violations, arrow keys, a picked chip kept after a
+  refresh reorders the tasks, twins show their start time.
 
 ## Risks
 

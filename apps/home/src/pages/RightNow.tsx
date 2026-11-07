@@ -1,7 +1,11 @@
 // Right now card at the top of Home (design live-rung-trend C): while a task is open, where it is heading after
 // each turn, the rung tasks of its kind could reach, and the tip at the turn it showed. An estimate from what the
-// agent did; the judge's rung replaces it when the task ends. Every rung is also named in text.
+// agent did; the judge's rung replaces it when the task ends. Every rung is also named in text. Several open tasks
+// (Imran 2026-11-07, option A): one chip per task names it and shows the rung it is heading for; the chosen task's
+// chart shows below, and it stays chosen while the others move.
+import { useState } from "react";
 import { clock, jobName, plural, rungLabel, toolName } from "../format";
+import { projectName } from "../project";
 import type { Ctx } from "../ui";
 import type { Live } from "../types";
 
@@ -90,59 +94,127 @@ function Trace({ l }: { l: Live }) {
   );
 }
 
+const what = (l: Live) => l.kind ?? (l.job ? jobName(l.job) : "Open task");
+
+/** The chosen task: the one picked while it stays open, else the newest activity. */
+export function chosen(all: Live[], picked: string | null): Live | undefined {
+  return all.find((l) => l.task_id === picked) ?? all[0];
+}
+
+/** Chips keep their place as tasks move: the task that started first comes first. */
+export const chipOrder = (all: Live[]) =>
+  [...all].sort((a, b) => a.first_ms - b.first_ms || a.task_id.localeCompare(b.task_id));
+
 export function RightNow(ctx: Ctx) {
-  const l = ctx.snap.live;
+  const [picked, setPicked] = useState<string | null>(null);
+  const all = ctx.snap.live;
+  const l = chosen(all, picked);
   if (!l) return null;
+  const many = all.length > 1;
   const mins = Math.max(1, Math.round((ctx.snap.now_ms - l.first_ms) / 60_000));
-  const what = l.kind ?? (l.job ? jobName(l.job) : "Open task");
+  const at = (x: Live) => clock(x.first_ms, ctx.snap.offset_min);
+  const project = (x: Live) => projectName(ctx.snap, x.folder ?? "");
+  // Two chips that would read the same say when each started instead of the prompt count.
+  const twin = (x: Live) => all.some((y) => y !== x && what(y) === what(x) && y.folder === x.folder && y.surface === x.surface);
+  const meta = (
+    <>
+      {many && `${project(l)} · `}
+      {toolName(l.surface)} · since {at(l)} · {plural(l.prompts, "prompt")} · {mins} min
+      {l.working ? " · agent working" : many ? " · waiting for you" : ""}
+    </>
+  );
   return (
     <section className="card rn" aria-labelledby="rnhd" data-testid="right-now">
       <div className="head">
         <h2 id="rnhd">
           <span className="mute" style={{ fontWeight: 400 }}>Right now · </span>
-          {what}
+          {many ? `${all.length} open tasks` : what(l)}
         </h2>
-        <span className="meta num">
-          {toolName(l.surface)} · since {clock(l.first_ms, ctx.snap.offset_min)} · {plural(l.prompts, "prompt")} · {mins} min{l.working && " · agent working"}
-        </span>
+        {!many && <span className="meta num">{meta}</span>}
       </div>
-      <p className="rn-head">
-        {l.rung !== null ? (
-          <>
-            Heading for <b>{rungLabel(l.rung)}</b>
-            {l.could !== null && (
-              <>
-                {" "}· could reach <b>{rungLabel(l.could)}</b>
-              </>
-            )}
-          </>
-        ) : (
-          <span className="mute">No estimate yet: {l.working ? "the first turn hasn't ended" : "the turns so far weren't recorded"}</span>
-        )}
-      </p>
-      {l.steps.some((s) => s.rung !== null) && (
-        <div className="rn-scroll">
-          <Trace l={l} />
+      {many && (
+        <div className="rn-chips" role="tablist" aria-label="Open tasks">
+          {chipOrder(all).map((x) => (
+            <button
+              key={x.task_id}
+              type="button"
+              role="tab"
+              id={`rn-tab-${x.task_id}`}
+              aria-selected={x === l}
+              aria-controls="rn-panel"
+              className={`rn-chip${x === l ? " on" : ""}`}
+              tabIndex={x === l ? 0 : -1}
+              onClick={() => setPicked(x.task_id)}
+              onKeyDown={(e) => {
+                const order = chipOrder(all);
+                const i = order.indexOf(x);
+                const j = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: order.length - 1 }[e.key];
+                if (j === undefined) return;
+                e.preventDefault();
+                const next = order[(j + order.length) % order.length];
+                setPicked(next.task_id);
+                document.getElementById(`rn-tab-${next.task_id}`)?.focus();
+              }}
+            >
+              {x.rung === null ? (
+                <span className="rn-sw rn-sw-none" aria-hidden="true">?</span>
+              ) : (
+                <span className={`rn-sw rg-${x.rung}`} aria-hidden="true">{x.rung}</span>
+              )}
+              <span className="rn-cn">
+                <b>{what(x)}</b>
+                <span className="meta num">
+                  {project(x)} · {toolName(x.surface)} · {twin(x) ? `since ${at(x)}` : plural(x.prompts, "prompt")}
+                </span>
+              </span>
+              <span className={`rn-dot${x.working ? " busy" : ""}`} aria-hidden="true" />
+              <span className="sr">
+                , {x.rung === null ? "no estimate yet" : `heading for ${rungLabel(x.rung)}`}, {x.working ? "agent working" : "waiting for you"}
+              </span>
+            </button>
+          ))}
         </div>
       )}
-      {l.tip && (
-        <p className="rn-tip">
-          <span className="rn-badge">AIQ tip:</span> {l.tip.try_this} <span className="meta">· from turn {l.tip.turn}</span>
+      <div id="rn-panel" role={many ? "tabpanel" : undefined} aria-labelledby={many ? `rn-tab-${l.task_id}` : undefined}>
+        {many && <p className="meta num rn-meta">{meta}</p>}
+        <p className="rn-head">
+          {l.rung !== null ? (
+            <>
+              Heading for <b>{rungLabel(l.rung)}</b>
+              {l.could !== null && (
+                <>
+                  {" "}· could reach <b>{rungLabel(l.could)}</b>
+                </>
+              )}
+            </>
+          ) : (
+            <span className="mute">No estimate yet: {l.working ? "the first turn hasn't ended" : "the turns so far weren't recorded"}</span>
+          )}
         </p>
-      )}
-      <ul className="rn-why">
-        {reasons(l).map((r) => (
-          <li key={r.text}>
-            <span aria-hidden="true">{r.ok ? "✓" : "–"}</span> {r.text}
-          </li>
-        ))}
-      </ul>
-      <p className="meta">
-        An estimate from what the agent did, until the task ends. The analyzed rung replaces it then.{" "}
-        <button className="btnlink" onClick={() => ctx.openTask(l.task_id)}>
-          Open task
-        </button>
-      </p>
+        {l.steps.some((s) => s.rung !== null) && (
+          <div className="rn-scroll">
+            <Trace l={l} />
+          </div>
+        )}
+        {l.tip && (
+          <p className="rn-tip">
+            <span className="rn-badge">AIQ tip:</span> {l.tip.try_this} <span className="meta">· from turn {l.tip.turn}</span>
+          </p>
+        )}
+        <ul className="rn-why">
+          {reasons(l).map((r) => (
+            <li key={r.text}>
+              <span aria-hidden="true">{r.ok ? "✓" : "–"}</span> {r.text}
+            </li>
+          ))}
+        </ul>
+        <p className="meta">
+          An estimate from what the agent did, until the task ends. The analyzed rung replaces it then.{" "}
+          <button className="btnlink" onClick={() => ctx.openTask(l.task_id)}>
+            Open task
+          </button>
+        </p>
+      </div>
     </section>
   );
 }

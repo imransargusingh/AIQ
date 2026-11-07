@@ -74,14 +74,15 @@ impl Env {
     }
     fn run_with(&self, mut c: Command, stdin: &[u8]) -> Output {
         c.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
-        // Linux: a file another test just wrote (an aiq copy, a fake `code`) can be held open for writing by a
-        // child forked in that moment, and exec fails with "text file busy" until that child execs. Retry it.
+        // A file this test just wrote (a copy of aiq, a fake `code`) can still be open for writing in a child
+        // another test thread forked meanwhile; Linux then refuses to run it (ETXTBSY) until that child execs.
+        // Wait it out instead of failing: a few short tries, then the real error.
         let mut tries = 0;
         let mut ch = loop {
             match c.spawn() {
-                Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy && tries < 100 => {
+                Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy && tries < 20 => {
                     tries += 1;
-                    std::thread::sleep(Duration::from_millis(10));
+                    std::thread::sleep(std::time::Duration::from_millis(50));
                 }
                 r => break r.unwrap(),
             }
