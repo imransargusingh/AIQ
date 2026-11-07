@@ -73,7 +73,20 @@ impl Env {
         self.dir.path().join("profile")
     }
     fn run_with(&self, mut c: Command, stdin: &[u8]) -> Output {
-        let mut ch = c.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
+        c.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+        // A file this test just wrote (a copy of aiq, a fake `code`) can still be open for writing in a child
+        // another test thread forked meanwhile; Linux then refuses to run it (ETXTBSY) until that child execs.
+        // Wait it out instead of failing: a few short tries, then the real error.
+        let mut tries = 0;
+        let mut ch = loop {
+            match c.spawn() {
+                Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy && tries < 20 => {
+                    tries += 1;
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                }
+                r => break r.unwrap(),
+            }
+        };
         ch.stdin.take().unwrap().write_all(stdin).unwrap();
         ch.wait_with_output().unwrap()
     }

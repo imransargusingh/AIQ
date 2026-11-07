@@ -42,6 +42,19 @@ fn main() {
     l.status.read_ms = 12;
     write(&out, "live", &l);
 
+    // Three tasks open at once: chips on the Right now card (option A, 2026-11-07).
+    let many = Paths::at(&tmp.join("live-many"));
+    seed::coaching(&many);
+    seed::open_task(&many);
+    seed::more_open_tasks(&many);
+    aiq_core::control::finish_setup(&many).unwrap();
+    let mut m = aiq_home::snapshot(&many, &pack, now);
+    m.status.core = true;
+    m.status.core_state = aiq_home::CoreState::Running;
+    m.status.read_ms = 12;
+    assert_eq!(m.live.len(), 3, "three tasks open");
+    write(&out, "live-many", &m);
+
     // Task detail of the newest Claude Code task (three prompts, a tip fired on it).
     let id = &s.tasks.iter().find(|t| t.tool == "claude-code" && t.prompts == 3).unwrap().task_id;
     let mut det = aiq_home::task_detail(&full, &pack, now, id).unwrap();

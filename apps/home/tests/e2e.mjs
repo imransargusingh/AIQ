@@ -80,7 +80,7 @@ const pages = [
 ];
 
 await test("contract: fixtures are aiq.home.v1 snapshots from the Rust read model", async () => {
-  for (const f of ["full", "down", "paused", "empty", "first-run", "coaching", "progress", "live", "tour"]) {
+  for (const f of ["full", "down", "paused", "empty", "first-run", "coaching", "progress", "live", "live-many", "tour"]) {
     const s = JSON.parse(readFileSync(join(fixtures, `${f}.json`), "utf8"));
     assert.equal(s.schema, "aiq.home.v1");
     for (const k of ["status", "home", "tasks", "tips", "data", "settings", "setup", "coaching"]) assert.ok(k in s, `${f}: ${k}`);
@@ -608,14 +608,14 @@ await test("Right now card: gone with no open task and when switched off; the sw
   assert.equal(await none.getByTestId("right-now").count(), 0);
   await none.context().close();
   const unread = await open("live", {
-    edit: (s) => Object.assign(s.live, { rung: null, could: null, did_turns: [], steps: [{ turn: 1, at_ms: s.live.first_ms, rung: null, recorded: false }], unrecorded: [1], unrecorded_why: ["no_start"] }),
+    edit: (s) => Object.assign(s.live[0], { rung: null, could: null, did_turns: [], steps: [{ turn: 1, at_ms: s.live[0].first_ms, rung: null, recorded: false }], unrecorded: [1], unrecorded_why: ["no_start"] }),
   });
   const ut = await unread.getByTestId("right-now").innerText();
   assert.match(ut, /No estimate yet/);
   assert.match(ut, /Turn 1: no details \(AIQ restarted during the turn\)/);
   assert.equal(await unread.getByTestId("right-now").getByRole("img").count(), 0, "no empty chart");
   await unread.context().close();
-  const off = await open("live", { edit: (s) => (s.live = null) });
+  const off = await open("live", { edit: (s) => (s.live = []) });
   assert.equal(await off.getByTestId("right-now").count(), 0);
   await off.context().close();
   const st = await open("live", { hash: "#settings" });
@@ -627,11 +627,78 @@ await test("Right now card: gone with no open task and when switched off; the sw
   await st.context().close();
 });
 
-await test("Right now card at 720 px: no page scroll", async () => {
-  const page = await open("live", { width: 720, height: 520 });
-  const w = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-  assert.ok(w <= 0, `page scrolls by ${w}px`);
+for (const theme of ["light", "dark", "contrast"]) {
+  await test(`Right now card, several open tasks: a chip per task, the newest activity's chart, a picked chip stays (${theme})`, async () => {
+    const page = await open("live-many", { theme: theme === "light" ? undefined : theme });
+    const card = page.getByTestId("right-now");
+    assert.match(await card.locator("h2").innerText(), /Right now · 3 open tasks/);
+    const tabs = card.getByRole("tab");
+    // Chips in start order; each names the kind, project and tool and says the rung in words.
+    const names = await tabs.allInnerTexts();
+    assert.equal(names.length, 3);
+    assert.match(names[0], /Fixing a bug or failing test\s*aiq · VS Code · 4 prompts.*heading for Assisted \(1\), agent working/s);
+    assert.match(names[1], /Writing a spec or PRD\s*aiq · Copilot CLI · 5 prompts.*heading for Directed \(2\), agent working/s);
+    assert.match(names[2], /Writing tests\s*foresight · Claude Code · 1 prompt.*heading for Delegated \(3\), waiting for you/s);
+    // The newest activity is chosen first: the VS Code task.
+    assert.equal(await tabs.nth(0).getAttribute("aria-selected"), "true");
+    const panel = card.getByRole("tabpanel");
+    assert.match(await panel.innerText(), /aiq · VS Code · since 11:20 · 4 prompts · 40 min · agent working/);
+    assert.deepEqual(await axe(page), []);
+    if (shots) await page.screenshot({ path: join(shots, `right-now-many-${theme}.png`) });
+    if (theme === "light") {
+      await tabs.nth(2).click();
+      assert.equal(await tabs.nth(2).getAttribute("aria-selected"), "true");
+      const t = await panel.innerText();
+      assert.match(t, /foresight · Claude Code · since 11:48 · 1 prompt · 12 min · waiting for you/);
+      assert.match(t, /Heading for Delegated \(3\)/);
+      // Arrow keys move between chips (tabs pattern).
+      await page.keyboard.press("ArrowRight");
+      assert.equal(await tabs.nth(0).getAttribute("aria-selected"), "true", "wraps to the first");
+      assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("role")), "tab");
+      await page.keyboard.press("ArrowLeft");
+      await panel.getByRole("button", { name: "Open task" }).click();
+      await page.waitForFunction(() => location.hash.startsWith("#task/"));
+    }
+    assert.deepEqual(page.errors, []);
+    await page.context().close();
+  });
+}
+
+await test("Right now card, several open tasks: the picked chip stays chosen after a refresh moves the others", async () => {
+  const page = await open("live-many");
+  const card = page.getByTestId("right-now");
+  await card.getByRole("tab").nth(1).click();
+  // A refresh where the spec task's agent went quiet and the order of activity changed.
+  await page.evaluate(() => {
+    const f = window.__AIQ_FIXTURE__;
+    f.snapshot = { ...f.snapshot, live: [f.snapshot.live[2], f.snapshot.live[0], f.snapshot.live[1]] };
+  });
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await page.waitForTimeout(300);
+  const tabs = card.getByRole("tab");
+  assert.equal(await tabs.nth(1).getAttribute("aria-selected"), "true");
+  assert.match(await card.getByRole("tabpanel").innerText(), /Copilot CLI · since 11:38/);
   await page.context().close();
+});
+
+await test("Right now card, two chips that would read the same say when each started", async () => {
+  const page = await open("live-many", {
+    edit: (s) => Object.assign(s.live[2], { kind: s.live[0].kind, folder: s.live[0].folder, surface: s.live[0].surface }),
+  });
+  const names = await page.getByTestId("right-now").getByRole("tab").allInnerTexts();
+  assert.match(names[0], /aiq · VS Code · since 11:20/);
+  assert.match(names[2], /aiq · VS Code · since 11:48/);
+  assert.match(names[1], /Copilot CLI · 5 prompts/, "a chip with no twin keeps its prompt count");
+  await page.context().close();
+});
+
+await test("Right now card at 720 px: no page scroll, with one task or several", async () => {
+  for (const f of ["live", "live-many"]) {
+    const page = await open(f, { width: 720, height: 520 });
+    const w = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    assert.ok(w <= 0, `${f}: page scrolls by ${w}px`);
+    await page.context().close();
+  }
 });
 
 await test("rung guide: steps by kind of work, where you are, your next step open, copy a starter", async () => {
