@@ -652,11 +652,11 @@ await test("rung guide: steps by kind of work, where you are, your next step ope
   assert.match(await side.innerText(), /Code a change · Delegated \(3\) → Orchestrated \(4\)/);
   assert.match(await side.innerText(), /How AIQ notices it: Counts when you give the agent a written brief, spec or instructions file\./);
   assert.match(await side.innerText(), /Your next step for writing tests/);
-  await grid.getByRole("button", { name: /Ask for the whole draft with a "Done when" list/ }).click();
+  await grid.getByRole("button", { name: /Ask for the whole draft and list what it must cover/ }).click();
   assert.match(await side.innerText(), /Your next step for writing a spec or PRD/);
   // Pick another habit: the side panel follows; the starter copies.
-  await grid.getByRole("button", { name: "Give all your notes at once, then review the draft" }).click();
-  assert.match(await side.locator("h2").innerText(), /Give all your notes at once/);
+  await grid.getByRole("button", { name: "Send all your changes in one message, then review the draft" }).click();
+  assert.match(await side.locator("h2").innerText(), /Send all your changes in one message/);
   assert.match(await side.innerText(), /Write a spec or doc · Directed \(2\) → Delegated \(3\)/);
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   await side.getByRole("button", { name: "Copy starter" }).click();
@@ -1125,7 +1125,7 @@ await test("Habits grouped by the rung they help you reach, with an adopted bar;
   assert.match(t, /Directed habits[\s\S]*?4 of 4 adopted\s+You give the agent a clear goal/);
   assert.match(t, /Orchestrated habits[\s\S]*?0 of 4 adopted/);
   const adopted = await page.getByRole("list", { name: "Delegated habits" }).innerText();
-  assert.match(adopted, /Hand over the whole task with a "Done when" list\s+Code a change · Adopted[\s\S]*?Seen in 6 of 6 tasks/);
+  assert.match(adopted, /Hand over the whole task and list what done looks like\s+Code a change · Adopted[\s\S]*?Seen in 6 of 6 tasks/);
   const notYet = await page.getByRole("list", { name: "Orchestrated habits" }).innerText();
   assert.match(notYet, /Keep an instructions file in the repo and point to it\s+Code a change, Write a spec or doc · Not yet[\s\S]*?Seen in 0 of 9 tasks/, "one line for both jobs, counts added");
   assert.equal(await page.locator(".banner.info").count(), 0, "no banners repeating the rows");
