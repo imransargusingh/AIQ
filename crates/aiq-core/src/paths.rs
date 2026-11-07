@@ -101,6 +101,10 @@ impl Paths {
     pub fn install_record(&self) -> PathBuf {
         self.data.join("claude-code-install.json")
     }
+    /// The last time AIQ added its VS Code extension: when, which AIQ, and each build's result or error.
+    pub fn vscode_install_record(&self) -> PathBuf {
+        self.data.join("vscode-install.json")
+    }
     /// What `aiq install copilot` changed in Copilot's settings to switch the status line on.
     pub fn copilot_install_record(&self) -> PathBuf {
         self.data.join("copilot-install.json")
