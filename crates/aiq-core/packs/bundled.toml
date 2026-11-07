@@ -2,7 +2,7 @@
 # Every number here is uncalibrated pack data; the real-data week tunes it (design: assume: lines).
 schema = "aiq.pack.v1"
 pack_id = "aiq.core"
-version = "bundled-10"
+version = "bundled-11"
 idle_gap_min = 30
 
 [reprompt]
@@ -222,11 +222,11 @@ move_id = "check_answer"
 step = 1
 facts = ["F6"]
 job = "ask_research"
-habit = "Ask for the file, line or link behind each point"
+habit = "Ask for the file, line or link behind each claim in the answer"
 noticed = "this looks like {type}. Recently, the answer wasn't checked before use."
 why = "an answer can sound sure and still be wrong; a source you can open turns a guess into a fact."
-try_this = "ask for a source for each point, and open one before you act on the answer."
-starter = "Answer <question>. For each point, give the file and line, or the link, it comes from, and say how sure you are."
+try_this = "ask where each claim in the answer comes from, and open one source before you act on it."
+starter = "Answer <question>. For each claim, give the file and line, or the link, it comes from, and say how sure you are."
 counts = "Counts when you checked the answer before acting on it, such as opening a source or trying it."
 
 [[moves]]
