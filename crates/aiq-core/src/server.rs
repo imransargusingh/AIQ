@@ -174,6 +174,16 @@ pub fn run_with(paths: &Paths, labeller: Option<crate::service::LabelRequester>)
         Err(e) => warn!(error.code = codes::CORE_LOGIN_START, error = %e, "could not set AIQ to start at sign-in"),
     });
 
+    // Team tips: find a team's file by itself, at start and every hour, so nobody runs a step (Imran 2026-11-08).
+    let tips_paths = paths.clone();
+    std::thread::spawn(move || {
+        loop {
+            let outcome = crate::team_tips::refresh_found(&tips_paths, crate::team_tips::user_home().as_deref());
+            info!(team_tips.outcome = outcome, "team_tips.search");
+            std::thread::sleep(Duration::from_secs(3600));
+        }
+    });
+
     let (tx, rx) = mpsc::sync_channel::<Cmd>(CHANNEL_CAPACITY);
     let writer_paths = paths.clone();
     let writer_counters = counters.clone();

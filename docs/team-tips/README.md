@@ -4,12 +4,21 @@ A team can add one **Tool to try** line to AIQ's habit tips, naming a tool it us
 lives in the team's own folder (an internal repo clone or a share), never in this repo. AIQ reads it in
 place, so updating the folder updates the tips. AIQ never downloads it.
 
-## Set it up
+## How AIQ gets it (no step for people)
 
-1. Copy [example-team-tips.toml](example-team-tips.toml) to `<your folder>/team-tips.toml` and fill it in.
-2. Run `aiq team-tips add <your folder>`.
-3. `aiq team-tips check` shows how many habits have a tool and lists entries it skipped.
-   `aiq team-tips remove` stops using the file.
+1. **Download.** A release built with the repository secret `AIQ_TEAM_TIPS_REPO` (the team repo's `https://`
+   git address) downloads `team-tips.toml` from that repo every hour into `%USERPROFILE%\.aiq\team-tips`,
+   with `git` and the person's own Git Credential Manager sign-in. It never opens a sign-in window by
+   itself; someone who has never signed in to that site gets a one-time **Sign in** button in Settings >
+   Team tips (or `aiq team-tips sign-in`). The address is never written in this repo.
+2. **A clone.** Without a download, AIQ looks one level inside the usual code folders (`source\repos`,
+   `repos`, `src`, `git`, `code`, `dev`, `projects`, `Documents\GitHub`) for a folder with a valid
+   `team-tips.toml`.
+3. **A choice.** `aiq team-tips add <folder>` wins over both; `aiq team-tips off` (or **Stop using** in
+   Settings) turns team tips off until `aiq team-tips auto`.
+
+`aiq team-tips` shows where the lines come from and how many habits have one, never tool names. A failed
+download keeps the last good copy.
 
 ## The file
 

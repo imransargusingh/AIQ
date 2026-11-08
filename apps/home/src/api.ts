@@ -36,6 +36,10 @@ function fixture<T>(cmd: string, args: Record<string, unknown>): Promise<T> {
       s.status.paused = Boolean(args.on);
       out = s;
       break;
+    case "team_tips":
+      if (s.team_tips) s.team_tips.state = args.action === "off" ? "off" : "download";
+      out = s;
+      break;
     case "set_setting":
       if (!s.status.core) out = { ok: false, message: "AIQ is starting, so this can't change yet. Try again in a moment." };
       else {
@@ -181,6 +185,7 @@ function fixture<T>(cmd: string, args: Record<string, unknown>): Promise<T> {
 export const api = {
   snapshot: () => invoke<Snapshot>("snapshot"),
   pause: (on: boolean) => invoke<Snapshot>("pause", { on }),
+  teamTips: (action: "off" | "auto" | "sign_in") => invoke<Snapshot>("team_tips", { action }),
   setSetting: (key: SettingKey, value: string) => invoke<Outcome>("set_setting", { key, value }),
   forgetAll: (confirm: string) => invoke<Outcome>("forget_all", { confirm }),
   task: (taskId: string) => invoke<TaskDetail | null>("task", { taskId }),

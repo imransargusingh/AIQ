@@ -1,8 +1,9 @@
 fn main() {
-    // Only these nineteen app commands exist; the capability file allows exactly these (design: STRIDE, E).
+    // Only these twenty app commands exist; the capability file allows exactly these (design: STRIDE, E).
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(tauri_build::AppManifest::new().commands(&[
         "snapshot",
         "pause",
+        "team_tips",
         "set_setting",
         "forget_all",
         "task",

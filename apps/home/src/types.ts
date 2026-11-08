@@ -33,6 +33,10 @@ export interface Snapshot {
 /** Mirrors aiq-home `TeamTips`: one "Tool to try" per habit, from the person's team tips file. */
 export interface TeamTips {
   set: boolean;
+  /** Where the lines come from: download (the team's repo), found (a clone), chosen, off, sign_in, no_git, none. */
+  state: "download" | "found" | "chosen" | "off" | "sign_in" | "no_git" | "none";
+  /** This AIQ was built with a team repo to download from. */
+  repo: boolean;
   /** Why the file can't be used, in AIQ's words. Tips show as usual. */
   problem: string | null;
   tools: TeamTool[];

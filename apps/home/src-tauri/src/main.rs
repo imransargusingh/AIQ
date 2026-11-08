@@ -111,6 +111,29 @@ async fn pause(on: bool) -> Result<Snapshot, String> {
     .await?
 }
 
+/// Team tips (Settings > Team tips): stop using them, go back to automatic, or sign in once to the team's repo.
+/// Sign-in runs git with its own sign-in window (Git Credential Manager); AIQ never sees the sign-in.
+#[tauri::command]
+async fn team_tips(action: String) -> Result<Snapshot, String> {
+    blocking(move || {
+        let t = Instant::now();
+        let paths = Paths::from_env();
+        let tt = aiq_core::team_tips::refresh_found;
+        let r = match action.as_str() {
+            "off" => aiq_core::team_tips::set_off(&paths).map(|_| "off").map_err(|e| e.to_string()),
+            "auto" => aiq_core::team_tips::set_folder(&paths, None)
+                .map(|_| tt(&paths, aiq_core::team_tips::user_home().as_deref()))
+                .map_err(|e| e.to_string()),
+            "sign_in" => Ok(aiq_core::team_tips::sign_in(&paths)),
+            _ => Err(format!("AIQ home can't do {action}.")),
+        };
+        log(&paths, "team_tips", t, &format!("action={action} {}", r.as_deref().unwrap_or("error")));
+        r.map_err(|e| format!("Could not change team tips: {e}"))?;
+        Ok(read(&paths))
+    })
+    .await?
+}
+
 /// Only the settings AIQ home shows can be changed from it; the core validates the value.
 fn allowed_setting(key: &str) -> bool {
     matches!(
@@ -673,6 +696,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             snapshot,
             pause,
+            team_tips,
             set_setting,
             forget_all,
             task,

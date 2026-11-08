@@ -3,5 +3,5 @@
   "identifier": "main",
   "description": "AIQ home's only window may call the nineteen AIQ commands, and set its own title bar to the theme the person picked, and nothing else: no file system, shell, network or plugin access.",
   "windows": ["main"],
-  "permissions": ["allow-snapshot", "allow-pause", "allow-set-setting", "allow-forget-all", "allow-task", "allow-forget-item", "allow-finish-setup", "allow-tour-seen", "allow-guidance-flag", "allow-tip-on", "allow-tip-off", "allow-connect-tools", "allow-run-update", "allow-disconnect-tool", "allow-include-folder", "allow-judge-preview", "allow-open-privacy", "allow-open-sign-in", "allow-open-tool-help", "core:window:allow-set-theme"]
+  "permissions": ["allow-snapshot", "allow-pause", "allow-team-tips", "allow-set-setting", "allow-forget-all", "allow-task", "allow-forget-item", "allow-finish-setup", "allow-tour-seen", "allow-guidance-flag", "allow-tip-on", "allow-tip-off", "allow-connect-tools", "allow-run-update", "allow-disconnect-tool", "allow-include-folder", "allow-judge-preview", "allow-open-privacy", "allow-open-sign-in", "allow-open-tool-help", "core:window:allow-set-theme"]
 }
