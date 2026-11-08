@@ -530,3 +530,17 @@ main:has(.secnav){scroll-padding-top:56px}
 .hb-adopted{color:var(--success)} .hb-tried{color:var(--primary)} .hb-not_yet{color:var(--ink-mute)}
 .rmark{display:inline-flex;align-items:center;gap:var(--s2);font:var(--t-caption);font-weight:600;white-space:nowrap}
 @media (forced-colors:active){.hb-prog .meter i{forced-color-adjust:none;background:CanvasText}.gd-r{border:1px solid CanvasText}}
+
+/* Tip funnel (design tip-funnel): one series, so one hue; the step that lost the most carries the warning colour and words. */
+.funnel .tf-insight{font:var(--t-heading);margin:0}
+.tf-bars{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:auto 1fr auto auto;gap:var(--s2) var(--s4);align-items:center}
+.tf-bars li{display:contents}
+.tf-label{font:var(--t-body);white-space:nowrap}
+.tf-track{height:12px;background:var(--canvas-soft);border-radius:var(--r-sm);overflow:hidden}
+.tf-bar{display:block;height:100%;background:var(--primary);border-radius:var(--r-sm);min-width:2px}
+.tf-n{font:var(--t-mono);font-variant-numeric:tabular-nums;text-align:right;min-width:2ch;display:inline-block}
+.tf-tag{font:var(--t-caption);color:var(--warning);white-space:nowrap}
+.tf-loss .tf-label{color:var(--warning);font-weight:600}
+.tf-why h3{font:var(--t-heading);margin:var(--s3) 0 var(--s2)}
+.tf-why ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:var(--s2)}
+.tf-why .tf-n{margin-right:var(--s3)}

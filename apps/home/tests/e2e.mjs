@@ -1722,6 +1722,46 @@ await test("Theme: Match Windows by default, Light or Dark win over Windows, kep
   await ctx.close();
 });
 
+// Tip funnel (design tip-funnel): the full fixture's yesterday had six tasks and no tip shown.
+for (const theme of ["light", "dark"]) {
+  await test(`tip funnel: Tips shows where tips went; Home notes a dry day once (${theme})`, async () => {
+    const page = await open("full", { theme: theme === "light" ? undefined : theme, hash: "#tips" });
+    const card = page.locator("section[aria-labelledby=tf]");
+    const insight = await card.locator(".tf-insight").textContent();
+    assert.match(insight, /^\d+ of \d+ new tasks had a tip ready this week\. Main reason the others didn't: kind of task not recognised \(\d+\)\.$/);
+    assert.equal(await card.locator(".tf-loss .tf-label").textContent(), "Kind known", "most were lost before the kind was known");
+    const why = await card.locator(".tf-why").first().innerText();
+    assert.ok(why.includes("Kind labels on hold") && why.includes("Too few tasks of this kind"), why);
+    assert.ok(!(await card.innerText()).toLowerCase().includes("judge"));
+    assert.deepEqual(await axe(page), []);
+    if (shots) await card.screenshot({ path: join(shots, `tips-funnel-${theme}.png`) });
+    await page.context().close();
+
+    const home = await open("full", { theme: theme === "light" ? undefined : theme, hash: "#home" });
+    const note = home.locator(".banner.drought");
+    assert.match(await note.locator(".grow").textContent(), /^No tips yesterday across 6 tasks\. Main reason: kind of task not recognised\.$/);
+    assert.deepEqual(await axe(home), []);
+    if (shots) await home.screenshot({ path: join(shots, `home-drought-${theme}.png`) });
+    await note.getByRole("button", { name: "See why" }).click();
+    assert.equal(await home.locator("main h1").first().textContent(), "Habits and tips");
+    await home.locator('a[href="#home"]').first().click();
+    await home.waitForSelector(".banner.drought");
+    await home.getByRole("button", { name: "Close this note" }).click();
+    assert.equal(await home.locator(".banner.drought").count(), 0);
+    await home.reload();
+    await home.waitForSelector("main h1");
+    assert.equal(await home.locator(".banner.drought").count(), 0, "closed stays closed for that day");
+    assert.deepEqual(home.errors, []);
+    await home.context().close();
+  });
+}
+
+await test("tip funnel: nothing shows with no task on the tip path", async () => {
+  const page = await open("full", { hash: "#tips", edit: (s) => { s.tip_funnel.week = { ...s.tip_funnel.today, tasks: 0, tips: 0 }; s.tip_funnel.droughts = []; } });
+  assert.equal(await page.locator("section[aria-labelledby=tf]").count(), 0);
+  await page.context().close();
+});
+
 await browser.close();
 server.close();
 const failed = results.filter((r) => r[1] !== "pass").length;

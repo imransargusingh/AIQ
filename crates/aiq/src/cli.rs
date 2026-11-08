@@ -130,6 +130,9 @@ fn status_text(paths: &Paths) -> (String, Vec<String>) {
                 out += "AIQ is running.\n";
             }
             out += &format!("Tips today: {} of {}\n", s.cards_today, s.daily_cap);
+            if let Some(f) = &s.tip_funnel {
+                out += &render_funnel(f);
+            }
             let kinds: Vec<String> = s.events_by_kind.iter().map(|(k, n)| format!("{n} {k}")).collect();
             out += &format!("Events stored: {}\n", if kinds.is_empty() { "none".into() } else { kinds.join(", ") });
             let dec: Vec<String> =
@@ -635,6 +638,50 @@ pub fn render_actions(a: &aiq_contracts::frames::ActionsStatus) -> String {
 
 /// Jobs and kinds the accuracy check paused, and the one command that keeps each showing (design K6b).
 /// Kind labels (design kind-label): today's calls against the budget, and AIQ's own check of them.
+/// The tip funnel (design tip-funnel): a dry day first, then the week from new tasks to tips opened, and why
+/// tips were missed or held. Empty with no task on the tip path this week.
+pub fn render_funnel(f: &aiq_contracts::frames::TipFunnels) -> String {
+    use aiq_contracts::frames::FunnelCount;
+    let list = |v: &[FunnelCount]| v.iter().map(|c| format!("{} {}", c.count, c.words)).collect::<Vec<_>>().join("; ");
+    let mut out = String::new();
+    for d in &f.droughts {
+        out += &format!("No tips on {} across {} tasks.", d.day, d.tasks);
+        if let Some(r) = &d.main_reason {
+            out += &format!(" Main reason: {} ({} tasks).", r.words, r.count);
+        }
+        out += "\n";
+    }
+    for (name, p) in [("last 7 days", &f.week), ("today", &f.today)] {
+        if p.tasks == 0 && p.tips == 0 {
+            continue;
+        }
+        let shown: u32 = p.shown.iter().map(|c| c.count).sum();
+        out += &format!(
+            "Tips, {name}: {} new tasks, kind known {}, tip found {}. Tips {}, shown {shown}, opened {}, answered {}\n",
+            p.tasks, p.kind_known, p.tip_found, p.tips, p.opened, p.answered
+        );
+        if name == "today" {
+            continue; // the week's detail covers today
+        }
+        if !p.no_tip.is_empty() {
+            out += &format!("  No tip: {}\n", list(&p.no_tip));
+        }
+        if !p.held.is_empty() {
+            out += &format!("  Held: {}\n", list(&p.held));
+        }
+        if p.expired > 0 {
+            out += &format!("  Ready, but the session ended first: {}\n", p.expired);
+        }
+        if p.waiting > 0 {
+            out += &format!("  Ready and waiting for the turn to end: {}\n", p.waiting);
+        }
+        if !p.shown.is_empty() {
+            out += &format!("  Shown in: {}\n", list(&p.shown));
+        }
+    }
+    out
+}
+
 pub fn render_labels(l: &aiq_contracts::frames::LabelStatus) -> String {
     if !l.enabled {
         return "Kind-of-task labels: off (on while background analysis is on; aiq config set kind-label auto)\n"
@@ -1213,6 +1260,43 @@ fn render_tips(
 #[cfg(test)]
 mod tips_tests {
     use super::*;
+
+    #[test]
+    fn funnel_leads_with_a_dry_day_and_names_every_loss_in_plain_words() {
+        use aiq_contracts::frames::{FunnelCount, TipDrought, TipFunnel, TipFunnels};
+        let c =
+            |code: &str, n| FunnelCount { code: code.into(), words: aiq_domain::funnel::words(code).into(), count: n };
+        let week = TipFunnel {
+            days: 7,
+            tasks: 20,
+            kind_known: 5,
+            tip_found: 1,
+            no_tip: vec![c("no_match", 15), c("kind_too_few", 4)],
+            tips: 6,
+            held: vec![c("cooldown", 1)],
+            waiting: 0,
+            expired: 3,
+            shown: vec![FunnelCount { code: "copilot-cli".into(), words: "Copilot CLI".into(), count: 2 }],
+            opened: 0,
+            answered: 0,
+        };
+        let f = TipFunnels {
+            today: TipFunnel { days: 1, ..TipFunnel::default() },
+            week,
+            droughts: vec![TipDrought { day: "2026-11-07".into(), tasks: 9, main_reason: Some(c("no_match", 7)) }],
+        };
+        let out = render_funnel(&f);
+        let first = out.lines().next().unwrap();
+        assert_eq!(first, "No tips on 2026-11-07 across 9 tasks. Main reason: kind of task not recognised (7 tasks).");
+        assert!(out.contains("Tips, last 7 days: 20 new tasks, kind known 5, tip found 1. Tips 6, shown 2"));
+        assert!(out.contains("No tip: 15 kind of task not recognised; 4 too few tasks of this kind analyzed yet"));
+        assert!(out.contains("Held: 1 same tip shown in the last 72 hours"));
+        assert!(out.contains("Ready, but the session ended first: 3"));
+        assert!(out.contains("Shown in: 2 Copilot CLI"));
+        assert!(!out.contains("Tips, today"), "an empty day prints nothing");
+        assert!(!out.to_lowercase().contains("judge"));
+        assert!(render_funnel(&TipFunnels::default()).is_empty());
+    }
 
     #[test]
     fn progress_report_names_moves_counts_and_too_few() {

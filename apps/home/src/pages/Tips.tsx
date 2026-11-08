@@ -9,6 +9,7 @@ import { api } from "../api";
 import { RUNGS, day, jobName, plural, sentence, toolName, when } from "../format";
 import type { GuideMove, HabitRow, TipRow } from "../types";
 import { Banners, Chip, Title, type Ctx } from "../ui";
+import { TipFunnelCard } from "../funnel";
 
 /** A habit's move shows its date for the habit window (14 days). */
 const RECENT_MS = 14 * 86_400_000;
@@ -118,6 +119,7 @@ export function Tips(ctx: Ctx) {
         <p className="mute">Habits by the rung they help you reach. A habit counts as adopted when you do it in more than half of the tasks where it fits, over 14 days.</p>
         {msg && <p className="errtext" role="alert">{msg}</p>}
       </header>
+      <TipFunnelCard snap={ctx.snap} />
       {c.habits.length === 0 ? (
         <section className="group" aria-labelledby="hab">
           <div className="head">

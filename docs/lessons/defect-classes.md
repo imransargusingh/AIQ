@@ -595,3 +595,25 @@ summary: >-
   `coach::tests::self_check_counts_only_the_newest_twenty_so_old_misses_leave`.
 - **Rule:** a guard that switches something off must keep measuring the thing it guards, so it can switch it back
   on, and it must say when it switches. A test for such a guard proves the way back, not only the switch-off.
+
+### DC-037 — A stop in the product that only a log line can see
+- **Signature:** 2026-11-04 16:02Z to 11-08, Imran's laptop. No tip was decided on any surface for four days (see
+  DC-036). Every number that would have shown it existed in the store or the log, but nothing put "tasks in,
+  tips out" side by side, so nobody saw it until a person asked why tips had stopped. Of 20 new tasks that reached
+  the tip step since 11-04, 15 ended with no kind; that count had to be rebuilt by hand from log lines.
+- **Why it survives:** each hold is correct on its own and is unit-tested on its own (cap, quiet, cooldown, accuracy
+  pause, self-check). No test or surface asks the end-to-end question: of the tasks that could have had a tip,
+  how many did, and where did the rest stop?
+- **Sweep:** next-step tips had eleven silent exits (no word match, label failed / unsure / late / never back, label
+  or words held, kind held by its state, tips off, a late first prompt). Reprompt tips record a card decision for
+  every outcome, so they were already countable. Ready tips that expire were countable (`card_decision`
+  `expired`) but shown nowhere.
+- **Control (product):** store v11 `tip_path`: every exit of the path writes its step. `aiq status` and Home count new
+  tasks → kind known → tip ready → shown → opened, with every reason, and name any working day with no tip shown.
+- **Control (tests):** `next_rung::every_new_task_ends_its_tip_path_at_a_counted_step`,
+  `next_rung::held_self_checks_are_counted_as_their_own_steps`,
+  `next_rung::status_carries_the_funnel_and_a_dry_working_day_warns`,
+  `service::a_rescued_first_prompt_is_counted_on_the_tip_path`, `funnel::tests::*` (every step and hold reason has
+  words, dry-day rules), the Home e2e "tip funnel" tests.
+- **Rule:** a feature whose job is to act on a moment counts, per period, the moments it saw and the ones it acted
+  on, and each way a moment was passed over gets its own code. A new early return without a step is a defect.
