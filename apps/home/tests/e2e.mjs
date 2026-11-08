@@ -38,7 +38,7 @@ async function test(name, fn) {
   }
 }
 
-async function open(fixture, { theme, hash = "", width = 1280, height = 800, forced = false, edit, fail = [] } = {}) {
+async function open(fixture, { theme, hash = "", width = 1280, height = 800, forced = false, edit, fail = [], clock = false } = {}) {
   const ctx = await browser.newContext({ viewport: { width, height }, forcedColors: forced ? "active" : "none" });
   const page = await ctx.newPage();
   const errors = [];
@@ -50,6 +50,7 @@ async function open(fixture, { theme, hash = "", width = 1280, height = 800, for
   await page.addInitScript(([s, t, f]) => {
     window.__AIQ_FIXTURE__ = { snapshot: s, task: t, calls: [], fail: f };
   }, [snapshot, task, fail]);
+  if (clock) await page.clock.install();
   await page.goto(base + hash);
   if (theme) await page.evaluate((t) => (document.documentElement.dataset.theme = t), theme);
   await page.waitForSelector("main h1");
@@ -1429,7 +1430,7 @@ await test("auto-update: the titlebar marker, one-press Update now, Go back, the
   for (const hash of ["", "#tasks", "#settings"]) {
     const p = await open("full", { hash, edit: waiting });
     const nav = p.locator("nav .foot");
-    assert.match(await nav.getByTestId("update-ready").innerText(), /^AIQ 0\.2\.0 is ready\s+You have 0\.1\.0\s+Update$/, `bottom-left notice on ${hash || "#home"}`);
+    assert.match(await nav.getByTestId("update-ready").innerText(), /^AIQ 0\.2\.0 is ready\s+You have 0\.1\.0\s+Update\s+Or it installs after 10 min in the background$/, `bottom-left notice on ${hash || "#home"}`);
     assert.equal(await nav.getByRole("button", { name: "Check for updates" }).count(), 0, "the ready button replaces the link");
     await p.context().close();
   }
@@ -1445,12 +1446,41 @@ await test("auto-update: the titlebar marker, one-press Update now, Go back, the
     await p.context().close();
   }
   const home = await open("full", { edit: waiting });
-  assert.match(await home.getByTestId("update-chip").getAttribute("title"), /installs by itself when you close AIQ home\. Last try waited: AIQ home is open\./);
+  assert.match(await home.getByTestId("update-chip").getAttribute("title"), /installs by itself when AIQ home has been in the background for 10 minutes, or when you close it\. Last try waited: AIQ home is open\./);
   await home.getByTestId("update-chip").click();
   await home.waitForFunction(() => document.querySelector("[data-testid=update-chip]")?.textContent === "Installing AIQ 0.2.0. AIQ home closes and opens again.");
   assert.deepEqual(await upd(home), [{ action: "install" }]);
   assert.deepEqual(await axe(home), []);
   await home.context().close();
+  // Away install (design U5n; laptop 2026-11-08: Home open for hours, 0.1.19 to 0.1.21 downloaded, none
+  // installed): 10 minutes in the background, Home asks the shell to install; not while the person is in it,
+  // and never under Ask first, where the box says nothing about installing by itself.
+  const background = (p, out) =>
+    p.evaluate((o) => {
+      document.hasFocus = () => !o;
+      window.dispatchEvent(new Event(o ? "blur" : "focus"));
+    }, out);
+  const aways = (p) => p.evaluate(() => window.__AIQ_FIXTURE__.calls.filter((c) => c.cmd === "run_update" && c.args.action === "install_if_away").length);
+  const left = await open("full", { edit: waiting, clock: true });
+  await background(left, false);
+  await left.clock.runFor(30 * 60_000);
+  assert.equal(await aways(left), 0, "in the window: no away install");
+  await background(left, true);
+  await left.clock.runFor(9 * 60_000);
+  assert.equal(await aways(left), 0, "9 minutes away: not yet");
+  await left.clock.runFor(2 * 60_000);
+  assert.ok((await aways(left)) >= 1, "10 minutes away: Home asks for the install");
+  const asked = await aways(left);
+  await background(left, false);
+  await left.clock.runFor(30 * 60_000);
+  assert.equal(await aways(left), asked, "back in the window: no more asks");
+  await left.context().close();
+  const ask = await open("full", { edit: (s) => (waiting(s), (s.update.mode = "ask")), clock: true });
+  assert.equal(await ask.locator("nav .foot").getByTestId("update-when").count(), 0, "Ask first: no line about installing by itself");
+  await background(ask, true);
+  await ask.clock.runFor(30 * 60_000);
+  assert.equal(await aways(ask), 0, "Ask first: never installs by itself");
+  await ask.context().close();
   // A newer release while one waits (laptop 2026-11-05: 0.1.8 waited from 18:58Z; 0.1.9 at 20:32Z never showed):
   // Home's timed check still runs, the newer download replaces the waiting one, and the box names it.
   const newer = await open("full", { edit: (s) => Object.assign(s.update, { note: "waiting", available: "v0.1.8", latest: "v0.1.8", blocked: "AIQ home is open" }) });

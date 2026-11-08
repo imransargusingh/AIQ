@@ -201,6 +201,72 @@ fn home_due(now_ms: i64, st: &State, mode: Option<&str>, every: i64) -> bool {
     mode != Some("off") && check_due(now_ms, st, every)
 }
 
+/// AIQ home installs a waiting update by itself once its window has been in the background this long (design
+/// auto-update U5n). Laptop, 2026-11-08: Home stayed open from 04:09Z, so 0.1.19, 0.1.20 and 0.1.21 were each
+/// downloaded and replaced in turn and none installed (`blocked` = "AIQ home is open"); the kicker's install waits
+/// for Home to close, which a person who keeps Home open never does. Home measures the time away (no focus, or
+/// minimised); this module decides whether the install may start.
+pub const AWAY_INSTALL_MS: i64 = 10 * 60 * 1000;
+/// After one away install was started, the next waits this long, so a run that found AIQ busy (a hook, a judge)
+/// and reopened AIQ home never turns into Home closing and reopening every minute.
+pub const AWAY_RETRY_MS: i64 = 30 * 60 * 1000;
+/// AIQ home reopens minimised after an away install when it finds this marker younger than this.
+pub const REOPEN_MINIMIZED_MS: i64 = 5 * 60 * 1000;
+
+/// When AIQ home last started an away install (UTC ms in a small file). App state, not the person's data.
+pub fn away_try_path(paths: &Paths) -> PathBuf {
+    paths.data.join("update-away-try")
+}
+
+/// Written just before an away install closes AIQ home: the AIQ home that upgrade.ps1 reopens starts minimised,
+/// so it never pops up over what the person is doing.
+pub fn reopen_minimized_path(paths: &Paths) -> PathBuf {
+    paths.data.join("home-reopen-minimized")
+}
+
+fn read_ms(path: &std::path::Path) -> Option<i64> {
+    std::fs::read_to_string(path).ok().and_then(|s| s.trim().parse().ok())
+}
+
+/// May AIQ home, away for `AWAY_INSTALL_MS` (Home measures that), start installing the waiting update now? Only
+/// under "Update automatically": "Ask first" keeps the person's own press. `last_try_ms`: the last away install
+/// Home started (`away_try_path`).
+pub fn away_install_due(now_ms: i64, st: &State, mode: Option<&str>, last_try_ms: Option<i64>) -> bool {
+    mode.unwrap_or(DEFAULT_MODE) == "auto"
+        && st.state.as_deref() == Some("waiting")
+        && st.staged.is_some()
+        && last_try_ms.is_none_or(|t| now_ms - t >= AWAY_RETRY_MS || now_ms < t)
+}
+
+/// `away_install_due` with the last try read from disk; when due, records this try and the reopen marker. Never
+/// errors: a file that cannot be written only means the next try may come sooner, or Home reopens normally.
+pub fn begin_away_install(paths: &Paths, now_ms: i64, st: &State, mode: Option<&str>) -> bool {
+    if !away_install_due(now_ms, st, mode, read_ms(&away_try_path(paths))) {
+        return false;
+    }
+    let _ = std::fs::write(away_try_path(paths), now_ms.to_string());
+    let _ = std::fs::write(reopen_minimized_path(paths), now_ms.to_string());
+    true
+}
+
+/// The away install could not start: AIQ home stays open, so the marker must not minimise a later open.
+pub fn cancel_reopen_minimized(paths: &Paths) {
+    let _ = std::fs::remove_file(reopen_minimized_path(paths));
+}
+
+/// At AIQ home's start: true (and the marker removed) when an away install just closed it, so it opens minimised.
+/// An old marker (an install that never reopened Home) is removed and ignored: the person opening AIQ home from
+/// the Start menu later sees the window.
+pub fn take_reopen_minimized(paths: &Paths, now_ms: i64) -> bool {
+    let path = reopen_minimized_path(paths);
+    let Some(t) = read_ms(&path) else {
+        let _ = std::fs::remove_file(&path);
+        return false;
+    };
+    let _ = std::fs::remove_file(&path);
+    (0..REOPEN_MINIMIZED_MS).contains(&(now_ms - t))
+}
+
 /// The script's arguments for one action. `wait_pid`: the caller about to exit (AIQ home, the CLI).
 pub fn script_args(script: &std::path::Path, action: Action, wait_pid: Option<u32>, relaunch: bool) -> Vec<String> {
     let mut a: Vec<String> = ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"]
@@ -520,6 +586,45 @@ mod tests {
         assert_eq!(decide(t0() + 3 * 3_600_000, &s, Some("ask")), None);
         // A check Home ran a few minutes ago is fresh enough: install straight away.
         assert_eq!(decide(t0() + HOME_EVERY_MS, &s, None), Some(Action::Apply));
+    }
+
+    #[test]
+    fn home_installs_a_waiting_update_when_away_only_under_auto_and_not_every_minute() {
+        let mut w = st(Some("waiting"), Some(T0));
+        w.staged = Some("aiq-0.1.21-windows-x64.zip".into());
+        let now = t0() + HOURLY_MS;
+        assert!(away_install_due(now, &w, None, None), "default is auto");
+        assert!(away_install_due(now, &w, Some("auto"), None));
+        assert!(!away_install_due(now, &w, Some("ask"), None), "ask first keeps the person's own press");
+        assert!(!away_install_due(now, &w, Some("off"), None));
+        assert!(!away_install_due(now, &st(Some("current"), Some(T0)), None, None), "nothing waits");
+        assert!(!away_install_due(now, &st(Some("waiting"), Some(T0)), None, None), "no staged zip");
+        // One try, then the next only after AWAY_RETRY_MS (a busy AIQ reopens Home; it must not close again at once).
+        assert!(!away_install_due(now, &w, None, Some(now - AWAY_RETRY_MS + 1)));
+        assert!(away_install_due(now, &w, None, Some(now - AWAY_RETRY_MS)));
+        // A last try in the future (the clock moved back) does not block for ever.
+        assert!(away_install_due(now, &w, None, Some(now + 1)));
+    }
+
+    #[test]
+    fn an_away_install_records_its_try_and_the_next_open_is_minimised_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::at(dir.path());
+        let mut w = st(Some("waiting"), Some(T0));
+        w.staged = Some("aiq.zip".into());
+        let now = t0();
+        assert!(begin_away_install(&paths, now, &w, None));
+        assert!(!begin_away_install(&paths, now + 60_000, &w, None), "the recorded try holds the next one back");
+        assert!(take_reopen_minimized(&paths, now + 20_000), "the reopened Home starts minimised");
+        assert!(!take_reopen_minimized(&paths, now + 21_000), "only once");
+        // An install that never reopened Home leaves an old marker: a later open shows the window.
+        assert!(begin_away_install(&paths, now + AWAY_RETRY_MS, &w, None));
+        assert!(!take_reopen_minimized(&paths, now + AWAY_RETRY_MS + REOPEN_MINIMIZED_MS));
+        assert!(!reopen_minimized_path(&paths).exists());
+        // A start that failed takes the marker back.
+        assert!(begin_away_install(&paths, now + 2 * AWAY_RETRY_MS, &w, None));
+        cancel_reopen_minimized(&paths);
+        assert!(!take_reopen_minimized(&paths, now + 2 * AWAY_RETRY_MS + 1));
     }
 
     #[test]

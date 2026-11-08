@@ -366,6 +366,7 @@ nav.side .foot .updrow{display:flex;flex-wrap:nowrap;white-space:nowrap;align-it
 nav.side .foot .updbtn{all:unset;cursor:pointer;display:inline-flex;align-items:center;min-height:24px;padding:0 var(--s4);border-radius:var(--r-pill);background:var(--primary);color:var(--on-primary);font:600 12px/1.4 var(--f-text)}
 nav.side .foot .updbtn:hover{filter:brightness(1.1)}
 nav.side .foot .updbtn:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}
+nav.side .foot .updwhen{color:var(--ink-mute);font:400 11px/1.4 var(--f-text)}
 .newdot{width:8px;height:8px;border-radius:50%;background:var(--rung-5);flex:none}
 @media (forced-colors:active){nav.side .foot .updbox{border-color:CanvasText;background:Canvas}nav.side .foot .updbtn{border:1px solid ButtonText;background:ButtonFace;color:ButtonText}.newdot{background:CanvasText}}
 

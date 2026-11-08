@@ -419,4 +419,15 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <ul><li><strong>Control (product):</strong> <code>label::NOT_COACHED</code> (troubleshoot labels never coach); labels use the analysis models.</li><li><strong>Control (tests):</strong> <code>label_replay_gate</code> (synthetic set, prompt pinned by <code>PROMPT_VERSION</code> and text, 8-in-10</li></ul>
 <p>floor, coverage floor, injection), <code>measured_labels_clear_the_bar</code> (real measured labels, no text), <code>accept_needs_a_pack_job_a_named_kind_and_both_confidences_at_the_bar</code>; <code>aiq label --eval</code> exits 3 under the bar.</p>
 <ul><li><strong>Rule:</strong> when a model predicts something checked later against a fuller reading, measure it against that</li></ul>
-<p>reading on real data before it acts, keep the measurement as a replayed fixture, and fail CI when it drops.</p></main></body></html>
+<p>reading on real data before it acts, keep the measurement as a replayed fixture, and fail CI when it drops.</p>
+<h3>DC-040 — A deferred action waits for a condition the person may never reach, and nothing escalates</h3>
+<ul><li><strong>Signature:</strong> 2026-11-08, laptop: the updater installs only &quot;when AIQ is idle&quot;, and idle required AIQ home to be</li></ul>
+<p>closed. Imran keeps Home open (PID 44988 since 04:09:55Z), so 0.1.19, 0.1.20 and 0.1.21 were each downloaded and replaced in turn over about 3 hours and none installed; 0.1.18 still ran at 07:04Z. <code>blocked</code> said &quot;AIQ home is open&quot; the whole time; the box offered Update, which was not pressed. A second instance on the same path: a run that AIQ home closed itself for exited without reopening Home when another update run held <code>update.lock</code>.</p>
+<ul><li><strong>Why it survives:</strong> every test opens or closes Home on purpose, so &quot;Home stays open for days&quot; is never a case;</li></ul>
+<p>each part is correct alone (the script must not swap exes under a running Home), and the waiting state looks like progress (a download, a box, a log line) while nothing ever completes.</p>
+<ul><li><strong>Sweep:</strong> other waits on a person&#x27;s state: tips (30-min quiet, cap; already counted by the tip funnel, DC-037),</li></ul>
+<p>the analysis queue (paused shows why and how many wait), Copilot turn end on an open permission prompt (stop events thread; a missed confirm keeps the tip, no loss). The update path was the only one with no way forward but the person&#x27;s press. Every exit of upgrade.ps1 after AIQ home closed itself now reaches <code>Start-Home</code>.</p>
+<ul><li><strong>Control (tests):</strong> <code>update::tests::home_installs_a_waiting_update_when_away_only_under_auto_and_not_every_minute</code>,</li></ul>
+<p><code>an_away_install_records_its_try_and_the_next_open_is_minimised_once</code>, <code>updateNow.test.ts</code> awayInstallDue, the Home e2e away-install case (fake clock), release.yml smoke &quot;lock held: AIQ home opened again&quot;.</p>
+<ul><li><strong>Rule:</strong> an action deferred until &quot;the person is not using X&quot; names the longest it may wait and what makes it</li></ul>
+<p>happen then (here: 10 minutes in the background), and every exit of a step that closed something the person had open puts it back.</p></main></body></html>
