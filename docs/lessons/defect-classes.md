@@ -542,3 +542,26 @@ summary: >-
   core; AIQ home refusal logged; exit 0).
 - **Rule:** a step that runs after the work is done (restart, reopen, tidy-up) is guarded and logged on every
   path; its failure must never hide the work's outcome or end the script silently.
+
+### DC-034 — A send that gives up on a timer and drops the frame without knowing whether it went out
+- **Signature:** 2026-11-08, Imran's laptop on 0.1.18: a Copilot CLI prompt (04:20:57Z) and a Claude Code prompt
+  (03:28:10Z) had no stop event stored, and `aiq status` showed `AIQ-HOOK-STOP-TIMEOUT` 11 with Stop 7 and
+  agentStop 15 runs in 24 h. The Stop hook waits 55 ms for connect, write and the core's reply on a helper
+  thread. On a timeout it counted the code and returned; the process then exited and ended the helper thread.
+  If that thread was still connecting or writing, the turn end never reached the core and was not spooled.
+  The Right-now card and live trend then saw the agent as still busy.
+- **Why it survives:** on Linux CI a local-socket connect and write finish in microseconds, so the timeout only
+  fires after the frame is written; the lost case needs a slow Windows pipe connect (peer check, Defender, a
+  loaded machine). The timeout and the "frame stored" cases shared one outcome label, so the log could not
+  tell them apart.
+- **Sweep:** every `ipc::request` caller in crates/aiq: the prompt and Copilot ingest paths already spool on any
+  error, timeout included (a duplicate is ignored by event id); `Shown` counts `AIQ-HOOK-SHOWN-UNSENT` and the
+  tip stays deliverable; only the Stop path dropped the frame. Core side: `dispatch` drops a `TakeCard` when its
+  1024-deep channel is full, with no counter; noted, not changed (never seen full).
+- **Control (product):** `ipc::request_tracked` reports whether the whole frame was written. On a timeout the
+  hook spools an unwritten stop (`stop-timeout-spooled`) and keeps `stop-timeout` for a written one, so the
+  timing log now measures which case happens.
+- **Control (tests):** `ipc::tests::request_tracked_*` (no core: not written; late reply: written and read by the
+  core); `hook::tests::a_timed_out_stop_that_never_left_goes_to_the_spool`.
+- **Rule:** a sender that gives up on a timer must know whether its message left. If it may not have, keep it
+  (spool, retry) before the process ends; an idempotent receiver makes keeping it safe.

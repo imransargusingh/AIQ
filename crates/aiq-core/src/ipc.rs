@@ -4,7 +4,8 @@
 use crate::paths::Paths;
 use interprocess::local_socket::{Listener, ListenerOptions, Stream, prelude::*};
 use std::io::{self, BufRead, BufReader, Read, Write};
-use std::sync::mpsc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, mpsc};
 use std::time::Duration;
 
 pub fn listen(paths: &Paths) -> io::Result<Listener> {
@@ -71,14 +72,28 @@ pub fn read_line_capped<R: Read>(r: R, max: usize) -> io::Result<Option<String>>
 /// Send one frame and, if `want_reply`, read one reply line; all within `timeout`. The I/O runs on a
 /// helper thread so a stuck peer can never hold the caller past its budget.
 pub fn request(paths: &Paths, frame: &str, want_reply: bool, timeout: Duration) -> io::Result<Option<String>> {
+    request_tracked(paths, frame, want_reply, timeout).0
+}
+
+/// [`request`], plus whether the whole frame was written before the result. On a timeout that tells a frame
+/// the core holds (only its reply was late) from one it never got: a caller that exits on the timeout ends
+/// the helper thread mid-connect, and that frame is lost unless the caller keeps it (DC-034).
+pub fn request_tracked(
+    paths: &Paths,
+    frame: &str,
+    want_reply: bool,
+    timeout: Duration,
+) -> (io::Result<Option<String>>, bool) {
     let (tx, rx) = mpsc::channel();
-    let paths = paths.clone();
+    let written = Arc::new(AtomicBool::new(false));
+    let (paths, flag) = (paths.clone(), written.clone());
     let line = format!("{frame}\n");
     std::thread::spawn(move || {
         let r = (|| -> io::Result<Option<String>> {
             let mut s = connect(&paths)?;
             s.write_all(line.as_bytes())?;
             s.flush()?;
+            flag.store(true, Ordering::SeqCst);
             if !want_reply {
                 return Ok(None);
             }
@@ -86,10 +101,11 @@ pub fn request(paths: &Paths, frame: &str, want_reply: bool, timeout: Duration) 
         })();
         let _ = tx.send(r);
     });
-    match rx.recv_timeout(timeout) {
+    let r = match rx.recv_timeout(timeout) {
         Ok(r) => r,
         Err(_) => Err(io::Error::new(io::ErrorKind::TimedOut, "core did not answer in time")),
-    }
+    };
+    (r, written.load(Ordering::SeqCst))
 }
 
 pub fn read_token(paths: &Paths) -> Option<String> {
@@ -203,6 +219,32 @@ mod tests {
         assert_eq!(a.len(), 64);
         assert!(a.chars().all(|c| c.is_ascii_hexdigit()));
         assert_ne!(a, b);
+    }
+
+    #[test]
+    fn request_tracked_says_no_frame_went_out_when_no_core_listens() {
+        let d = tempfile::tempdir().unwrap();
+        let (r, written) = request_tracked(&Paths::at(d.path()), "{}", true, Duration::from_secs(2));
+        assert!(r.is_err());
+        assert!(!written, "nothing was sent, so the caller must keep the frame");
+    }
+
+    #[test]
+    fn request_tracked_says_the_frame_went_out_when_only_the_reply_is_late() {
+        let d = tempfile::tempdir().unwrap();
+        let paths = Paths::at(d.path());
+        paths.ensure_dirs().unwrap();
+        let listener = listen(&paths).unwrap();
+        let (got_tx, got_rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            let mut s = listener.incoming().next().unwrap().unwrap();
+            let _ = got_tx.send(read_line_capped(&mut s, 64).unwrap());
+            std::thread::sleep(Duration::from_secs(2)); // never replies within the caller's wait
+        });
+        let (r, written) = request_tracked(&paths, "{\"a\":1}", true, Duration::from_millis(500));
+        assert_eq!(r.unwrap_err().kind(), io::ErrorKind::TimedOut);
+        assert!(written, "the core holds this frame; only its reply was late");
+        assert_eq!(got_rx.recv_timeout(Duration::from_secs(2)).unwrap().as_deref(), Some("{\"a\":1}"));
     }
 
     #[test]
