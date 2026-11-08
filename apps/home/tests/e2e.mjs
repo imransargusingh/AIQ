@@ -806,7 +806,8 @@ await test("rung guide: steps by kind of work, where you are, your next step ope
   assert.match(await side.locator("h2").innerText(), /Keep an instructions file in the repo and point to it/);
   assert.match(await side.innerText(), /Code a change · Delegated \(3\) → Orchestrated \(4\)/);
   assert.match(await side.innerText(), /How AIQ notices it: Counts when you give the agent a written brief, spec or instructions file\./);
-  assert.match(await side.innerText(), /Your next step for writing tests/);
+  // Writing tests took up this habit (seeded growing), so its next step moved on; adding a feature still needs it.
+  assert.match(await side.innerText(), /Your next step for adding a feature/);
   await grid.getByRole("button", { name: /Ask for the whole draft and list what it must cover/ }).click();
   assert.match(await side.innerText(), /Your next step for writing a spec or PRD/);
   // Pick another habit: the side panel follows; the starter copies.
@@ -1148,20 +1149,24 @@ await test("coaching Home: finished and could be, the rule, uncertain left out, 
   await page.context().close();
 });
 
-await test("progress Home: kinds that moved up or down, counts behind them, too few said plainly, no axe violations", async () => {
+await test("progress Home: kinds that moved up or down beyond chance, counts behind them, too few said plainly, the habits line, no axe violations", async () => {
   for (const theme of ["light", "dark", "contrast"]) {
     const page = await open("progress", { theme: theme === "light" ? undefined : theme });
     const sec = page.locator("section", { has: page.locator("h2#pg") });
     const t = await sec.innerText();
-    assert.match(t, /Is each kind of task moving up\?\s+1\s+of 3 kinds moved up a rung · 1 at a lower rung/);
-    assert.match(t, /Last 14 days\s+The 14 before, when it moved\s+Where the next step gets you/);
+    assert.match(t, /Is each kind of task moving up\?\s+1\s+of 4 kinds moved up a rung · 1 at a lower rung/);
+    assert.match(t, /Last 30 days\s+The 30 before, when it moved\s+Where the next step gets you/);
     const rows = page.getByRole("list", { name: "Rung progress by kind of task" }).getByRole("button");
-    assert.equal(await rows.count(), 3, "too-few kinds are one line, not rows");
+    assert.equal(await rows.count(), 4, "too-few kinds are one line, not rows");
     // Movers first in their pack; the row's name carries what the dots show.
-    assert.equal(await rows.nth(0).getAttribute("aria-label"), "Writing tests, Delegated (3) in the last 14 days, moved up from Directed (2), next step reaches Orchestrated (4), 4 tasks in the last 14 days, 3 before");
+    assert.equal(await rows.nth(0).getAttribute("aria-label"), "Writing tests, Delegated (3) in the last 30 days, moved up from Directed (2), next step reaches Orchestrated (4), 5 tasks in the last 30 days, 5 before");
     assert.match(await rows.nth(0).innerText(), /Writing tests\s+↑ up/);
-    assert.equal(await rows.nth(1).getAttribute("aria-label"), "Fixing a bug or failing test, Assisted (1) in the last 14 days, same rung, 3 tasks in the last 14 days, 3 before");
-    assert.match(await rows.nth(2).innerText(), /Writing a spec or PRD\s+↓ down/);
+    // Its typical rung went from Assisted to Delegated, but only by chance: drawn where it is, no ring, no arrow.
+    assert.equal(await rows.nth(1).getAttribute("aria-label"), "Adding a feature, Delegated (3) in the last 30 days, same rung, next step reaches Orchestrated (4), 3 tasks in the last 30 days, 3 before");
+    assert.equal(await rows.nth(2).getAttribute("aria-label"), "Fixing a bug or failing test, Assisted (1) in the last 30 days, same rung, 3 tasks in the last 30 days, 3 before");
+    assert.match(await rows.nth(3).innerText(), /Writing a spec or PRD\s+↓ down/);
+    // Habit changes are one line under the map; the habits themselves live in Habits and tips.
+    assert.match(t, /1 habit is growing: the steps that move a kind of task up\. See them in Habits and tips/);
     assert.match(t, /1 more kind of task: too few to say if it moved\. Each needs at least 3 analyzed tasks in both halves\. Show/);
     await page.getByRole("button", { name: "Show" }).click();
     assert.equal(await page.getByRole("list", { name: "Kinds of task with too few tasks to say" }).getByRole("button").count(), 1);
@@ -1184,7 +1189,7 @@ await test("progress Home: kinds that moved up or down, counts behind them, too 
   assert.match(st, /2 more kinds of task: too few to say if they moved/);
   await same.context().close();
   const none = await open("coaching", { edit: (s) => ((s.coaching.progress = []), (s.coaching.kinds = [])) });
-  assert.match(await none.locator("main").innerText(), /Progress shows once AIQ knows the kind of your tasks from the last 28 days\./);
+  assert.match(await none.locator("main").innerText(), /Progress shows once AIQ knows the kind of your tasks from the last 60 days\./);
   await none.context().close();
 });
 
@@ -1228,12 +1233,12 @@ await test("kind of task: the pack's step, copy starter, analyze words as text, 
   await page.context().close();
 });
 
-await test("Tasks opens on kinds of task: rung today, could be, a week, the 14-day move; a row opens the kind (item 4)", async () => {
+await test("Tasks opens on kinds of task: rung today, could be, a week, the 30-day move; a row opens the kind (item 4)", async () => {
   const page = await open("progress", { hash: "#tasks" });
   assert.equal(await page.getByRole("button", { name: "Kinds", exact: true }).getAttribute("aria-pressed"), "true", "Kinds is the default");
   const table = page.getByRole("table", { name: "Kinds of task" });
   const rows = table.locator("tbody tr");
-  assert.equal(await rows.count(), 4);
+  assert.equal(await rows.count(), 5);
   const t = await table.innerText();
   assert.match(t, /Writing tests[\s\S]*Code a change[\s\S]*↑ up from Directed \(2\)/);
   assert.match(t, /Writing a spec or PRD[\s\S]*↓ down from Delegated \(3\)/);
@@ -1322,10 +1327,10 @@ await test("Habits grouped by the rung they help you reach, with an adopted bar;
   await empty.context().close();
 });
 
-await test("Kind page: Moving up? draws each analyzed task's rung, says the 14-day move, names every dot for screen readers (item 9)", async () => {
+await test("Kind page: Moving up? draws each analyzed task's rung, says the 30-day move, names every dot for screen readers (item 9)", async () => {
   const page = await open("progress", { hash: "#kind/code_change/tests" });
   const card = page.locator("section", { has: page.locator("#km") });
-  assert.match(await card.innerText(), /Moved up\s*Directed \(2\) → Delegated \(3\), last 14 days against the 14 before\./);
+  assert.match(await card.innerText(), /Moved up\s*Directed \(2\) → Delegated \(3\), last 30 days against the 30 before\./);
   const label = await page.getByRole("img", { name: /Rung of each analyzed task/ }).getAttribute("aria-label");
   const dots = await page.locator(".km-dot").count();
   assert.equal(label.split(";").length, dots, "every dot is named in the label");

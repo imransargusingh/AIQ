@@ -366,14 +366,14 @@ fn coaching_split_kinds_habits_and_settings_derive_from_judgments() {
 }
 
 #[test]
-fn progress_compares_each_kinds_typical_rung_over_two_14_day_halves() {
+fn progress_compares_each_kinds_typical_rung_over_two_30_day_halves() {
     let d = tempfile::tempdir().unwrap();
     let p = Paths::at(d.path());
     progress(&p);
     let s = snap(&p);
     assert!(s.status.error.is_none(), "{:?}", s.status.error);
     let c = &s.coaching;
-    assert_eq!((c.progress_days, c.progress_min), (14, 3));
+    assert_eq!((c.progress_days, c.progress_min, c.habit_change_min, c.shift_days), (30, 3, 5, 14));
     let got: Vec<_> = c
         .progress
         .iter()
@@ -382,17 +382,37 @@ fn progress_compares_each_kinds_typical_rung_over_two_14_day_halves() {
     assert_eq!(
         got,
         vec![
-            ("tests", "up", 4, 3, 1, Some(3), Some(2)),
-            ("spec", "down", 3, 3, 0, Some(2), Some(3)),
+            ("tests", "up", 5, 5, 1, Some(3), Some(2)),
+            ("spec", "down", 5, 5, 0, Some(2), Some(3)),
+            ("feature", "same", 3, 3, 0, Some(3), Some(1)),
             ("fix_bug", "same", 3, 3, 0, Some(1), Some(1)),
             ("refactor", "too_few", 1, 1, 0, Some(2), Some(2)),
-        ]
+        ],
+        "the earlier half is older than the 30-day window; feature's flip is within chance"
     );
+    // The earlier half reaches progress only: the window's tasks stay the last 30 days.
+    assert!(s.tasks.iter().all(|t| t.first_ms >= NOW - 30 * DAY));
+    let hc: Vec<_> = c
+        .habit_changes
+        .iter()
+        .map(|h| {
+            (
+                h.task_type.as_str(),
+                h.move_id.as_str(),
+                h.dir,
+                h.earlier_seen,
+                h.earlier_eligible,
+                h.recent_seen,
+                h.recent_eligible,
+            )
+        })
+        .collect();
+    assert_eq!(hc, vec![("tests", "written_brief", "up", 0, 5, 5, 5)]);
     // An empty store has no rows but still says the window and minimum.
     let e = tempfile::tempdir().unwrap();
     let es = snap(&Paths::at(e.path()));
-    assert!(es.coaching.progress.is_empty());
-    assert_eq!((es.coaching.progress_days, es.coaching.progress_min), (14, 3));
+    assert!(es.coaching.progress.is_empty() && es.coaching.habit_changes.is_empty());
+    assert_eq!((es.coaching.progress_days, es.coaching.progress_min), (30, 3));
 }
 
 #[test]

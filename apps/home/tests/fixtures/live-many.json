@@ -1769,38 +1769,41 @@
         "job": "write_doc",
         "task_type": "spec",
         "label": "Writing a spec or PRD",
-        "recent": 3,
-        "earlier": 1,
+        "recent": 4,
+        "earlier": 0,
         "uncertain": 0,
         "recent_rung": 2,
-        "earlier_rung": 2,
+        "earlier_rung": null,
         "trend": "too_few"
       },
       {
         "job": "code_change",
         "task_type": "fix_bug",
         "label": "Fixing a bug or failing test",
-        "recent": 0,
-        "earlier": 3,
+        "recent": 3,
+        "earlier": 0,
         "uncertain": 0,
-        "recent_rung": null,
-        "earlier_rung": 1,
+        "recent_rung": 1,
+        "earlier_rung": null,
         "trend": "too_few"
       },
       {
         "job": "code_change",
         "task_type": "refactor",
         "label": "Refactoring or cleaning up",
-        "recent": 0,
-        "earlier": 2,
+        "recent": 2,
+        "earlier": 0,
         "uncertain": 0,
-        "recent_rung": null,
-        "earlier_rung": 2,
+        "recent_rung": 2,
+        "earlier_rung": null,
         "trend": "too_few"
       }
     ],
-    "progress_days": 14,
-    "progress_min": 3
+    "progress_days": 30,
+    "progress_min": 3,
+    "habit_changes": [],
+    "habit_change_min": 5,
+    "shift_days": 14
   },
   "update": {
     "supported": true,
@@ -2097,27 +2100,30 @@
             "job": "code_change",
             "task_type": "fix_bug",
             "label": "Fixing a bug or failing test",
-            "recent": 0,
-            "earlier": 3,
+            "recent": 3,
+            "earlier": 0,
             "uncertain": 0,
-            "recent_rung": null,
-            "earlier_rung": 1,
+            "recent_rung": 1,
+            "earlier_rung": null,
             "trend": "too_few"
           },
           {
             "job": "code_change",
             "task_type": "refactor",
             "label": "Refactoring or cleaning up",
-            "recent": 0,
-            "earlier": 2,
+            "recent": 2,
+            "earlier": 0,
             "uncertain": 0,
-            "recent_rung": null,
-            "earlier_rung": 2,
+            "recent_rung": 2,
+            "earlier_rung": null,
             "trend": "too_few"
           }
         ],
-        "progress_days": 14,
-        "progress_min": 3
+        "progress_days": 30,
+        "progress_min": 3,
+        "habit_changes": [],
+        "habit_change_min": 5,
+        "shift_days": 14
       }
     },
     {
@@ -2354,16 +2360,19 @@
             "job": "write_doc",
             "task_type": "spec",
             "label": "Writing a spec or PRD",
-            "recent": 3,
-            "earlier": 1,
+            "recent": 4,
+            "earlier": 0,
             "uncertain": 0,
             "recent_rung": 2,
-            "earlier_rung": 2,
+            "earlier_rung": null,
             "trend": "too_few"
           }
         ],
-        "progress_days": 14,
-        "progress_min": 3
+        "progress_days": 30,
+        "progress_min": 3,
+        "habit_changes": [],
+        "habit_change_min": 5,
+        "shift_days": 14
       }
     }
   ],

@@ -25,6 +25,8 @@ pub use detail::{TaskDetail, TaskPromptText, task_detail};
 pub const SCHEMA: &str = "aiq.home.v1";
 /// Home's window (spec Q3).
 pub const WINDOW_DAYS: i64 = 30;
+/// Home's rung mix change and the kind page's chart split (14 days against the 14 before, inside the window).
+pub const SHIFT_DAYS: u32 = 14;
 /// Weekly columns on Home.
 pub const WEEKS: i64 = 4;
 /// Tip history window (spec US-H5).
@@ -197,6 +199,28 @@ pub struct Coaching {
     pub progress_days: u32,
     /// Judged, not-Uncertain tasks each half needs before AIQ says a kind moved (the tips' repeated-kind rule).
     pub progress_min: u32,
+    /// Habits whose use in one kind of task changed by more than chance, same halves as `progress`. Growing first.
+    pub habit_changes: Vec<HabitChangeRow>,
+    /// Tasks where a habit fits, in each half, before AIQ says the habit changed.
+    pub habit_change_min: u32,
+    /// The rung mix's "up N points" and the kind page's chart split: last `shift_days` against the
+    /// `shift_days` before, read from `tasks` (the 30-day window), so shorter than `progress_days`.
+    pub shift_days: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct HabitChangeRow {
+    pub job: String,
+    pub task_type: String,
+    pub label: &'static str,
+    pub move_id: String,
+    pub habit: String,
+    pub earlier_seen: u32,
+    pub earlier_eligible: u32,
+    pub recent_seen: u32,
+    pub recent_eligible: u32,
+    /// "up" (growing) or "down" (less often lately).
+    pub dir: &'static str,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -853,6 +877,8 @@ fn empty(paths: &Paths, pack: &PackV1, now: Now) -> Snapshot {
             week_min: pack.coach.week_min,
             progress_days: aiq_domain::coach::PROGRESS_DAYS,
             progress_min: pack.coach.recurring_min,
+            habit_change_min: aiq_domain::coach::HABIT_CHANGE_MIN,
+            shift_days: SHIFT_DAYS,
             rule: FINISHED_RULE,
             weeks: (0..WEEKS).map(|i| WeekSplit { start_ms: week0 + i * 7 * DAY_MS, tasks: 0, finished: 0 }).collect(),
             ..Default::default()
@@ -946,10 +972,14 @@ fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()>
     };
     let aside: BTreeSet<&str> = set_aside.iter().map(|(f, _, _)| f.as_str()).collect();
 
-    let mut tasks = task_list(store, pack, window_start, &aside)?;
+    // Rung progress compares the last PROGRESS_DAYS with the PROGRESS_DAYS before, which reach past the window:
+    // those older tasks feed only progress and habit changes, never the rest of Home.
+    let wide_start = window_start.min(now.utc_ms - 2 * aiq_domain::coach::PROGRESS_DAYS as i64 * DAY_MS);
+    let (mut tasks, mut older): (Vec<TaskRow>, Vec<TaskRow>) =
+        task_list(store, pack, wide_start, &aside)?.into_iter().partition(|t| t.first_ms >= window_start);
     s.home.set_aside = set_aside_rows(store, &set_aside, &tasks)?;
     let judgments = store.current_judgments().map_err(|e| e.to_string())?;
-    for t in tasks.iter_mut() {
+    for t in tasks.iter_mut().chain(older.iter_mut()) {
         if let Some(j) = judgments.get(&t.task_id) {
             t.attach(j);
         }
@@ -981,7 +1011,7 @@ fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()>
             pack.idle_gap_min as i64 * 60_000,
         );
     }
-    coaching(store, pack, now, &tasks, &judgments, s)?;
+    coaching(store, pack, now, &tasks, &older, &judgments, s)?;
     // Every judged task in the window, for what happened after each next-step tip.
     let judged_all = judged_tasks(&tasks.iter().collect::<Vec<_>>(), &judgments);
     s.tasks = tasks;
@@ -1362,6 +1392,7 @@ fn coaching(
     pack: &PackV1,
     now: Now,
     tasks: &[TaskRow],
+    older: &[TaskRow],
     judgments: &std::collections::HashMap<String, aiq_store::JudgmentRow>,
     s: &mut Snapshot,
 ) -> R<()> {
@@ -1371,7 +1402,8 @@ fn coaching(
     let flags = aiq_core::coaching::flags(store).map_err(e)?;
     let all: Vec<&TaskRow> = tasks.iter().collect();
     let judged = judged_tasks(&all, judgments);
-    coach_view(pack, now, &judged, judgments, &feedback, &flags, &mut s.coaching);
+    let judged_older = judged_tasks(&older.iter().collect::<Vec<_>>(), judgments);
+    coach_view(pack, now, (&judged, &judged_older), judgments, &feedback, &flags, &mut s.coaching);
 
     // Projects (design project-filter): the same tally and coaching over each folder's tasks.
     let names = project_names(
@@ -1388,6 +1420,10 @@ fn coaching(
         .map(|(key, ts)| {
             let t = tally(ts.iter().copied(), &s.home.weeks);
             let pj = judged_tasks(&ts, judgments);
+            let po = judged_tasks(
+                &older.iter().filter(|t| t.folder.as_deref().unwrap_or("") == key).collect::<Vec<_>>(),
+                judgments,
+            );
             let mut c = Coaching {
                 split_min: blank.split_min,
                 week_min: blank.week_min,
@@ -1396,8 +1432,10 @@ fn coaching(
             };
             c.progress_days = blank.progress_days;
             c.progress_min = blank.progress_min;
+            c.habit_change_min = blank.habit_change_min;
+            c.shift_days = blank.shift_days;
             c.weeks = blank.weeks.iter().map(|w| WeekSplit { tasks: 0, finished: 0, ..*w }).collect();
-            coach_view(pack, now, &pj, judgments, &feedback, &flags, &mut c);
+            coach_view(pack, now, (&pj, &po), judgments, &feedback, &flags, &mut c);
             let (name, renamed) = names.get(key).cloned().unwrap_or_else(|| (NO_FOLDER.to_owned(), false));
             Project {
                 key: key.to_owned(),
@@ -1545,7 +1583,8 @@ fn judged_tasks<'a>(
 fn coach_view(
     pack: &PackV1,
     now: Now,
-    judged: &[aiq_domain::coach::JudgedTask],
+    // Judged tasks in the window, and from before it (for progress and habit changes only).
+    (judged, older): (&[aiq_domain::coach::JudgedTask], &[aiq_domain::coach::JudgedTask]),
     judgments: &std::collections::HashMap<String, aiq_store::JudgmentRow>,
     feedback: &[aiq_domain::coach::Feedback],
     flags: &[aiq_domain::coach::Flag],
@@ -1618,7 +1657,23 @@ fn coach_view(
         })
         .collect();
     c.habits_imported = judged.iter().any(|t| !t.live);
-    c.progress = coach::progress(judged, now.utc_ms, p)
+    let wide: Vec<coach::JudgedTask> = judged.iter().chain(older).cloned().collect();
+    c.habit_changes = coach::habit_changes(&wide, &pack.moves, now.utc_ms)
+        .into_iter()
+        .map(|h| HabitChangeRow {
+            job: h.job,
+            task_type: h.task_type,
+            label: h.label,
+            move_id: h.move_id,
+            habit: h.habit,
+            earlier_seen: h.earlier_seen,
+            earlier_eligible: h.earlier_eligible,
+            recent_seen: h.recent_seen,
+            recent_eligible: h.recent_eligible,
+            dir: if h.up { "up" } else { "down" },
+        })
+        .collect();
+    c.progress = coach::progress(&wide, now.utc_ms, p)
         .into_iter()
         .map(|r| ProgressRow {
             job: r.job,

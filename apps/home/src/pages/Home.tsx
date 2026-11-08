@@ -3,7 +3,7 @@
 // on Tasks but never counted on a rung or in the split here. Until a task is judged it says so; nothing is
 // guessed. Model-written text renders as plain text only (TR-5).
 import { api } from "../api";
-import { LadderMap, NextSteps, RungMix, judgedBy, moved, pct } from "../coach";
+import { HabitChangeLine, LadderMap, NextSteps, RungMix, judgedBy, moved, pct } from "../coach";
 import { DAY, rungCounts, shift } from "../mix";
 import { RUNGS, day, folderName, plural, rungLabel, sentence, shortPath, toolName, when } from "../format";
 import { AccuracyPaused, Banners, ProjectPicker, Rung, Title, UpdateLine, type Ctx } from "../ui";
@@ -213,15 +213,15 @@ export function Home(ctx: Ctx) {
           <h2 id="rg">How you work with agents</h2>
           <span className="meta">
             {onRung > 0
-              ? `Analyzed tasks, last ${h.window_days} days · change: last ${c.progress_days} days against the ${c.progress_days} before`
+              ? `Analyzed tasks, last ${h.window_days} days · change: last ${c.shift_days} days against the ${c.shift_days} before`
               : "The five rungs. Your share on each shows once tasks are analyzed."}
           </span>
         </div>
         {onRung > 0 ? (
           <RungMix
             rungs={h.rungs}
-            shift={shift(snap.tasks, snap.now_ms, c.progress_days, c.split_min)}
-            shiftDays={c.progress_days}
+            shift={shift(snap.tasks, snap.now_ms, c.shift_days, c.split_min)}
+            shiftDays={c.shift_days}
             shiftMin={c.split_min}
             shareMin={c.split_min}
             weeks={h.weeks.map((w) => ({ start_ms: w.start_ms, label: day(w.start_ms, snap.offset_min), rungs: rungCounts(snap.tasks, w.start_ms, w.start_ms + 7 * DAY) }))}
@@ -258,7 +258,10 @@ export function Home(ctx: Ctx) {
               : `Progress shows once AIQ knows the kind of your tasks from the last ${2 * c.progress_days} days.`}
           </p>
         ) : (
-          <LadderMap c={c} open={ctx.openKind} />
+          <>
+            <LadderMap c={c} open={ctx.openKind} />
+            <HabitChangeLine c={c} go={() => go("tips")} />
+          </>
         )}
         <div className="head">
           <h3 id="ns">Next steps</h3>

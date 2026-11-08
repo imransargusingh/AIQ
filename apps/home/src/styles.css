@@ -552,3 +552,14 @@ main:has(.secnav){scroll-padding-top:56px}
 
 /* Team tips file: the "Tool to try" line under a tip (primary rule, soft fill; text stays ink for contrast). */
 .team-tool{border-left:3px solid var(--primary);background:var(--canvas-soft);padding:var(--s3) var(--s4);border-radius:0 var(--r-sm) var(--r-sm) 0}
+
+/* Habit changes (rung progress, 2026-11-08): a line under the ladder map, chips and lines on Habits and tips. */
+.hc-line{margin:0;display:flex;align-items:baseline;gap:var(--s2)}
+.hc-dot{flex:none;width:8px;height:8px;border-radius:50%;background:var(--rung-2);transform:translateY(-1px)}
+.hc-sum{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s3);margin:0}
+.hc-chip{font:600 12px/1.6 var(--f-text);padding:0 10px;border-radius:var(--r-pill)}
+.hc-chip.up{background:color-mix(in srgb,var(--success) 14%,transparent);color:var(--success)}
+.hc-chip.down{background:color-mix(in srgb,var(--warning) 16%,transparent);color:var(--warning)}
+.hc{display:block;font:var(--t-caption)}
+.hc.up{color:var(--success)}.hc.down{color:var(--warning)}
+@media (forced-colors:active){.hc-dot{forced-color-adjust:none;background:CanvasText}.hc-chip{border:1px solid CanvasText}}

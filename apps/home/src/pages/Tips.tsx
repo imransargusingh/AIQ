@@ -7,7 +7,7 @@
 import { useState } from "react";
 import { api } from "../api";
 import { RUNGS, day, jobName, plural, sentence, toolName, when } from "../format";
-import type { GuideMove, HabitRow, TipRow } from "../types";
+import type { GuideMove, HabitChange, HabitRow, TipRow } from "../types";
 import { Banners, Chip, Title, type Ctx } from "../ui";
 import { TipFunnelCard } from "../funnel";
 import { TeamToolLine, teamTool } from "../team";
@@ -24,6 +24,8 @@ export interface Habit {
   seen: number;
   eligible: number;
   moved: HabitRow | null;
+  /** The (job, move) pairs behind this line, to find its changes per kind of task. */
+  moves: string[];
 }
 
 /** The habits that help you reach one rung; `rung` is null for a move the guide doesn't know (shown last). */
@@ -55,9 +57,10 @@ export function habitsByRung(rows: HabitRow[], guide: GuideMove[]): RungGroup[] 
       same.jobs.push(h.job);
       same.seen += h.seen;
       same.eligible += h.eligible;
+      same.moves.push(`${h.job}/${h.move_id}`);
       if (moved && (!same.moved || moved.moved_ms! > same.moved.moved_ms!)) same.moved = moved;
     } else {
-      list.push({ key: `${h.job}/${h.move_id}/${h.state}`, name: h.name, state: h.state, jobs: [h.job], seen: h.seen, eligible: h.eligible, moved });
+      list.push({ key: `${h.job}/${h.move_id}/${h.state}`, name: h.name, state: h.state, jobs: [h.job], seen: h.seen, eligible: h.eligible, moved, moves: [`${h.job}/${h.move_id}`] });
     }
   }
   return [...groups.entries()]
@@ -66,6 +69,28 @@ export function habitsByRung(rows: HabitRow[], guide: GuideMove[]): RungGroup[] 
       const habits = hs.map((h, i) => [h, i] as const).sort(([x, i], [y, j]) => STATE_ORDER.indexOf(x.state) - STATE_ORDER.indexOf(y.state) || i - j).map(([h]) => h);
       return { rung, habits, adopted: habits.filter((h) => h.state === "adopted").length };
     });
+}
+
+/** The kind-of-task changes behind one habit line (it can stand for the same habit in several jobs). */
+export const changesFor = (h: Habit, all: HabitChange[]): HabitChange[] =>
+  all.filter((x) => h.moves.includes(`${x.job}/${x.move_id}`));
+
+/** "↑ Growing in Adding a feature: 2 of 12 tasks, now 9 of 14". */
+export const changeText = (x: HabitChange): string =>
+  `${x.dir === "up" ? "↑ Growing" : "↓ Less often lately"} in ${x.label}: ${x.earlier_seen} of ${plural(x.earlier_eligible, "task")}, now ${x.recent_seen} of ${x.recent_eligible}`;
+
+/** How many habits grew or were used less, last `days` against the `days` before; nothing when none changed. */
+function ChangeChips({ changes, days }: { changes: HabitChange[]; days: number }) {
+  const up = changes.filter((x) => x.dir === "up").length;
+  const down = changes.length - up;
+  if (up + down === 0) return null;
+  return (
+    <p className="hc-sum">
+      {up > 0 && <span className="hc-chip up">↑ {up} growing</span>}
+      {down > 0 && <span className="hc-chip down">↓ {down} less often lately</span>}
+      <span className="meta">Last {days} days against the {days} before, where the change is bigger than chance</span>
+    </p>
+  );
 }
 
 /** Tips with the same tip and wording, newest first; the newest delivery leads. */
@@ -119,6 +144,7 @@ export function Tips(ctx: Ctx) {
         <Title>Habits and tips</Title>
         <p className="mute">Habits by the rung they help you reach. A habit counts as adopted when you do it in more than half of the tasks where it fits, over 14 days.</p>
         {msg && <p className="errtext" role="alert">{msg}</p>}
+        <ChangeChips changes={c.habit_changes} days={c.progress_days} />
       </header>
       <TipFunnelCard snap={ctx.snap} />
       {c.habits.length === 0 ? (
@@ -162,6 +188,11 @@ export function Tips(ctx: Ctx) {
                         <span className="meta">
                           {h.jobs.map(jobName).join(", ")} · <span className={`hb-state hb-${h.state}`}>{STATE_WORD[h.state]}</span>
                           {moved && <> · {moved}</>}
+                          {changesFor(h, c.habit_changes).map((x) => (
+                            <span key={`${x.task_type}/${x.move_id}`} className={`hc ${x.dir}`}>
+                              {changeText(x)}
+                            </span>
+                          ))}
                         </span>
                       </span>
                       {h.eligible > 0 ? (

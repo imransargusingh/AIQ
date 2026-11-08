@@ -201,8 +201,9 @@ export function Kind(ctx: Ctx & { kindId: string }) {
 }
 
 /** Rung of each judged task of this kind over the window, oldest left: dots joined by a line (Uncertain shown
- *  hollow and left off the line), a dashed line where the kind could reach, and the split where "last 14 days"
- *  starts. The move in the header is the same 14-day comparison Home and Tasks use. */
+ *  hollow and left off the line), and a dashed line where the kind could reach. The move in the header is the
+ *  same comparison Home and Tasks use (last `progress_days` against the `progress_days` before, beyond chance);
+ *  its split is drawn only when it falls inside the window. */
 function MovingUp({ k, tasks, c, now, days, off }: { k: KindRow; tasks: TaskRow[]; c: Coaching; now: number; days: number; off: number }) {
   const judged = tasks.filter((t) => t.judgment).sort((a, b) => a.first_ms - b.first_ms);
   if (judged.length === 0) return null;
@@ -213,10 +214,12 @@ function MovingUp({ k, tasks, c, now, days, off }: { k: KindRow; tasks: TaskRow[
   const rows = Array.from({ length: top }, (_, i) => top - i);
   const y = (r: number) => ((top - r) / (top - 1)) * 100;
   const sure = judged.filter((t) => t.judgment!.state !== "uncertain");
-  const split = x(now - c.progress_days * 86_400_000);
+  const split = c.progress_days < days ? x(now - c.progress_days * 86_400_000) : null;
   const move = !p || p.trend === "too_few"
     ? `Too few tasks to say: each half of ${c.progress_days} days needs ${c.progress_min} analyzed tasks.`
-    : p.trend === "same"
+    : p.trend === "same" && p.recent_rung !== p.earlier_rung
+      ? `Holding: ${rungLabel(p.earlier_rung!)} → ${rungLabel(p.recent_rung!)} over the last ${c.progress_days} days against the ${c.progress_days} before is within chance.`
+      : p.trend === "same"
       ? `Same rung, ${rungLabel(p.recent_rung!)}, in the last ${c.progress_days} days and the ${c.progress_days} before.`
       : `${rungLabel(p.earlier_rung!)} → ${rungLabel(p.recent_rung!)}, last ${c.progress_days} days against the ${c.progress_days} before.`;
   const label = `Rung of each analyzed task of this kind, oldest first: ${judged
@@ -242,7 +245,7 @@ function MovingUp({ k, tasks, c, now, days, off }: { k: KindRow; tasks: TaskRow[
             <i key={r} className="km-grid" style={{ top: `${y(r)}%` }} />
           ))}
           {k.potential != null && k.today != null && k.potential > k.today && <i className="km-could" style={{ top: `${y(k.potential)}%` }} />}
-          <i className="km-split" style={{ left: `${split}%` }} />
+          {split != null && <i className="km-split" style={{ left: `${split}%` }} />}
           <svg viewBox="0 0 100 100" preserveAspectRatio="none">
             <polyline points={sure.map((t) => `${x(t.first_ms)},${y(t.judgment!.current)}`).join(" ")} />
           </svg>
@@ -256,7 +259,7 @@ function MovingUp({ k, tasks, c, now, days, off }: { k: KindRow; tasks: TaskRow[
         </div>
         <div className="km-x meta" aria-hidden="true">
           <span style={{ left: 0 }}>{day(from, off)}</span>
-          <span style={{ left: `${split}%` }}>{c.progress_days} days ago</span>
+          {split != null && <span style={{ left: `${split}%` }}>{c.progress_days} days ago</span>}
           <span style={{ right: 0 }}>Today</span>
         </div>
       </figure>

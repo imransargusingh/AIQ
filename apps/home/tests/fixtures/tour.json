@@ -14,17 +14,17 @@
   },
   "home": {
     "window_days": 30,
-    "tasks_in_window": 43,
-    "judged": 42,
+    "tasks_in_window": 39,
+    "judged": 38,
     "uncertain": 2,
     "rungs": [
-      10,
-      15,
+      8,
+      13,
       15,
       0,
       0
     ],
-    "most_common_rung": 2,
+    "most_common_rung": 3,
     "judge_today": {
       "tasks": 0,
       "calls": 0,
@@ -34,7 +34,7 @@
     "analysis": {
       "state": "off",
       "waiting": 0,
-      "analyzed": 42,
+      "analyzed": 38,
       "today": 0,
       "daily": 500,
       "done_by_ms": null,
@@ -44,15 +44,15 @@
     "weeks": [
       {
         "start_ms": 1791115200000,
-        "tasks": 2
+        "tasks": 0
       },
       {
         "start_ms": 1791720000000,
-        "tasks": 14
+        "tasks": 6
       },
       {
         "start_ms": 1792324800000,
-        "tasks": 7
+        "tasks": 13
       },
       {
         "start_ms": 1792929600000,
@@ -62,7 +62,7 @@
     "by_tool": [
       [
         "copilot-cli",
-        43
+        39
       ]
     ],
     "set_aside": [],
@@ -250,11 +250,11 @@
       ]
     },
     {
-      "task_id": "019000000019-0000-7000-8000-000000000000",
+      "task_id": "019000000033-0000-7000-8000-000000000000",
       "tool": "copilot-cli",
       "folder": "c:\\users\\you\\source\\repos\\shop-api",
-      "first_ms": 1793447460000,
-      "last_ms": 1793447460000,
+      "first_ms": 1793447040000,
+      "last_ms": 1793447040000,
       "prompts": 1,
       "origin": "live",
       "job": "code_change",
@@ -283,9 +283,9 @@
         "read_actions": false,
         "versions": "fs1 · r1 · j2"
       },
-      "session": "p9",
+      "session": "p16",
       "prompt_ms": [
-        1793447460000
+        1793447040000
       ]
     },
     {
@@ -328,11 +328,11 @@
       ]
     },
     {
-      "task_id": "019000000027-0000-7000-8000-000000000000",
+      "task_id": "019000000035-0000-7000-8000-000000000000",
       "tool": "copilot-cli",
       "folder": "c:\\users\\you\\source\\repos\\shop-api",
-      "first_ms": 1793360820000,
-      "last_ms": 1793360820000,
+      "first_ms": 1793360580000,
+      "last_ms": 1793360580000,
       "prompts": 1,
       "origin": "live",
       "job": "write_doc",
@@ -361,17 +361,17 @@
         "read_actions": false,
         "versions": "fs1 · r1 · j2"
       },
-      "session": "p13",
+      "session": "p17",
       "prompt_ms": [
-        1793360820000
+        1793360580000
       ]
     },
     {
-      "task_id": "019000000039-0000-7000-8000-000000000000",
+      "task_id": "019000000065-0000-7000-8000-000000000000",
       "tool": "copilot-cli",
       "folder": "c:\\users\\you\\source\\repos\\shop-api",
-      "first_ms": 1793360460000,
-      "last_ms": 1793360460000,
+      "first_ms": 1793359680000,
+      "last_ms": 1793359680000,
       "prompts": 1,
       "origin": "live",
       "job": "code_change",
@@ -400,9 +400,9 @@
         "read_actions": false,
         "versions": "fs1 · r1 · j2"
       },
-      "session": "p19",
+      "session": "p32",
       "prompt_ms": [
-        1793360460000
+        1793359680000
       ]
     },
     {
@@ -445,11 +445,11 @@
       ]
     },
     {
-      "task_id": "019000000021-0000-7000-8000-000000000000",
+      "task_id": "019000000037-0000-7000-8000-000000000000",
       "tool": "copilot-cli",
       "folder": "c:\\users\\you\\source\\repos\\shop-api",
-      "first_ms": 1793274600000,
-      "last_ms": 1793274600000,
+      "first_ms": 1793274120000,
+      "last_ms": 1793274120000,
       "prompts": 1,
       "origin": "live",
       "job": "code_change",
@@ -478,17 +478,17 @@
         "read_actions": false,
         "versions": "fs1 · r1 · j2"
       },
-      "session": "p10",
+      "session": "p18",
       "prompt_ms": [
-        1793274600000
+        1793274120000
       ]
     },
     {
-      "task_id": "019000000029-0000-7000-8000-000000000000",
+      "task_id": "019000000053-0000-7000-8000-000000000000",
       "tool": "copilot-cli",
       "folder": "c:\\users\\you\\source\\repos\\shop-api",
-      "first_ms": 1793274360000,
-      "last_ms": 1793274360000,
+      "first_ms": 1793273640000,
+      "last_ms": 1793273640000,
       "prompts": 1,
       "origin": "live",
       "job": "code_change",
@@ -517,17 +517,17 @@
         "read_actions": false,
         "versions": "fs1 · r1 · j2"
       },
-      "session": "p14",
+      "session": "p26",
       "prompt_ms": [
-        1793274360000
+        1793273640000
       ]
     },
     {
-      "task_id": "019000000041-0000-7000-8000-000000000000",
+      "task_id": "019000000067-0000-7000-8000-000000000000",
       "tool": "copilot-cli",
       "folder": "c:\\users\\you\\source\\repos\\shop-api",
-      "first_ms": 1793274000000,
-      "last_ms": 1793274000000,
+      "first_ms": 1793273220000,
+      "last_ms": 1793273220000,
       "prompts": 1,
       "origin": "live",
       "job": "code_change",
@@ -556,9 +556,9 @@
         "read_actions": false,
         "versions": "fs1 · r1 · j2"
       },
-      "session": "p20",
+      "session": "p33",
       "prompt_ms": [
-        1793274000000
+        1793273220000
       ]
     },
     {
@@ -601,11 +601,11 @@
       ]
     },
     {
-      "task_id": "019000000031-0000-7000-8000-000000000000",
+      "task_id": "019000000039-0000-7000-8000-000000000000",
       "tool": "copilot-cli",
       "folder": "c:\\users\\you\\source\\repos\\shop-api",
-      "first_ms": 1793187900000,
-      "last_ms": 1793187900000,
+      "first_ms": 1793187660000,
+      "last_ms": 1793187660000,
       "prompts": 1,
       "origin": "live",
       "job": "write_doc",
@@ -634,17 +634,17 @@
         "read_actions": false,
         "versions": "fs1 · r1 · j2"
       },
-      "session": "p15",
+      "session": "p19",
       "prompt_ms": [
-        1793187900000
+        1793187660000
       ]
     },
     {
-      "task_id": "019000000023-0000-7000-8000-000000000000",
+      "task_id": "019000000041-0000-7000-8000-000000000000",
       "tool": "copilot-cli",
       "folder": "c:\\users\\you\\source\\repos\\shop-api",
-      "first_ms": 1793101740000,
-      "last_ms": 1793101740000,
+      "first_ms": 1793101200000,
+      "last_ms": 1793101200000,
       "prompts": 1,
       "origin": "live",
       "job": "code_change",
@@ -673,17 +673,17 @@
         "read_actions": false,
         "versions": "fs1 · r1 · j2"
       },
-      "session": "p11",
+      "session": "p20",
       "prompt_ms": [
-        1793101740000
+        1793101200000
       ]
     },
     {
-      "task_id": "019000000033-0000-7000-8000-000000000000",
+      "task_id": "019000000055-0000-7000-8000-000000000000",
       "tool": "copilot-cli",
       "folder": "c:\\users\\you\\source\\repos\\shop-api",
-      "first_ms": 1793101440000,
-      "last_ms": 1793101440000,
+      "first_ms": 1793100780000,
+      "last_ms": 1793100780000,
       "prompts": 1,
       "origin": "live",
       "job": "code_change",
@@ -712,9 +712,9 @@
         "read_actions": false,
         "versions": "fs1 · r1 · j2"
       },
-      "session": "p16",
+      "session": "p27",
       "prompt_ms": [
-        1793101440000
+        1793100780000
       ]
     },
     {
@@ -757,11 +757,11 @@
       ]
     },
     {
-      "task_id": "019000000035-0000-7000-8000-000000000000",
+      "task_id": "019000000043-0000-7000-8000-000000000000",
       "tool": "copilot-cli",
       "folder": "c:\\users\\you\\source\\repos\\shop-api",
-      "first_ms": 1793014980000,
-      "last_ms": 1793014980000,
+      "first_ms": 1793014740000,
+      "last_ms": 1793014740000,
       "prompts": 1,
       "origin": "live",
       "job": "write_doc",
@@ -790,9 +790,9 @@
         "read_actions": false,
         "versions": "fs1 · r1 · j2"
       },
-      "session": "p17",
+      "session": "p21",
       "prompt_ms": [
-        1793014980000
+        1793014740000
       ]
     },
     {
@@ -835,11 +835,11 @@
       ]
     },
     {
-      "task_id": "019000000025-0000-7000-8000-000000000000",
+      "task_id": "019000000045-0000-7000-8000-000000000000",
       "tool": "copilot-cli",
       "folder": "c:\\users\\you\\source\\repos\\shop-api",
-      "first_ms": 1792928880000,
-      "last_ms": 1792928880000,
+      "first_ms": 1792928280000,
+      "last_ms": 1792928280000,
       "prompts": 1,
       "origin": "live",
       "job": "code_change",
@@ -868,17 +868,17 @@
         "read_actions": false,
         "versions": "fs1 · r1 · j2"
       },
-      "session": "p12",
+      "session": "p22",
       "prompt_ms": [
-        1792928880000
+        1792928280000
       ]
     },
     {
-      "task_id": "019000000037-0000-7000-8000-000000000000",
+      "task_id": "019000000057-0000-7000-8000-000000000000",
       "tool": "copilot-cli",
       "folder": "c:\\users\\you\\source\\repos\\shop-api",
-      "first_ms": 1792928520000,
-      "last_ms": 1792928520000,
+      "first_ms": 1792927920000,
+      "last_ms": 1792927920000,
       "prompts": 1,
       "origin": "live",
       "job": "code_change",
@@ -907,9 +907,9 @@
         "read_actions": false,
         "versions": "fs1 · r1 · j2"
       },
-      "session": "p18",
+      "session": "p28",
       "prompt_ms": [
-        1792928520000
+        1792927920000
       ]
     },
     {
@@ -952,6 +952,123 @@
       ]
     },
     {
+      "task_id": "019000000047-0000-7000-8000-000000000000",
+      "tool": "copilot-cli",
+      "folder": "c:\\users\\you\\source\\repos\\shop-api",
+      "first_ms": 1792841820000,
+      "last_ms": 1792841820000,
+      "prompts": 1,
+      "origin": "live",
+      "job": "write_doc",
+      "rung": 2,
+      "judgment": {
+        "judged_ms": 1793534340000,
+        "state": "judged",
+        "current": 2,
+        "potential": 3,
+        "ceiling": 5,
+        "current_confidence": 0.85,
+        "potential_confidence": 0.85,
+        "job": "write_doc",
+        "task_type": "spec",
+        "task_type_label": "Writing a spec or PRD",
+        "coachable": true,
+        "evidence": [
+          "The agent wrote the tests."
+        ],
+        "gap": "Give the agent <b>a brief</b>.",
+        "blockers": [],
+        "provider": "copilot-cli",
+        "model": null,
+        "read_prompts": 2,
+        "read_chars": 0,
+        "read_actions": false,
+        "versions": "fs1 · r1 · j2"
+      },
+      "session": "p23",
+      "prompt_ms": [
+        1792841820000
+      ]
+    },
+    {
+      "task_id": "019000000059-0000-7000-8000-000000000000",
+      "tool": "copilot-cli",
+      "folder": "c:\\users\\you\\source\\repos\\shop-api",
+      "first_ms": 1792841460000,
+      "last_ms": 1792841460000,
+      "prompts": 1,
+      "origin": "live",
+      "job": "code_change",
+      "rung": 3,
+      "judgment": {
+        "judged_ms": 1793534340000,
+        "state": "judged",
+        "current": 3,
+        "potential": 4,
+        "ceiling": 5,
+        "current_confidence": 0.85,
+        "potential_confidence": 0.85,
+        "job": "code_change",
+        "task_type": "feature",
+        "task_type_label": "Adding a feature",
+        "coachable": true,
+        "evidence": [
+          "The agent wrote the tests."
+        ],
+        "gap": "Give the agent <b>a brief</b>.",
+        "blockers": [],
+        "provider": "copilot-cli",
+        "model": null,
+        "read_prompts": 2,
+        "read_chars": 0,
+        "read_actions": false,
+        "versions": "fs1 · r1 · j2"
+      },
+      "session": "p29",
+      "prompt_ms": [
+        1792841460000
+      ]
+    },
+    {
+      "task_id": "019000000049-0000-7000-8000-000000000000",
+      "tool": "copilot-cli",
+      "folder": "c:\\users\\you\\source\\repos\\shop-api",
+      "first_ms": 1792755360000,
+      "last_ms": 1792755360000,
+      "prompts": 1,
+      "origin": "live",
+      "job": "code_change",
+      "rung": 3,
+      "judgment": {
+        "judged_ms": 1793534340000,
+        "state": "judged",
+        "current": 3,
+        "potential": 4,
+        "ceiling": 5,
+        "current_confidence": 0.85,
+        "potential_confidence": 0.85,
+        "job": "code_change",
+        "task_type": "tests",
+        "task_type_label": "Writing tests",
+        "coachable": true,
+        "evidence": [
+          "The agent wrote the tests."
+        ],
+        "gap": "Give the agent <b>a brief</b>.",
+        "blockers": [],
+        "provider": "copilot-cli",
+        "model": null,
+        "read_prompts": 2,
+        "read_chars": 0,
+        "read_actions": false,
+        "versions": "fs1 · r1 · j2"
+      },
+      "session": "p24",
+      "prompt_ms": [
+        1792755360000
+      ]
+    },
+    {
       "task_id": "019000005013-0000-7000-8000-000000000000",
       "tool": "copilot-cli",
       "folder": "c:\\users\\you\\source\\repos\\shop-api",
@@ -988,6 +1105,84 @@
       "session": "k6",
       "prompt_ms": [
         1792753200000
+      ]
+    },
+    {
+      "task_id": "019000000051-0000-7000-8000-000000000000",
+      "tool": "copilot-cli",
+      "folder": "c:\\users\\you\\source\\repos\\shop-api",
+      "first_ms": 1792668900000,
+      "last_ms": 1792668900000,
+      "prompts": 1,
+      "origin": "live",
+      "job": "write_doc",
+      "rung": 2,
+      "judgment": {
+        "judged_ms": 1793534340000,
+        "state": "judged",
+        "current": 2,
+        "potential": 3,
+        "ceiling": 5,
+        "current_confidence": 0.85,
+        "potential_confidence": 0.85,
+        "job": "write_doc",
+        "task_type": "spec",
+        "task_type_label": "Writing a spec or PRD",
+        "coachable": true,
+        "evidence": [
+          "The agent wrote the tests."
+        ],
+        "gap": "Give the agent <b>a brief</b>.",
+        "blockers": [],
+        "provider": "copilot-cli",
+        "model": null,
+        "read_prompts": 2,
+        "read_chars": 0,
+        "read_actions": false,
+        "versions": "fs1 · r1 · j2"
+      },
+      "session": "p25",
+      "prompt_ms": [
+        1792668900000
+      ]
+    },
+    {
+      "task_id": "019000000061-0000-7000-8000-000000000000",
+      "tool": "copilot-cli",
+      "folder": "c:\\users\\you\\source\\repos\\shop-api",
+      "first_ms": 1792668600000,
+      "last_ms": 1792668600000,
+      "prompts": 1,
+      "origin": "live",
+      "job": "code_change",
+      "rung": 3,
+      "judgment": {
+        "judged_ms": 1793534340000,
+        "state": "judged",
+        "current": 3,
+        "potential": 4,
+        "ceiling": 5,
+        "current_confidence": 0.85,
+        "potential_confidence": 0.85,
+        "job": "code_change",
+        "task_type": "feature",
+        "task_type_label": "Adding a feature",
+        "coachable": true,
+        "evidence": [
+          "The agent wrote the tests."
+        ],
+        "gap": "Give the agent <b>a brief</b>.",
+        "blockers": [],
+        "provider": "copilot-cli",
+        "model": null,
+        "read_prompts": 2,
+        "read_chars": 0,
+        "read_actions": false,
+        "versions": "fs1 · r1 · j2"
+      },
+      "session": "p30",
+      "prompt_ms": [
+        1792668600000
       ]
     },
     {
@@ -1066,6 +1261,45 @@
       "session": "k8",
       "prompt_ms": [
         1792530000000
+      ]
+    },
+    {
+      "task_id": "019000000063-0000-7000-8000-000000000000",
+      "tool": "copilot-cli",
+      "folder": "c:\\users\\you\\source\\repos\\shop-api",
+      "first_ms": 1792495740000,
+      "last_ms": 1792495740000,
+      "prompts": 1,
+      "origin": "live",
+      "job": "code_change",
+      "rung": 1,
+      "judgment": {
+        "judged_ms": 1793534340000,
+        "state": "judged",
+        "current": 1,
+        "potential": 2,
+        "ceiling": 5,
+        "current_confidence": 0.85,
+        "potential_confidence": 0.85,
+        "job": "code_change",
+        "task_type": "feature",
+        "task_type_label": "Adding a feature",
+        "coachable": true,
+        "evidence": [
+          "The agent wrote the tests."
+        ],
+        "gap": "Give the agent <b>a brief</b>.",
+        "blockers": [],
+        "provider": "copilot-cli",
+        "model": null,
+        "read_prompts": 2,
+        "read_chars": 0,
+        "read_actions": false,
+        "versions": "fs1 · r1 · j2"
+      },
+      "session": "p31",
+      "prompt_ms": [
+        1792495740000
       ]
     },
     {
@@ -1186,45 +1420,6 @@
       ]
     },
     {
-      "task_id": "019000000001-0000-7000-8000-000000000000",
-      "tool": "copilot-cli",
-      "folder": "c:\\users\\you\\source\\repos\\shop-api",
-      "first_ms": 1792152000000,
-      "last_ms": 1792152000000,
-      "prompts": 1,
-      "origin": "live",
-      "job": "code_change",
-      "rung": 2,
-      "judgment": {
-        "judged_ms": 1793534340000,
-        "state": "judged",
-        "current": 2,
-        "potential": 3,
-        "ceiling": 5,
-        "current_confidence": 0.85,
-        "potential_confidence": 0.85,
-        "job": "code_change",
-        "task_type": "tests",
-        "task_type_label": "Writing tests",
-        "coachable": true,
-        "evidence": [
-          "The agent wrote the tests."
-        ],
-        "gap": "Give the agent <b>a brief</b>.",
-        "blockers": [],
-        "provider": "copilot-cli",
-        "model": null,
-        "read_prompts": 2,
-        "read_chars": 0,
-        "read_actions": false,
-        "versions": "fs1 · r1 · j2"
-      },
-      "session": "p0",
-      "prompt_ms": [
-        1792152000000
-      ]
-    },
-    {
       "task_id": "019000005025-0000-7000-8000-000000000000",
       "tool": "copilot-cli",
       "folder": "c:\\users\\you\\source\\repos\\shop-api",
@@ -1261,162 +1456,6 @@
       "session": "k12",
       "prompt_ms": [
         1792083600000
-      ]
-    },
-    {
-      "task_id": "019000000003-0000-7000-8000-000000000000",
-      "tool": "copilot-cli",
-      "folder": "c:\\users\\you\\source\\repos\\shop-api",
-      "first_ms": 1792065540000,
-      "last_ms": 1792065540000,
-      "prompts": 1,
-      "origin": "live",
-      "job": "write_doc",
-      "rung": 3,
-      "judgment": {
-        "judged_ms": 1793534340000,
-        "state": "judged",
-        "current": 3,
-        "potential": 4,
-        "ceiling": 5,
-        "current_confidence": 0.85,
-        "potential_confidence": 0.85,
-        "job": "write_doc",
-        "task_type": "spec",
-        "task_type_label": "Writing a spec or PRD",
-        "coachable": true,
-        "evidence": [
-          "The agent wrote the tests."
-        ],
-        "gap": "Give the agent <b>a brief</b>.",
-        "blockers": [],
-        "provider": "copilot-cli",
-        "model": null,
-        "read_prompts": 2,
-        "read_chars": 0,
-        "read_actions": false,
-        "versions": "fs1 · r1 · j2"
-      },
-      "session": "p1",
-      "prompt_ms": [
-        1792065540000
-      ]
-    },
-    {
-      "task_id": "019000000043-0000-7000-8000-000000000000",
-      "tool": "copilot-cli",
-      "folder": "c:\\users\\you\\source\\repos\\shop-api",
-      "first_ms": 1792064340000,
-      "last_ms": 1792064340000,
-      "prompts": 1,
-      "origin": "live",
-      "job": "code_change",
-      "rung": 2,
-      "judgment": {
-        "judged_ms": 1793534340000,
-        "state": "judged",
-        "current": 2,
-        "potential": 3,
-        "ceiling": 5,
-        "current_confidence": 0.85,
-        "potential_confidence": 0.85,
-        "job": "code_change",
-        "task_type": "refactor",
-        "task_type_label": "Refactoring or cleaning up",
-        "coachable": true,
-        "evidence": [
-          "The agent wrote the tests."
-        ],
-        "gap": "Give the agent <b>a brief</b>.",
-        "blockers": [],
-        "provider": "copilot-cli",
-        "model": null,
-        "read_prompts": 2,
-        "read_chars": 0,
-        "read_actions": false,
-        "versions": "fs1 · r1 · j2"
-      },
-      "session": "p21",
-      "prompt_ms": [
-        1792064340000
-      ]
-    },
-    {
-      "task_id": "019000000005-0000-7000-8000-000000000000",
-      "tool": "copilot-cli",
-      "folder": "c:\\users\\you\\source\\repos\\shop-api",
-      "first_ms": 1791979080000,
-      "last_ms": 1791979080000,
-      "prompts": 1,
-      "origin": "live",
-      "job": "code_change",
-      "rung": 1,
-      "judgment": {
-        "judged_ms": 1793534340000,
-        "state": "right_rung",
-        "current": 1,
-        "potential": 1,
-        "ceiling": 5,
-        "current_confidence": 0.85,
-        "potential_confidence": 0.85,
-        "job": "code_change",
-        "task_type": "fix_bug",
-        "task_type_label": "Fixing a bug or failing test",
-        "coachable": false,
-        "evidence": [
-          "The agent wrote the tests."
-        ],
-        "gap": "Give the agent <b>a brief</b>.",
-        "blockers": [],
-        "provider": "copilot-cli",
-        "model": null,
-        "read_prompts": 2,
-        "read_chars": 0,
-        "read_actions": false,
-        "versions": "fs1 · r1 · j2"
-      },
-      "session": "p2",
-      "prompt_ms": [
-        1791979080000
-      ]
-    },
-    {
-      "task_id": "019000000007-0000-7000-8000-000000000000",
-      "tool": "copilot-cli",
-      "folder": "c:\\users\\you\\source\\repos\\shop-api",
-      "first_ms": 1791979020000,
-      "last_ms": 1791979020000,
-      "prompts": 1,
-      "origin": "live",
-      "job": "code_change",
-      "rung": 2,
-      "judgment": {
-        "judged_ms": 1793534340000,
-        "state": "judged",
-        "current": 2,
-        "potential": 3,
-        "ceiling": 5,
-        "current_confidence": 0.85,
-        "potential_confidence": 0.85,
-        "job": "code_change",
-        "task_type": "tests",
-        "task_type_label": "Writing tests",
-        "coachable": true,
-        "evidence": [
-          "The agent wrote the tests."
-        ],
-        "gap": "Give the agent <b>a brief</b>.",
-        "blockers": [],
-        "provider": "copilot-cli",
-        "model": null,
-        "read_prompts": 2,
-        "read_chars": 0,
-        "read_actions": false,
-        "versions": "fs1 · r1 · j2"
-      },
-      "session": "p3",
-      "prompt_ms": [
-        1791979020000
       ]
     },
     {
@@ -1459,45 +1498,6 @@
       ]
     },
     {
-      "task_id": "019000000009-0000-7000-8000-000000000000",
-      "tool": "copilot-cli",
-      "folder": "c:\\users\\you\\source\\repos\\shop-api",
-      "first_ms": 1791892560000,
-      "last_ms": 1791892560000,
-      "prompts": 1,
-      "origin": "live",
-      "job": "write_doc",
-      "rung": 3,
-      "judgment": {
-        "judged_ms": 1793534340000,
-        "state": "judged",
-        "current": 3,
-        "potential": 4,
-        "ceiling": 5,
-        "current_confidence": 0.85,
-        "potential_confidence": 0.85,
-        "job": "write_doc",
-        "task_type": "spec",
-        "task_type_label": "Writing a spec or PRD",
-        "coachable": true,
-        "evidence": [
-          "The agent wrote the tests."
-        ],
-        "gap": "Give the agent <b>a brief</b>.",
-        "blockers": [],
-        "provider": "copilot-cli",
-        "model": null,
-        "read_prompts": 2,
-        "read_chars": 0,
-        "read_actions": false,
-        "versions": "fs1 · r1 · j2"
-      },
-      "session": "p4",
-      "prompt_ms": [
-        1791892560000
-      ]
-    },
-    {
       "task_id": "019000005029-0000-7000-8000-000000000000",
       "tool": "copilot-cli",
       "folder": "c:\\users\\you\\source\\repos\\shop-api",
@@ -1537,84 +1537,6 @@
       ]
     },
     {
-      "task_id": "019000000011-0000-7000-8000-000000000000",
-      "tool": "copilot-cli",
-      "folder": "c:\\users\\you\\source\\repos\\shop-api",
-      "first_ms": 1791806100000,
-      "last_ms": 1791806100000,
-      "prompts": 1,
-      "origin": "live",
-      "job": "code_change",
-      "rung": 1,
-      "judgment": {
-        "judged_ms": 1793534340000,
-        "state": "right_rung",
-        "current": 1,
-        "potential": 1,
-        "ceiling": 5,
-        "current_confidence": 0.85,
-        "potential_confidence": 0.85,
-        "job": "code_change",
-        "task_type": "fix_bug",
-        "task_type_label": "Fixing a bug or failing test",
-        "coachable": false,
-        "evidence": [
-          "The agent wrote the tests."
-        ],
-        "gap": "Give the agent <b>a brief</b>.",
-        "blockers": [],
-        "provider": "copilot-cli",
-        "model": null,
-        "read_prompts": 2,
-        "read_chars": 0,
-        "read_actions": false,
-        "versions": "fs1 · r1 · j2"
-      },
-      "session": "p5",
-      "prompt_ms": [
-        1791806100000
-      ]
-    },
-    {
-      "task_id": "019000000013-0000-7000-8000-000000000000",
-      "tool": "copilot-cli",
-      "folder": "c:\\users\\you\\source\\repos\\shop-api",
-      "first_ms": 1791806040000,
-      "last_ms": 1791806040000,
-      "prompts": 1,
-      "origin": "live",
-      "job": "code_change",
-      "rung": 2,
-      "judgment": {
-        "judged_ms": 1793534340000,
-        "state": "judged",
-        "current": 2,
-        "potential": 3,
-        "ceiling": 5,
-        "current_confidence": 0.85,
-        "potential_confidence": 0.85,
-        "job": "code_change",
-        "task_type": "tests",
-        "task_type_label": "Writing tests",
-        "coachable": true,
-        "evidence": [
-          "The agent wrote the tests."
-        ],
-        "gap": "Give the agent <b>a brief</b>.",
-        "blockers": [],
-        "provider": "copilot-cli",
-        "model": null,
-        "read_prompts": 2,
-        "read_chars": 0,
-        "read_actions": false,
-        "versions": "fs1 · r1 · j2"
-      },
-      "session": "p6",
-      "prompt_ms": [
-        1791806040000
-      ]
-    },
-    {
       "task_id": "019000005031-0000-7000-8000-000000000000",
       "tool": "copilot-cli",
       "folder": "c:\\users\\you\\source\\repos\\shop-api",
@@ -1651,84 +1573,6 @@
       "session": "k15",
       "prompt_ms": [
         1791748800000
-      ]
-    },
-    {
-      "task_id": "019000000015-0000-7000-8000-000000000000",
-      "tool": "copilot-cli",
-      "folder": "c:\\users\\you\\source\\repos\\shop-api",
-      "first_ms": 1791719580000,
-      "last_ms": 1791719580000,
-      "prompts": 1,
-      "origin": "live",
-      "job": "write_doc",
-      "rung": 3,
-      "judgment": {
-        "judged_ms": 1793534340000,
-        "state": "judged",
-        "current": 3,
-        "potential": 4,
-        "ceiling": 5,
-        "current_confidence": 0.85,
-        "potential_confidence": 0.85,
-        "job": "write_doc",
-        "task_type": "spec",
-        "task_type_label": "Writing a spec or PRD",
-        "coachable": true,
-        "evidence": [
-          "The agent wrote the tests."
-        ],
-        "gap": "Give the agent <b>a brief</b>.",
-        "blockers": [],
-        "provider": "copilot-cli",
-        "model": null,
-        "read_prompts": 2,
-        "read_chars": 0,
-        "read_actions": false,
-        "versions": "fs1 · r1 · j2"
-      },
-      "session": "p7",
-      "prompt_ms": [
-        1791719580000
-      ]
-    },
-    {
-      "task_id": "019000000017-0000-7000-8000-000000000000",
-      "tool": "copilot-cli",
-      "folder": "c:\\users\\you\\source\\repos\\shop-api",
-      "first_ms": 1791633120000,
-      "last_ms": 1791633120000,
-      "prompts": 1,
-      "origin": "live",
-      "job": "code_change",
-      "rung": 1,
-      "judgment": {
-        "judged_ms": 1793534340000,
-        "state": "right_rung",
-        "current": 1,
-        "potential": 1,
-        "ceiling": 5,
-        "current_confidence": 0.85,
-        "potential_confidence": 0.85,
-        "job": "code_change",
-        "task_type": "fix_bug",
-        "task_type_label": "Fixing a bug or failing test",
-        "coachable": false,
-        "evidence": [
-          "The agent wrote the tests."
-        ],
-        "gap": "Give the agent <b>a brief</b>.",
-        "blockers": [],
-        "provider": "copilot-cli",
-        "model": null,
-        "read_prompts": 2,
-        "read_chars": 0,
-        "read_actions": false,
-        "versions": "fs1 · r1 · j2"
-      },
-      "session": "p8",
-      "prompt_ms": [
-        1791633120000
       ]
     }
   ],
@@ -1774,9 +1618,9 @@
     }
   ],
   "data": {
-    "events": 97,
-    "prompts": 51,
-    "turn_ends": 46,
+    "events": 123,
+    "prompts": 64,
+    "turn_ends": 59,
     "imported_sessions": 0,
     "imported_events": 0,
     "store_bytes": 336000,
@@ -1950,19 +1794,19 @@
         "deleted": false
       },
       {
-        "event_id": "019000000020-0000-7000-8000-000000000000",
-        "ts_ms": 1793447640000,
+        "event_id": "019000000034-0000-7000-8000-000000000000",
+        "ts_ms": 1793447220000,
         "tool": "copilot-cli",
         "kind": "stop",
         "text": null,
         "deleted": false
       },
       {
-        "event_id": "019000000019-0000-7000-8000-000000000000",
-        "ts_ms": 1793447460000,
+        "event_id": "019000000033-0000-7000-8000-000000000000",
+        "ts_ms": 1793447040000,
         "tool": "copilot-cli",
         "kind": "prompt",
-        "text": "tests task number 9",
+        "text": "tests task number 16",
         "deleted": false
       },
       {
@@ -1982,35 +1826,35 @@
         "deleted": false
       },
       {
-        "event_id": "019000000028-0000-7000-8000-000000000000",
-        "ts_ms": 1793361000000,
+        "event_id": "019000000036-0000-7000-8000-000000000000",
+        "ts_ms": 1793360760000,
         "tool": "copilot-cli",
         "kind": "stop",
         "text": null,
         "deleted": false
       },
       {
-        "event_id": "019000000027-0000-7000-8000-000000000000",
-        "ts_ms": 1793360820000,
+        "event_id": "019000000035-0000-7000-8000-000000000000",
+        "ts_ms": 1793360580000,
         "tool": "copilot-cli",
         "kind": "prompt",
-        "text": "spec task number 13",
+        "text": "spec task number 17",
         "deleted": false
       },
       {
-        "event_id": "019000000040-0000-7000-8000-000000000000",
-        "ts_ms": 1793360640000,
+        "event_id": "019000000066-0000-7000-8000-000000000000",
+        "ts_ms": 1793359860000,
         "tool": "copilot-cli",
         "kind": "stop",
         "text": null,
         "deleted": false
       },
       {
-        "event_id": "019000000039-0000-7000-8000-000000000000",
-        "ts_ms": 1793360460000,
+        "event_id": "019000000065-0000-7000-8000-000000000000",
+        "ts_ms": 1793359680000,
         "tool": "copilot-cli",
         "kind": "prompt",
-        "text": "tests task number 19",
+        "text": "tests task number 32",
         "deleted": false
       },
       {
@@ -2030,51 +1874,51 @@
         "deleted": false
       },
       {
-        "event_id": "019000000022-0000-7000-8000-000000000000",
-        "ts_ms": 1793274780000,
+        "event_id": "019000000038-0000-7000-8000-000000000000",
+        "ts_ms": 1793274300000,
         "tool": "copilot-cli",
         "kind": "stop",
         "text": null,
         "deleted": false
       },
       {
-        "event_id": "019000000021-0000-7000-8000-000000000000",
-        "ts_ms": 1793274600000,
+        "event_id": "019000000037-0000-7000-8000-000000000000",
+        "ts_ms": 1793274120000,
         "tool": "copilot-cli",
         "kind": "prompt",
-        "text": "tests task number 10",
+        "text": "tests task number 18",
         "deleted": false
       },
       {
-        "event_id": "019000000030-0000-7000-8000-000000000000",
-        "ts_ms": 1793274540000,
+        "event_id": "019000000054-0000-7000-8000-000000000000",
+        "ts_ms": 1793273820000,
         "tool": "copilot-cli",
         "kind": "stop",
         "text": null,
         "deleted": false
       },
       {
-        "event_id": "019000000029-0000-7000-8000-000000000000",
-        "ts_ms": 1793274360000,
+        "event_id": "019000000053-0000-7000-8000-000000000000",
+        "ts_ms": 1793273640000,
         "tool": "copilot-cli",
         "kind": "prompt",
-        "text": "fix_bug task number 14",
+        "text": "fix_bug task number 26",
         "deleted": false
       },
       {
-        "event_id": "019000000042-0000-7000-8000-000000000000",
-        "ts_ms": 1793274180000,
+        "event_id": "019000000068-0000-7000-8000-000000000000",
+        "ts_ms": 1793273400000,
         "tool": "copilot-cli",
         "kind": "stop",
         "text": null,
         "deleted": false
       },
       {
-        "event_id": "019000000041-0000-7000-8000-000000000000",
-        "ts_ms": 1793274000000,
+        "event_id": "019000000067-0000-7000-8000-000000000000",
+        "ts_ms": 1793273220000,
         "tool": "copilot-cli",
         "kind": "prompt",
-        "text": "refactor task number 20",
+        "text": "refactor task number 33",
         "deleted": false
       },
       {
@@ -2094,51 +1938,51 @@
         "deleted": false
       },
       {
-        "event_id": "019000000032-0000-7000-8000-000000000000",
-        "ts_ms": 1793188080000,
+        "event_id": "019000000040-0000-7000-8000-000000000000",
+        "ts_ms": 1793187840000,
         "tool": "copilot-cli",
         "kind": "stop",
         "text": null,
         "deleted": false
       },
       {
-        "event_id": "019000000031-0000-7000-8000-000000000000",
-        "ts_ms": 1793187900000,
+        "event_id": "019000000039-0000-7000-8000-000000000000",
+        "ts_ms": 1793187660000,
         "tool": "copilot-cli",
         "kind": "prompt",
-        "text": "spec task number 15",
+        "text": "spec task number 19",
         "deleted": false
       },
       {
-        "event_id": "019000000024-0000-7000-8000-000000000000",
-        "ts_ms": 1793101920000,
+        "event_id": "019000000042-0000-7000-8000-000000000000",
+        "ts_ms": 1793101380000,
         "tool": "copilot-cli",
         "kind": "stop",
         "text": null,
         "deleted": false
       },
       {
-        "event_id": "019000000023-0000-7000-8000-000000000000",
-        "ts_ms": 1793101740000,
+        "event_id": "019000000041-0000-7000-8000-000000000000",
+        "ts_ms": 1793101200000,
         "tool": "copilot-cli",
         "kind": "prompt",
-        "text": "tests task number 11",
+        "text": "tests task number 20",
         "deleted": false
       },
       {
-        "event_id": "019000000034-0000-7000-8000-000000000000",
-        "ts_ms": 1793101620000,
+        "event_id": "019000000056-0000-7000-8000-000000000000",
+        "ts_ms": 1793100960000,
         "tool": "copilot-cli",
         "kind": "stop",
         "text": null,
         "deleted": false
       },
       {
-        "event_id": "019000000033-0000-7000-8000-000000000000",
-        "ts_ms": 1793101440000,
+        "event_id": "019000000055-0000-7000-8000-000000000000",
+        "ts_ms": 1793100780000,
         "tool": "copilot-cli",
         "kind": "prompt",
-        "text": "fix_bug task number 16",
+        "text": "fix_bug task number 27",
         "deleted": false
       },
       {
@@ -2158,19 +2002,19 @@
         "deleted": false
       },
       {
-        "event_id": "019000000036-0000-7000-8000-000000000000",
-        "ts_ms": 1793015160000,
+        "event_id": "019000000044-0000-7000-8000-000000000000",
+        "ts_ms": 1793014920000,
         "tool": "copilot-cli",
         "kind": "stop",
         "text": null,
         "deleted": false
       },
       {
-        "event_id": "019000000035-0000-7000-8000-000000000000",
-        "ts_ms": 1793014980000,
+        "event_id": "019000000043-0000-7000-8000-000000000000",
+        "ts_ms": 1793014740000,
         "tool": "copilot-cli",
         "kind": "prompt",
-        "text": "spec task number 17",
+        "text": "spec task number 21",
         "deleted": false
       },
       {
@@ -2190,35 +2034,35 @@
         "deleted": false
       },
       {
-        "event_id": "019000000026-0000-7000-8000-000000000000",
-        "ts_ms": 1792929060000,
+        "event_id": "019000000046-0000-7000-8000-000000000000",
+        "ts_ms": 1792928460000,
         "tool": "copilot-cli",
         "kind": "stop",
         "text": null,
         "deleted": false
       },
       {
-        "event_id": "019000000025-0000-7000-8000-000000000000",
-        "ts_ms": 1792928880000,
+        "event_id": "019000000045-0000-7000-8000-000000000000",
+        "ts_ms": 1792928280000,
         "tool": "copilot-cli",
         "kind": "prompt",
-        "text": "tests task number 12",
+        "text": "tests task number 22",
         "deleted": false
       },
       {
-        "event_id": "019000000038-0000-7000-8000-000000000000",
-        "ts_ms": 1792928700000,
+        "event_id": "019000000058-0000-7000-8000-000000000000",
+        "ts_ms": 1792928100000,
         "tool": "copilot-cli",
         "kind": "stop",
         "text": null,
         "deleted": false
       },
       {
-        "event_id": "019000000037-0000-7000-8000-000000000000",
-        "ts_ms": 1792928520000,
+        "event_id": "019000000057-0000-7000-8000-000000000000",
+        "ts_ms": 1792927920000,
         "tool": "copilot-cli",
         "kind": "prompt",
-        "text": "fix_bug task number 18",
+        "text": "fix_bug task number 28",
         "deleted": false
       },
       {
@@ -2238,6 +2082,54 @@
         "deleted": false
       },
       {
+        "event_id": "019000000048-0000-7000-8000-000000000000",
+        "ts_ms": 1792842000000,
+        "tool": "copilot-cli",
+        "kind": "stop",
+        "text": null,
+        "deleted": false
+      },
+      {
+        "event_id": "019000000047-0000-7000-8000-000000000000",
+        "ts_ms": 1792841820000,
+        "tool": "copilot-cli",
+        "kind": "prompt",
+        "text": "spec task number 23",
+        "deleted": false
+      },
+      {
+        "event_id": "019000000060-0000-7000-8000-000000000000",
+        "ts_ms": 1792841640000,
+        "tool": "copilot-cli",
+        "kind": "stop",
+        "text": null,
+        "deleted": false
+      },
+      {
+        "event_id": "019000000059-0000-7000-8000-000000000000",
+        "ts_ms": 1792841460000,
+        "tool": "copilot-cli",
+        "kind": "prompt",
+        "text": "feature task number 29",
+        "deleted": false
+      },
+      {
+        "event_id": "019000000050-0000-7000-8000-000000000000",
+        "ts_ms": 1792755540000,
+        "tool": "copilot-cli",
+        "kind": "stop",
+        "text": null,
+        "deleted": false
+      },
+      {
+        "event_id": "019000000049-0000-7000-8000-000000000000",
+        "ts_ms": 1792755360000,
+        "tool": "copilot-cli",
+        "kind": "prompt",
+        "text": "tests task number 24",
+        "deleted": false
+      },
+      {
         "event_id": "019000005014-0000-7000-8000-000000000000",
         "ts_ms": 1792753380000,
         "tool": "copilot-cli",
@@ -2251,6 +2143,38 @@
         "tool": "copilot-cli",
         "kind": "prompt",
         "text": "test this",
+        "deleted": false
+      },
+      {
+        "event_id": "019000000052-0000-7000-8000-000000000000",
+        "ts_ms": 1792669080000,
+        "tool": "copilot-cli",
+        "kind": "stop",
+        "text": null,
+        "deleted": false
+      },
+      {
+        "event_id": "019000000051-0000-7000-8000-000000000000",
+        "ts_ms": 1792668900000,
+        "tool": "copilot-cli",
+        "kind": "prompt",
+        "text": "spec task number 25",
+        "deleted": false
+      },
+      {
+        "event_id": "019000000062-0000-7000-8000-000000000000",
+        "ts_ms": 1792668780000,
+        "tool": "copilot-cli",
+        "kind": "stop",
+        "text": null,
+        "deleted": false
+      },
+      {
+        "event_id": "019000000061-0000-7000-8000-000000000000",
+        "ts_ms": 1792668600000,
+        "tool": "copilot-cli",
+        "kind": "prompt",
+        "text": "feature task number 30",
         "deleted": false
       },
       {
@@ -2283,6 +2207,22 @@
         "tool": "copilot-cli",
         "kind": "prompt",
         "text": "write the PRD for sharing",
+        "deleted": false
+      },
+      {
+        "event_id": "019000000064-0000-7000-8000-000000000000",
+        "ts_ms": 1792495920000,
+        "tool": "copilot-cli",
+        "kind": "stop",
+        "text": null,
+        "deleted": false
+      },
+      {
+        "event_id": "019000000063-0000-7000-8000-000000000000",
+        "ts_ms": 1792495740000,
+        "tool": "copilot-cli",
+        "kind": "prompt",
+        "text": "feature task number 31",
         "deleted": false
       },
       {
@@ -2334,22 +2274,6 @@
         "deleted": false
       },
       {
-        "event_id": "019000000002-0000-7000-8000-000000000000",
-        "ts_ms": 1792152180000,
-        "tool": "copilot-cli",
-        "kind": "stop",
-        "text": null,
-        "deleted": false
-      },
-      {
-        "event_id": "019000000001-0000-7000-8000-000000000000",
-        "ts_ms": 1792152000000,
-        "tool": "copilot-cli",
-        "kind": "prompt",
-        "text": "tests task number 0",
-        "deleted": false
-      },
-      {
         "event_id": "019000005026-0000-7000-8000-000000000000",
         "ts_ms": 1792083780000,
         "tool": "copilot-cli",
@@ -2363,70 +2287,6 @@
         "tool": "copilot-cli",
         "kind": "prompt",
         "text": "the parser test fails, fix it",
-        "deleted": false
-      },
-      {
-        "event_id": "019000000004-0000-7000-8000-000000000000",
-        "ts_ms": 1792065720000,
-        "tool": "copilot-cli",
-        "kind": "stop",
-        "text": null,
-        "deleted": false
-      },
-      {
-        "event_id": "019000000003-0000-7000-8000-000000000000",
-        "ts_ms": 1792065540000,
-        "tool": "copilot-cli",
-        "kind": "prompt",
-        "text": "spec task number 1",
-        "deleted": false
-      },
-      {
-        "event_id": "019000000044-0000-7000-8000-000000000000",
-        "ts_ms": 1792064520000,
-        "tool": "copilot-cli",
-        "kind": "stop",
-        "text": null,
-        "deleted": false
-      },
-      {
-        "event_id": "019000000043-0000-7000-8000-000000000000",
-        "ts_ms": 1792064340000,
-        "tool": "copilot-cli",
-        "kind": "prompt",
-        "text": "refactor task number 21",
-        "deleted": false
-      },
-      {
-        "event_id": "019000000006-0000-7000-8000-000000000000",
-        "ts_ms": 1791979260000,
-        "tool": "copilot-cli",
-        "kind": "stop",
-        "text": null,
-        "deleted": false
-      },
-      {
-        "event_id": "019000000008-0000-7000-8000-000000000000",
-        "ts_ms": 1791979200000,
-        "tool": "copilot-cli",
-        "kind": "stop",
-        "text": null,
-        "deleted": false
-      },
-      {
-        "event_id": "019000000005-0000-7000-8000-000000000000",
-        "ts_ms": 1791979080000,
-        "tool": "copilot-cli",
-        "kind": "prompt",
-        "text": "fix_bug task number 2",
-        "deleted": false
-      },
-      {
-        "event_id": "019000000007-0000-7000-8000-000000000000",
-        "ts_ms": 1791979020000,
-        "tool": "copilot-cli",
-        "kind": "prompt",
-        "text": "tests task number 3",
         "deleted": false
       },
       {
@@ -2446,22 +2306,6 @@
         "deleted": false
       },
       {
-        "event_id": "019000000010-0000-7000-8000-000000000000",
-        "ts_ms": 1791892740000,
-        "tool": "copilot-cli",
-        "kind": "stop",
-        "text": null,
-        "deleted": false
-      },
-      {
-        "event_id": "019000000009-0000-7000-8000-000000000000",
-        "ts_ms": 1791892560000,
-        "tool": "copilot-cli",
-        "kind": "prompt",
-        "text": "spec task number 4",
-        "deleted": false
-      },
-      {
         "event_id": "019000005030-0000-7000-8000-000000000000",
         "ts_ms": 1791860580000,
         "tool": "copilot-cli",
@@ -2475,38 +2319,6 @@
         "tool": "copilot-cli",
         "kind": "prompt",
         "text": "clean up the CLI module",
-        "deleted": false
-      },
-      {
-        "event_id": "019000000012-0000-7000-8000-000000000000",
-        "ts_ms": 1791806280000,
-        "tool": "copilot-cli",
-        "kind": "stop",
-        "text": null,
-        "deleted": false
-      },
-      {
-        "event_id": "019000000014-0000-7000-8000-000000000000",
-        "ts_ms": 1791806220000,
-        "tool": "copilot-cli",
-        "kind": "stop",
-        "text": null,
-        "deleted": false
-      },
-      {
-        "event_id": "019000000011-0000-7000-8000-000000000000",
-        "ts_ms": 1791806100000,
-        "tool": "copilot-cli",
-        "kind": "prompt",
-        "text": "fix_bug task number 5",
-        "deleted": false
-      },
-      {
-        "event_id": "019000000013-0000-7000-8000-000000000000",
-        "ts_ms": 1791806040000,
-        "tool": "copilot-cli",
-        "kind": "prompt",
-        "text": "tests task number 6",
         "deleted": false
       },
       {
@@ -2526,8 +2338,232 @@
         "deleted": false
       },
       {
+        "event_id": "019000000002-0000-7000-8000-000000000000",
+        "ts_ms": 1790424180000,
+        "tool": "copilot-cli",
+        "kind": "stop",
+        "text": null,
+        "deleted": false
+      },
+      {
+        "event_id": "019000000001-0000-7000-8000-000000000000",
+        "ts_ms": 1790424000000,
+        "tool": "copilot-cli",
+        "kind": "prompt",
+        "text": "tests task number 0",
+        "deleted": false
+      },
+      {
+        "event_id": "019000000004-0000-7000-8000-000000000000",
+        "ts_ms": 1790337720000,
+        "tool": "copilot-cli",
+        "kind": "stop",
+        "text": null,
+        "deleted": false
+      },
+      {
+        "event_id": "019000000003-0000-7000-8000-000000000000",
+        "ts_ms": 1790337540000,
+        "tool": "copilot-cli",
+        "kind": "prompt",
+        "text": "spec task number 1",
+        "deleted": false
+      },
+      {
+        "event_id": "019000000028-0000-7000-8000-000000000000",
+        "ts_ms": 1790337000000,
+        "tool": "copilot-cli",
+        "kind": "stop",
+        "text": null,
+        "deleted": false
+      },
+      {
+        "event_id": "019000000027-0000-7000-8000-000000000000",
+        "ts_ms": 1790336820000,
+        "tool": "copilot-cli",
+        "kind": "prompt",
+        "text": "feature task number 13",
+        "deleted": false
+      },
+      {
+        "event_id": "019000000070-0000-7000-8000-000000000000",
+        "ts_ms": 1790335740000,
+        "tool": "copilot-cli",
+        "kind": "stop",
+        "text": null,
+        "deleted": false
+      },
+      {
+        "event_id": "019000000069-0000-7000-8000-000000000000",
+        "ts_ms": 1790335560000,
+        "tool": "copilot-cli",
+        "kind": "prompt",
+        "text": "refactor task number 34",
+        "deleted": false
+      },
+      {
+        "event_id": "019000000006-0000-7000-8000-000000000000",
+        "ts_ms": 1790251260000,
+        "tool": "copilot-cli",
+        "kind": "stop",
+        "text": null,
+        "deleted": false
+      },
+      {
+        "event_id": "019000000005-0000-7000-8000-000000000000",
+        "ts_ms": 1790251080000,
+        "tool": "copilot-cli",
+        "kind": "prompt",
+        "text": "tests task number 2",
+        "deleted": false
+      },
+      {
+        "event_id": "019000000022-0000-7000-8000-000000000000",
+        "ts_ms": 1790250780000,
+        "tool": "copilot-cli",
+        "kind": "stop",
+        "text": null,
+        "deleted": false
+      },
+      {
+        "event_id": "019000000021-0000-7000-8000-000000000000",
+        "ts_ms": 1790250600000,
+        "tool": "copilot-cli",
+        "kind": "prompt",
+        "text": "fix_bug task number 10",
+        "deleted": false
+      },
+      {
+        "event_id": "019000000008-0000-7000-8000-000000000000",
+        "ts_ms": 1790164800000,
+        "tool": "copilot-cli",
+        "kind": "stop",
+        "text": null,
+        "deleted": false
+      },
+      {
+        "event_id": "019000000007-0000-7000-8000-000000000000",
+        "ts_ms": 1790164620000,
+        "tool": "copilot-cli",
+        "kind": "prompt",
+        "text": "spec task number 3",
+        "deleted": false
+      },
+      {
+        "event_id": "019000000030-0000-7000-8000-000000000000",
+        "ts_ms": 1790164140000,
+        "tool": "copilot-cli",
+        "kind": "stop",
+        "text": null,
+        "deleted": false
+      },
+      {
+        "event_id": "019000000029-0000-7000-8000-000000000000",
+        "ts_ms": 1790163960000,
+        "tool": "copilot-cli",
+        "kind": "prompt",
+        "text": "feature task number 14",
+        "deleted": false
+      },
+      {
+        "event_id": "019000000010-0000-7000-8000-000000000000",
+        "ts_ms": 1790078340000,
+        "tool": "copilot-cli",
+        "kind": "stop",
+        "text": null,
+        "deleted": false
+      },
+      {
+        "event_id": "019000000009-0000-7000-8000-000000000000",
+        "ts_ms": 1790078160000,
+        "tool": "copilot-cli",
+        "kind": "prompt",
+        "text": "tests task number 4",
+        "deleted": false
+      },
+      {
+        "event_id": "019000000024-0000-7000-8000-000000000000",
+        "ts_ms": 1790077920000,
+        "tool": "copilot-cli",
+        "kind": "stop",
+        "text": null,
+        "deleted": false
+      },
+      {
+        "event_id": "019000000023-0000-7000-8000-000000000000",
+        "ts_ms": 1790077740000,
+        "tool": "copilot-cli",
+        "kind": "prompt",
+        "text": "fix_bug task number 11",
+        "deleted": false
+      },
+      {
+        "event_id": "019000000012-0000-7000-8000-000000000000",
+        "ts_ms": 1789991880000,
+        "tool": "copilot-cli",
+        "kind": "stop",
+        "text": null,
+        "deleted": false
+      },
+      {
+        "event_id": "019000000011-0000-7000-8000-000000000000",
+        "ts_ms": 1789991700000,
+        "tool": "copilot-cli",
+        "kind": "prompt",
+        "text": "spec task number 5",
+        "deleted": false
+      },
+      {
+        "event_id": "019000000032-0000-7000-8000-000000000000",
+        "ts_ms": 1789991280000,
+        "tool": "copilot-cli",
+        "kind": "stop",
+        "text": null,
+        "deleted": false
+      },
+      {
+        "event_id": "019000000031-0000-7000-8000-000000000000",
+        "ts_ms": 1789991100000,
+        "tool": "copilot-cli",
+        "kind": "prompt",
+        "text": "feature task number 15",
+        "deleted": false
+      },
+      {
+        "event_id": "019000000014-0000-7000-8000-000000000000",
+        "ts_ms": 1789905420000,
+        "tool": "copilot-cli",
+        "kind": "stop",
+        "text": null,
+        "deleted": false
+      },
+      {
+        "event_id": "019000000013-0000-7000-8000-000000000000",
+        "ts_ms": 1789905240000,
+        "tool": "copilot-cli",
+        "kind": "prompt",
+        "text": "tests task number 6",
+        "deleted": false
+      },
+      {
+        "event_id": "019000000026-0000-7000-8000-000000000000",
+        "ts_ms": 1789905060000,
+        "tool": "copilot-cli",
+        "kind": "stop",
+        "text": null,
+        "deleted": false
+      },
+      {
+        "event_id": "019000000025-0000-7000-8000-000000000000",
+        "ts_ms": 1789904880000,
+        "tool": "copilot-cli",
+        "kind": "prompt",
+        "text": "fix_bug task number 12",
+        "deleted": false
+      },
+      {
         "event_id": "019000000016-0000-7000-8000-000000000000",
-        "ts_ms": 1791719760000,
+        "ts_ms": 1789818960000,
         "tool": "copilot-cli",
         "kind": "stop",
         "text": null,
@@ -2535,7 +2571,7 @@
       },
       {
         "event_id": "019000000015-0000-7000-8000-000000000000",
-        "ts_ms": 1791719580000,
+        "ts_ms": 1789818780000,
         "tool": "copilot-cli",
         "kind": "prompt",
         "text": "spec task number 7",
@@ -2543,7 +2579,7 @@
       },
       {
         "event_id": "019000000018-0000-7000-8000-000000000000",
-        "ts_ms": 1791633300000,
+        "ts_ms": 1789732500000,
         "tool": "copilot-cli",
         "kind": "stop",
         "text": null,
@@ -2551,10 +2587,26 @@
       },
       {
         "event_id": "019000000017-0000-7000-8000-000000000000",
-        "ts_ms": 1791633120000,
+        "ts_ms": 1789732320000,
         "tool": "copilot-cli",
         "kind": "prompt",
-        "text": "fix_bug task number 8",
+        "text": "tests task number 8",
+        "deleted": false
+      },
+      {
+        "event_id": "019000000020-0000-7000-8000-000000000000",
+        "ts_ms": 1789646040000,
+        "tool": "copilot-cli",
+        "kind": "stop",
+        "text": null,
+        "deleted": false
+      },
+      {
+        "event_id": "019000000019-0000-7000-8000-000000000000",
+        "ts_ms": 1789645860000,
+        "tool": "copilot-cli",
+        "kind": "prompt",
+        "text": "spec task number 9",
         "deleted": false
       }
     ],
@@ -2745,12 +2797,12 @@
   },
   "coaching": {
     "split": {
-      "tasks": 40,
+      "tasks": 36,
       "finished": 14,
       "could": 12,
-      "needs": 14,
+      "needs": 10,
       "uncertain": 2,
-      "up": 16,
+      "up": 15,
       "up_to": 3
     },
     "split_min": 10,
@@ -2758,18 +2810,18 @@
     "weeks": [
       {
         "start_ms": 1791115200000,
-        "tasks": 2,
-        "finished": 1
+        "tasks": 0,
+        "finished": 0
       },
       {
         "start_ms": 1791720000000,
-        "tasks": 14,
-        "finished": 2
+        "tasks": 6,
+        "finished": 0
       },
       {
         "start_ms": 1792324800000,
-        "tasks": 6,
-        "finished": 2
+        "tasks": 12,
+        "finished": 5
       },
       {
         "start_ms": 1792929600000,
@@ -2783,18 +2835,18 @@
         "job": "code_change",
         "task_type": "tests",
         "label": "Writing tests",
-        "tasks": 17,
+        "tasks": 15,
         "uncertain": 2,
-        "per_week": 4.0,
+        "per_week": 3.5,
         "today": 3,
         "potential": 4,
         "state": "coach",
         "next": {
-          "move_id": "written_brief",
-          "habit": "Keep an instructions file in the repo and point to it",
-          "why": "an instructions file gives every task the same build, test and done rules, so the agent can plan alone.",
-          "try_this": "add .github/copilot-instructions.md or AGENTS.md with how to build, how to test and what done means, and name it in your request.",
-          "starter": "Read <instructions file>. Plan the steps, do them, and check each one against it."
+          "move_id": "agent_checks",
+          "habit": "Put the test command in your instructions file",
+          "why": "then every task ends with the agent running the tests and fixing what fails, without you asking.",
+          "try_this": "add a line such as: before you finish, run <test command>, fix what fails in this change, and never change a test just to make it pass.",
+          "starter": "Add to <instructions file>: before you finish, run <test command>. Fix failures in this change only. Never change a test just to make it pass. If something else fails, tell me."
         },
         "ranked_last": false,
         "last_task_id": "019000020007-0000-7000-8000-000000000000",
@@ -2802,30 +2854,28 @@
         "task_ids": [
           "019000020007-0000-7000-8000-000000000000",
           "019000020004-0000-7000-8000-000000000000",
-          "019000000019-0000-7000-8000-000000000000",
+          "019000000033-0000-7000-8000-000000000000",
           "019000005001-0000-7000-8000-000000000000",
-          "019000000039-0000-7000-8000-000000000000",
+          "019000000065-0000-7000-8000-000000000000",
           "019000005003-0000-7000-8000-000000000000",
-          "019000000021-0000-7000-8000-000000000000",
+          "019000000037-0000-7000-8000-000000000000",
           "019000005005-0000-7000-8000-000000000000",
-          "019000000023-0000-7000-8000-000000000000",
+          "019000000041-0000-7000-8000-000000000000",
           "019000005007-0000-7000-8000-000000000000",
           "019000005009-0000-7000-8000-000000000000",
-          "019000000025-0000-7000-8000-000000000000",
+          "019000000045-0000-7000-8000-000000000000",
           "019000005011-0000-7000-8000-000000000000",
-          "019000005013-0000-7000-8000-000000000000",
-          "019000000001-0000-7000-8000-000000000000",
-          "019000000007-0000-7000-8000-000000000000",
-          "019000000013-0000-7000-8000-000000000000"
+          "019000000049-0000-7000-8000-000000000000",
+          "019000005013-0000-7000-8000-000000000000"
         ]
       },
       {
         "job": "write_doc",
         "task_type": "spec",
         "label": "Writing a spec or PRD",
-        "tasks": 11,
+        "tasks": 10,
         "uncertain": 0,
-        "per_week": 2.6,
+        "per_week": 2.3,
         "today": 2,
         "potential": 3,
         "state": "coach",
@@ -2841,16 +2891,41 @@
         "last_gap": "Give the agent <b>a brief</b>.",
         "task_ids": [
           "019000020010-0000-7000-8000-000000000000",
-          "019000000027-0000-7000-8000-000000000000",
-          "019000000031-0000-7000-8000-000000000000",
           "019000000035-0000-7000-8000-000000000000",
+          "019000000039-0000-7000-8000-000000000000",
+          "019000000043-0000-7000-8000-000000000000",
+          "019000000047-0000-7000-8000-000000000000",
+          "019000000051-0000-7000-8000-000000000000",
           "019000005015-0000-7000-8000-000000000000",
           "019000005017-0000-7000-8000-000000000000",
           "019000005019-0000-7000-8000-000000000000",
-          "019000005021-0000-7000-8000-000000000000",
-          "019000000003-0000-7000-8000-000000000000",
-          "019000000009-0000-7000-8000-000000000000",
-          "019000000015-0000-7000-8000-000000000000"
+          "019000005021-0000-7000-8000-000000000000"
+        ]
+      },
+      {
+        "job": "code_change",
+        "task_type": "feature",
+        "label": "Adding a feature",
+        "tasks": 3,
+        "uncertain": 0,
+        "per_week": 0.7,
+        "today": 3,
+        "potential": 4,
+        "state": "coach",
+        "next": {
+          "move_id": "written_brief",
+          "habit": "Keep an instructions file in the repo and point to it",
+          "why": "an instructions file gives every task the same build, test and done rules, so the agent can plan alone.",
+          "try_this": "add .github/copilot-instructions.md or AGENTS.md with how to build, how to test and what done means, and name it in your request.",
+          "starter": "Read <instructions file>. Plan the steps, do them, and check each one against it."
+        },
+        "ranked_last": false,
+        "last_task_id": "019000000059-0000-7000-8000-000000000000",
+        "last_gap": "Give the agent <b>a brief</b>.",
+        "task_ids": [
+          "019000000059-0000-7000-8000-000000000000",
+          "019000000061-0000-7000-8000-000000000000",
+          "019000000063-0000-7000-8000-000000000000"
         ]
       }
     ],
@@ -2859,18 +2934,18 @@
         "job": "code_change",
         "task_type": "tests",
         "label": "Writing tests",
-        "tasks": 17,
+        "tasks": 15,
         "uncertain": 2,
-        "per_week": 4.0,
+        "per_week": 3.5,
         "today": 3,
         "potential": 4,
         "state": "coach",
         "next": {
-          "move_id": "written_brief",
-          "habit": "Keep an instructions file in the repo and point to it",
-          "why": "an instructions file gives every task the same build, test and done rules, so the agent can plan alone.",
-          "try_this": "add .github/copilot-instructions.md or AGENTS.md with how to build, how to test and what done means, and name it in your request.",
-          "starter": "Read <instructions file>. Plan the steps, do them, and check each one against it."
+          "move_id": "agent_checks",
+          "habit": "Put the test command in your instructions file",
+          "why": "then every task ends with the agent running the tests and fixing what fails, without you asking.",
+          "try_this": "add a line such as: before you finish, run <test command>, fix what fails in this change, and never change a test just to make it pass.",
+          "starter": "Add to <instructions file>: before you finish, run <test command>. Fix failures in this change only. Never change a test just to make it pass. If something else fails, tell me."
         },
         "ranked_last": false,
         "last_task_id": "019000020007-0000-7000-8000-000000000000",
@@ -2878,30 +2953,28 @@
         "task_ids": [
           "019000020007-0000-7000-8000-000000000000",
           "019000020004-0000-7000-8000-000000000000",
-          "019000000019-0000-7000-8000-000000000000",
+          "019000000033-0000-7000-8000-000000000000",
           "019000005001-0000-7000-8000-000000000000",
-          "019000000039-0000-7000-8000-000000000000",
+          "019000000065-0000-7000-8000-000000000000",
           "019000005003-0000-7000-8000-000000000000",
-          "019000000021-0000-7000-8000-000000000000",
+          "019000000037-0000-7000-8000-000000000000",
           "019000005005-0000-7000-8000-000000000000",
-          "019000000023-0000-7000-8000-000000000000",
+          "019000000041-0000-7000-8000-000000000000",
           "019000005007-0000-7000-8000-000000000000",
           "019000005009-0000-7000-8000-000000000000",
-          "019000000025-0000-7000-8000-000000000000",
+          "019000000045-0000-7000-8000-000000000000",
           "019000005011-0000-7000-8000-000000000000",
-          "019000005013-0000-7000-8000-000000000000",
-          "019000000001-0000-7000-8000-000000000000",
-          "019000000007-0000-7000-8000-000000000000",
-          "019000000013-0000-7000-8000-000000000000"
+          "019000000049-0000-7000-8000-000000000000",
+          "019000005013-0000-7000-8000-000000000000"
         ]
       },
       {
         "job": "write_doc",
         "task_type": "spec",
         "label": "Writing a spec or PRD",
-        "tasks": 11,
+        "tasks": 10,
         "uncertain": 0,
-        "per_week": 2.6,
+        "per_week": 2.3,
         "today": 2,
         "potential": 3,
         "state": "coach",
@@ -2917,25 +2990,24 @@
         "last_gap": "Give the agent <b>a brief</b>.",
         "task_ids": [
           "019000020010-0000-7000-8000-000000000000",
-          "019000000027-0000-7000-8000-000000000000",
-          "019000000031-0000-7000-8000-000000000000",
           "019000000035-0000-7000-8000-000000000000",
+          "019000000039-0000-7000-8000-000000000000",
+          "019000000043-0000-7000-8000-000000000000",
+          "019000000047-0000-7000-8000-000000000000",
+          "019000000051-0000-7000-8000-000000000000",
           "019000005015-0000-7000-8000-000000000000",
           "019000005017-0000-7000-8000-000000000000",
           "019000005019-0000-7000-8000-000000000000",
-          "019000005021-0000-7000-8000-000000000000",
-          "019000000003-0000-7000-8000-000000000000",
-          "019000000009-0000-7000-8000-000000000000",
-          "019000000015-0000-7000-8000-000000000000"
+          "019000005021-0000-7000-8000-000000000000"
         ]
       },
       {
         "job": "code_change",
         "task_type": "fix_bug",
         "label": "Fixing a bug or failing test",
-        "tasks": 10,
+        "tasks": 7,
         "uncertain": 0,
-        "per_week": 2.3,
+        "per_week": 1.6,
         "today": 1,
         "potential": null,
         "state": "right_rung",
@@ -2945,34 +3017,56 @@
         "last_gap": "Give the agent <b>a brief</b>.",
         "task_ids": [
           "019000020001-0000-7000-8000-000000000000",
-          "019000000029-0000-7000-8000-000000000000",
-          "019000000033-0000-7000-8000-000000000000",
-          "019000000037-0000-7000-8000-000000000000",
+          "019000000053-0000-7000-8000-000000000000",
+          "019000000055-0000-7000-8000-000000000000",
+          "019000000057-0000-7000-8000-000000000000",
           "019000005023-0000-7000-8000-000000000000",
           "019000005025-0000-7000-8000-000000000000",
-          "019000000005-0000-7000-8000-000000000000",
-          "019000005027-0000-7000-8000-000000000000",
-          "019000000011-0000-7000-8000-000000000000",
-          "019000000017-0000-7000-8000-000000000000"
+          "019000005027-0000-7000-8000-000000000000"
+        ]
+      },
+      {
+        "job": "code_change",
+        "task_type": "feature",
+        "label": "Adding a feature",
+        "tasks": 3,
+        "uncertain": 0,
+        "per_week": 0.7,
+        "today": 3,
+        "potential": 4,
+        "state": "coach",
+        "next": {
+          "move_id": "written_brief",
+          "habit": "Keep an instructions file in the repo and point to it",
+          "why": "an instructions file gives every task the same build, test and done rules, so the agent can plan alone.",
+          "try_this": "add .github/copilot-instructions.md or AGENTS.md with how to build, how to test and what done means, and name it in your request.",
+          "starter": "Read <instructions file>. Plan the steps, do them, and check each one against it."
+        },
+        "ranked_last": false,
+        "last_task_id": "019000000059-0000-7000-8000-000000000000",
+        "last_gap": "Give the agent <b>a brief</b>.",
+        "task_ids": [
+          "019000000059-0000-7000-8000-000000000000",
+          "019000000061-0000-7000-8000-000000000000",
+          "019000000063-0000-7000-8000-000000000000"
         ]
       },
       {
         "job": "code_change",
         "task_type": "refactor",
         "label": "Refactoring or cleaning up",
-        "tasks": 4,
+        "tasks": 3,
         "uncertain": 0,
-        "per_week": 0.9,
+        "per_week": 0.7,
         "today": 2,
         "potential": null,
         "state": "not_sure",
         "next": null,
         "ranked_last": false,
-        "last_task_id": "019000000041-0000-7000-8000-000000000000",
+        "last_task_id": "019000000067-0000-7000-8000-000000000000",
         "last_gap": "Give the agent <b>a brief</b>.",
         "task_ids": [
-          "019000000041-0000-7000-8000-000000000000",
-          "019000000043-0000-7000-8000-000000000000",
+          "019000000067-0000-7000-8000-000000000000",
           "019000005029-0000-7000-8000-000000000000",
           "019000005031-0000-7000-8000-000000000000"
         ]
@@ -2984,10 +3078,10 @@
         "move_id": "brief",
         "name": "Paste the error or name the files, and say what not to touch",
         "state": "adopted",
-        "eligible": 17,
-        "seen": 17,
+        "eligible": 21,
+        "seen": 21,
         "moved_to": "adopted",
-        "moved_ms": 1791806100000,
+        "moved_ms": 1791972000000,
         "moved_back": false
       },
       {
@@ -2995,10 +3089,10 @@
         "move_id": "check_code",
         "name": "Ask for the test output in the reply",
         "state": "adopted",
-        "eligible": 17,
-        "seen": 17,
+        "eligible": 21,
+        "seen": 21,
         "moved_to": "adopted",
-        "moved_ms": 1791806100000,
+        "moved_ms": 1791972000000,
         "moved_back": false
       },
       {
@@ -3006,10 +3100,10 @@
         "move_id": "hand_over",
         "name": "Hand over the whole task and list what done looks like",
         "state": "adopted",
-        "eligible": 17,
-        "seen": 17,
+        "eligible": 21,
+        "seen": 21,
         "moved_to": "adopted",
-        "moved_ms": 1791806100000,
+        "moved_ms": 1791972000000,
         "moved_back": false
       },
       {
@@ -3017,21 +3111,21 @@
         "move_id": "let_agent_edit",
         "name": "Use agent mode and let it make the edits",
         "state": "adopted",
-        "eligible": 17,
-        "seen": 17,
+        "eligible": 21,
+        "seen": 21,
         "moved_to": "adopted",
-        "moved_ms": 1791806100000,
+        "moved_ms": 1791972000000,
         "moved_back": false
       },
       {
         "job": "code_change",
         "move_id": "written_brief",
         "name": "Keep an instructions file in the repo and point to it",
-        "state": "not_yet",
-        "eligible": 17,
-        "seen": 0,
-        "moved_to": null,
-        "moved_ms": null,
+        "state": "tried",
+        "eligible": 21,
+        "seen": 5,
+        "moved_to": "tried",
+        "moved_ms": 1792755360000,
         "moved_back": false
       },
       {
@@ -3039,7 +3133,7 @@
         "move_id": "agent_checks",
         "name": "Put the test command in your instructions file",
         "state": "not_yet",
-        "eligible": 17,
+        "eligible": 21,
         "seen": 0,
         "moved_to": null,
         "moved_ms": null,
@@ -3050,7 +3144,7 @@
         "move_id": "split_and_check",
         "name": "Give each separate part to a sub-agent, with a check between parts",
         "state": "not_yet",
-        "eligible": 17,
+        "eligible": 21,
         "seen": 0,
         "moved_to": null,
         "moved_ms": null,
@@ -3061,10 +3155,10 @@
         "move_id": "brief_doc",
         "name": "Name the reader, and give an example doc to copy",
         "state": "adopted",
-        "eligible": 7,
-        "seen": 7,
+        "eligible": 9,
+        "seen": 9,
         "moved_to": "adopted",
-        "moved_ms": 1792065540000,
+        "moved_ms": 1792530000000,
         "moved_back": false
       },
       {
@@ -3072,10 +3166,10 @@
         "move_id": "check_sources",
         "name": "Ask for sources and open questions, then check them",
         "state": "adopted",
-        "eligible": 7,
-        "seen": 7,
+        "eligible": 9,
+        "seen": 9,
         "moved_to": "adopted",
-        "moved_ms": 1792065540000,
+        "moved_ms": 1792530000000,
         "moved_back": false
       },
       {
@@ -3083,7 +3177,7 @@
         "move_id": "hand_over_doc",
         "name": "Ask for the whole draft and list what it must cover",
         "state": "not_yet",
-        "eligible": 7,
+        "eligible": 9,
         "seen": 0,
         "moved_to": null,
         "moved_ms": null,
@@ -3094,10 +3188,10 @@
         "move_id": "let_agent_write",
         "name": "Have the agent write the doc file from your notes",
         "state": "adopted",
-        "eligible": 7,
-        "seen": 7,
+        "eligible": 9,
+        "seen": 9,
         "moved_to": "adopted",
-        "moved_ms": 1792065540000,
+        "moved_ms": 1792530000000,
         "moved_back": false
       },
       {
@@ -3105,10 +3199,10 @@
         "move_id": "doc_one_go",
         "name": "Send all your changes in one message, then review the draft",
         "state": "adopted",
-        "eligible": 7,
-        "seen": 7,
+        "eligible": 9,
+        "seen": 9,
         "moved_to": "adopted",
-        "moved_ms": 1792065540000,
+        "moved_ms": 1792530000000,
         "moved_back": false
       },
       {
@@ -3116,7 +3210,7 @@
         "move_id": "written_brief",
         "name": "Keep an instructions file in the repo and point to it",
         "state": "not_yet",
-        "eligible": 7,
+        "eligible": 9,
         "seen": 0,
         "moved_to": null,
         "moved_ms": null,
@@ -3127,7 +3221,7 @@
         "move_id": "agent_checks_doc",
         "name": "Ask the agent to run a link and spelling check",
         "state": "not_yet",
-        "eligible": 7,
+        "eligible": 9,
         "seen": 0,
         "moved_to": null,
         "moved_ms": null,
@@ -3138,7 +3232,7 @@
         "move_id": "split_and_check",
         "name": "Give each separate part to a sub-agent, with a check between parts",
         "state": "not_yet",
-        "eligible": 7,
+        "eligible": 9,
         "seen": 0,
         "moved_to": null,
         "moved_ms": null,
@@ -3152,8 +3246,8 @@
         "job": "code_change",
         "task_type": "tests",
         "label": "Writing tests",
-        "recent": 12,
-        "earlier": 3,
+        "recent": 13,
+        "earlier": 5,
         "uncertain": 2,
         "recent_rung": 3,
         "earlier_rung": 2,
@@ -3163,8 +3257,8 @@
         "job": "write_doc",
         "task_type": "spec",
         "label": "Writing a spec or PRD",
-        "recent": 7,
-        "earlier": 4,
+        "recent": 10,
+        "earlier": 5,
         "uncertain": 0,
         "recent_rung": 2,
         "earlier_rung": 3,
@@ -3174,8 +3268,8 @@
         "job": "code_change",
         "task_type": "fix_bug",
         "label": "Fixing a bug or failing test",
-        "recent": 4,
-        "earlier": 6,
+        "recent": 7,
+        "earlier": 3,
         "uncertain": 0,
         "recent_rung": 1,
         "earlier_rung": 1,
@@ -3183,18 +3277,32 @@
       },
       {
         "job": "code_change",
+        "task_type": "feature",
+        "label": "Adding a feature",
+        "recent": 3,
+        "earlier": 3,
+        "uncertain": 0,
+        "recent_rung": 3,
+        "earlier_rung": 1,
+        "trend": "same"
+      },
+      {
+        "job": "code_change",
         "task_type": "refactor",
         "label": "Refactoring or cleaning up",
-        "recent": 1,
-        "earlier": 3,
+        "recent": 3,
+        "earlier": 1,
         "uncertain": 0,
         "recent_rung": 2,
         "earlier_rung": 2,
         "trend": "too_few"
       }
     ],
-    "progress_days": 14,
-    "progress_min": 3
+    "progress_days": 30,
+    "progress_min": 3,
+    "habit_changes": [],
+    "habit_change_min": 5,
+    "shift_days": 14
   },
   "update": {
     "supported": true,
@@ -3216,12 +3324,12 @@
       "key": "c:\\users\\you\\source\\repos\\shop-api",
       "name": "shop-api",
       "renamed": false,
-      "tasks_in_window": 39,
-      "judged": 38,
+      "tasks_in_window": 35,
+      "judged": 34,
       "uncertain": 2,
       "rungs": [
-        10,
-        11,
+        8,
+        9,
         15,
         0,
         0
@@ -3231,15 +3339,15 @@
       "weeks": [
         {
           "start_ms": 1791115200000,
-          "tasks": 2
+          "tasks": 0
         },
         {
           "start_ms": 1791720000000,
-          "tasks": 13
+          "tasks": 5
         },
         {
           "start_ms": 1792324800000,
-          "tasks": 4
+          "tasks": 10
         },
         {
           "start_ms": 1792929600000,
@@ -3249,17 +3357,17 @@
       "by_tool": [
         [
           "copilot-cli",
-          39
+          35
         ]
       ],
       "coaching": {
         "split": {
-          "tasks": 36,
+          "tasks": 32,
           "finished": 14,
           "could": 8,
-          "needs": 14,
+          "needs": 10,
           "uncertain": 2,
-          "up": 12,
+          "up": 11,
           "up_to": 3
         },
         "split_min": 10,
@@ -3267,18 +3375,18 @@
         "weeks": [
           {
             "start_ms": 1791115200000,
-            "tasks": 2,
-            "finished": 1
+            "tasks": 0,
+            "finished": 0
           },
           {
             "start_ms": 1791720000000,
-            "tasks": 13,
-            "finished": 2
+            "tasks": 5,
+            "finished": 0
           },
           {
             "start_ms": 1792324800000,
-            "tasks": 3,
-            "finished": 2
+            "tasks": 9,
+            "finished": 5
           },
           {
             "start_ms": 1792929600000,
@@ -3292,18 +3400,18 @@
             "job": "code_change",
             "task_type": "tests",
             "label": "Writing tests",
-            "tasks": 17,
+            "tasks": 15,
             "uncertain": 2,
-            "per_week": 4.0,
+            "per_week": 3.5,
             "today": 3,
             "potential": 4,
             "state": "coach",
             "next": {
-              "move_id": "written_brief",
-              "habit": "Keep an instructions file in the repo and point to it",
-              "why": "an instructions file gives every task the same build, test and done rules, so the agent can plan alone.",
-              "try_this": "add .github/copilot-instructions.md or AGENTS.md with how to build, how to test and what done means, and name it in your request.",
-              "starter": "Read <instructions file>. Plan the steps, do them, and check each one against it."
+              "move_id": "agent_checks",
+              "habit": "Put the test command in your instructions file",
+              "why": "then every task ends with the agent running the tests and fixing what fails, without you asking.",
+              "try_this": "add a line such as: before you finish, run <test command>, fix what fails in this change, and never change a test just to make it pass.",
+              "starter": "Add to <instructions file>: before you finish, run <test command>. Fix failures in this change only. Never change a test just to make it pass. If something else fails, tell me."
             },
             "ranked_last": false,
             "last_task_id": "019000020007-0000-7000-8000-000000000000",
@@ -3311,30 +3419,28 @@
             "task_ids": [
               "019000020007-0000-7000-8000-000000000000",
               "019000020004-0000-7000-8000-000000000000",
-              "019000000019-0000-7000-8000-000000000000",
+              "019000000033-0000-7000-8000-000000000000",
               "019000005001-0000-7000-8000-000000000000",
-              "019000000039-0000-7000-8000-000000000000",
+              "019000000065-0000-7000-8000-000000000000",
               "019000005003-0000-7000-8000-000000000000",
-              "019000000021-0000-7000-8000-000000000000",
+              "019000000037-0000-7000-8000-000000000000",
               "019000005005-0000-7000-8000-000000000000",
-              "019000000023-0000-7000-8000-000000000000",
+              "019000000041-0000-7000-8000-000000000000",
               "019000005007-0000-7000-8000-000000000000",
               "019000005009-0000-7000-8000-000000000000",
-              "019000000025-0000-7000-8000-000000000000",
+              "019000000045-0000-7000-8000-000000000000",
               "019000005011-0000-7000-8000-000000000000",
-              "019000005013-0000-7000-8000-000000000000",
-              "019000000001-0000-7000-8000-000000000000",
-              "019000000007-0000-7000-8000-000000000000",
-              "019000000013-0000-7000-8000-000000000000"
+              "019000000049-0000-7000-8000-000000000000",
+              "019000005013-0000-7000-8000-000000000000"
             ]
           },
           {
             "job": "write_doc",
             "task_type": "spec",
             "label": "Writing a spec or PRD",
-            "tasks": 7,
+            "tasks": 6,
             "uncertain": 0,
-            "per_week": 1.6,
+            "per_week": 1.4,
             "today": 2,
             "potential": 3,
             "state": "coach",
@@ -3350,23 +3456,20 @@
             "last_gap": "Give the agent <b>a brief</b>.",
             "task_ids": [
               "019000020010-0000-7000-8000-000000000000",
-              "019000000027-0000-7000-8000-000000000000",
-              "019000000031-0000-7000-8000-000000000000",
               "019000000035-0000-7000-8000-000000000000",
-              "019000000003-0000-7000-8000-000000000000",
-              "019000000009-0000-7000-8000-000000000000",
-              "019000000015-0000-7000-8000-000000000000"
+              "019000000039-0000-7000-8000-000000000000",
+              "019000000043-0000-7000-8000-000000000000",
+              "019000000047-0000-7000-8000-000000000000",
+              "019000000051-0000-7000-8000-000000000000"
             ]
-          }
-        ],
-        "kinds": [
+          },
           {
             "job": "code_change",
-            "task_type": "tests",
-            "label": "Writing tests",
-            "tasks": 17,
-            "uncertain": 2,
-            "per_week": 4.0,
+            "task_type": "feature",
+            "label": "Adding a feature",
+            "tasks": 3,
+            "uncertain": 0,
+            "per_week": 0.7,
             "today": 3,
             "potential": 4,
             "state": "coach",
@@ -3378,35 +3481,61 @@
               "starter": "Read <instructions file>. Plan the steps, do them, and check each one against it."
             },
             "ranked_last": false,
+            "last_task_id": "019000000059-0000-7000-8000-000000000000",
+            "last_gap": "Give the agent <b>a brief</b>.",
+            "task_ids": [
+              "019000000059-0000-7000-8000-000000000000",
+              "019000000061-0000-7000-8000-000000000000",
+              "019000000063-0000-7000-8000-000000000000"
+            ]
+          }
+        ],
+        "kinds": [
+          {
+            "job": "code_change",
+            "task_type": "tests",
+            "label": "Writing tests",
+            "tasks": 15,
+            "uncertain": 2,
+            "per_week": 3.5,
+            "today": 3,
+            "potential": 4,
+            "state": "coach",
+            "next": {
+              "move_id": "agent_checks",
+              "habit": "Put the test command in your instructions file",
+              "why": "then every task ends with the agent running the tests and fixing what fails, without you asking.",
+              "try_this": "add a line such as: before you finish, run <test command>, fix what fails in this change, and never change a test just to make it pass.",
+              "starter": "Add to <instructions file>: before you finish, run <test command>. Fix failures in this change only. Never change a test just to make it pass. If something else fails, tell me."
+            },
+            "ranked_last": false,
             "last_task_id": "019000020007-0000-7000-8000-000000000000",
             "last_gap": "Give the agent <b>a brief</b>.",
             "task_ids": [
               "019000020007-0000-7000-8000-000000000000",
               "019000020004-0000-7000-8000-000000000000",
-              "019000000019-0000-7000-8000-000000000000",
+              "019000000033-0000-7000-8000-000000000000",
               "019000005001-0000-7000-8000-000000000000",
-              "019000000039-0000-7000-8000-000000000000",
+              "019000000065-0000-7000-8000-000000000000",
               "019000005003-0000-7000-8000-000000000000",
-              "019000000021-0000-7000-8000-000000000000",
+              "019000000037-0000-7000-8000-000000000000",
               "019000005005-0000-7000-8000-000000000000",
-              "019000000023-0000-7000-8000-000000000000",
+              "019000000041-0000-7000-8000-000000000000",
               "019000005007-0000-7000-8000-000000000000",
               "019000005009-0000-7000-8000-000000000000",
-              "019000000025-0000-7000-8000-000000000000",
+              "019000000045-0000-7000-8000-000000000000",
               "019000005011-0000-7000-8000-000000000000",
-              "019000005013-0000-7000-8000-000000000000",
-              "019000000001-0000-7000-8000-000000000000",
-              "019000000007-0000-7000-8000-000000000000",
-              "019000000013-0000-7000-8000-000000000000"
+              "019000000049-0000-7000-8000-000000000000",
+              "019000005013-0000-7000-8000-000000000000"
             ]
           },
           {
             "job": "code_change",
             "task_type": "fix_bug",
             "label": "Fixing a bug or failing test",
-            "tasks": 10,
+            "tasks": 7,
             "uncertain": 0,
-            "per_week": 2.3,
+            "per_week": 1.6,
             "today": 1,
             "potential": null,
             "state": "right_rung",
@@ -3416,24 +3545,21 @@
             "last_gap": "Give the agent <b>a brief</b>.",
             "task_ids": [
               "019000020001-0000-7000-8000-000000000000",
-              "019000000029-0000-7000-8000-000000000000",
-              "019000000033-0000-7000-8000-000000000000",
-              "019000000037-0000-7000-8000-000000000000",
+              "019000000053-0000-7000-8000-000000000000",
+              "019000000055-0000-7000-8000-000000000000",
+              "019000000057-0000-7000-8000-000000000000",
               "019000005023-0000-7000-8000-000000000000",
               "019000005025-0000-7000-8000-000000000000",
-              "019000000005-0000-7000-8000-000000000000",
-              "019000005027-0000-7000-8000-000000000000",
-              "019000000011-0000-7000-8000-000000000000",
-              "019000000017-0000-7000-8000-000000000000"
+              "019000005027-0000-7000-8000-000000000000"
             ]
           },
           {
             "job": "write_doc",
             "task_type": "spec",
             "label": "Writing a spec or PRD",
-            "tasks": 7,
+            "tasks": 6,
             "uncertain": 0,
-            "per_week": 1.6,
+            "per_week": 1.4,
             "today": 2,
             "potential": 3,
             "state": "coach",
@@ -3449,31 +3575,55 @@
             "last_gap": "Give the agent <b>a brief</b>.",
             "task_ids": [
               "019000020010-0000-7000-8000-000000000000",
-              "019000000027-0000-7000-8000-000000000000",
-              "019000000031-0000-7000-8000-000000000000",
               "019000000035-0000-7000-8000-000000000000",
-              "019000000003-0000-7000-8000-000000000000",
-              "019000000009-0000-7000-8000-000000000000",
-              "019000000015-0000-7000-8000-000000000000"
+              "019000000039-0000-7000-8000-000000000000",
+              "019000000043-0000-7000-8000-000000000000",
+              "019000000047-0000-7000-8000-000000000000",
+              "019000000051-0000-7000-8000-000000000000"
+            ]
+          },
+          {
+            "job": "code_change",
+            "task_type": "feature",
+            "label": "Adding a feature",
+            "tasks": 3,
+            "uncertain": 0,
+            "per_week": 0.7,
+            "today": 3,
+            "potential": 4,
+            "state": "coach",
+            "next": {
+              "move_id": "written_brief",
+              "habit": "Keep an instructions file in the repo and point to it",
+              "why": "an instructions file gives every task the same build, test and done rules, so the agent can plan alone.",
+              "try_this": "add .github/copilot-instructions.md or AGENTS.md with how to build, how to test and what done means, and name it in your request.",
+              "starter": "Read <instructions file>. Plan the steps, do them, and check each one against it."
+            },
+            "ranked_last": false,
+            "last_task_id": "019000000059-0000-7000-8000-000000000000",
+            "last_gap": "Give the agent <b>a brief</b>.",
+            "task_ids": [
+              "019000000059-0000-7000-8000-000000000000",
+              "019000000061-0000-7000-8000-000000000000",
+              "019000000063-0000-7000-8000-000000000000"
             ]
           },
           {
             "job": "code_change",
             "task_type": "refactor",
             "label": "Refactoring or cleaning up",
-            "tasks": 4,
+            "tasks": 3,
             "uncertain": 0,
-            "per_week": 0.9,
+            "per_week": 0.7,
             "today": 2,
             "potential": null,
             "state": "not_sure",
             "next": null,
             "ranked_last": false,
-            "last_task_id": "019000000041-0000-7000-8000-000000000000",
+            "last_task_id": "019000000067-0000-7000-8000-000000000000",
             "last_gap": "Give the agent <b>a brief</b>.",
             "task_ids": [
-              "019000000041-0000-7000-8000-000000000000",
-              "019000000043-0000-7000-8000-000000000000",
+              "019000000067-0000-7000-8000-000000000000",
               "019000005029-0000-7000-8000-000000000000",
               "019000005031-0000-7000-8000-000000000000"
             ]
@@ -3485,10 +3635,10 @@
             "move_id": "brief",
             "name": "Paste the error or name the files, and say what not to touch",
             "state": "adopted",
-            "eligible": 17,
-            "seen": 17,
+            "eligible": 21,
+            "seen": 21,
             "moved_to": "adopted",
-            "moved_ms": 1791806100000,
+            "moved_ms": 1791972000000,
             "moved_back": false
           },
           {
@@ -3496,10 +3646,10 @@
             "move_id": "check_code",
             "name": "Ask for the test output in the reply",
             "state": "adopted",
-            "eligible": 17,
-            "seen": 17,
+            "eligible": 21,
+            "seen": 21,
             "moved_to": "adopted",
-            "moved_ms": 1791806100000,
+            "moved_ms": 1791972000000,
             "moved_back": false
           },
           {
@@ -3507,10 +3657,10 @@
             "move_id": "hand_over",
             "name": "Hand over the whole task and list what done looks like",
             "state": "adopted",
-            "eligible": 17,
-            "seen": 17,
+            "eligible": 21,
+            "seen": 21,
             "moved_to": "adopted",
-            "moved_ms": 1791806100000,
+            "moved_ms": 1791972000000,
             "moved_back": false
           },
           {
@@ -3518,21 +3668,21 @@
             "move_id": "let_agent_edit",
             "name": "Use agent mode and let it make the edits",
             "state": "adopted",
-            "eligible": 17,
-            "seen": 17,
+            "eligible": 21,
+            "seen": 21,
             "moved_to": "adopted",
-            "moved_ms": 1791806100000,
+            "moved_ms": 1791972000000,
             "moved_back": false
           },
           {
             "job": "code_change",
             "move_id": "written_brief",
             "name": "Keep an instructions file in the repo and point to it",
-            "state": "not_yet",
-            "eligible": 17,
-            "seen": 0,
-            "moved_to": null,
-            "moved_ms": null,
+            "state": "tried",
+            "eligible": 21,
+            "seen": 5,
+            "moved_to": "tried",
+            "moved_ms": 1792755360000,
             "moved_back": false
           },
           {
@@ -3540,7 +3690,7 @@
             "move_id": "agent_checks",
             "name": "Put the test command in your instructions file",
             "state": "not_yet",
-            "eligible": 17,
+            "eligible": 21,
             "seen": 0,
             "moved_to": null,
             "moved_ms": null,
@@ -3551,7 +3701,7 @@
             "move_id": "split_and_check",
             "name": "Give each separate part to a sub-agent, with a check between parts",
             "state": "not_yet",
-            "eligible": 17,
+            "eligible": 21,
             "seen": 0,
             "moved_to": null,
             "moved_ms": null,
@@ -3562,10 +3712,10 @@
             "move_id": "brief_doc",
             "name": "Name the reader, and give an example doc to copy",
             "state": "adopted",
-            "eligible": 4,
-            "seen": 4,
+            "eligible": 6,
+            "seen": 6,
             "moved_to": "adopted",
-            "moved_ms": 1792065540000,
+            "moved_ms": 1793014740000,
             "moved_back": false
           },
           {
@@ -3573,10 +3723,10 @@
             "move_id": "check_sources",
             "name": "Ask for sources and open questions, then check them",
             "state": "adopted",
-            "eligible": 4,
-            "seen": 4,
+            "eligible": 6,
+            "seen": 6,
             "moved_to": "adopted",
-            "moved_ms": 1792065540000,
+            "moved_ms": 1793014740000,
             "moved_back": false
           },
           {
@@ -3584,7 +3734,7 @@
             "move_id": "hand_over_doc",
             "name": "Ask for the whole draft and list what it must cover",
             "state": "not_yet",
-            "eligible": 4,
+            "eligible": 6,
             "seen": 0,
             "moved_to": null,
             "moved_ms": null,
@@ -3595,10 +3745,10 @@
             "move_id": "let_agent_write",
             "name": "Have the agent write the doc file from your notes",
             "state": "adopted",
-            "eligible": 4,
-            "seen": 4,
+            "eligible": 6,
+            "seen": 6,
             "moved_to": "adopted",
-            "moved_ms": 1792065540000,
+            "moved_ms": 1793014740000,
             "moved_back": false
           },
           {
@@ -3606,10 +3756,10 @@
             "move_id": "doc_one_go",
             "name": "Send all your changes in one message, then review the draft",
             "state": "adopted",
-            "eligible": 4,
-            "seen": 4,
+            "eligible": 6,
+            "seen": 6,
             "moved_to": "adopted",
-            "moved_ms": 1792065540000,
+            "moved_ms": 1793014740000,
             "moved_back": false
           },
           {
@@ -3617,7 +3767,7 @@
             "move_id": "written_brief",
             "name": "Keep an instructions file in the repo and point to it",
             "state": "not_yet",
-            "eligible": 4,
+            "eligible": 6,
             "seen": 0,
             "moved_to": null,
             "moved_ms": null,
@@ -3628,7 +3778,7 @@
             "move_id": "agent_checks_doc",
             "name": "Ask the agent to run a link and spelling check",
             "state": "not_yet",
-            "eligible": 4,
+            "eligible": 6,
             "seen": 0,
             "moved_to": null,
             "moved_ms": null,
@@ -3639,7 +3789,7 @@
             "move_id": "split_and_check",
             "name": "Give each separate part to a sub-agent, with a check between parts",
             "state": "not_yet",
-            "eligible": 4,
+            "eligible": 6,
             "seen": 0,
             "moved_to": null,
             "moved_ms": null,
@@ -3653,8 +3803,8 @@
             "job": "code_change",
             "task_type": "tests",
             "label": "Writing tests",
-            "recent": 12,
-            "earlier": 3,
+            "recent": 13,
+            "earlier": 5,
             "uncertain": 2,
             "recent_rung": 3,
             "earlier_rung": 2,
@@ -3664,8 +3814,8 @@
             "job": "write_doc",
             "task_type": "spec",
             "label": "Writing a spec or PRD",
-            "recent": 4,
-            "earlier": 3,
+            "recent": 6,
+            "earlier": 5,
             "uncertain": 0,
             "recent_rung": 2,
             "earlier_rung": 3,
@@ -3675,8 +3825,8 @@
             "job": "code_change",
             "task_type": "fix_bug",
             "label": "Fixing a bug or failing test",
-            "recent": 4,
-            "earlier": 6,
+            "recent": 7,
+            "earlier": 3,
             "uncertain": 0,
             "recent_rung": 1,
             "earlier_rung": 1,
@@ -3684,18 +3834,32 @@
           },
           {
             "job": "code_change",
+            "task_type": "feature",
+            "label": "Adding a feature",
+            "recent": 3,
+            "earlier": 3,
+            "uncertain": 0,
+            "recent_rung": 3,
+            "earlier_rung": 1,
+            "trend": "same"
+          },
+          {
+            "job": "code_change",
             "task_type": "refactor",
             "label": "Refactoring or cleaning up",
-            "recent": 1,
-            "earlier": 3,
+            "recent": 3,
+            "earlier": 1,
             "uncertain": 0,
             "recent_rung": 2,
             "earlier_rung": 2,
             "trend": "too_few"
           }
         ],
-        "progress_days": 14,
-        "progress_min": 3
+        "progress_days": 30,
+        "progress_min": 3,
+        "habit_changes": [],
+        "habit_change_min": 5,
+        "shift_days": 14
       }
     },
     {
@@ -3928,16 +4092,19 @@
             "job": "write_doc",
             "task_type": "spec",
             "label": "Writing a spec or PRD",
-            "recent": 3,
-            "earlier": 1,
+            "recent": 4,
+            "earlier": 0,
             "uncertain": 0,
             "recent_rung": 2,
-            "earlier_rung": 2,
+            "earlier_rung": null,
             "trend": "too_few"
           }
         ],
-        "progress_days": 14,
-        "progress_min": 3
+        "progress_days": 30,
+        "progress_min": 3,
+        "habit_changes": [],
+        "habit_change_min": 5,
+        "shift_days": 14
       }
     }
   ],
