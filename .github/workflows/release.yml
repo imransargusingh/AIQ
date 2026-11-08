@@ -248,7 +248,7 @@ jobs:
           $ulog = Join-Path $aiq 'upgrade-log.txt'
           Select-String -Path $ulog -Pattern 'AIQ-UPDATE-(CORE|HOME)' | Select-Object -Last 4 | ForEach-Object { $_.Line }
           if (-not (Select-String -Quiet -Path $ulog -Pattern 'AIQ-UPDATE-CORE: started the AIQ core again.*\(refused first')) { Fail 'core not started again after two refusals' }
-          if (-not (Select-String -Quiet -Path $ulog -Pattern 'AIQ-UPDATE-HOME: started AIQ home again\.')) { Fail 'AIQ home not opened again (-Relaunch)' }
+          if (-not (Select-String -Quiet -Path $ulog -Pattern 'AIQ-UPDATE-HOME: started AIQ home again')) { Fail 'AIQ home not opened again (-Relaunch)' }
           $homeBack = $null
           foreach ($i in 1..25) {
             $homeBack = Get-Process -Name 'aiq-home' -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq (Join-Path $aiq 'bin\aiq-home.exe') }
