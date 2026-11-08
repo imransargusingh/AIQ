@@ -244,17 +244,7 @@ fn writer_loop(mut svc: Service<SystemClock>, rx: Receiver<Cmd>, paths: &Paths, 
             }
             Cmd::TipLine { surface, session, reply } => {
                 let plain = !svc.switch_on(SETTING_TIP_HIGHLIGHT);
-                let r = match svc.tip_line(&surface, session.as_deref()) {
-                    Some(TipLineOut::Full(c)) => {
-                        TipLineReply { card: Some(c), waiting_card_id: None, trend: None, plain }
-                    }
-                    Some(TipLineOut::Waiting(id)) => {
-                        TipLineReply { card: None, waiting_card_id: Some(id), trend: None, plain }
-                    }
-                    Some(TipLineOut::Trend(t)) => TipLineReply { trend: Some(t), plain, ..Default::default() },
-                    None => TipLineReply::default(),
-                };
-                let _ = reply.send(r);
+                let _ = reply.send(tip_line_reply(svc.tip_line(&surface, session.as_deref()), plain));
             }
             Cmd::TakeCardAny { surface, received, reply } => {
                 // A card handed to a poller that already gave up would be lost; deliver only while it waits.
@@ -482,4 +472,30 @@ pub fn forget_files(paths: &Paths) -> std::io::Result<()> {
         }
     }
     Ok(())
+}
+
+/// The status line's reply: what to show, plus the line itself rendered here, with and without colour, so the
+/// status-line program only prints it (design auto-update U5n). `plain`: the person turned the highlight off.
+pub fn tip_line_reply(out: Option<TipLineOut>, plain: bool) -> TipLineReply {
+    use aiq_contracts::card::{render_status_line, render_waiting_marker};
+    let lines = |f: &dyn Fn(bool) -> String| (Some(f(!plain)), Some(f(false)));
+    match out {
+        Some(TipLineOut::Full(c)) => {
+            let (line, line_plain) = lines(&|color| render_status_line(&c, color));
+            TipLineReply { card: Some(c), plain, line, line_plain, ..Default::default() }
+        }
+        Some(TipLineOut::Waiting(id)) => {
+            let (line, line_plain) = lines(&|color| render_waiting_marker(&id, color));
+            TipLineReply { waiting_card_id: Some(id), plain, line, line_plain, ..Default::default() }
+        }
+        // The trend is not a tip: plain text, no badge, so a tip still stands out when one comes.
+        Some(TipLineOut::Trend(t)) => TipLineReply {
+            line: Some(t.clone()),
+            line_plain: Some(t.clone()),
+            trend: Some(t),
+            plain,
+            ..Default::default()
+        },
+        None => TipLineReply::default(),
+    }
 }

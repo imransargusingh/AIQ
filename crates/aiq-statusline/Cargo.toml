@@ -1,0 +1,26 @@
+[package]
+name = "aiq-statusline"
+description = "AIQ's Copilot CLI status-line program. Kept unchanged across releases (its own version, not the workspace's): see src/lib.rs."
+# Its own version, never the workspace's. Bump it whenever anything in this crate changes: a release reuses the
+# previous release's aiq-statusline.exe byte for byte while this number is unchanged (release.yml), and refuses to
+# build when the crate changed but this number did not.
+version = "1.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "aiq-statusline"
+path = "src/main.rs"
+
+[dependencies]
+serde_json.workspace = true
+interprocess.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+widestring = "1"
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_System_Threading"] }
+
+[dev-dependencies]
+tempfile.workspace = true

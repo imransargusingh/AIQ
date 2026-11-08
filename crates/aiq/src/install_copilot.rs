@@ -45,8 +45,47 @@ pub fn wrapper_file(home: &Path) -> PathBuf {
     home.join(WRAPPER)
 }
 
+/// The status-line program beside `aiq.exe` (design auto-update U5n), when this copy of AIQ has one.
+pub const STATUSLINE_EXE: &str = "aiq-statusline.exe";
+
+/// What the wrapper runs: `aiq-statusline.exe` when it sits beside `exe`, else `aiq.exe statusline copilot`. The
+/// separate program stays unchanged across releases, so cmd.exe (which Copilot runs the status line through) never
+/// starts a freshly installed file, which Defender's ransomware rule refused on IT-managed laptops.
 pub fn wrapper_text(exe: &str) -> String {
+    match statusline_exe(exe) {
+        Some(sl) => format!("@\"{sl}\"\r\n"),
+        None => old_wrapper_text(exe),
+    }
+}
+
+/// The wrapper every install before 0.1.20 wrote.
+pub fn old_wrapper_text(exe: &str) -> String {
     format!("@\"{exe}\" statusline copilot\r\n")
+}
+
+fn statusline_exe(exe: &str) -> Option<String> {
+    let p = Path::new(exe).parent()?.join(STATUSLINE_EXE);
+    p.is_file().then(|| p.to_string_lossy().into_owned())
+}
+
+/// At core start and AIQ home open (`aiq install --new`): point AIQ's own wrapper at `aiq-statusline.exe` once an
+/// update has brought it. Changes only a wrapper that is exactly the one AIQ wrote for this `aiq.exe`, and says so.
+pub fn refresh_wrapper() {
+    if !cfg!(windows) {
+        return;
+    }
+    let Ok(exe) = exe_path() else { return };
+    let exe_s = exe.to_string_lossy().trim_start_matches(r"\\?\").to_string();
+    let wp = wrapper_file(&copilot_home());
+    let new = wrapper_text(&exe_s);
+    if std::fs::read_to_string(&wp).ok() == Some(old_wrapper_text(&exe_s)) && new != old_wrapper_text(&exe_s) {
+        match std::fs::write(&wp, &new) {
+            Ok(()) => {
+                println!("AIQ updated {} (AIQ's own file): the status line now runs {}.", wp.display(), new.trim())
+            }
+            Err(e) => eprintln!("AIQ could not update {}: {e}", wp.display()),
+        }
+    }
 }
 
 /// The command line a person adds to their own status-line script.
@@ -403,6 +442,18 @@ pub fn uninstall(yes: bool) -> ExitCode {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_wrapper_runs_the_status_line_program_when_it_sits_beside_aiq() {
+        let d = tempfile::tempdir().unwrap();
+        let exe = d.path().join("aiq.exe");
+        std::fs::write(&exe, b"").unwrap();
+        let exe_s = exe.to_string_lossy().into_owned();
+        assert_eq!(wrapper_text(&exe_s), old_wrapper_text(&exe_s), "no aiq-statusline.exe yet");
+        let sl = d.path().join(STATUSLINE_EXE);
+        std::fs::write(&sl, b"").unwrap();
+        assert_eq!(wrapper_text(&exe_s), format!("@\"{}\"\r\n", sl.display()));
+    }
+
     use super::*;
 
     #[test]
