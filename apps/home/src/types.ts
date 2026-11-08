@@ -21,6 +21,7 @@ export interface Snapshot {
   starting: Starting[];
   /** Each tool's newest event, newest first: the quiet Right now card says when each was last heard. */
   seen: Seen[];
+  aside: Aside[];
   /** The rung guide: every next-step move in pack order (pack data, the same for everyone). */
   guide: GuideMove[];
   /** Where new tasks' tips went, today and over 7 days, and recent days with no tip (design tip-funnel). */
@@ -102,6 +103,14 @@ export interface Starting {
   last_ms: number;
   prompts: number;
   working: boolean;
+}
+
+/** Mirrors crates/aiq-home `Aside`: one tool's newest activity AIQ left out as automated (up to 5 min stale). */
+export interface Aside {
+  surface: string;
+  last_ms: number;
+  /** projects, aiq-check, session, folder, template, burst */
+  reason: string;
 }
 
 /** Mirrors crates/aiq-home `Seen`: one tool's newest event. */

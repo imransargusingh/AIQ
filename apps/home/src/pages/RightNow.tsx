@@ -244,9 +244,13 @@ export function quiet(snap: Snapshot) {
     .filter((t) => t.hooked && t.present && SURFACE[t.tool])
     .map((t) => {
       const [surface, name] = SURFACE[t.tool];
-      return { name, last: snap.seen.find((x) => x.surface === surface)?.last_ms ?? null };
+      const counted = snap.seen.find((x) => x.surface === surface)?.last_ms ?? null;
+      // Activity left out as automated still is activity (Imran 2026-11-08): the card names it instead of calling the tool idle.
+      const a = snap.aside.find((x) => x.surface === surface && (counted === null || x.last_ms > counted));
+      return { name, last: a ? a.last_ms : counted, aside: a?.reason ?? null };
     });
   const silent = tools.filter((t) => t.last === null || snap.now_ms - t.last > QUIET_HINT_MS);
+  const aside = tools.filter((t) => t.aside !== null);
   const state = snap.status.paused
     ? "paused"
     : snap.status.core_state === "failed"
@@ -256,12 +260,21 @@ export function quiet(snap: Snapshot) {
         : tools.length === 0
           ? "none"
           : "idle";
-  return { state, tools, silent } as const;
+  return { state, tools, silent, aside } as const;
+}
+
+/** Why a tool's newest activity isn't counted, in plain words (rule names from the core's set-aside rules). */
+export function asideText(tools: { name: string; aside: string | null }[]): string {
+  const names = tools.map((t) => t.name).join(" and ");
+  const projects = tools.every((t) => t.aside === "projects");
+  return projects
+    ? `${names}'s newest activity is Claude's own work in a claude.ai project, so AIQ doesn't count it. Turns you type yourself count.`
+    : `${names}'s newest activity looks like an app or script ran it, so AIQ doesn't count it.`;
 }
 
 function Quiet(ctx: Ctx) {
   const { snap } = ctx;
-  const { state, tools, silent } = quiet(snap);
+  const { state, tools, silent, aside } = quiet(snap);
   const s = snap.starting[0];
   const title = {
     paused: "Paused",
@@ -316,12 +329,23 @@ function Quiet(ctx: Ctx) {
                 <li key={t.name}>
                   <span className={`rn-dot${recent ? " busy" : ""}${t.last === null ? " none" : ""}`} aria-hidden="true" />
                   <b>{t.name}</b>
-                  <span className="meta num">{t.last === null ? "nothing yet" : `last activity ${ago(t.last, snap.now_ms, snap.offset_min)}`}</span>
+                  <span className="meta num">
+                    {t.last === null ? "nothing yet" : `last activity ${ago(t.last, snap.now_ms, snap.offset_min)}`}
+                    {t.aside && " · automated, not counted"}
+                  </span>
                 </li>
               );
             })}
           </ul>
           {state === "idle" && <p className="meta">A task shows here once the agent replies to your first prompt.</p>}
+          {state === "idle" && aside.length > 0 && (
+            <p className="meta rn-hint" data-testid="right-now-aside">
+              {asideText(aside)}{" "}
+              <button className="btnlink" onClick={() => document.getElementById("hb")?.scrollIntoView({ behavior: "smooth" })}>
+                See what's not counted
+              </button>
+            </p>
+          )}
           {state === "idle" && silent.length > 0 && (
             <p className="meta rn-hint" data-testid="right-now-hint">
               Using {silent.map((t) => t.name).join(" or ")} with an agent right now? AIQ has had nothing from {silent.length > 1 ? "them" : "it"}{" "}

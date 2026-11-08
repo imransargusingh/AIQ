@@ -658,6 +658,35 @@ for (const theme of ["light", "dark", "contrast"]) {
   });
 }
 
+// Imran 2026-11-08: Claude Code read "last activity Yesterday" while he typed to it all evening, because every turn
+// was set aside. Set-aside activity is activity: the card names it and says it isn't counted.
+await test("Right now card, nothing open: a tool whose newest activity was set aside says so, no axe violations", async () => {
+  const page = await open("full", {
+    edit: (s) => {
+      s.starting = [];
+      s.setup.tools = ["claude-code", "copilot"].map((tool) => ({ tool, hooked: true, present: true, install: "" }));
+      s.seen = [
+        { surface: "copilot-cli", last_ms: s.now_ms - 12 * 60_000 },
+        { surface: "claude-code", last_ms: s.now_ms - 26 * 3_600_000 },
+      ];
+      s.aside = [{ surface: "claude-code", last_ms: s.now_ms - 2 * 60_000, reason: "projects" }];
+    },
+  });
+  const card = page.getByTestId("right-now");
+  const t = await card.innerText();
+  assert.match(t, /Claude Code\s*last activity 2 min ago · automated, not counted/);
+  assert.match(t, /Copilot\s*last activity 12 min ago\n/);
+  assert.equal(await page.getByTestId("right-now-hint").count(), 0, "not called silent");
+  const hint = page.getByTestId("right-now-aside");
+  assert.match(await hint.innerText(), /^Claude Code's newest activity is Claude's own work in a claude.ai project, so AIQ doesn't count it\. Turns you type yourself count\./);
+  assert.doesNotMatch(t, /Watching|Monitoring|judge/i);
+  assert.deepEqual(await axe(page), []);
+  if (shots) await page.screenshot({ path: join(shots, "right-now-aside-light.png") });
+  await hint.getByRole("button", { name: "See what's not counted" }).click();
+  assert.deepEqual(page.errors, []);
+  await page.context().close();
+});
+
 await test("Right now card: a task whose first turn is running shows as starting, not as nothing", async () => {
   const page = await open("full");
   const card = page.getByTestId("right-now");

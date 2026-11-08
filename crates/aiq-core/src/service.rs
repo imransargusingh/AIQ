@@ -107,6 +107,11 @@ pub struct Service<C: Clock> {
     projects_folders: std::collections::HashSet<String>,
     /// Rule RC result per Claude Code session, read from its transcript head until settled (bounded).
     rc_checked: std::collections::HashMap<String, RcCheck>,
+    /// Rule RC per turn: whether the current turn of a Projects session is the person's own (its prompt was typed by
+    /// them), so its Stop goes with it. In memory; bounded.
+    rc_own: std::collections::HashMap<(String, String), bool>,
+    /// Per surface, when `note_aside` last wrote and for which rule.
+    aside_noted: std::collections::HashMap<String, (i64, String)>,
     /// When the VS Code extension last asked for a card (core clock), in this core run.
     vscode_asked_ms: Option<i64>,
     /// Coaching inputs derived from the store (design coaching-from-rungs); rebuilt when stale.
@@ -225,6 +230,11 @@ enum RcCheck {
 /// 0 ms; a written head settles on its first user record, so this bound is rarely reached).
 const RC_TRIES: u32 = 8;
 
+/// Setting key prefix for a surface's newest set-aside activity (`note_aside`); Home reads it.
+pub const ASIDE_KEY: &str = "aside.";
+/// How often `note_aside` rewrites an unchanged surface's time.
+const ASIDE_EVERY_MS: i64 = 5 * 60_000;
+
 /// One signal to decide on: the detector's fields and the card it would show.
 struct Pending<'a> {
     task_id: &'a str,
@@ -272,6 +282,8 @@ impl<C: Clock> Service<C> {
             rc_held: Default::default(),
             projects_folders: Default::default(),
             rc_checked: Default::default(),
+            rc_own: Default::default(),
+            aside_noted: Default::default(),
             vscode_asked_ms: None,
             coach: None,
             guess_low_logged: false,
@@ -432,6 +444,9 @@ impl<C: Clock> Service<C> {
                     aiq.dir = ev.cwd.as_deref().and_then(aiq_domain::automated::folder_tag).unwrap_or_default(),
                     "event set aside"
                 );
+                if reason != "rc-pending" {
+                    self.note_aside(&ev.surface, reason);
+                }
                 // Home counts set-aside sessions per folder (one row per session, first prompt's time). A failed write
                 // only leaves the count short; it never stops the skip.
                 if let (EventBody::Prompt(_), "aiq-check" | "folder" | "template" | "burst", Some(folder)) =
@@ -1154,20 +1169,107 @@ impl<C: Clock> Service<C> {
             && matches!(self.rc_checked.get(&key), Some(RcCheck::Unsettled(n)) if *n < RC_TRIES)
     }
 
+    /// Home's Right now card says when a tool's newest activity was left out as automated (Imran 2026-11-08: the card
+    /// read "Nothing in progress" and showed Claude Code idle for a day while every one of his turns was set aside).
+    /// A setting per surface, `aside.<surface>` = "<utc_ms> <reason>".
+    /// simplify: written at most every `ASIDE_EVERY_MS` per surface unless the reason changes, so the card's time is up
+    /// to 5 minutes stale. Ceiling: the setting log grows ~12 rows an hour per busy surface. Upgrade trigger: the
+    /// setting_change table passes 100k rows, or a person asks for the exact time.
+    fn note_aside(&mut self, surface: &str, reason: &str) {
+        let now = self.clock.now().utc_ms;
+        if let Some((at, r)) = self.aside_noted.get(surface)
+            && r == reason
+            && now - at < ASIDE_EVERY_MS
+        {
+            return;
+        }
+        if let Err(e) = self.store.set_setting(&format!("{ASIDE_KEY}{surface}"), &format!("{now} {reason}"), now) {
+            warn!(error.code = e.code, "set-aside activity not noted");
+            return;
+        }
+        if self.aside_noted.len() < 64 || self.aside_noted.contains_key(surface) {
+            self.aside_noted.insert(surface.to_owned(), (now, reason.to_owned()));
+        }
+    }
+
+    /// A folder where a Projects session's turns are left out, so "Include them" can be offered there.
+    fn note_projects_folder(&mut self, k: String) {
+        if self.projects_folders.len() < 1024 && !k.is_empty() && self.projects_folders.insert(k) {
+            info!(aiq.reason = "projects", "Projects session set aside");
+        }
+    }
+
+    /// Rule RC per turn: who typed this prompt, from its own record near the transcript's end (`projects::turn_at`).
+    /// Measured 2026-11-08: the record is written 28 ms to 2.1 s before the core gets the prompt (101 of 102 turns).
+    /// An event with no transcript (an older hook that set `projects` itself) cannot be read: not the person's.
+    fn rc_prompt_turn(&self, ev: &EventV1) -> crate::projects::Turn {
+        use crate::projects::{TAIL_BYTES, Turn, turn_at};
+        let Some(t) = ev.transcript.as_deref() else { return Turn::Other };
+        let at = parse_rfc3339_ms(&ev.ts).unwrap_or_else(|| self.clock.now().utc_ms);
+        let started = std::time::Instant::now();
+        let turn = turn_at(std::path::Path::new(t), at, TAIL_BYTES);
+        let name = match turn {
+            Turn::Own => "own",
+            Turn::Other => "other",
+            Turn::Unknown => "unknown",
+        };
+        info!(ms = started.elapsed().as_millis() as u64, turn = name, "rc.turn");
+        turn
+    }
+
     /// The automated-session rule, live side. A skip names its rule (`projects`, `aiq-check`, `session`,
     /// `folder`, `template`, `burst`) for the log.
     fn automated(&mut self, ev: &EventV1) -> Result<Gate, StoreError> {
         let (surface, session) = (ev.surface.as_str(), ev.surface_session_id.as_str());
         let rc_key = (surface.to_owned(), session.to_owned());
         if ev.projects || self.projects_session(ev) {
-            self.rc_held.remove(&rc_key); // Claude's own session from its first event: none of it is the person's
-            // Rule RC: Claude's own Projects / Remote Control session, every event, unless included.
+            // Rule RC: a claude.ai Projects / Remote Control session. Per turn, not per session (Imran 2026-11-08: the
+            // whole session was set aside although he typed 33 of its 40 turns, on the laptop and the phone): a turn
+            // the person typed counts on any device; Claude's relayed briefs and other sessions' messages do not.
             let k = ev.cwd.as_deref().map(folder_key).unwrap_or_default();
             if self.store.folder_rules_now()?.get(&k).map(String::as_str) != Some("include") {
-                if self.projects_folders.len() < 1024 && !k.is_empty() && self.projects_folders.insert(k) {
-                    info!(aiq.reason = "projects", "Projects session set aside");
+                // Prompts held while the head was unwritten, or while their own record was not yet found: decided
+                // now, in order. At a Stop every record of the turn is written, so one still not found is not counted.
+                let stop = matches!(ev.body, EventBody::Stop(_));
+                let mut again = vec![];
+                for e in self.rc_held.remove(&rc_key).unwrap_or_default() {
+                    match self.rc_prompt_turn(&e) {
+                        crate::projects::Turn::Own => self.ingest_inner(&e, None)?,
+                        crate::projects::Turn::Unknown if !stop => again.push(e),
+                        _ => {
+                            self.rc_own.insert(rc_key.clone(), false);
+                        }
+                    }
                 }
-                return Ok(Gate::Skip("projects"));
+                if !again.is_empty() {
+                    self.rc_held.insert(rc_key.clone(), again);
+                }
+                let own = match &ev.body {
+                    EventBody::Prompt(_) => match self.rc_prompt_turn(ev) {
+                        crate::projects::Turn::Own => true,
+                        crate::projects::Turn::Other => false,
+                        crate::projects::Turn::Unknown => {
+                            self.note_projects_folder(k);
+                            if self.rc_held.len() >= MAX_HELD {
+                                self.rc_held.clear();
+                            }
+                            self.rc_held.entry(rc_key).or_default().push(ev.clone());
+                            return Ok(Gate::Skip("rc-pending"));
+                        }
+                    },
+                    // A turn end belongs to the turn its prompt started.
+                    EventBody::Stop(_) => self.rc_own.get(&rc_key).copied().unwrap_or(false),
+                };
+                if let EventBody::Prompt(_) = ev.body {
+                    if self.rc_own.len() >= 4096 {
+                        self.rc_own.clear();
+                    }
+                    self.rc_own.insert(rc_key.clone(), own);
+                }
+                if !own {
+                    self.note_projects_folder(k);
+                    return Ok(Gate::Skip("projects"));
+                }
             }
         }
         if let Some(k) = ev.cwd.as_deref().filter(|c| is_aiq_check_folder(c)).map(folder_key) {
