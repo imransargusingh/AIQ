@@ -71,6 +71,15 @@ pub fn render_waiting_marker(color: bool) -> String {
     if color { format!("{LINE_ON}{plain}{LINE_OFF}") } else { plain.to_owned() }
 }
 
+/// The live progress line ("AIQ: heading for Delegated (3) so far · turn 1") shown when no tip waits. Cyan,
+/// a distinct hue from the tips' yellow, so it reads as AIQ's and not the host's grey, while yellow and the
+/// badge stay reserved for tips (Imran 2026-11-08: "shouldn't it be highlighted like the tips?").
+const TREND_ON: &str = "\u{1b}[36m";
+
+pub fn render_trend_line(text: &str, color: bool) -> String {
+    if color { format!("{TREND_ON}{text}{LINE_OFF}") } else { text.to_owned() }
+}
+
 /// The only stdout a Claude Code hook may produce: `{"systemMessage": "<text>"}`.
 /// Confirmed on the Windows laptop 2026-11-01: Claude Code renders the codes. `color: false` (the
 /// person set `NO_COLOR`, see no-color.org) sends plain text.
@@ -130,6 +139,16 @@ mod tests {
         assert_eq!(strip_sgr(&colored), plain, "same words as the plain line");
         assert_eq!(render_waiting_marker(false), "1 tip waiting · aiq show");
         assert_eq!(render_waiting_marker(true), "\u{1b}[22;33m1 tip waiting · aiq show\u{1b}[39m");
+    }
+
+    #[test]
+    fn trend_line_is_cyan_not_the_tips_yellow_and_plain_without_colour() {
+        let t = "AIQ: heading for Delegated (3) so far · turn 1";
+        assert_eq!(render_trend_line(t, false), t);
+        let c = render_trend_line(t, true);
+        assert_eq!(c, format!("\u{1b}[36m{t}\u{1b}[39m"));
+        assert!(!c.contains("\u{1b}[33m") && !c.contains("43m"), "yellow and the badge are only for tips");
+        assert_eq!(strip_sgr(&c), t);
     }
 
     #[test]

@@ -565,3 +565,28 @@ summary: >-
   core); `hook::tests::a_timed_out_stop_that_never_left_goes_to_the_spool`.
 - **Rule:** a sender that gives up on a timer must know whether its message left. If it may not have, keep it
   (spool, retry) before the process ends; an idempotent receiver makes keeping it safe.
+
+### DC-036 — A self-check that switches a feature off and, by doing so, stops measuring itself
+(DC-035 is taken by PR #181, still open.)
+- **Signature:** 2026-11-08, Imran's laptop, measured read-only. The kind-label self-check reached 6 right of 10
+  on 2026-11-04 16:02Z and fell under the 8-in-10 bar. From then on the core asked for no labels, so no new
+  label was ever checked, and the check could not recover. Word matching found a kind for 4 tasks in a week,
+  so no tip was decided on any surface for four days across 91 coachable prompts. The switch-off logged
+  nothing, because the warning fired only when words and labels were both off. The count was all-time, so old
+  misses and labels from an older prompt or model would have held the tips forever.
+- **Why it survives:** the unit test asserted the behaviour itself ("labels 7 of 10: AIQ stops asking"). No test
+  asked whether the check could ever turn the feature back on, and no signal showed that tips had stopped.
+- **Sweep:** the word-guess self-check had the same shape (`guess` was only computed while words were on): fixed
+  the same way. Home Settings computed one check over words and labels together while the core kept two: now
+  both use `check_guesses` per method. The accuracy pause (K6b) reads separate `aiq analyze --check` runs that
+  keep running while it pauses, so it does not have this shape. `judge.rs` N3 is an all-time report line, not a
+  switch: left as is.
+- **Control (product):** while a check holds tips, the core still makes and stores word guesses and still asks for
+  labels; only the tip is held. The hold is logged once per core run (`AIQ-COACH-GUESS-LOW`, with the counts).
+  `check_guesses` counts only the newest `2 × guess_check_min` checked guesses.
+- **Control (tests):** `next_rung::labels_have_their_own_self_check_hold_tips_below_eight_in_ten_and_keep_being_checked`
+  (still asks, stores the label, shows no tip, and label tips return after ten newer right labels);
+  `next_rung::self_check_holds_tips_at_seven_of_ten_keeps_guessing_and_on_brings_them_back`;
+  `coach::tests::self_check_counts_only_the_newest_twenty_so_old_misses_leave`.
+- **Rule:** a guard that switches something off must keep measuring the thing it guards, so it can switch it back
+  on, and it must say when it switches. A test for such a guard proves the way back, not only the switch-off.

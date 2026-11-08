@@ -530,12 +530,17 @@ impl Store {
     }
 
     /// Does this task have a type guess (by any method)? False before v6.
-    pub fn has_type_guess(&self, task_id: &str) -> Result<bool> {
+    /// Whether the task already has a guess made by `method` (`words` or `label`).
+    pub fn has_type_guess(&self, task_id: &str, method: &str) -> Result<bool> {
         if !self.has_table("type_guess")? {
             return Ok(false);
         }
         self.conn
-            .query_row("SELECT EXISTS (SELECT 1 FROM type_guess WHERE task_id = ?1)", [task_id], |r| r.get(0))
+            .query_row(
+                "SELECT EXISTS (SELECT 1 FROM type_guess WHERE task_id = ?1 AND method = ?2)",
+                params![task_id, method],
+                |r| r.get(0),
+            )
             .map_err(err(codes::STORE_OPEN))
     }
 

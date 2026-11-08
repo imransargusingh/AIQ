@@ -706,15 +706,31 @@ impl<C: Clock> Service<C> {
         trace_id: Option<&str>,
         started: std::time::Instant,
     ) -> Result<(), StoreError> {
-        // Labels keep being asked for while their self-check holds their tips, so the check keeps measuring
-        // and can turn them back on. Before, a check below 8 in 10 stopped the asking, so it could never
-        // recover (laptop 2026-11-04 to 11-08: 6 of 10 right, no label and no tip for four days).
+        // A self-check that holds tips never stops its own measuring (DC-036): word guesses are still made and
+        // stored, and labels still asked for, so each check keeps scoring and turns its tips back on. Before,
+        // a check below 8 in 10 stopped the guessing, so it could never recover (laptop 2026-11-04 to 11-08:
+        // labels 6 of 10 right, then no label and no tip on any surface for four days).
         let words_on = cache.words_on(mode, pack);
         let labels_on = self.labels_enabled();
         if labels_on && !cache.labels_on(mode, pack) {
             self.log_label_hold(cache);
         }
-        if !words_on && !labels_on {
+        let words = features(text, &pack.reprompt).words;
+        let guess = coach::guess_type(&words, &cache.neighbours, &pack.coach);
+        if !words_on {
+            if let Some(g) = &guess {
+                self.store.insert_type_guess(&aiq_store::TypeGuessRow {
+                    guess_id: new_id(),
+                    task_id: task_id.to_owned(),
+                    surface: surface.to_owned(),
+                    job: g.job.clone(),
+                    task_type: g.task_type.clone(),
+                    similarity: g.similarity,
+                    neighbours: g.neighbours.clone(),
+                    utc_ms: self.clock.now().utc_ms,
+                    method: "words".into(),
+                })?;
+            }
             if !self.guess_low_logged {
                 self.guess_low_logged = true;
                 self.counters.inc(codes::COACH_GUESS_LOW);
@@ -724,14 +740,11 @@ impl<C: Clock> Service<C> {
                     right = cache.check.right,
                     label_checked = cache.label_check.checked,
                     label_right = cache.label_check.right,
-                    "next-rung tips turned off by AIQ's self-check"
+                    "next-step tips from word guesses held by AIQ's self-check; word guesses are still made and checked"
                 );
             }
-            return Ok(());
         }
-        let words = features(text, &pack.reprompt).words;
-        let guess = if words_on { coach::guess_type(&words, &cache.neighbours, &pack.coach) } else { None };
-        let Some(g) = guess else {
+        let Some(g) = guess.filter(|_| words_on) else {
             // No word match: ask the small model in the background (design kind-label). The core never waits on
             // a model (C9); the answer comes back as `on_kind_label`, before the turn's Stop in most turns.
             let asked = labels_on && self.request_label(surface, session, task_id);
@@ -819,7 +832,7 @@ impl<C: Clock> Service<C> {
             outcome("label_task_moved_on");
             return Ok(());
         }
-        if self.store.has_type_guess(task_id)? {
+        if self.store.has_type_guess(task_id, aiq_domain::label::METHOD)? {
             return Ok(()); // already decided (a repeated notice)
         }
         let label = aiq_domain::label::Label {

@@ -802,14 +802,18 @@ impl GuessCheck {
     }
 }
 
-/// Check each guess (task id, job, type) against that task's later judgment. Not-yet-judged and Uncertain
-/// judgments are not checked; a judged `other` counts as wrong.
+/// Check each guess (task id, job, type; oldest first) against that task's later judgment. Not-yet-judged and
+/// Uncertain judgments are not checked; a judged `other` counts as wrong. Only the newest
+/// `2 × guess_check_min` checked guesses count (DC-036): an all-time count let old misses, and labels from an
+/// older prompt or model, hold tips forever (laptop 2026-11-08: from 6 of 10 it needed 10 right in a row, and
+/// the misses never left).
 pub fn check_guesses<'a>(
     guesses: impl IntoIterator<Item = (&'a str, &'a str, &'a str)>,
     judged: &BTreeMap<&str, &JudgedTask>,
+    p: &CoachParams,
 ) -> GuessCheck {
-    let mut c = GuessCheck::default();
     let mut seen = BTreeSet::new();
+    let mut results = Vec::new();
     for (task, job, ty) in guesses {
         if !seen.insert(task) {
             continue;
@@ -818,12 +822,10 @@ pub fn check_guesses<'a>(
         if j.uncertain() || j.task_type.is_none() {
             continue;
         }
-        c.checked += 1;
-        if j.job == job && j.task_type.as_deref() == Some(ty) {
-            c.right += 1;
-        }
+        results.push(j.job == job && j.task_type.as_deref() == Some(ty));
     }
-    c
+    let newest = &results[results.len().saturating_sub(2 * p.guess_check_min as usize)..];
+    GuessCheck { checked: newest.len() as u32, right: newest.iter().filter(|r| **r).count() as u32 }
 }
 
 #[cfg(test)]
@@ -1223,6 +1225,7 @@ mod tests {
                     .enumerate()
                     .map(|(i, id)| (id.as_str(), "code_change", if i < right { "tests" } else { "fix_bug" })),
                 &map,
+                &p,
             )
         };
         assert_eq!(g(8), GuessCheck { checked: 10, right: 8 });
@@ -1230,9 +1233,38 @@ mod tests {
         assert!(g(7).auto_off(&p));
         let nine: BTreeMap<&str, &JudgedTask> = map.iter().take(9).map(|(k, v)| (*k, *v)).collect();
         assert!(
-            !check_guesses(ids.iter().map(|id| (id.as_str(), "code_change", "fix_bug")), &nine).auto_off(&p),
+            !check_guesses(ids.iter().map(|id| (id.as_str(), "code_change", "fix_bug")), &nine, &p).auto_off(&p),
             "9 checks is too few"
         );
+    }
+
+    #[test]
+    fn self_check_counts_only_the_newest_twenty_so_old_misses_leave() {
+        let p = params();
+        let judged: Vec<JudgedTask> = (0..30).map(|i| delegated_person_checks(&format!("t{i}"), 1)).collect();
+        let map: BTreeMap<&str, &JudgedTask> = judged.iter().map(|t| (t.task_id.as_str(), t)).collect();
+        let ids: Vec<String> = (0..30).map(|i| format!("t{i}")).collect();
+        // Oldest 10 wrong (as the laptop's 6 of 10, but worse), then 20 right: the wrong ones have left.
+        let c = check_guesses(
+            ids.iter()
+                .enumerate()
+                .map(|(i, id)| (id.as_str(), "code_change", if i < 10 { "fix_bug" } else { "tests" })),
+            &map,
+            &p,
+        );
+        assert_eq!(c, GuessCheck { checked: 20, right: 20 });
+        assert!(!c.auto_off(&p));
+        // Newest misses still count: 10 right then 10 wrong is held.
+        let c = check_guesses(
+            ids.iter()
+                .enumerate()
+                .skip(10)
+                .map(|(i, id)| (id.as_str(), "code_change", if i < 20 { "tests" } else { "fix_bug" })),
+            &map,
+            &p,
+        );
+        assert_eq!(c, GuessCheck { checked: 20, right: 10 });
+        assert!(c.auto_off(&p));
     }
 
     #[test]
