@@ -565,3 +565,25 @@ summary: >-
   core); `hook::tests::a_timed_out_stop_that_never_left_goes_to_the_spool`.
 - **Rule:** a sender that gives up on a timer must know whether its message left. If it may not have, keep it
   (spool, retry) before the process ends; an idempotent receiver makes keeping it safe.
+
+### DC-035 — A rule that settles later than the first event it governs, which was already acted on
+- **Signature:** 2026-11-08 03:28Z, Imran's laptop: one of Claude's own Remote Control sessions. At its first
+  prompt rule RC read the transcript head and found it not yet written (`rc.check projects=false
+  settled=false`), so the prompt was stored as the person's. At 03:31Z the head settled as Projects and every
+  later event was set aside. The first prompt stayed behind as a one-prompt task with no turn end. Measured
+  over 30 days: 6 of 9 Claude Code sessions were such one-prompt, no-stop tasks, and all 6 were analysed
+  (14 analysis rows, 12 uncertain).
+- **Why it survives:** the re-read on later events (from the 11-02 fix) only governs events after it settles;
+  nothing looked back at what was recorded before. Tests used a missing transcript and expected the prompt
+  stored at once, which was the defect.
+- **Sweep:** the other live gates (`guard` H ≥ 2, folder rules, AIQ check folders) decide from data present at
+  the first prompt and already hold a first prompt back (`held`) when unsure; rule RC was the only gate that
+  recorded while undecided.
+- **Control (product):** `Service::rc_held`: a Claude Code prompt that arrives while rule RC is unsettled
+  waits in memory; the session's next event that is not held (its Stop at the latest) records it first, unless
+  the head then shows a Projects session, which drops it. Held events are not counted as set aside.
+- **Control (tests):** `an_unwritten_transcript_head_is_read_again_until_it_settles_rule_rc` (Projects
+  session: 0 prompts kept; terminal session: the prompt is recorded at its Stop, before the stop); e2e
+  harness writes a real terminal transcript head.
+- **Rule:** a rule that may settle after the first event must not let that event through while undecided:
+  hold it until the rule decides, with a bounded release.

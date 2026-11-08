@@ -68,9 +68,18 @@ impl Env {
     fn status(&self) -> String {
         String::from_utf8(self.run(&["status"], b"").stdout).unwrap()
     }
+    /// A terminal session's transcript as Claude Code has written it by the prompt hook: a human user record, so
+    /// rule RC settles "not Projects" at once and the prompt is stored without waiting for the Stop (DC-035).
+    fn transcript(&self) -> String {
+        let t = self.dir.path().join("t.jsonl");
+        if !t.exists() {
+            std::fs::write(&t, "{\"type\":\"user\",\"turnOrigin\":\"human\",\"entrypoint\":\"cli\"}\n").unwrap();
+        }
+        t.to_string_lossy().into_owned()
+    }
     fn prompt(&self, session: &str, text: &str, pid: &str) -> Output {
         let p = json!({"session_id": session, "hook_event_name": "UserPromptSubmit", "prompt": text, "prompt_id": pid,
-                       "cwd": "/repo", "transcript_path": "/t.jsonl", "permission_mode": "default"});
+                       "cwd": "/repo", "transcript_path": self.transcript(), "permission_mode": "default"});
         self.run(&["hook", "claude-code", "UserPromptSubmit"], p.to_string().as_bytes())
     }
     fn stop(&self, session: &str, pid: &str) -> Output {
