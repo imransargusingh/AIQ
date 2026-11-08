@@ -9,6 +9,7 @@
     "build": "tsc --noEmit && vite build",
     "test": "vitest run",
     "e2e": "node tests/e2e.mjs",
+    "readme-shots": "node tests/readme-shots.mjs",
     "tauri": "tauri"
   },
   "dependencies": {

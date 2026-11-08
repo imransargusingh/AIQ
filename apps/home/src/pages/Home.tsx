@@ -61,7 +61,7 @@ export function Home(ctx: Ctx) {
       <section
         className="mainrung"
         role="img"
-        aria-label={`Your most common rung: ${mc ? `${rungLabel(mc)}. ${RUNGS[mc - 1].means}` : "not judged yet"}. The ladder runs Assisted, Directed, Delegated, Orchestrated, Factory.`}
+        aria-label={`Your most common rung: ${mc ? `${rungLabel(mc)}. ${RUNGS[mc - 1].means}` : "not analyzed yet"}. The ladder runs Assisted, Directed, Delegated, Orchestrated, Factory.`}
       >
         <div className="lbl" aria-hidden="true">
           <span className="mute">Your most common rung</span>
@@ -106,7 +106,7 @@ export function Home(ctx: Ctx) {
                 </p>
               )}
               <p className="meta">
-                {sp.finished} of {plural(sp.tasks, "judged task")} finished by agents
+                {sp.finished} of {plural(sp.tasks, "analyzed task")} finished by agents
                 {sp.could > 0 && <> · {sp.could} could be</>} · {sp.needs} need you
                 {sp.uncertain > 0 && <> · {sp.uncertain} unsure, not counted</>}
               </p>

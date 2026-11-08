@@ -1149,7 +1149,7 @@ await test("coaching Home: finished and could be, the rule, uncertain left out, 
   assert.match(t, /Tasks agents finished\s+33%\s+could be 67%/);
   assert.equal(await page.getByRole("img", { name: "Agents finished 33%, could be 67%" }).count(), 1);
   // Outcome first, then the measured counts on one line; how it is counted stays folded away until asked for.
-  assert.match(t, /47% have an easy next step, most often to Delegated \(3\)\.\s+5 of 15 judged tasks finished by agents · 5 could be · 5 need you · 1 unsure, not counted/);
+  assert.match(t, /47% have an easy next step, most often to Delegated \(3\)\.\s+5 of 15 analyzed tasks finished by agents · 5 could be · 5 need you · 1 unsure, not counted/);
   assert.ok(!t.includes("A task counts as finished"), "the rule is folded away");
   await page.getByText("How AIQ counts").click();
   const how = await page.locator("details.how").innerText();
@@ -1606,7 +1606,7 @@ await test("Home drops 'could be' when no kind of task is one step from agents f
   const page = await open("coaching", { edit: (s) => { s.coaching.split = { ...s.coaching.split, finished: 1, could: 0, needs: 14, up: 13, up_to: 2 }; } });
   const t = await page.locator("main").innerText();
   assert.ok(!t.includes("could be"), "no 'could be' figure");
-  assert.match(t, /1 of 15 judged tasks finished by agents · 14 need you · 1 unsure, not counted/);
+  assert.match(t, /1 of 15 analyzed tasks finished by agents · 14 need you · 1 unsure, not counted/);
   assert.match(t, /87% have an easy next step, most often to Directed \(2\)\./);
   assert.equal(await page.getByRole("img", { name: "Agents finished 7%" }).count(), 1);
   await page.context().close();
