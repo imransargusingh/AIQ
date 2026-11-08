@@ -44,7 +44,7 @@ Steps (`aiq_domain::funnel::Step`), each written at exactly one exit of the core
 | `guess_held` | `next_rung_with` | Word guess made; words check under 8 in 10; labels can't run |
 | `no_match` | `next_rung_with` | No word match; labels can't run |
 | `label_asked` | `next_rung_with` | Waiting for a label; as the latest step, it never came back |
-| `label_failed` · `label_unsure` · `label_late` | `on_kind_label` | Label call failed / not sure / after the next task started |
+| `label_failed` · `label_unsure` · `label_not_coached` · `label_late` | `on_kind_label` | Label call failed / not sure / sure, but of a job labels never coach from (questions, `label::NOT_COACHED_JOBS`) / after the next task started |
 | `tips_off` | `next_rung` | Next-step tips turned off |
 | `late_first_prompt` | `record` | Session set aside first; a person's second prompt brought it back |
 

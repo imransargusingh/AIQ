@@ -108,6 +108,16 @@ pub fn counts_in_check(method: &str, job: &str, _task_type: &str) -> bool {
     method != METHOD || !NOT_COACHED_JOBS.contains(&job)
 }
 
+/// A label `accept` turns down only because its job is in `NOT_COACHED_JOBS`: sure enough, of a named kind,
+/// but a job labels never coach from. The tip funnel names this apart from "not sure enough".
+pub fn sure_but_not_coached(l: &Label) -> bool {
+    let bar = rung::COACH_THRESHOLD;
+    NOT_COACHED_JOBS.contains(&l.job.as_str())
+        && l.task_type != "other"
+        && l.job_confidence >= bar
+        && l.task_type_confidence >= bar
+}
+
 /// The (job, kind) a label may coach from: a pack job, a named kind (never `other`) of a job labels coach (not `NOT_COACHED_JOBS`), and
 /// both confidences at least the coaching bar (0.8, `rung::COACH_THRESHOLD`). A model's own confidence is not calibrated; the
 /// live self-check (`coach::check_guesses` over `method = label`) is what holds it to the 8-in-10 bar.
@@ -147,6 +157,10 @@ mod tests {
         assert_eq!(accept(&lab("ask_research", 0.99, "find", 0.99)), None, "measured: usually a code change");
         assert_eq!(accept(&lab("run_ship", 0.9, "release", 0.9)), Some(("run_ship", "release")));
         assert_eq!(accept(&lab("code_change", 0.9, "fix_bug", 0.9)), Some(("code_change", "fix_bug")));
+        assert!(sure_but_not_coached(&lab("ask_research", 0.99, "troubleshoot", 0.99)));
+        assert!(!sure_but_not_coached(&lab("ask_research", 0.7, "troubleshoot", 0.99)), "unsure stays unsure");
+        assert!(!sure_but_not_coached(&lab("ask_research", 0.99, "other", 0.99)));
+        assert!(!sure_but_not_coached(&lab("code_change", 0.7, "fix_bug", 0.7)));
         assert!(!counts_in_check(METHOD, "ask_research", "troubleshoot"));
         assert!(!counts_in_check(METHOD, "ask_research", "find"));
         assert!(counts_in_check("words", "ask_research", "troubleshoot"), "word guesses keep their own rule");

@@ -871,8 +871,13 @@ impl<C: Clock> Service<C> {
             task_type_confidence: l.task_type_confidence.unwrap_or(0.0),
         };
         let Some((job, task_type)) = aiq_domain::label::accept(&label) else {
-            outcome("label_not_confident");
-            self.tip_step(task_id, &l.surface, Step::LabelUnsure);
+            if aiq_domain::label::sure_but_not_coached(&label) {
+                outcome("label_job_not_coached");
+                self.tip_step(task_id, &l.surface, Step::LabelNotCoached);
+            } else {
+                outcome("label_not_confident");
+                self.tip_step(task_id, &l.surface, Step::LabelUnsure);
+            }
             return Ok(());
         };
         let pack = self.pack.clone();

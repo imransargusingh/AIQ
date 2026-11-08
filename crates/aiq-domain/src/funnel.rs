@@ -35,6 +35,8 @@ pub enum Step {
     LabelFailed,
     /// The label answered, not sure enough to coach from.
     LabelUnsure,
+    /// The label was sure, but of a job labels never coach from (`label::NOT_COACHED_JOBS`: questions).
+    LabelNotCoached,
     /// The label came back after the session had moved on to another task.
     LabelLate,
     /// Next-step tips are turned off in Settings.
@@ -43,7 +45,7 @@ pub enum Step {
     LateFirstPrompt,
 }
 
-pub const ALL: [Step; 17] = [
+pub const ALL: [Step; 18] = [
     Step::Decided,
     Step::KindTooFew,
     Step::KindRightRung,
@@ -58,6 +60,7 @@ pub const ALL: [Step; 17] = [
     Step::LabelAsked,
     Step::LabelFailed,
     Step::LabelUnsure,
+    Step::LabelNotCoached,
     Step::LabelLate,
     Step::TipsOff,
     Step::LateFirstPrompt,
@@ -80,6 +83,7 @@ impl Step {
             Step::LabelAsked => "label_asked",
             Step::LabelFailed => "label_failed",
             Step::LabelUnsure => "label_unsure",
+            Step::LabelNotCoached => "label_not_coached",
             Step::LabelLate => "label_late",
             Step::TipsOff => "tips_off",
             Step::LateFirstPrompt => "late_first_prompt",
@@ -99,6 +103,7 @@ impl Step {
                 | Step::LabelAsked
                 | Step::LabelFailed
                 | Step::LabelUnsure
+                | Step::LabelNotCoached
                 | Step::LabelLate
                 | Step::TipsOff
                 | Step::LateFirstPrompt
@@ -137,6 +142,7 @@ pub fn words(code: &str) -> &'static str {
         "label_asked" => "kind label never came back",
         "label_failed" => "kind label failed",
         "label_unsure" => "kind label not sure enough",
+        "label_not_coached" => "kind label says it's a question; labels don't give tips for questions",
         "label_late" => "kind label came after the next task started",
         "tips_off" => "next-step tips turned off",
         "late_first_prompt" => "started as automated, counted later",
