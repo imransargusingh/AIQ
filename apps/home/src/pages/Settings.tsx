@@ -20,7 +20,7 @@ const STAYS: { v: S["copilot_tip_stays"]; label: string; note?: string }[] = [
 const WHERE: { k: "copilot_tip_in_chat" | "tip_popup" | "tip_highlight"; label: string; note: string }[] = [
   { k: "copilot_tip_in_chat", label: "Show Copilot CLI tips in the conversation", note: "As well as in the status line at the bottom." },
   { k: "tip_popup", label: "Show a Windows pop-up when a tip appears in Claude Code or Copilot CLI", note: "Helps when you've switched to another window while the agent works. VS Code shows its own." },
-  { k: "tip_highlight", label: "Highlight tips in yellow", note: "The \u201cAIQ tip:\u201d label in terminals, and the AIQ item in the VS Code status bar." },
+  { k: "tip_highlight", label: "Highlight tips in yellow", note: "The \u201cAIQ tip:\u201d label in terminals, the AIQ item in the VS Code status bar, and AIQ\u2019s progress line in Copilot CLI (in cyan)." },
 ];
 
 const TREND = { label: "Show where an open task is heading", note: "On Home while you work, and in the Copilot CLI status line between tips. An estimate; the analyzed rung replaces it when the task ends." };

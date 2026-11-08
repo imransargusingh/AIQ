@@ -211,6 +211,7 @@ impl Cache {
                     .filter(|g| g.method == method)
                     .map(|g| (g.task_id.as_str(), g.job.as_str(), g.task_type.as_str())),
                 &by_id,
+                &pack.coach,
             )
         };
         let (check, label_check) = (check_of("words"), check_of(aiq_domain::label::METHOD));

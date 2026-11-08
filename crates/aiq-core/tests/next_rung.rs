@@ -278,7 +278,7 @@ fn flagged_type_and_setting_off_raise_no_card() {
 }
 
 #[test]
-fn self_check_turns_tips_off_at_seven_of_ten_and_on_brings_them_back() {
+fn self_check_holds_tips_at_seven_of_ten_keeps_guessing_and_on_brings_them_back() {
     let mut h = H::new();
     h.seed();
     {
@@ -301,8 +301,11 @@ fn self_check_turns_tips_off_at_seven_of_ten_and_on_brings_them_back() {
             .unwrap();
         }
     }
-    h.prompt("copilot-cli", "a", NEW);
+    let task = h.prompt("copilot-cli", "a", NEW);
     assert!(full(h.cp_turn_end("a")).is_none());
+    // Held, but still guessed and stored, so the check keeps scoring and can turn tips back on (DC-036).
+    let g = Store::open(&h.path).unwrap().type_guesses().unwrap();
+    assert!(g.iter().any(|g| g.task_id == task && g.method == "words"), "the word guess is still made");
     let st = h.svc.status().coach.unwrap();
     assert_eq!((st.checked, st.right, st.tips_on), (10, 7, false));
     h.svc.set("next_rung_tips", "on").unwrap();
@@ -583,7 +586,7 @@ fn a_label_tip_is_held_by_the_accuracy_pause_like_a_word_tip() {
 }
 
 #[test]
-fn labels_have_their_own_self_check_and_turn_off_below_eight_in_ten() {
+fn labels_have_their_own_self_check_hold_tips_below_eight_in_ten_and_keep_being_checked() {
     let mut h = H::new();
     h.seed();
     let asked = with_labeller(&mut h);
@@ -606,8 +609,15 @@ fn labels_have_their_own_self_check_and_turn_off_below_eight_in_ten() {
             .unwrap();
         }
     }
-    h.prompt("copilot-cli", "a", UNLIKE);
-    assert!(asked.lock().unwrap().is_empty(), "labels 7 of 10: AIQ stops asking");
+    let task = h.prompt("copilot-cli", "a", UNLIKE);
+    // Labels 7 of 10: AIQ still asks, so the check keeps measuring and can recover (it never could before).
+    assert_eq!(asked.lock().unwrap().len(), 1, "still asks for a label");
+    h.advance(10_000);
+    store_label(&h, &task, "a", "tests", 0.9);
+    h.svc.on_kind_label(&task).unwrap();
+    assert!(h.cp_turn_end("a").is_none(), "no tip from a label while the check holds");
+    let g = Store::open(&h.path).unwrap().type_guesses().unwrap();
+    assert!(g.iter().any(|g| g.task_id == task && g.method == "label"), "the label is stored, to be checked");
     let st = h.svc.status().coach.unwrap();
     let l = st.labels.unwrap();
     assert_eq!((l.checked, l.right), (10, 7));
@@ -616,4 +626,30 @@ fn labels_have_their_own_self_check_and_turn_off_below_eight_in_ten() {
     h.advance(2 * HOUR);
     h.prompt("copilot-cli", "b", NEW);
     assert!(full(h.cp_turn_end("b")).is_some());
+    // Ten newer right labels: the newest twenty are 17 of 20, so label tips come back on their own.
+    {
+        let s = Store::open(&h.path).unwrap();
+        for i in 0..10 {
+            let id = format!("lr{i}");
+            s.insert_judgment(&judgment(&id, "tests")).unwrap();
+            s.insert_type_guess(&TypeGuessRow {
+                guess_id: id.clone(),
+                task_id: id,
+                surface: "copilot-cli".into(),
+                job: "code_change".into(),
+                task_type: "tests".into(),
+                similarity: 0.9,
+                neighbours: vec![],
+                utc_ms: h.now(),
+                method: "label".into(),
+            })
+            .unwrap();
+        }
+    }
+    h.advance(73 * HOUR); // past the same-tip cooldown of "b"'s tip
+    let task = h.prompt("copilot-cli", "c", UNLIKE);
+    h.advance(10_000);
+    store_label(&h, &task, "c", "tests", 0.9);
+    h.svc.on_kind_label(&task).unwrap();
+    assert!(full(h.cp_turn_end("c")).is_some(), "label tips are back once the newest checks pass");
 }

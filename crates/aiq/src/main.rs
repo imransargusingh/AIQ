@@ -32,7 +32,7 @@ Usage:
   aiq status                          What AIQ is doing, tips today, store size, hook times
   aiq status --report                 Write that to a file you can send for help (no prompt text,
                                       folders shown as folder-1, folder-2)
-  aiq show <card-id>                  A tip, why it showed, and the prompts behind it
+  aiq show [card-id]                  A tip, why it showed, and the prompts behind it (no id: the latest)
   aiq pause | aiq resume              Pause or resume AIQ (saving and tips)
   aiq endpoint                        Where the core listens (used by the VS Code extension)
   aiq install copilot [--yes]         Add AIQ's hooks and status line to Copilot (~/.copilot)
@@ -124,6 +124,7 @@ fn main() -> ExitCode {
         ["uninstall", "vscode", ..] => install_vscode::uninstall(yes),
         ["status", rest @ ..] => cli::status(rest),
         ["show", id, ..] => cli::show(id),
+        ["show"] => cli::show(""),
         ["pause", ..] => cli::pause(true),
         ["resume", ..] => cli::pause(false),
         ["config", "set", name, value, ..] => cli::config_set(name, value),

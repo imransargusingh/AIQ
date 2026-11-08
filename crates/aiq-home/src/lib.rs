@@ -1348,14 +1348,23 @@ fn coaching(
     let by_id: std::collections::BTreeMap<&str, &coach::JudgedTask> =
         judged.iter().map(|t| (t.task_id.as_str(), t)).collect();
     let guesses = store.type_guesses().map_err(e)?;
-    let check = coach::check_guesses(
-        guesses.iter().map(|g| (g.task_id.as_str(), g.job.as_str(), g.task_type.as_str())),
-        &by_id,
-    );
+    // The core's two checks (words and labels), not one over both: one definition of the number (DC-036).
+    let check_of = |method: &str| {
+        coach::check_guesses(
+            guesses
+                .iter()
+                .filter(|g| g.method == method)
+                .map(|g| (g.task_id.as_str(), g.job.as_str(), g.task_type.as_str())),
+            &by_id,
+            p,
+        )
+    };
+    let (words, labels) = (check_of("words"), check_of(aiq_domain::label::METHOD));
     let st = &mut s.settings;
-    st.guess_checked = check.checked;
-    st.guess_right = check.right;
-    st.guess_auto_off = check.auto_off(p);
+    st.guess_checked = words.checked + labels.checked;
+    st.guess_right = words.right + labels.right;
+    // Tips stop only when both checks hold them, as in the core.
+    st.guess_auto_off = words.auto_off(p) && labels.auto_off(p);
     st.next_rung_on = match mode.as_str() {
         "off" => false,
         "on" => true,

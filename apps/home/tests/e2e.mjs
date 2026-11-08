@@ -711,6 +711,16 @@ await test("Right now card, two chips that would read the same say when each sta
   await page.context().close();
 });
 
+// The core sends the pack's text, written to follow "AIQ tip:" in a terminal, so it starts lower case.
+await test("Right now card: the tip starts with a capital, as the pack's lower-case text is shown alone", async () => {
+  const page = await open("live", {
+    edit: (s) => [s.live].flat().forEach((l) => l && l.tip && (l.tip.try_this = "end your request with: run the tests and show me what passed and failed.")),
+  });
+  const t = await page.getByTestId("right-now").innerText();
+  assert.match(t, /AIQ tip:\s*End your request with: run the tests/);
+  await page.context().close();
+});
+
 await test("Right now card at 720 px: no page scroll, with one task or several", async () => {
   for (const f of ["live", "live-many"]) {
     const page = await open(f, { width: 720, height: 520 });
