@@ -31,7 +31,7 @@ export interface Ctx {
   /** The project Home and Tasks show (a folder key, "" for no folder), or null for all (design project-filter P3). */
   project: string | null;
   setProject: (key: string | null) => void;
-  /** "Update now" (design auto-update U5h): what it is doing, its last result, and the press itself. */
+  /** "Check for updates" (design auto-update U5h): what it is doing, its last result, and the press itself. */
   update: { phase: UpdatePhase; msg: string | null; run: () => void };
   /** Start the tour (design home-tour): Ctrl K, Settings and the getting-started list. */
   startTour: () => void;
@@ -135,7 +135,7 @@ function seenBefore(key: string): boolean {
 }
 
 /** The titlebar's update marker, on every page (design auto-update U5h): "Update to x.y.z" while one waits,
- * else what Update now is doing or found. Nothing otherwise, so it takes no space in the page. */
+ * else what Check for updates is doing or found. Nothing otherwise, so it takes no space in the page. */
 export function UpdateChip({ snap, update }: Pick<Ctx, "snap" | "update">) {
   const u = snap.update;
   if (!u.supported) return null;

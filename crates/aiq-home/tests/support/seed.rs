@@ -678,3 +678,62 @@ pub fn open_task(paths: &Paths) -> Seed {
     s.prompt(sv, se, at(21), Some(AIQ), "tighten the wording");
     s
 }
+
+/// Two more tasks open beside `open_task` (several open tasks, option A): a VS Code bug fix whose agent made the
+/// edits at its third turn and is working on the fourth, and a Claude Code task waiting for the person.
+pub fn more_open_tasks(paths: &Paths) {
+    let mut s = Seed::new(paths);
+    s.n = 20_000; // after open_task's ids
+    let (sv, se) = ("vscode", "vs2");
+    let at = |m: i64| NOW - 40 * MIN + m * MIN;
+    let p = s.prompt(sv, se, at(0), Some(AIQ), "why does the date parser drop the time zone?");
+    live_label(&mut s, &p, sv, se, at(0), "code_change", "fix_bug");
+    let x = s.stop(sv, se, at(3));
+    s.turn_action(&x, sv, se, at(3), Some(&[("read_file", 4)]));
+    s.prompt(sv, se, at(9), Some(AIQ), "show me where it reads the offset");
+    let x = s.stop(sv, se, at(12));
+    s.turn_action(&x, sv, se, at(12), Some(&[("read_file", 2), ("grep_search", 1)]));
+    s.prompt(sv, se, at(20), Some(AIQ), "fix it in src/parse.rs and keep the API");
+    let x = s.stop(sv, se, at(27));
+    s.turn_action(&x, sv, se, at(27), Some(&[("read_file", 1), ("apply_patch", 2)]));
+    s.prompt(sv, se, NOW - MIN / 2, Some(AIQ), "now the tests for it");
+    let (sv, se) = ("claude-code", "cc3");
+    let at = |m: i64| NOW - 12 * MIN + m * MIN;
+    let p = s.prompt(
+        sv,
+        se,
+        at(0),
+        Some(FORESIGHT),
+        "Write unit tests for the CSV export in web/report/export.ts. Cover empty days and the header row; done when \
+         the suite passes.",
+    );
+    live_label(&mut s, &p, sv, se, at(0), "code_change", "tests");
+    let x = s.stop(sv, se, at(6));
+    s.turn_action(&x, sv, se, at(6), Some(&[("Read", 3), ("Write", 1), ("Bash", 1)]));
+}
+
+/// A confident first-prompt label for a live task, as the core stores it.
+fn live_label(s: &mut Seed, task_id: &str, sv: &str, se: &str, at: i64, job: &str, ty: &str) {
+    s.store
+        .insert_kind_label(&aiq_store::KindLabelRow {
+            label_id: format!("lbl-{se}"),
+            task_id: task_id.into(),
+            surface: sv.into(),
+            surface_session_id: se.into(),
+            provider: sv.into(),
+            model: None,
+            outcome: "ok".into(),
+            job: Some(job.into()),
+            job_confidence: Some(0.9),
+            task_type: Some(ty.into()),
+            task_type_confidence: Some(0.85),
+            requested_utc_ms: at,
+            started_utc_ms: at,
+            latency_ms: 900,
+            tokens_in: None,
+            tokens_out: None,
+            cost_usd: None,
+            utc_ms: at + 900,
+        })
+        .unwrap();
+}

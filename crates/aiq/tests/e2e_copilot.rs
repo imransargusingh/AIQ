@@ -73,7 +73,20 @@ impl Env {
         self.dir.path().join("profile")
     }
     fn run_with(&self, mut c: Command, stdin: &[u8]) -> Output {
-        let mut ch = c.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
+        c.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+        // A file this test just wrote (a copy of aiq, a fake `code`) can still be open for writing in a child
+        // another test thread forked meanwhile; Linux then refuses to run it (ETXTBSY) until that child execs.
+        // Wait it out instead of failing: a few short tries, then the real error.
+        let mut tries = 0;
+        let mut ch = loop {
+            match c.spawn() {
+                Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy && tries < 20 => {
+                    tries += 1;
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                }
+                r => break r.unwrap(),
+            }
+        };
         ch.stdin.take().unwrap().write_all(stdin).unwrap();
         ch.wait_with_output().unwrap()
     }
@@ -683,6 +696,13 @@ fn e2e_install_adds_the_vscode_extension_beside_aiq_and_uninstall_removes_it() {
 
     let again = String::from_utf8_lossy(&e.run_clean_of(&exe, &["install", "--yes"]).stdout).to_string();
     assert!(again.contains("VS Code is already connected."), "{again}");
+    // Where it shows: `aiq status` names it, and the attempt is kept for when no one read the output.
+    let status = String::from_utf8_lossy(&e.run_clean(&["status"]).stdout).to_string();
+    assert!(status.contains("VS Code: AIQ's extension is installed in VS Code\n"), "{status}");
+    let rec: Value =
+        serde_json::from_str(&std::fs::read_to_string(e.home().join("vscode-install.json")).unwrap()).unwrap();
+    assert_eq!(rec["builds"][0]["ok"], true, "{rec}");
+    assert_eq!(rec["builds"][0]["extension_listed_after"], true, "{rec}");
 
     let o = e.run_clean(&["uninstall", "vscode", "--yes"]);
     assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stdout));
@@ -726,6 +746,55 @@ fn e2e_install_new_adds_the_vscode_extension_once_an_update_brings_it() {
     let out = String::from_utf8_lossy(&e.run_clean_of(&exe, &["install", "--new", "--yes"]).stdout).to_string();
     assert!(out.contains("Added to VS Code."), "{out}");
     assert_eq!(read_log().matches("--install-extension").count(), 2, "{}", read_log());
+}
+
+/// A `code --install-extension` that fails leaves VS Code unseen, so the next core start or AIQ home open tries
+/// again; the failure is kept in `vscode-install.json` and `aiq status` names it. 0.1.14 recorded VS Code as
+/// seen before the command ran, so one failure would have stopped every later try, with no trace.
+#[test]
+fn e2e_a_failed_vscode_install_is_tried_again_and_shows_in_status() {
+    let e = Env::new();
+    let bin = e.dir.path().join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    if cfg!(windows) {
+        std::fs::write(
+            bin.join("code.cmd"),
+            "@echo off\r\necho Failed Installing Extensions: boom 1>&2\r\nexit /b 1\r\n",
+        )
+        .unwrap();
+    } else {
+        let p = bin.join("code");
+        std::fs::write(&p, "#!/bin/sh\necho 'Failed Installing Extensions: boom' >&2\nexit 1\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+    }
+    let seen = e.home().join("tools-seen.json");
+    std::fs::create_dir_all(e.home()).unwrap();
+    std::fs::write(e.home().join("setup-done"), "done\n").unwrap();
+    std::fs::write(&seen, "[]").unwrap();
+    let exe = release_copy(&e);
+
+    let out = String::from_utf8_lossy(&e.run_clean_of(&exe, &["install", "--new", "--yes"]).stdout).to_string();
+    assert!(out.contains("VS Code's command failed: Failed Installing Extensions: boom"), "{out}");
+    assert!(!std::fs::read_to_string(&seen).unwrap().contains("vscode"), "not seen, so tried again");
+    let status = String::from_utf8_lossy(&e.run_clean(&["status"]).stdout).to_string();
+    assert!(
+        status.contains("VS Code: AIQ's extension isn't installed in VS Code. Run: aiq install vscode"),
+        "{status}"
+    );
+    assert!(status.contains("Failed Installing Extensions: boom"), "{status}");
+
+    // VS Code's command works next time: added, and now seen.
+    let log = fake_code(&e);
+    let out = String::from_utf8_lossy(&e.run_clean_of(&exe, &["install", "--new", "--yes"]).stdout).to_string();
+    assert!(out.contains("Added to VS Code."), "{out}");
+    assert!(std::fs::read_to_string(&log).unwrap().contains("--install-extension"));
+    assert!(std::fs::read_to_string(&seen).unwrap().contains("vscode-extension"));
+    let status = String::from_utf8_lossy(&e.run_clean(&["status"]).stdout).to_string();
+    assert!(status.contains("VS Code: AIQ's extension is installed in VS Code\n"), "{status}");
 }
 
 /// Imran's laptop (2026-11-06): VS Code and VS Code Insiders both installed, Insiders used day to day. Setup

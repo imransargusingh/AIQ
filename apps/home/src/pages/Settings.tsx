@@ -2,7 +2,7 @@
 // UI review 2026-11-04, item 8: a section index at the top, where tips show folded under one line, judging says
 // when it was switched off (a stored fact) and what "today" counts, Sharing is one privacy line under Judging, and
 // the keyboard switch sits with the tools.
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { api, type SettingKey } from "../api";
 import type { Settings as S } from "../types";
 import { jobName, plural, when } from "../format";
@@ -59,6 +59,11 @@ const UPDATE: { v: "auto" | "ask" | "off"; label: string; note?: string }[] = [
   { v: "ask", label: "Tell me first" },
   { v: "off", label: "Don't check for updates" },
 ];
+
+/** Tips a day offered as buttons; Custom takes any whole number up to the core's limit (`MAX_DAILY_CAP`), which
+ * `aiq config set daily-cap` accepts too. Imran 2026-11-07: 5, 15, 30 and a way to type any limit. */
+const CAPS = [5, 15, 30];
+const MAX_CAP = 50;
 
 /** Daily judge caps offered as buttons; any other 0-500 value is set with `aiq config`. */
 const JUDGE_CAPS = [20, 50, 100, 200];
@@ -136,6 +141,18 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
     }
   };
 
+  // Custom tips a day: null until Custom is pressed; open while the saved value isn't one of the buttons.
+  const [custom, setCustom] = useState<string | null>(null);
+  const customOpen = custom !== null || !CAPS.includes(st.daily_cap);
+  const capText = (custom ?? String(st.daily_cap)).trim();
+  const capBad = !/^\d+$/.test(capText) || Number(capText) > MAX_CAP;
+  const setCap = async (e: FormEvent) => {
+    e.preventDefault();
+    if (capBad) return;
+    const n = Number(capText);
+    if (await change("daily_cap", String(n), `Tips a day set to ${n}.`)) setCustom(CAPS.includes(n) ? null : String(n));
+  };
+
   const change = async (key: SettingKey, value: string, done: string) => {
     const r = await api.setSetting(key, value);
     if (r.ok) {
@@ -146,6 +163,7 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
       setMsg(r.message);
       announce(r.message);
     }
+    return r.ok;
   };
 
   return (
@@ -170,13 +188,36 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
           <span id="cap">Tips a day, across all your tools</span>
           <div className="row">
             <div className="seg" role="group" aria-labelledby="cap">
-              {[1, 3, 5].map((n) => (
-                <button key={n} aria-pressed={snap.settings.daily_cap === n} disabled={down} onClick={() => change("daily_cap", String(n), `Tips a day set to ${n}.`)}>
+              {CAPS.map((n) => (
+                <button key={n} aria-pressed={!customOpen && st.daily_cap === n} disabled={down} onClick={() => { setCustom(null); change("daily_cap", String(n), `Tips a day set to ${n}.`); }}>
                   {n}
                 </button>
               ))}
+              <button aria-pressed={customOpen} disabled={down} onClick={() => setCustom(String(st.daily_cap))}>
+                Custom
+              </button>
             </div>
-            {![1, 3, 5].includes(snap.settings.daily_cap) && <span className="meta">Now {snap.settings.daily_cap}, set with aiq config</span>}
+            {customOpen && (
+              <form className="row" onSubmit={setCap}>
+                <input
+                  className={`input${capBad ? " err" : ""}`}
+                  style={{ width: "6ch" }}
+                  inputMode="numeric"
+                  aria-label={`Tips a day, 0 to ${MAX_CAP}`}
+                  aria-invalid={capBad}
+                  aria-describedby="cap-n"
+                  disabled={down}
+                  value={custom ?? String(st.daily_cap)}
+                  onChange={(e) => setCustom(e.target.value)}
+                />
+                <button className="btn" disabled={down || capBad || (custom ?? "") === String(st.daily_cap)}>
+                  Set
+                </button>
+                <span id="cap-n" className={capBad ? "errtext" : "meta"}>
+                  0 to {MAX_CAP}
+                </span>
+              </form>
+            )}
           </div>
         </div>
         <div>
@@ -463,7 +504,7 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
             )}
             <div className="row">
               <button className="btn" onClick={update.run} disabled={update.phase !== "idle"}>
-                {update.phase === "checking" ? "Checking…" : update.phase === "installing" ? "Installing…" : up.note === "waiting" ? `Update to ${ver(up.available)} now` : "Update now"}
+                {update.phase === "checking" ? "Checking…" : update.phase === "installing" ? "Installing…" : up.note === "waiting" ? `Update to ${ver(up.available)} now` : "Check for updates"}
               </button>
               {up.can_rollback && (
                 <button className="btn" onClick={goBack}>

@@ -200,12 +200,13 @@ fn inner_outcome(paths: &Paths, host: &str, event: &str, start: Instant, marks: 
                 event: ev.clone(),
                 wait_ms: STOP_WAIT_MS,
             };
-            match ipc::request(
+            let (reply, written) = ipc::request_tracked(
                 paths,
                 &serde_json::to_string(&frame).unwrap_or_default(),
                 true,
                 SEND_BUDGET + STOP_REPLY_BUDGET,
-            ) {
+            );
+            match reply {
                 Ok(Some(line)) => match serde_json::from_str::<TakeCardReply>(&line) {
                     Ok(TakeCardReply { card: Some(card), plain }) => {
                         let color = color_allowed() && !plain;
@@ -238,10 +239,7 @@ fn inner_outcome(paths: &Paths, host: &str, event: &str, start: Instant, marks: 
                     _ => "no-card",
                 },
                 Ok(None) => "no-card",
-                Err(e) if e.kind() == std::io::ErrorKind::TimedOut => {
-                    count(paths, codes::HOOK_STOP_TIMEOUT);
-                    "stop-timeout"
-                }
+                Err(e) if e.kind() == std::io::ErrorKind::TimedOut => stop_timed_out(paths, &trace_id, &ev, written),
                 // The sync Stop hook never starts the core: spool-plus-spawn measured over budget (S3a).
                 Err(_) => {
                     spool_frame(paths, &trace_id, &ev);
@@ -250,6 +248,18 @@ fn inner_outcome(paths: &Paths, host: &str, event: &str, start: Instant, marks: 
             }
         }
     }
+}
+
+/// The Stop hook's wait ran out. Written: the core holds the stop and only its reply was late. Not written:
+/// this process ends now and takes the half-done send with it, so the turn end goes to the spool (DC-034;
+/// the core ingests by event id, so a frame that got through after all is still stored once).
+fn stop_timed_out(paths: &Paths, trace_id: &str, ev: &EventV1, written: bool) -> &'static str {
+    count(paths, codes::HOOK_STOP_TIMEOUT);
+    if written {
+        return "stop-timeout";
+    }
+    spool_frame(paths, trace_id, ev);
+    "stop-timeout-spooled"
 }
 
 /// A Copilot CLI turn end, which shows its tip in the conversation (VS Code's turn ends never print).
@@ -391,6 +401,25 @@ fn maybe_start_core(paths: &Paths) {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn a_timed_out_stop_that_never_left_goes_to_the_spool() {
+        let d = tempfile::tempdir().unwrap();
+        let paths = Paths::at(d.path());
+        let stop = to_event(&json!({"session_id":"s","hook_event_name":"Stop"}), "Stop").unwrap();
+
+        assert_eq!(stop_timed_out(&paths, "t1", &stop, true), "stop-timeout");
+        assert!(!paths.spool().exists(), "the core already holds a written stop");
+
+        assert_eq!(stop_timed_out(&paths, "t2", &stop, false), "stop-timeout-spooled");
+        let lines = aiq_core::spool::take(&paths.spool(), &paths.spool_draining()).unwrap();
+        let (frames, bad) = aiq_core::spool::parse(&lines);
+        assert_eq!(bad, 0);
+        assert_eq!(frames.len(), 1, "the turn end is kept for the core");
+        assert_eq!(frames[0].event.event_id, stop.event_id);
+        let errors = std::fs::read_to_string(paths.hook_errors()).unwrap();
+        assert_eq!(errors.matches(codes::HOOK_STOP_TIMEOUT).count(), 2, "both timeouts still count");
+    }
 
     #[test]
     fn timing_line_keeps_the_old_head_and_adds_phases_time_and_build() {

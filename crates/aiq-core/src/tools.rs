@@ -258,6 +258,21 @@ pub fn newly_installed(seen_file: &Path, tools: &[ToolFound]) -> Vec<&'static st
     new
 }
 
+/// Take a tool out of `tools-seen.json`, so `newly_installed` offers it again: for a connect that didn't take
+/// (VS Code's `code --install-extension` failed), which must not count as "seen, then disconnected".
+pub fn forget_seen(seen_file: &Path, tool: &'static str) {
+    let Some(mut seen) =
+        std::fs::read_to_string(seen_file).ok().and_then(|t| serde_json::from_str::<Vec<String>>(&t).ok())
+    else {
+        return;
+    };
+    let before = seen.len();
+    seen.retain(|x| x != seen_key(tool));
+    if seen.len() != before {
+        let _ = crate::paths::write_user_only(seen_file, serde_json::to_string(&seen).unwrap_or_default().as_bytes());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -447,5 +462,8 @@ mod tests {
         assert!(newly_installed(&seen, &now).is_empty());
         let written: Vec<String> = serde_json::from_str(&std::fs::read_to_string(&seen).unwrap()).unwrap();
         assert!(written.contains(&"vscode-extension".to_string()), "{written:?}");
+        // The install failed: forgotten, so the next look offers it again.
+        forget_seen(&seen, "vscode");
+        assert_eq!(newly_installed(&seen, &now), vec!["vscode"]);
     }
 }

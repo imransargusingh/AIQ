@@ -29,7 +29,7 @@ Source of truth: AIQ brief and Design > Coaching tab (https://claude.ai/artifact
 |---|---|---|
 | D1 | Specify the coaching loop (card + triggers) first | Imran, 2026-10-31 (decision card) |
 | D2 | Surfaces: VS Code, Claude Code and GitHub Copilot CLI, all from the start | Imran, 2026-10-31 (decision card) |
-| D3 | Frequency: at most one in-the-moment tip per session and per-trigger cooldowns (Design > Coaching > Guardrails). Daily cap is chosen by the person at setup and in Settings (1, 3 or 5), **default 5** | Guardrails: recorded owner ruling; cap: Imran, 2026-10-31 (thread reply) |
+| D3 | Frequency: at most one in-the-moment tip per session and per-trigger cooldowns (Design > Coaching > Guardrails). Daily cap is chosen by the person at setup (1, 3 or 5) and in Settings (5, 15, 30 or Custom, 0 to 50; Imran, 2026-11-07), **default 5** | Guardrails: recorded owner ruling; cap: Imran, 2026-10-31 (thread reply) |
 | D4 | Only the person sees their data; AIQ never posts anything others can see | Imran, 2026-10-31 (privacy rule) |
 | D5 | Habit states: **Tried** after one observed use; **Adopted** when seen in more than half of eligible tasks over 14 days, with at least 3 eligible tasks. Thresholds are tunable and expected to change | Imran, 2026-10-31 (thread reply) |
 | D6 | PMs are primary users of this loop on the same surfaces: they are expected to work in CLI agents and possibly VS Code | Imran, 2026-10-31 (thread reply) |

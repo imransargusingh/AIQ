@@ -317,8 +317,12 @@ pub fn install_found(yes: bool) -> ExitCode {
         );
     }
     // Setup has connected everything present; from here on these are all already seen.
-    let _ = aiq_core::tools::newly_installed(&Paths::from_env().tools_seen(), &as_seen(&tools));
-    connect(yes, &tools, todo)
+    let seen = Paths::from_env().tools_seen();
+    let _ = aiq_core::tools::newly_installed(&seen, &as_seen(&tools));
+    let tried_vscode = todo.iter().any(|t| t.tool == "vscode");
+    let code = connect(yes, &tools, todo);
+    retry_vscode_unless_connected(&seen, tried_vscode);
+    code
 }
 
 /// `aiq install --new --yes` (AIQ home at open, and the core at start): after setup, connect a tool that was
@@ -335,7 +339,18 @@ pub fn install_new(yes: bool) -> ExitCode {
         return ExitCode::SUCCESS;
     }
     let todo: Vec<_> = tools.iter().filter(|t| new.contains(&t.tool)).collect();
-    connect(yes, &tools, todo)
+    let code = connect(yes, &tools, todo);
+    retry_vscode_unless_connected(&paths.tools_seen(), new.contains(&"vscode"));
+    code
+}
+
+/// VS Code counts as seen only once AIQ's extension is really in it: if `code --install-extension` failed (or
+/// the person said no), the next core start or AIQ home open tries again, and `vscode-install.json` says why.
+/// 0.1.14 recorded VS Code as seen before the command ran, so one failure stopped every later try.
+fn retry_vscode_unless_connected(seen: &std::path::Path, tried: bool) {
+    if tried && !aiq_core::tools::found().iter().any(|t| t.tool == "vscode" && t.hooked) {
+        aiq_core::tools::forget_seen(seen, "vscode");
+    }
 }
 
 /// The tools as `newly_installed` should record them: VS Code counts as found only once this copy of AIQ has its

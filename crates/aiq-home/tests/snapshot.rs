@@ -457,7 +457,8 @@ fn live_trend_reads_the_open_task_turn_by_turn() {
     coaching(&p);
     open_task(&p);
     let s = snap(&p);
-    let l = s.live.as_ref().expect("a task is open");
+    let l = s.live.first().expect("a task is open");
+    assert_eq!(s.live.len(), 1, "one task open");
     assert_eq!((l.trend.surface.as_str(), l.trend.prompts, l.trend.working), ("copilot-cli", 5, true));
     // Turn 1 only read files (Assisted); turn 2 edited from a full brief (Delegated); turn 3 is the third prompt
     // (Directed); turn 4 was not recorded, so it adds nothing and the estimate stays.
@@ -471,6 +472,32 @@ fn live_trend_reads_the_open_task_turn_by_turn() {
     assert!(s.tasks.iter().any(|t| t.task_id == l.task_id), "opens a task the list has");
     let json = serde_json::to_string(l).unwrap();
     assert!(!json.contains("tighten the wording") && !json.contains("Write the spec"), "no prompt text in the card");
+}
+
+/// Several open tasks (Imran 2026-11-07, option A): every live session with a turn ended inside the idle gap,
+/// the newest activity first. A session whose first turn is still running, or whose last event is older than the
+/// gap, is not open on the card.
+#[test]
+fn live_trend_lists_every_open_task_newest_activity_first() {
+    let d = tempfile::tempdir().unwrap();
+    let p = Paths::at(d.path());
+    coaching(&p);
+    let mut s = open_task(&p);
+    s.prompt("vscode", "vs2", NOW - 9 * MIN, Some(AIQ), "fix the date parser in src/parse.rs and run its tests");
+    s.stop("vscode", "vs2", NOW - MIN / 2);
+    s.prompt("claude-code", "cc3", NOW - MIN, Some(AIQ), "write tests for the export");
+    s.prompt("claude-code", "old", NOW - 50 * MIN, Some(AIQ), "rename the module");
+    s.stop("claude-code", "old", NOW - 40 * MIN);
+    drop(s);
+    let snap = snap(&p);
+    let open: Vec<(&str, &str)> =
+        snap.live.iter().map(|l| (l.trend.surface.as_str(), l.trend.session.as_str())).collect();
+    assert_eq!(open, [("vscode", "vs2"), ("copilot-cli", "live1")], "newest activity first; running and idle left out");
+    for l in &snap.live {
+        let t = snap.tasks.iter().find(|t| t.task_id == l.task_id).expect("each opens a task the list has");
+        assert_eq!(l.folder, t.folder, "the chip names the task's own project");
+    }
+    assert_ne!(snap.live[0].task_id, snap.live[1].task_id);
 }
 
 /// Judging off says since when only from a stored setting change (UI review item 8); never switched, no time.
@@ -495,9 +522,9 @@ fn live_trend_goes_when_the_task_ends_or_is_switched_off() {
     coaching(&p);
     let mut seed = open_task(&p);
     let later = Now { utc_ms: NOW + 31 * MIN, offset_min: 0 };
-    assert!(snapshot(&p, &BundledPack.load().unwrap(), later).live.is_none(), "idle gap passed: the task ended");
+    assert!(snapshot(&p, &BundledPack.load().unwrap(), later).live.is_empty(), "idle gap passed: the task ended");
     seed.setting("live_trend", "off", NOW - MIN);
-    assert!(snap(&p).live.is_none());
+    assert!(snap(&p).live.is_empty());
 }
 
 /// The Set aside list (design aiq-home-app D11): per folder, the sessions AIQ still leaves out (live and imported) and the newest one, the
@@ -553,7 +580,7 @@ fn live_trend_names_a_turn_the_core_never_read() {
                  public API unchanged and run the suite after";
     s.prompt("vscode", "vs9", NOW - 44 * MIN, Some(AIQ), brief);
     s.stop("vscode", "vs9", NOW - 2 * MIN);
-    let l = snap(&p).live.expect("a task is open");
+    let l = snap(&p).live.into_iter().next().expect("a task is open");
     assert_eq!((l.trend.unrecorded.clone(), l.trend.unrecorded_why.clone()), (vec![1], vec!["not_read".to_string()]));
     assert_eq!(l.trend.rung, None);
 }

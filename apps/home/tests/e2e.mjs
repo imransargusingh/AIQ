@@ -80,7 +80,7 @@ const pages = [
 ];
 
 await test("contract: fixtures are aiq.home.v1 snapshots from the Rust read model", async () => {
-  for (const f of ["full", "down", "paused", "empty", "first-run", "coaching", "progress", "live", "tour"]) {
+  for (const f of ["full", "down", "paused", "empty", "first-run", "coaching", "progress", "live", "live-many", "tour"]) {
     const s = JSON.parse(readFileSync(join(fixtures, `${f}.json`), "utf8"));
     assert.equal(s.schema, "aiq.home.v1");
     for (const k of ["status", "home", "tasks", "tips", "data", "settings", "setup", "coaching"]) assert.ok(k in s, `${f}: ${k}`);
@@ -402,9 +402,27 @@ await test("Delete everything: focus on Cancel, trapped, typed forget, empty sta
 
 await test("Settings change through the core; tips a day", async () => {
   const page = await open("full", { hash: "#settings" });
-  assert.equal(await page.getByRole("button", { name: "3", exact: true }).getAttribute("aria-pressed"), "true");
-  await page.getByRole("button", { name: "5", exact: true }).click();
+  // 5, 15, 30 and Custom (Imran 2026-11-07). The fixture's 3 isn't a button, so Custom is pressed and shows it.
+  const cap = page.getByRole("group", { name: "Tips a day, across all your tools" });
+  assert.deepEqual(await cap.getByRole("button").allInnerTexts(), ["5", "15", "30", "Custom"]);
+  assert.equal(await cap.getByRole("button", { name: "Custom" }).getAttribute("aria-pressed"), "true");
+  const box = page.getByLabel("Tips a day, 0 to 50");
+  assert.equal(await box.inputValue(), "3");
+  await cap.getByRole("button", { name: "5", exact: true }).click();
   await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Tips a day set to 5.");
+  assert.equal(await cap.getByRole("button", { name: "5", exact: true }).getAttribute("aria-pressed"), "true");
+  assert.equal(await box.count(), 0, "the number box folds away on a button value");
+  // Custom: any whole number up to 50; anything else can't be set and the hint turns red.
+  await cap.getByRole("button", { name: "Custom" }).click();
+  await box.fill("51");
+  assert.equal(await box.getAttribute("aria-invalid"), "true");
+  assert.equal(await page.getByRole("button", { name: "Set", exact: true }).isDisabled(), true);
+  await box.fill("12");
+  await box.press("Enter");
+  await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Tips a day set to 12.");
+  assert.equal(await cap.getByRole("button", { name: "Custom" }).getAttribute("aria-pressed"), "true");
+  assert.equal(await box.inputValue(), "12");
+  if (shots) await page.locator("section[aria-labelledby=st1]").screenshot({ path: join(shots, "settings-tips-custom.png") });
   // Where tips show and how long they stay is folded under one line that says how it's set (item 8).
   const fold = page.locator("details.fold > summary");
   assert.equal((await fold.innerText()).replace(/\s+/g, " "), "Where tips show and how long they stay · 3 of 3 on · until your next prompt");
@@ -431,6 +449,7 @@ await test("Settings change through the core; tips a day", async () => {
   const calls = await page.evaluate(() => window.__AIQ_FIXTURE__.calls.filter((c) => c.cmd === "set_setting").map((c) => c.args));
   assert.deepEqual(calls, [
     { key: "daily_cap", value: "5" },
+    { key: "daily_cap", value: "12" },
     { key: "copilot_tip_stays", value: "until-opened" },
     { key: "judge_daily_tasks", value: "100" },
     { key: "judge", value: "auto" },
@@ -608,14 +627,14 @@ await test("Right now card: gone with no open task and when switched off; the sw
   assert.equal(await none.getByTestId("right-now").count(), 0);
   await none.context().close();
   const unread = await open("live", {
-    edit: (s) => Object.assign(s.live, { rung: null, could: null, did_turns: [], steps: [{ turn: 1, at_ms: s.live.first_ms, rung: null, recorded: false }], unrecorded: [1], unrecorded_why: ["no_start"] }),
+    edit: (s) => Object.assign(s.live[0], { rung: null, could: null, did_turns: [], steps: [{ turn: 1, at_ms: s.live[0].first_ms, rung: null, recorded: false }], unrecorded: [1], unrecorded_why: ["no_start"] }),
   });
   const ut = await unread.getByTestId("right-now").innerText();
   assert.match(ut, /No estimate yet/);
   assert.match(ut, /Turn 1: no details \(AIQ restarted during the turn\)/);
   assert.equal(await unread.getByTestId("right-now").getByRole("img").count(), 0, "no empty chart");
   await unread.context().close();
-  const off = await open("live", { edit: (s) => (s.live = null) });
+  const off = await open("live", { edit: (s) => (s.live = []) });
   assert.equal(await off.getByTestId("right-now").count(), 0);
   await off.context().close();
   const st = await open("live", { hash: "#settings" });
@@ -627,11 +646,78 @@ await test("Right now card: gone with no open task and when switched off; the sw
   await st.context().close();
 });
 
-await test("Right now card at 720 px: no page scroll", async () => {
-  const page = await open("live", { width: 720, height: 520 });
-  const w = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-  assert.ok(w <= 0, `page scrolls by ${w}px`);
+for (const theme of ["light", "dark", "contrast"]) {
+  await test(`Right now card, several open tasks: a chip per task, the newest activity's chart, a picked chip stays (${theme})`, async () => {
+    const page = await open("live-many", { theme: theme === "light" ? undefined : theme });
+    const card = page.getByTestId("right-now");
+    assert.match(await card.locator("h2").innerText(), /Right now · 3 open tasks/);
+    const tabs = card.getByRole("tab");
+    // Chips in start order; each names the kind, project and tool and says the rung in words.
+    const names = await tabs.allInnerTexts();
+    assert.equal(names.length, 3);
+    assert.match(names[0], /Fixing a bug or failing test\s*aiq · VS Code · 4 prompts.*heading for Assisted \(1\), agent working/s);
+    assert.match(names[1], /Writing a spec or PRD\s*aiq · Copilot CLI · 5 prompts.*heading for Directed \(2\), agent working/s);
+    assert.match(names[2], /Writing tests\s*foresight · Claude Code · 1 prompt.*heading for Delegated \(3\), waiting for you/s);
+    // The newest activity is chosen first: the VS Code task.
+    assert.equal(await tabs.nth(0).getAttribute("aria-selected"), "true");
+    const panel = card.getByRole("tabpanel");
+    assert.match(await panel.innerText(), /aiq · VS Code · since 11:20 · 4 prompts · 40 min · agent working/);
+    assert.deepEqual(await axe(page), []);
+    if (shots) await page.screenshot({ path: join(shots, `right-now-many-${theme}.png`) });
+    if (theme === "light") {
+      await tabs.nth(2).click();
+      assert.equal(await tabs.nth(2).getAttribute("aria-selected"), "true");
+      const t = await panel.innerText();
+      assert.match(t, /foresight · Claude Code · since 11:48 · 1 prompt · 12 min · waiting for you/);
+      assert.match(t, /Heading for Delegated \(3\)/);
+      // Arrow keys move between chips (tabs pattern).
+      await page.keyboard.press("ArrowRight");
+      assert.equal(await tabs.nth(0).getAttribute("aria-selected"), "true", "wraps to the first");
+      assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("role")), "tab");
+      await page.keyboard.press("ArrowLeft");
+      await panel.getByRole("button", { name: "Open task" }).click();
+      await page.waitForFunction(() => location.hash.startsWith("#task/"));
+    }
+    assert.deepEqual(page.errors, []);
+    await page.context().close();
+  });
+}
+
+await test("Right now card, several open tasks: the picked chip stays chosen after a refresh moves the others", async () => {
+  const page = await open("live-many");
+  const card = page.getByTestId("right-now");
+  await card.getByRole("tab").nth(1).click();
+  // A refresh where the spec task's agent went quiet and the order of activity changed.
+  await page.evaluate(() => {
+    const f = window.__AIQ_FIXTURE__;
+    f.snapshot = { ...f.snapshot, live: [f.snapshot.live[2], f.snapshot.live[0], f.snapshot.live[1]] };
+  });
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await page.waitForTimeout(300);
+  const tabs = card.getByRole("tab");
+  assert.equal(await tabs.nth(1).getAttribute("aria-selected"), "true");
+  assert.match(await card.getByRole("tabpanel").innerText(), /Copilot CLI · since 11:38/);
   await page.context().close();
+});
+
+await test("Right now card, two chips that would read the same say when each started", async () => {
+  const page = await open("live-many", {
+    edit: (s) => Object.assign(s.live[2], { kind: s.live[0].kind, folder: s.live[0].folder, surface: s.live[0].surface }),
+  });
+  const names = await page.getByTestId("right-now").getByRole("tab").allInnerTexts();
+  assert.match(names[0], /aiq · VS Code · since 11:20/);
+  assert.match(names[2], /aiq · VS Code · since 11:48/);
+  assert.match(names[1], /Copilot CLI · 5 prompts/, "a chip with no twin keeps its prompt count");
+  await page.context().close();
+});
+
+await test("Right now card at 720 px: no page scroll, with one task or several", async () => {
+  for (const f of ["live", "live-many"]) {
+    const page = await open(f, { width: 720, height: 520 });
+    const w = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    assert.ok(w <= 0, `${f}: page scrolls by ${w}px`);
+    await page.context().close();
+  }
 });
 
 await test("rung guide: steps by kind of work, where you are, your next step open, copy a starter", async () => {
@@ -1276,7 +1362,7 @@ await test("auto-update: the titlebar marker, one-press Update now, Go back, the
     const p = await open("full", { hash, edit: waiting });
     const nav = p.locator("nav .foot");
     assert.match(await nav.getByTestId("update-ready").innerText(), /^AIQ 0\.2\.0 is ready\s+You have 0\.1\.0\s+Update$/, `bottom-left notice on ${hash || "#home"}`);
-    assert.equal(await nav.getByRole("button", { name: "Update now" }).count(), 0, "the ready button replaces the link");
+    assert.equal(await nav.getByRole("button", { name: "Check for updates" }).count(), 0, "the ready button replaces the link");
     await p.context().close();
   }
   const side = await open("full", { edit: waiting });
@@ -1311,9 +1397,9 @@ await test("auto-update: the titlebar marker, one-press Update now, Go back, the
   // Nothing known yet: Update now checks with Home open, shows each step, and installs once the download lands.
   const found = await open("full", { edit: (s) => (s.update.latest = "v0.1.0") });
   await found.evaluate(() => (window.__AIQ_FIXTURE__.checkFinds = "v0.2.0"));
-  await found.getByRole("button", { name: "Update now" }).click();
+  await found.getByRole("button", { name: "Check for updates" }).click();
   assert.equal(await found.getByTestId("update-chip").innerText(), "Checking for a newer AIQ…");
-  assert.equal(await found.getByRole("button", { name: "Update now" }).isDisabled(), true, "a second press while checking does nothing");
+  assert.equal(await found.getByRole("button", { name: "Check for updates" }).isDisabled(), true, "a second press while checking does nothing");
   await found.waitForFunction(() => document.querySelector("[data-testid=update-chip]")?.textContent.startsWith("Installing AIQ 0.2.0."), null, { timeout: 8000 });
   assert.deepEqual(await upd(found), [{ action: "check" }, { action: "install" }]);
   await found.context().close();
@@ -1321,7 +1407,7 @@ await test("auto-update: the titlebar marker, one-press Update now, Go back, the
   for (const [finds, text] of [["none", "You have the newest AIQ (0.1.0)."], ["error", "Couldn't reach GitHub. Try again in a few minutes."]]) {
     const p = await open("full", { hash: "#settings" });
     await p.evaluate((f) => (window.__AIQ_FIXTURE__.checkFinds = f), finds);
-    await p.locator("main").getByRole("button", { name: "Update now" }).click();
+    await p.locator("main").getByRole("button", { name: "Check for updates" }).click();
     assert.equal(await p.getByTestId("update-progress").innerText(), "Checking for a newer AIQ…", "Settings shows the check at once");
     await p.waitForFunction((t) => document.querySelector("[data-testid=update-progress]")?.textContent === t, text, { timeout: 8000 });
     assert.equal(await p.getByTestId("update-chip").innerText(), text);
@@ -1358,10 +1444,10 @@ await test("auto-update: the titlebar marker, one-press Update now, Go back, the
   await nofrom.context().close();
   const st = await open("full", { hash: "#settings" });
   assert.equal(await st.getByTestId("app-version").innerText(), "AIQ 0.1.0");
-  assert.equal(await st.locator("nav").getByRole("button", { name: "Update now" }).count(), 1, "Update now beside the version");
+  assert.equal(await st.locator("nav").getByRole("button", { name: "Check for updates" }).count(), 1, "Check for updates beside the version");
   assert.equal(await st.getByTestId("update-ready").count(), 0, "nothing waiting: no ready box");
   assert.equal(await st.getByRole("radio", { name: /Update automatically/ }).isChecked(), true);
-  assert.equal(await st.locator("main").getByRole("button", { name: "Update now" }).count(), 1, "Update now is offered under every choice");
+  assert.equal(await st.locator("main").getByRole("button", { name: "Check for updates" }).count(), 1, "Check for updates is offered under every choice");
   await st.getByRole("radio", { name: "Tell me first" }).check();
   await st.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Updates: tell me first.");
   const set = await st.evaluate(() => window.__AIQ_FIXTURE__.calls.filter((c) => c.cmd === "set_setting").map((c) => c.args));
@@ -1371,7 +1457,7 @@ await test("auto-update: the titlebar marker, one-press Update now, Go back, the
   assert.match(await st.locator("main").innerText(), /AIQ doesn't check for updates and makes no network call of its own\. You're on AIQ 0\.1\.0\./);
   const set2 = await st.evaluate(() => window.__AIQ_FIXTURE__.calls.filter((c) => c.cmd === "set_setting").map((c) => c.args));
   assert.deepEqual(set2.at(-1), { key: "update", value: "off" });
-  await st.locator("main").getByRole("button", { name: "Update now" }).click();
+  await st.locator("main").getByRole("button", { name: "Check for updates" }).click();
   await st.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Checking for a newer AIQ…");
   const chk = await upd(st);
   assert.deepEqual(chk, [{ action: "check" }]);
@@ -1380,7 +1466,7 @@ await test("auto-update: the titlebar marker, one-press Update now, Go back, the
   const dev = await open("full", { hash: "#settings", edit: (s) => (s.update.supported = false) });
   assert.match(await dev.locator("main").innerText(), /wasn't installed from a release, so it doesn't update itself/);
   assert.equal(await dev.getByRole("radio", { name: "Tell me first" }).count(), 0);
-  assert.equal(await dev.getByRole("button", { name: "Update now" }).count(), 0, "a dev copy offers no Update now");
+  assert.equal(await dev.getByRole("button", { name: "Check for updates" }).count(), 0, "a dev copy offers no Check for updates");
   await dev.context().close();
 });
 

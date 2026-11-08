@@ -78,7 +78,7 @@ anything else you send through it. Full details: [AIQ privacy and terms](../priv
   press **This doesn't fit** in AIQ home. AIQ also checks itself and pauses a kind of tip when its own
   accuracy drops.
 - **AIQ updates itself** when there is a new version, while AIQ home is closed. To update straight
-  away, press **Update now** in AIQ home. Your data and settings stay.
+  away, press **Check for updates** in AIQ home. Your data and settings stay.
 - **Need a break?** `aiq pause`, then `aiq resume` when you're ready.
 - **Progress takes weeks.** AIQ needs several tasks of the same kind before it can show one moving up
   a step.

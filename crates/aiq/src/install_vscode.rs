@@ -70,16 +70,24 @@ pub fn install_with(yes: bool, strict: bool) -> ExitCode {
         return ExitCode::SUCCESS;
     }
     let mut failed = false;
+    let mut results = Vec::new();
     for (v, cli) in &found {
         // --force: a reinstall replaces an older AIQ extension with this release's.
-        match run_code(cli, &["--install-extension".as_ref(), vsix.as_os_str(), "--force".as_ref()]) {
+        let r = run_code(cli, &["--install-extension".as_ref(), vsix.as_os_str(), "--force".as_ref()]);
+        match &r {
             Ok(()) => println!("Added to {}.", v.build.name),
             Err(m) => {
                 println!("{}: {m}", v.build.name);
                 failed = true;
             }
         }
+        let now_has = vscode_has_aiq(&v.extensions);
+        results.push(serde_json::json!({
+            "build": v.build.name, "cli": cli.display().to_string(), "ok": r.is_ok(),
+            "error": r.err(), "extension_listed_after": now_has,
+        }));
     }
+    record(&results);
     if failed {
         return ExitCode::from(1);
     }
@@ -87,6 +95,55 @@ pub fn install_with(yes: bool, strict: bool) -> ExitCode {
         "Installed. Tips show in VS Code when you use Copilot Chat in Agent mode with the session target set to Copilot. If VS Code is open, it may ask you to reload the window."
     );
     ExitCode::SUCCESS
+}
+
+/// Keep the last attempt in `vscode-install.json`: the core runs installs with no one reading its output, so this
+/// file is the only place a failed `code --install-extension` shows (Imran's laptop, 0.1.14: no extension, no
+/// trace). Paths and VS Code's own error line only, never prompt text.
+fn record(results: &[serde_json::Value]) {
+    let paths = aiq_core::paths::Paths::from_env();
+    let rec = serde_json::json!({
+        "at": chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+        "aiq": env!("CARGO_PKG_VERSION"),
+        "builds": results,
+    });
+    let _ = paths.ensure_dirs();
+    let _ = aiq_core::paths::write_user_only(&paths.vscode_install_record(), rec.to_string().as_bytes());
+}
+
+/// `aiq status`'s VS Code line, or None when no VS Code build is found and none lists the extension. Laptop,
+/// 2026-11-07: 0.1.14 added the extension to both builds, but status had no VS Code line, so it looked missing.
+pub fn status_line() -> Option<String> {
+    let builds: Vec<_> =
+        vscode_builds().into_iter().filter(|v| v.cli.is_some() || vscode_has_aiq(&v.extensions)).collect();
+    if builds.is_empty() {
+        return None;
+    }
+    let (with, without): (Vec<_>, Vec<_>) = builds.iter().partition(|v| vscode_has_aiq(&v.extensions));
+    let names = |v: &[&aiq_core::tools::VsCodeFound]| v.iter().map(|b| b.build.name).collect::<Vec<_>>().join(" and ");
+    if without.is_empty() {
+        return Some(format!("AIQ's extension is installed in {}", names(&with)));
+    }
+    let mut l = if with.is_empty() {
+        format!("AIQ's extension isn't installed in {}. Run: aiq install vscode", names(&without))
+    } else {
+        format!("AIQ's extension is in {}, not in {}. Run: aiq install vscode", names(&with), names(&without))
+    };
+    if let Some(e) = last_error() {
+        l += &format!(" (last try: {e})");
+    }
+    Some(l)
+}
+
+/// The first error of the last install AIQ ran, from `vscode-install.json`.
+fn last_error() -> Option<String> {
+    let t = std::fs::read_to_string(aiq_core::paths::Paths::from_env().vscode_install_record()).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&t).ok()?;
+    let at = v["at"].as_str().unwrap_or("");
+    v["builds"]
+        .as_array()?
+        .iter()
+        .find_map(|b| b["error"].as_str().map(|e| format!("{at} {}: {e}", b["build"].as_str().unwrap_or(""))))
 }
 
 pub fn install(yes: bool) -> ExitCode {

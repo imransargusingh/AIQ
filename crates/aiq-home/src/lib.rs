@@ -14,7 +14,6 @@ use aiq_domain::clock::{DAY_MS, Now, deliveries_counted_today};
 use aiq_domain::reprompt::{TaskPrompt, TaskSpan, split_tasks};
 use aiq_domain::tipline::TipStays;
 use aiq_store::Store;
-use rusqlite::OptionalExtension;
 use serde::Serialize;
 use std::collections::BTreeSet;
 use std::time::Instant;
@@ -59,9 +58,10 @@ pub struct Snapshot {
     pub update: aiq_core::update::View,
     /// One row per project with a task in the window, most room to grow first (design project-filter).
     pub projects: Vec<Project>,
-    /// The open task's live rung trend (design live-rung-trend C): the newest live session whose last event is
-    /// within the idle gap. None when no task is open, its first turn has not ended, or the person turned it off.
-    pub live: Option<Live>,
+    /// Every open task's live rung trend (design live-rung-trend C, several open tasks): each live session whose last
+    /// event is within the idle gap and whose first turn has ended, the newest activity first. Empty when no task is
+    /// open or the person turned it off.
+    pub live: Vec<Live>,
     /// The rung guide (Imran 2026-11-05, option B): every next-step move in pack order, with its text. Pack data,
     /// the same for everyone; the person's own rung per job comes from `coaching.kinds`.
     pub guide: Vec<GuideMove>,
@@ -90,6 +90,8 @@ pub struct Live {
     pub task_id: String,
     /// The first-prompt label's kind, in words.
     pub kind: Option<&'static str>,
+    /// The task's folder (`TaskRow.folder`), so a chip can name its project under any project filter.
+    pub folder: Option<String>,
 }
 
 /// One project: the tasks whose session ran in one folder (design project-filter P1–P5b). Its numbers run the
@@ -799,7 +801,7 @@ fn empty(paths: &Paths, pack: &PackV1, now: Now) -> Snapshot {
         },
         update: aiq_core::update::view(paths, None, now.utc_ms),
         projects: vec![],
-        live: None,
+        live: vec![],
         guide: pack
             .moves
             .iter()
@@ -1013,21 +1015,36 @@ fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()>
     Ok(())
 }
 
-/// The newest live session's open task, with "could reach" from the kinds rows (the same rows Home shows).
-fn live(store: &Store, pack: &PackV1, now_ms: i64, s: &Snapshot) -> R<Option<Live>> {
+/// Open tasks the Right now card shows at most; the rest are the oldest activity.
+// simplify: a fixed cap; ceiling 6 chips (two rows at 720 px). Upgrade trigger: a person with more open at once.
+const LIVE_MAX: usize = 6;
+
+/// Every live session's open task, the newest activity first, each with "could reach" from the kinds rows (the
+/// same rows Home shows).
+fn live(store: &Store, pack: &PackV1, now_ms: i64, s: &Snapshot) -> R<Vec<Live>> {
     let gap = pack.idle_gap_min as i64 * 60_000;
-    let newest: Option<(String, String)> = q(store
-        .raw()
-        .query_row(
-            "SELECT surface, surface_session_id FROM event WHERE ts_utc_ms >= ?1
-             ORDER BY ts_utc_ms DESC, event_id DESC LIMIT 1",
-            [now_ms - gap],
-            |r| Ok((r.get(0)?, r.get(1)?)),
-        )
-        .optional())?;
-    let Some((surface, session)) = newest else { return Ok(None) };
+    let mut st = q(store.raw().prepare(
+        "SELECT surface, surface_session_id FROM event WHERE ts_utc_ms >= ?1
+         GROUP BY surface, surface_session_id ORDER BY max(ts_utc_ms) DESC, max(event_id) DESC",
+    ))?;
+    let sessions: Vec<(String, String)> =
+        q(q(st.query_map([now_ms - gap], |r| Ok((r.get(0)?, r.get(1)?))))?.collect::<Result<_, _>>())?;
+    let mut out = vec![];
+    for (surface, session) in sessions {
+        if out.len() == LIVE_MAX {
+            break;
+        }
+        if let Some(l) = open_live(store, &surface, &session, now_ms, gap, s)? {
+            out.push(l);
+        }
+    }
+    Ok(out)
+}
+
+/// One session's open task for the card; None when its first turn has not ended or the list leaves it out.
+fn open_live(store: &Store, surface: &str, session: &str, now_ms: i64, gap: i64, s: &Snapshot) -> R<Option<Live>> {
     let Some(mut t) =
-        aiq_core::live_trend::open_task(store, &surface, &session, now_ms, gap).map_err(|e| e.to_string())?
+        aiq_core::live_trend::open_task(store, surface, session, now_ms, gap).map_err(|e| e.to_string())?
     else {
         return Ok(None);
     };
@@ -1037,11 +1054,11 @@ fn live(store: &Store, pack: &PackV1, now_ms: i64, s: &Snapshot) -> R<Option<Liv
     let row =
         s.coaching.kinds.iter().find(|k| Some(&k.job) == t.job.as_ref() && Some(&k.task_type) == t.task_type.as_ref());
     t.could = row.and_then(|k| k.potential).filter(|p| t.rung.is_some_and(|r| *p > r));
-    let Some(task_id) = s
+    let Some((task_id, folder)) = s
         .tasks
         .iter()
         .find(|x| x.origin == "live" && x.tool == t.surface && x.members.iter().any(|(_, ms)| *ms == t.first_ms))
-        .map(|x| x.task_id.clone())
+        .map(|x| (x.task_id.clone(), x.folder.clone()))
     else {
         return Ok(None);
     };
@@ -1049,7 +1066,7 @@ fn live(store: &Store, pack: &PackV1, now_ms: i64, s: &Snapshot) -> R<Option<Liv
         (Some(j), Some(ty)) => aiq_contracts::judge::task_type_label(j, ty),
         _ => None,
     };
-    Ok(Some(Live { trend: t, task_id, kind }))
+    Ok(Some(Live { trend: t, task_id, kind, folder }))
 }
 
 /// Every task whose first prompt is at or after `since_ms`, live and imported, newest first. A session's own

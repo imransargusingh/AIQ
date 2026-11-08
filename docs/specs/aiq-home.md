@@ -76,7 +76,7 @@ rung is judged (`rung-model.md`); sync across devices; weekly summary emails.
 | H6 | No next step coached below 0.8 confidence | rung-model |
 | H7 | Raw prompts stay on device until the person deletes them (one item, older than a date, all) | ADR-0002 |
 | H8 | Lost machine means lost history; stated at setup | Imran, 2026-10-31 |
-| H9 | Daily tip limit 1, 3 or 5, default 5, set at setup and in Settings | coaching-loop D3 |
+| H9 | Daily tip limit, default 5: 1, 3 or 5 at setup; 5, 15, 30 or any whole number 0 to 50 (Custom) in Settings, the same range `aiq config set daily-cap` takes (Imran, 2026-11-07) | coaching-loop D3 |
 | H10 | Habit states Not yet / Tried / Adopted (rule D5) | coaching-loop D5 |
 | H11 | Judge runs under the person's own account: their signed-in Claude Code (`claude -p`), else their own API key; Copilot via VS Code's language model API; work-account caveat shown at setup | ADR-0007, amended by Q5 (Imran, 2026-11-01). Basis: Claude Code legal-and-compliance page allows signing in to unmodified Claude Code with one's own plan |
 | H12 | Keyboard-first UI style | coaching-loop |
@@ -152,7 +152,7 @@ are counted separately and never guessed.
 - **Given** Pause **When** pressed (P, or the palette) **Then** capture and tips stop on every surface, and every screen shows that AIQ is paused.
 
 **US-H7 — Change how AIQ coaches me, and decide about sharing with full sight of what is sent.**
-- **Given** Settings **When** opened **Then** the person can set tips a day (1, 3, 5), how long a Copilot CLI status-line tip stays (until the next prompt (default, Imran 2026-11-01), 2 prompts or 5 minutes, or until opened), quiet hours, tip types on/off, starting preset, rung model connection ("Claude through your signed-in Claude Code", "your own API key" or "Copilot with VS Code consent") and judging budget.
+- **Given** Settings **When** opened **Then** the person can set tips a day (5, 15, 30 or Custom, 0 to 50), how long a Copilot CLI status-line tip stays (until the next prompt (default, Imran 2026-11-01), 2 prompts or 5 minutes, or until opened), quiet hours, tip types on/off, starting preset, rung model connection ("Claude through your signed-in Claude Code", "your own API key" or "Copilot with VS Code consent") and judging budget.
 - **Given** sharing is off (default) **When** the person opens "See exactly what would be sent" **Then** the full message for this week is shown before any opt-in, and nothing is sent until they choose to share.
 
 ### Non-functional requirements (ISO/IEC 25010)
