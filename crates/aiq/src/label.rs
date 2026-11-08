@@ -207,23 +207,14 @@ pub fn cli(args: &[&str]) -> ExitCode {
     if args.contains(&"--eval") {
         return eval_cli(args, &paths, &store);
     }
-    let (Some(task_id), Some(surface), Some(session)) =
-        (arg(args, "--task"), arg(args, "--surface"), arg(args, "--session"))
-    else {
+    let n = now();
+    let Some(req) = parse_req(args, n.utc_ms) else {
         println!(
             "aiq label is started by AIQ itself. To measure labels on your analyzed tasks: aiq label --eval [--sample <n>]"
         );
         return ExitCode::from(2);
     };
-    let n = now();
     let _ = sweep(&paths, n.utc_ms);
-    let req = Req {
-        task_id: task_id.to_owned(),
-        surface: surface.to_owned(),
-        session: session.to_owned(),
-        requested_ms: arg(args, "--requested").and_then(|v| v.parse().ok()).unwrap_or(n.utc_ms),
-        prompt_id: arg(args, "--prompt").map(str::to_owned),
-    };
     let (claude, copilot) = providers(&paths, &store);
     let copilot = judge::copilot_chain(&copilot, copilot_models(&store));
     let line = match label_task(&store, &paths, &claude, &copilot, &req, n) {
@@ -252,23 +243,35 @@ pub fn cli(args: &[&str]) -> ExitCode {
 pub fn requester() -> aiq_core::service::LabelRequester {
     Box::new(|r: aiq_core::service::LabelRequest| {
         std::thread::spawn(move || {
-            let at = r.requested_ms.to_string();
-            let mut args = vec![
-                "label",
-                "--task",
-                &r.task_id,
-                "--surface",
-                &r.surface,
-                "--session",
-                &r.session,
-                "--requested",
-                &at,
-            ];
-            if let Some(p) = &r.prompt_id {
-                args.extend(["--prompt", p.as_str()]);
-            }
+            let args = label_args(&r);
+            let args: Vec<&str> = args.iter().map(String::as_str).collect();
             let _ = crate::spawn::detached(&args);
         });
+    })
+}
+
+/// The command line the core starts for a label request. `parse_req` reads it back; the test
+/// `label_args_round_trip_through_parse_req` keeps the two in step, since no other test crosses this hop.
+fn label_args(r: &aiq_core::service::LabelRequest) -> Vec<String> {
+    let mut args: Vec<String> = ["label", "--task", &r.task_id, "--surface", &r.surface, "--session", &r.session]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    args.extend(["--requested".to_owned(), r.requested_ms.to_string()]);
+    if let Some(p) = &r.prompt_id {
+        args.extend(["--prompt".to_owned(), p.clone()]);
+    }
+    args
+}
+
+/// A label request from `aiq label`'s arguments (after `label`), or None without task, surface and session.
+fn parse_req(args: &[&str], now_ms: i64) -> Option<Req> {
+    Some(Req {
+        task_id: arg(args, "--task")?.to_owned(),
+        surface: arg(args, "--surface")?.to_owned(),
+        session: arg(args, "--session")?.to_owned(),
+        requested_ms: arg(args, "--requested").and_then(|v| v.parse().ok()).unwrap_or(now_ms),
+        prompt_id: arg(args, "--prompt").map(str::to_owned),
     })
 }
 
@@ -638,6 +641,42 @@ mod tests {
     use tempfile::TempDir;
 
     const NOW: i64 = 100 * DAY_MS;
+
+    // The core starts `aiq label` as a separate process, so no service or end-to-end test crosses this hop:
+    // a flag renamed on one side only would end every label at "asked" and lose its tip (top-priority class).
+    #[test]
+    fn label_args_round_trip_through_parse_req() {
+        for prompt_id in [None, Some("p-2")] {
+            let r = aiq_core::service::LabelRequest {
+                task_id: "task-1".into(),
+                surface: "copilot-cli".into(),
+                session: "s-1".into(),
+                requested_ms: NOW - 5,
+                prompt_id: prompt_id.map(str::to_owned),
+            };
+            let args = label_args(&r);
+            assert_eq!(args[0], "label", "main.rs routes on the first word");
+            let rest: Vec<&str> = args[1..].iter().map(String::as_str).collect();
+            let got = parse_req(&rest, NOW).expect("the core's own arguments parse");
+            assert_eq!(
+                got,
+                Req {
+                    task_id: r.task_id.clone(),
+                    surface: r.surface.clone(),
+                    session: r.session.clone(),
+                    requested_ms: r.requested_ms,
+                    prompt_id: r.prompt_id.clone(),
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn parse_req_needs_task_surface_and_session() {
+        assert_eq!(parse_req(&["--task", "t", "--surface", "vscode"], NOW), None);
+        let r = parse_req(&["--task", "t", "--surface", "vscode", "--session", "s"], NOW).unwrap();
+        assert_eq!((r.requested_ms, r.prompt_id), (NOW, None), "a missing time is now; no second try");
+    }
 
     struct Fake {
         answer: Outcome,
