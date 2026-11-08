@@ -1362,7 +1362,7 @@ await test("auto-update: the titlebar marker, one-press Update now, Go back, the
     const p = await open("full", { hash, edit: waiting });
     const nav = p.locator("nav .foot");
     assert.match(await nav.getByTestId("update-ready").innerText(), /^AIQ 0\.2\.0 is ready\s+You have 0\.1\.0\s+Update$/, `bottom-left notice on ${hash || "#home"}`);
-    assert.equal(await nav.getByRole("button", { name: "Update now" }).count(), 0, "the ready button replaces the link");
+    assert.equal(await nav.getByRole("button", { name: "Check for updates" }).count(), 0, "the ready button replaces the link");
     await p.context().close();
   }
   const side = await open("full", { edit: waiting });
@@ -1397,9 +1397,9 @@ await test("auto-update: the titlebar marker, one-press Update now, Go back, the
   // Nothing known yet: Update now checks with Home open, shows each step, and installs once the download lands.
   const found = await open("full", { edit: (s) => (s.update.latest = "v0.1.0") });
   await found.evaluate(() => (window.__AIQ_FIXTURE__.checkFinds = "v0.2.0"));
-  await found.getByRole("button", { name: "Update now" }).click();
+  await found.getByRole("button", { name: "Check for updates" }).click();
   assert.equal(await found.getByTestId("update-chip").innerText(), "Checking for a newer AIQ…");
-  assert.equal(await found.getByRole("button", { name: "Update now" }).isDisabled(), true, "a second press while checking does nothing");
+  assert.equal(await found.getByRole("button", { name: "Check for updates" }).isDisabled(), true, "a second press while checking does nothing");
   await found.waitForFunction(() => document.querySelector("[data-testid=update-chip]")?.textContent.startsWith("Installing AIQ 0.2.0."), null, { timeout: 8000 });
   assert.deepEqual(await upd(found), [{ action: "check" }, { action: "install" }]);
   await found.context().close();
@@ -1407,7 +1407,7 @@ await test("auto-update: the titlebar marker, one-press Update now, Go back, the
   for (const [finds, text] of [["none", "You have the newest AIQ (0.1.0)."], ["error", "Couldn't reach GitHub. Try again in a few minutes."]]) {
     const p = await open("full", { hash: "#settings" });
     await p.evaluate((f) => (window.__AIQ_FIXTURE__.checkFinds = f), finds);
-    await p.locator("main").getByRole("button", { name: "Update now" }).click();
+    await p.locator("main").getByRole("button", { name: "Check for updates" }).click();
     assert.equal(await p.getByTestId("update-progress").innerText(), "Checking for a newer AIQ…", "Settings shows the check at once");
     await p.waitForFunction((t) => document.querySelector("[data-testid=update-progress]")?.textContent === t, text, { timeout: 8000 });
     assert.equal(await p.getByTestId("update-chip").innerText(), text);
@@ -1444,10 +1444,10 @@ await test("auto-update: the titlebar marker, one-press Update now, Go back, the
   await nofrom.context().close();
   const st = await open("full", { hash: "#settings" });
   assert.equal(await st.getByTestId("app-version").innerText(), "AIQ 0.1.0");
-  assert.equal(await st.locator("nav").getByRole("button", { name: "Update now" }).count(), 1, "Update now beside the version");
+  assert.equal(await st.locator("nav").getByRole("button", { name: "Check for updates" }).count(), 1, "Check for updates beside the version");
   assert.equal(await st.getByTestId("update-ready").count(), 0, "nothing waiting: no ready box");
   assert.equal(await st.getByRole("radio", { name: /Update automatically/ }).isChecked(), true);
-  assert.equal(await st.locator("main").getByRole("button", { name: "Update now" }).count(), 1, "Update now is offered under every choice");
+  assert.equal(await st.locator("main").getByRole("button", { name: "Check for updates" }).count(), 1, "Check for updates is offered under every choice");
   await st.getByRole("radio", { name: "Tell me first" }).check();
   await st.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Updates: tell me first.");
   const set = await st.evaluate(() => window.__AIQ_FIXTURE__.calls.filter((c) => c.cmd === "set_setting").map((c) => c.args));
@@ -1457,7 +1457,7 @@ await test("auto-update: the titlebar marker, one-press Update now, Go back, the
   assert.match(await st.locator("main").innerText(), /AIQ doesn't check for updates and makes no network call of its own\. You're on AIQ 0\.1\.0\./);
   const set2 = await st.evaluate(() => window.__AIQ_FIXTURE__.calls.filter((c) => c.cmd === "set_setting").map((c) => c.args));
   assert.deepEqual(set2.at(-1), { key: "update", value: "off" });
-  await st.locator("main").getByRole("button", { name: "Update now" }).click();
+  await st.locator("main").getByRole("button", { name: "Check for updates" }).click();
   await st.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Checking for a newer AIQ…");
   const chk = await upd(st);
   assert.deepEqual(chk, [{ action: "check" }]);
@@ -1466,7 +1466,7 @@ await test("auto-update: the titlebar marker, one-press Update now, Go back, the
   const dev = await open("full", { hash: "#settings", edit: (s) => (s.update.supported = false) });
   assert.match(await dev.locator("main").innerText(), /wasn't installed from a release, so it doesn't update itself/);
   assert.equal(await dev.getByRole("radio", { name: "Tell me first" }).count(), 0);
-  assert.equal(await dev.getByRole("button", { name: "Update now" }).count(), 0, "a dev copy offers no Update now");
+  assert.equal(await dev.getByRole("button", { name: "Check for updates" }).count(), 0, "a dev copy offers no Check for updates");
   await dev.context().close();
 });
 

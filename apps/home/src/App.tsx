@@ -60,7 +60,7 @@ export function App() {
   // The project Home, Tasks and a kind's page show; all until the person picks one (design project-filter P3).
   const [project, setProjectState] = useState<string | null>(null);
   const gPending = useRef(0);
-  // "Update now" (U5h): one press checks, downloads and installs; its state shows in the titlebar and beside it.
+  // "Check for updates" (U5h, renamed U5l): one press checks, downloads and installs; its state shows in the titlebar and beside it.
   const [upd, setUpd] = useState<{ phase: UpdatePhase; since: number; msg: string | null }>({ phase: "idle", since: 0, msg: null });
   // The tour (design home-tour): its step and the example snapshot the views show meanwhile; null when off.
   const [tour, setTour] = useState<{ step: number; snap: Snapshot } | null>(null);
@@ -371,7 +371,7 @@ export function App() {
                       <>
                         {" · "}
                         <button className="btnlink" onClick={update.run} disabled={update.phase !== "idle"} title="Check for a newer AIQ and install it">
-                          Update now
+                          Check for updates
                         </button>
                       </>
                     )}
@@ -443,7 +443,7 @@ function Palette({ ctx, onClose }: { ctx: Ctx; onClose: () => void }) {
       { label: "Take the tour", run: ctx.startTour },
       ...THEMES.filter((t) => t.v !== ctx.theme).map((t) => ({ label: t.v === "system" ? "Theme: match Windows" : `Theme: ${t.label.toLowerCase()}`, run: () => ctx.setTheme(t.v) })),
       { label: "Refresh", run: ctx.refresh },
-      ...(ctx.snap.update.supported ? [{ label: "Update AIQ now", run: ctx.update.run }] : []),
+      ...(ctx.snap.update.supported ? [{ label: ctx.snap.update.note === "waiting" ? "Update AIQ now" : "Check for updates", run: ctx.update.run }] : []),
     ],
     [ctx],
   );

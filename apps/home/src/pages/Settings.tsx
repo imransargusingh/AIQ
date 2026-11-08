@@ -504,7 +504,7 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
             )}
             <div className="row">
               <button className="btn" onClick={update.run} disabled={update.phase !== "idle"}>
-                {update.phase === "checking" ? "Checking…" : update.phase === "installing" ? "Installing…" : up.note === "waiting" ? `Update to ${ver(up.available)} now` : "Update now"}
+                {update.phase === "checking" ? "Checking…" : update.phase === "installing" ? "Installing…" : up.note === "waiting" ? `Update to ${ver(up.available)} now` : "Check for updates"}
               </button>
               {up.can_rollback && (
                 <button className="btn" onClick={goBack}>
