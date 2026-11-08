@@ -46,8 +46,8 @@ pub fn providers(paths: &Paths, store: &Store) -> (ClaudeCli, CopilotCli) {
 }
 
 /// The Copilot models a label tries, in order: the person's label model alone (`default` = Copilot's own
-/// pick), else the analysis models (AIQ's default model, then Copilot's own pick). Before label-2 a person
-/// with no Copilot model set got Copilot's own pick for labels while analysis used AIQ's default (DC-037).
+/// pick), else the analysis models (AIQ's default model, then Copilot's own pick). Before this change a person
+/// with no Copilot model set got Copilot's own pick for labels while analysis used AIQ's default (DC-039).
 pub fn copilot_models(store: &Store) -> Vec<Option<String>> {
     match store.setting(label::SETTING_LABEL_COPILOT_MODEL).ok().flatten() {
         Some(m) if m == "default" => vec![None],
@@ -870,5 +870,26 @@ mod tests {
         assert_eq!(copilot_models(&store), vec![None]);
         store.set_setting(label::SETTING_LABEL_COPILOT_MODEL, "gpt-6.1-sol", NOW).unwrap();
         assert_eq!(copilot_models(&store), vec![Some("gpt-6.1-sol".to_owned())]);
+    }
+    /// Real labels measured on the laptop, replayed through today's acceptance rule: a rule change that lets the
+    /// measured misses coach again fails here.
+    #[test]
+    fn measured_labels_clear_the_bar() {
+        let m: Value = serde_json::from_str(include_str!("../../../evals/label/measured.json")).unwrap();
+        let mut e = Eval::default();
+        for r in m["rows"].as_array().unwrap() {
+            let (job, ty) = r["label"].as_str().unwrap().split_once('/').unwrap();
+            let l = label::Label {
+                job: job.into(),
+                job_confidence: r["jc"].as_f64().unwrap(),
+                task_type: ty.into(),
+                task_type_confidence: r["tc"].as_f64().unwrap(),
+            };
+            if label::accept(&l).is_some() {
+                e.confident += 1;
+                e.confident_right += u32::from(r["label"] == r["analysis"]);
+            }
+        }
+        assert_eq!(e.passes(), Some(true), "{} of {} confident measured labels right", e.confident_right, e.confident);
     }
 }
