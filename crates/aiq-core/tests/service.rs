@@ -1592,3 +1592,16 @@ fn a_long_turn_after_a_restart_is_read_from_its_prompt_not_the_tail() {
     assert_eq!((rows[0].outcome.as_str(), rows[0].why.as_deref()), ("recorded", None));
     assert_eq!((rows[0].tool_calls, rows[0].commands), (Some(1), Some(1)));
 }
+
+/// Tip funnel (design tip-funnel): a person's session first set aside as automated gets its first prompt stored late,
+/// with no tip; the funnel counts it as its own reason rather than losing it.
+#[test]
+fn a_rescued_first_prompt_is_counted_on_the_tip_path() {
+    let mut h = H::new();
+    h.svc().store().insert_folder_rule("/ep", "set_aside", "template", "live", T0).unwrap();
+    h.cp_in("/ep", "person", BASE, MIN);
+    assert!(h.svc().store().tip_steps_since(0).unwrap().is_empty(), "set aside: not on the tip path yet");
+    h.cp_in("/ep", "person", R1, MIN);
+    let steps = h.svc().store().tip_steps_since(0).unwrap();
+    assert_eq!(steps.iter().map(|s| s.step.as_str()).collect::<Vec<_>>(), ["late_first_prompt"]);
+}

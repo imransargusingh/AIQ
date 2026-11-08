@@ -65,6 +65,9 @@ pub struct Snapshot {
     /// The rung guide (Imran 2026-11-05, option B): every next-step move in pack order, with its text. Pack data,
     /// the same for everyone; the person's own rung per job comes from `coaching.kinds`.
     pub guide: Vec<GuideMove>,
+    /// Where new tasks' tips went, today and over 7 days, and the recent days with no tip (design tip-funnel). The
+    /// core's own reader (`aiq_core::funnel`), so Home and `aiq status` give the same numbers.
+    pub tip_funnel: aiq_contracts::frames::TipFunnels,
 }
 
 /// One habit in the rung guide: the step it climbs from (1..=4), its job (or `any`), and the pack's own text.
@@ -617,6 +620,7 @@ pub fn snapshot(paths: &Paths, pack: &PackV1, now: Now) -> Snapshot {
             s.home = e2.home;
             s.tasks = e2.tasks;
             s.tips = e2.tips;
+            s.tip_funnel = e2.tip_funnel;
             s.data = e2.data;
             s.coaching = e2.coaching;
             s.projects = e2.projects;
@@ -816,6 +820,7 @@ fn empty(paths: &Paths, pack: &PackV1, now: Now) -> Snapshot {
                 counts: m.counts.clone(),
             })
             .collect(),
+        tip_funnel: Default::default(),
     }
 }
 
@@ -840,6 +845,7 @@ fn read(db: &std::path::Path, pack: &PackV1, now: Now, started: Instant, s: &mut
 
 fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()> {
     let c = store.raw();
+    s.tip_funnel = aiq_core::funnel::tip_funnels(store, now).map_err(|e| e.to_string())?;
     let window_start = now.utc_ms - WINDOW_DAYS * DAY_MS;
 
     // Settings: latest value per key, parsed as the core parses them.

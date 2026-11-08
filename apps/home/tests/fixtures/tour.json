@@ -4283,5 +4283,48 @@
       "starter": "Turn what we just did into .github/prompts/<name>.prompt.md: its inputs, steps, checks, and when to stop and ask.",
       "counts": "Not counted yet: AIQ can't tell when a saved workflow runs. It's still worth doing."
     }
-  ]
+  ],
+  "tip_funnel": {
+    "today": {
+      "days": 1,
+      "tasks": 0,
+      "kind_known": 0,
+      "tip_found": 0,
+      "no_tip": [],
+      "tips": 1,
+      "held": [],
+      "waiting": 0,
+      "expired": 0,
+      "shown": [
+        {
+          "code": "copilot-cli",
+          "words": "Copilot CLI",
+          "count": 1
+        }
+      ],
+      "opened": 0,
+      "answered": 0
+    },
+    "week": {
+      "days": 7,
+      "tasks": 0,
+      "kind_known": 0,
+      "tip_found": 0,
+      "no_tip": [],
+      "tips": 1,
+      "held": [],
+      "waiting": 0,
+      "expired": 0,
+      "shown": [
+        {
+          "code": "copilot-cli",
+          "words": "Copilot CLI",
+          "count": 1
+        }
+      ],
+      "opened": 0,
+      "answered": 0
+    },
+    "droughts": []
+  }
 }

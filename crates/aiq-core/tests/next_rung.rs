@@ -653,3 +653,160 @@ fn labels_have_their_own_self_check_hold_tips_below_eight_in_ten_and_keep_being_
     h.svc.on_kind_label(&task).unwrap();
     assert!(full(h.cp_turn_end("c")).is_some(), "label tips are back once the newest checks pass");
 }
+
+// ------------------------------------------------------------------ tip funnel (design tip-funnel)
+
+/// The latest tip-path step of a task.
+fn last_step(h: &H, task: &str) -> String {
+    let steps = Store::open(&h.path).unwrap().tip_steps_since(0).unwrap();
+    steps.into_iter().rev().find(|s| s.task_id == task).map(|s| s.step).unwrap_or_else(|| "none".into())
+}
+
+/// One label call that failed, as `aiq label` stores it.
+fn store_failed_label(h: &H, task: &str, session: &str) {
+    Store::open(&h.path)
+        .unwrap()
+        .insert_kind_label(&aiq_store::KindLabelRow {
+            label_id: format!("l-{task}-fail"),
+            task_id: task.into(),
+            surface: "copilot-cli".into(),
+            surface_session_id: session.into(),
+            provider: "copilot-cli".into(),
+            model: None,
+            outcome: "timeout".into(),
+            job: None,
+            job_confidence: None,
+            task_type: None,
+            task_type_confidence: None,
+            requested_utc_ms: h.now(),
+            started_utc_ms: h.now(),
+            latency_ms: 30_000,
+            tokens_in: None,
+            tokens_out: None,
+            cost_usd: None,
+            utc_ms: h.now(),
+        })
+        .unwrap();
+}
+
+#[test]
+fn every_new_task_ends_its_tip_path_at_a_counted_step() {
+    let mut h = H::new();
+    let past = h.seed();
+    assert_eq!(last_step(&h, &past[0]), "no_match", "nothing judged yet, no labeller");
+    let t = h.prompt("copilot-cli", "a", NEW);
+    assert_eq!(last_step(&h, &t), "decided");
+    h.advance(2 * HOUR);
+    let t = h.prompt("copilot-cli", "b", UNLIKE);
+    assert_eq!(last_step(&h, &t), "no_match");
+    // Flagged kind: a known kind held on purpose, by its state.
+    h.svc.guidance_flag("code_change", "tests", "written_brief", "flag", Some("not_useful"), None).unwrap();
+    h.advance(2 * HOUR);
+    let t = h.prompt("copilot-cli", "c", NEW);
+    assert_eq!(last_step(&h, &t), "kind_flagged");
+    h.svc.guidance_flag("code_change", "tests", "written_brief", "undo", None, None).unwrap();
+    // Tips turned off.
+    h.svc.set("next_rung_tips", "off").unwrap();
+    h.advance(2 * HOUR);
+    let t = h.prompt("copilot-cli", "d", NEW);
+    assert_eq!(last_step(&h, &t), "tips_off");
+    h.svc.set("next_rung_tips", "auto").unwrap();
+    // Labels: asked, then failed, unsure, late, or decided.
+    with_labeller(&mut h);
+    h.advance(2 * HOUR);
+    let t = h.prompt("copilot-cli", "e", UNLIKE);
+    assert_eq!(last_step(&h, &t), "label_asked", "a label that never comes back stays here");
+    store_failed_label(&h, &t, "e");
+    h.svc.on_kind_label(&t).unwrap();
+    assert_eq!(last_step(&h, &t), "label_failed");
+    h.advance(2 * HOUR);
+    let t = h.prompt("copilot-cli", "f", UNLIKE);
+    store_label(&h, &t, "f", "tests", 0.7);
+    h.svc.on_kind_label(&t).unwrap();
+    assert_eq!(last_step(&h, &t), "label_unsure");
+    h.advance(2 * HOUR);
+    let t = h.prompt("copilot-cli", "g", UNLIKE);
+    h.advance(2 * HOUR);
+    h.prompt("copilot-cli", "g", "something else entirely now");
+    store_label(&h, &t, "g", "tests", 0.95);
+    h.svc.on_kind_label(&t).unwrap();
+    assert_eq!(last_step(&h, &t), "label_late");
+    h.advance(2 * HOUR);
+    let t = h.prompt("copilot-cli", "h", UNLIKE);
+    store_label(&h, &t, "h", "tests", 0.9);
+    h.svc.on_kind_label(&t).unwrap();
+    assert_eq!(last_step(&h, &t), "decided");
+    // A kind none of the person's tasks has been analyzed as yet.
+    h.advance(2 * HOUR);
+    let t = h.prompt("copilot-cli", "i", UNLIKE);
+    store_label(&h, &t, "i", "fix_bug", 0.9);
+    h.svc.on_kind_label(&t).unwrap();
+    assert!(last_step(&h, &t).starts_with("kind_"), "{}", last_step(&h, &t));
+    // Every row's step is one the funnel knows.
+    let steps = Store::open(&h.path).unwrap().tip_steps_since(0).unwrap();
+    assert!(steps.iter().all(|s| aiq_domain::funnel::Step::parse(&s.step).is_some()));
+}
+
+#[test]
+fn held_self_checks_are_counted_as_their_own_steps() {
+    let mut h = H::new();
+    h.seed();
+    {
+        let s = Store::open(&h.path).unwrap();
+        for i in 0..10 {
+            for method in ["words", "label"] {
+                let id = format!("{method}{i}");
+                s.insert_judgment(&judgment(&id, if i < 7 { "tests" } else { "fix_bug" })).unwrap();
+                s.insert_type_guess(&TypeGuessRow {
+                    guess_id: id.clone(),
+                    task_id: id,
+                    surface: "copilot-cli".into(),
+                    job: "code_change".into(),
+                    task_type: "tests".into(),
+                    similarity: 0.9,
+                    neighbours: vec![],
+                    utc_ms: 1,
+                    method: method.into(),
+                })
+                .unwrap();
+            }
+        }
+    }
+    // Words held and no labeller: the task ends at guess_held.
+    let t = h.prompt("copilot-cli", "a", NEW);
+    assert_eq!(last_step(&h, &t), "guess_held");
+    // Labels held too: the label is asked for, stored, and the tip held.
+    with_labeller(&mut h);
+    h.advance(2 * HOUR);
+    let t = h.prompt("copilot-cli", "b", UNLIKE);
+    store_label(&h, &t, "b", "tests", 0.9);
+    h.svc.on_kind_label(&t).unwrap();
+    assert_eq!(last_step(&h, &t), "label_held");
+}
+
+#[test]
+fn status_carries_the_funnel_and_a_dry_working_day_warns() {
+    let mut h = H::new();
+    h.seed();
+    // Three tasks nothing can name, on one day; then the next day.
+    for s in ["x", "y", "z"] {
+        h.advance(HOUR);
+        h.prompt("copilot-cli", s, UNLIKE);
+    }
+    let f = h.svc.status().tip_funnel.expect("funnel");
+    assert!(f.today.tasks >= 3 || f.week.tasks >= 6, "{f:?}");
+    assert!(f.week.no_tip.iter().any(|c| c.code == "no_match"));
+    h.advance(24 * HOUR);
+    let f = h.svc.status().tip_funnel.unwrap();
+    assert_eq!(f.droughts.len(), 1, "{f:?}");
+    assert_eq!(f.droughts[0].main_reason.as_ref().unwrap().code, "no_match");
+    // A shown tip on a day clears that day.
+    let mut h = H::new();
+    h.seed();
+    h.prompt("copilot-cli", "a", NEW);
+    assert!(full(h.cp_turn_end("a")).is_some());
+    h.advance(24 * HOUR);
+    let f = h.svc.status().tip_funnel.unwrap();
+    assert!(f.droughts.iter().all(|d| d.day != aiq_domain::funnel::iso_date(T0 / 86_400_000)), "{f:?}");
+    assert_eq!(f.week.shown.iter().map(|c| c.count).sum::<u32>(), 1);
+}

@@ -19,6 +19,45 @@ export interface Snapshot {
   live: Live[];
   /** The rung guide: every next-step move in pack order (pack data, the same for everyone). */
   guide: GuideMove[];
+  /** Where new tasks' tips went, today and over 7 days, and recent days with no tip (design tip-funnel). */
+  tip_funnel: TipFunnels;
+}
+
+/** Mirrors aiq-contracts `TipFunnels`. Counted from stored rows; the same reader as `aiq status`. */
+export interface TipFunnels {
+  today: TipFunnel;
+  week: TipFunnel;
+  /** Days before today, in the last 7, with 3 or more new tasks and no tip shown. Newest first. */
+  droughts: TipDrought[];
+}
+
+export interface TipFunnel {
+  days: number;
+  tasks: number;
+  kind_known: number;
+  tip_found: number;
+  no_tip: FunnelCount[];
+  tips: number;
+  held: FunnelCount[];
+  waiting: number;
+  expired: number;
+  shown: FunnelCount[];
+  opened: number;
+  answered: number;
+}
+
+/** A count with its code and plain words (the words come from Rust: one definition). */
+export interface FunnelCount {
+  code: string;
+  words: string;
+  count: number;
+}
+
+export interface TipDrought {
+  /** Local date, YYYY-MM-DD. */
+  day: string;
+  tasks: number;
+  main_reason: FunnelCount | null;
 }
 
 export interface GuideMove {

@@ -13,6 +13,7 @@ use aiq_domain::automated::{Guard, Verdict, folder_key, is_aiq_check_folder};
 use aiq_domain::card::{compose, compose_move};
 use aiq_domain::clock::{Clock, deliveries_counted_today};
 use aiq_domain::coach::{self, HabitState, TipPref};
+use aiq_domain::funnel::Step;
 use aiq_domain::job::{AlwaysUnclassified, Job, JobClassifier};
 use aiq_domain::reprompt::{Engine, PromptObs, SignalDraft};
 use aiq_domain::text::features;
@@ -484,6 +485,9 @@ impl<C: Clock> Service<C> {
         };
         let new_task = self.engine.task_id(&ev.surface, &ev.surface_session_id) == Some(ev.event_id.as_str());
         if !tips {
+            if new_task {
+                self.tip_step(&ev.event_id, &ev.surface, Step::LateFirstPrompt);
+            }
             return Ok(());
         }
         if let Some(sig) = sig {
@@ -681,7 +685,11 @@ impl<C: Clock> Service<C> {
     ) -> Result<(), StoreError> {
         let started = std::time::Instant::now();
         let mode = coaching::mode(&self.store);
-        if mode == "off" || self.paused() {
+        if mode == "off" {
+            self.tip_step(task_id, surface, Step::TipsOff);
+            return Ok(());
+        }
+        if self.paused() {
             return Ok(());
         }
         let pack = self.pack.clone();
@@ -744,10 +752,17 @@ impl<C: Clock> Service<C> {
                 );
             }
         }
+        let held_guess = !words_on && guess.is_some();
         let Some(g) = guess.filter(|_| words_on) else {
             // No word match: ask the small model in the background (design kind-label). The core never waits on
             // a model (C9); the answer comes back as `on_kind_label`, before the turn's Stop in most turns.
             let asked = labels_on && self.request_label(surface, session, task_id);
+            let step = match (asked, held_guess) {
+                (true, _) => Step::LabelAsked,
+                (false, true) => Step::GuessHeld,
+                (false, false) => Step::NoMatch,
+            };
+            self.tip_step(task_id, surface, step);
             info!(
                 ms = started.elapsed().as_millis() as u64,
                 neighbours = cache.neighbours.len(),
@@ -787,6 +802,15 @@ impl<C: Clock> Service<C> {
         );
     }
 
+    /// Record where this task's tip path ended or began to wait (design tip-funnel). A failed write only leaves
+    /// the funnel short; it never stops a tip.
+    fn tip_step(&self, task_id: &str, surface: &str, step: Step) {
+        if let Err(e) = self.store.insert_tip_step(task_id, surface, step.as_str(), self.clock.now()) {
+            self.counters.inc(e.code);
+            warn!(error.code = e.code, step = step.as_str(), "tip step not noted");
+        }
+    }
+
     /// Labels can run: a labeller is wired, background judging is on and labels are not turned off.
     fn labels_enabled(&self) -> bool {
         self.label_requester.is_some() && coaching::labels_enabled(&self.store)
@@ -817,7 +841,11 @@ impl<C: Clock> Service<C> {
         if mode == "off" || self.paused() {
             return Ok(());
         }
-        let Some(l) = self.store.kind_labels_of(task_id)?.into_iter().rev().find(|l| l.outcome == "ok") else {
+        let labels = self.store.kind_labels_of(task_id)?;
+        let Some(l) = labels.iter().rev().find(|l| l.outcome == "ok").cloned() else {
+            if let Some(l) = labels.last() {
+                self.tip_step(task_id, &l.surface, Step::LabelFailed);
+            }
             return Ok(());
         };
         let outcome = |o: &str| {
@@ -830,6 +858,7 @@ impl<C: Clock> Service<C> {
         };
         if self.engine.task_id(&l.surface, &l.surface_session_id) != Some(task_id) {
             outcome("label_task_moved_on");
+            self.tip_step(task_id, &l.surface, Step::LabelLate);
             return Ok(());
         }
         if self.store.has_type_guess(task_id, aiq_domain::label::METHOD)? {
@@ -843,6 +872,7 @@ impl<C: Clock> Service<C> {
         };
         let Some((job, task_type)) = aiq_domain::label::accept(&label) else {
             outcome("label_not_confident");
+            self.tip_step(task_id, &l.surface, Step::LabelUnsure);
             return Ok(());
         };
         let pack = self.pack.clone();
@@ -865,6 +895,7 @@ impl<C: Clock> Service<C> {
             if !cache.labels_on(&mode, &pack) {
                 self.log_label_hold(&cache);
                 outcome("label_held_by_self_check");
+                self.tip_step(task_id, &l.surface, Step::LabelHeld);
                 return Ok(());
             }
             let evidence = [format!("label:{}", l.model.as_deref().unwrap_or(&l.provider))];
@@ -918,6 +949,8 @@ impl<C: Clock> Service<C> {
                 coach.outcome = "not_coachable",
                 "coach.guess"
             );
+            let state = cache.rows.iter().find(|r| r.job == g.job && r.task_type == g.task_type).map(|r| r.state);
+            self.tip_step(task_id, surface, Step::for_kind(state));
             return Ok(());
         };
         let tip = coach::tip_id(&m.move_id);
@@ -977,6 +1010,7 @@ impl<C: Clock> Service<C> {
             coach.outcome = "decided",
             "coach.guess"
         );
+        self.tip_step(task_id, surface, Step::Decided);
         Ok(())
     }
 
@@ -1585,6 +1619,7 @@ impl<C: Clock> Service<C> {
                 f
             },
             agent_actions: Some(self.actions_status()),
+            tip_funnel: crate::funnel::tip_funnels(&self.store, self.clock.now()).ok(),
             coach: self.coach.as_ref().map(|c| {
                 let mode = coaching::mode(&self.store);
                 CoachStatus {

@@ -323,7 +323,7 @@
     "turn_ends": 2,
     "imported_sessions": 1,
     "imported_events": 6,
-    "store_bytes": 270336,
+    "store_bytes": 278528,
     "items": [
       {
         "event_id": "019000000018-0000-7000-8000-000000000000",
@@ -1211,5 +1211,95 @@
       "starter": "Turn what we just did into .github/prompts/<name>.prompt.md: its inputs, steps, checks, and when to stop and ask.",
       "counts": "Not counted yet: AIQ can't tell when a saved workflow runs. It's still worth doing."
     }
-  ]
+  ],
+  "tip_funnel": {
+    "today": {
+      "days": 1,
+      "tasks": 2,
+      "kind_known": 1,
+      "tip_found": 1,
+      "no_tip": [
+        {
+          "code": "label_asked",
+          "words": "kind label never came back",
+          "count": 1
+        }
+      ],
+      "tips": 1,
+      "held": [],
+      "waiting": 0,
+      "expired": 0,
+      "shown": [
+        {
+          "code": "copilot-cli",
+          "words": "Copilot CLI",
+          "count": 1
+        }
+      ],
+      "opened": 0,
+      "answered": 0
+    },
+    "week": {
+      "days": 7,
+      "tasks": 11,
+      "kind_known": 6,
+      "tip_found": 2,
+      "no_tip": [
+        {
+          "code": "no_match",
+          "words": "kind of task not recognised",
+          "count": 4
+        },
+        {
+          "code": "label_held",
+          "words": "kind labels on hold: their accuracy check is under 8 in 10",
+          "count": 2
+        },
+        {
+          "code": "kind_right_rung",
+          "words": "you already work this kind at its right rung",
+          "count": 1
+        },
+        {
+          "code": "kind_too_few",
+          "words": "too few tasks of this kind analyzed yet",
+          "count": 1
+        },
+        {
+          "code": "label_asked",
+          "words": "kind label never came back",
+          "count": 1
+        }
+      ],
+      "tips": 2,
+      "held": [],
+      "waiting": 0,
+      "expired": 0,
+      "shown": [
+        {
+          "code": "claude-code",
+          "words": "Claude Code",
+          "count": 1
+        },
+        {
+          "code": "copilot-cli",
+          "words": "Copilot CLI",
+          "count": 1
+        }
+      ],
+      "opened": 1,
+      "answered": 0
+    },
+    "droughts": [
+      {
+        "day": "2026-10-31",
+        "tasks": 6,
+        "main_reason": {
+          "code": "no_match",
+          "words": "kind of task not recognised",
+          "count": 3
+        }
+      }
+    ]
+  }
 }

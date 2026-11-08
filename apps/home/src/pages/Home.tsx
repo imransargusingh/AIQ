@@ -9,6 +9,7 @@ import { RUNGS, day, folderName, plural, rungLabel, sentence, shortPath, toolNam
 import { AccuracyPaused, Banners, ProjectPicker, Rung, Title, UpdateLine, type Ctx } from "../ui";
 import type { SetAside } from "../types";
 import { RightNow } from "./RightNow";
+import { DroughtNote } from "../funnel";
 import { GettingStartedCard, GettingStartedPage } from "./GettingStarted";
 import { AnalysisCard, analysisLine } from "./Analysis";
 
@@ -47,6 +48,7 @@ export function Home(ctx: Ctx) {
       <Banners {...ctx} />
       <UpdateLine {...ctx} />
       <AccuracyPaused {...ctx} />
+      <DroughtNote snap={snap} go={go} />
       <Title sr>Home</Title>
       <ProjectPicker {...ctx} />
       <RightNow {...ctx} />

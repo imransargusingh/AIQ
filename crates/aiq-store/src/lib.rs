@@ -18,9 +18,12 @@ pub const SCHEMA_V7: &str = include_str!("schema_v7.sql");
 pub const SCHEMA_V8: &str = include_str!("schema_v8.sql");
 pub const SCHEMA_V9: &str = include_str!("schema_v9.sql");
 pub const SCHEMA_V10: &str = include_str!("schema_v10.sql");
+pub const SCHEMA_V11: &str = include_str!("schema_v11.sql");
 /// Migration N takes the store from `user_version` N to N+1, in one transaction.
-pub const MIGRATIONS: &[&str] =
-    &[SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6, SCHEMA_V7, SCHEMA_V8, SCHEMA_V9, SCHEMA_V10];
+pub const MIGRATIONS: &[&str] = &[
+    SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6, SCHEMA_V7, SCHEMA_V8, SCHEMA_V9, SCHEMA_V10,
+    SCHEMA_V11,
+];
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StoreError {
@@ -504,6 +507,93 @@ impl Store {
             counts.push((t, n));
         }
         Ok(counts)
+    }
+
+    // ------------------------------------------------------------ tip funnel (schema v11)
+
+    /// Record where a live new task's tip path ended or began to wait.
+    pub fn insert_tip_step(&self, task_id: &str, surface: &str, step: &str, now: Now) -> Result<()> {
+        self.conn
+            .execute(
+                "INSERT INTO tip_path (task_id, surface, step, utc_ms, local_offset_min) VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![task_id, surface, step, now.utc_ms, now.offset_min],
+            )
+            .map(|_| ())
+            .map_err(err(codes::STORE_WRITE))
+    }
+
+    /// Every tip-path row of tasks whose first row is at or after `since_ms`, in insert order. Empty before v11.
+    pub fn tip_steps_since(&self, since_ms: i64) -> Result<Vec<aiq_domain::funnel::StepRow>> {
+        if !self.has_table("tip_path")? {
+            return Ok(vec![]);
+        }
+        let mut st = self
+            .conn
+            .prepare(
+                "SELECT task_id, surface, step, utc_ms, local_offset_min FROM tip_path
+                 WHERE task_id IN (SELECT task_id FROM tip_path GROUP BY task_id HAVING min(utc_ms) >= ?1)
+                 ORDER BY rowid",
+            )
+            .map_err(err(codes::STORE_OPEN))?;
+        let rows = st
+            .query_map([since_ms], |r| {
+                Ok(aiq_domain::funnel::StepRow {
+                    task_id: r.get(0)?,
+                    surface: r.get(1)?,
+                    step: r.get(2)?,
+                    utc_ms: r.get(3)?,
+                    offset_min: r.get(4)?,
+                })
+            })
+            .map_err(err(codes::STORE_OPEN))?;
+        rows.collect::<std::result::Result<_, _>>().map_err(err(codes::STORE_OPEN))
+    }
+
+    /// Every card first decided at or after `since_ms`: its latest decision, where it was shown, whether it was
+    /// opened and answered. Derived from card_decision, card_delivery, card_open and tip_feedback.
+    pub fn card_funnel_since(&self, since_ms: i64) -> Result<Vec<aiq_domain::funnel::CardRow>> {
+        let feedback = self.has_table("tip_feedback")?;
+        let answered = if feedback {
+            "EXISTS (SELECT 1 FROM tip_feedback f WHERE f.card_id = d.card_id AND f.answer <> 'no_answer')"
+        } else {
+            "0"
+        };
+        let sql = format!(
+            "SELECT d.card_id, (SELECT min(x.utc_ms) FROM card_decision x WHERE x.card_id = d.card_id) AS first,
+                    d.outcome, d.reason_code,
+                    (SELECT v.surface FROM card_delivery v WHERE v.card_id = d.card_id),
+                    EXISTS (SELECT 1 FROM card_open o WHERE o.card_id = d.card_id), {answered}
+             FROM card_decision d
+             WHERE d.rowid = (SELECT max(rowid) FROM card_decision x WHERE x.card_id = d.card_id) AND first >= ?1
+             ORDER BY first"
+        );
+        let mut st = self.conn.prepare(&sql).map_err(err(codes::STORE_OPEN))?;
+        let rows = st
+            .query_map([since_ms], |r| {
+                Ok(aiq_domain::funnel::CardRow {
+                    card_id: r.get(0)?,
+                    first_utc_ms: r.get(1)?,
+                    outcome: r.get(2)?,
+                    reason: r.get(3)?,
+                    shown_on: r.get(4)?,
+                    opened: r.get(5)?,
+                    answered: r.get(6)?,
+                })
+            })
+            .map_err(err(codes::STORE_OPEN))?;
+        rows.collect::<std::result::Result<_, _>>().map_err(err(codes::STORE_OPEN))
+    }
+
+    /// Every delivery at or after `since_ms`, with the local offset it was made in.
+    pub fn deliveries_since(&self, since_ms: i64) -> Result<Vec<aiq_domain::funnel::DeliveryDay>> {
+        let mut st = self
+            .conn
+            .prepare("SELECT delivered_utc_ms, local_offset_min FROM card_delivery WHERE delivered_utc_ms >= ?1")
+            .map_err(err(codes::STORE_OPEN))?;
+        let rows = st
+            .query_map([since_ms], |r| Ok(aiq_domain::funnel::DeliveryDay { utc_ms: r.get(0)?, offset_min: r.get(1)? }))
+            .map_err(err(codes::STORE_OPEN))?;
+        rows.collect::<std::result::Result<_, _>>().map_err(err(codes::STORE_OPEN))
     }
 
     // ------------------------------------------------------------ coaching facts (schema v6)

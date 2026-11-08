@@ -424,6 +424,7 @@ pub fn standard(paths: &Paths, with_import: bool) -> String {
     let e = s.prompt("copilot-cli", "cp2", now - 30 * MIN, Some(FORESIGHT), "draft the release notes");
     s.tip("copilot-cli", "cp2", now - 20 * MIN, vec![e], false);
     s.setting("daily_cap", "3", now - 5 * DAY);
+    tip_paths(&mut s, now);
     if with_import {
         s.imported_session(
             "copilot-cli",
@@ -450,6 +451,22 @@ pub fn standard(paths: &Paths, with_import: bool) -> String {
         );
     }
     String::new()
+}
+
+/// The tip funnel's week (design tip-funnel): yesterday six tasks and no tip (mostly an unrecognised kind), two days
+/// ago the tip on cc1, today the tip on cp2 and one task still waiting for its kind label.
+pub fn tip_paths(s: &mut Seed, now: i64) {
+    use aiq_domain::clock::Now;
+    let at = |t: i64| Now { utc_ms: t, offset_min: 0 };
+    let step = |task: &str, step: &str, t: i64| s.store.insert_tip_step(task, "copilot-cli", step, at(t)).unwrap();
+    for (i, st) in ["no_match", "no_match", "no_match", "label_held", "label_held", "kind_too_few"].iter().enumerate() {
+        step(&format!("y{i}"), st, now - DAY + i as i64 * 40 * MIN);
+    }
+    step("d2a", "decided", now - 2 * DAY);
+    step("d2b", "no_match", now - 2 * DAY + 30 * MIN);
+    step("d2c", "kind_right_rung", now - 2 * DAY + 60 * MIN);
+    step("t0", "decided", now - 30 * MIN);
+    step("t1", "label_asked", now - 10 * MIN);
 }
 
 /// A v6 judgment with a kind of task, for the coaching read-outs. Code tasks hand over the whole change
