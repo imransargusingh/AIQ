@@ -477,7 +477,7 @@ pub fn forget_files(paths: &Paths) -> std::io::Result<()> {
 /// The status line's reply: what to show, plus the line itself rendered here, with and without colour, so the
 /// status-line program only prints it (design auto-update U5n). `plain`: the person turned the highlight off.
 pub fn tip_line_reply(out: Option<TipLineOut>, plain: bool) -> TipLineReply {
-    use aiq_contracts::card::{render_status_line, render_waiting_marker};
+    use aiq_contracts::card::{render_status_line, render_trend_line, render_waiting_marker};
     let lines = |f: &dyn Fn(bool) -> String| (Some(f(!plain)), Some(f(false)));
     match out {
         Some(TipLineOut::Full(c)) => {
@@ -485,17 +485,14 @@ pub fn tip_line_reply(out: Option<TipLineOut>, plain: bool) -> TipLineReply {
             TipLineReply { card: Some(c), plain, line, line_plain, ..Default::default() }
         }
         Some(TipLineOut::Waiting(id)) => {
-            let (line, line_plain) = lines(&|color| render_waiting_marker(&id, color));
+            let (line, line_plain) = lines(&|color| render_waiting_marker(color));
             TipLineReply { waiting_card_id: Some(id), plain, line, line_plain, ..Default::default() }
         }
-        // The trend is not a tip: plain text, no badge, so a tip still stands out when one comes.
-        Some(TipLineOut::Trend(t)) => TipLineReply {
-            line: Some(t.clone()),
-            line_plain: Some(t.clone()),
-            trend: Some(t),
-            plain,
-            ..Default::default()
-        },
+        // The trend is not a tip: its own cyan, no badge, so a yellow tip still stands out when one comes.
+        Some(TipLineOut::Trend(t)) => {
+            let (line, line_plain) = lines(&|color| render_trend_line(&t, color));
+            TipLineReply { trend: Some(t), plain, line, line_plain, ..Default::default() }
+        }
         None => TipLineReply::default(),
     }
 }

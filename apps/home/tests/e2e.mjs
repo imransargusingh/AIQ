@@ -38,7 +38,7 @@ async function test(name, fn) {
   }
 }
 
-async function open(fixture, { theme, hash = "", width = 1280, height = 800, forced = false, edit, fail = [] } = {}) {
+async function open(fixture, { theme, hash = "", width = 1280, height = 800, forced = false, edit, fail = [], clock = false } = {}) {
   const ctx = await browser.newContext({ viewport: { width, height }, forcedColors: forced ? "active" : "none" });
   const page = await ctx.newPage();
   const errors = [];
@@ -50,6 +50,7 @@ async function open(fixture, { theme, hash = "", width = 1280, height = 800, for
   await page.addInitScript(([s, t, f]) => {
     window.__AIQ_FIXTURE__ = { snapshot: s, task: t, calls: [], fail: f };
   }, [snapshot, task, fail]);
+  if (clock) await page.clock.install();
   await page.goto(base + hash);
   if (theme) await page.evaluate((t) => (document.documentElement.dataset.theme = t), theme);
   await page.waitForSelector("main h1");
@@ -622,10 +623,68 @@ for (const theme of ["light", "dark", "contrast"]) {
   });
 }
 
-await test("Right now card: gone with no open task and when switched off; the switch is in Settings > Tips", async () => {
-  const none = await open("full");
-  assert.equal(await none.getByTestId("right-now").count(), 0);
+// Imran 2026-11-08: the card stays when nothing is open, so Home keeps its shape and the person can tell "nothing
+// in progress" from "AIQ hears nothing". Gone only when switched off.
+for (const theme of ["light", "dark", "contrast"]) {
+  await test(`Right now card, nothing open: stays, says so, names each connected tool's last activity, no axe violations (${theme})`, async () => {
+    const page = await open("full", {
+      theme: theme === "light" ? undefined : theme,
+      edit: (s) => {
+        s.starting = [];
+        s.setup.tools = ["claude-code", "copilot", "vscode"].map((tool) => ({ tool, hooked: true, present: true, install: "" }));
+        s.seen = [
+          { surface: "copilot-cli", last_ms: s.now_ms - 12 * 60_000 },
+          { surface: "claude-code", last_ms: s.now_ms - 26 * 3_600_000 },
+        ];
+      },
+    });
+    const card = page.getByTestId("right-now");
+    assert.equal(await card.getAttribute("data-state"), "idle");
+    const t = await card.innerText();
+    assert.match(t, /Right now · Nothing in progress/);
+    assert.match(t, /Copilot\s*last activity 12 min ago/);
+    assert.match(t, /Claude Code\s*last activity Yesterday/);
+    assert.match(t, /VS Code\s*nothing yet/);
+    assert.match(await page.getByTestId("right-now-hint").innerText(), /^Using VS Code with an agent right now\? AIQ has had nothing from it lately\./);
+    assert.doesNotMatch(t, /Watching|Monitoring/);
+    assert.deepEqual(await axe(page), []);
+    if (shots) await page.screenshot({ path: join(shots, `right-now-idle-${theme}.png`) });
+    if (theme === "light") {
+      await page.getByTestId("right-now-hint").getByRole("button", { name: "Check it in Settings" }).click();
+      await page.waitForFunction(() => location.hash === "#settings");
+    }
+    assert.deepEqual(page.errors, []);
+    await page.context().close();
+  });
+}
+
+await test("Right now card: a task whose first turn is running shows as starting, not as nothing", async () => {
+  const page = await open("full");
+  const card = page.getByTestId("right-now");
+  assert.equal(await card.getAttribute("data-state"), "starting");
+  const t = await card.innerText();
+  assert.match(t, /Right now · Task starting/);
+  assert.match(t, /Copilot CLI · since \d\d:\d\d · 1 prompt · agent working/);
+  assert.match(t, /Where it is heading shows after the agent's first reply/);
+  await page.context().close();
+});
+
+await test("Right now card: paused, not running and no tool connected each say so instead of hiding", async () => {
+  const quiet = { starting: [] };
+  const paused = await open("full", { edit: (s) => Object.assign(s, quiet, { status: { ...s.status, paused: true } }) });
+  assert.match(await paused.getByTestId("right-now").innerText(), /Right now · Paused[\s\S]*AIQ records nothing new while paused/);
+  await paused.getByTestId("right-now").getByRole("button", { name: "Resume" }).click();
+  assert.ok((await paused.evaluate(() => window.__AIQ_FIXTURE__.calls)).some((c) => JSON.stringify(c).includes("pause")));
+  await paused.context().close();
+  const down = await open("full", { edit: (s) => Object.assign(s, quiet, { status: { ...s.status, core_state: "failed" } }) });
+  assert.match(await down.getByTestId("right-now").innerText(), /Right now · Waiting for AIQ to start/);
+  await down.context().close();
+  const none = await open("full", { edit: (s) => Object.assign(s, quiet, { setup: { ...s.setup, tools: s.setup.tools.map((x) => ({ ...x, hooked: false })) } }) });
+  assert.match(await none.getByTestId("right-now").innerText(), /Right now · No tool connected/);
   await none.context().close();
+});
+
+await test("Right now card: gone only when switched off; the switch is in Settings > Tips", async () => {
   const unread = await open("live", {
     edit: (s) => Object.assign(s.live[0], { rung: null, could: null, did_turns: [], steps: [{ turn: 1, at_ms: s.live[0].first_ms, rung: null, recorded: false }], unrecorded: [1], unrecorded_why: ["no_start"] }),
   });
@@ -634,7 +693,7 @@ await test("Right now card: gone with no open task and when switched off; the sw
   assert.match(ut, /Turn 1: no details \(AIQ restarted during the turn\)/);
   assert.equal(await unread.getByTestId("right-now").getByRole("img").count(), 0, "no empty chart");
   await unread.context().close();
-  const off = await open("live", { edit: (s) => (s.live = []) });
+  const off = await open("live", { edit: (s) => Object.assign(s, { live: [], starting: [], settings: { ...s.settings, live_trend: false } }) });
   assert.equal(await off.getByTestId("right-now").count(), 0);
   await off.context().close();
   const st = await open("live", { hash: "#settings" });
@@ -708,6 +767,16 @@ await test("Right now card, two chips that would read the same say when each sta
   assert.match(names[0], /aiq · VS Code · since 11:20/);
   assert.match(names[2], /aiq · VS Code · since 11:48/);
   assert.match(names[1], /Copilot CLI · 5 prompts/, "a chip with no twin keeps its prompt count");
+  await page.context().close();
+});
+
+// The core sends the pack's text, written to follow "AIQ tip:" in a terminal, so it starts lower case.
+await test("Right now card: the tip starts with a capital, as the pack's lower-case text is shown alone", async () => {
+  const page = await open("live", {
+    edit: (s) => [s.live].flat().forEach((l) => l && l.tip && (l.tip.try_this = "end your request with: run the tests and show me what passed and failed.")),
+  });
+  const t = await page.getByTestId("right-now").innerText();
+  assert.match(t, /AIQ tip:\s*End your request with: run the tests/);
   await page.context().close();
 });
 
@@ -1361,7 +1430,7 @@ await test("auto-update: the titlebar marker, one-press Update now, Go back, the
   for (const hash of ["", "#tasks", "#settings"]) {
     const p = await open("full", { hash, edit: waiting });
     const nav = p.locator("nav .foot");
-    assert.match(await nav.getByTestId("update-ready").innerText(), /^AIQ 0\.2\.0 is ready\s+You have 0\.1\.0\s+Update$/, `bottom-left notice on ${hash || "#home"}`);
+    assert.match(await nav.getByTestId("update-ready").innerText(), /^AIQ 0\.2\.0 is ready\s+You have 0\.1\.0\s+Update\s+Or it installs after 10 min in the background$/, `bottom-left notice on ${hash || "#home"}`);
     assert.equal(await nav.getByRole("button", { name: "Check for updates" }).count(), 0, "the ready button replaces the link");
     await p.context().close();
   }
@@ -1377,12 +1446,41 @@ await test("auto-update: the titlebar marker, one-press Update now, Go back, the
     await p.context().close();
   }
   const home = await open("full", { edit: waiting });
-  assert.match(await home.getByTestId("update-chip").getAttribute("title"), /installs by itself when you close AIQ home\. Last try waited: AIQ home is open\./);
+  assert.match(await home.getByTestId("update-chip").getAttribute("title"), /installs by itself when AIQ home has been in the background for 10 minutes, or when you close it\. Last try waited: AIQ home is open\./);
   await home.getByTestId("update-chip").click();
   await home.waitForFunction(() => document.querySelector("[data-testid=update-chip]")?.textContent === "Installing AIQ 0.2.0. AIQ home closes and opens again.");
   assert.deepEqual(await upd(home), [{ action: "install" }]);
   assert.deepEqual(await axe(home), []);
   await home.context().close();
+  // Away install (design U5n; laptop 2026-11-08: Home open for hours, 0.1.19 to 0.1.21 downloaded, none
+  // installed): 10 minutes in the background, Home asks the shell to install; not while the person is in it,
+  // and never under Ask first, where the box says nothing about installing by itself.
+  const background = (p, out) =>
+    p.evaluate((o) => {
+      document.hasFocus = () => !o;
+      window.dispatchEvent(new Event(o ? "blur" : "focus"));
+    }, out);
+  const aways = (p) => p.evaluate(() => window.__AIQ_FIXTURE__.calls.filter((c) => c.cmd === "run_update" && c.args.action === "install_if_away").length);
+  const left = await open("full", { edit: waiting, clock: true });
+  await background(left, false);
+  await left.clock.runFor(30 * 60_000);
+  assert.equal(await aways(left), 0, "in the window: no away install");
+  await background(left, true);
+  await left.clock.runFor(9 * 60_000);
+  assert.equal(await aways(left), 0, "9 minutes away: not yet");
+  await left.clock.runFor(2 * 60_000);
+  assert.ok((await aways(left)) >= 1, "10 minutes away: Home asks for the install");
+  const asked = await aways(left);
+  await background(left, false);
+  await left.clock.runFor(30 * 60_000);
+  assert.equal(await aways(left), asked, "back in the window: no more asks");
+  await left.context().close();
+  const ask = await open("full", { edit: (s) => (waiting(s), (s.update.mode = "ask")), clock: true });
+  assert.equal(await ask.locator("nav .foot").getByTestId("update-when").count(), 0, "Ask first: no line about installing by itself");
+  await background(ask, true);
+  await ask.clock.runFor(30 * 60_000);
+  assert.equal(await aways(ask), 0, "Ask first: never installs by itself");
+  await ask.context().close();
   // A newer release while one waits (laptop 2026-11-05: 0.1.8 waited from 18:58Z; 0.1.9 at 20:32Z never showed):
   // Home's timed check still runs, the newer download replaces the waiting one, and the box names it.
   const newer = await open("full", { edit: (s) => Object.assign(s.update, { note: "waiting", available: "v0.1.8", latest: "v0.1.8", blocked: "AIQ home is open" }) });
@@ -1623,6 +1721,11 @@ await test("tour: Esc on any step, arrows move, focus stays in the coach mark, t
   await page.getByLabel("Type a page or action").fill("tour");
   await page.keyboard.press("Enter");
   await page.waitForSelector("#tourhd");
+  // The tour focuses Next a frame after it opens (tour.tsx), so the closing palette can't take focus back:
+  // wait for that frame instead of reading focus the moment the heading exists (ui flake on main 69ad8fe).
+  await page
+    .waitForFunction(() => document.activeElement?.textContent === "Next", null, { timeout: 2000 })
+    .catch(() => {});
   assert.equal(await page.evaluate(() => document.activeElement?.textContent), "Next", "focus on Next");
   await page.keyboard.press("ArrowRight");
   await page.waitForFunction((t) => document.querySelector("#tourhd")?.textContent === t, TOUR[1]);
@@ -1710,6 +1813,46 @@ await test("Theme: Match Windows by default, Light or Dark win over Windows, kep
   assert.equal(await bg(), LIGHT, "follows Windows again");
   assert.deepEqual(page.errors ?? [], []);
   await ctx.close();
+});
+
+// Tip funnel (design tip-funnel): the full fixture's yesterday had six tasks and no tip shown.
+for (const theme of ["light", "dark"]) {
+  await test(`tip funnel: Tips shows where tips went; Home notes a dry day once (${theme})`, async () => {
+    const page = await open("full", { theme: theme === "light" ? undefined : theme, hash: "#tips" });
+    const card = page.locator("section[aria-labelledby=tf]");
+    const insight = await card.locator(".tf-insight").textContent();
+    assert.match(insight, /^\d+ of \d+ new tasks had a tip ready this week\. Main reason the others didn't: kind of task not recognised \(\d+\)\.$/);
+    assert.equal(await card.locator(".tf-loss .tf-label").textContent(), "Kind known", "most were lost before the kind was known");
+    const why = await card.locator(".tf-why").first().innerText();
+    assert.ok(why.includes("Kind labels on hold") && why.includes("Too few tasks of this kind"), why);
+    assert.ok(!(await card.innerText()).toLowerCase().includes("judge"));
+    assert.deepEqual(await axe(page), []);
+    if (shots) await card.screenshot({ path: join(shots, `tips-funnel-${theme}.png`) });
+    await page.context().close();
+
+    const home = await open("full", { theme: theme === "light" ? undefined : theme, hash: "#home" });
+    const note = home.locator(".banner.drought");
+    assert.match(await note.locator(".grow").textContent(), /^No tips yesterday across 6 tasks\. Main reason: kind of task not recognised\.$/);
+    assert.deepEqual(await axe(home), []);
+    if (shots) await home.screenshot({ path: join(shots, `home-drought-${theme}.png`) });
+    await note.getByRole("button", { name: "See why" }).click();
+    assert.equal(await home.locator("main h1").first().textContent(), "Habits and tips");
+    await home.locator('a[href="#home"]').first().click();
+    await home.waitForSelector(".banner.drought");
+    await home.getByRole("button", { name: "Close this note" }).click();
+    assert.equal(await home.locator(".banner.drought").count(), 0);
+    await home.reload();
+    await home.waitForSelector("main h1");
+    assert.equal(await home.locator(".banner.drought").count(), 0, "closed stays closed for that day");
+    assert.deepEqual(home.errors, []);
+    await home.context().close();
+  });
+}
+
+await test("tip funnel: nothing shows with no task on the tip path", async () => {
+  const page = await open("full", { hash: "#tips", edit: (s) => { s.tip_funnel.week = { ...s.tip_funnel.today, tasks: 0, tips: 0 }; s.tip_funnel.droughts = []; } });
+  assert.equal(await page.locator("section[aria-labelledby=tf]").count(), 0);
+  await page.context().close();
 });
 
 await browser.close();

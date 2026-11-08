@@ -52,10 +52,12 @@ fn badge(plain: &str) -> String {
 
 /// Copilot CLI status line (ADR-0005 rule 5): one line, the tip and where to read it in full. Never quotes
 /// prompt text. With colour it looks like the Claude Code card: the whole line yellow, "AIQ tip:" a badge
-/// (Imran, laptop check 2026-11-01); `NO_COLOR` gives plain text.
+/// (Imran, laptop check 2026-11-01); `NO_COLOR` gives plain text. It ends in `aiq show` with no id: the
+/// 36-character id made the line 133 characters, cut off in a narrow terminal (tip examples 2026-11-08),
+/// and `aiq show` alone opens the latest tip, which is the one on this line.
 pub fn render_status_line(card: &CardV1, color: bool) -> String {
     let noticed = card.noticed.trim_end_matches('.');
-    let plain = format!("AIQ tip: {noticed} · {}", card.evidence_ref);
+    let plain = format!("AIQ tip: {noticed} · aiq show");
     if !color {
         return plain;
     }
@@ -64,9 +66,18 @@ pub fn render_status_line(card: &CardV1, color: bool) -> String {
 
 /// The shrunk status line once the full tip has had its time ("two prompts or 5 minutes" setting). Yellow
 /// like the tip, so it still reads as AIQ's; no badge, because the tip itself has already been seen.
-pub fn render_waiting_marker(card_id: &str, color: bool) -> String {
-    let plain = format!("1 tip waiting · aiq show {card_id}");
-    if color { format!("{LINE_ON}{plain}{LINE_OFF}") } else { plain }
+pub fn render_waiting_marker(color: bool) -> String {
+    let plain = "1 tip waiting · aiq show";
+    if color { format!("{LINE_ON}{plain}{LINE_OFF}") } else { plain.to_owned() }
+}
+
+/// The live progress line ("AIQ: heading for Delegated (3) so far · turn 1") shown when no tip waits. Cyan,
+/// a distinct hue from the tips' yellow, so it reads as AIQ's and not the host's grey, while yellow and the
+/// badge stay reserved for tips (Imran 2026-11-08: "shouldn't it be highlighted like the tips?").
+const TREND_ON: &str = "\u{1b}[36m";
+
+pub fn render_trend_line(text: &str, color: bool) -> String {
+    if color { format!("{TREND_ON}{text}{LINE_OFF}") } else { text.to_owned() }
 }
 
 /// The only stdout a Claude Code hook may produce: `{"systemMessage": "<text>"}`.
@@ -118,16 +129,26 @@ mod tests {
     #[test]
     fn render_status_line_is_one_line_with_details_command() {
         let plain = render_status_line(&card(), false);
-        assert_eq!(plain, "AIQ tip: you've reworded this request 3 times without adding new details · aiq show 01J");
+        assert_eq!(plain, "AIQ tip: you've reworded this request 3 times without adding new details · aiq show");
         assert!(!plain.contains('\n') && plain.chars().count() <= 100);
         let colored = render_status_line(&card(), true);
         assert!(
             colored.starts_with("\u{1b}[22;33m\u{1b}[1;30;43mAIQ tip:\u{1b}[22;49;33m ") && !colored.contains('\n')
         );
-        assert!(colored.ends_with(" · aiq show 01J\u{1b}[39m"), "whole line yellow, as the Claude Code card");
+        assert!(colored.ends_with(" · aiq show\u{1b}[39m"), "whole line yellow, as the Claude Code card");
         assert_eq!(strip_sgr(&colored), plain, "same words as the plain line");
-        assert_eq!(render_waiting_marker("01J", false), "1 tip waiting · aiq show 01J");
-        assert_eq!(render_waiting_marker("01J", true), "\u{1b}[22;33m1 tip waiting · aiq show 01J\u{1b}[39m");
+        assert_eq!(render_waiting_marker(false), "1 tip waiting · aiq show");
+        assert_eq!(render_waiting_marker(true), "\u{1b}[22;33m1 tip waiting · aiq show\u{1b}[39m");
+    }
+
+    #[test]
+    fn trend_line_is_cyan_not_the_tips_yellow_and_plain_without_colour() {
+        let t = "AIQ: heading for Delegated (3) so far · turn 1";
+        assert_eq!(render_trend_line(t, false), t);
+        let c = render_trend_line(t, true);
+        assert_eq!(c, format!("\u{1b}[36m{t}\u{1b}[39m"));
+        assert!(!c.contains("\u{1b}[33m") && !c.contains("43m"), "yellow and the badge are only for tips");
+        assert_eq!(strip_sgr(&c), t);
     }
 
     #[test]

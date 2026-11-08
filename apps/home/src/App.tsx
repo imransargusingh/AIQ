@@ -17,7 +17,7 @@ import { Setup } from "./pages/Setup";
 import { Kind } from "./pages/Kind";
 import { STEPS, Tour, TourOffer, exampleSnapshot } from "./tour";
 import { THEMES, readTheme, saveTheme, type Theme } from "./theme";
-import { CHECK_POLL_MS, CHECK_WAIT_MS, checkOutcome, outcomeText, ver, type UpdatePhase } from "./updateNow";
+import { CHECK_POLL_MS, CHECK_WAIT_MS, awayInstallDue, checkOutcome, outcomeText, ver, type UpdatePhase } from "./updateNow";
 
 const REFRESH_MS = 15_000;
 /** While the core starts (Home started it, or it is opening its store), look again soon. */
@@ -226,6 +226,38 @@ export function App() {
     };
   }, []);
 
+  // Away install (design auto-update U5n): under "Update automatically", a waiting update installs once this
+  // window has been in the background (no focus, or minimised) for 10 minutes. AIQ home closes, upgrade.ps1 swaps
+  // and reopens it minimised. Before, it waited for Home to close, and a person who keeps Home open never got an
+  // update (laptop 2026-11-08: 0.1.19 to 0.1.21 downloaded, 0.1.18 still running). The shell checks the setting
+  // again and tries at most once in 30 minutes (a busy AIQ reopens Home without installing).
+  const away = useRef<number | null>(null);
+  const live = useRef({ snap, phase: upd.phase, tour: !!tour });
+  live.current = { snap, phase: upd.phase, tour: !!tour };
+  useEffect(() => {
+    const mark = () => {
+      const out = document.visibilityState === "hidden" || !document.hasFocus();
+      if (!out) away.current = null;
+      else if (away.current === null) away.current = Date.now();
+    };
+    mark();
+    const ask = () => {
+      const { snap: s, phase, tour: touring } = live.current;
+      if (!s || touring || !awayInstallDue(s.update, away.current, Date.now(), phase)) return;
+      void api.runUpdate("install_if_away").catch(() => undefined);
+    };
+    const t = setInterval(ask, UPDATE_ASK_MS);
+    window.addEventListener("focus", mark);
+    window.addEventListener("blur", mark);
+    document.addEventListener("visibilitychange", mark);
+    return () => {
+      clearInterval(t);
+      window.removeEventListener("focus", mark);
+      window.removeEventListener("blur", mark);
+      document.removeEventListener("visibilitychange", mark);
+    };
+  }, []);
+
   // First run: setup until the person finishes it once; re-run from Settings (#setup).
   const inSetup = !!snap && (!snap.setup.done || page === "setup");
 
@@ -363,6 +395,12 @@ export function App() {
                         Update
                       </button>
                     </span>
+                    {snap.update.mode === "auto" && (
+                      // Design U5n: say when it installs without a press, so the box is not a chore.
+                      <span className="updwhen" data-testid="update-when">
+                        Or it installs after 10 min in the background
+                      </span>
+                    )}
                   </div>
                 ) : (
                   <span>

@@ -2664,7 +2664,7 @@
       },
       {
         "tip_id": "next_rung.check_running",
-        "habit": "Ask for proof it worked: a version, a page loading or a log line",
+        "habit": "Ask for proof it works: the page loading or the feature working",
         "job": "run_ship"
       },
       {
@@ -2674,7 +2674,7 @@
       },
       {
         "tip_id": "next_rung.let_agent_run",
-        "habit": "Let the agent run the commands and fix errors",
+        "habit": "Let the agent run the commands and fix what blocks the goal",
         "job": "run_ship"
       },
       {
@@ -2704,12 +2704,12 @@
       },
       {
         "tip_id": "next_rung.split_and_check",
-        "habit": "Give each step to a sub-agent, with a test between steps",
+        "habit": "Give each separate part to a sub-agent, with a check between parts",
         "job": "any"
       },
       {
         "tip_id": "next_rung.split_question",
-        "habit": "Send one sub-agent per source, then combine the answers",
+        "habit": "Split the question into separate parts, one sub-agent each, then combine",
         "job": "ask_research"
       },
       {
@@ -3048,7 +3048,7 @@
       {
         "job": "code_change",
         "move_id": "split_and_check",
-        "name": "Give each step to a sub-agent, with a test between steps",
+        "name": "Give each separate part to a sub-agent, with a check between parts",
         "state": "not_yet",
         "eligible": 17,
         "seen": 0,
@@ -3136,7 +3136,7 @@
       {
         "job": "write_doc",
         "move_id": "split_and_check",
-        "name": "Give each step to a sub-agent, with a test between steps",
+        "name": "Give each separate part to a sub-agent, with a check between parts",
         "state": "not_yet",
         "eligible": 7,
         "seen": 0,
@@ -3549,7 +3549,7 @@
           {
             "job": "code_change",
             "move_id": "split_and_check",
-            "name": "Give each step to a sub-agent, with a test between steps",
+            "name": "Give each separate part to a sub-agent, with a check between parts",
             "state": "not_yet",
             "eligible": 17,
             "seen": 0,
@@ -3637,7 +3637,7 @@
           {
             "job": "write_doc",
             "move_id": "split_and_check",
-            "name": "Give each step to a sub-agent, with a test between steps",
+            "name": "Give each separate part to a sub-agent, with a check between parts",
             "state": "not_yet",
             "eligible": 4,
             "seen": 0,
@@ -3912,7 +3912,7 @@
           {
             "job": "write_doc",
             "move_id": "split_and_check",
-            "name": "Give each step to a sub-agent, with a test between steps",
+            "name": "Give each separate part to a sub-agent, with a check between parts",
             "state": "not_yet",
             "eligible": 3,
             "seen": 0,
@@ -4000,6 +4000,13 @@
       "task_id": "019000010001-0000-7000-8000-000000000000",
       "kind": "Writing a spec or PRD",
       "folder": "c:\\users\\you\\source\\repos\\shop-api"
+    }
+  ],
+  "starting": [],
+  "seen": [
+    {
+      "surface": "copilot-cli",
+      "last_ms": 1793534340000
     }
   ],
   "guide": [
@@ -4118,7 +4125,7 @@
       "step": 1,
       "job": "ask_research",
       "habit": "Ask for the file, line or link behind each claim in the answer",
-      "why": "an answer can sound sure and still be wrong; a source you can open turns a guess into a fact.",
+      "why": "an answer can sound sure and still be wrong; open the source and check it says what the answer claims.",
       "try_this": "ask where each claim in the answer comes from, and open one source before you act on it.",
       "starter": "Answer <question>. For each claim, give the file and line, or the link, it comes from, and say how sure you are.",
       "counts": "Counts when you checked the answer before acting on it, such as opening a source or trying it."
@@ -4167,10 +4174,10 @@
       "move_id": "check_running",
       "step": 1,
       "job": "run_ship",
-      "habit": "Ask for proof it worked: a version, a page loading or a log line",
+      "habit": "Ask for proof it works: the page loading or the feature working",
       "why": "a command can succeed while the app, release or tool still does not work.",
       "try_this": "say what proves it worked, and ask the agent to show it before you move on.",
-      "starter": "After <the step>, show me proof it worked: <the version number, the URL loading, or the log line>.",
+      "starter": "After <the step>, show me proof it works: <the page loading, the feature working, or the health check passing>, not only the version number.",
       "counts": "Counts when you checked it worked before moving on."
     },
     {
@@ -4187,10 +4194,10 @@
       "move_id": "let_agent_run",
       "step": 2,
       "job": "run_ship",
-      "habit": "Let the agent run the commands and fix errors",
+      "habit": "Let the agent run the commands and fix what blocks the goal",
       "why": "an agent that runs the commands sees the errors itself and can fix them before it hands back.",
-      "try_this": "let the agent run each command, fix what fails, and report what each printed.",
-      "starter": "Run the commands yourself to <goal>. Fix errors as you go. Tell me each command and what it printed.",
+      "try_this": "let the agent run each command and fix what blocks the goal, stop and ask before anything risky, and report what each printed.",
+      "starter": "Run the commands yourself to <goal>. Fix errors that block it. Stop and ask before <risky step> or if a fix needs more than that. Tell me each command and what it printed.",
       "counts": "Counts when the agent runs the commands itself."
     },
     {
@@ -4219,8 +4226,8 @@
       "job": "code_change",
       "habit": "Put the test command in your instructions file",
       "why": "then every task ends with the agent running the tests and fixing what fails, without you asking.",
-      "try_this": "add a line such as: before you finish, run <test command> and fix what fails until it passes.",
-      "starter": "Add to <instructions file>: before you finish, run <test command> and fix what fails until it passes.",
+      "try_this": "add a line such as: before you finish, run <test command>, fix what fails in this change, and never change a test just to make it pass.",
+      "starter": "Add to <instructions file>: before you finish, run <test command>. Fix failures in this change only. Never change a test just to make it pass. If something else fails, tell me.",
       "counts": "Counts when the agent runs a test, build or lint command itself."
     },
     {
@@ -4229,7 +4236,7 @@
       "job": "write_doc",
       "habit": "Ask the agent to run a link and spelling check",
       "why": "an agent that runs the link and style checks can fix what fails before it hands back.",
-      "try_this": "ask the agent to run the doc checks, such as links and spelling, and fix what fails.",
+      "try_this": "ask the agent to run the doc checks, such as links and spelling, fix what fails, and list any claim it couldn't check.",
       "starter": "<The doc task>. Then run <doc check, such as markdownlint or a link check> and fix what fails. Show me the output.",
       "counts": "Counts when the agent runs a doc check itself, such as markdownlint or a link check."
     },
@@ -4247,19 +4254,19 @@
       "move_id": "split_and_check",
       "step": 3,
       "job": "any",
-      "habit": "Give each step to a sub-agent, with a test between steps",
+      "habit": "Give each separate part to a sub-agent, with a check between parts",
       "why": "an automated check between steps catches a bad step before the next one builds on it.",
-      "try_this": "ask for a short plan, a sub-agent per step, and a test or check the agent runs before the next step starts. Plain words work, such as: use a sub-agent for each step.",
-      "starter": "Split <the task> into steps. Give each step to a sub-agent, and run <check> after each before going on.",
+      "try_this": "ask for a short plan, a sub-agent for each separate part, and a test or check the agent runs before the next part starts. Plain words work, such as: use a sub-agent for each part.",
+      "starter": "Split <the task> into parts that don't depend on each other. Give each part to a sub-agent, and run <check> after each before going on.",
       "counts": "Counts when sub-agents did the work and the agent ran a check."
     },
     {
       "move_id": "split_question",
       "step": 3,
       "job": "ask_research",
-      "habit": "Send one sub-agent per source, then combine the answers",
+      "habit": "Split the question into separate parts, one sub-agent each, then combine",
       "why": "each sub-agent reads one source well, and you get one combined answer back.",
-      "try_this": "name the sources and ask for one sub-agent each, then one answer with sources.",
+      "try_this": "split the question into parts that don't depend on each other, one sub-agent each, then ask for one answer with sources.",
       "starter": "Split <question> by source: <source>, <source>, <source>. Send a sub-agent to each, then combine what they found into one answer with sources.",
       "counts": "Counts when sub-agents looked into the parts of the question."
     },
@@ -4268,7 +4275,7 @@
       "step": 4,
       "job": "ask_research",
       "habit": "Ask the agent to prove each claim with a query or test",
-      "why": "an answer the agent has proved with a command, query or test can be reused without checking again.",
+      "why": "an answer the agent has tested with a command, query or test is far more likely right. Test again when the code or data change.",
       "try_this": "ask the agent to prove each claim with a command, query or test it runs.",
       "starter": "Answer <question>. For each claim, run <command, query or test> that proves it, and show the output.",
       "counts": "Counts when the agent runs a test or check command itself."
@@ -4278,10 +4285,53 @@
       "step": 4,
       "job": "any",
       "habit": "Save a task you repeat as a prompt file and run it by name",
-      "why": "a saved prompt runs the same way every time, for you and for anyone you share it with.",
+      "why": "a saved prompt keeps the steps, inputs and checks the same each time. Still read the result of each run.",
       "try_this": "save the steps as a prompt file in .github/prompts, commit it, then start the next one by its name.",
       "starter": "Turn what we just did into .github/prompts/<name>.prompt.md: its inputs, steps, checks, and when to stop and ask.",
       "counts": "Not counted yet: AIQ can't tell when a saved workflow runs. It's still worth doing."
     }
-  ]
+  ],
+  "tip_funnel": {
+    "today": {
+      "days": 1,
+      "tasks": 0,
+      "kind_known": 0,
+      "tip_found": 0,
+      "no_tip": [],
+      "tips": 1,
+      "held": [],
+      "waiting": 0,
+      "expired": 0,
+      "shown": [
+        {
+          "code": "copilot-cli",
+          "words": "Copilot CLI",
+          "count": 1
+        }
+      ],
+      "opened": 0,
+      "answered": 0
+    },
+    "week": {
+      "days": 7,
+      "tasks": 0,
+      "kind_known": 0,
+      "tip_found": 0,
+      "no_tip": [],
+      "tips": 1,
+      "held": [],
+      "waiting": 0,
+      "expired": 0,
+      "shown": [
+        {
+          "code": "copilot-cli",
+          "words": "Copilot CLI",
+          "count": 1
+        }
+      ],
+      "opened": 0,
+      "answered": 0
+    },
+    "droughts": []
+  }
 }

@@ -145,6 +145,9 @@ pub fn read_claude(path: &Path, id: &str, mtime_ms: i64, folder_slug: &str) -> s
                         actions: None,
                     });
                     open = true;
+                } else if open {
+                    // Tool results: a check's pass or fail.
+                    aiq_core::agent_actions::claude_record(&r, &mut acts);
                 }
             }
             Some("assistant") if open => aiq_core::agent_actions::claude_record(&r, &mut acts),
@@ -204,7 +207,7 @@ pub fn read_copilot(path: &Path, id: &str, mtime_ms: i64) -> std::io::Result<Par
                 });
                 open = true;
             }
-            Some("tool.execution_start" | "subagent.started") if open => {
+            Some("tool.execution_start" | "tool.execution_complete" | "subagent.started") if open => {
                 aiq_core::agent_actions::copilot_record(&e, &mut acts)
             }
             Some("assistant.turn_end") if main && open => turn_end = ts.or(turn_end),

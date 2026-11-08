@@ -5,6 +5,7 @@ pub mod coaching;
 pub mod control;
 pub mod copilot_log;
 pub mod counters;
+pub mod funnel;
 pub mod ipc;
 pub mod live_trend;
 pub mod logging;

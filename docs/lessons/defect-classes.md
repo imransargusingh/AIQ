@@ -571,7 +571,115 @@ summary: >-
 - **Rule:** a sender that gives up on a timer must know whether its message left. If it may not have, keep it
   (spool, retry) before the process ends; an idempotent receiver makes keeping it safe.
 
-### DC-035 — A freshly installed, unsigned exe started by a script host on a machine with Defender's ransomware rule
+### DC-036 — A self-check that switches a feature off and, by doing so, stops measuring itself
+(DC-035 is taken by PR #181, still open.)
+- **Signature:** 2026-11-08, Imran's laptop, measured read-only. The kind-label self-check reached 6 right of 10
+  on 2026-11-04 16:02Z and fell under the 8-in-10 bar. From then on the core asked for no labels, so no new
+  label was ever checked, and the check could not recover. Word matching found a kind for 4 tasks in a week,
+  so no tip was decided on any surface for four days across 91 coachable prompts. The switch-off logged
+  nothing, because the warning fired only when words and labels were both off. The count was all-time, so old
+  misses and labels from an older prompt or model would have held the tips forever.
+- **Why it survives:** the unit test asserted the behaviour itself ("labels 7 of 10: AIQ stops asking"). No test
+  asked whether the check could ever turn the feature back on, and no signal showed that tips had stopped.
+- **Sweep:** the word-guess self-check had the same shape (`guess` was only computed while words were on): fixed
+  the same way. Home Settings computed one check over words and labels together while the core kept two: now
+  both use `check_guesses` per method. The accuracy pause (K6b) reads separate `aiq analyze --check` runs that
+  keep running while it pauses, so it does not have this shape. `judge.rs` N3 is an all-time report line, not a
+  switch: left as is.
+- **Control (product):** while a check holds tips, the core still makes and stores word guesses and still asks for
+  labels; only the tip is held. The hold is logged once per core run (`AIQ-COACH-GUESS-LOW`, with the counts).
+  `check_guesses` counts only the newest `2 × guess_check_min` checked guesses.
+- **Control (tests):** `next_rung::labels_have_their_own_self_check_hold_tips_below_eight_in_ten_and_keep_being_checked`
+  (still asks, stores the label, shows no tip, and label tips return after ten newer right labels);
+  `next_rung::self_check_holds_tips_at_seven_of_ten_keeps_guessing_and_on_brings_them_back`;
+  `coach::tests::self_check_counts_only_the_newest_twenty_so_old_misses_leave`.
+- **Rule:** a guard that switches something off must keep measuring the thing it guards, so it can switch it back
+  on, and it must say when it switches. A test for such a guard proves the way back, not only the switch-off.
+
+### DC-037 — A stop in the product that only a log line can see
+- **Signature:** 2026-11-04 16:02Z to 11-08, Imran's laptop. No tip was decided on any surface for four days (see
+  DC-036). Every number that would have shown it existed in the store or the log, but nothing put "tasks in,
+  tips out" side by side, so nobody saw it until a person asked why tips had stopped. Of 20 new tasks that reached
+  the tip step since 11-04, 15 ended with no kind; that count had to be rebuilt by hand from log lines.
+- **Why it survives:** each hold is correct on its own and is unit-tested on its own (cap, quiet, cooldown, accuracy
+  pause, self-check). No test or surface asks the end-to-end question: of the tasks that could have had a tip,
+  how many did, and where did the rest stop?
+- **Sweep:** next-step tips had eleven silent exits (no word match, label failed / unsure / late / never back, label
+  or words held, kind held by its state, tips off, a late first prompt). Reprompt tips record a card decision for
+  every outcome, so they were already countable. Ready tips that expire were countable (`card_decision`
+  `expired`) but shown nowhere.
+- **Control (product):** store v11 `tip_path`: every exit of the path writes its step. `aiq status` and Home count new
+  tasks → kind known → tip ready → shown → opened, with every reason, and name any working day with no tip shown.
+- **Control (tests):** `next_rung::every_new_task_ends_its_tip_path_at_a_counted_step`,
+  `next_rung::held_self_checks_are_counted_as_their_own_steps`,
+  `next_rung::status_carries_the_funnel_and_a_dry_working_day_warns`,
+  `service::a_rescued_first_prompt_is_counted_on_the_tip_path`, `funnel::tests::*` (every step and hold reason has
+  words, dry-day rules), the Home e2e "tip funnel" tests.
+- **Rule:** a feature whose job is to act on a moment counts, per period, the moments it saw and the ones it acted
+  on, and each way a moment was passed over gets its own code. A new early return without a step is a defect.
+
+### DC-038 — A test reads, at one instant, a value the product is allowed to reach later or more than once
+- **Signature:** 2026-11-08, two CI flakes. (1) Windows rust job on #185: `e2e_a_tip_no_hook_says_it_printed_is_not_counted_and_comes_back`
+  found `AIQ-CARD-UNCONFIRMED 2`, expected 1. The test retries the turn end because a loaded runner can miss the
+  hook's 30 ms + 35 ms wait (STOP_WAIT_MS, ADR-0005), but a retry whose hook gave up after the core took the tip
+  is a real hand-over and is counted too (`hand_back` or expiry). (2) Linux ui job on main 69ad8fe: the tour test
+  read focus the moment `#tourhd` existed; the tour moves focus to Next one animation frame later, by design
+  (tour.tsx, so a closing palette can't take focus back), and focus was still on the page.
+- **Why it survives:** both pass on a fast machine every time; the window is a frame or a few ms wide, so a local
+  run never sees it. The product behaviour is right in both: the tip is not lost (it is ready again), and focus
+  does land on Next.
+- **Sweep:** e2e.rs asserts `AIQ-CARD-UNCONFIRMED` only here; e2e_copilot.rs already bounds its retries
+  (`stop_until_card`). Home's other `requestAnimationFrame` focus moves (App.tsx end of tour, Projects, Data) are
+  read with `waitForFunction` or not read right after; the skip-link focus read is native, not deferred.
+- **Control (tests):** the unconfirmed count is bounded by the hooks' own outcomes in `hook-timings.log`
+  (1 for the gone hook, plus at most 1 per retry that timed out or could not confirm; never 0, never more); the
+  tour test waits up to 2 s for focus on Next before asserting it.
+- **Rule:** when the product defers a step (a frame, a retry, a window) the test waits for that step with a bound,
+  and when a test retries, its exact counts allow what each retry may legitimately add, read from the product's
+  own record of the retry, never a looser guess.
+
+### DC-039 — A classifier scored against a different question than the one it is asked
+- **Signature:** 2026-11-08, Imran's laptop: the kind label reads only a task's first prompt; its self-check
+  scores it against the analysis of the whole task. 6 of 10 right, so label tips stopped on 11-04 for 4 days.
+  The offline check before launch (11-03) gave 11 of 12 because it was scored on a different sample, and
+  nothing re-ran it. Most misses were problem reports labelled `troubleshoot` whose task went on to a fix.
+- **Why it survives:** the label is right about the prompt and wrong about the task, so reading the prompt
+  never shows the bug; only the score against later outcomes does, and no test held that score.
+- **Sweep:** other first-prompt decisions checked against the whole task: the word guess (4 of 4, too few to
+  say) and the Right-now card (reads the live session, not checked against analysis). Copilot labels used
+  Copilot's own model pick when no model was set while analysis used AIQ's default: fixed (`copilot_models`).
+- **Control (product):** `label::NOT_COACHED` (troubleshoot labels never coach); labels use the analysis models.
+- **Control (tests):** `label_replay_gate` (synthetic set, prompt pinned by `PROMPT_VERSION` and text, 8-in-10
+  floor, coverage floor, injection), `measured_labels_clear_the_bar` (real measured labels, no text),
+  `accept_needs_a_pack_job_a_named_kind_and_both_confidences_at_the_bar`; `aiq label --eval` exits 3 under the bar.
+- **Rule:** when a model predicts something checked later against a fuller reading, measure it against that
+  reading on real data before it acts, keep the measurement as a replayed fixture, and fail CI when it drops.
+- **Recurrence (same day):** the first fix (troubleshoot labels only) was chosen on 10 confident labels and
+  read 8 of 10; 60 fresh tasks gave 13 of 29. A rule fitted and scored on the same small sample is a guess.
+  Control: `measured.json` now holds both runs (78 rows), so a rule must clear the bar on data it was not
+  fitted to; any later rule change adds a fresh laptop run to it before merging.
+
+### DC-040 — A deferred action waits for a condition the person may never reach, and nothing escalates
+- **Signature:** 2026-11-08, laptop: the updater installs only "when AIQ is idle", and idle required AIQ home to be
+  closed. Imran keeps Home open (PID 44988 since 04:09:55Z), so 0.1.19, 0.1.20 and 0.1.21 were each downloaded and
+  replaced in turn over about 3 hours and none installed; 0.1.18 still ran at 07:04Z. `blocked` said "AIQ home is
+  open" the whole time; the box offered Update, which was not pressed. A second instance on the same path: a run
+  that AIQ home closed itself for exited without reopening Home when another update run held `update.lock`.
+- **Why it survives:** every test opens or closes Home on purpose, so "Home stays open for days" is never a case;
+  each part is correct alone (the script must not swap exes under a running Home), and the waiting state looks
+  like progress (a download, a box, a log line) while nothing ever completes.
+- **Sweep:** other waits on a person's state: tips (30-min quiet, cap; already counted by the tip funnel, DC-037),
+  the analysis queue (paused shows why and how many wait), Copilot turn end on an open permission prompt (stop
+  events thread; a missed confirm keeps the tip, no loss). The update path was the only one with no way forward
+  but the person's press. Every exit of upgrade.ps1 after AIQ home closed itself now reaches `Start-Home`.
+- **Control (tests):** `update::tests::home_installs_a_waiting_update_when_away_only_under_auto_and_not_every_minute`,
+  `an_away_install_records_its_try_and_the_next_open_is_minimised_once`, `updateNow.test.ts` awayInstallDue, the Home
+  e2e away-install case (fake clock), release.yml smoke "lock held: AIQ home opened again".
+- **Rule:** an action deferred until "the person is not using X" names the longest it may wait and what makes it
+  happen then (here: 10 minutes in the background), and every exit of a step that closed something the person had
+  open puts it back.
+
+### DC-041 — A freshly installed, unsigned exe started by a script host on a machine with Defender's ransomware rule
 - **Signature:** 2026-11-07/08: Windows showed "Risky action blocked … Use advanced protection against ransomware …
   cmd.exe … .aiq\bin\aiq.exe" to an alpha user, and Imran's laptop logged event 1121 (rule C1DB55AB) 17 times for
   AIQ's exes since 11-05: every one a start by cmd.exe or powershell.exe within about an hour of an update.

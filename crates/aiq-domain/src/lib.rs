@@ -5,6 +5,7 @@ pub mod card;
 pub mod check;
 pub mod clock;
 pub mod coach;
+pub mod funnel;
 pub mod job;
 pub mod label;
 pub mod reprompt;

@@ -222,7 +222,7 @@ fn e2e_copilot_reword_tip_in_status_line_after_turn_then_clears_on_next_prompt()
     e.wait_for("Tips today: 1 of"); // the hook's "printed" note is its own send, after the turn end (DC-022)
     let line = e.tip_line("c1", false);
     assert!(
-        line.starts_with("AIQ tip: this request went round 3 times. The agent may need one new detail · aiq show "),
+        line.starts_with("AIQ tip: this request went round 3 times. The agent may need one new detail · aiq show"),
         "{line}"
     );
     assert_eq!(line.lines().count(), 1);
@@ -271,8 +271,9 @@ fn e2e_copilot_tip_stays_until_opened_setting() {
     e.prompt("c1", "next: write the changelog entry");
     e.wait_for("5 prompt");
     assert_eq!(e.tip_line("c1", false), line);
-    let id = line.trim().rsplit("aiq show ").next().unwrap();
-    assert!(String::from_utf8(e.run(&["show", id], b"").stdout).unwrap().contains(TEXTS[0]));
+    // The line ends in a bare `aiq show`, which opens this tip (the latest one).
+    assert!(line.trim().ends_with("· aiq show"), "{line}");
+    assert!(String::from_utf8(e.run(&["show"], b"").stdout).unwrap().contains(TEXTS[0]));
     assert_eq!(e.statusline(Some("c1")), "", "opened: gone");
 }
 
