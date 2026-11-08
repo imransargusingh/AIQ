@@ -654,6 +654,10 @@ summary: >-
   `accept_needs_a_pack_job_a_named_kind_and_both_confidences_at_the_bar`; `aiq label --eval` exits 3 under the bar.
 - **Rule:** when a model predicts something checked later against a fuller reading, measure it against that
   reading on real data before it acts, keep the measurement as a replayed fixture, and fail CI when it drops.
+- **Recurrence (same day):** the first fix (troubleshoot labels only) was chosen on 10 confident labels and
+  read 8 of 10; 60 fresh tasks gave 13 of 29. A rule fitted and scored on the same small sample is a guess.
+  Control: `measured.json` now holds both runs (78 rows), so a rule must clear the bar on data it was not
+  fitted to; any later rule change adds a fresh laptop run to it before merging.
 
 ### DC-040 — A deferred action waits for a condition the person may never reach, and nothing escalates
 - **Signature:** 2026-11-08, laptop: the updater installs only "when AIQ is idle", and idle required AIQ home to be

@@ -96,11 +96,22 @@ including a crashed first run):
 | label-1 on gpt-6.1-sol, troubleshoot labels not coached | 18 | 10 | 10 | 8 |
 
 The main miss: a first prompt that reports a problem reads as `ask_research/troubleshoot`, and the task then
-fixes it, so the analysis says `code_change/fix_bug` (6 tasks) or a release (1). That is the task moving on,
-not a misread prompt, and no prompt wording fixed it: the rewrite made those labels unsure (0.7) and broke
-others. So label-1 stays and `label::NOT_COACHED` keeps a troubleshoot label from coaching. Word guesses and
-the analysis still coach troubleshooting. 10 confident labels is a small sample; a 60-task confirmation run is
-staged.
+fixes it, so the analysis says `code_change/fix_bug`. No prompt wording fixed it (the rewrite made those labels
+unsure and broke others), so label-1 stays. 0.1.22 stopped troubleshoot labels coaching.
+
+A confirmation run on 60 fresh tasks (17:04Z, 60 premium requests, label-1 on gpt-6.1-sol) disproved that
+8 of 10: 13 of 29 confident labels right with troubleshoot left out (14 of 37 with it). The miss is wider than
+troubleshoot. Any confident `ask_research` label was right 2 of 22 times (6 of 14 on the first 20). The task
+the person starts with a question mostly becomes a code change. Labels naming any other job were right 12 of
+15 (4 of 4 on the first 20), 16 of 19 together. So `label::NOT_COACHED_JOBS` keeps every `ask_research` label
+from coaching. The rule was drawn from the 60, so the first 20 are its only out-of-sample check (4 of 4).
+Coverage falls to about a quarter of new tasks (19 of 78). Word guesses and the analysis still coach questions.
+
+| Rule | First 20 | Fresh 60 |
+| --- | --- | --- |
+| Every confident label (0.1.21) | 10 of 18 | 14 of 37 |
+| No troubleshoot labels (0.1.22) | 8 of 10 | 13 of 29 |
+| No `ask_research` labels | 4 of 4 | 12 of 15 |
 
 Controls: `evals/label/golden.json` (59 synthetic first prompts) with recorded answers in `replay.json`
 (`label_replay_gate`: a prompt change without a version bump and new recording fails; confident labels must
