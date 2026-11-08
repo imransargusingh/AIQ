@@ -930,6 +930,29 @@
     }
   ],
   "live": [],
+  "starting": [
+    {
+      "surface": "copilot-cli",
+      "first_ms": 1793532600000,
+      "last_ms": 1793532600000,
+      "prompts": 1,
+      "working": true
+    }
+  ],
+  "seen": [
+    {
+      "surface": "copilot-cli",
+      "last_ms": 1793532600000
+    },
+    {
+      "surface": "claude-code",
+      "last_ms": 1793362320000
+    },
+    {
+      "surface": "vscode",
+      "last_ms": 1792152180000
+    }
+  ],
   "guide": [
     {
       "move_id": "brief",

@@ -17,6 +17,10 @@ export interface Snapshot {
   projects: Project[];
   /** Every open task's live rung trend (design live-rung-trend C), newest activity first; empty when none is open or it is off. */
   live: Live[];
+  /** Sessions active within the idle gap whose first turn hasn't ended, newest activity first (the card says "starting"). */
+  starting: Starting[];
+  /** Each tool's newest event, newest first: the quiet Right now card says when each was last heard. */
+  seen: Seen[];
   /** The rung guide: every next-step move in pack order (pack data, the same for everyone). */
   guide: GuideMove[];
   /** Where new tasks' tips went, today and over 7 days, and recent days with no tip (design tip-funnel). */
@@ -72,6 +76,21 @@ export interface GuideMove {
   starter: string;
   /** What the analysis counts as doing this habit. */
   counts: string;
+}
+
+/** Mirrors crates/aiq-home `Starting`: a session whose first turn hasn't ended, so no estimate yet. */
+export interface Starting {
+  surface: string;
+  first_ms: number;
+  last_ms: number;
+  prompts: number;
+  working: boolean;
+}
+
+/** Mirrors crates/aiq-home `Seen`: one tool's newest event. */
+export interface Seen {
+  surface: string;
+  last_ms: number;
 }
 
 /** Mirrors crates/aiq-core `live_trend::LiveTrend` plus Home's task id and kind name. An estimate from what the

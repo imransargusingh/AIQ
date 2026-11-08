@@ -317,6 +317,8 @@
   },
   "projects": [],
   "live": [],
+  "starting": [],
+  "seen": [],
   "guide": [
     {
       "move_id": "brief",

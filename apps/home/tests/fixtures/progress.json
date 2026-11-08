@@ -2370,6 +2370,13 @@
     }
   ],
   "live": [],
+  "starting": [],
+  "seen": [
+    {
+      "surface": "copilot-cli",
+      "last_ms": 1793447640000
+    }
+  ],
   "guide": [
     {
       "move_id": "brief",

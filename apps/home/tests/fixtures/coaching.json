@@ -2142,6 +2142,13 @@
     }
   ],
   "live": [],
+  "starting": [],
+  "seen": [
+    {
+      "surface": "copilot-cli",
+      "last_ms": 1793422980000
+    }
+  ],
   "guide": [
     {
       "move_id": "brief",
