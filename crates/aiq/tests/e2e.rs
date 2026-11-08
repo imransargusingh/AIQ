@@ -91,12 +91,12 @@ impl Env {
     /// product keeps the card show-ready for the next (DC-022), so end the turn again, as Claude Code would, for
     /// up to twice the confirm hold. Every miss must leave the card show-ready, so a lost card still fails.
     /// (The same control as `e2e_copilot.rs`; this file was missed by DC-022's sweep: Windows CI, PR #203.)
-    fn stop_until_card(&self, session: &str, pid: &str) -> Output {
+    fn stop_until_card(&self, stop: impl Fn() -> Output) -> Output {
         let deadline = Instant::now() + 2 * Duration::from_millis(aiq_core::service::HANDOVER_CONFIRM_MS as u64);
         let mut n = 0;
         while Instant::now() < deadline {
             n += 1;
-            let o = self.stop(session, pid);
+            let o = stop();
             if !o.stdout.is_empty() {
                 return o;
             }
@@ -165,7 +165,7 @@ fn e2e_reword_three_times_one_card_second_run_held() {
     let mut e = Env::new();
     e.start_core();
     let pid = e.reprompt_run("s1", 0);
-    let o = e.stop_until_card("s1", &pid);
+    let o = e.stop_until_card(|| e.stop("s1", &pid));
     assert_hook_stdout_contract(&o);
     let msg: Value = serde_json::from_slice(&o.stdout).expect("a card at this Stop");
     let text = msg["systemMessage"].as_str().unwrap();
@@ -464,15 +464,17 @@ fn e2e_no_color_card_is_plain_text() {
     e.start_core();
     let pid = e.reprompt_run("s1", 0);
     let p = json!({"session_id": "s1", "hook_event_name": "Stop", "stop_hook_active": false, "prompt_id": pid});
-    let mut ch = e
-        .cmd(&["hook", "claude-code", "Stop"])
-        .env("NO_COLOR", "1")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .spawn()
-        .unwrap();
-    ch.stdin.take().unwrap().write_all(p.to_string().as_bytes()).unwrap();
-    let o = ch.wait_with_output().unwrap();
+    let o = e.stop_until_card(|| {
+        let mut ch = e
+            .cmd(&["hook", "claude-code", "Stop"])
+            .env("NO_COLOR", "1")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        ch.stdin.take().unwrap().write_all(p.to_string().as_bytes()).unwrap();
+        ch.wait_with_output().unwrap()
+    });
     let msg: Value = serde_json::from_slice(&o.stdout).expect("a card at this Stop");
     let text = msg["systemMessage"].as_str().unwrap();
     assert!(text.starts_with("AIQ tip: this request went round"), "{text}");

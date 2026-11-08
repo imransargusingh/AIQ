@@ -347,8 +347,8 @@ summary: >-
   carries `aiq status` and `hook-timings.log`, so the next CI failure names the hook outcome. A lost card still
   fails.
   Sweep miss (2026-11-08, Windows CI on PR #203): `e2e_reword_three_times_one_card_second_run_held` in
-  `crates/aiq/tests/e2e.rs` still asserted the card at the first Claude Code Stop; that file now has its own
-  `Env::stop_until_card`. Sweep: `grep -n 'expect("a card' crates/aiq/tests` (no other first-Stop card asserts).
+  `crates/aiq/tests/e2e.rs` and `e2e_no_color_card_is_plain_text` still asserted the card at the first Claude Code Stop; that file now has
+  its own `Env::stop_until_card`, used by both. Sweep: `grep -n 'expect("a card' crates/aiq/tests`.
 - **Control (product):** a tip handed to a turn-end hook is held in the core (`Service::hand_over`) and counts as
   shown only when the hook sends `Shown` after printing it (`card_shown`). A hook that never confirms within
   `HANDOVER_CONFIRM_MS` (5 s), or whose reply the core could not pass back (`hand_back`), leaves the tip ready for
