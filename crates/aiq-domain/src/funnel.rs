@@ -37,6 +37,9 @@ pub enum Step {
     LabelUnsure,
     /// The label was sure, but of a job labels never coach from (`label::NOT_COACHED_JOBS`: questions).
     LabelNotCoached,
+    /// The first prompt's label was not sure enough, so a later, fuller prompt of the same task was labelled
+    /// (once per task). Followed by that label's own end; as the latest step, the second label never came back.
+    LabelRetry,
     /// The label came back after the session had moved on to another task.
     LabelLate,
     /// Next-step tips are turned off in Settings.
@@ -45,7 +48,7 @@ pub enum Step {
     LateFirstPrompt,
 }
 
-pub const ALL: [Step; 18] = [
+pub const ALL: [Step; 19] = [
     Step::Decided,
     Step::KindTooFew,
     Step::KindRightRung,
@@ -61,6 +64,7 @@ pub const ALL: [Step; 18] = [
     Step::LabelFailed,
     Step::LabelUnsure,
     Step::LabelNotCoached,
+    Step::LabelRetry,
     Step::LabelLate,
     Step::TipsOff,
     Step::LateFirstPrompt,
@@ -84,6 +88,7 @@ impl Step {
             Step::LabelFailed => "label_failed",
             Step::LabelUnsure => "label_unsure",
             Step::LabelNotCoached => "label_not_coached",
+            Step::LabelRetry => "label_retry",
             Step::LabelLate => "label_late",
             Step::TipsOff => "tips_off",
             Step::LateFirstPrompt => "late_first_prompt",
@@ -104,6 +109,7 @@ impl Step {
                 | Step::LabelFailed
                 | Step::LabelUnsure
                 | Step::LabelNotCoached
+                | Step::LabelRetry
                 | Step::LabelLate
                 | Step::TipsOff
                 | Step::LateFirstPrompt
@@ -143,6 +149,7 @@ pub fn words(code: &str) -> &'static str {
         "label_failed" => "kind label failed",
         "label_unsure" => "kind label not sure enough",
         "label_not_coached" => "kind label says it's a question; labels don't give tips for questions",
+        "label_retry" => "kind label asked again from a later prompt, and it never came back",
         "label_late" => "kind label came after the next task started",
         "tips_off" => "next-step tips turned off",
         "late_first_prompt" => "started as automated, counted later",

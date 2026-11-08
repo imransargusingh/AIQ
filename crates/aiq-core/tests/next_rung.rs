@@ -687,6 +687,120 @@ fn labels_have_their_own_self_check_hold_tips_below_eight_in_ten_and_keep_being_
     assert!(full(h.cp_turn_end("c")).is_some(), "label tips are back once the newest checks pass");
 }
 
+// ------------------------------------------------------------------ second label try (design kind-label)
+
+/// A later prompt full enough for a second try, and unlike the seeded "Writing tests" prompts.
+const FULLER: &str =
+    "the session cookie expires too soon after login, find the cause in the auth middleware and fix it";
+
+#[test]
+fn a_hi_then_a_real_ask_labels_the_real_ask_once_and_the_tip_shows() {
+    let mut h = H::new();
+    h.seed();
+    let asked = with_labeller(&mut h);
+    let task = h.prompt("copilot-cli", "s", "hi");
+    assert_eq!(asked.lock().unwrap().len(), 1);
+    assert_eq!(asked.lock().unwrap()[0].prompt_id, None, "the first label reads the first prompt");
+    h.advance(10_000);
+    store_label(&h, &task, "s", "tests", 0.5);
+    h.svc.on_kind_label(&task).unwrap();
+    assert_eq!(last_step(&h, &task), "label_unsure");
+    assert!(h.cp_turn_end("s").is_none());
+    // A short reply is not worth a label.
+    h.prompt("copilot-cli", "s", "ok go ahead");
+    assert_eq!(asked.lock().unwrap().len(), 1);
+    // The real ask, same task (minutes later): labelled instead, under the same task id.
+    let later = h.prompt("copilot-cli", "s", FULLER);
+    {
+        let a = asked.lock().unwrap();
+        assert_eq!(a.len(), 2, "one second try");
+        assert_eq!((a[1].task_id.as_str(), a[1].prompt_id.as_deref()), (task.as_str(), Some(later.as_str())));
+    }
+    assert_eq!(last_step(&h, &task), "label_retry", "a second label that never came back is counted");
+    h.advance(10_000);
+    store_label(&h, &task, "s", "tests", 0.9);
+    h.svc.on_kind_label(&task).unwrap();
+    assert_eq!(last_step(&h, &task), "decided");
+    let card = full(h.cp_turn_end("s")).expect("a next-step tip from the second label");
+    assert_eq!(card.tip_id, "next_rung.written_brief");
+    // No double tip: a repeated notice and more prompts of the task decide and ask nothing again.
+    h.svc.on_kind_label(&task).unwrap();
+    h.prompt("copilot-cli", "s", "also cover the remember me cookie and the logout path please");
+    h.svc.on_kind_label(&task).unwrap();
+    assert_eq!(asked.lock().unwrap().len(), 2);
+    let g = Store::open(&h.path).unwrap().type_guesses().unwrap();
+    assert_eq!(g.iter().filter(|g| g.task_id == task).count(), 1, "one decision per task");
+    assert!(h.cp_turn_end("s").is_none(), "no second tip in the task");
+    assert_eq!(h.decisions(), vec![("shown".to_owned(), "ok".to_owned(), 1)], "one card, shown once");
+}
+
+#[test]
+fn a_real_ask_sent_before_the_first_label_is_back_is_labelled_when_it_comes_back_unsure() {
+    let mut h = H::new();
+    h.seed();
+    let asked = with_labeller(&mut h);
+    let task = h.prompt("copilot-cli", "s", "hi");
+    let later = h.prompt("copilot-cli", "s", FULLER);
+    assert_eq!(asked.lock().unwrap().len(), 1, "nothing to retry yet: the first label is still out");
+    store_label(&h, &task, "s", "tests", 0.5);
+    h.svc.on_kind_label(&task).unwrap();
+    {
+        let a = asked.lock().unwrap();
+        assert_eq!(a.len(), 2);
+        assert_eq!(a[1].prompt_id.as_deref(), Some(later.as_str()));
+    }
+    assert_eq!(last_step(&h, &task), "label_retry");
+    h.advance(10_000);
+    store_label(&h, &task, "s", "tests", 0.85);
+    h.svc.on_kind_label(&task).unwrap();
+    assert!(full(h.cp_turn_end("s")).is_some());
+}
+
+#[test]
+fn the_second_try_is_the_last_and_a_sure_first_label_never_retries() {
+    let mut h = H::new();
+    h.seed();
+    let asked = with_labeller(&mut h);
+    // Second label unsure too: the task ends there and asks no third time.
+    let t = h.prompt("copilot-cli", "a", "hi");
+    store_label(&h, &t, "a", "tests", 0.5);
+    h.svc.on_kind_label(&t).unwrap();
+    h.prompt("copilot-cli", "a", FULLER);
+    h.advance(10_000);
+    store_label(&h, &t, "a", "tests", 0.6);
+    h.svc.on_kind_label(&t).unwrap();
+    assert_eq!(last_step(&h, &t), "label_unsure");
+    h.prompt("copilot-cli", "a", "the remember me cookie also expires early, look at the token refresh code");
+    assert_eq!(asked.lock().unwrap().len(), 2);
+    // A failed second label is counted as failed, not as the first label's "not sure".
+    h.advance(2 * HOUR);
+    let t = h.prompt("copilot-cli", "b", "hi");
+    store_label(&h, &t, "b", "tests", 0.5);
+    h.svc.on_kind_label(&t).unwrap();
+    h.prompt("copilot-cli", "b", FULLER);
+    h.advance(10_000);
+    store_failed_label(&h, &t, "b");
+    h.svc.on_kind_label(&t).unwrap();
+    assert_eq!(last_step(&h, &t), "label_failed");
+    // A question label is sure: no second try.
+    h.advance(2 * HOUR);
+    let t = h.prompt("copilot-cli", "c", UNLIKE);
+    store_label_of(&h, &t, "c", "ask_research", "troubleshoot", 0.99);
+    h.svc.on_kind_label(&t).unwrap();
+    h.prompt("copilot-cli", "c", FULLER);
+    assert_eq!(asked.lock().unwrap().len(), 5);
+    assert_eq!(last_step(&h, &t), "label_not_coached");
+    // Labels turned off between the two prompts: nothing is sent.
+    h.advance(2 * HOUR);
+    let t = h.prompt("copilot-cli", "d", "hi");
+    store_label(&h, &t, "d", "tests", 0.5);
+    h.svc.on_kind_label(&t).unwrap();
+    h.svc.set("kind_label", "off").unwrap();
+    h.prompt("copilot-cli", "d", FULLER);
+    assert_eq!(asked.lock().unwrap().len(), 6);
+    assert_eq!(last_step(&h, &t), "label_unsure");
+}
+
 // ------------------------------------------------------------------ tip funnel (design tip-funnel)
 
 /// The latest tip-path step of a task.

@@ -719,3 +719,22 @@ summary: >-
 - **Rule:** on Windows, an AIQ exe that a script host starts again and again must be a file that does not change
   with every release; anything else starts AIQ directly or through Explorer.
 
+
+### DC-042 — A one-shot decision made from the first input, never revisited when a better input arrives
+- **Signature:** 2026-11-08, Imran's laptop: a VS Code task opened with a 15-character prompt. Its kind label came
+  back at 0.78 / 0.74, under the 0.8 bar, so the task ended at `label_unsure` and got no tip, although the next
+  prompts of the same task said plainly what it was. The tip path read only the first prompt of a task.
+- **Why it survives:** each step is right on its own input (a vague prompt should not be labelled with
+  confidence), and every test fed a first prompt that already named the task. No test opened a task with
+  "hi".
+- **Sweep:** other first-prompt-only decisions: the word guess (runs once at the first prompt; a sure word guess
+  needs no retry, and an unmatched one falls to the label, which now retries); the Right-now card (reads the live
+  session each time, not one-shot); the label's `NOT_COACHED` question rule (a sure answer, not a vague one: left).
+- **Control (product):** one second label try per task from the next prompt with at least 4 content words
+  (`RETRY_MIN_WORDS`), at most two labels per task (`MAX_LABELS_PER_TASK`), counted as funnel step `label_retry`.
+- **Control (tests):** `next_rung::a_hi_then_a_real_ask_labels_the_real_ask_once_and_the_tip_shows` (one tip, one
+  decision, no third label), `next_rung::a_real_ask_sent_before_the_first_label_is_back_is_labelled_when_it_comes_back_unsure`,
+  `next_rung::the_second_try_is_the_last_and_a_sure_first_label_never_retries`,
+  `label::tests::a_second_try_labels_the_later_prompt_once_and_never_a_third_time`.
+- **Rule:** a decision that may be made only once per item, from the item's first input, says what happens when
+  that input is too thin to decide on, and gives the next input one bounded chance before the item is passed over.

@@ -63,7 +63,13 @@ pub struct Req {
     pub surface: String,
     pub session: String,
     pub requested_ms: i64,
+    /// A later prompt of the task to label instead of its first: the one second try when the first label was not
+    /// sure enough (design kind-label, "Second try").
+    pub prompt_id: Option<String>,
 }
+
+/// Labels per task at most: the first prompt's, and one second try.
+pub const MAX_LABELS_PER_TASK: usize = 2;
 
 /// Why no call was made, for label.log.
 #[derive(Debug, Clone, PartialEq)]
@@ -92,11 +98,15 @@ pub fn label_task(
     if store.kind_labels_since(n.local_midnight_utc_ms())?.len() as u32 >= daily {
         return Ok(Err(Skip::Budget(daily)));
     }
-    if !store.kind_labels_of(&r.task_id)?.is_empty() {
+    let have = store.kind_labels_of(&r.task_id)?.len();
+    if have >= if r.prompt_id.is_some() { MAX_LABELS_PER_TASK } else { 1 } {
         return Ok(Err(Skip::AlreadyLabelled));
     }
     let Some(name) = judge::provider_for(&r.surface) else { return Ok(Err(Skip::NoProvider)) };
-    let Some((_, Some(text))) = store.task_first_prompt(&r.task_id)? else { return Ok(Err(Skip::NoText)) };
+    // A live prompt's text is found by its event id, as the task's first prompt is by the task id.
+    let Some((_, Some(text))) = store.task_first_prompt(r.prompt_id.as_deref().unwrap_or(&r.task_id))? else {
+        return Ok(Err(Skip::NoText));
+    };
     let provider = if name == "claude-code" { claude } else { copilot };
     let session_id = uuid::Uuid::new_v4().to_string();
     if name == "copilot-cli" && judge::record_judge_session(paths, &session_id).is_err() {
@@ -212,6 +222,7 @@ pub fn cli(args: &[&str]) -> ExitCode {
         surface: surface.to_owned(),
         session: session.to_owned(),
         requested_ms: arg(args, "--requested").and_then(|v| v.parse().ok()).unwrap_or(n.utc_ms),
+        prompt_id: arg(args, "--prompt").map(str::to_owned),
     };
     let (claude, copilot) = providers(&paths, &store);
     let copilot = judge::copilot_chain(&copilot, copilot_models(&store));
@@ -242,7 +253,7 @@ pub fn requester() -> aiq_core::service::LabelRequester {
     Box::new(|r: aiq_core::service::LabelRequest| {
         std::thread::spawn(move || {
             let at = r.requested_ms.to_string();
-            let _ = crate::spawn::detached(&[
+            let mut args = vec![
                 "label",
                 "--task",
                 &r.task_id,
@@ -252,7 +263,11 @@ pub fn requester() -> aiq_core::service::LabelRequester {
                 &r.session,
                 "--requested",
                 &at,
-            ]);
+            ];
+            if let Some(p) = &r.prompt_id {
+                args.extend(["--prompt", p.as_str()]);
+            }
+            let _ = crate::spawn::detached(&args);
         });
     })
 }
@@ -678,7 +693,13 @@ mod tests {
     }
 
     fn req(id: &str) -> Req {
-        Req { task_id: id.into(), surface: "copilot-cli".into(), session: "s1".into(), requested_ms: NOW }
+        Req {
+            task_id: id.into(),
+            surface: "copilot-cli".into(),
+            session: "s1".into(),
+            requested_ms: NOW,
+            prompt_id: None,
+        }
     }
 
     fn n() -> Now {
@@ -708,6 +729,39 @@ mod tests {
             Err(Skip::AlreadyLabelled),
             "a task is labelled once"
         );
+    }
+
+    #[test]
+    fn a_second_try_labels_the_later_prompt_once_and_never_a_third_time() {
+        let (_d, paths, mut store) = setup();
+        store
+            .insert_event(
+                &NewEvent {
+                    event_id: "t1-later",
+                    surface: "copilot-cli",
+                    session: "s1",
+                    kind: "prompt",
+                    ts_utc_ms: NOW + 60_000,
+                    prompt_id: None,
+                    trace_id: None,
+                    collector_version: "t",
+                    prompt_chars: Some(40),
+                    payload_meta: "{}",
+                    text: Some("the checkout page double-charges on retry, fix the payment handler"),
+                },
+                NOW,
+            )
+            .unwrap();
+        let f = Fake::ok(answer());
+        label_task(&store, &paths, &f, &f, &req("t1"), n()).unwrap().unwrap();
+        let again = Req { prompt_id: Some("t1-later".into()), ..req("t1") };
+        let row = label_task(&store, &paths, &f, &f, &again, n()).unwrap().unwrap();
+        assert_eq!(row.task_id, "t1", "the second label is the task's, so its self-check reads the task's analysis");
+        assert!(f.sent.borrow()[1].contains("double-charges on retry"), "the later prompt is what was sent");
+        assert!(!f.sent.borrow()[1].contains("the login test fails"));
+        assert_eq!(store.kind_labels_of("t1").unwrap().len(), 2);
+        assert_eq!(label_task(&store, &paths, &f, &f, &again, n()).unwrap(), Err(Skip::AlreadyLabelled), "no third");
+        assert_eq!(f.sent.borrow().len(), 2);
     }
 
     #[test]

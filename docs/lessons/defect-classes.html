@@ -371,8 +371,21 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <p>core); <code>hook::tests::a_timed_out_stop_that_never_left_goes_to_the_spool</code>.</p>
 <ul><li><strong>Rule:</strong> a sender that gives up on a timer must know whether its message left. If it may not have, keep it</li></ul>
 <p>(spool, retry) before the process ends; an idempotent receiver makes keeping it safe.</p>
+<h3>DC-035 — A rule that settles later than the first event it governs, which was already acted on</h3>
+<ul><li><strong>Signature:</strong> 2026-11-08 03:28Z, Imran&#x27;s laptop: one of Claude&#x27;s own Remote Control sessions. At its first</li></ul>
+<p>prompt rule RC read the transcript head and found it not yet written (<code>rc.check projects=false settled=false</code>), so the prompt was stored as the person&#x27;s. At 03:31Z the head settled as Projects and every later event was set aside. The first prompt stayed behind as a one-prompt task with no turn end. Measured over 30 days: 6 of 9 Claude Code sessions were such one-prompt, no-stop tasks, and all 6 were analysed (14 analysis rows, 12 uncertain).</p>
+<ul><li><strong>Why it survives:</strong> the re-read on later events (from the 11-02 fix) only governs events after it settles;</li></ul>
+<p>nothing looked back at what was recorded before. Tests used a missing transcript and expected the prompt stored at once, which was the defect.</p>
+<ul><li><strong>Sweep:</strong> the other live gates (<code>guard</code> H ≥ 2, folder rules, AIQ check folders) decide from data present at</li></ul>
+<p>the first prompt and already hold a first prompt back (<code>held</code>) when unsure; rule RC was the only gate that recorded while undecided.</p>
+<ul><li><strong>Control (product):</strong> <code>Service::rc_held</code>: a Claude Code prompt that arrives while rule RC is unsettled</li></ul>
+<p>waits in memory; the session&#x27;s next event that is not held (its Stop at the latest) records it first, unless the head then shows a Projects session, which drops it. Held events are not counted as set aside.</p>
+<ul><li><strong>Control (tests):</strong> <code>an_unwritten_transcript_head_is_read_again_until_it_settles_rule_rc</code> (Projects</li></ul>
+<p>session: 0 prompts kept; terminal session: the prompt is recorded at its Stop, before the stop); e2e harness writes a real terminal transcript head.</p>
+<ul><li><strong>Rule:</strong> a rule that may settle after the first event must not let that event through while undecided:</li></ul>
+<p>hold it until the rule decides, with a bounded release.</p>
 <h3>DC-036 — A self-check that switches a feature off and, by doing so, stops measuring itself</h3>
-<p>(DC-035 is taken by PR #181, still open.)</p>
+<p>(DC-035 is PR #181.)</p>
 <ul><li><strong>Signature:</strong> 2026-11-08, Imran&#x27;s laptop, measured read-only. The kind-label self-check reached 6 right of 10</li></ul>
 <p>on 2026-11-04 16:02Z and fell under the 8-in-10 bar. From then on the core asked for no labels, so no new label was ever checked, and the check could not recover. Word matching found a kind for 4 tasks in a week, so no tip was decided on any surface for four days across 91 coachable prompts. The switch-off logged nothing, because the warning fired only when words and labels were both off. The count was all-time, so old misses and labels from an older prompt or model would have held the tips forever.</p>
 <ul><li><strong>Why it survives:</strong> the unit test asserted the behaviour itself (&quot;labels 7 of 10: AIQ stops asking&quot;). No test</li></ul>
@@ -445,4 +458,17 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <ul><li><strong>Control (tests):</strong> release.yml reuses the previous release&#x27;s <code>aiq-statusline.exe</code> while its version is</li></ul>
 <p>unchanged and fails when <code>crates/aiq-statusline</code> changed without a version bump; <code>crates/aiq/tests/statusline_contract.rs</code> fails if its paths or request differ from the core&#x27;s.</p>
 <ul><li><strong>Rule:</strong> on Windows, an AIQ exe that a script host starts again and again must be a file that does not change</li></ul>
-<p>with every release; anything else starts AIQ directly or through Explorer.</p></main></body></html>
+<p>with every release; anything else starts AIQ directly or through Explorer.</p>
+<h3>DC-042 — A one-shot decision made from the first input, never revisited when a better input arrives</h3>
+<ul><li><strong>Signature:</strong> 2026-11-08, Imran&#x27;s laptop: a VS Code task opened with a 15-character prompt. Its kind label came</li></ul>
+<p>back at 0.78 / 0.74, under the 0.8 bar, so the task ended at <code>label_unsure</code> and got no tip, although the next prompts of the same task said plainly what it was. The tip path read only the first prompt of a task.</p>
+<ul><li><strong>Why it survives:</strong> each step is right on its own input (a vague prompt should not be labelled with</li></ul>
+<p>confidence), and every test fed a first prompt that already named the task. No test opened a task with &quot;hi&quot;.</p>
+<ul><li><strong>Sweep:</strong> other first-prompt-only decisions: the word guess (runs once at the first prompt; a sure word guess</li></ul>
+<p>needs no retry, and an unmatched one falls to the label, which now retries); the Right-now card (reads the live session each time, not one-shot); the label&#x27;s <code>NOT_COACHED</code> question rule (a sure answer, not a vague one: left).</p>
+<ul><li><strong>Control (product):</strong> one second label try per task from the next prompt with at least 4 content words</li></ul>
+<p>(<code>RETRY_MIN_WORDS</code>), at most two labels per task (<code>MAX_LABELS_PER_TASK</code>), counted as funnel step <code>label_retry</code>.</p>
+<ul><li><strong>Control (tests):</strong> <code>next_rung::a_hi_then_a_real_ask_labels_the_real_ask_once_and_the_tip_shows</code> (one tip, one</li></ul>
+<p>decision, no third label), <code>next_rung::a_real_ask_sent_before_the_first_label_is_back_is_labelled_when_it_comes_back_unsure</code>, <code>next_rung::the_second_try_is_the_last_and_a_sure_first_label_never_retries</code>, <code>label::tests::a_second_try_labels_the_later_prompt_once_and_never_a_third_time</code>.</p>
+<ul><li><strong>Rule:</strong> a decision that may be made only once per item, from the item&#x27;s first input, says what happens when</li></ul>
+<p>that input is too thin to decide on, and gives the next input one bounded chance before the item is passed over.</p></main></body></html>
