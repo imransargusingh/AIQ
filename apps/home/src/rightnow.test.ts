@@ -22,7 +22,7 @@ describe("Right now, several open tasks (option A)", () => {
   });
 });
 
-import { ago, quiet, QUIET_HINT_MS } from "./pages/RightNow";
+import { ago, asideText, quiet, QUIET_HINT_MS } from "./pages/RightNow";
 import full from "../tests/fixtures/full.json";
 
 describe("Right now with nothing open (Imran 2026-11-08)", () => {
@@ -44,6 +44,27 @@ describe("Right now with nothing open (Imran 2026-11-08)", () => {
     ];
     const q = quiet(at({ starting: [], seen, setup: { ...base.setup, tools } }));
     expect(q.silent.map((t) => t.name)).toEqual(["Claude Code", "VS Code"]);
+  });
+  it("counts set-aside activity as activity and says it isn't counted (Imran 2026-11-08)", () => {
+    const tools = (["claude-code", "copilot"] as const).map((tool) => ({ tool, hooked: true, present: true, install: "" }));
+    const seen = [
+      { surface: "claude-code", last_ms: base.now_ms - 26 * 3_600_000 },
+      { surface: "copilot-cli", last_ms: base.now_ms - 60_000 },
+    ];
+    const aside = [
+      { surface: "claude-code", last_ms: base.now_ms - 2 * 60_000, reason: "projects" },
+      { surface: "copilot-cli", last_ms: base.now_ms - 30 * 60_000, reason: "burst" },
+    ];
+    const q = quiet(at({ starting: [], seen, aside, setup: { ...base.setup, tools } }));
+    expect(q.tools).toEqual([
+      { name: "Claude Code", last: base.now_ms - 2 * 60_000, aside: "projects" },
+      { name: "Copilot", last: base.now_ms - 60_000, aside: null },
+    ]);
+    expect(q.silent).toEqual([]);
+    expect(asideText(q.aside)).toBe(
+      "Claude Code's newest activity is Claude's own work in a claude.ai project, so AIQ doesn't count it. Turns you type yourself count.",
+    );
+    expect(asideText([{ name: "Copilot", aside: "burst" }])).toBe("Copilot's newest activity looks like an app or script ran it, so AIQ doesn't count it.");
   });
   it("says how long ago in minutes within the hour, then the day and time", () => {
     const now = base.now_ms;

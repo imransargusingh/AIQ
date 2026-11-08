@@ -1065,6 +1065,76 @@ fn the_core_reads_a_prompts_transcript_once_per_session_for_rule_rc() {
     assert_eq!(h.svc().status().automated_folders, vec![("c:\\repos\\aiq".to_string(), "projects".to_string())]);
 }
 
+// Rule RC per turn (Imran 2026-11-08, "regardless of the surface"): the laptop's Claude desktop session he drove by
+// hand, from the laptop and the phone, had the Projects head marker, and all 153 of its events were set aside. A turn
+// the person typed counts; a relayed brief and its turn end do not. A prompt whose own record is not written yet
+// waits, and is decided at the next event (its Stop at the latest).
+#[test]
+fn a_persons_own_turns_in_a_remote_control_session_count_and_relayed_ones_do_not() {
+    let d = tempfile::tempdir().unwrap();
+    let t = d.path().join("rc.jsonl");
+    let ts = |ms: i64| aiq_core::sysclock::format_rfc3339_ms(ms);
+    let head = "{\"type\":\"user\",\"isMeta\":true,\"turnOrigin\":\"system\",\"entrypoint\":\"claude-desktop\"}\n";
+    let own = |ms: i64| {
+        format!(
+            "{{\"type\":\"user\",\"turnOrigin\":\"human\",\"origin\":{{\"kind\":\"human\"}},\"projectsUserTurn\":true,\"clientPlatform\":\"ios\",\"message\":{{\"content\":\"fix it\"}},\"timestamp\":\"{}\"}}\n",
+            ts(ms)
+        )
+    };
+    let relay = |ms: i64| {
+        format!(
+            "{{\"type\":\"user\",\"turnOrigin\":\"peer\",\"origin\":{{\"kind\":\"task-notification\",\"subkind\":\"projects-relay\"}},\"message\":{{\"content\":\"brief\"}},\"timestamp\":\"{}\"}}\n",
+            ts(ms)
+        )
+    };
+    let mut h = H::new();
+    let mut file = head.to_string();
+    std::fs::write(&t, &file).unwrap();
+    let path = t.to_string_lossy().into_owned();
+    let prompt = |h: &mut H, text: &str| {
+        let mut e = h.prompt("rc1", text);
+        e.cwd = Some("C:\\Repos\\Thatcher".into());
+        e.transcript = Some(path.clone());
+        e
+    };
+    let stop = |h: &mut H| {
+        let mut e = h.prompt("rc1", "unused");
+        e.body = EventBody::Stop(StopPayload { stop_hook_active: false, prompt_id: None });
+        e.transcript = Some(path.clone());
+        h.svc().ingest(&e, None);
+    };
+    // 1. The person's turn: its record is written before the hook runs.
+    let e = prompt(&mut h, "fix the login test");
+    file += &own(aiq_core::sysclock::parse_rfc3339_ms(&e.ts).unwrap() - 40);
+    std::fs::write(&t, &file).unwrap();
+    h.svc().ingest(&e, None);
+    stop(&mut h);
+    assert_eq!((h.prompts(), h.stops()), (1, 1), "the person's turn and its end are recorded");
+    // 2. A relayed brief and its turn end: left out.
+    let e = prompt(&mut h, "brief");
+    file += &relay(aiq_core::sysclock::parse_rfc3339_ms(&e.ts).unwrap() - 40);
+    std::fs::write(&t, &file).unwrap();
+    h.svc().ingest(&e, None);
+    stop(&mut h);
+    assert_eq!((h.prompts(), h.stops()), (1, 1), "Claude's relayed turn is not counted");
+    // Home's card says the newest activity was left out, and by which rule.
+    let noted = h.svc().store().setting("aside.claude-code").unwrap().expect("set-aside activity noted");
+    assert!(noted.ends_with(" projects"), "{noted}");
+    // 3. The record lands after the hook: the prompt waits, then counts at its Stop.
+    let e = prompt(&mut h, "now the api");
+    h.svc().ingest(&e, None);
+    assert_eq!(h.prompts(), 1, "waiting for its record");
+    file += &own(aiq_core::sysclock::parse_rfc3339_ms(&e.ts).unwrap() + 500);
+    std::fs::write(&t, &file).unwrap();
+    stop(&mut h);
+    assert_eq!((h.prompts(), h.stops()), (2, 2), "decided at the Stop: the person's");
+    // 4. A prompt with no record at all by its Stop is not counted.
+    let e = prompt(&mut h, "who typed this");
+    h.svc().ingest(&e, None);
+    stop(&mut h);
+    assert_eq!((h.prompts(), h.stops()), (2, 2));
+}
+
 // Laptop 2026-11-02 21:28Z: a Remote Control session's first prompt found its transcript not yet written,
 // AIQ remembered "not Projects", and every later event was recorded as the person's work. An unwritten head
 // is read again at the next event (prompt or Stop) until it settles the answer. Laptop 2026-11-08 03:28Z

@@ -70,6 +70,9 @@ pub struct Snapshot {
     pub starting: Vec<Starting>,
     /// Each surface's newest event, newest first, so the quiet Right now card can say when each tool was last heard.
     pub seen: Vec<Seen>,
+    /// Each surface's newest activity left out as automated, so the card says "automated, not counted" rather than
+    /// calling a busy tool idle.
+    pub aside: Vec<Aside>,
     /// The rung guide (Imran 2026-11-05, option B): every next-step move in pack order, with its text. Pack data,
     /// the same for everyone; the person's own rung per job comes from `coaching.kinds`.
     pub guide: Vec<GuideMove>,
@@ -144,6 +147,16 @@ pub struct Starting {
     pub last_ms: i64,
     pub prompts: u32,
     pub working: bool,
+}
+
+/// One surface's newest activity that AIQ left out as automated (see `Snapshot::aside`).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Aside {
+    pub surface: String,
+    /// Up to 5 minutes stale (the core rewrites it at most that often, `Service::note_aside`).
+    pub last_ms: i64,
+    /// The rule: projects, aiq-check, session, folder, template, burst.
+    pub reason: String,
 }
 
 /// One surface's newest event (see `Snapshot::seen`).
@@ -888,6 +901,7 @@ fn empty(paths: &Paths, pack: &PackV1, now: Now) -> Snapshot {
         live: vec![],
         starting: vec![],
         seen: vec![],
+        aside: vec![],
         guide: pack
             .moves
             .iter()
@@ -1075,6 +1089,23 @@ fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()>
         s.seen =
             q(q(st.query_map([], |r| Ok(Seen { surface: r.get(0)?, last_ms: r.get(1)? })))?.collect::<Result<_, _>>())?;
         s.status.last_event_ms = s.seen.first().map(|x| x.last_ms);
+    }
+    if store.has_table("setting_change").map_err(|e| e.to_string())? {
+        // Activity left out as automated, so the card does not call a busy tool idle (Imran 2026-11-08).
+        let prefix = aiq_core::service::ASIDE_KEY;
+        s.aside = store
+            .settings_with_prefix(prefix)
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .filter_map(|(k, v)| {
+                let (ms, reason) = v.split_once(' ')?;
+                Some(Aside {
+                    surface: k[prefix.len()..].to_owned(),
+                    last_ms: ms.parse().ok()?,
+                    reason: reason.to_owned(),
+                })
+            })
+            .collect();
     }
     {
         let mut st = q(c.prepare(

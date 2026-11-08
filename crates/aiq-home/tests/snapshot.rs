@@ -617,3 +617,20 @@ fn live_trend_names_a_turn_the_core_never_read() {
     assert_eq!((l.trend.unrecorded.clone(), l.trend.unrecorded_why.clone()), (vec![1], vec!["not_read".to_string()]));
     assert_eq!(l.trend.rung, None);
 }
+
+/// Imran 2026-11-08: the card read "Nothing in progress" with Claude Code idle for a day while every turn was set
+/// aside. The core notes each tool's newest set-aside activity (`aside.<surface>`); Home reads it for the card.
+#[test]
+fn set_aside_activity_reaches_the_card() {
+    let d = tempfile::tempdir().unwrap();
+    let p = Paths::at(d.path());
+    standard(&p, false);
+    let s = Seed::new(&p);
+    s.store.set_setting("aside.claude-code", &format!("{} projects", NOW - 2 * MIN), NOW - 2 * MIN).unwrap();
+    s.store.set_setting("aside.copilot-cli", "not-a-time burst", NOW).unwrap();
+    drop(s);
+    let snap = snap(&p);
+    let aside: Vec<(&str, i64, &str)> =
+        snap.aside.iter().map(|a| (a.surface.as_str(), a.last_ms, a.reason.as_str())).collect();
+    assert_eq!(aside, [("claude-code", NOW - 2 * MIN, "projects")], "a malformed value is left out, not guessed");
+}

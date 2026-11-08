@@ -741,3 +741,32 @@ summary: >-
   `label::tests::a_second_try_labels_the_later_prompt_once_and_never_a_third_time`.
 - **Rule:** a decision that may be made only once per item, from the item's first input, says what happens when
   that input is too thin to decide on, and gives the next input one bounded chance before the item is passed over.
+
+### DC-043 — A rule that sets aside a whole unit because of a marker that is true of only some of its parts
+- **Signature:** 2026-11-08 22:59Z, Imran's laptop, measured read-only. Home's Right now card read "Nothing in
+  progress" and "Claude Code last activity Yesterday" while he typed to Claude Code all evening, on the laptop and
+  from the phone app. Hooks ran (153 runs that day, all sent); the core set every event aside as rule RC
+  (`event set aside reason=projects`). Since 11-03, 268 of 269 Claude Code prompts were set aside. Rule RC tested
+  one marker on the session's head (the desktop app's `turnOrigin=system` record), and every desktop session has
+  it. In the Thatcher session, 33 of 40 typed records were his own (`turnOrigin=human`, `projectsUserTurn=true`;
+  29 from the laptop, 4 from iOS) and 7 were relayed briefs. Across his transcripts, 191 of 192 of his typed turns
+  carried the marker.
+- **Why it survives:** the rule was measured on 14 Projects sessions against terminal and headless ones, never
+  against a desktop session typed by hand. Tests fed a head marker and no typed records, so "the whole session is
+  Claude's" was the expected result. The card took its last-activity time from counted events only, so it called a
+  busy tool idle and never showed the loss.
+- **Sweep:** import's rule RC (`import::automated`, `"RC"`) still sets aside a whole imported session: same shape,
+  not changed here (past sessions only; a follow-up). The folder rules (`template`, `burst`, `folder`) set aside a
+  folder, but H ≥ 2 keeps a session where a person sends a second prompt, and the card now names their activity.
+  The `aiq-check` rule is folder-only on purpose (AIQ's own test folders).
+- **Control (product):** rule RC decides per turn. A prompt counts when its own transcript record is the person's
+  (`projects::turn_at`, `is_own`); a relayed or peer record does not; a prompt whose record is not written yet waits
+  and is decided at the next event (its Stop at the latest). A Stop goes with its turn's prompt. The core notes each
+  tool's newest set-aside activity (`aside.<surface>`), and the card shows it as "automated, not counted" with the
+  reason, so set-aside work is never shown as idle. `rc.turn` log lines give the per-turn verdict and read time.
+- **Control (tests):** `a_persons_own_turns_in_a_remote_control_session_count_and_relayed_ones_do_not` (red on main:
+  0 of 1 kept), `projects::tests::a_persons_typed_turn_is_told_from_a_relayed_one_by_its_own_record`,
+  `set_aside_activity_reaches_the_card`, `rightnow.test.ts` set-aside case, e2e "a tool whose newest activity was set
+  aside says so".
+- **Rule:** a rule that leaves out a person's activity must decide at the grain where the marker is true (a turn, not
+  a session or a surface), and every left-out activity must still show where the person looks for it.
