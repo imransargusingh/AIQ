@@ -70,6 +70,31 @@ From the tip decision log and store on the laptop, 2026-11-02:
    one call and a judgment two, and the person can see and cap each. Set-aside and automated sessions
    never reach the decision, so they are never labelled.
 
+## Second try (2026-11-08)
+
+Measured on Imran's laptop, 2026-11-08: one of three new tasks that day opened with a 15-character prompt;
+its label came back at 0.78 / 0.74, under the 0.8 bar, and the task got no tip although the prompts after it
+said what the task was. Only the first prompt was ever read.
+
+1. When the first label is **not sure enough** (`label_unsure`, not a failure, not a sure question), the next
+   later prompt of the **same task** with at least `RETRY_MIN_WORDS` (4) content words is labelled instead:
+   `aiq label … --prompt <event id>`. A shorter reply ("ok go ahead") waits for the next one.
+2. If that later prompt arrives while the first label is still out, it is remembered and sent the moment the
+   first label comes back unsure.
+3. **Once per task.** The second label is the last (`MAX_LABELS_PER_TASK` = 2 in `aiq label`; `LabelWait` in the
+   core). It is stored under the task's id, so it decides the tip exactly as the first would have, and the
+   self-check scores it against the same analysis of the whole task.
+4. **No double tip.** A task decides once: a `type_guess` row ends it, and a sure first label never retries. The
+   card engine's per-session budget still applies.
+5. The prompt sent is the later prompt alone, inside the same fence and system text (`PROMPT_VERSION`
+   unchanged, so the replay gate and its recorded answers stand).
+6. Counted: tip-funnel step `label_retry`, then that label's own end (`decided`, `label_unsure`,
+   `label_failed`, …). `core.log` `coach.label` `label_retry_requested`. The daily label budget covers both
+   tries.
+7. The wait is in memory: a core restart between the two prompts forgets it, and that task keeps its first
+   label's end (`label_unsure`). `assume:` 4 content words separates an ask from a reply; confirm from the
+   laptop's `label_retry` rows and their ends.
+
 ## Measured vs guessed
 
 | Claim | Status |
@@ -136,6 +161,7 @@ whether the bar is cleared, names each miss, and exits 3 under the bar.
 | Tool missing, signed out, timeout, bad answer | Row stored with that outcome; no tip; counts against the budget |
 | Core down when the label arrives | Row stays unused; nothing shown |
 | Label after the session moved to a new task | Dropped (`label_task_moved_on`) |
+| First prompt too short or vague ("hi") | Label not sure; the next fuller prompt of the task gets one second try (`label_retry`) |
 | Label arrives after the first turn ended | Claude Code: the card shows at the next Stop of the same task. Copilot: the status line shows it |
 | Labels wrong too often | Own self-check turns labels off below 8 in 10; word guesses unaffected |
 | Process killed mid-call | Its Copilot home in `label-work` is swept by the next label run after 10 minutes |

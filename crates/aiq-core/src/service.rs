@@ -121,6 +121,9 @@ pub struct Service<C: Clock> {
     handovers: std::collections::HashMap<String, Handover>,
     /// Starts a background label of a new task's first prompt (`aiq label`); None in tests and without a model.
     label_requester: Option<LabelRequester>,
+    /// Tasks whose first prompt was sent to be labelled, until the label settles: where each stands on the one
+    /// second try from a later prompt (design kind-label, "Second try"). In memory; bounded by `MAX_LABEL_WAIT`.
+    label_wait: std::collections::HashMap<String, LabelWait>,
     /// Copilot's home, for its session logs. None (tests, unless set): mid-turn messages are not read.
     copilot_home: Option<std::path::PathBuf>,
     /// How far each live Copilot session's log has been read (bounded; a forgotten session is read again
@@ -135,7 +138,31 @@ pub struct LabelRequest {
     pub surface: String,
     pub session: String,
     pub requested_ms: i64,
+    /// The later prompt to label instead of the first (the one second try when the first label was not sure).
+    pub prompt_id: Option<String>,
 }
+
+/// Where a labelled task stands on its second try (design kind-label, "Second try").
+#[derive(Debug, Clone, PartialEq)]
+enum LabelWait {
+    /// The first prompt's label is not back yet; the newest fuller later prompt seen meanwhile, if any.
+    Asked { later: Option<String> },
+    /// The first label was not sure enough; the next fuller prompt of the task is labelled.
+    Unsure,
+    /// The second label was asked for; no third.
+    Retried,
+}
+
+/// Tasks waiting on a label at once (each one short id). Cleared whole past this.
+/// simplify: cleared, not evicted oldest-first. Ceiling: 1024 live tasks waiting at once. Upgrade trigger: a
+/// laptop with more than ~100 new tasks a day (each settles within minutes, so the map rarely holds more than a few).
+const MAX_LABEL_WAIT: usize = 1024;
+
+/// A later prompt is full enough for a second label try with at least this many content words (`features`).
+/// assume: 4 words separates a real ask ("fix the login redirect bug in auth.ts" = 5) from a reply ("yes", "ok go
+/// ahead" = 1-2). Confirm: the funnel's `label_retry` rows and their outcomes on the laptop. If false: too low
+/// spends labels on replies (bounded: one try per task, daily label budget); too high leaves short asks untried.
+pub const RETRY_MIN_WORDS: usize = 4;
 
 pub type LabelRequester = Box<dyn Fn(LabelRequest) + Send>;
 
@@ -252,6 +279,7 @@ impl<C: Clock> Service<C> {
             popup: None,
             handovers: std::collections::HashMap::new(),
             label_requester: None,
+            label_wait: Default::default(),
             copilot_home: None,
             log_offsets: Default::default(),
         };
@@ -505,8 +533,40 @@ impl<C: Clock> Service<C> {
         if new_task {
             // A live first prompt of a new task (only live events reach here: imports never raise a card, D11).
             self.next_rung(&ev.surface, &ev.surface_session_id, &ev.event_id, text, trace_id)?;
+        } else {
+            self.later_prompt(&ev.surface, &ev.surface_session_id, &ev.event_id, text);
         }
         Ok(())
+    }
+
+    /// A later prompt of a task whose first prompt was sent to be labelled: when the first label was not sure
+    /// enough (a "hi", or an ask too short to name), label this fuller prompt instead, once per task. If the first
+    /// label is still on its way, remember the prompt for when it comes back.
+    fn later_prompt(&mut self, surface: &str, session: &str, event_id: &str, text: &str) {
+        let Some(task) = self.engine.task_id(surface, session).map(str::to_owned) else { return };
+        let Some(wait) = self.label_wait.get(&task) else { return };
+        if features(text, &self.pack.reprompt).words.len() < RETRY_MIN_WORDS {
+            return;
+        }
+        match wait {
+            LabelWait::Asked { .. } => {
+                self.label_wait.insert(task, LabelWait::Asked { later: Some(event_id.to_owned()) });
+            }
+            LabelWait::Unsure => self.retry_label(surface, session, &task, event_id),
+            LabelWait::Retried => {}
+        }
+    }
+
+    /// Ask for the task's second and last label, from `prompt_id`.
+    fn retry_label(&mut self, surface: &str, session: &str, task_id: &str, prompt_id: &str) {
+        let ok = coaching::mode(&self.store) != "off" && !self.paused() && self.labels_enabled();
+        if !ok || !self.request_label(surface, session, task_id, Some(prompt_id)) {
+            self.label_wait.remove(task_id);
+            return;
+        }
+        self.label_wait.insert(task_id.to_owned(), LabelWait::Retried);
+        self.tip_step(task_id, surface, Step::LabelRetry);
+        info!(coach.outcome = "label_retry_requested", "coach.label");
     }
 
     /// At a stop, read the new part of the tool's own log, read-only and off the hook's clock (the hook never
@@ -765,7 +825,7 @@ impl<C: Clock> Service<C> {
         let Some(g) = guess.filter(|_| words_on) else {
             // No word match: ask the small model in the background (design kind-label). The core never waits on
             // a model (C9); the answer comes back as `on_kind_label`, before the turn's Stop in most turns.
-            let asked = labels_on && self.request_label(surface, session, task_id);
+            let asked = labels_on && self.request_label(surface, session, task_id, None);
             let step = match (asked, held_guess) {
                 (true, _) => Step::LabelAsked,
                 (false, true) => Step::GuessHeld,
@@ -825,8 +885,9 @@ impl<C: Clock> Service<C> {
         self.label_requester.is_some() && coaching::labels_enabled(&self.store)
     }
 
-    /// Ask for a label of this new task's first prompt (labels are enabled). True when asked.
-    fn request_label(&mut self, surface: &str, session: &str, task_id: &str) -> bool {
+    /// Ask for a label of this new task's first prompt, or of `prompt_id` on the second try (labels are
+    /// enabled). True when asked.
+    fn request_label(&mut self, surface: &str, session: &str, task_id: &str, prompt_id: Option<&str>) -> bool {
         let Some(req) = self.label_requester.as_ref() else { return false };
         if !matches!(surface, "claude-code" | "copilot-cli" | "vscode") {
             return false;
@@ -837,7 +898,14 @@ impl<C: Clock> Service<C> {
             surface: surface.to_owned(),
             session: session.to_owned(),
             requested_ms: self.clock.now().utc_ms,
+            prompt_id: prompt_id.map(str::to_owned),
         });
+        if prompt_id.is_none() {
+            if self.label_wait.len() >= MAX_LABEL_WAIT {
+                self.label_wait.clear();
+            }
+            self.label_wait.insert(task_id.to_owned(), LabelWait::Asked { later: None });
+        }
         true
     }
 
@@ -851,8 +919,13 @@ impl<C: Clock> Service<C> {
             return Ok(());
         }
         let labels = self.store.kind_labels_of(task_id)?;
-        let Some(l) = labels.iter().rev().find(|l| l.outcome == "ok").cloned() else {
+        let retried = self.label_wait.get(task_id) == Some(&LabelWait::Retried);
+        // On the second try only the newest label counts: a failed retry is a failure, not the first unsure one.
+        let ok = |l: &&aiq_store::KindLabelRow| l.outcome == "ok";
+        let usable = if retried { labels.last().filter(ok) } else { labels.iter().rev().find(ok) };
+        let Some(l) = usable.cloned() else {
             if let Some(l) = labels.last() {
+                self.label_wait.remove(task_id);
                 self.tip_step(task_id, &l.surface, Step::LabelFailed);
             }
             return Ok(());
@@ -867,10 +940,12 @@ impl<C: Clock> Service<C> {
         };
         if self.engine.task_id(&l.surface, &l.surface_session_id) != Some(task_id) {
             outcome("label_task_moved_on");
+            self.label_wait.remove(task_id);
             self.tip_step(task_id, &l.surface, Step::LabelLate);
             return Ok(());
         }
         if self.store.has_type_guess(task_id, aiq_domain::label::METHOD)? {
+            self.label_wait.remove(task_id);
             return Ok(()); // already decided (a repeated notice)
         }
         let label = aiq_domain::label::Label {
@@ -882,13 +957,25 @@ impl<C: Clock> Service<C> {
         let Some((job, task_type)) = aiq_domain::label::accept(&label) else {
             if aiq_domain::label::sure_but_not_coached(&label) {
                 outcome("label_job_not_coached");
+                self.label_wait.remove(task_id);
                 self.tip_step(task_id, &l.surface, Step::LabelNotCoached);
             } else {
                 outcome("label_not_confident");
                 self.tip_step(task_id, &l.surface, Step::LabelUnsure);
+                // Not sure: the task's next fuller prompt gets the one second try (now, if one came meanwhile).
+                match self.label_wait.remove(task_id) {
+                    Some(LabelWait::Asked { later: Some(p) }) => {
+                        self.retry_label(&l.surface, &l.surface_session_id, task_id, &p)
+                    }
+                    Some(LabelWait::Asked { later: None }) => {
+                        self.label_wait.insert(task_id.to_owned(), LabelWait::Unsure);
+                    }
+                    _ => {}
+                }
             }
             return Ok(());
         };
+        self.label_wait.remove(task_id);
         let pack = self.pack.clone();
         self.coach_cache()?;
         let cache = self.coach.take().expect("built above");
