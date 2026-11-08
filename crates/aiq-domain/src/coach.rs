@@ -360,14 +360,50 @@ pub fn typical_rung(rungs: impl IntoIterator<Item = u8>) -> Option<u8> {
 
 // ------------------------------------------------------------------ rung progress (success measure)
 
-/// Each half of the progress comparison: the last 14 days against the 14 days before.
-// simplify: fixed at 14; becomes a CoachParams field if Imran wants it editable in Settings.
-pub const PROGRESS_DAYS: u32 = 14;
+/// Each half of the progress comparison: the last 30 days against the 30 days before. 14-day halves held too
+/// few tasks per kind to tell a move from chance on the laptop data (measured 2026-11-08: one false "down").
+// simplify: fixed at 30; becomes a CoachParams field if Imran wants it editable in Settings.
+pub const PROGRESS_DAYS: u32 = 30;
+
+/// A rung move or a habit change shows only when chance alone would give a split this uneven less often than
+/// this (two-sided Fisher exact test). Measured 2026-11-08: the typical rung flips on one or two tasks when
+/// nearly every task is Assisted, so a move needs this check on top of the typical rungs differing.
+// simplify: 0.05 with about 60 kind x habit pairs per person lets ~3 false changes through; raise the bar or
+// cap the rows if people report habit changes they don't recognise.
+pub const CHANCE_P: f64 = 0.05;
+
+/// Tasks where a habit fits, in each half, before AIQ says the habit changed for a kind of task.
+pub const HABIT_CHANGE_MIN: u32 = 5;
+
+/// Two-sided Fisher exact test: `a` of `n1` against `c` of `n2`. The chance of a split at least this uneven
+/// when both halves share one rate. 1.0 when either half is empty.
+pub fn fisher_p(a: u32, n1: u32, c: u32, n2: u32) -> f64 {
+    if n1 == 0 || n2 == 0 {
+        return 1.0;
+    }
+    let n = n1 + n2;
+    let k = a + c;
+    let lf = |m: u32| (1..=m).map(|i| (i as f64).ln()).sum::<f64>();
+    let lc = |m: u32, r: u32| lf(m) - lf(r) - lf(m - r);
+    let pr = |x: u32| (lc(n1, x) + lc(n2, k - x) - lc(n, k)).exp();
+    let p0 = pr(a);
+    let lo = k.saturating_sub(n2);
+    let hi = k.min(n1);
+    (lo..=hi).map(pr).filter(|q| *q <= p0 * (1.0 + 1e-9)).sum::<f64>().min(1.0)
+}
+
+/// Share of `xs` at rung `at` or above is beyond chance against `ys` (and higher).
+fn above_by_more_than_chance(xs: &[u8], ys: &[u8], at: u8) -> bool {
+    let hi = |v: &[u8]| v.iter().filter(|r| **r >= at).count() as u32;
+    let (a, c) = (hi(xs), hi(ys));
+    a * ys.len() as u32 > c * xs.len() as u32 && fisher_p(a, xs.len() as u32, c, ys.len() as u32) < CHANCE_P
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Trend {
     Up,
     Down,
+    /// The typical rungs match, or differ by no more than chance.
     Same,
     /// Either half has fewer than `recurring_min` judged, not-Uncertain tasks.
     TooFew,
@@ -404,8 +440,10 @@ pub struct Progress {
 
 /// One row per kind of task with judged tasks in the last 2 × `PROGRESS_DAYS`. A kind needs at least
 /// `recurring_min` (the tips' repeated-kind minimum) judged, not-Uncertain tasks in BOTH halves before AIQ
-/// says it moved; otherwise it is "too few". The judge's fallback kind "other" is not one kind of work and
-/// is left out. Order: moved up, moved down, same, too few; then most recent tasks, then label.
+/// says anything; otherwise it is "too few". It moved up (down) only when its typical rung rose (fell) AND the
+/// share of tasks it now sits at changed by more than chance (`CHANCE_P`): for up, more tasks at the new rung
+/// or above; for down, fewer tasks above the new rung. Otherwise "same".
+/// The judge's fallback kind "other" is not one kind of work and is left out. Order: moved up, moved down, same, too few; then most recent tasks, then label.
 pub fn progress(tasks: &[JudgedTask], now_ms: i64, p: &CoachParams) -> Vec<Progress> {
     let half = PROGRESS_DAYS as i64 * DAY_MS;
     let (mid, start) = (now_ms - half, now_ms - 2 * half);
@@ -431,8 +469,8 @@ pub fn progress(tasks: &[JudgedTask], now_ms: i64, p: &CoachParams) -> Vec<Progr
             let (rr, er) = (typical_rung(recent.iter().copied()), typical_rung(earlier.iter().copied()));
             let enough = recent.len() as u32 >= p.recurring_min && earlier.len() as u32 >= p.recurring_min;
             let trend = match (enough, rr, er) {
-                (true, Some(r), Some(e)) if r > e => Trend::Up,
-                (true, Some(r), Some(e)) if r < e => Trend::Down,
+                (true, Some(r), Some(e)) if r > e && above_by_more_than_chance(&recent, &earlier, r) => Trend::Up,
+                (true, Some(r), Some(e)) if r < e && above_by_more_than_chance(&earlier, &recent, r + 1) => Trend::Down,
                 (true, Some(_), Some(_)) => Trend::Same,
                 _ => Trend::TooFew,
             };
@@ -726,6 +764,83 @@ pub fn habits(tasks: &[JudgedTask], moves: &[MoveDef], now_ms: i64, offset_min: 
             });
         }
     }
+    out
+}
+
+/// One habit's use in one kind of task, last `PROGRESS_DAYS` against the `PROGRESS_DAYS` before, when it
+/// changed by more than chance. Habits move before rungs do (measured 2026-11-08: no kind moved a rung, three
+/// habits changed beyond chance), so these are the steps toward a move.
+#[derive(Debug, Clone, PartialEq)]
+pub struct HabitChange {
+    pub job: String,
+    pub task_type: String,
+    pub label: &'static str,
+    pub move_id: String,
+    pub habit: String,
+    /// Tasks of this kind where the habit fits (its facts known), and how many showed it, in each half.
+    pub earlier_seen: u32,
+    pub earlier_eligible: u32,
+    pub recent_seen: u32,
+    pub recent_eligible: u32,
+    /// true: seen more often now ("growing"); false: less often lately.
+    pub up: bool,
+    pub p: f64,
+}
+
+/// Every (kind of task, habit) whose share of tasks showing it changed by more than chance between the two
+/// halves, with at least `HABIT_CHANGE_MIN` tasks where it fits in each half. Uncertain judgments and the
+/// fallback kind "other" are left out. Growing first, then strongest evidence, then label and habit.
+pub fn habit_changes(tasks: &[JudgedTask], moves: &[MoveDef], now_ms: i64) -> Vec<HabitChange> {
+    let half = PROGRESS_DAYS as i64 * DAY_MS;
+    let (mid, start) = (now_ms - half, now_ms - 2 * half);
+    let mut kinds: BTreeMap<(&str, &str), Vec<&JudgedTask>> = BTreeMap::new();
+    for t in tasks.iter().filter(|t| t.first_ms >= start && t.first_ms <= now_ms && !t.uncertain()) {
+        if let Some(k) = t.kind().filter(|(_, ty)| *ty != "other") {
+            kinds.entry(k).or_default().push(t);
+        }
+    }
+    let mut out = Vec::new();
+    for ((job, ty), ts) in kinds {
+        for m in moves.iter().filter(|m| job_matches(m, job)) {
+            let (mut es, mut ee, mut rs, mut re) = (0u32, 0u32, 0u32, 0u32);
+            for t in &ts {
+                let Some(seen) = observe(t, m) else { continue };
+                if t.first_ms >= mid {
+                    re += 1;
+                    rs += seen as u32;
+                } else {
+                    ee += 1;
+                    es += seen as u32;
+                }
+            }
+            if ee < HABIT_CHANGE_MIN || re < HABIT_CHANGE_MIN || rs * ee == es * re {
+                continue;
+            }
+            let p = fisher_p(es, ee, rs, re);
+            if p >= CHANCE_P {
+                continue;
+            }
+            out.push(HabitChange {
+                job: job.to_owned(),
+                task_type: ty.to_owned(),
+                label: task_type_label(job, ty).unwrap_or("Other"),
+                move_id: m.move_id.clone(),
+                habit: m.habit.clone(),
+                earlier_seen: es,
+                earlier_eligible: ee,
+                recent_seen: rs,
+                recent_eligible: re,
+                up: rs * ee > es * re,
+                p,
+            });
+        }
+    }
+    out.sort_by(|a, b| {
+        b.up.cmp(&a.up)
+            .then_with(|| a.p.total_cmp(&b.p))
+            .then_with(|| a.label.cmp(b.label))
+            .then_with(|| a.move_id.cmp(&b.move_id))
+    });
     out
 }
 
@@ -1297,38 +1412,41 @@ mod tests {
         assert_eq!(typical_rung([]), None);
     }
 
+    /// Days ago for a task `d` days into the earlier half.
+    const E: i64 = PROGRESS_DAYS as i64;
+
     #[test]
-    fn progress_compares_the_last_14_days_with_the_14_before() {
+    fn progress_compares_the_last_30_days_with_the_30_before() {
         let mut ts = vec![];
-        // tests: Directed before, Delegated now -> up.
+        // tests: Directed before, Delegated now, every task -> up (p = 1/35).
         for i in 0..3 {
-            ts.push(at(&format!("te{i}"), 20 + i, "tests", 2, "judged"));
+            ts.push(at(&format!("te{i}"), E + 6 + i, "tests", 2, "judged"));
         }
         for i in 0..4 {
             ts.push(at(&format!("tr{i}"), 1 + i, "tests", 3, "judged"));
         }
         ts.push(at("tu", 2, "tests", 5, "uncertain"));
-        // fix_bug: Delegated before, Directed now -> down.
-        for i in 0..3 {
-            ts.push(at(&format!("fe{i}"), 15 + i, "fix_bug", 3, "judged"));
+        // fix_bug: Delegated before, Directed now, five each -> down (p < 0.01).
+        for i in 0..5 {
+            ts.push(at(&format!("fe{i}"), E + 1 + i, "fix_bug", 3, "judged"));
             ts.push(at(&format!("fr{i}"), 3 + i, "fix_bug", 2, "right_rung"));
         }
         // refactor: same rung both halves.
         for i in 0..3 {
-            ts.push(at(&format!("re{i}"), 16 + i, "refactor", 2, "judged"));
+            ts.push(at(&format!("re{i}"), E + 2 + i, "refactor", 2, "judged"));
             ts.push(at(&format!("rr{i}"), 5 + i, "refactor", 2, "judged"));
         }
         // deps: two earlier tasks only -> too few, even though the rung differs.
-        ts.push(at("de0", 20, "deps", 1, "judged"));
-        ts.push(at("de1", 21, "deps", 1, "judged"));
+        ts.push(at("de0", E + 6, "deps", 1, "judged"));
+        ts.push(at("de1", E + 7, "deps", 1, "judged"));
         for i in 0..3 {
             ts.push(at(&format!("dr{i}"), 2 + i, "deps", 4, "judged"));
         }
-        // other: the judge's fallback, never a row. Older than 28 days: out of both halves.
+        // other: the judge's fallback, never a row. Older than both halves: out.
         for i in 0..6 {
             ts.push(at(&format!("o{i}"), 1 + i * 3, "other", 1 + (i as u8 % 3), "judged"));
         }
-        ts.push(at("old", 29, "tests", 1, "judged"));
+        ts.push(at("old", 2 * E + 1, "tests", 1, "judged"));
         let p = progress(&ts, NOW, &params());
         let got: Vec<_> = p
             .iter()
@@ -1338,7 +1456,7 @@ mod tests {
             got,
             vec![
                 ("tests", "up", 4, 3, Some(3), Some(2)),
-                ("fix_bug", "down", 3, 3, Some(2), Some(3)),
+                ("fix_bug", "down", 5, 5, Some(2), Some(3)),
                 ("refactor", "same", 3, 3, Some(2), Some(2)),
                 ("deps", "too_few", 3, 2, Some(4), Some(1)),
             ]
@@ -1346,11 +1464,123 @@ mod tests {
         assert_eq!(p[0].uncertain, 1, "uncertain counted beside, not on a rung");
     }
 
+    /// The laptop's 2026-11-08 shapes: a typical rung that flips on one or two tasks is not a move.
+    #[test]
+    fn progress_says_same_when_the_typical_rung_differs_only_by_chance() {
+        let mut ts = vec![];
+        let mut add = |pre: &str, base: i64, rungs: &[(u8, usize)], ty: &str| {
+            let mut i = 0;
+            for &(r, n) in rungs {
+                for _ in 0..n {
+                    ts.push(at(&format!("{pre}{i}"), base + (i as i64 % 20), ty, r, "judged"));
+                    i += 1;
+                }
+            }
+        };
+        // fix_bug, 14-day halves on 11-08: 3 Assisted + 4 Delegated, then 12 + 4 Directed + 2 Delegated.
+        add("fe", E + 1, &[(1, 3), (3, 4)], "fix_bug");
+        add("fr", 1, &[(1, 12), (2, 4), (3, 2)], "fix_bug");
+        // feature, 30-day halves on 11-08: mode 1 then mode 3, p = 0.71.
+        add("ae", E + 1, &[(1, 5), (2, 2), (3, 4), (4, 1)], "feature");
+        add("ar", 1, &[(1, 5), (2, 2), (3, 8)], "feature");
+        let p = progress(&ts, NOW, &params());
+        let got: Vec<_> = p.iter().map(|r| (r.task_type.as_str(), r.trend, r.earlier_rung, r.recent_rung)).collect();
+        assert_eq!(
+            got,
+            vec![("fix_bug", Trend::Same, Some(3), Some(1)), ("feature", Trend::Same, Some(1), Some(3))],
+            "rungs kept for the record, but neither moved"
+        );
+    }
+
+    #[test]
+    fn fisher_p_matches_known_values() {
+        let close = |a: f64, b: f64| (a - b).abs() < 1e-3;
+        assert!(close(fisher_p(0, 3, 4, 4), 1.0 / 35.0), "{}", fisher_p(0, 3, 4, 4));
+        assert!(close(fisher_p(4, 7, 6, 18), 0.378), "{}", fisher_p(4, 7, 6, 18));
+        assert!(close(fisher_p(2, 12, 9, 14), 0.021), "{}", fisher_p(2, 12, 9, 14));
+        assert!(close(fisher_p(2, 7, 11, 11), 0.002), "{}", fisher_p(2, 7, 11, 11));
+        assert!(close(fisher_p(3, 6, 3, 6), 1.0));
+        assert_eq!(fisher_p(0, 0, 3, 5), 1.0, "an empty half says nothing");
+    }
+
+    #[test]
+    fn habit_changes_need_five_tasks_a_half_and_more_than_chance() {
+        let m = mv("written_brief", 3, &["F7"], "code_change");
+        let yes = facts(&[("F7", true)], None);
+        let no = facts(&[("F7", false)], None);
+        let mut ts = vec![];
+        // feature: 2 of 12 before, 9 of 14 now (p = 0.021) -> growing.
+        for i in 0..12 {
+            ts.push(task(
+                &format!("fe{i}"),
+                E + 1 + i,
+                "feature",
+                1,
+                "judged",
+                true,
+                if i < 2 { &yes } else { &no },
+                None,
+            ));
+        }
+        for i in 0..14 {
+            ts.push(task(&format!("fr{i}"), 1 + i, "feature", 1, "judged", true, if i < 9 { &yes } else { &no }, None));
+        }
+        // fix_bug: 3 of 4 before, 0 of 6 now -> too few before.
+        for i in 0..4 {
+            ts.push(task(
+                &format!("be{i}"),
+                E + 1 + i,
+                "fix_bug",
+                1,
+                "judged",
+                true,
+                if i < 3 { &yes } else { &no },
+                None,
+            ));
+        }
+        for i in 0..6 {
+            ts.push(task(&format!("br{i}"), 1 + i, "fix_bug", 1, "judged", true, &no, None));
+        }
+        // tests: 3 of 6 then 4 of 6 -> chance.
+        for i in 0..6 {
+            ts.push(task(
+                &format!("te{i}"),
+                E + 1 + i,
+                "tests",
+                1,
+                "judged",
+                true,
+                if i < 3 { &yes } else { &no },
+                None,
+            ));
+            ts.push(task(&format!("tr{i}"), 1 + i, "tests", 1, "judged", true, if i < 4 { &yes } else { &no }, None));
+        }
+        // Uncertain and unknown facts are not tasks where it fits.
+        ts.push(task("u", 2, "feature", 1, "uncertain", false, &yes, None));
+        ts.push(task("k", 2, "feature", 1, "judged", true, &facts(&[], None), None));
+        let got = habit_changes(&ts, std::slice::from_ref(&m), NOW);
+        assert_eq!(got.len(), 1, "{got:?}");
+        let h = &got[0];
+        assert_eq!(
+            (h.task_type.as_str(), h.label, h.up, h.earlier_seen, h.earlier_eligible, h.recent_seen, h.recent_eligible),
+            ("feature", "Adding a feature", true, 2, 12, 9, 14)
+        );
+        // Reversed in time it is "less often lately".
+        let flip: Vec<JudgedTask> = ts
+            .iter()
+            .filter(|t| t.task_type.as_deref() == Some("feature"))
+            .map(|t| JudgedTask { first_ms: NOW - (2 * E * DAY_MS - (NOW - t.first_ms)) + 1, ..t.clone() })
+            .collect();
+        let down = habit_changes(&flip, &[m], NOW);
+        assert_eq!(down.len(), 1);
+        assert!(!down[0].up && down[0].earlier_seen == 9 && down[0].recent_seen == 2, "{down:?}");
+    }
+
     #[test]
     fn progress_needs_the_repeated_kind_minimum_in_both_halves() {
-        let mut ts = vec![at("e0", 20, "tests", 1, "judged"), at("e1", 21, "tests", 1, "judged")];
-        ts.push(at("e2", 22, "tests", 1, "uncertain"));
-        for i in 0..3 {
+        let mut ts = vec![at("e0", E + 6, "tests", 1, "judged"), at("e1", E + 7, "tests", 1, "judged")];
+        ts.push(at("e2", E + 8, "tests", 1, "uncertain"));
+        for i in 0..4 {
             ts.push(at(&format!("r{i}"), 1 + i, "tests", 3, "judged"));
         }
         assert_eq!(
@@ -1358,7 +1588,7 @@ mod tests {
             Trend::TooFew,
             "an uncertain task does not make up the count"
         );
-        ts.push(at("e3", 23, "tests", 1, "judged"));
+        ts.push(at("e3", E + 9, "tests", 1, "judged"));
         assert_eq!(progress(&ts, NOW, &params())[0].trend, Trend::Up);
         let strict = CoachParams { recurring_min: 4, ..params() };
         assert_eq!(progress(&ts, NOW, &strict)[0].trend, Trend::TooFew, "the minimum is the tips' recurring_min");

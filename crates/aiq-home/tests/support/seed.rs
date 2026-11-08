@@ -618,32 +618,46 @@ pub fn tour(paths: &Paths) {
     open_task(paths);
 }
 
-/// Rung progress (the success measure): kinds of task judged in the last 14 days and the 14 before.
-/// Writing tests moves up (Directed to Delegated), a spec moves down, fixing a bug stays, refactoring is too few.
+/// Rung progress (the success measure): kinds of task judged in the last 30 days and the 30 before.
+/// Writing tests moves up (Directed to Delegated) while its written-brief habit grows (0 of 5, then 5 of 5);
+/// a spec moves down; fixing a bug stays; adding a feature's typical rung flips by chance only (holding);
+/// refactoring is too few.
 pub fn progress(paths: &Paths) {
     let mut s = Seed::new(paths);
-    // (job, type, rung, state, days ago)
-    let mut rows: Vec<(&str, &str, u8, &str, i64)> = vec![];
-    for d in [16, 18, 20] {
-        rows.push(("code_change", "tests", 2, "judged", d));
-        rows.push(("write_doc", "spec", 3, "judged", d + 1));
-        rows.push(("code_change", "fix_bug", 1, "right_rung", d + 2));
+    // (job, type, rung, state, days ago, written brief)
+    let mut rows: Vec<(&str, &str, u8, &str, i64, bool)> = vec![];
+    for d in [36, 38, 40, 42, 44] {
+        rows.push(("code_change", "tests", 2, "judged", d, false));
+        rows.push(("write_doc", "spec", 3, "judged", d + 1, false));
     }
-    for d in [1, 3, 5, 7] {
-        rows.push(("code_change", "tests", 3, "judged", d));
+    for d in [36, 38, 40] {
+        rows.push(("code_change", "fix_bug", 1, "right_rung", d + 2, false));
+    }
+    for (d, r) in [(37, 1), (39, 1), (41, 3)] {
+        rows.push(("code_change", "feature", r, "judged", d, false));
+    }
+    for d in [1, 3, 5, 7, 9] {
+        rows.push(("code_change", "tests", 3, "judged", d, true));
+        rows.push(("write_doc", "spec", 2, "judged", d + 1, false));
     }
     for d in [2, 4, 6] {
-        rows.push(("write_doc", "spec", 2, "judged", d));
-        rows.push(("code_change", "fix_bug", 1, "right_rung", d + 1));
+        rows.push(("code_change", "fix_bug", 1, "right_rung", d + 1, false));
     }
-    rows.push(("code_change", "tests", 4, "uncertain", 2));
-    rows.push(("code_change", "refactor", 2, "judged", 3));
-    rows.push(("code_change", "refactor", 2, "judged", 17));
-    for (i, (job, ty, cur, state, days)) in rows.iter().enumerate() {
+    for (d, r) in [(8, 3), (10, 3), (12, 1)] {
+        rows.push(("code_change", "feature", r, "judged", d, false));
+    }
+    rows.push(("code_change", "tests", 4, "uncertain", 2, false));
+    rows.push(("code_change", "refactor", 2, "judged", 3, false));
+    rows.push(("code_change", "refactor", 2, "judged", 37, false));
+    for (i, (job, ty, cur, state, days, brief)) in rows.iter().enumerate() {
         let at = NOW - days * DAY - (i as i64) * MIN;
         let id = s.prompt("copilot-cli", &format!("p{i}"), at, Some(AIQ), &format!("{ty} task number {i}"));
         s.stop("copilot-cli", &format!("p{i}"), at + 3 * MIN);
-        s.store.insert_judgment(&coach_row(&id, job, ty, *cur, state, 0)).unwrap();
+        let mut j = coach_row(&id, job, ty, *cur, state, 0);
+        if *brief {
+            j.facts = j.facts.replace(r#""F7":{"value":false"#, r#""F7":{"value":true"#);
+        }
+        s.store.insert_judgment(&j).unwrap();
     }
 }
 

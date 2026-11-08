@@ -1197,7 +1197,7 @@ fn render_progress(c: &aiq_home::Coaching) -> String {
     let mut o = format!(
         "Rung progress by kind of task: the typical rung (most common) of your analyzed tasks in the last {d} days\n\
          against the {d} days before. Task counts are measured; rungs are AIQ's analysis. A kind needs\n\
-         at least {min} analyzed tasks in each half before AIQ says it moved.\n\n"
+         at least {min} analyzed tasks in each half, and a change bigger than chance, before AIQ says it moved.\n\n"
     );
     let up = c.progress.iter().filter(|r| r.trend == "up").count();
     let down = c.progress.iter().filter(|r| r.trend == "down").count();
@@ -1220,6 +1220,9 @@ fn render_progress(c: &aiq_home::Coaching) -> String {
                     rung(r.recent_rung)
                 )
             }
+            "same" if r.recent_rung != r.earlier_rung => {
+                format!("holding: {} -> {} is within chance", rung(r.earlier_rung), rung(r.recent_rung))
+            }
             "same" => format!("same rung: {}", rung(r.recent_rung)),
             _ => "too few tasks to say".to_owned(),
         };
@@ -1231,6 +1234,33 @@ fn render_progress(c: &aiq_home::Coaching) -> String {
             r.earlier,
             if r.uncertain > 0 { format!("; {} AIQ isn't sure about left out", r.uncertain) } else { String::new() }
         );
+    }
+    o += &render_habit_changes(c);
+    o
+}
+
+/// Habits whose use in one kind of task changed by more than chance: the steps toward a rung move.
+fn render_habit_changes(c: &aiq_home::Coaching) -> String {
+    let d = c.progress_days;
+    if c.habit_changes.is_empty() {
+        return format!(
+            "\nHabits: none changed by more than chance yet (each needs {} tasks where it fits in each half).\n",
+            c.habit_change_min
+        );
+    }
+    let mut o = format!("\nHabits that changed, last {d} days against the {d} before (bigger than chance):\n");
+    for (dir, head) in [("up", "Growing"), ("down", "Less often lately")] {
+        let rows: Vec<_> = c.habit_changes.iter().filter(|h| h.dir == dir).collect();
+        if rows.is_empty() {
+            continue;
+        }
+        o += &format!("{head}\n");
+        for h in rows {
+            o += &format!(
+                "  {}: {}\n    {} of {} tasks before, {} of {} now\n",
+                h.label, h.habit, h.earlier_seen, h.earlier_eligible, h.recent_seen, h.recent_eligible
+            );
+        }
     }
     o
 }
@@ -1343,8 +1373,56 @@ mod tips_tests {
         );
         assert!(o.contains("same rung: Assisted (1)"), "{o}");
         assert!(o.contains("Refactoring or cleaning up [Code a change]: too few tasks to say\n  1 analyzed"), "{o}");
+        assert!(o.contains("Habits: none changed by more than chance yet (each needs 0 tasks"), "{o}");
         let empty = aiq_home::Coaching { progress_days: 14, progress_min: 3, ..Default::default() };
         assert!(render_progress(&empty).contains("No analyzed tasks with a kind in the last 28 days yet."));
+    }
+
+    #[test]
+    fn progress_report_says_holding_within_chance_and_lists_habit_changes() {
+        let hc = |ty: &str, habit: &str, es, ee, rs, re, dir| aiq_home::HabitChangeRow {
+            job: "code_change".into(),
+            task_type: ty.into(),
+            label: aiq_contracts::judge::task_type_label("code_change", ty).unwrap(),
+            move_id: "m".into(),
+            habit: habit.into(),
+            earlier_seen: es,
+            earlier_eligible: ee,
+            recent_seen: rs,
+            recent_eligible: re,
+            dir,
+        };
+        let c = aiq_home::Coaching {
+            progress: vec![aiq_home::ProgressRow {
+                job: "code_change".into(),
+                task_type: "feature".into(),
+                label: "Adding a feature",
+                recent: 15,
+                earlier: 12,
+                uncertain: 0,
+                recent_rung: Some(3),
+                earlier_rung: Some(1),
+                trend: "same",
+            }],
+            habit_changes: vec![
+                hc("feature", "Keep an instructions file in the repo and point to it", 2, 12, 9, 14, "up"),
+                hc("fix_bug", "Paste the error or name the files", 9, 12, 4, 15, "down"),
+            ],
+            progress_days: 30,
+            progress_min: 3,
+            habit_change_min: 5,
+            ..Default::default()
+        };
+        let o = render_progress(&c);
+        assert!(
+            o.contains("Adding a feature [Code a change]: holding: Assisted (1) -> Delegated (3) is within chance"),
+            "{o}"
+        );
+        assert!(o.contains("Moved up a rung: 0. Moved down: 0."), "{o}");
+        assert!(o.contains("Habits that changed, last 30 days against the 30 before (bigger than chance):\nGrowing\n  Adding a feature: Keep an instructions file in the repo and point to it\n    2 of 12 tasks before, 9 of 14 now\nLess often lately\n  Fixing a bug or failing test: Paste the error or name the files\n    9 of 12 tasks before, 4 of 15 now\n"), "{o}");
+        for w in ["judge", "watch", "monitor"] {
+            assert!(!o.to_lowercase().contains(w), "{w} in {o}");
+        }
     }
 
     #[test]

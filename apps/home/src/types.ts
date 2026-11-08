@@ -290,6 +290,26 @@ export interface Coaching {
   progress_days: number;
   /** Judged tasks each half needs before AIQ says a kind moved. */
   progress_min: number;
+  /** Habits whose use in one kind of task changed by more than chance, same halves as `progress`. Growing first. */
+  habit_changes: HabitChange[];
+  /** Tasks where a habit fits, in each half, before AIQ says it changed. */
+  habit_change_min: number;
+  /** The rung mix's change and the kind chart's split: last `shift_days` against the `shift_days` before. */
+  shift_days: number;
+}
+
+export interface HabitChange {
+  job: string;
+  task_type: string;
+  label: string;
+  move_id: string;
+  habit: string;
+  earlier_seen: number;
+  earlier_eligible: number;
+  recent_seen: number;
+  recent_eligible: number;
+  /** "up": growing; "down": less often lately. */
+  dir: "up" | "down";
 }
 
 export type Trend = "up" | "down" | "same" | "too_few";

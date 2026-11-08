@@ -654,8 +654,11 @@
     "habits_imported": true,
     "untyped": 2,
     "progress": [],
-    "progress_days": 14,
-    "progress_min": 3
+    "progress_days": 30,
+    "progress_min": 3,
+    "habit_changes": [],
+    "habit_change_min": 5,
+    "shift_days": 14
   },
   "update": {
     "supported": true,
@@ -754,8 +757,11 @@
         "habits_imported": false,
         "untyped": 1,
         "progress": [],
-        "progress_days": 14,
-        "progress_min": 3
+        "progress_days": 30,
+        "progress_min": 3,
+        "habit_changes": [],
+        "habit_change_min": 5,
+        "shift_days": 14
       }
     },
     {
@@ -839,8 +845,11 @@
         "habits_imported": true,
         "untyped": 1,
         "progress": [],
-        "progress_days": 14,
-        "progress_min": 3
+        "progress_days": 30,
+        "progress_min": 3,
+        "habit_changes": [],
+        "habit_change_min": 5,
+        "shift_days": 14
       }
     },
     {
@@ -924,8 +933,11 @@
         "habits_imported": false,
         "untyped": 0,
         "progress": [],
-        "progress_days": 14,
-        "progress_min": 3
+        "progress_days": 30,
+        "progress_min": 3,
+        "habit_changes": [],
+        "habit_change_min": 5,
+        "shift_days": 14
       }
     }
   ],

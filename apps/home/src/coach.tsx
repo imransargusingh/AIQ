@@ -295,3 +295,21 @@ export function RungMix(props: {
     </>
   );
 }
+
+/** Under the ladder map: how many habits changed by more than chance, the steps before a kind moves a rung.
+ *  The habits themselves live in Habits and tips. Nothing when none changed. */
+export function HabitChangeLine({ c, go }: { c: Coaching; go: () => void }) {
+  const up = c.habit_changes.filter((h) => h.dir === "up").length;
+  const down = c.habit_changes.length - up;
+  if (up + down === 0) return null;
+  const parts = [up > 0 && `${up} ${up === 1 ? "habit is" : "habits are"} growing`, down > 0 && `${down} less often lately`].filter(Boolean);
+  return (
+    <p className="hc-line">
+      <span className="hc-dot" aria-hidden="true" />
+      <span>
+        {parts.join(" · ")}: the steps that move a kind of task up.{" "}
+        <button className="btnlink" onClick={go}>See them in Habits and tips</button>
+      </span>
+    </p>
+  );
+}
