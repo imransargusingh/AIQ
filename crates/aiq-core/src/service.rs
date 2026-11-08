@@ -1700,6 +1700,7 @@ impl<C: Clock> Service<C> {
                 };
                 ShowReply {
                     leaned_on,
+                    team_tool: None,
                     card: serde_json::from_str(&r.card_json).ok(),
                     outcome: Some(r.outcome),
                     reason_code: Some(r.reason_code),
@@ -1718,6 +1719,7 @@ impl<C: Clock> Service<C> {
                 delivered: false,
                 evidence: vec![],
                 leaned_on: vec![],
+                team_tool: None,
             },
         }
     }

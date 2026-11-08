@@ -1,0 +1,31 @@
+# Every habit id a team tips file may name (aiq.team-tips.v1). Teams key their entries by these ids.
+# A test fails if one disappears from the bundled pack. To retire a habit, remove its id here on purpose
+# and say so in the release notes, so teams can move their entry.
+brief
+brief_doc
+brief_question
+new_info
+check_code
+check_sources
+hand_over
+hand_over_doc
+let_agent_write
+doc_one_go
+let_agent_edit
+check_answer
+whole_question
+let_agent_look
+ask_one_go
+brief_run
+check_running
+hand_over_run
+let_agent_run
+run_one_go
+written_brief
+agent_checks
+agent_checks_doc
+agent_checks_run
+split_and_check
+split_question
+agent_checks_answer
+saved_workflow

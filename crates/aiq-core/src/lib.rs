@@ -17,5 +17,6 @@ pub mod server;
 pub mod service;
 pub mod spool;
 pub mod sysclock;
+pub mod team_tips;
 pub mod tools;
 pub mod update;

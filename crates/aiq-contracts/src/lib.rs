@@ -9,3 +9,4 @@ pub mod frames;
 pub mod judge;
 pub mod label;
 pub mod pack;
+pub mod team_tips;

@@ -25,6 +25,23 @@ export interface Snapshot {
   guide: GuideMove[];
   /** Where new tasks' tips went, today and over 7 days, and recent days with no tip (design tip-funnel). */
   tip_funnel: TipFunnels;
+  /** The team tips file (aiq.team-tips.v1), read in place; absent when no folder is set. */
+  team_tips?: TeamTips;
+}
+
+/** Mirrors aiq-home `TeamTips`: one "Tool to try" per habit, from the person's team tips file. */
+export interface TeamTips {
+  set: boolean;
+  /** Why the file can't be used, in AIQ's words. Tips show as usual. */
+  problem: string | null;
+  tools: TeamTool[];
+}
+
+export interface TeamTool {
+  move_id: string;
+  tool: string;
+  how: string;
+  link?: string;
 }
 
 /** Mirrors aiq-contracts `TipFunnels`. Counted from stored rows; the same reader as `aiq status`. */

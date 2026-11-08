@@ -229,7 +229,8 @@ fn writer_loop(mut svc: Service<SystemClock>, rx: Receiver<Cmd>, paths: &Paths, 
                 let fresh = received.elapsed() <= Duration::from_millis(wait_ms);
                 let card = svc.take_card(&event, trace_id.as_deref(), fresh);
                 let id = card.as_ref().map(|c| c.card_id.clone());
-                let sent = reply.send(TakeCardReply { card, plain: !svc.switch_on(SETTING_TIP_HIGHLIGHT) });
+                let sent =
+                    reply.send(TakeCardReply { card, plain: !svc.switch_on(SETTING_TIP_HIGHLIGHT), team_tool: None });
                 if let (Err(_), Some(id)) = (sent, id) {
                     svc.hand_back(&id); // the hook's wait ended before the reply: it will never print this tip
                 }
@@ -240,16 +241,30 @@ fn writer_loop(mut svc: Service<SystemClock>, rx: Receiver<Cmd>, paths: &Paths, 
                 let _ = reply.send(svc.status());
             }
             Cmd::Show { card_id, opened_on, reply } => {
-                let _ = reply.send(svc.show(&card_id, &opened_on));
+                let mut r = svc.show(&card_id, &opened_on);
+                if let Some(c) = &r.card {
+                    // Only VS Code's own details view; `aiq show` renders its line in the CLI (never in Claude Code).
+                    r.team_tool = crate::team_tips::line_on(paths, &opened_on, &c.tip_id);
+                }
+                let _ = reply.send(r);
             }
             Cmd::TipLine { surface, session, reply } => {
                 let plain = !svc.switch_on(SETTING_TIP_HIGHLIGHT);
-                let _ = reply.send(tip_line_reply(svc.tip_line(&surface, session.as_deref()), plain));
+                let out = svc.tip_line(&surface, session.as_deref());
+                // Copilot CLI may name the team's tool (team tips file); it shows only when the line still fits.
+                let tool = match &out {
+                    Some(TipLineOut::Full(c)) => crate::team_tips::load(paths)
+                        .and_then(|t| crate::team_tips::tool_for_tip(&t, &c.tip_id).map(str::to_owned)),
+                    _ => None,
+                };
+                let _ = reply.send(tip_line_reply(out, plain, tool.as_deref()));
             }
             Cmd::TakeCardAny { surface, received, reply } => {
                 // A card handed to a poller that already gave up would be lost; deliver only while it waits.
                 let card = if received.elapsed() <= RENDER_WAIT { svc.take_card_any(&surface) } else { None };
-                let _ = reply.send(TakeCardReply { card, plain: !svc.switch_on(SETTING_TIP_HIGHLIGHT) });
+                // VS Code may name the team's tool (team tips file); the hook surfaces render their own line.
+                let team_tool = card.as_ref().and_then(|c| crate::team_tips::line_on(paths, &surface, &c.tip_id));
+                let _ = reply.send(TakeCardReply { card, plain: !svc.switch_on(SETTING_TIP_HIGHLIGHT), team_tool });
             }
             Cmd::Setting { key, value, reply } => {
                 let _ = reply.send(svc.set(&key, &value));
@@ -476,12 +491,12 @@ pub fn forget_files(paths: &Paths) -> std::io::Result<()> {
 
 /// The status line's reply: what to show, plus the line itself rendered here, with and without colour, so the
 /// status-line program only prints it (design auto-update U5n). `plain`: the person turned the highlight off.
-pub fn tip_line_reply(out: Option<TipLineOut>, plain: bool) -> TipLineReply {
-    use aiq_contracts::card::{render_status_line, render_trend_line, render_waiting_marker};
+pub fn tip_line_reply(out: Option<TipLineOut>, plain: bool, tool: Option<&str>) -> TipLineReply {
+    use aiq_contracts::card::{render_status_line_with_tool, render_trend_line, render_waiting_marker};
     let lines = |f: &dyn Fn(bool) -> String| (Some(f(!plain)), Some(f(false)));
     match out {
         Some(TipLineOut::Full(c)) => {
-            let (line, line_plain) = lines(&|color| render_status_line(&c, color));
+            let (line, line_plain) = lines(&|color| render_status_line_with_tool(&c, color, tool));
             TipLineReply { card: Some(c), plain, line, line_plain, ..Default::default() }
         }
         Some(TipLineOut::Waiting(id)) => {

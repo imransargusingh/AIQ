@@ -4,7 +4,7 @@
 //! `additionalContext`, `decision` or `continue`. Copilot: stderr is always empty; stdout is empty, or on
 //! a Copilot CLI `agentStop` exactly one display-only `{"type":"progress",…}` line with the tip (setting
 //! `copilot_tip_in_chat`, default on); never `decision`, `additionalContext` or exit code 2.
-use aiq_contracts::card::{claude_code_system_message, copilot_progress_message};
+use aiq_contracts::card::{claude_code_system_message, copilot_progress_message_with_tool};
 use aiq_contracts::codes;
 use aiq_contracts::event::{EventBody, EventV1, MAX_PROMPT_BYTES, PromptPayload, SCHEMA, StopPayload, cap_text};
 use aiq_contracts::frames::{Request, SpoolLine, TakeCardReply};
@@ -208,10 +208,12 @@ fn inner_outcome(paths: &Paths, host: &str, event: &str, start: Instant, marks: 
             );
             match reply {
                 Ok(Some(line)) => match serde_json::from_str::<TakeCardReply>(&line) {
-                    Ok(TakeCardReply { card: Some(card), plain }) => {
+                    Ok(TakeCardReply { card: Some(card), plain, .. }) => {
                         let color = color_allowed() && !plain;
                         let text = if host == "copilot" {
-                            copilot_progress_message(&card, color)
+                            // The team's "Tool to try" line: Copilot surfaces only, never stored (team tips file).
+                            let tool = aiq_core::team_tips::line_on(paths, &ev.surface, &card.tip_id);
+                            copilot_progress_message_with_tool(&card, color, tool.as_deref())
                         } else {
                             claude_code_system_message(&card, color)
                         };
