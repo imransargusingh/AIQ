@@ -622,10 +622,68 @@ for (const theme of ["light", "dark", "contrast"]) {
   });
 }
 
-await test("Right now card: gone with no open task and when switched off; the switch is in Settings > Tips", async () => {
-  const none = await open("full");
-  assert.equal(await none.getByTestId("right-now").count(), 0);
+// Imran 2026-11-08: the card stays when nothing is open, so Home keeps its shape and the person can tell "nothing
+// in progress" from "AIQ hears nothing". Gone only when switched off.
+for (const theme of ["light", "dark", "contrast"]) {
+  await test(`Right now card, nothing open: stays, says so, names each connected tool's last activity, no axe violations (${theme})`, async () => {
+    const page = await open("full", {
+      theme: theme === "light" ? undefined : theme,
+      edit: (s) => {
+        s.starting = [];
+        s.setup.tools = ["claude-code", "copilot", "vscode"].map((tool) => ({ tool, hooked: true, present: true, install: "" }));
+        s.seen = [
+          { surface: "copilot-cli", last_ms: s.now_ms - 12 * 60_000 },
+          { surface: "claude-code", last_ms: s.now_ms - 26 * 3_600_000 },
+        ];
+      },
+    });
+    const card = page.getByTestId("right-now");
+    assert.equal(await card.getAttribute("data-state"), "idle");
+    const t = await card.innerText();
+    assert.match(t, /Right now · Nothing in progress/);
+    assert.match(t, /Copilot\s*last activity 12 min ago/);
+    assert.match(t, /Claude Code\s*last activity Yesterday/);
+    assert.match(t, /VS Code\s*nothing yet/);
+    assert.match(await page.getByTestId("right-now-hint").innerText(), /^Using VS Code with an agent right now\? AIQ has had nothing from it lately\./);
+    assert.doesNotMatch(t, /Watching|Monitoring/);
+    assert.deepEqual(await axe(page), []);
+    if (shots) await page.screenshot({ path: join(shots, `right-now-idle-${theme}.png`) });
+    if (theme === "light") {
+      await page.getByTestId("right-now-hint").getByRole("button", { name: "Check it in Settings" }).click();
+      await page.waitForFunction(() => location.hash === "#settings");
+    }
+    assert.deepEqual(page.errors, []);
+    await page.context().close();
+  });
+}
+
+await test("Right now card: a task whose first turn is running shows as starting, not as nothing", async () => {
+  const page = await open("full");
+  const card = page.getByTestId("right-now");
+  assert.equal(await card.getAttribute("data-state"), "starting");
+  const t = await card.innerText();
+  assert.match(t, /Right now · Task starting/);
+  assert.match(t, /Copilot CLI · since \d\d:\d\d · 1 prompt · agent working/);
+  assert.match(t, /Where it is heading shows after the agent's first reply/);
+  await page.context().close();
+});
+
+await test("Right now card: paused, not running and no tool connected each say so instead of hiding", async () => {
+  const quiet = { starting: [] };
+  const paused = await open("full", { edit: (s) => Object.assign(s, quiet, { status: { ...s.status, paused: true } }) });
+  assert.match(await paused.getByTestId("right-now").innerText(), /Right now · Paused[\s\S]*AIQ records nothing new while paused/);
+  await paused.getByTestId("right-now").getByRole("button", { name: "Resume" }).click();
+  assert.ok((await paused.evaluate(() => window.__AIQ_FIXTURE__.calls)).some((c) => JSON.stringify(c).includes("pause")));
+  await paused.context().close();
+  const down = await open("full", { edit: (s) => Object.assign(s, quiet, { status: { ...s.status, core_state: "failed" } }) });
+  assert.match(await down.getByTestId("right-now").innerText(), /Right now · Waiting for AIQ to start/);
+  await down.context().close();
+  const none = await open("full", { edit: (s) => Object.assign(s, quiet, { setup: { ...s.setup, tools: s.setup.tools.map((x) => ({ ...x, hooked: false })) } }) });
+  assert.match(await none.getByTestId("right-now").innerText(), /Right now · No tool connected/);
   await none.context().close();
+});
+
+await test("Right now card: gone only when switched off; the switch is in Settings > Tips", async () => {
   const unread = await open("live", {
     edit: (s) => Object.assign(s.live[0], { rung: null, could: null, did_turns: [], steps: [{ turn: 1, at_ms: s.live[0].first_ms, rung: null, recorded: false }], unrecorded: [1], unrecorded_why: ["no_start"] }),
   });
@@ -634,7 +692,7 @@ await test("Right now card: gone with no open task and when switched off; the sw
   assert.match(ut, /Turn 1: no details \(AIQ restarted during the turn\)/);
   assert.equal(await unread.getByTestId("right-now").getByRole("img").count(), 0, "no empty chart");
   await unread.context().close();
-  const off = await open("live", { edit: (s) => (s.live = []) });
+  const off = await open("live", { edit: (s) => Object.assign(s, { live: [], starting: [], settings: { ...s.settings, live_trend: false } }) });
   assert.equal(await off.getByTestId("right-now").count(), 0);
   await off.context().close();
   const st = await open("live", { hash: "#settings" });

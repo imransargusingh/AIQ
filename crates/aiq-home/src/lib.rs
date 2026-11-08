@@ -62,6 +62,12 @@ pub struct Snapshot {
     /// event is within the idle gap and whose first turn has ended, the newest activity first. Empty when no task is
     /// open or the person turned it off.
     pub live: Vec<Live>,
+    /// Sessions active within the idle gap whose first turn hasn't ended (Imran 2026-11-08): the Right now card names
+    /// them instead of hiding, newest activity first. Sessions the task list leaves out (set aside) stay out: AIQ's
+    /// own analysis runs are among them.
+    pub starting: Vec<Starting>,
+    /// Each surface's newest event, newest first, so the quiet Right now card can say when each tool was last heard.
+    pub seen: Vec<Seen>,
     /// The rung guide (Imran 2026-11-05, option B): every next-step move in pack order, with its text. Pack data,
     /// the same for everyone; the person's own rung per job comes from `coaching.kinds`.
     pub guide: Vec<GuideMove>,
@@ -95,6 +101,23 @@ pub struct Live {
     pub kind: Option<&'static str>,
     /// The task's folder (`TaskRow.folder`), so a chip can name its project under any project filter.
     pub folder: Option<String>,
+}
+
+/// A session active within the idle gap that shows no estimate yet (see `Snapshot::starting`).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Starting {
+    pub surface: String,
+    pub first_ms: i64,
+    pub last_ms: i64,
+    pub prompts: u32,
+    pub working: bool,
+}
+
+/// One surface's newest event (see `Snapshot::seen`).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Seen {
+    pub surface: String,
+    pub last_ms: i64,
 }
 
 /// One project: the tasks whose session ran in one folder (design project-filter P1–P5b). Its numbers run the
@@ -806,6 +829,8 @@ fn empty(paths: &Paths, pack: &PackV1, now: Now) -> Snapshot {
         update: aiq_core::update::view(paths, None, now.utc_ms),
         projects: vec![],
         live: vec![],
+        starting: vec![],
+        seen: vec![],
         guide: pack
             .moves
             .iter()
@@ -929,7 +954,7 @@ fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()>
     let judged_all = judged_tasks(&tasks.iter().collect::<Vec<_>>(), &judgments);
     s.tasks = tasks;
     if s.settings.live_trend {
-        s.live = live(store, pack, now.utc_ms, s)?;
+        (s.live, s.starting) = live(store, pack, now.utc_ms, s)?;
     }
 
     // Tips: delivered cards in the last 90 days, newest first; tips today counted as the trigger engine counts.
@@ -982,7 +1007,13 @@ fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()>
         }
     }
     s.data.store_bytes = store.size_bytes();
-    s.status.last_event_ms = q(c.query_row("SELECT max(ts_utc_ms) FROM event", [], |r| r.get(0)))?;
+    {
+        // One scan gives both the newest event and each tool's newest (the quiet Right now card).
+        let mut st = q(c.prepare("SELECT surface, max(ts_utc_ms) FROM event GROUP BY surface ORDER BY 2 DESC"))?;
+        s.seen =
+            q(q(st.query_map([], |r| Ok(Seen { surface: r.get(0)?, last_ms: r.get(1)? })))?.collect::<Result<_, _>>())?;
+        s.status.last_event_ms = s.seen.first().map(|x| x.last_ms);
+    }
     {
         let mut st = q(c.prepare(
             "SELECT e.event_id, e.ts_utc_ms, e.surface, e.kind, t.text,
@@ -1027,7 +1058,7 @@ const LIVE_MAX: usize = 6;
 
 /// Every live session's open task, the newest activity first, each with "could reach" from the kinds rows (the
 /// same rows Home shows).
-fn live(store: &Store, pack: &PackV1, now_ms: i64, s: &Snapshot) -> R<Vec<Live>> {
+fn live(store: &Store, pack: &PackV1, now_ms: i64, s: &Snapshot) -> R<(Vec<Live>, Vec<Starting>)> {
     let gap = pack.idle_gap_min as i64 * 60_000;
     let mut st = q(store.raw().prepare(
         "SELECT surface, surface_session_id FROM event WHERE ts_utc_ms >= ?1
@@ -1035,44 +1066,61 @@ fn live(store: &Store, pack: &PackV1, now_ms: i64, s: &Snapshot) -> R<Vec<Live>>
     ))?;
     let sessions: Vec<(String, String)> =
         q(q(st.query_map([now_ms - gap], |r| Ok((r.get(0)?, r.get(1)?))))?.collect::<Result<_, _>>())?;
-    let mut out = vec![];
+    let (mut out, mut starting) = (vec![], vec![]);
     for (surface, session) in sessions {
-        if out.len() == LIVE_MAX {
+        if out.len() + starting.len() == LIVE_MAX {
             break;
         }
-        if let Some(l) = open_live(store, &surface, &session, now_ms, gap, s)? {
-            out.push(l);
+        match open_live(store, &surface, &session, now_ms, gap, s)? {
+            Open::Shown(l) => out.push(*l),
+            Open::Starting(x) => starting.push(x),
+            Open::None => {}
         }
     }
-    Ok(out)
+    Ok((out, starting))
 }
 
-/// One session's open task for the card; None when its first turn has not ended or the list leaves it out.
-fn open_live(store: &Store, surface: &str, session: &str, now_ms: i64, gap: i64, s: &Snapshot) -> R<Option<Live>> {
+enum Open {
+    Shown(Box<Live>),
+    /// Active, but its first turn hasn't ended: no estimate to show yet.
+    Starting(Starting),
+    None,
+}
+
+/// One session's open task for the card; `Starting` while its first turn has not ended.
+fn open_live(store: &Store, surface: &str, session: &str, now_ms: i64, gap: i64, s: &Snapshot) -> R<Open> {
     let Some(mut t) =
         aiq_core::live_trend::open_task(store, surface, session, now_ms, gap).map_err(|e| e.to_string())?
     else {
-        return Ok(None);
+        return Ok(Open::None);
+    };
+    let found = s
+        .tasks
+        .iter()
+        .find(|x| x.origin == "live" && x.tool == t.surface && x.members.iter().any(|(_, ms)| *ms == t.first_ms))
+        .map(|x| (x.task_id.clone(), x.folder.clone()));
+    let Some((task_id, folder)) = found else {
+        return Ok(Open::None); // the list leaves it out (set aside): no card, no tips
     };
     if t.steps.is_empty() {
-        return Ok(None); // the first turn has not ended: nothing to show yet, so no empty card
+        // The first turn has not ended: nothing to chart yet, but the card says a task is starting.
+        let x = Starting {
+            surface: t.surface,
+            first_ms: t.first_ms,
+            last_ms: t.last_ms,
+            prompts: t.prompts,
+            working: t.working,
+        };
+        return Ok(Open::Starting(x));
     }
     let row =
         s.coaching.kinds.iter().find(|k| Some(&k.job) == t.job.as_ref() && Some(&k.task_type) == t.task_type.as_ref());
     t.could = row.and_then(|k| k.potential).filter(|p| t.rung.is_some_and(|r| *p > r));
-    let Some((task_id, folder)) = s
-        .tasks
-        .iter()
-        .find(|x| x.origin == "live" && x.tool == t.surface && x.members.iter().any(|(_, ms)| *ms == t.first_ms))
-        .map(|x| (x.task_id.clone(), x.folder.clone()))
-    else {
-        return Ok(None);
-    };
     let kind = match (t.job.as_deref(), t.task_type.as_deref()) {
         (Some(j), Some(ty)) => aiq_contracts::judge::task_type_label(j, ty),
         _ => None,
     };
-    Ok(Some(Live { trend: t, task_id, kind, folder }))
+    Ok(Open::Shown(Box::new(Live { trend: t, task_id, kind, folder })))
 }
 
 /// Every task whose first prompt is at or after `since_ms`, live and imported, newest first. A session's own

@@ -2504,6 +2504,21 @@
       "folder": "c:\\users\\imran\\source\\repos\\foresight"
     }
   ],
+  "starting": [],
+  "seen": [
+    {
+      "surface": "vscode",
+      "last_ms": 1793534370000
+    },
+    {
+      "surface": "copilot-cli",
+      "last_ms": 1793534340000
+    },
+    {
+      "surface": "claude-code",
+      "last_ms": 1793534040000
+    }
+  ],
   "guide": [
     {
       "move_id": "brief",

@@ -349,6 +349,10 @@ li+li>.kindrow{border-top:1px solid var(--hairline)}
 .rn-dot{width:8px;height:8px;border-radius:50%;border:1.5px solid var(--ink-mute);flex:none}
 .rn-dot.busy{background:var(--success);border-color:var(--success)}
 .rn-meta{margin:var(--s2) 0 0}
+.rn-tools{list-style:none;padding:0;margin:var(--s3) 0 var(--s2);display:flex;flex-wrap:wrap;gap:var(--s2) var(--s5)}
+.rn-tools li{display:flex;align-items:center;gap:var(--s2)}
+.rn-dot.none{border-style:dashed}
+.rn-hint{margin-top:var(--s2)}
 @media (forced-colors:active){.rn-line,.rn-pt,.rn-could{stroke:CanvasText}.rn-last{fill:Highlight}.rn-tipbox,.rn-badge{forced-color-adjust:none}
   .rn-sw{border:1px solid CanvasText}.rn-chip.on{outline:2px solid Highlight}.rn-dot.busy{background:CanvasText}}
 /* The titlebar's update marker (design auto-update U5h): one chip, primary while an update waits. */

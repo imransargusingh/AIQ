@@ -4,10 +4,10 @@
 // (Imran 2026-11-07, option A): one chip per task names it and shows the rung it is heading for; the chosen task's
 // chart shows below, and it stays chosen while the others move.
 import { useState } from "react";
-import { clock, jobName, plural, rungLabel, sentence, toolName } from "../format";
+import { clock, jobName, plural, rungLabel, sentence, toolName, when } from "../format";
 import { projectName } from "../project";
 import type { Ctx } from "../ui";
-import type { Live } from "../types";
+import type { Live, Snapshot } from "../types";
 
 const RN = ["Assisted", "Directed", "Delegated", "Orchestrated"];
 /** Why a turn's actions were not recorded (`turn_action.why`), in plain words. */
@@ -109,7 +109,7 @@ export function RightNow(ctx: Ctx) {
   const [picked, setPicked] = useState<string | null>(null);
   const all = ctx.snap.live;
   const l = chosen(all, picked);
-  if (!l) return null;
+  if (!l) return ctx.snap.settings.live_trend ? <Quiet {...ctx} /> : null;
   const many = all.length > 1;
   const mins = Math.max(1, Math.round((ctx.snap.now_ms - l.first_ms) / 60_000));
   const at = (x: Live) => clock(x.first_ms, ctx.snap.offset_min);
@@ -215,6 +215,124 @@ export function RightNow(ctx: Ctx) {
           </button>
         </p>
       </div>
+    </section>
+  );
+}
+
+/** A connected tool (Settings > Tools) and the surface its events carry. */
+const SURFACE: Record<string, [string, string]> = {
+  "claude-code": ["claude-code", "Claude Code"],
+  copilot: ["copilot-cli", "Copilot"],
+  vscode: ["vscode", "VS Code"],
+};
+/** A connected tool silent this long gets the "is it reaching AIQ?" hint. simplify: one fixed span; per-person
+ * rhythm (how often each tool is usually used) if the hint shows for tools people rarely open. */
+export const QUIET_HINT_MS = 3 * 86_400_000;
+
+/** "just now", "12 min ago", else "Today 09:14" / "Yesterday 18:40" / "Sat 31 Oct 18:40". */
+export function ago(ms: number, nowMs: number, offsetMin: number): string {
+  const m = Math.round((nowMs - ms) / 60_000);
+  if (m < 1) return "just now";
+  if (m < 60) return `${m} min ago`;
+  return when(ms, nowMs, offsetMin);
+}
+
+/** What the card says when no task shows (Imran 2026-11-08): the card stays, so Home keeps its shape and the person
+ * can tell "AIQ sees nothing" from "AIQ is broken". The first match wins. */
+export function quiet(snap: Snapshot) {
+  const tools = snap.setup.tools
+    .filter((t) => t.hooked && t.present && SURFACE[t.tool])
+    .map((t) => {
+      const [surface, name] = SURFACE[t.tool];
+      return { name, last: snap.seen.find((x) => x.surface === surface)?.last_ms ?? null };
+    });
+  const silent = tools.filter((t) => t.last === null || snap.now_ms - t.last > QUIET_HINT_MS);
+  const state = snap.status.paused
+    ? "paused"
+    : snap.status.core_state === "failed"
+      ? "stopped"
+      : snap.starting.length > 0
+        ? "starting"
+        : tools.length === 0
+          ? "none"
+          : "idle";
+  return { state, tools, silent } as const;
+}
+
+function Quiet(ctx: Ctx) {
+  const { snap } = ctx;
+  const { state, tools, silent } = quiet(snap);
+  const s = snap.starting[0];
+  const title = {
+    paused: "Paused",
+    stopped: "Waiting for AIQ to start",
+    starting: snap.starting.length > 1 ? `${snap.starting.length} tasks starting` : "Task starting",
+    none: "No tool connected",
+    idle: "Nothing in progress",
+  }[state];
+  const meta =
+    state === "starting" ? (
+      <>
+        {toolName(s.surface)} · since {clock(s.first_ms, snap.offset_min)} · {plural(s.prompts, "prompt")} · {s.working ? "agent working" : "waiting for you"}
+      </>
+    ) : null;
+  return (
+    <section className="card rn rn-quiet" aria-labelledby="rnhd" data-testid="right-now" data-state={state}>
+      <div className="head">
+        <h2 id="rnhd">
+          <span className="mute" style={{ fontWeight: 400 }}>Right now · </span>
+          {title}
+        </h2>
+        {meta && <span className="meta num">{meta}</span>}
+      </div>
+      {state === "paused" && (
+        <p className="rn-head">
+          AIQ records nothing new while paused, so tasks don't show here.{" "}
+          <button className="btnlink" onClick={ctx.togglePause}>
+            Resume
+          </button>
+        </p>
+      )}
+      {state === "stopped" && <p className="rn-head">Nothing new is recorded until then. The note at the top says what happened.</p>}
+      {state === "starting" && (
+        <p className="rn-head mute">
+          Where {snap.starting.length > 1 ? "each task" : "it"} is heading shows after the agent's first reply.
+        </p>
+      )}
+      {state === "none" && (
+        <p className="rn-head">
+          Connect Claude Code, Copilot or VS Code, and your next task shows here.{" "}
+          <button className="btnlink" onClick={() => ctx.go("settings")}>
+            Open Settings
+          </button>
+        </p>
+      )}
+      {(state === "idle" || state === "starting") && (
+        <>
+          <ul className="rn-tools" aria-label="Connected tools">
+            {tools.map((t) => {
+              const recent = t.last !== null && snap.now_ms - t.last < 60 * 60_000;
+              return (
+                <li key={t.name}>
+                  <span className={`rn-dot${recent ? " busy" : ""}${t.last === null ? " none" : ""}`} aria-hidden="true" />
+                  <b>{t.name}</b>
+                  <span className="meta num">{t.last === null ? "nothing yet" : `last activity ${ago(t.last, snap.now_ms, snap.offset_min)}`}</span>
+                </li>
+              );
+            })}
+          </ul>
+          {state === "idle" && <p className="meta">A task shows here once the agent replies to your first prompt.</p>}
+          {state === "idle" && silent.length > 0 && (
+            <p className="meta rn-hint" data-testid="right-now-hint">
+              Using {silent.map((t) => t.name).join(" or ")} with an agent right now? AIQ has had nothing from {silent.length > 1 ? "them" : "it"}{" "}
+              {silent.length === 1 && silent[0].last !== null ? `since ${when(silent[0].last, snap.now_ms, snap.offset_min)}` : "lately"}.{" "}
+              <button className="btnlink" onClick={() => ctx.go("settings")}>
+                Check it in Settings
+              </button>
+            </p>
+          )}
+        </>
+      )}
     </section>
   );
 }

@@ -4002,6 +4002,13 @@
       "folder": "c:\\users\\you\\source\\repos\\shop-api"
     }
   ],
+  "starting": [],
+  "seen": [
+    {
+      "surface": "copilot-cli",
+      "last_ms": 1793534340000
+    }
+  ],
   "guide": [
     {
       "move_id": "brief",
