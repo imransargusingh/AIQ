@@ -1,5 +1,5 @@
 {
- "about": "Measured on Imran's laptop 2026-11-08 (label_eval.py, 20 newest analyzed Copilot tasks, label-1 prompt on gpt-6.1-sol): each label's answer and the analysis of the whole task. Ids are hashed; no prompt text. CI replays these through today's label::accept (measured_labels_clear_the_bar). Add rows from later laptop runs; never edit measured ones.",
+ "about": "Measured on Imran's laptop 2026-11-08 (label_eval.py, label-1 prompt on gpt-6.1-sol): rows 1-18 the 20 newest analyzed Copilot tasks, rows 19-78 60 fresh tasks after those (--skip 20). Each label's answer and the analysis of the whole task. Ids are hashed; no prompt text. CI replays these through today's label::accept (measured_labels_clear_the_bar). Add rows from later laptop runs; never edit measured ones.",
  "prompt_version": "label-1",
  "model": "gpt-6.1-sol",
  "rows": [
@@ -128,6 +128,426 @@
    "jc": 0.99,
    "tc": 0.99,
    "analysis": "ask_research/troubleshoot"
+  },
+  {
+   "task": "edc45782",
+   "label": "ask_research/explain",
+   "jc": 0.99,
+   "tc": 0.89,
+   "analysis": "code_change/feature"
+  },
+  {
+   "task": "b8928f11",
+   "label": "ask_research/explain",
+   "jc": 0.99,
+   "tc": 0.98,
+   "analysis": "code_change/other"
+  },
+  {
+   "task": "11a59763",
+   "label": "ask_research/analyse",
+   "jc": 0.94,
+   "tc": 0.93,
+   "analysis": "code_change/feature"
+  },
+  {
+   "task": "7740e448",
+   "label": "code_change/feature",
+   "jc": 0.97,
+   "tc": 0.98,
+   "analysis": "code_change/feature"
+  },
+  {
+   "task": "94ccdcf1",
+   "label": "ask_research/troubleshoot",
+   "jc": 0.99,
+   "tc": 0.97,
+   "analysis": "code_change/feature"
+  },
+  {
+   "task": "33bce04c",
+   "label": "ask_research/explain",
+   "jc": 0.99,
+   "tc": 0.94,
+   "analysis": "ask_research/explain"
+  },
+  {
+   "task": "d35cd65a",
+   "label": "code_change/fix_bug",
+   "jc": 0.85,
+   "tc": 0.72,
+   "analysis": "code_change/fix_bug"
+  },
+  {
+   "task": "2dc09805",
+   "label": "run_ship/run_job",
+   "jc": 0.78,
+   "tc": 0.8,
+   "analysis": "code_change/feature"
+  },
+  {
+   "task": "422df536",
+   "label": "ask_research/how_to",
+   "jc": 0.78,
+   "tc": 0.86,
+   "analysis": "code_change/feature"
+  },
+  {
+   "task": "906cb67b",
+   "label": "ask_research/troubleshoot",
+   "jc": 0.96,
+   "tc": 0.94,
+   "analysis": "code_change/fix_bug"
+  },
+  {
+   "task": "47833f21",
+   "label": "ask_research/find",
+   "jc": 0.94,
+   "tc": 0.88,
+   "analysis": "code_change/fix_bug"
+  },
+  {
+   "task": "f6898b67",
+   "label": "run_ship/run_job",
+   "jc": 0.76,
+   "tc": 0.81,
+   "analysis": "run_ship/run_job"
+  },
+  {
+   "task": "0196022a",
+   "label": "code_change/feature",
+   "jc": 0.9,
+   "tc": 0.72,
+   "analysis": "code_change/feature"
+  },
+  {
+   "task": "4c89ebbf",
+   "label": "ask_research/compare",
+   "jc": 0.99,
+   "tc": 0.88,
+   "analysis": "code_change/other"
+  },
+  {
+   "task": "fd000c56",
+   "label": "ask_research/troubleshoot",
+   "jc": 0.96,
+   "tc": 0.98,
+   "analysis": "code_change/fix_bug"
+  },
+  {
+   "task": "3c679ed2",
+   "label": "code_change/feature",
+   "jc": 0.8,
+   "tc": 0.58,
+   "analysis": "code_change/fix_bug"
+  },
+  {
+   "task": "4974a274",
+   "label": "ask_research/troubleshoot",
+   "jc": 0.78,
+   "tc": 0.52,
+   "analysis": "code_change/fix_bug"
+  },
+  {
+   "task": "dda13b35",
+   "label": "run_ship/setup",
+   "jc": 0.68,
+   "tc": 0.64,
+   "analysis": "run_ship/setup"
+  },
+  {
+   "task": "993fae44",
+   "label": "ask_research/troubleshoot",
+   "jc": 0.94,
+   "tc": 0.98,
+   "analysis": "code_change/fix_bug"
+  },
+  {
+   "task": "cb05ae8c",
+   "label": "ask_research/research",
+   "jc": 0.97,
+   "tc": 0.73,
+   "analysis": "code_change/feature"
+  },
+  {
+   "task": "3c6b6078",
+   "label": "run_ship/restart_fix",
+   "jc": 0.99,
+   "tc": 0.98,
+   "analysis": "code_change/fix_bug"
+  },
+  {
+   "task": "6350c887",
+   "label": "ask_research/find",
+   "jc": 0.99,
+   "tc": 0.98,
+   "analysis": "run_ship/setup"
+  },
+  {
+   "task": "2373dd1b",
+   "label": "other/other",
+   "jc": 0.76,
+   "tc": 0.9,
+   "analysis": "ask_research/troubleshoot"
+  },
+  {
+   "task": "359e2aa9",
+   "label": "other/other",
+   "jc": 0.83,
+   "tc": 0.93,
+   "analysis": "code_change/fix_bug"
+  },
+  {
+   "task": "7384b618",
+   "label": "ask_research/troubleshoot",
+   "jc": 0.76,
+   "tc": 0.8,
+   "analysis": "run_ship/other"
+  },
+  {
+   "task": "d60e9e45",
+   "label": "code_change/feature",
+   "jc": 0.98,
+   "tc": 0.99,
+   "analysis": "code_change/feature"
+  },
+  {
+   "task": "be8b3384",
+   "label": "run_ship/run_job",
+   "jc": 0.94,
+   "tc": 0.83,
+   "analysis": "run_ship/other"
+  },
+  {
+   "task": "6546db1b",
+   "label": "other/other",
+   "jc": 0.79,
+   "tc": 0.94,
+   "analysis": "code_change/feature"
+  },
+  {
+   "task": "698a1fd0",
+   "label": "code_change/fix_bug",
+   "jc": 0.95,
+   "tc": 0.85,
+   "analysis": "code_change/fix_bug"
+  },
+  {
+   "task": "57e9870c",
+   "label": "write_doc/other",
+   "jc": 0.79,
+   "tc": 0.65,
+   "analysis": "ask_research/analyse"
+  },
+  {
+   "task": "f55ecc77",
+   "label": "code_change/other",
+   "jc": 0.96,
+   "tc": 0.85,
+   "analysis": "code_change/feature"
+  },
+  {
+   "task": "093e085f",
+   "label": "ask_research/find",
+   "jc": 0.96,
+   "tc": 0.93,
+   "analysis": "run_ship/run_job"
+  },
+  {
+   "task": "440bd898",
+   "label": "ask_research/troubleshoot",
+   "jc": 0.93,
+   "tc": 0.97,
+   "analysis": "code_change/fix_bug"
+  },
+  {
+   "task": "bac583ca",
+   "label": "code_change/feature",
+   "jc": 0.96,
+   "tc": 0.97,
+   "analysis": "code_change/feature"
+  },
+  {
+   "task": "15293da3",
+   "label": "ask_research/find",
+   "jc": 0.92,
+   "tc": 0.83,
+   "analysis": "code_change/feature"
+  },
+  {
+   "task": "69d589f0",
+   "label": "code_change/feature",
+   "jc": 0.99,
+   "tc": 0.9,
+   "analysis": "code_change/feature"
+  },
+  {
+   "task": "6d78d3db",
+   "label": "code_change/fix_bug",
+   "jc": 0.99,
+   "tc": 0.85,
+   "analysis": "code_change/fix_bug"
+  },
+  {
+   "task": "07b62a64",
+   "label": "code_change/fix_bug",
+   "jc": 0.7,
+   "tc": 0.75,
+   "analysis": "code_change/fix_bug"
+  },
+  {
+   "task": "d194ff32",
+   "label": "code_change/fix_bug",
+   "jc": 0.96,
+   "tc": 0.9,
+   "analysis": "code_change/fix_bug"
+  },
+  {
+   "task": "6a2df175",
+   "label": "ask_research/explain",
+   "jc": 0.98,
+   "tc": 0.97,
+   "analysis": "run_ship/other"
+  },
+  {
+   "task": "da8353dd",
+   "label": "code_change/feature",
+   "jc": 0.99,
+   "tc": 0.99,
+   "analysis": "code_change/feature"
+  },
+  {
+   "task": "6cb54534",
+   "label": "code_change/feature",
+   "jc": 0.99,
+   "tc": 0.99,
+   "analysis": "code_change/feature"
+  },
+  {
+   "task": "1e1ad866",
+   "label": "ask_research/explain",
+   "jc": 0.99,
+   "tc": 0.98,
+   "analysis": "code_change/feature"
+  },
+  {
+   "task": "c52c983a",
+   "label": "ask_research/find",
+   "jc": 0.99,
+   "tc": 0.98,
+   "analysis": "ask_research/troubleshoot"
+  },
+  {
+   "task": "03f66405",
+   "label": "ask_research/troubleshoot",
+   "jc": 0.98,
+   "tc": 0.9,
+   "analysis": "ask_research/troubleshoot"
+  },
+  {
+   "task": "866467aa",
+   "label": "code_change/feature",
+   "jc": 0.83,
+   "tc": 0.77,
+   "analysis": "code_change/feature"
+  },
+  {
+   "task": "19213e71",
+   "label": "ask_research/find",
+   "jc": 0.97,
+   "tc": 0.9,
+   "analysis": "run_ship/restart_fix"
+  },
+  {
+   "task": "52879511",
+   "label": "ask_research/troubleshoot",
+   "jc": 0.78,
+   "tc": 0.91,
+   "analysis": "run_ship/restart_fix"
+  },
+  {
+   "task": "5b034a18",
+   "label": "code_change/fix_bug",
+   "jc": 0.93,
+   "tc": 0.8,
+   "analysis": "code_change/fix_bug"
+  },
+  {
+   "task": "791d8897",
+   "label": "ask_research/troubleshoot",
+   "jc": 0.98,
+   "tc": 0.99,
+   "analysis": "code_change/fix_bug"
+  },
+  {
+   "task": "70f28c71",
+   "label": "ask_research/troubleshoot",
+   "jc": 0.98,
+   "tc": 0.99,
+   "analysis": "code_change/fix_bug"
+  },
+  {
+   "task": "9f01bf08",
+   "label": "run_ship/release",
+   "jc": 0.97,
+   "tc": 0.88,
+   "analysis": "run_ship/release"
+  },
+  {
+   "task": "25b3d51a",
+   "label": "ask_research/other",
+   "jc": 0.85,
+   "tc": 0.8,
+   "analysis": "run_ship/setup"
+  },
+  {
+   "task": "82c7c71f",
+   "label": "code_change/review",
+   "jc": 0.72,
+   "tc": 0.83,
+   "analysis": "write_doc/status"
+  },
+  {
+   "task": "1c6c22de",
+   "label": "ask_research/find",
+   "jc": 0.87,
+   "tc": 0.78,
+   "analysis": "ask_research/troubleshoot"
+  },
+  {
+   "task": "1c13a914",
+   "label": "code_change/feature",
+   "jc": 0.99,
+   "tc": 0.82,
+   "analysis": "code_change/scaffold"
+  },
+  {
+   "task": "90fff397",
+   "label": "other/other",
+   "jc": 0.94,
+   "tc": 0.97,
+   "analysis": "code_change/feature"
+  },
+  {
+   "task": "796e1211",
+   "label": "ask_research/find",
+   "jc": 0.92,
+   "tc": 0.66,
+   "analysis": "code_change/feature"
+  },
+  {
+   "task": "4c56618f",
+   "label": "code_change/feature",
+   "jc": 0.99,
+   "tc": 0.94,
+   "analysis": "code_change/feature"
+  },
+  {
+   "task": "b99878c4",
+   "label": "ask_research/find",
+   "jc": 0.97,
+   "tc": 0.87,
+   "analysis": "code_change/other"
   }
  ]
 }
