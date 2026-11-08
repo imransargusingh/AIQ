@@ -638,7 +638,24 @@ summary: >-
   and when a test retries, its exact counts allow what each retry may legitimately add, read from the product's
   own record of the retry, never a looser guess.
 
-### DC-039 — A deferred action waits for a condition the person may never reach, and nothing escalates
+### DC-039 — A classifier scored against a different question than the one it is asked
+- **Signature:** 2026-11-08, Imran's laptop: the kind label reads only a task's first prompt; its self-check
+  scores it against the analysis of the whole task. 6 of 10 right, so label tips stopped on 11-04 for 4 days.
+  The offline check before launch (11-03) gave 11 of 12 because it was scored on a different sample, and
+  nothing re-ran it. Most misses were problem reports labelled `troubleshoot` whose task went on to a fix.
+- **Why it survives:** the label is right about the prompt and wrong about the task, so reading the prompt
+  never shows the bug; only the score against later outcomes does, and no test held that score.
+- **Sweep:** other first-prompt decisions checked against the whole task: the word guess (4 of 4, too few to
+  say) and the Right-now card (reads the live session, not checked against analysis). Copilot labels used
+  Copilot's own model pick when no model was set while analysis used AIQ's default: fixed (`copilot_models`).
+- **Control (product):** `label::NOT_COACHED` (troubleshoot labels never coach); labels use the analysis models.
+- **Control (tests):** `label_replay_gate` (synthetic set, prompt pinned by `PROMPT_VERSION` and text, 8-in-10
+  floor, coverage floor, injection), `measured_labels_clear_the_bar` (real measured labels, no text),
+  `accept_needs_a_pack_job_a_named_kind_and_both_confidences_at_the_bar`; `aiq label --eval` exits 3 under the bar.
+- **Rule:** when a model predicts something checked later against a fuller reading, measure it against that
+  reading on real data before it acts, keep the measurement as a replayed fixture, and fail CI when it drops.
+
+### DC-040 — A deferred action waits for a condition the person may never reach, and nothing escalates
 - **Signature:** 2026-11-08, laptop: the updater installs only "when AIQ is idle", and idle required AIQ home to be
   closed. Imran keeps Home open (PID 44988 since 04:09:55Z), so 0.1.19, 0.1.20 and 0.1.21 were each downloaded and
   replaced in turn over about 3 hours and none installed; 0.1.18 still ran at 07:04Z. `blocked` said "AIQ home is

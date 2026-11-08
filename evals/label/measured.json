@@ -1,0 +1,133 @@
+{
+ "about": "Measured on Imran's laptop 2026-11-08 (label_eval.py, 20 newest analyzed Copilot tasks, label-1 prompt on gpt-6.1-sol): each label's answer and the analysis of the whole task. Ids are hashed; no prompt text. CI replays these through today's label::accept (measured_labels_clear_the_bar). Add rows from later laptop runs; never edit measured ones.",
+ "prompt_version": "label-1",
+ "model": "gpt-6.1-sol",
+ "rows": [
+  {
+   "task": "035fbd8d",
+   "label": "ask_research/troubleshoot",
+   "jc": 0.99,
+   "tc": 0.99,
+   "analysis": "ask_research/troubleshoot"
+  },
+  {
+   "task": "99aca9a1",
+   "label": "code_change/fix_bug",
+   "jc": 0.98,
+   "tc": 0.97,
+   "analysis": "code_change/fix_bug"
+  },
+  {
+   "task": "ef608f0b",
+   "label": "ask_research/troubleshoot",
+   "jc": 0.98,
+   "tc": 0.99,
+   "analysis": "code_change/fix_bug"
+  },
+  {
+   "task": "bf4f90df",
+   "label": "ask_research/troubleshoot",
+   "jc": 0.99,
+   "tc": 0.99,
+   "analysis": "run_ship/release"
+  },
+  {
+   "task": "1d077127",
+   "label": "ask_research/find",
+   "jc": 0.96,
+   "tc": 0.88,
+   "analysis": "code_change/fix_bug"
+  },
+  {
+   "task": "7f505e0d",
+   "label": "run_ship/release",
+   "jc": 0.99,
+   "tc": 0.99,
+   "analysis": "run_ship/release"
+  },
+  {
+   "task": "f9814fcc",
+   "label": "run_ship/restart_fix",
+   "jc": 0.95,
+   "tc": 0.89,
+   "analysis": "run_ship/restart_fix"
+  },
+  {
+   "task": "a13c199c",
+   "label": "ask_research/analyse",
+   "jc": 0.96,
+   "tc": 0.88,
+   "analysis": "ask_research/analyse"
+  },
+  {
+   "task": "da8a889a",
+   "label": "ask_research/analyse",
+   "jc": 0.97,
+   "tc": 0.88,
+   "analysis": "ask_research/analyse"
+  },
+  {
+   "task": "b91100f8",
+   "label": "ask_research/troubleshoot",
+   "jc": 0.97,
+   "tc": 0.86,
+   "analysis": "code_change/fix_bug"
+  },
+  {
+   "task": "f19259be",
+   "label": "write_doc/research",
+   "jc": 0.98,
+   "tc": 0.88,
+   "analysis": "write_doc/research"
+  },
+  {
+   "task": "2d443837",
+   "label": "ask_research/troubleshoot",
+   "jc": 0.99,
+   "tc": 0.99,
+   "analysis": "code_change/fix_bug"
+  },
+  {
+   "task": "60dc99fe",
+   "label": "ask_research/explain",
+   "jc": 0.98,
+   "tc": 0.96,
+   "analysis": "ask_research/how_to"
+  },
+  {
+   "task": "f171bc9b",
+   "label": "ask_research/troubleshoot",
+   "jc": 0.99,
+   "tc": 0.99,
+   "analysis": "code_change/fix_bug"
+  },
+  {
+   "task": "52b6a871",
+   "label": "ask_research/find",
+   "jc": 0.99,
+   "tc": 0.98,
+   "analysis": "ask_research/find"
+  },
+  {
+   "task": "ff2875b1",
+   "label": "ask_research/how_to",
+   "jc": 0.99,
+   "tc": 0.98,
+   "analysis": "ask_research/how_to"
+  },
+  {
+   "task": "2a5526dc",
+   "label": "ask_research/troubleshoot",
+   "jc": 0.98,
+   "tc": 0.99,
+   "analysis": "code_change/fix_bug"
+  },
+  {
+   "task": "2e9336b0",
+   "label": "ask_research/troubleshoot",
+   "jc": 0.99,
+   "tc": 0.99,
+   "analysis": "ask_research/troubleshoot"
+  }
+ ]
+}

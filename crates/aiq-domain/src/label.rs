@@ -53,6 +53,19 @@ pub fn enabled(judge: Option<&str>, label: Option<&str>) -> bool {
     judge == Some("auto") && label != Some("off")
 }
 
+/// The label's prompt version. Bump it with any change to `system()`: `evals/label/replay.json` records it,
+/// and CI's label replay gate fails until the answers are recorded again with the new prompt. A rewrite that
+/// told the model to name the job the whole task ends in measured worse on the laptop (2026-11-08, 20 real
+/// tasks, gpt-6.1-sol: 5 of 10 confident labels right against 10 of 18 for this prompt), so this one stays.
+pub const PROMPT_VERSION: &str = "label-1";
+
+/// Kinds a label names but never coaches from. A first prompt that reports a problem reads as
+/// `ask_research/troubleshoot`, and in an agent tool the task usually goes on to fix it, so the analysis of
+/// the whole task says `code_change/fix_bug` (or a release). Measured 2026-11-08 on the laptop (20 newest
+/// analyzed tasks, gpt-6.1-sol): 8 confident troubleshoot labels, 2 right. Without them 8 of 10 confident
+/// labels were right; with them 10 of 18. Word guesses and the analysis still coach this kind.
+pub const NOT_COACHED: [(&str, &str); 1] = [("ask_research", "troubleshoot")];
+
 /// The system prompt: the judge's own JOB and TASK TYPE definitions, cut from `rung::SYSTEM`, so the label
 /// and the judgment it is checked against use one vocabulary (never two definitions of a kind).
 pub fn system() -> String {
@@ -88,13 +101,20 @@ pub fn envelope(tool: &str, first_prompt: &str, fence: &str) -> String {
     )
 }
 
-/// The (job, kind) a label may coach from: a pack job, a named kind (never `other`), and both confidences at
-/// least the coaching bar (0.8, `rung::COACH_THRESHOLD`). A model's own confidence is not calibrated; the
+/// Whether a stored guess counts in its method's self-check: a label guess of a `NOT_COACHED` kind could
+/// never coach today, so it is not counted. The core and AIQ home both filter with this one definition.
+pub fn counts_in_check(method: &str, job: &str, task_type: &str) -> bool {
+    method != METHOD || !NOT_COACHED.contains(&(job, task_type))
+}
+
+/// The (job, kind) a label may coach from: a pack job, a named kind (never `other`, never `NOT_COACHED`), and
+/// both confidences at least the coaching bar (0.8, `rung::COACH_THRESHOLD`). A model's own confidence is not calibrated; the
 /// live self-check (`coach::check_guesses` over `method = label`) is what holds it to the 8-in-10 bar.
 pub fn accept(l: &Label) -> Option<(&str, &str)> {
     let bar = rung::COACH_THRESHOLD;
     (rung::PACK_JOBS.contains(&l.job.as_str())
         && l.task_type != "other"
+        && !NOT_COACHED.contains(&(l.job.as_str(), l.task_type.as_str()))
         && l.job_confidence >= bar
         && l.task_type_confidence >= bar)
         .then_some((l.job.as_str(), l.task_type.as_str()))
@@ -122,6 +142,11 @@ mod tests {
         assert_eq!(accept(&lab("ask_research", 0.9, "find", 0.79)), None);
         assert_eq!(accept(&lab("ask_research", 0.95, "other", 0.95)), None);
         assert_eq!(accept(&lab("other", 0.95, "other", 0.95)), None);
+        assert_eq!(accept(&lab("ask_research", 0.99, "troubleshoot", 0.99)), None, "measured: usually a fix");
+        assert_eq!(accept(&lab("code_change", 0.9, "fix_bug", 0.9)), Some(("code_change", "fix_bug")));
+        assert!(!counts_in_check(METHOD, "ask_research", "troubleshoot"));
+        assert!(counts_in_check("words", "ask_research", "troubleshoot"), "word guesses keep their own rule");
+        assert!(counts_in_check(METHOD, "code_change", "fix_bug"));
     }
 
     #[test]

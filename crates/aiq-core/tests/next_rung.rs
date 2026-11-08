@@ -586,6 +586,35 @@ fn a_label_tip_is_held_by_the_accuracy_pause_like_a_word_tip() {
 }
 
 #[test]
+fn a_label_guess_of_a_kind_labels_no_longer_coach_is_not_counted_in_the_label_check() {
+    let mut h = H::new();
+    h.seed();
+    let _asked = with_labeller(&mut h);
+    {
+        let s = Store::open(&h.path).unwrap();
+        for i in 0..10 {
+            let id = format!("ts{i}");
+            s.insert_judgment(&judgment(&id, "fix_bug")).unwrap();
+            s.insert_type_guess(&TypeGuessRow {
+                guess_id: id.clone(),
+                task_id: id,
+                surface: "copilot-cli".into(),
+                job: "ask_research".into(),
+                task_type: "troubleshoot".into(),
+                similarity: 0.9,
+                neighbours: vec![],
+                utc_ms: 1,
+                method: "label".into(),
+            })
+            .unwrap();
+        }
+    }
+    h.prompt("copilot-cli", "a", UNLIKE);
+    let l = h.svc.status().coach.unwrap().labels.unwrap();
+    assert_eq!((l.checked, l.right), (0, 0), "troubleshoot labels never coach, so they never hold label tips");
+}
+
+#[test]
 fn labels_have_their_own_self_check_hold_tips_below_eight_in_ten_and_keep_being_checked() {
     let mut h = H::new();
     h.seed();

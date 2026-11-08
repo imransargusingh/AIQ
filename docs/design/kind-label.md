@@ -77,9 +77,36 @@ From the tip decision log and store on the laptop, 2026-11-02:
 | Word guess misses 8 of 9 new tasks | Measured on the laptop, one day |
 | Hook time unchanged | Inferred from the code: no hook-path change; the hook budget block in `aiq status` will show it |
 | A label returns before most first turns end | Inferred: a sealed Copilot judge call took ~11 s (measured); turns ran 18 s to 42 min that day. Each `kind_label` row records `wait_ms` (request to answer) in `label.log`, so this becomes measured after install |
-| Label accuracy against the judge | Not measured yet. `aiq label --eval [--sample n]` measures it on judged tasks (stores nothing) |
+| Label accuracy against the judge | Measured 2026-11-08 (see Accuracy): live 6 of 10; with troubleshoot labels not coached, 8 of 10 confident on the 20 newest tasks |
 | Default budget 20 a day | Guess (about 9 new tasks a day, one day measured) |
-| Copilot default model is good enough | Guess; `aiq label --eval --only copilot-cli` measures it |
+| Copilot model | Labels now use the analysis models (gpt-6.1-sol first). Luna with a rewritten prompt measured 8 of 14 confident right |
+
+## Accuracy (measured 2026-11-08)
+
+Live, from Imran's laptop (read-only): 10 label guesses checked against the analysis, 6 right, so the
+self-check held label tips from 11-04. Then `label_eval.py` (in the project files, sealed like `aiq label`)
+labelled the 20 newest analyzed Copilot tasks once per variant, through his Copilot (about 88 premium requests
+including a crashed first run):
+
+| Variant | Answered | Kind right | Confident | Confident right |
+| --- | --- | --- | --- | --- |
+| label-1 prompt, gpt-6.1-sol (today) | 18 | 10 | 18 | 10 |
+| rewritten prompt ("name the job the whole task ends in"), gpt-6.1-sol | 20 | 8 | 10 | 5 |
+| rewritten prompt, gpt-6-luna | 20 | 9 | 14 | 8 |
+| label-1 on gpt-6.1-sol, troubleshoot labels not coached | 18 | 10 | 10 | 8 |
+
+The main miss: a first prompt that reports a problem reads as `ask_research/troubleshoot`, and the task then
+fixes it, so the analysis says `code_change/fix_bug` (6 tasks) or a release (1). That is the task moving on,
+not a misread prompt, and no prompt wording fixed it: the rewrite made those labels unsure (0.7) and broke
+others. So label-1 stays and `label::NOT_COACHED` keeps a troubleshoot label from coaching. Word guesses and
+the analysis still coach troubleshooting. 10 confident labels is a small sample; a 60-task confirmation run is
+staged.
+
+Controls: `evals/label/golden.json` (59 synthetic first prompts) with recorded answers in `replay.json`
+(`label_replay_gate`: a prompt change without a version bump and new recording fails; confident labels must
+stay at 8 in 10 and cover a third of the set). `evals/label/measured.json` replays the real measured labels
+(hashed ids, no text) through today's `accept` (`measured_labels_clear_the_bar`). `aiq label --eval` prints
+whether the bar is cleared, names each miss, and exits 3 under the bar.
 
 ## Instrumentation
 
