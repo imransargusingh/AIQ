@@ -529,13 +529,21 @@ pub fn show(card_id: &str) -> ExitCode {
         println!("No tips yet.");
         return ExitCode::from(1);
     }
-    print!("{}", render_show(&r));
+    // The team's "Tool to try" line, unless Claude Code ran this (team tips: never shown on Claude Code).
+    let tool = if aiq_core::team_tips::inside_claude_code() {
+        None
+    } else {
+        let tip_id = r.card.as_ref().map(|c| c.tip_id.clone()).unwrap_or_default();
+        aiq_core::team_tips::load(&paths).and_then(|t| aiq_core::team_tips::line_for_tip(&t, &tip_id))
+    };
+    print!("{}", render_show_with_tool(&r, tool.as_deref()));
     if r.card.is_none() { ExitCode::from(1) } else { ExitCode::SUCCESS }
 }
 
-pub fn render_show(r: &ShowReply) -> String {
+pub fn render_show_with_tool(r: &ShowReply, tool_line: Option<&str>) -> String {
     let Some(c) = &r.card else { return "No tip with that id.\n".into() };
-    let mut out = format!("AIQ tip: {}\nWhy: {}\nTry this: {}\n\n", c.noticed, c.why, c.try_this);
+    let tool = tool_line.map(|l| format!("{l}\n")).unwrap_or_default();
+    let mut out = format!("AIQ tip: {}\nWhy: {}\nTry this: {}\n{tool}\n", c.noticed, c.why, c.try_this);
     let status =
         if r.delivered { "shown".to_string() } else { r.outcome.clone().unwrap_or_default().replace('_', "-") };
     out += &format!("Status: {status} (reason: {})\n", r.reason_code.clone().unwrap_or_default());
@@ -1059,8 +1067,9 @@ mod tests {
             delivered: false,
             evidence: vec![],
             leaned_on: vec![],
+            team_tool: None,
         };
-        assert_eq!(render_show(&none), "No tip with that id.\n");
+        assert_eq!(render_show_with_tool(&none, None), "No tip with that id.\n");
     }
 
     #[test]
@@ -1084,8 +1093,12 @@ mod tests {
             delivered: true,
             evidence: vec![EvidencePrompt { ts: "t".into(), text: Some("\u{1b}]0;pwned\u{7}hi".into()) }],
             leaned_on: vec![],
+            team_tool: None,
         };
-        let out = render_show(&r);
+        let out = render_show_with_tool(&r, None);
+        assert!(!out.contains("Tool to try"));
+        let with = render_show_with_tool(&r, Some("Tool to try: X: does Y."));
+        assert!(with.contains("Try this: x\nTool to try: X: does Y.\n\n"), "{with}");
         assert!(!out.contains('\u{1b}') && !out.contains('\u{7}'));
         assert!(out.contains("Status: shown"));
         // A next-rung card prints the starter and the kinds of task leaned on, never prompt text.
@@ -1102,11 +1115,11 @@ mod tests {
             }],
             ..r.clone()
         };
-        let out = render_show(&nr);
+        let out = render_show_with_tool(&nr, None);
         assert!(out.contains("Write tests for <function>.") && out.contains("copilot-cli  Writing tests"));
         assert!(out.contains("aiq helpful c") && !out.contains("pwned"));
         let gone = ShowReply { evidence: vec![EvidencePrompt { ts: "t".into(), text: None }], ..r };
-        assert!(render_show(&gone).contains("The prompts behind this tip were deleted."));
+        assert!(render_show_with_tool(&gone, None).contains("The prompts behind this tip were deleted."));
     }
 }
 

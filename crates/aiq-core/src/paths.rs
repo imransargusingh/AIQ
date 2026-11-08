@@ -55,6 +55,10 @@ impl Paths {
     pub fn db(&self) -> PathBuf {
         self.data.join("aiq.db")
     }
+    /// The folder holding the person's team tips file (`aiq team-tips add`); one line, a path.
+    pub fn team_tips_pointer(&self) -> PathBuf {
+        self.data.join("team-tips-folder.txt")
+    }
     pub fn spool(&self) -> PathBuf {
         self.data.join("spool.jsonl")
     }

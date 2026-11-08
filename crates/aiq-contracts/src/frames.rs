@@ -129,6 +129,9 @@ pub struct TakeCardReply {
     /// The person turned the tip highlight off (setting `tip_highlight`): render without colour.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub plain: bool,
+    /// VS Code only: the team's "Tool to try" line for this tip (team tips file), read in place, never stored.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub team_tool: Option<String>,
 }
 
 /// Status-line reply: the full card, or only the id of a card that is waiting to be opened, or neither.
@@ -322,6 +325,9 @@ pub struct ShowReply {
     /// Next-rung tips: the judged tasks the guess leaned on (time, tool, kind; never text).
     #[serde(default)]
     pub leaned_on: Vec<LeanedOn>,
+    /// Opened in VS Code only: the team's "Tool to try" line (team tips file), read in place, never stored.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub team_tool: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

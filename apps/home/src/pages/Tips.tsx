@@ -10,6 +10,7 @@ import { RUNGS, day, jobName, plural, sentence, toolName, when } from "../format
 import type { GuideMove, HabitRow, TipRow } from "../types";
 import { Banners, Chip, Title, type Ctx } from "../ui";
 import { TipFunnelCard } from "../funnel";
+import { TeamToolLine, teamTool } from "../team";
 
 /** A habit's move shows its date for the habit window (14 days). */
 const RECENT_MS = 14 * 86_400_000;
@@ -236,6 +237,7 @@ export function Tips(ctx: Ctx) {
                             {sentence(t.noticed)} {g.length > 1 && <Chip>×{g.length}</Chip>}
                           </span>
                           <span className="mute">Try this: {t.try_this}</span>
+                          <TeamToolLine t={teamTool(snap, t.tip_id)} />
                           <span className="meta">{g.some((x) => x.opened) ? "You opened it" : "Not opened"}</span>
                         </div>
                       </td>

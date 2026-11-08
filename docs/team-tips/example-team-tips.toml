@@ -1,0 +1,14 @@
+# Example team tips file (aiq.team-tips.v1). Placeholder names only: a real file lives in your team's own
+# folder, never in this repo. Copy this to <your folder>/team-tips.toml, then: aiq team-tips add <your folder>
+schema = "aiq.team-tips.v1"
+
+[[tools]]
+move_id = "check_code"
+tool = "Example Test Runner"
+how = "runs the team's whole test suite in one step, so the agent can paste the result."
+link = "https://example.com/test-runner"
+
+[[tools]]
+move_id = "brief"
+tool = "Example Error Search"
+how = "finds the exact error text and the files it came from, ready to paste into a request."
