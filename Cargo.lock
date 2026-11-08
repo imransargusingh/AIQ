@@ -27,7 +27,7 @@ dependencies = [
 
 [[package]]
 name = "aiq"
-version = "0.1.23"
+version = "0.1.24"
 dependencies = [
  "aiq-contracts",
  "aiq-core",
@@ -45,7 +45,7 @@ dependencies = [
 
 [[package]]
 name = "aiq-contracts"
-version = "0.1.23"
+version = "0.1.24"
 dependencies = [
  "jsonschema",
  "serde",
@@ -54,7 +54,7 @@ dependencies = [
 
 [[package]]
 name = "aiq-core"
-version = "0.1.23"
+version = "0.1.24"
 dependencies = [
  "aiq-contracts",
  "aiq-domain",
@@ -75,7 +75,7 @@ dependencies = [
 
 [[package]]
 name = "aiq-domain"
-version = "0.1.23"
+version = "0.1.24"
 dependencies = [
  "aiq-contracts",
  "proptest",
@@ -83,7 +83,7 @@ dependencies = [
 
 [[package]]
 name = "aiq-home"
-version = "0.1.23"
+version = "0.1.24"
 dependencies = [
  "aiq-contracts",
  "aiq-core",
@@ -97,7 +97,7 @@ dependencies = [
 
 [[package]]
 name = "aiq-store"
-version = "0.1.23"
+version = "0.1.24"
 dependencies = [
  "aiq-contracts",
  "aiq-domain",
