@@ -470,6 +470,10 @@ fn with_labeller(h: &mut H) -> Asked {
 
 /// What `aiq label` stores: one answered label call.
 fn store_label(h: &H, task: &str, session: &str, task_type: &str, conf: f64) {
+    store_label_of(h, task, session, "code_change", task_type, conf)
+}
+
+fn store_label_of(h: &H, task: &str, session: &str, job: &str, task_type: &str, conf: f64) {
     Store::open(&h.path)
         .unwrap()
         .insert_kind_label(&aiq_store::KindLabelRow {
@@ -480,7 +484,7 @@ fn store_label(h: &H, task: &str, session: &str, task_type: &str, conf: f64) {
             provider: "copilot-cli".into(),
             model: Some("small".into()),
             outcome: "ok".into(),
-            job: Some("code_change".into()),
+            job: Some(job.into()),
             job_confidence: Some(0.95),
             task_type: Some(task_type.into()),
             task_type_confidence: Some(conf),
@@ -753,6 +757,12 @@ fn every_new_task_ends_its_tip_path_at_a_counted_step() {
     store_label(&h, &t, "f", "tests", 0.7);
     h.svc.on_kind_label(&t).unwrap();
     assert_eq!(last_step(&h, &t), "label_unsure");
+    // A sure label of a job labels never coach from (a question) is named apart from "not sure".
+    h.advance(2 * HOUR);
+    let t = h.prompt("copilot-cli", "f2", UNLIKE);
+    store_label_of(&h, &t, "f2", "ask_research", "troubleshoot", 0.99);
+    h.svc.on_kind_label(&t).unwrap();
+    assert_eq!(last_step(&h, &t), "label_not_coached");
     h.advance(2 * HOUR);
     let t = h.prompt("copilot-cli", "g", UNLIKE);
     h.advance(2 * HOUR);
