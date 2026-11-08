@@ -246,8 +246,9 @@ jobs:
           powershell -ExecutionPolicy Bypass -File $up -Apply -Relaunch -FailLaunches 2
           if ($LASTEXITCODE -ne 0) { Fail "apply when idle: exit $LASTEXITCODE" }
           $ulog = Join-Path $aiq 'upgrade-log.txt'
-          if (-not (Select-String -Quiet -Path $ulog -Pattern 'AIQ-UPDATE-CORE: started the AIQ core again\. \(Windows refused it first')) { Fail 'core not started again after two refusals' }
-          if (-not (Select-String -Quiet -Path $ulog -Pattern 'AIQ-UPDATE-HOME: started AIQ home again\.')) { Fail 'AIQ home not opened again (-Relaunch)' }
+          Select-String -Path $ulog -Pattern 'AIQ-UPDATE-(CORE|HOME)' | Select-Object -Last 4 | ForEach-Object { $_.Line }
+          if (-not (Select-String -Quiet -Path $ulog -Pattern 'AIQ-UPDATE-CORE: started the AIQ core again.*\(refused first')) { Fail 'core not started again after two refusals' }
+          if (-not (Select-String -Quiet -Path $ulog -Pattern 'AIQ-UPDATE-HOME: started AIQ home again')) { Fail 'AIQ home not opened again (-Relaunch)' }
           $homeBack = $null
           foreach ($i in 1..25) {
             $homeBack = Get-Process -Name 'aiq-home' -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq (Join-Path $aiq 'bin\aiq-home.exe') }
@@ -324,6 +325,27 @@ jobs:
           if (Test-Path $stage) { Fail 'same version left staged' }
           if ((Get-FileHash $old).Hash -ne $oldHash) { Fail 'same-version apply overwrote the .old copies' }
           if (-not (Select-String -Quiet -Path (Join-Path $aiq 'upgrade-log.txt') -Pattern 'AIQ-UPDATE-NOT-NEWER')) { Fail 'no AIQ-UPDATE-NOT-NEWER log line' }
+          # A log that can't be written (another process holds it; release build of 0.1.15, 2026-11-07: "Stream was not
+          # readable" ended a rollback) never ends the script: the same drop runs to the end with the log held.
+          New-Item -ItemType Directory -Force $stage | Out-Null
+          Copy-Item "dist/aiq-$v-windows-x64.zip", dist/SHA256SUMS $stage
+          @{ state = 'waiting'; available = "v$v"; staged = "aiq-$v-windows-x64.zip"; installed = $v } | ConvertTo-Json | Set-Content (Join-Path $aiq 'update.json')
+          $held = [IO.File]::Open((Join-Path $aiq 'upgrade-log.txt'), 'Open', 'Read', 'Read')
+          try { powershell -ExecutionPolicy Bypass -File $up -Apply; $heldExit = $LASTEXITCODE } finally { $held.Dispose() }
+          if ($heldExit -ne 0) { Fail "apply with the log held: exit $heldExit, want 0" }
+          if ((St).state -ne 'current' -or (Test-Path $stage)) { Fail "apply with the log held did not finish: $((St) | ConvertTo-Json -Compress)" }
+          # Explorer refused or absent: after two rounds AIQ home's --start-core starts the core (laptop 2026-11-07
+          # 18:21:05Z: it did when upgrade.ps1's own start was refused).
+          New-Item -ItemType Directory -Force $stage | Out-Null
+          Copy-Item "dist/aiq-$v-windows-x64.zip", dist/SHA256SUMS $stage
+          @{ state = 'waiting'; available = 'v99.0.2'; staged = "aiq-$v-windows-x64.zip"; installed = $v } | ConvertTo-Json | Set-Content (Join-Path $aiq 'update.json')
+          Start-Process -WindowStyle Hidden -FilePath $exe -ArgumentList 'core'
+          Start-Sleep -Seconds 2
+          powershell -ExecutionPolicy Bypass -File $up -Apply -FailLaunches 99 -FailExplorer
+          if ($LASTEXITCODE -ne 0) { Fail "apply with direct core starts refused: exit $LASTEXITCODE" }
+          if (-not (Select-String -Quiet -Path $ulog -Pattern 'AIQ-UPDATE-CORE: started the AIQ core again through AIQ home')) { Fail 'core not started through AIQ home' }
+          $cores = @(Get-CimInstance Win32_Process -Filter "Name='aiq.exe'" | Where-Object { $_.ExecutablePath -eq $exe -and $_.CommandLine -match '\score\s*$' })
+          if ($cores.Count -ne 1) { Fail "want one AIQ core after the start through AIQ home, found $($cores.Count)" }
           Get-Content (Join-Path $aiq 'upgrade-log.txt') -Tail 8
       - name: Smoke test - update check finds the tag from the releases/latest redirect, falls back to the API, records a rate-limit reset
         shell: pwsh
