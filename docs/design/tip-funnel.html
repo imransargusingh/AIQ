@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Tip Funnel</title><style>
+:root { color-scheme: light dark; --bg:#f7f5ef; --panel:#fff; --text:#20201d;
+  --muted:#66645f; --line:#d9d5ca; --accent:#3157a4; --code:#f0eee7; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#171816; --panel:#20221f; --text:#f2f1eb; --muted:#b8b6ae;
+    --line:#3d403a; --accent:#8fb0ff; --code:#292c27; }
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text);
+  font:16px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif; }
+main { width:min(920px,calc(100% - 32px)); margin:32px auto; padding:40px;
+  background:var(--panel); border:1px solid var(--line); border-radius:12px; }
+h1,h2,h3,h4,h5,h6 { line-height:1.2; margin:1.5em 0 .55em; }
+h1 { margin-top:0; font-size:2.2rem; } h2 { border-bottom:1px solid var(--line); padding-bottom:.3em; }
+a { color:var(--accent); } code { background:var(--code); padding:.12em .35em; border-radius:4px; }
+pre { overflow:auto; padding:16px; background:var(--code); border-radius:8px; }
+pre code { padding:0; } blockquote { margin:1em 0; padding:.2em 1em; color:var(--muted);
+  border-left:4px solid var(--line); }
+table { width:100%; border-collapse:collapse; margin:1em 0; display:block; overflow:auto; }
+th,td { padding:.55em .75em; border:1px solid var(--line); text-align:left; vertical-align:top; }
+th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); }
+.source { color:var(--muted); font-size:.9rem; margin-bottom:2rem; }
+@media (max-width:640px) { main { width:100%; margin:0; padding:24px 18px; border:0; border-radius:0; } }
+</style></head><body><main><div class="source">Rendered from tip-funnel.md</div><h1>The tip funnel</h1>
+<h2>Why</h2>
+<p>Imran (2026-11-08): &quot;It&#x27;s super important that AIQ offers tips when it is supposed to.&quot; From 11-04 16:00Z to 11-08 the label self-check held every label tip and the words check had nothing to match, so no tip was decided on any surface for four days. The only trace was one log line per core run. A stop that silent is a defect class: <em>a hold that is invisible to the person and to us</em>. The control is a count that cannot be missed.</p>
+<h2>Data model</h2>
+<p>Grain: <strong>one row is exactly one point where a live new task&#x27;s next-step tip path ended or began to wait</strong> (<code>tip_path</code>, store v11, append-only, no text). The latest row per task is its state. A task waiting on a kind label has <code>label_asked</code>, then the label&#x27;s end. Everything after a tip is decided is already stored: <code>card_decision</code> (held, ready, expired), <code>card_delivery</code> (shown, by tool), <code>card_open</code>, <code>tip_feedback</code>.</p>
+<p>Steps (<code>aiq_domain::funnel::Step</code>), each written at exactly one exit of the core&#x27;s path:</p>
+<table><thead><tr><th>Step</th><th>Where</th><th>Means</th></tr></thead><tbody><tr><td><code>decided</code></td><td><code>decide_kind</code></td><td>A tip was decided (see its card decision)</td></tr><tr><td><code>kind_too_few</code> · <code>kind_right_rung</code> · <code>kind_blocked</code> · <code>kind_not_sure</code> · <code>kind_flagged</code></td><td><code>decide_kind</code></td><td>Kind known, its tip held on purpose by the kind&#x27;s state (D6)</td></tr><tr><td><code>kind_new</code></td><td><code>decide_kind</code></td><td>Kind known, none of the person&#x27;s analyzed tasks has it yet</td></tr><tr><td><code>no_tip_for_kind</code></td><td><code>decide_kind</code></td><td>Kind coaches a move the pack lacks (pack defect)</td></tr><tr><td><code>label_held</code></td><td><code>on_kind_label</code></td><td>Label named the kind; label self-check under 8 in 10</td></tr><tr><td><code>guess_held</code></td><td><code>next_rung_with</code></td><td>Word guess made; words check under 8 in 10; labels can&#x27;t run</td></tr><tr><td><code>no_match</code></td><td><code>next_rung_with</code></td><td>No word match; labels can&#x27;t run</td></tr><tr><td><code>label_asked</code></td><td><code>next_rung_with</code></td><td>Waiting for a label; as the latest step, it never came back</td></tr><tr><td><code>label_failed</code> · <code>label_unsure</code> · <code>label_not_coached</code> · <code>label_late</code></td><td><code>on_kind_label</code></td><td>Label call failed / not sure / sure, but of a job labels never coach from (questions, <code>label::NOT_COACHED_JOBS</code>) / after the next task started</td></tr><tr><td><code>tips_off</code></td><td><code>next_rung</code></td><td>Next-step tips turned off</td></tr><tr><td><code>late_first_prompt</code></td><td><code>record</code></td><td>Session set aside first; a person&#x27;s second prompt brought it back</td></tr></tbody></table>
+<p>Measures: every count is additive over tasks or cards. Periods: since local midnight, and the last 7 days. One reader (<code>aiq_core::funnel::tip_funnels</code>) feeds <code>aiq status</code> and Home; one place holds the words (<code>aiq_domain::funnel::words</code>).</p>
+<h2>Dry day</h2>
+<p>A local day before today, in the last 7, with <strong>3 or more</strong> new tasks and no tip shown. <code>assume:</code> 3 tasks is a day of work (not measured). If it warns on light days or misses dry ones, change <code>DROUGHT_MIN_TASKS</code>.</p>
+<h2>Surfaces</h2>
+<ul><li><code>aiq status</code>: the dry days first, then the week (tasks, kind known, tip found, tips, shown, opened, answered), why</li></ul>
+<p>tasks had no tip, why tips were held, expired, waiting, shown per tool; then today&#x27;s line.</p>
+<ul><li>Home: a closable note for the newest dry day (&quot;No tips yesterday across 6 tasks. Main reason: …&quot;, See why).</li></ul>
+<p>Closed stays closed for that day.</p>
+<ul><li>Habits and tips: &quot;Tips this week&quot;: one sentence, five bars (new tasks, kind known, tip ready, shown, opened) with</li></ul>
+<p>the step that lost the most marked, why tasks had no tip, and why ready tips were held.</p>
+<h2>Tests (the controls)</h2>
+<ul><li>Domain: every step and every hold reason has words; each step counts under its own code; latest step wins; a dry</li></ul>
+<p>day is found, named by its main reason, and cleared by a shown tip, a light day, today, or age.</p>
+<ul><li>Core: every exit of the path writes its step end to end (<code>next_rung.rs</code>, <code>service.rs</code>); status carries the</li></ul>
+<p>funnel and a dry day.</p>
+<ul><li>CLI: the status text leads with the dry day and uses no &quot;judge&quot;.</li><li>Home: unit tests of the sentence, the marked step and the day words; e2e of the card, the note, See why, close,</li></ul>
+<p>and axe in light and dark.</p></main></body></html>

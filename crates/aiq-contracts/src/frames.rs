@@ -129,6 +129,9 @@ pub struct TakeCardReply {
     /// The person turned the tip highlight off (setting `tip_highlight`): render without colour.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub plain: bool,
+    /// VS Code only: the team's "Tool to try" line for this tip (team tips file), read in place, never stored.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub team_tool: Option<String>,
 }
 
 /// Status-line reply: the full card, or only the id of a card that is waiting to be opened, or neither.
@@ -163,6 +166,66 @@ pub struct StatusReply {
     /// Live agent actions read at each turn's end (design live-agent-actions). None with an older core.
     #[serde(default)]
     pub agent_actions: Option<ActionsStatus>,
+    /// Where new tasks' tips went: today and the last 7 days (design tip-funnel). None with an older core.
+    #[serde(default)]
+    pub tip_funnel: Option<TipFunnels>,
+}
+
+/// The tip funnel over two periods, and the recent working days with no tip (design tip-funnel). Measured.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct TipFunnels {
+    pub today: TipFunnel,
+    pub week: TipFunnel,
+    /// Days before today, in the last 7, with 3 or more new tasks and no tip shown. Newest first.
+    #[serde(default)]
+    pub droughts: Vec<TipDrought>,
+}
+
+/// One period of the tip funnel: new tasks down to tips opened. Counted from stored rows (measured); tasks before
+/// the funnel was installed (store v11) are not counted.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct TipFunnel {
+    /// 1 = since local midnight; 7 = the last 7 days.
+    pub days: u32,
+    /// New tasks (a person's first prompt) that reached the tip step.
+    pub tasks: u32,
+    /// Of those, tasks whose kind of task AIQ knew.
+    pub kind_known: u32,
+    /// Of those, tasks a next-step tip was decided for.
+    pub tip_found: u32,
+    /// Why the other tasks got no tip, most first.
+    pub no_tip: Vec<FunnelCount>,
+    /// Tips decided (next-step tips plus tips that fire mid-task).
+    pub tips: u32,
+    /// Tips held back, by reason, most first.
+    pub held: Vec<FunnelCount>,
+    /// Tips ready and still waiting for the turn to end.
+    pub waiting: u32,
+    /// Tips that were ready, but the session ended before any tool showed them.
+    pub expired: u32,
+    /// Tips shown, by tool (`code` is the surface id), most first.
+    pub shown: Vec<FunnelCount>,
+    /// Shown tips the person opened, and answered (Helpful, Not helpful, Snooze, Don't show again).
+    pub opened: u32,
+    pub answered: u32,
+}
+
+/// A count with its code and plain words (one definition of the words: `aiq_domain::funnel::words`).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct FunnelCount {
+    pub code: String,
+    pub words: String,
+    pub count: u32,
+}
+
+/// A working day with no tip shown.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct TipDrought {
+    /// Local date, YYYY-MM-DD.
+    pub day: String,
+    pub tasks: u32,
+    /// The most common reason that day's tasks got no tip.
+    pub main_reason: Option<FunnelCount>,
 }
 
 /// Live agent actions since local midnight, counted from stored rows (measured).
@@ -262,6 +325,9 @@ pub struct ShowReply {
     /// Next-rung tips: the judged tasks the guess leaned on (time, tool, kind; never text).
     #[serde(default)]
     pub leaned_on: Vec<LeanedOn>,
+    /// Opened in VS Code only: the team's "Tool to try" line (team tips file), read in place, never stored.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub team_tool: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

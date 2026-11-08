@@ -62,9 +62,49 @@ pub struct Snapshot {
     /// event is within the idle gap and whose first turn has ended, the newest activity first. Empty when no task is
     /// open or the person turned it off.
     pub live: Vec<Live>,
+    /// Sessions active within the idle gap whose first turn hasn't ended (Imran 2026-11-08): the Right now card names
+    /// them instead of hiding, newest activity first. Sessions the task list leaves out (set aside) stay out: AIQ's
+    /// own analysis runs are among them.
+    pub starting: Vec<Starting>,
+    /// Each surface's newest event, newest first, so the quiet Right now card can say when each tool was last heard.
+    pub seen: Vec<Seen>,
     /// The rung guide (Imran 2026-11-05, option B): every next-step move in pack order, with its text. Pack data,
     /// the same for everyone; the person's own rung per job comes from `coaching.kinds`.
     pub guide: Vec<GuideMove>,
+    /// Where new tasks' tips went, today and over 7 days, and the recent days with no tip (design tip-funnel). The
+    /// core's own reader (`aiq_core::funnel`), so Home and `aiq status` give the same numbers.
+    pub tip_funnel: aiq_contracts::frames::TipFunnels,
+    /// The team tips file (aiq.team-tips.v1): one "Tool to try" per habit the pack has. Read in place on each
+    /// snapshot, never stored. Left out of the JSON when no file is set.
+    #[serde(skip_serializing_if = "TeamTips::is_unset")]
+    pub team_tips: TeamTips,
+}
+
+#[derive(Debug, Clone, PartialEq, Default, Serialize)]
+pub struct TeamTips {
+    /// True when a folder is set (`aiq team-tips add`).
+    pub set: bool,
+    /// Why the file can't be used, in AIQ's words (never the file's text). Tips show as usual.
+    pub problem: Option<String>,
+    pub tools: Vec<aiq_contracts::team_tips::TeamTool>,
+}
+
+impl TeamTips {
+    fn is_unset(&self) -> bool {
+        !self.set
+    }
+
+    pub fn read(paths: &Paths, pack: &PackV1) -> Self {
+        match aiq_core::team_tips::read(paths) {
+            aiq_core::team_tips::Status::NotSet => Self::default(),
+            aiq_core::team_tips::Status::Problem(e) => Self { set: true, problem: Some(e), tools: vec![] },
+            aiq_core::team_tips::Status::Ok(t) => Self {
+                set: true,
+                problem: None,
+                tools: t.tools.into_iter().filter(|x| pack.moves.iter().any(|m| m.move_id == x.move_id)).collect(),
+            },
+        }
+    }
 }
 
 /// One habit in the rung guide: the step it climbs from (1..=4), its job (or `any`), and the pack's own text.
@@ -92,6 +132,23 @@ pub struct Live {
     pub kind: Option<&'static str>,
     /// The task's folder (`TaskRow.folder`), so a chip can name its project under any project filter.
     pub folder: Option<String>,
+}
+
+/// A session active within the idle gap that shows no estimate yet (see `Snapshot::starting`).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Starting {
+    pub surface: String,
+    pub first_ms: i64,
+    pub last_ms: i64,
+    pub prompts: u32,
+    pub working: bool,
+}
+
+/// One surface's newest event (see `Snapshot::seen`).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Seen {
+    pub surface: String,
+    pub last_ms: i64,
 }
 
 /// One project: the tasks whose session ran in one folder (design project-filter P1–P5b). Its numbers run the
@@ -617,6 +674,7 @@ pub fn snapshot(paths: &Paths, pack: &PackV1, now: Now) -> Snapshot {
             s.home = e2.home;
             s.tasks = e2.tasks;
             s.tips = e2.tips;
+            s.tip_funnel = e2.tip_funnel;
             s.data = e2.data;
             s.coaching = e2.coaching;
             s.projects = e2.projects;
@@ -802,6 +860,8 @@ fn empty(paths: &Paths, pack: &PackV1, now: Now) -> Snapshot {
         update: aiq_core::update::view(paths, None, now.utc_ms),
         projects: vec![],
         live: vec![],
+        starting: vec![],
+        seen: vec![],
         guide: pack
             .moves
             .iter()
@@ -816,6 +876,8 @@ fn empty(paths: &Paths, pack: &PackV1, now: Now) -> Snapshot {
                 counts: m.counts.clone(),
             })
             .collect(),
+        tip_funnel: Default::default(),
+        team_tips: TeamTips::read(paths, pack),
     }
 }
 
@@ -840,6 +902,7 @@ fn read(db: &std::path::Path, pack: &PackV1, now: Now, started: Instant, s: &mut
 
 fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()> {
     let c = store.raw();
+    s.tip_funnel = aiq_core::funnel::tip_funnels(store, now).map_err(|e| e.to_string())?;
     let window_start = now.utc_ms - WINDOW_DAYS * DAY_MS;
 
     // Settings: latest value per key, parsed as the core parses them.
@@ -923,7 +986,7 @@ fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()>
     let judged_all = judged_tasks(&tasks.iter().collect::<Vec<_>>(), &judgments);
     s.tasks = tasks;
     if s.settings.live_trend {
-        s.live = live(store, pack, now.utc_ms, s)?;
+        (s.live, s.starting) = live(store, pack, now.utc_ms, s)?;
     }
 
     // Tips: delivered cards in the last 90 days, newest first; tips today counted as the trigger engine counts.
@@ -976,7 +1039,13 @@ fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()>
         }
     }
     s.data.store_bytes = store.size_bytes();
-    s.status.last_event_ms = q(c.query_row("SELECT max(ts_utc_ms) FROM event", [], |r| r.get(0)))?;
+    {
+        // One scan gives both the newest event and each tool's newest (the quiet Right now card).
+        let mut st = q(c.prepare("SELECT surface, max(ts_utc_ms) FROM event GROUP BY surface ORDER BY 2 DESC"))?;
+        s.seen =
+            q(q(st.query_map([], |r| Ok(Seen { surface: r.get(0)?, last_ms: r.get(1)? })))?.collect::<Result<_, _>>())?;
+        s.status.last_event_ms = s.seen.first().map(|x| x.last_ms);
+    }
     {
         let mut st = q(c.prepare(
             "SELECT e.event_id, e.ts_utc_ms, e.surface, e.kind, t.text,
@@ -1021,7 +1090,7 @@ const LIVE_MAX: usize = 6;
 
 /// Every live session's open task, the newest activity first, each with "could reach" from the kinds rows (the
 /// same rows Home shows).
-fn live(store: &Store, pack: &PackV1, now_ms: i64, s: &Snapshot) -> R<Vec<Live>> {
+fn live(store: &Store, pack: &PackV1, now_ms: i64, s: &Snapshot) -> R<(Vec<Live>, Vec<Starting>)> {
     let gap = pack.idle_gap_min as i64 * 60_000;
     let mut st = q(store.raw().prepare(
         "SELECT surface, surface_session_id FROM event WHERE ts_utc_ms >= ?1
@@ -1029,44 +1098,61 @@ fn live(store: &Store, pack: &PackV1, now_ms: i64, s: &Snapshot) -> R<Vec<Live>>
     ))?;
     let sessions: Vec<(String, String)> =
         q(q(st.query_map([now_ms - gap], |r| Ok((r.get(0)?, r.get(1)?))))?.collect::<Result<_, _>>())?;
-    let mut out = vec![];
+    let (mut out, mut starting) = (vec![], vec![]);
     for (surface, session) in sessions {
-        if out.len() == LIVE_MAX {
+        if out.len() + starting.len() == LIVE_MAX {
             break;
         }
-        if let Some(l) = open_live(store, &surface, &session, now_ms, gap, s)? {
-            out.push(l);
+        match open_live(store, &surface, &session, now_ms, gap, s)? {
+            Open::Shown(l) => out.push(*l),
+            Open::Starting(x) => starting.push(x),
+            Open::None => {}
         }
     }
-    Ok(out)
+    Ok((out, starting))
 }
 
-/// One session's open task for the card; None when its first turn has not ended or the list leaves it out.
-fn open_live(store: &Store, surface: &str, session: &str, now_ms: i64, gap: i64, s: &Snapshot) -> R<Option<Live>> {
+enum Open {
+    Shown(Box<Live>),
+    /// Active, but its first turn hasn't ended: no estimate to show yet.
+    Starting(Starting),
+    None,
+}
+
+/// One session's open task for the card; `Starting` while its first turn has not ended.
+fn open_live(store: &Store, surface: &str, session: &str, now_ms: i64, gap: i64, s: &Snapshot) -> R<Open> {
     let Some(mut t) =
         aiq_core::live_trend::open_task(store, surface, session, now_ms, gap).map_err(|e| e.to_string())?
     else {
-        return Ok(None);
+        return Ok(Open::None);
+    };
+    let found = s
+        .tasks
+        .iter()
+        .find(|x| x.origin == "live" && x.tool == t.surface && x.members.iter().any(|(_, ms)| *ms == t.first_ms))
+        .map(|x| (x.task_id.clone(), x.folder.clone()));
+    let Some((task_id, folder)) = found else {
+        return Ok(Open::None); // the list leaves it out (set aside): no card, no tips
     };
     if t.steps.is_empty() {
-        return Ok(None); // the first turn has not ended: nothing to show yet, so no empty card
+        // The first turn has not ended: nothing to chart yet, but the card says a task is starting.
+        let x = Starting {
+            surface: t.surface,
+            first_ms: t.first_ms,
+            last_ms: t.last_ms,
+            prompts: t.prompts,
+            working: t.working,
+        };
+        return Ok(Open::Starting(x));
     }
     let row =
         s.coaching.kinds.iter().find(|k| Some(&k.job) == t.job.as_ref() && Some(&k.task_type) == t.task_type.as_ref());
     t.could = row.and_then(|k| k.potential).filter(|p| t.rung.is_some_and(|r| *p > r));
-    let Some((task_id, folder)) = s
-        .tasks
-        .iter()
-        .find(|x| x.origin == "live" && x.tool == t.surface && x.members.iter().any(|(_, ms)| *ms == t.first_ms))
-        .map(|x| (x.task_id.clone(), x.folder.clone()))
-    else {
-        return Ok(None);
-    };
     let kind = match (t.job.as_deref(), t.task_type.as_deref()) {
         (Some(j), Some(ty)) => aiq_contracts::judge::task_type_label(j, ty),
         _ => None,
     };
-    Ok(Some(Live { trend: t, task_id, kind, folder }))
+    Ok(Open::Shown(Box::new(Live { trend: t, task_id, kind, folder })))
 }
 
 /// Every task whose first prompt is at or after `since_ms`, live and imported, newest first. A session's own
@@ -1348,14 +1434,24 @@ fn coaching(
     let by_id: std::collections::BTreeMap<&str, &coach::JudgedTask> =
         judged.iter().map(|t| (t.task_id.as_str(), t)).collect();
     let guesses = store.type_guesses().map_err(e)?;
-    let check = coach::check_guesses(
-        guesses.iter().map(|g| (g.task_id.as_str(), g.job.as_str(), g.task_type.as_str())),
-        &by_id,
-    );
+    // The core's two checks (words and labels), not one over both: one definition of the number (DC-036).
+    let check_of = |method: &str| {
+        coach::check_guesses(
+            guesses
+                .iter()
+                .filter(|g| g.method == method)
+                .filter(|g| aiq_domain::label::counts_in_check(&g.method, &g.job, &g.task_type))
+                .map(|g| (g.task_id.as_str(), g.job.as_str(), g.task_type.as_str())),
+            &by_id,
+            p,
+        )
+    };
+    let (words, labels) = (check_of("words"), check_of(aiq_domain::label::METHOD));
     let st = &mut s.settings;
-    st.guess_checked = check.checked;
-    st.guess_right = check.right;
-    st.guess_auto_off = check.auto_off(p);
+    st.guess_checked = words.checked + labels.checked;
+    st.guess_right = words.right + labels.right;
+    // Tips stop only when both checks hold them, as in the core.
+    st.guess_auto_off = words.auto_off(p) && labels.auto_off(p);
     st.next_rung_on = match mode.as_str() {
         "off" => false,
         "on" => true,
@@ -1727,5 +1823,35 @@ mod analysis_tests {
         let p = analysis_state(&tasks, &[], &[], true, true, 50, 0, n, GAP);
         assert_eq!(p.state, "paused");
         assert!(!p.start);
+    }
+}
+
+#[cfg(test)]
+mod team_tips_tests {
+    use super::*;
+
+    #[test]
+    fn team_tips_show_only_known_habits_and_stay_out_of_the_json_when_unset() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::at(dir.path());
+        let pack = aiq_domain::PackSource::load(&aiq_core::pack::BundledPack).unwrap();
+        let now = Now { utc_ms: 1_800_000_000_000, offset_min: 0 };
+        let json = serde_json::to_value(snapshot(&paths, &pack, now)).unwrap();
+        assert!(json.get("team_tips").is_none(), "no file set: no field");
+        let team = dir.path().join("team");
+        std::fs::create_dir_all(&team).unwrap();
+        std::fs::write(
+            team.join("team-tips.toml"),
+            "schema = \"aiq.team-tips.v1\"\n[[tools]]\nmove_id = \"check_code\"\ntool = \"T\"\nhow = \"h.\"\n\
+             [[tools]]\nmove_id = \"gone\"\ntool = \"G\"\nhow = \"g.\"\n",
+        )
+        .unwrap();
+        aiq_core::team_tips::set_folder(&paths, Some(&team)).unwrap();
+        let t = snapshot(&paths, &pack, now).team_tips;
+        assert!(t.set && t.problem.is_none());
+        assert_eq!(t.tools.iter().map(|x| x.move_id.as_str()).collect::<Vec<_>>(), ["check_code"]);
+        std::fs::write(team.join("team-tips.toml"), "schema = 1").unwrap();
+        let t = snapshot(&paths, &pack, now).team_tips;
+        assert!(t.set && t.problem.is_some() && t.tools.is_empty());
     }
 }

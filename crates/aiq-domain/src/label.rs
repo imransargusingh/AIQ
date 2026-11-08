@@ -53,6 +53,20 @@ pub fn enabled(judge: Option<&str>, label: Option<&str>) -> bool {
     judge == Some("auto") && label != Some("off")
 }
 
+/// The label's prompt version. Bump it with any change to `system()`: `evals/label/replay.json` records it,
+/// and CI's label replay gate fails until the answers are recorded again with the new prompt. A rewrite that
+/// told the model to name the job the whole task ends in measured worse on the laptop (2026-11-08, 20 real
+/// tasks, gpt-6.1-sol: 5 of 10 confident labels right against 10 of 18 for this prompt), so this one stays.
+pub const PROMPT_VERSION: &str = "label-2";
+
+/// Jobs a label names but never coaches from. In an agent tool a first prompt that reads as a question
+/// usually goes on to change code, so the analysis of the whole task names another job. Measured 2026-11-08 on
+/// the laptop (gpt-6.1-sol, label-1): confident `ask_research` labels were right 6 of 14 on the 20 newest
+/// tasks and 2 of 22 on 60 fresh ones; all other confident labels 16 of 19 (4 of 4 and 12 of 15). Leaving out
+/// only `troubleshoot` (0.1.22) looked like 8 of 10 on the first 20 and was 13 of 29 on the fresh 60. Word
+/// guesses and the analysis still coach questions and research.
+pub const NOT_COACHED_JOBS: [&str; 1] = ["ask_research"];
+
 /// The system prompt: the judge's own JOB and TASK TYPE definitions, cut from `rung::SYSTEM`, so the label
 /// and the judgment it is checked against use one vocabulary (never two definitions of a kind).
 pub fn system() -> String {
@@ -88,13 +102,30 @@ pub fn envelope(tool: &str, first_prompt: &str, fence: &str) -> String {
     )
 }
 
-/// The (job, kind) a label may coach from: a pack job, a named kind (never `other`), and both confidences at
-/// least the coaching bar (0.8, `rung::COACH_THRESHOLD`). A model's own confidence is not calibrated; the
+/// Whether a stored guess counts in its method's self-check: a label guess of a `NOT_COACHED_JOBS` job could
+/// never coach today, so it is not counted. The core and AIQ home both filter with this one definition.
+pub fn counts_in_check(method: &str, job: &str, _task_type: &str) -> bool {
+    method != METHOD || !NOT_COACHED_JOBS.contains(&job)
+}
+
+/// A label `accept` turns down only because its job is in `NOT_COACHED_JOBS`: sure enough, of a named kind,
+/// but a job labels never coach from. The tip funnel names this apart from "not sure enough".
+pub fn sure_but_not_coached(l: &Label) -> bool {
+    let bar = rung::COACH_THRESHOLD;
+    NOT_COACHED_JOBS.contains(&l.job.as_str())
+        && l.task_type != "other"
+        && l.job_confidence >= bar
+        && l.task_type_confidence >= bar
+}
+
+/// The (job, kind) a label may coach from: a pack job, a named kind (never `other`) of a job labels coach (not `NOT_COACHED_JOBS`), and
+/// both confidences at least the coaching bar (0.8, `rung::COACH_THRESHOLD`). A model's own confidence is not calibrated; the
 /// live self-check (`coach::check_guesses` over `method = label`) is what holds it to the 8-in-10 bar.
 pub fn accept(l: &Label) -> Option<(&str, &str)> {
     let bar = rung::COACH_THRESHOLD;
     (rung::PACK_JOBS.contains(&l.job.as_str())
         && l.task_type != "other"
+        && !NOT_COACHED_JOBS.contains(&l.job.as_str())
         && l.job_confidence >= bar
         && l.task_type_confidence >= bar)
         .then_some((l.job.as_str(), l.task_type.as_str()))
@@ -117,11 +148,23 @@ mod tests {
 
     #[test]
     fn accept_needs_a_pack_job_a_named_kind_and_both_confidences_at_the_bar() {
-        assert_eq!(accept(&lab("ask_research", 0.8, "find", 0.8)), Some(("ask_research", "find")));
-        assert_eq!(accept(&lab("ask_research", 0.79, "find", 0.9)), None);
-        assert_eq!(accept(&lab("ask_research", 0.9, "find", 0.79)), None);
+        assert_eq!(accept(&lab("code_change", 0.8, "feature", 0.8)), Some(("code_change", "feature")));
+        assert_eq!(accept(&lab("code_change", 0.79, "feature", 0.9)), None);
+        assert_eq!(accept(&lab("code_change", 0.9, "feature", 0.79)), None);
         assert_eq!(accept(&lab("ask_research", 0.95, "other", 0.95)), None);
         assert_eq!(accept(&lab("other", 0.95, "other", 0.95)), None);
+        assert_eq!(accept(&lab("ask_research", 0.99, "troubleshoot", 0.99)), None, "measured: usually a fix");
+        assert_eq!(accept(&lab("ask_research", 0.99, "find", 0.99)), None, "measured: usually a code change");
+        assert_eq!(accept(&lab("run_ship", 0.9, "release", 0.9)), Some(("run_ship", "release")));
+        assert_eq!(accept(&lab("code_change", 0.9, "fix_bug", 0.9)), Some(("code_change", "fix_bug")));
+        assert!(sure_but_not_coached(&lab("ask_research", 0.99, "troubleshoot", 0.99)));
+        assert!(!sure_but_not_coached(&lab("ask_research", 0.7, "troubleshoot", 0.99)), "unsure stays unsure");
+        assert!(!sure_but_not_coached(&lab("ask_research", 0.99, "other", 0.99)));
+        assert!(!sure_but_not_coached(&lab("code_change", 0.7, "fix_bug", 0.7)));
+        assert!(!counts_in_check(METHOD, "ask_research", "troubleshoot"));
+        assert!(!counts_in_check(METHOD, "ask_research", "find"));
+        assert!(counts_in_check("words", "ask_research", "troubleshoot"), "word guesses keep their own rule");
+        assert!(counts_in_check(METHOD, "code_change", "fix_bug"));
     }
 
     #[test]

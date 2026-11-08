@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkOutcome, outcomeText } from "./updateNow";
+import { AWAY_INSTALL_MS, awayInstallDue, checkOutcome, outcomeText } from "./updateNow";
 import type { Update } from "./types";
 
 const base: Update = {
@@ -38,5 +38,26 @@ describe("checkOutcome", () => {
     expect(checkOutcome({ ...base, latest: "v0.1.2" }, 1_000_000)).toBe("newest");
     expect(checkOutcome({ ...base, latest: "nightly" }, 1_000_000)).toBe("newest");
     expect(checkOutcome({ ...base, latest: null }, 1_000_000)).toBe("newest");
+  });
+});
+
+describe("awayInstallDue (design auto-update U5n)", () => {
+  const waiting: Update = { ...base, note: "waiting", available: "v0.1.4", blocked: "AIQ home is open" };
+  const away = 5_000_000;
+  it("installs a waiting update once Home has been in the background for 10 minutes", () => {
+    expect(awayInstallDue(waiting, away, away + AWAY_INSTALL_MS, "idle")).toBe(true);
+    expect(awayInstallDue(waiting, away, away + AWAY_INSTALL_MS - 1, "idle")).toBe(false);
+  });
+  it("never while the person is in the window, or a check or install already runs", () => {
+    expect(awayInstallDue(waiting, null, away + 10 * AWAY_INSTALL_MS, "idle")).toBe(false);
+    expect(awayInstallDue(waiting, away, away + AWAY_INSTALL_MS, "checking")).toBe(false);
+    expect(awayInstallDue(waiting, away, away + AWAY_INSTALL_MS, "installing")).toBe(false);
+  });
+  it("only under Update automatically, only when something waits, only for an installed copy", () => {
+    const t = away + AWAY_INSTALL_MS;
+    expect(awayInstallDue({ ...waiting, mode: "ask" }, away, t, "idle")).toBe(false);
+    expect(awayInstallDue({ ...waiting, mode: "off" }, away, t, "idle")).toBe(false);
+    expect(awayInstallDue({ ...waiting, note: "none" }, away, t, "idle")).toBe(false);
+    expect(awayInstallDue({ ...waiting, supported: false }, away, t, "idle")).toBe(false);
   });
 });

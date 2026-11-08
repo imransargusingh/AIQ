@@ -17,6 +17,7 @@ mod judge_eval;
 mod label;
 mod spawn;
 mod statusline;
+mod team_tips;
 
 use std::process::ExitCode;
 
@@ -32,7 +33,7 @@ Usage:
   aiq status                          What AIQ is doing, tips today, store size, hook times
   aiq status --report                 Write that to a file you can send for help (no prompt text,
                                       folders shown as folder-1, folder-2)
-  aiq show <card-id>                  A tip, why it showed, and the prompts behind it
+  aiq show [card-id]                  A tip, why it showed, and the prompts behind it (no id: the latest)
   aiq pause | aiq resume              Pause or resume AIQ (saving and tips)
   aiq endpoint                        Where the core listens (used by the VS Code extension)
   aiq install copilot [--yes]         Add AIQ's hooks and status line to Copilot (~/.copilot)
@@ -47,6 +48,8 @@ Usage:
                                       How long a tip stays in Copilot CLI's status line
   aiq import [--dry-run]              Add your past Claude Code and Copilot CLI sessions to AIQ
   aiq include <folder>                Count a folder again that AIQ marked automated, not counted
+  aiq team-tips add <folder>          Add your team's Tool to try lines from <folder>/team-tips.toml
+                                      (shown on Copilot and Home, never on Claude Code); also: check, remove
   aiq helpful|not|snooze|off <card-id>  Tell AIQ what you thought of a tip (snooze: 7 days; off: never again)
   aiq on <tip-id>                     Let AIQ show a tip you turned off
   aiq flag <job>/<type> <move> <reason> [note]  This doesn't fit: stop a next step for one kind of task
@@ -124,10 +127,12 @@ fn main() -> ExitCode {
         ["uninstall", "vscode", ..] => install_vscode::uninstall(yes),
         ["status", rest @ ..] => cli::status(rest),
         ["show", id, ..] => cli::show(id),
+        ["show"] => cli::show(""),
         ["pause", ..] => cli::pause(true),
         ["resume", ..] => cli::pause(false),
         ["config", "set", name, value, ..] => cli::config_set(name, value),
         ["include", folder, ..] => cli::include_folder(folder),
+        ["team-tips", rest @ ..] => team_tips::cli(rest),
         [verb @ ("helpful" | "not" | "snooze" | "off" | "on"), id, ..] => cli::tip_feedback(verb, id),
         ["tips", ..] => cli::tips(),
         ["progress", ..] => cli::progress(),

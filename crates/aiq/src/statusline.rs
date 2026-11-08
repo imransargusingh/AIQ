@@ -1,7 +1,7 @@
 //! `aiq statusline copilot`: Copilot CLI's status-line command (ADR-0005 rule 5; Phase 2 design, Exposed
 //! contract 2). Reads Copilot's session JSON on stdin, asks the core for this session's tip line, prints at
 //! most one line, always exits 0. Never starts the core (it runs on every refresh) and never opens the store.
-use aiq_contracts::card::{render_status_line, render_waiting_marker};
+use aiq_contracts::card::{render_status_line_with_tool, render_trend_line, render_waiting_marker};
 use aiq_contracts::frames::{Request, TipLineReply};
 use aiq_core::ipc;
 use aiq_core::paths::Paths;
@@ -48,13 +48,18 @@ fn inner(paths: &Paths) -> &'static str {
     };
     let (text, trend) = match serde_json::from_str::<TipLineReply>(&line) {
         Ok(TipLineReply { card: Some(c), plain, .. }) => {
-            (render_status_line(&c, crate::hook::color_allowed() && !plain), false)
+            // Copilot CLI may name the team's tool (team tips file); it shows only when the line still fits.
+            let team = aiq_core::team_tips::load(paths);
+            let tool = team.as_ref().and_then(|t| aiq_core::team_tips::tool_for_tip(t, &c.tip_id));
+            (render_status_line_with_tool(&c, crate::hook::color_allowed() && !plain, tool), false)
         }
-        Ok(TipLineReply { waiting_card_id: Some(id), plain, .. }) => {
-            (render_waiting_marker(&id, crate::hook::color_allowed() && !plain), false)
+        Ok(TipLineReply { waiting_card_id: Some(_), plain, .. }) => {
+            (render_waiting_marker(crate::hook::color_allowed() && !plain), false)
         }
-        // The trend is not a tip: plain text, no badge, so a tip still stands out when one comes.
-        Ok(TipLineReply { trend: Some(t), .. }) => (t, true),
+        // The trend is not a tip: its own cyan, no badge, so a yellow tip still stands out when one comes.
+        Ok(TipLineReply { trend: Some(t), plain, .. }) => {
+            (render_trend_line(&t, crate::hook::color_allowed() && !plain), true)
+        }
         _ => return if has_session { "none" } else { "none-no-session" },
     };
     let mut out = std::io::stdout().lock();

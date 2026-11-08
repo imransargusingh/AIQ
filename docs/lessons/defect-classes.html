@@ -342,4 +342,94 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <p>switch (in <code>open()</code> and the Theme test) before axe runs: 0 of 60 locally, e2e 67/67 three times.</p>
 <ul><li><strong>Sweep:</strong> <code>open()</code> is the only place a test changes <code>data-theme</code>. The Theme test&#x27;s switch by click ran axe</li></ul>
 <p>straight after it, so it now settles too. No other test changes theme mid-page (<code>emulateMedia</code> in the Theme test runs no axe after it).</p>
-<ul><li><strong>Rule:</strong> after any change that restyles the page, wait for transitions to finish before measuring colours.</li></ul></main></body></html>
+<ul><li><strong>Rule:</strong> after any change that restyles the page, wait for transitions to finish before measuring colours.</li></ul>
+<h3>DC-033 — A best-effort step after the real work, with no error handling, in a script that stops on any error</h3>
+<ul><li><strong>Signature:</strong> 2026-11-05 23:22Z, Imran&#x27;s laptop, Update from 0.1.7 to 0.1.8: the swap worked, then Microsoft</li></ul>
+<p>Defender&#x27;s ASR rule C1DB55AB (event 1121, set by IT) refused upgrade.ps1&#x27;s start of the new <code>aiq.exe</code> and <code>aiq-home.exe</code>. <code>Start-Core</code> caught its error; the <code>-Relaunch</code> <code>Start-Process</code> had no <code>try</code>, so under <code>$ErrorActionPreference = &#x27;Stop&#x27;</code> it ended the script with no log line. AIQ home stayed closed.</p>
+<ul><li><strong>Why it survives:</strong> CI never passed <code>-Relaunch</code> and Windows never refused a start on the runner, so the</li></ul>
+<p>unguarded line only ran on the person&#x27;s machine, and only failed there when Defender stepped in.</p>
+<ul><li><strong>Sweep:</strong> <code>Start-Process</code> in packaging/windows: upgrade.ps1&#x27;s five <code>-Relaunch</code> lines (now <code>Start-Home</code>) and its</li></ul>
+<p>core start; install.ps1 lines 137–138 start the import and AIQ home as the last step of a manual install the person watches, so an error there is shown to them; left as is.</p>
+<ul><li><strong>Control (product):</strong> <code>Start-Again</code> in upgrade.ps1: never throws, tries again after 1, 2, 4 and 8 s, skips a</li></ul>
+<p>process already up, tries AIQ home through Explorer, and logs one <code>AIQ-UPDATE-CORE</code> / <code>AIQ-UPDATE-HOME</code> line for every outcome.</p>
+<ul><li><strong>Control (tests):</strong> release.yml auto-update step runs <code>-Apply -Relaunch -FailLaunches 2</code> (core started on the</li></ul>
+<p>third try, AIQ home reopened) and <code>-Rollback -Relaunch -FailLaunches 99</code> with a hook-like core start (no second core; AIQ home refusal logged; exit 0).</p>
+<ul><li><strong>Rule:</strong> a step that runs after the work is done (restart, reopen, tidy-up) is guarded and logged on every</li></ul>
+<p>path; its failure must never hide the work&#x27;s outcome or end the script silently.</p>
+<ul><li><strong>Recurrence (2026-11-07, release build of 0.1.15, main 9cfa689):</strong> <code>Log</code>&#x27;s own <code>Add-Content</code> threw &quot;Stream was</li></ul>
+<p>not readable&quot; right after &quot;Rolled back to AIQ&quot; (the test&#x27;s stand-in hook was reading the log), and the rollback exited non-zero. Same class: the log write is best-effort too. <strong>Control:</strong> <code>Log</code> tries 5 times, 100 ms apart, and never throws; release.yml runs a <code>-Apply</code> with the log held open and wants exit 0. install.ps1&#x27;s two log lines are left: the person watches that run.</p>
+<h3>DC-034 — A send that gives up on a timer and drops the frame without knowing whether it went out</h3>
+<ul><li><strong>Signature:</strong> 2026-11-08, Imran&#x27;s laptop on 0.1.18: a Copilot CLI prompt (04:20:57Z) and a Claude Code prompt</li></ul>
+<p>(03:28:10Z) had no stop event stored, and <code>aiq status</code> showed <code>AIQ-HOOK-STOP-TIMEOUT</code> 11 with Stop 7 and agentStop 15 runs in 24 h. The Stop hook waits 55 ms for connect, write and the core&#x27;s reply on a helper thread. On a timeout it counted the code and returned; the process then exited and ended the helper thread. If that thread was still connecting or writing, the turn end never reached the core and was not spooled. The Right-now card and live trend then saw the agent as still busy.</p>
+<ul><li><strong>Why it survives:</strong> on Linux CI a local-socket connect and write finish in microseconds, so the timeout only</li></ul>
+<p>fires after the frame is written; the lost case needs a slow Windows pipe connect (peer check, Defender, a loaded machine). The timeout and the &quot;frame stored&quot; cases shared one outcome label, so the log could not tell them apart.</p>
+<ul><li><strong>Sweep:</strong> every <code>ipc::request</code> caller in crates/aiq: the prompt and Copilot ingest paths already spool on any</li></ul>
+<p>error, timeout included (a duplicate is ignored by event id); <code>Shown</code> counts <code>AIQ-HOOK-SHOWN-UNSENT</code> and the tip stays deliverable; only the Stop path dropped the frame. Core side: <code>dispatch</code> drops a <code>TakeCard</code> when its 1024-deep channel is full, with no counter; noted, not changed (never seen full).</p>
+<ul><li><strong>Control (product):</strong> <code>ipc::request_tracked</code> reports whether the whole frame was written. On a timeout the</li></ul>
+<p>hook spools an unwritten stop (<code>stop-timeout-spooled</code>) and keeps <code>stop-timeout</code> for a written one, so the timing log now measures which case happens.</p>
+<ul><li><strong>Control (tests):</strong> <code>ipc::tests::request_tracked_*</code> (no core: not written; late reply: written and read by the</li></ul>
+<p>core); <code>hook::tests::a_timed_out_stop_that_never_left_goes_to_the_spool</code>.</p>
+<ul><li><strong>Rule:</strong> a sender that gives up on a timer must know whether its message left. If it may not have, keep it</li></ul>
+<p>(spool, retry) before the process ends; an idempotent receiver makes keeping it safe.</p>
+<h3>DC-036 — A self-check that switches a feature off and, by doing so, stops measuring itself</h3>
+<p>(DC-035 is taken by PR #181, still open.)</p>
+<ul><li><strong>Signature:</strong> 2026-11-08, Imran&#x27;s laptop, measured read-only. The kind-label self-check reached 6 right of 10</li></ul>
+<p>on 2026-11-04 16:02Z and fell under the 8-in-10 bar. From then on the core asked for no labels, so no new label was ever checked, and the check could not recover. Word matching found a kind for 4 tasks in a week, so no tip was decided on any surface for four days across 91 coachable prompts. The switch-off logged nothing, because the warning fired only when words and labels were both off. The count was all-time, so old misses and labels from an older prompt or model would have held the tips forever.</p>
+<ul><li><strong>Why it survives:</strong> the unit test asserted the behaviour itself (&quot;labels 7 of 10: AIQ stops asking&quot;). No test</li></ul>
+<p>asked whether the check could ever turn the feature back on, and no signal showed that tips had stopped.</p>
+<ul><li><strong>Sweep:</strong> the word-guess self-check had the same shape (<code>guess</code> was only computed while words were on): fixed</li></ul>
+<p>the same way. Home Settings computed one check over words and labels together while the core kept two: now both use <code>check_guesses</code> per method. The accuracy pause (K6b) reads separate <code>aiq analyze --check</code> runs that keep running while it pauses, so it does not have this shape. <code>judge.rs</code> N3 is an all-time report line, not a switch: left as is.</p>
+<ul><li><strong>Control (product):</strong> while a check holds tips, the core still makes and stores word guesses and still asks for</li></ul>
+<p>labels; only the tip is held. The hold is logged once per core run (<code>AIQ-COACH-GUESS-LOW</code>, with the counts). <code>check_guesses</code> counts only the newest <code>2 × guess_check_min</code> checked guesses.</p>
+<ul><li><strong>Control (tests):</strong> <code>next_rung::labels_have_their_own_self_check_hold_tips_below_eight_in_ten_and_keep_being_checked</code></li></ul>
+<p>(still asks, stores the label, shows no tip, and label tips return after ten newer right labels); <code>next_rung::self_check_holds_tips_at_seven_of_ten_keeps_guessing_and_on_brings_them_back</code>; <code>coach::tests::self_check_counts_only_the_newest_twenty_so_old_misses_leave</code>.</p>
+<ul><li><strong>Rule:</strong> a guard that switches something off must keep measuring the thing it guards, so it can switch it back</li></ul>
+<p>on, and it must say when it switches. A test for such a guard proves the way back, not only the switch-off.</p>
+<h3>DC-037 — A stop in the product that only a log line can see</h3>
+<ul><li><strong>Signature:</strong> 2026-11-04 16:02Z to 11-08, Imran&#x27;s laptop. No tip was decided on any surface for four days (see</li></ul>
+<p>DC-036). Every number that would have shown it existed in the store or the log, but nothing put &quot;tasks in, tips out&quot; side by side, so nobody saw it until a person asked why tips had stopped. Of 20 new tasks that reached the tip step since 11-04, 15 ended with no kind; that count had to be rebuilt by hand from log lines.</p>
+<ul><li><strong>Why it survives:</strong> each hold is correct on its own and is unit-tested on its own (cap, quiet, cooldown, accuracy</li></ul>
+<p>pause, self-check). No test or surface asks the end-to-end question: of the tasks that could have had a tip, how many did, and where did the rest stop?</p>
+<ul><li><strong>Sweep:</strong> next-step tips had eleven silent exits (no word match, label failed / unsure / late / never back, label</li></ul>
+<p>or words held, kind held by its state, tips off, a late first prompt). Reprompt tips record a card decision for every outcome, so they were already countable. Ready tips that expire were countable (<code>card_decision</code> <code>expired</code>) but shown nowhere.</p>
+<ul><li><strong>Control (product):</strong> store v11 <code>tip_path</code>: every exit of the path writes its step. <code>aiq status</code> and Home count new</li></ul>
+<p>tasks → kind known → tip ready → shown → opened, with every reason, and name any working day with no tip shown.</p>
+<ul><li><strong>Control (tests):</strong> <code>next_rung::every_new_task_ends_its_tip_path_at_a_counted_step</code>,</li></ul>
+<p><code>next_rung::held_self_checks_are_counted_as_their_own_steps</code>, <code>next_rung::status_carries_the_funnel_and_a_dry_working_day_warns</code>, <code>service::a_rescued_first_prompt_is_counted_on_the_tip_path</code>, <code>funnel::tests::*</code> (every step and hold reason has words, dry-day rules), the Home e2e &quot;tip funnel&quot; tests.</p>
+<ul><li><strong>Rule:</strong> a feature whose job is to act on a moment counts, per period, the moments it saw and the ones it acted</li></ul>
+<p>on, and each way a moment was passed over gets its own code. A new early return without a step is a defect.</p>
+<h3>DC-038 — A test reads, at one instant, a value the product is allowed to reach later or more than once</h3>
+<ul><li><strong>Signature:</strong> 2026-11-08, two CI flakes. (1) Windows rust job on #185: <code>e2e_a_tip_no_hook_says_it_printed_is_not_counted_and_comes_back</code></li></ul>
+<p>found <code>AIQ-CARD-UNCONFIRMED 2</code>, expected 1. The test retries the turn end because a loaded runner can miss the hook&#x27;s 30 ms + 35 ms wait (STOP_WAIT_MS, ADR-0005), but a retry whose hook gave up after the core took the tip is a real hand-over and is counted too (<code>hand_back</code> or expiry). (2) Linux ui job on main 69ad8fe: the tour test read focus the moment <code>#tourhd</code> existed; the tour moves focus to Next one animation frame later, by design (tour.tsx, so a closing palette can&#x27;t take focus back), and focus was still on the page.</p>
+<ul><li><strong>Why it survives:</strong> both pass on a fast machine every time; the window is a frame or a few ms wide, so a local</li></ul>
+<p>run never sees it. The product behaviour is right in both: the tip is not lost (it is ready again), and focus does land on Next.</p>
+<ul><li><strong>Sweep:</strong> e2e.rs asserts <code>AIQ-CARD-UNCONFIRMED</code> only here; e2e_copilot.rs already bounds its retries</li></ul>
+<p>(<code>stop_until_card</code>). Home&#x27;s other <code>requestAnimationFrame</code> focus moves (App.tsx end of tour, Projects, Data) are read with <code>waitForFunction</code> or not read right after; the skip-link focus read is native, not deferred.</p>
+<ul><li><strong>Control (tests):</strong> the unconfirmed count is bounded by the hooks&#x27; own outcomes in <code>hook-timings.log</code></li></ul>
+<p>(1 for the gone hook, plus at most 1 per retry that timed out or could not confirm; never 0, never more); the tour test waits up to 2 s for focus on Next before asserting it.</p>
+<ul><li><strong>Rule:</strong> when the product defers a step (a frame, a retry, a window) the test waits for that step with a bound,</li></ul>
+<p>and when a test retries, its exact counts allow what each retry may legitimately add, read from the product&#x27;s own record of the retry, never a looser guess.</p>
+<h3>DC-039 — A classifier scored against a different question than the one it is asked</h3>
+<ul><li><strong>Signature:</strong> 2026-11-08, Imran&#x27;s laptop: the kind label reads only a task&#x27;s first prompt; its self-check</li></ul>
+<p>scores it against the analysis of the whole task. 6 of 10 right, so label tips stopped on 11-04 for 4 days. The offline check before launch (11-03) gave 11 of 12 because it was scored on a different sample, and nothing re-ran it. Most misses were problem reports labelled <code>troubleshoot</code> whose task went on to a fix.</p>
+<ul><li><strong>Why it survives:</strong> the label is right about the prompt and wrong about the task, so reading the prompt</li></ul>
+<p>never shows the bug; only the score against later outcomes does, and no test held that score.</p>
+<ul><li><strong>Sweep:</strong> other first-prompt decisions checked against the whole task: the word guess (4 of 4, too few to</li></ul>
+<p>say) and the Right-now card (reads the live session, not checked against analysis). Copilot labels used Copilot&#x27;s own model pick when no model was set while analysis used AIQ&#x27;s default: fixed (<code>copilot_models</code>).</p>
+<ul><li><strong>Control (product):</strong> <code>label::NOT_COACHED</code> (troubleshoot labels never coach); labels use the analysis models.</li><li><strong>Control (tests):</strong> <code>label_replay_gate</code> (synthetic set, prompt pinned by <code>PROMPT_VERSION</code> and text, 8-in-10</li></ul>
+<p>floor, coverage floor, injection), <code>measured_labels_clear_the_bar</code> (real measured labels, no text), <code>accept_needs_a_pack_job_a_named_kind_and_both_confidences_at_the_bar</code>; <code>aiq label --eval</code> exits 3 under the bar.</p>
+<ul><li><strong>Rule:</strong> when a model predicts something checked later against a fuller reading, measure it against that</li></ul>
+<p>reading on real data before it acts, keep the measurement as a replayed fixture, and fail CI when it drops.</p>
+<ul><li><strong>Recurrence (same day):</strong> the first fix (troubleshoot labels only) was chosen on 10 confident labels and</li></ul>
+<p>read 8 of 10; 60 fresh tasks gave 13 of 29. A rule fitted and scored on the same small sample is a guess. Control: <code>measured.json</code> now holds both runs (78 rows), so a rule must clear the bar on data it was not fitted to; any later rule change adds a fresh laptop run to it before merging.</p>
+<h3>DC-040 — A deferred action waits for a condition the person may never reach, and nothing escalates</h3>
+<ul><li><strong>Signature:</strong> 2026-11-08, laptop: the updater installs only &quot;when AIQ is idle&quot;, and idle required AIQ home to be</li></ul>
+<p>closed. Imran keeps Home open (PID 44988 since 04:09:55Z), so 0.1.19, 0.1.20 and 0.1.21 were each downloaded and replaced in turn over about 3 hours and none installed; 0.1.18 still ran at 07:04Z. <code>blocked</code> said &quot;AIQ home is open&quot; the whole time; the box offered Update, which was not pressed. A second instance on the same path: a run that AIQ home closed itself for exited without reopening Home when another update run held <code>update.lock</code>.</p>
+<ul><li><strong>Why it survives:</strong> every test opens or closes Home on purpose, so &quot;Home stays open for days&quot; is never a case;</li></ul>
+<p>each part is correct alone (the script must not swap exes under a running Home), and the waiting state looks like progress (a download, a box, a log line) while nothing ever completes.</p>
+<ul><li><strong>Sweep:</strong> other waits on a person&#x27;s state: tips (30-min quiet, cap; already counted by the tip funnel, DC-037),</li></ul>
+<p>the analysis queue (paused shows why and how many wait), Copilot turn end on an open permission prompt (stop events thread; a missed confirm keeps the tip, no loss). The update path was the only one with no way forward but the person&#x27;s press. Every exit of upgrade.ps1 after AIQ home closed itself now reaches <code>Start-Home</code>.</p>
+<ul><li><strong>Control (tests):</strong> <code>update::tests::home_installs_a_waiting_update_when_away_only_under_auto_and_not_every_minute</code>,</li></ul>
+<p><code>an_away_install_records_its_try_and_the_next_open_is_minimised_once</code>, <code>updateNow.test.ts</code> awayInstallDue, the Home e2e away-install case (fake clock), release.yml smoke &quot;lock held: AIQ home opened again&quot;.</p>
+<ul><li><strong>Rule:</strong> an action deferred until &quot;the person is not using X&quot; names the longest it may wait and what makes it</li></ul>
+<p>happen then (here: 10 minutes in the background), and every exit of a step that closed something the person had open puts it back.</p></main></body></html>

@@ -21,3 +21,34 @@ describe("Right now, several open tasks (option A)", () => {
     expect(starts).toEqual([...starts].sort((a, b) => a - b));
   });
 });
+
+import { ago, quiet, QUIET_HINT_MS } from "./pages/RightNow";
+import full from "../tests/fixtures/full.json";
+
+describe("Right now with nothing open (Imran 2026-11-08)", () => {
+  const base = full as unknown as Snapshot;
+  const at = (s: Partial<Snapshot>) => ({ ...base, ...s }) as Snapshot;
+  it("names the state: paused, then not running, then starting, then no tool, then idle", () => {
+    expect(quiet(at({ status: { ...base.status, paused: true } })).state).toBe("paused");
+    expect(quiet(at({ status: { ...base.status, core_state: "failed" } })).state).toBe("stopped");
+    expect(base.starting.length).toBeGreaterThan(0);
+    expect(quiet(base).state).toBe("starting");
+    expect(quiet(at({ starting: [], setup: { ...base.setup, tools: [] } })).state).toBe("none");
+    expect(quiet(at({ starting: [] })).state).toBe("idle");
+  });
+  it("hints only for connected tools silent longer than the span, or never heard", () => {
+    const tools = (["claude-code", "copilot", "vscode"] as const).map((tool) => ({ tool, hooked: true, present: true, install: "" }));
+    const seen = [
+      { surface: "copilot-cli", last_ms: base.now_ms - QUIET_HINT_MS + 60_000 },
+      { surface: "claude-code", last_ms: base.now_ms - QUIET_HINT_MS - 60_000 },
+    ];
+    const q = quiet(at({ starting: [], seen, setup: { ...base.setup, tools } }));
+    expect(q.silent.map((t) => t.name)).toEqual(["Claude Code", "VS Code"]);
+  });
+  it("says how long ago in minutes within the hour, then the day and time", () => {
+    const now = base.now_ms;
+    expect(ago(now - 20_000, now, 0)).toBe("just now");
+    expect(ago(now - 12 * 60_000, now, 0)).toBe("12 min ago");
+    expect(ago(now - 3 * 3_600_000, now, 0)).toMatch(/^(Today|Yesterday) \d\d:\d\d$/);
+  });
+});

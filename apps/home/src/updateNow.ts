@@ -52,3 +52,22 @@ export function outcomeText(o: ReturnType<typeof checkOutcome>, u: Update): stri
 /** How long Home waits for a check before saying it is still running. */
 export const CHECK_WAIT_MS = 180_000;
 export const CHECK_POLL_MS = 2_000;
+
+/** AIQ home installs a waiting update by itself once its window has been in the background this long (design
+ * auto-update U5n; crates/aiq-core/src/update.rs AWAY_INSTALL_MS). Laptop, 2026-11-08: Home stayed open for
+ * hours, so 0.1.19 to 0.1.21 each downloaded and none installed. */
+export const AWAY_INSTALL_MS = 10 * 60_000;
+
+/** Should Home ask the shell for an away install now? `awaySince`: when the window last lost focus or was
+ * minimised, null while the person is in it. The shell checks the rest again (the stored setting, a try in the
+ * last 30 minutes), so this only keeps Home from asking when nothing can happen. */
+export function awayInstallDue(u: Update, awaySince: number | null, now: number, phase: UpdatePhase): boolean {
+  return (
+    u.supported &&
+    u.mode === "auto" &&
+    u.note === "waiting" &&
+    phase === "idle" &&
+    awaySince !== null &&
+    now - awaySince >= AWAY_INSTALL_MS
+  );
+}

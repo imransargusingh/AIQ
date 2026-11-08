@@ -147,3 +147,11 @@ test("detailsText_nextRung_starterAndKindsNeverPromptText", () => {
 test("feedbackButtons_matchTheCoreAnswers", () => {
   assert.deepEqual(FEEDBACK_BUTTONS.map(([, a]) => a), ["helpful", "not_helpful", "snooze", "off"]);
 });
+
+test("teamTool_addedToNotificationAndDetails_onlyWhenTheCoreSendsIt", () => {
+  const c = { ...card, team_tool: "Tool to try: X: does Y." };
+  assert.equal(notificationText(c), `${notificationText(card)} Tool to try: X: does Y.`);
+  const r = { card, outcome: "show_ready", reason_code: "ok", delivered: true, evidence: [{ ts: "t", text: "p" }] };
+  assert.ok(!detailsText(r).includes("Tool to try"));
+  assert.ok(detailsText({ ...r, team_tool: "Tool to try: X: does Y." }).includes("Try this: say what was wrong with the last answer.\nTool to try: X: does Y.\n\n"));
+});

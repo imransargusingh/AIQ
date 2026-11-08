@@ -17,8 +17,68 @@ export interface Snapshot {
   projects: Project[];
   /** Every open task's live rung trend (design live-rung-trend C), newest activity first; empty when none is open or it is off. */
   live: Live[];
+  /** Sessions active within the idle gap whose first turn hasn't ended, newest activity first (the card says "starting"). */
+  starting: Starting[];
+  /** Each tool's newest event, newest first: the quiet Right now card says when each was last heard. */
+  seen: Seen[];
   /** The rung guide: every next-step move in pack order (pack data, the same for everyone). */
   guide: GuideMove[];
+  /** Where new tasks' tips went, today and over 7 days, and recent days with no tip (design tip-funnel). */
+  tip_funnel: TipFunnels;
+  /** The team tips file (aiq.team-tips.v1), read in place; absent when no folder is set. */
+  team_tips?: TeamTips;
+}
+
+/** Mirrors aiq-home `TeamTips`: one "Tool to try" per habit, from the person's team tips file. */
+export interface TeamTips {
+  set: boolean;
+  /** Why the file can't be used, in AIQ's words. Tips show as usual. */
+  problem: string | null;
+  tools: TeamTool[];
+}
+
+export interface TeamTool {
+  move_id: string;
+  tool: string;
+  how: string;
+  link?: string;
+}
+
+/** Mirrors aiq-contracts `TipFunnels`. Counted from stored rows; the same reader as `aiq status`. */
+export interface TipFunnels {
+  today: TipFunnel;
+  week: TipFunnel;
+  /** Days before today, in the last 7, with 3 or more new tasks and no tip shown. Newest first. */
+  droughts: TipDrought[];
+}
+
+export interface TipFunnel {
+  days: number;
+  tasks: number;
+  kind_known: number;
+  tip_found: number;
+  no_tip: FunnelCount[];
+  tips: number;
+  held: FunnelCount[];
+  waiting: number;
+  expired: number;
+  shown: FunnelCount[];
+  opened: number;
+  answered: number;
+}
+
+/** A count with its code and plain words (the words come from Rust: one definition). */
+export interface FunnelCount {
+  code: string;
+  words: string;
+  count: number;
+}
+
+export interface TipDrought {
+  /** Local date, YYYY-MM-DD. */
+  day: string;
+  tasks: number;
+  main_reason: FunnelCount | null;
 }
 
 export interface GuideMove {
@@ -33,6 +93,21 @@ export interface GuideMove {
   starter: string;
   /** What the analysis counts as doing this habit. */
   counts: string;
+}
+
+/** Mirrors crates/aiq-home `Starting`: a session whose first turn hasn't ended, so no estimate yet. */
+export interface Starting {
+  surface: string;
+  first_ms: number;
+  last_ms: number;
+  prompts: number;
+  working: boolean;
+}
+
+/** Mirrors crates/aiq-home `Seen`: one tool's newest event. */
+export interface Seen {
+  surface: string;
+  last_ms: number;
 }
 
 /** Mirrors crates/aiq-core `live_trend::LiveTrend` plus Home's task id and kind name. An estimate from what the

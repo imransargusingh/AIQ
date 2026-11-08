@@ -229,7 +229,8 @@ fn writer_loop(mut svc: Service<SystemClock>, rx: Receiver<Cmd>, paths: &Paths, 
                 let fresh = received.elapsed() <= Duration::from_millis(wait_ms);
                 let card = svc.take_card(&event, trace_id.as_deref(), fresh);
                 let id = card.as_ref().map(|c| c.card_id.clone());
-                let sent = reply.send(TakeCardReply { card, plain: !svc.switch_on(SETTING_TIP_HIGHLIGHT) });
+                let sent =
+                    reply.send(TakeCardReply { card, plain: !svc.switch_on(SETTING_TIP_HIGHLIGHT), team_tool: None });
                 if let (Err(_), Some(id)) = (sent, id) {
                     svc.hand_back(&id); // the hook's wait ended before the reply: it will never print this tip
                 }
@@ -240,7 +241,12 @@ fn writer_loop(mut svc: Service<SystemClock>, rx: Receiver<Cmd>, paths: &Paths, 
                 let _ = reply.send(svc.status());
             }
             Cmd::Show { card_id, opened_on, reply } => {
-                let _ = reply.send(svc.show(&card_id, &opened_on));
+                let mut r = svc.show(&card_id, &opened_on);
+                if let Some(c) = &r.card {
+                    // Only VS Code's own details view; `aiq show` renders its line in the CLI (never in Claude Code).
+                    r.team_tool = crate::team_tips::line_on(paths, &opened_on, &c.tip_id);
+                }
+                let _ = reply.send(r);
             }
             Cmd::TipLine { surface, session, reply } => {
                 let plain = !svc.switch_on(SETTING_TIP_HIGHLIGHT);
@@ -259,7 +265,9 @@ fn writer_loop(mut svc: Service<SystemClock>, rx: Receiver<Cmd>, paths: &Paths, 
             Cmd::TakeCardAny { surface, received, reply } => {
                 // A card handed to a poller that already gave up would be lost; deliver only while it waits.
                 let card = if received.elapsed() <= RENDER_WAIT { svc.take_card_any(&surface) } else { None };
-                let _ = reply.send(TakeCardReply { card, plain: !svc.switch_on(SETTING_TIP_HIGHLIGHT) });
+                // VS Code may name the team's tool (team tips file); the hook surfaces render their own line.
+                let team_tool = card.as_ref().and_then(|c| crate::team_tips::line_on(paths, &surface, &c.tip_id));
+                let _ = reply.send(TakeCardReply { card, plain: !svc.switch_on(SETTING_TIP_HIGHLIGHT), team_tool });
             }
             Cmd::Setting { key, value, reply } => {
                 let _ = reply.send(svc.set(&key, &value));

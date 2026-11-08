@@ -1,5 +1,5 @@
 //! What the agent did in a turn, read from the tool's own log: tool calls by name, files touched, commands run,
-//! sub-agents started. One summariser for both readers, so a live turn and an imported turn are counted the
+//! sub-agents started, and the order of the steps with each check's result. One summariser for both readers, so a live turn and an imported turn are counted the
 //! same way: `aiq import` reads whole files, the core reads the new part of a live session's log at each stop.
 //!
 //! Sources, read-only: Claude Code's transcript (`assistant` records' `tool_use` blocks; sub-agent records carry
@@ -15,6 +15,8 @@ pub const MAX_FILES: usize = 50;
 pub const MAX_COMMANDS: usize = 30;
 /// Longest command kept by import, in bytes.
 pub const MAX_CMD: usize = 200;
+/// Most steps kept per turn (the last ones: the end of a turn decides whether it finished checked).
+pub const MAX_STEPS: usize = 200;
 /// Most bytes one stop reads; a longer backlog makes that turn "not recorded" and the next read goes on.
 pub const MAX_READ_BYTES: u64 = 16 * 1024 * 1024;
 /// Bytes a session's first read since the core started takes from the end of its log, before widening
@@ -45,6 +47,11 @@ pub struct Actions {
     /// Every command run, also past `MAX_COMMANDS`.
     pub commands_run: u32,
     pub subagents: u32,
+    /// The turn's steps in order, one letter each (`aiq_domain::rung::step`): e edit, c check (result not
+    /// recorded), p check passed, f check failed, x other command, s sub-agent, r anything else (read, search).
+    pub steps: Vec<u8>,
+    /// Checks still waiting for their result: tool call id -> index in `steps`.
+    pending: std::collections::HashMap<String, usize>,
 }
 
 /// Files a freeform patch names (`*** Update File: p`, `*** Add File: p`, `*** Delete File: p`, `*** Move to: p`).
@@ -65,6 +72,28 @@ fn patch_files(patch: &str) -> impl Iterator<Item = &str> {
 impl Actions {
     /// One tool call, with its arguments (a JSON object, or the raw text when the tool takes freeform text).
     pub fn note(&mut self, name: &str, args: &Value) {
+        self.note_call(name, args, None);
+    }
+
+    /// One tool call with the id its result will carry, so a check's pass or fail can be filled in later.
+    pub fn note_call(&mut self, name: &str, args: &Value, id: Option<&str>) {
+        use aiq_domain::rung::step;
+        let command = args.get("command").and_then(Value::as_str);
+        let s = if matches!(name, "Task" | "Agent") {
+            step::SUBAGENT
+        } else if let Some(c) = command {
+            if aiq_domain::rung::check_rule(c).is_some() { step::CHECK } else { step::COMMAND }
+        } else if aiq_domain::rung::is_edit_tool(name) {
+            step::EDIT
+        } else {
+            step::OTHER
+        };
+        if s == step::CHECK
+            && let Some(id) = id
+        {
+            self.pending.insert(id.to_owned(), self.steps.len());
+        }
+        self.steps.push(s);
         *self.tools.entry(name.to_owned()).or_default() += 1;
         let path = ["file_path", "path", "notebook_path"].iter().find_map(|k| args.get(*k).and_then(Value::as_str));
         let patch = match args {
@@ -96,29 +125,74 @@ impl Actions {
         self.tools.values().sum()
     }
 
+    /// A check's result arrived: `ok` is whether it passed, None when the result doesn't say.
+    pub fn result(&mut self, id: &str, ok: Option<bool>) {
+        use aiq_domain::rung::step;
+        if let (Some(i), Some(ok)) = (self.pending.remove(id), ok) {
+            self.steps[i] = if ok { step::PASSED } else { step::FAILED };
+        }
+    }
+
+    /// The last `MAX_STEPS` steps as text, with a leading `<` when earlier ones were dropped.
+    pub fn steps_text(&self) -> String {
+        let from = self.steps.len().saturating_sub(MAX_STEPS);
+        let mut s = if from > 0 { String::from("<") } else { String::new() };
+        s.extend(self.steps[from..].iter().map(|b| *b as char));
+        s
+    }
+
     /// Import's stored shape (the judge reads it), or None when the agent did nothing.
     pub fn take_json(&mut self) -> Option<String> {
         if self.tools.is_empty() {
             return None;
         }
+        let steps = self.steps_text();
         let a = std::mem::take(self);
         Some(
-            serde_json::json!({"tools": a.tools, "files": a.files, "commands": a.commands, "subagents": a.subagents})
-                .to_string(),
+            serde_json::json!({"tools": a.tools, "files": a.files, "commands": a.commands, "subagents": a.subagents,
+                               "steps": steps})
+            .to_string(),
         )
     }
 }
 
-/// A Claude Code transcript record's tool calls (main line only), noted into `acts`.
+/// A Claude Code transcript record's tool calls and their results (main line only), noted into `acts`.
+/// assume: Claude Code marks a shell command that exits non-zero with `is_error: true` on its `tool_result`
+/// (seen on one transcript, 2026-11-08). If false: a failed check reads as passed, as before this field existed.
 pub fn claude_record(r: &Value, acts: &mut Actions) {
-    if r.get("isSidechain").and_then(Value::as_bool) == Some(true) || r["type"] != "assistant" {
+    if r.get("isSidechain").and_then(Value::as_bool) == Some(true) {
         return;
     }
-    for b in r["message"]["content"].as_array().into_iter().flatten() {
-        if b["type"] == "tool_use" {
-            acts.note(b["name"].as_str().unwrap_or("?"), &b["input"]);
+    let blocks = r["message"]["content"].as_array().into_iter().flatten();
+    match r["type"].as_str() {
+        Some("assistant") => {
+            for b in blocks.filter(|b| b["type"] == "tool_use") {
+                acts.note_call(b["name"].as_str().unwrap_or("?"), &b["input"], b["id"].as_str());
+            }
         }
+        Some("user") => {
+            for b in blocks.filter(|b| b["type"] == "tool_result") {
+                let failed = b.get("is_error").and_then(Value::as_bool).unwrap_or(false);
+                if let Some(id) = b["tool_use_id"].as_str() {
+                    acts.result(id, Some(!failed));
+                }
+            }
+        }
+        _ => {}
     }
+}
+
+/// The exit code a Copilot shell result reports (`<shellId: 3 completed with exit code 1>`), from the last
+/// mention. Copilot's own `success` flag is true for commands that exit non-zero (measured on Imran's 40 newest
+/// sessions, 2026-11-08: true on all 132 of them), so it is not read.
+fn exit_code(result: &Value) -> Option<i64> {
+    let text = match &result["content"] {
+        Value::String(s) => s.clone(),
+        v => v.to_string(),
+    };
+    let at = text.rfind("exit code ")? + "exit code ".len();
+    let num: String = text[at..].chars().take_while(|c| c.is_ascii_digit() || *c == '-').collect();
+    num.parse().ok()
 }
 
 /// A Claude Code transcript record that is a typed prompt: a main-line, non-meta `user` record whose content is
@@ -141,9 +215,18 @@ pub fn copilot_record(e: &Value, acts: &mut Actions) {
                 Value::String(s) => serde_json::from_str(s).unwrap_or_else(|_| Value::String(s.clone())),
                 v => v.clone(),
             };
-            acts.note(d["toolName"].as_str().unwrap_or("?"), &args);
+            acts.note_call(d["toolName"].as_str().unwrap_or("?"), &args, d["toolCallId"].as_str());
         }
-        Some("subagent.started") => acts.subagents += 1,
+        Some("tool.execution_complete") if main => {
+            let d = &e["data"];
+            if let Some(id) = d["toolCallId"].as_str() {
+                acts.result(id, exit_code(&d["result"]).map(|c| c == 0));
+            }
+        }
+        Some("subagent.started") => {
+            acts.subagents += 1;
+            acts.steps.push(aiq_domain::rung::step::SUBAGENT);
+        }
         _ => {}
     }
 }
@@ -214,7 +297,9 @@ pub fn read_since(path: &Path, from: u64, kind: LogKind) -> std::io::Result<LogR
     // Cheap filter first: most bytes are tool output, and only these lines can matter.
     let wanted: &[&[u8]] = match kind {
         LogKind::Claude => &[b"\"tool_use\"", b"\"user\""],
-        LogKind::Copilot => &[b"\"user.message\"", b"\"tool.execution_start\"", b"\"subagent.started\""],
+        LogKind::Copilot => {
+            &[b"\"user.message\"", b"\"tool.execution_start\"", b"\"tool.execution_complete\"", b"\"subagent.started\""]
+        }
     };
     let has = |l: &[u8], w: &[u8]| l.windows(w.len()).any(|x| x == w);
     for l in buf[first..whole].split(|b| *b == b'\n').filter(|l| wanted.iter().any(|w| has(l, w))) {
@@ -330,6 +415,64 @@ mod tests {
         // Nothing new: an empty turn.
         let again = read_since(&p, r.next, LogKind::Claude).unwrap();
         assert!(again.actions.is_empty() && again.bytes == 0);
+    }
+
+    #[test]
+    fn claude_steps_keep_order_and_each_checks_result() {
+        let tu = |id: &str, n: &str, i: Value| json!({"type":"assistant","message":{"content":[{"type":"tool_use","id":id,"name":n,"input":i}]}});
+        let res = |id: &str, err: bool| json!({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":id,"is_error":err,"content":"x"}]}});
+        let (_d, p) = write(
+            &[
+                json!({"type":"user","message":{"content":"fix it"}}),
+                tu("a", "Read", json!({"file_path":"a.rs"})),
+                tu("b", "Bash", json!({"command":"cargo test"})),
+                res("b", true),
+                tu("c", "Edit", json!({"file_path":"a.rs"})),
+                tu("d", "Bash", json!({"command":"cargo test"})),
+                res("d", false),
+                tu("e", "Bash", json!({"command":"git status"})),
+                tu("f", "Task", json!({})),
+            ],
+            "",
+        );
+        let r = read_since(&p, 0, LogKind::Claude).unwrap();
+        assert_eq!(r.actions.steps_text(), "rfepxs");
+        let j: Value = serde_json::from_str(&r.actions.clone().take_json().unwrap()).unwrap();
+        assert_eq!(j["steps"], "rfepxs");
+    }
+
+    #[test]
+    fn copilot_steps_read_the_exit_code_not_the_success_flag() {
+        let start = |id: &str, n: &str, a: &str| json!({"type":"tool.execution_start","data":{"toolCallId":id,"toolName":n,"arguments":a}});
+        // Copilot says success: true for a command that exited 1 (measured 2026-11-08).
+        let done = |id: &str, text: &str| json!({"type":"tool.execution_complete","data":{"toolCallId":id,"success":true,"result":{"content":text}}});
+        let (_d, p) = write(
+            &[
+                json!({"type":"user.message","data":{"content":"go","delivery":"idle"}}),
+                start("1", "powershell", "{\"command\":\"npm test\"}"),
+                done("1", "FAIL\n<shellId: 3 completed with exit code 1>"),
+                start("2", "apply_patch", "*** Begin Patch\n*** Update File: a.ts\n*** End Patch"),
+                start("3", "powershell", "{\"command\":\"npm test\"}"),
+                done("3", "ok\n<shellId: 4 completed with exit code 0>"),
+                start("4", "powershell", "{\"command\":\"npm run lint\"}"),
+                done("4", "no exit code here"),
+                json!({"type":"tool.execution_start","agentId":"s1","data":{"toolCallId":"9","toolName":"edit","arguments":"{}"}}),
+            ],
+            "",
+        );
+        let r = read_since(&p, 0, LogKind::Copilot).unwrap();
+        assert_eq!(r.actions.steps_text(), "fepc", "a sub-agent's own calls are not steps");
+    }
+
+    #[test]
+    fn steps_keep_the_last_ones() {
+        let mut a = Actions::default();
+        for _ in 0..MAX_STEPS + 5 {
+            a.note("view", &json!({"path":"x"}));
+        }
+        a.note("edit", &json!({"path":"x"}));
+        let t = a.steps_text();
+        assert_eq!((t.len(), t.starts_with('<'), t.ends_with('e')), (MAX_STEPS + 1, true, true));
     }
 
     #[test]

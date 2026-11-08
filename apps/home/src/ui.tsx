@@ -140,7 +140,7 @@ export function UpdateChip({ snap, update }: Pick<Ctx, "snap" | "update">) {
   const u = snap.update;
   if (!u.supported) return null;
   if (update.phase === "idle" && u.note === "waiting") {
-    const when = u.mode === "auto" ? " It also installs by itself when you close AIQ home." : "";
+    const when = u.mode === "auto" ? " It also installs by itself when AIQ home has been in the background for 10 minutes, or when you close it." : "";
     const waited = u.blocked ? ` Last try waited: ${u.blocked}.` : "";
     return (
       <button className="chip updchip" data-testid="update-chip" onClick={update.run} title={`AIQ home closes, installs AIQ ${ver(u.available)} and opens again.${when}${waited}`}>

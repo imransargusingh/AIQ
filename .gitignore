@@ -21,3 +21,6 @@ docs/audit/.run-starts.json.tmp
 target/
 mutants.out*/
 __pycache__/
+
+# Team tips files hold a team's internal tool names: they never belong in this repo (docs/team-tips/README.md).
+team-tips.toml

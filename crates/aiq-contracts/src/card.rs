@@ -25,8 +25,14 @@ pub struct CardV1 {
 /// Claude Code renderer: the text that follows Claude Code's own "Stop says: " prefix.
 /// Plain text, no colour, short lines (design: UI and interaction design).
 pub fn render_claude_code(card: &CardV1) -> String {
+    render_card(card, None)
+}
+
+/// The card's lines, with an optional "Tool to try" line after "Try this". Claude Code always passes `None`.
+fn render_card(card: &CardV1, tool_line: Option<&str>) -> String {
+    let tool = tool_line.map(|l| format!("{l}\n")).unwrap_or_default();
     format!(
-        "AIQ tip: {}\nWhy: {}\nTry this: {}\nDetails: {}  ·  Turn off tips for now: aiq pause",
+        "AIQ tip: {}\nWhy: {}\nTry this: {}\n{tool}Details: {}  ·  Turn off tips for now: aiq pause",
         card.noticed, card.why, card.try_this, card.evidence_ref
     )
 }
@@ -52,10 +58,27 @@ fn badge(plain: &str) -> String {
 
 /// Copilot CLI status line (ADR-0005 rule 5): one line, the tip and where to read it in full. Never quotes
 /// prompt text. With colour it looks like the Claude Code card: the whole line yellow, "AIQ tip:" a badge
-/// (Imran, laptop check 2026-11-01); `NO_COLOR` gives plain text.
+/// (Imran, laptop check 2026-11-01); `NO_COLOR` gives plain text. It ends in `aiq show` with no id: the
+/// 36-character id made the line 133 characters, cut off in a narrow terminal (tip examples 2026-11-08),
+/// and `aiq show` alone opens the latest tip, which is the one on this line.
 pub fn render_status_line(card: &CardV1, color: bool) -> String {
+    render_status_line_with_tool(card, color, None)
+}
+
+/// The status line's length cap with a team tool added (project rule: the Copilot line stays near 104).
+pub const STATUS_LINE_TOOL_CAP: usize = 104;
+
+/// The status line, naming the team's tool ("· try <tool>") only when the line stays within
+/// `STATUS_LINE_TOOL_CAP`; a long tip keeps today's line, and the tool shows in the conversation card.
+pub fn render_status_line_with_tool(card: &CardV1, color: bool, tool: Option<&str>) -> String {
     let noticed = card.noticed.trim_end_matches('.');
-    let plain = format!("AIQ tip: {noticed} · {}", card.evidence_ref);
+    let mut plain = format!("AIQ tip: {noticed} · aiq show");
+    if let Some(t) = tool {
+        let with = format!("AIQ tip: {noticed} · try {t} · aiq show");
+        if with.chars().count() <= STATUS_LINE_TOOL_CAP {
+            plain = with;
+        }
+    }
     if !color {
         return plain;
     }
@@ -64,21 +87,30 @@ pub fn render_status_line(card: &CardV1, color: bool) -> String {
 
 /// The shrunk status line once the full tip has had its time ("two prompts or 5 minutes" setting). Yellow
 /// like the tip, so it still reads as AIQ's; no badge, because the tip itself has already been seen.
-pub fn render_waiting_marker(card_id: &str, color: bool) -> String {
-    let plain = format!("1 tip waiting · aiq show {card_id}");
-    if color { format!("{LINE_ON}{plain}{LINE_OFF}") } else { plain }
+pub fn render_waiting_marker(color: bool) -> String {
+    let plain = "1 tip waiting · aiq show";
+    if color { format!("{LINE_ON}{plain}{LINE_OFF}") } else { plain.to_owned() }
+}
+
+/// The live progress line ("AIQ: heading for Delegated (3) so far · turn 1") shown when no tip waits. Cyan,
+/// a distinct hue from the tips' yellow, so it reads as AIQ's and not the host's grey, while yellow and the
+/// badge stay reserved for tips (Imran 2026-11-08: "shouldn't it be highlighted like the tips?").
+const TREND_ON: &str = "\u{1b}[36m";
+
+pub fn render_trend_line(text: &str, color: bool) -> String {
+    if color { format!("{TREND_ON}{text}{LINE_OFF}") } else { text.to_owned() }
 }
 
 /// The only stdout a Claude Code hook may produce: `{"systemMessage": "<text>"}`.
 /// Confirmed on the Windows laptop 2026-11-01: Claude Code renders the codes. `color: false` (the
 /// person set `NO_COLOR`, see no-color.org) sends plain text.
 pub fn claude_code_system_message(card: &CardV1, color: bool) -> String {
-    serde_json::json!({ "systemMessage": card_text(card, color) }).to_string()
+    serde_json::json!({ "systemMessage": card_text(card, color, None) }).to_string()
 }
 
 /// The four-line card, every line yellow and the label a badge when `color`.
-fn card_text(card: &CardV1, color: bool) -> String {
-    let plain = render_claude_code(card);
+fn card_text(card: &CardV1, color: bool, tool_line: Option<&str>) -> String {
+    let plain = render_card(card, tool_line);
     if color {
         badge(&plain).lines().map(|l| format!("{LINE_ON}{l}{LINE_OFF}")).collect::<Vec<_>>().join("\n")
     } else {
@@ -93,7 +125,12 @@ fn card_text(card: &CardV1, color: bool) -> String {
 /// the next laptop upgrade shows the yellow card in the conversation. If false: the person sees the tip in
 /// the status line only (no line), or with raw codes (then turn the highlight off by default here).
 pub fn copilot_progress_message(card: &CardV1, color: bool) -> String {
-    serde_json::json!({ "type": "progress", "message": card_text(card, color) }).to_string()
+    copilot_progress_message_with_tool(card, color, None)
+}
+
+/// The Copilot card with the team's "Tool to try" line (team tips file; Copilot surfaces only).
+pub fn copilot_progress_message_with_tool(card: &CardV1, color: bool, tool_line: Option<&str>) -> String {
+    serde_json::json!({ "type": "progress", "message": card_text(card, color, tool_line) }).to_string()
 }
 
 #[cfg(test)]
@@ -118,16 +155,26 @@ mod tests {
     #[test]
     fn render_status_line_is_one_line_with_details_command() {
         let plain = render_status_line(&card(), false);
-        assert_eq!(plain, "AIQ tip: you've reworded this request 3 times without adding new details · aiq show 01J");
+        assert_eq!(plain, "AIQ tip: you've reworded this request 3 times without adding new details · aiq show");
         assert!(!plain.contains('\n') && plain.chars().count() <= 100);
         let colored = render_status_line(&card(), true);
         assert!(
             colored.starts_with("\u{1b}[22;33m\u{1b}[1;30;43mAIQ tip:\u{1b}[22;49;33m ") && !colored.contains('\n')
         );
-        assert!(colored.ends_with(" · aiq show 01J\u{1b}[39m"), "whole line yellow, as the Claude Code card");
+        assert!(colored.ends_with(" · aiq show\u{1b}[39m"), "whole line yellow, as the Claude Code card");
         assert_eq!(strip_sgr(&colored), plain, "same words as the plain line");
-        assert_eq!(render_waiting_marker("01J", false), "1 tip waiting · aiq show 01J");
-        assert_eq!(render_waiting_marker("01J", true), "\u{1b}[22;33m1 tip waiting · aiq show 01J\u{1b}[39m");
+        assert_eq!(render_waiting_marker(false), "1 tip waiting · aiq show");
+        assert_eq!(render_waiting_marker(true), "\u{1b}[22;33m1 tip waiting · aiq show\u{1b}[39m");
+    }
+
+    #[test]
+    fn trend_line_is_cyan_not_the_tips_yellow_and_plain_without_colour() {
+        let t = "AIQ: heading for Delegated (3) so far · turn 1";
+        assert_eq!(render_trend_line(t, false), t);
+        let c = render_trend_line(t, true);
+        assert_eq!(c, format!("\u{1b}[36m{t}\u{1b}[39m"));
+        assert!(!c.contains("\u{1b}[33m") && !c.contains("43m"), "yellow and the badge are only for tips");
+        assert_eq!(strip_sgr(&c), t);
     }
 
     #[test]
@@ -193,5 +240,23 @@ mod tests {
     fn system_message_without_colour_is_plain_text() {
         let v: serde_json::Value = serde_json::from_str(&claude_code_system_message(&card(), false)).unwrap();
         assert_eq!(v["systemMessage"].as_str().unwrap(), render_claude_code(&card()));
+    }
+
+    #[test]
+    fn team_tool_line_sits_after_try_this_and_the_status_line_keeps_its_cap() {
+        let c = card();
+        let line = copilot_progress_message_with_tool(&c, false, Some("Tool to try: X: does Y."));
+        let v: serde_json::Value = serde_json::from_str(&line).unwrap();
+        let lines: Vec<&str> = v["message"].as_str().unwrap().lines().collect();
+        assert_eq!(lines.len(), 5);
+        assert!(lines[2].starts_with("Try this:") && lines[3] == "Tool to try: X: does Y.");
+        assert_eq!(copilot_progress_message_with_tool(&c, true, None), copilot_progress_message(&c, true));
+        let short = CardV1 { noticed: "a quick check was skipped.".into(), ..c.clone() };
+        assert_eq!(
+            render_status_line_with_tool(&short, false, Some("Tool X")),
+            "AIQ tip: a quick check was skipped · try Tool X · aiq show"
+        );
+        let long = CardV1 { noticed: "x".repeat(90), ..c };
+        assert_eq!(render_status_line_with_tool(&long, false, Some("Tool X")), render_status_line(&long, false));
     }
 }

@@ -39,11 +39,13 @@ pub fn rubric_changes(facts_json: &str, reprompts: Option<u32>) -> bool {
 }
 /// j2: the answer names a task type (design coaching-from-rungs D1); j1 judgments are re-judged lazily.
 /// j3 added the Ask or research pack; j4 records each run's job pick (design no-job-tasks); j5 added the Run
-/// or ship it pack (design run-or-ship-pack).
-pub const JUDGE_VERSION: &str = "j5";
-/// Judgments of these versions stay current unless their job was unclassified: j3 to j5 change nothing
-/// for a task that got a pack job, so only tasks with no job need judging again.
-pub const JUDGE_VERSIONS_KEPT: [&str; 3] = ["j2", "j3", "j4"];
+/// or ship it pack (design run-or-ship-pack); j6 narrowed "find" to one fact and "analyse" to analyzing data
+/// (Imran 2026-11-08).
+pub const JUDGE_VERSION: &str = "j6";
+/// Judgments of these versions stay current unless their job was unclassified: j3 to j6 change nothing
+/// for a task that got a pack job (j6 only redraws two ask_research kinds, not worth a model call per past
+/// task), so only tasks with no job need judging again.
+pub const JUDGE_VERSIONS_KEPT: [&str; 4] = ["j2", "j3", "j4", "j5"];
 /// A model fact below this confidence counts as unknown (D10: the spike's correct facts sat at 0.5–0.6).
 pub const FACT_THRESHOLD: f64 = 0.6;
 /// F6 (output checked) yes from every run at this confidence or more counts as yes when the person wrote again
@@ -269,7 +271,44 @@ const PERSON_RAN: [&str; 6] =
     ["i ran ", "i ran the", "ran the tests myself", "ran them locally", "ran it locally", "i'll run"];
 const SPEC_MARKS: [&str; 7] = ["/spec", "spec.md", "/specs/", "/adr/", "/design/", "brief", "requirements.md"];
 
-fn is_edit_tool(name: &str) -> bool {
+/// The letters of a turn's step list (`ActionSummary::steps`), written by the core's action reader.
+pub mod step {
+    pub const EDIT: u8 = b'e';
+    /// A check whose result was not recorded.
+    pub const CHECK: u8 = b'c';
+    pub const PASSED: u8 = b'p';
+    pub const FAILED: u8 = b'f';
+    pub const COMMAND: u8 = b'x';
+    pub const SUBAGENT: u8 = b's';
+    pub const OTHER: u8 = b'r';
+    /// Leads the list when earlier steps were dropped.
+    pub const CUT: u8 = b'<';
+}
+
+/// Did the agent finish with a check, read from the task's steps in order? Some(true) when a check ran after the
+/// agent's last edit (or, with no edit, at all) and the last of them did not fail; Some(false) when no check ran
+/// after the last edit or the last one failed; None when a turn's order is unknown (no steps, or a list cut short
+/// before its last edit could be seen). A check whose result was not recorded counts as run, not as failed.
+pub fn finished_checked(turns: &[&ActionSummary]) -> Option<bool> {
+    let mut all = Vec::new();
+    for a in turns {
+        match a.steps.as_deref() {
+            Some(s) => all.extend_from_slice(s.as_bytes()),
+            // A turn with no tool calls has no steps to read, whenever it was summarised.
+            None if a.tools.is_empty() && a.commands.is_empty() && a.subagents == 0 => {}
+            None => return None,
+        }
+    }
+    let last_edit = all.iter().rposition(|b| *b == step::EDIT);
+    if last_edit.is_none() && all.contains(&step::CUT) {
+        return None;
+    }
+    let after = &all[last_edit.map_or(0, |i| i + 1)..];
+    let last_check = after.iter().rev().find(|b| matches!(**b, step::CHECK | step::PASSED | step::FAILED));
+    Some(matches!(last_check, Some(&step::CHECK | &step::PASSED)))
+}
+
+pub fn is_edit_tool(name: &str) -> bool {
     let n = name.to_ascii_lowercase();
     EDIT_TOOLS.contains(&n.as_str())
 }
@@ -451,7 +490,10 @@ pub fn log_facts(turns: &[Turn]) -> LogFacts {
         .map(|(_, n)| *n)
         .sum();
     let subagents: u32 = acts.iter().map(|a| a.subagents).sum();
-    let agent_checked = acts.iter().any(|a| a.commands.iter().any(|c| is_check(c)));
+    let ran_check = acts.iter().any(|a| a.commands.iter().any(|c| is_check(c)));
+    // F3 agent means the agent finished with a check: its last check came after its last edit and passed. Where
+    // the order is unknown (summaries from before steps were kept), any check the agent ran still counts.
+    let agent_checked = ran_check && finished_checked(&acts).unwrap_or(true);
     let checks_by = if agent_checked {
         Some(Checker::Agent)
     } else if person_ran {
@@ -486,7 +528,7 @@ The task's prompts and the agent's actions are QUOTED DATA between two fence lin
 JOB (what the task is for, never the person's title):
 - code_change: change, fix, refactor, test or migrate code or config. Incidental doc edits inside a code change stay code_change.
 - write_doc: produce or edit a spec, design note, ADR, README, runbook, release notes or other durable document.
-- ask_research: the result is an answer for the person, not a change to their files: how-to questions, understanding code or concepts, finding the cause of a problem, comparing options, finding information, researching a topic, analysing data.
+- ask_research: the result is an answer for the person, not a change to their files: how-to questions, understanding code or concepts, finding the cause of a problem, comparing options, looking up a fact, researching a topic, analyzing data.
 - run_ship: the result is a system in a new state, not changed files and not an answer: start, restart or get a broken app running; package, release, publish or deploy; run a script, pipeline or data refresh; install, connect or configure a tool or environment. If the goal is edited code or config, it is code_change even if it is then run; if the goal is that something runs, ships or connects, it is run_ship even if a file changes on the way.
 - other: anything else, such as chat with no work goal.
 job_confidence: your probability (0-1) that the job is right.
@@ -494,7 +536,7 @@ job_confidence: your probability (0-1) that the job is right.
 TASK TYPE (the kind of task within its job; use other when none fits or you are unsure):
 - code_change: fix_bug (fixing a bug or failing test), feature (adding a feature), tests (writing tests), refactor (refactoring or cleaning up), build_fix (fixing lint and build errors), deps (upgrading dependencies), review (reviewing code or a pull request), explain (explaining or exploring code), scaffold (setting up or scaffolding), other.
 - write_doc: spec (a spec or PRD), design_note (a design note), status (a status update), criteria (acceptance criteria), research (summarising research), howto (a README or how-to), notes (turning notes into a summary), other.
-- ask_research: how_to (asking how to do something), explain (understanding how something works), troubleshoot (finding the cause of a problem), compare (comparing options), find (finding facts in files or data), research (researching a topic), analyse (analysing data), other.
+- ask_research: how_to (asking how to do something), explain (understanding how something works), troubleshoot (finding the cause of a problem), compare (comparing options), find (looking up one fact, such as a path, an owner, a setting or whether something exists; no counting or computing), research (researching a topic), analyse (analyzing data: the result is a number, table, chart, breakdown or trend computed from data such as a spreadsheet, query results, logs, metrics or a set of records; not reviewing or critiquing a plan, doc, deck or code, not auditing a repo or app, not summarising one document or transcript), other (including asking about the status, progress or ETA of work already running).
 - run_ship: restart_fix (getting a stopped or broken thing running), release (packaging, publishing or deploying), run_job (running a script, pipeline or data refresh), setup (installing, connecting or configuring a tool), other.
 - job other: answer other.
 task_type_confidence: your probability (0-1) that the task type is right.
@@ -1336,6 +1378,7 @@ mod tests {
             files: files.iter().map(|s| s.to_string()).collect(),
             commands: cmds.iter().map(|s| s.to_string()).collect(),
             subagents: subs,
+            steps: None,
         })
     }
 
@@ -1384,6 +1427,42 @@ mod tests {
         // Copilot CLI tool names count too.
         let cp = log_facts(&turns(&["x"], acts(&[("str_replace_editor", 1), ("create", 1)], &[], &[], 0)));
         assert_eq!(cp.edits, 2);
+    }
+
+    /// F3 agent means the agent finished with a check (step order, 2026-11-08): a test run before the last edit,
+    /// or one that failed last, is not a checked result. Summaries without steps keep the old rule.
+    #[test]
+    fn the_agent_checked_only_when_its_last_check_followed_its_last_edit_and_passed() {
+        let turn = |steps: Option<&str>| ActionSummary {
+            tools: [("Edit".to_owned(), 1), ("Bash".to_owned(), 1)].into(),
+            commands: vec!["cargo test".into()],
+            steps: steps.map(str::to_owned),
+            ..Default::default()
+        };
+        let f3 = |steps: &[Option<&str>]| {
+            let t: Vec<Turn> = steps
+                .iter()
+                .enumerate()
+                .map(|(i, s)| Turn { at_ms: i as i64, prompt: "fix it".into(), actions: Some(turn(*s)) })
+                .collect();
+            log_facts(&t).checks_by
+        };
+        assert_eq!(f3(&[Some("rep")]), Some(Checker::Agent), "edit, then a passing test");
+        assert_eq!(f3(&[Some("rec")]), Some(Checker::Agent), "a test whose result wasn't recorded still ran");
+        assert_eq!(f3(&[Some("rpe")]), Some(Checker::Nobody), "tested, then changed the code");
+        assert_eq!(f3(&[Some("ref")]), Some(Checker::Nobody), "the last test failed");
+        assert_eq!(f3(&[Some("efpx")]), Some(Checker::Agent), "a failure fixed and rerun green");
+        assert_eq!(f3(&[Some("ep"), Some("e")]), Some(Checker::Nobody), "a later turn edited after the test");
+        assert_eq!(f3(&[None]), Some(Checker::Agent), "no steps stored: any check the agent ran counts");
+        assert_eq!(f3(&[Some("ep"), None]), Some(Checker::Agent), "one turn without steps: order unknown");
+        // A turn with no tool calls doesn't hide the order of the others.
+        let t = vec![
+            Turn { at_ms: 0, prompt: "fix it".into(), actions: Some(turn(Some("epe"))) },
+            Turn { at_ms: 1, prompt: "thanks".into(), actions: Some(ActionSummary::default()) },
+        ];
+        assert_eq!(log_facts(&t).checks_by, Some(Checker::Nobody));
+        assert_eq!(finished_checked(&[&turn(Some("<ppp"))]), None, "cut short before any edit: unknown");
+        assert_eq!(finished_checked(&[&turn(Some("<epp"))]), Some(true));
     }
 
     /// DC-020: 78 of 541 real judgments were told "agent edited nothing, checks by nobody" from turns AIQ never
@@ -1555,10 +1634,19 @@ mod tests {
 
     #[test]
     fn the_judge_names_the_run_or_ship_job_and_rejudges_every_older_no_job_task() {
-        assert_eq!(JUDGE_VERSION, "j5");
         assert!(JUDGE_VERSIONS_KEPT.contains(&"j4"), "a task with a pack job keeps its judgment");
         assert!(SYSTEM.contains("- run_ship:"));
         assert!(SYSTEM.contains("restart_fix") && SYSTEM.contains("run_job"));
+    }
+
+    #[test]
+    fn analyze_data_means_a_computed_result_and_find_means_one_fact() {
+        assert_eq!(JUDGE_VERSION, "j6");
+        assert!(JUDGE_VERSIONS_KEPT.contains(&"j5"), "past kinds are kept, not judged again");
+        assert!(SYSTEM.contains("analyse (analyzing data: the result is a number, table, chart"));
+        assert!(SYSTEM.contains("not reviewing or critiquing a plan, doc, deck or code"));
+        assert!(SYSTEM.contains("find (looking up one fact"));
+        assert!(SYSTEM.contains("status, progress or ETA of work already running"));
     }
 
     #[test]

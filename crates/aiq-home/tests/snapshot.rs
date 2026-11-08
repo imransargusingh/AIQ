@@ -498,6 +498,17 @@ fn live_trend_lists_every_open_task_newest_activity_first() {
         assert_eq!(l.folder, t.folder, "the chip names the task's own project");
     }
     assert_ne!(snap.live[0].task_id, snap.live[1].task_id);
+    // The running one is not lost (Imran 2026-11-08): the card names it as starting until its first turn ends.
+    let starting: Vec<(&str, u32, bool)> =
+        snap.starting.iter().map(|x| (x.surface.as_str(), x.prompts, x.working)).collect();
+    assert_eq!(starting, [("claude-code", 1, true)]);
+    assert_eq!(snap.starting[0].first_ms, NOW - MIN);
+    // Each tool's newest event, newest first, and the newest overall from the same read.
+    let seen: Vec<(&str, i64)> = snap.seen.iter().map(|x| (x.surface.as_str(), x.last_ms)).collect();
+    assert!(seen.windows(2).all(|w| w[0].1 >= w[1].1), "newest first: {seen:?}");
+    assert!(seen.contains(&("vscode", NOW - MIN / 2)) && seen.contains(&("claude-code", NOW - MIN)), "{seen:?}");
+    assert_eq!(seen.len(), 3, "one row per tool: {seen:?}");
+    assert_eq!(snap.status.last_event_ms, Some(snap.seen[0].last_ms));
 }
 
 /// Judging off says since when only from a stored setting change (UI review item 8); never switched, no time.
@@ -524,7 +535,9 @@ fn live_trend_goes_when_the_task_ends_or_is_switched_off() {
     let later = Now { utc_ms: NOW + 31 * MIN, offset_min: 0 };
     assert!(snapshot(&p, &BundledPack.load().unwrap(), later).live.is_empty(), "idle gap passed: the task ended");
     seed.setting("live_trend", "off", NOW - MIN);
-    assert!(snap(&p).live.is_empty());
+    seed.prompt("claude-code", "cc9", NOW - MIN, Some(AIQ), "write tests for the export");
+    let off = snap(&p);
+    assert!(off.live.is_empty() && off.starting.is_empty(), "switched off: no open or starting task");
 }
 
 /// The Set aside list (design aiq-home-app D11): per folder, the sessions AIQ still leaves out (live and imported) and the newest one, the

@@ -514,6 +514,30 @@ async fn run_update(app: tauri::AppHandle, action: String) -> Result<Outcome, St
             log(&paths, "run_update", t, &format!("action={action} {result}"));
             return Outcome::from(r);
         }
+        // "install_if_away": AIQ home has been in the background for update::AWAY_INSTALL_MS (the window measures
+        // that) while an update waits (design auto-update U5n). Under "Update automatically" it installs as Install
+        // now does, and the AIQ home upgrade.ps1 reopens starts minimised; at most once per update::AWAY_RETRY_MS.
+        // Otherwise it does nothing and Home stays open.
+        if action == "install_if_away" {
+            let now = aiq_core::sysclock::SystemClock.now().utc_ms;
+            let mode = update::stored_mode(&paths);
+            let st = update::read_state(&paths);
+            if !update::supported(&paths) || !update::begin_away_install(&paths, now, &st, mode.as_deref()) {
+                return Outcome::from(Ok(()));
+            }
+            let r = update::start(&paths, Action::Apply, Some(std::process::id()), true)
+                .map_err(|e| format!("Could not start: {e}."));
+            log(&paths, "run_update", t, &format!("action={action} {}", if r.is_ok() { "started" } else { "refused" }));
+            if r.is_ok() {
+                std::thread::spawn(move || {
+                    std::thread::sleep(Duration::from_millis(400));
+                    app.exit(0);
+                });
+            } else {
+                update::cancel_reopen_minimized(&paths);
+            }
+            return Outcome::from(r);
+        }
         // "check": look for a newer release and download it without installing (the person asked, so it runs
         // even with updates off); AIQ home stays open and shows "ready to install" once the script is done.
         let check = action == "check";
@@ -633,6 +657,19 @@ fn main() {
     connect_new_tools();
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _argv, cwd| show_open_window(app, &cwd)))
+        .setup(|app| {
+            use tauri::Manager;
+            // An away install closed AIQ home and upgrade.ps1 reopened it (design auto-update U5n): open minimised,
+            // so it never covers what the person is doing. The "AIQ updated itself" line waits on Home.
+            let now = aiq_core::sysclock::SystemClock.now().utc_ms;
+            if aiq_core::update::take_reopen_minimized(&Paths::from_env(), now) {
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.minimize();
+                }
+                log(&Paths::from_env(), "reopen", Instant::now(), "minimized after an away install");
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             snapshot,
             pause,
