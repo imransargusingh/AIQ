@@ -87,6 +87,37 @@ impl Env {
                        "last_assistant_message": "done", "cwd": "/repo"});
         self.run(&["hook", "claude-code", "Stop"], p.to_string().as_bytes())
     }
+    /// A Stop where a card is due. A loaded runner can miss the core's hand-over window at one turn end; the
+    /// product keeps the card show-ready for the next (DC-022), so end the turn again, as Claude Code would, for
+    /// up to twice the confirm hold. Every miss must leave the card show-ready, so a lost card still fails.
+    /// (The same control as `e2e_copilot.rs`; this file was missed by DC-022's sweep: Windows CI, PR #203.)
+    fn stop_until_card(&self, stop: impl Fn() -> Output) -> Output {
+        let deadline = Instant::now() + 2 * Duration::from_millis(aiq_core::service::HANDOVER_CONFIRM_MS as u64);
+        let mut n = 0;
+        while Instant::now() < deadline {
+            n += 1;
+            let o = stop();
+            if !o.stdout.is_empty() {
+                return o;
+            }
+            let st = self.status();
+            let timings = std::fs::read_to_string(self.home().join("hook-timings.log")).unwrap_or_default();
+            assert!(st.contains("show-ready"), "a Stop printed nothing and the card is gone:\n{st}\n{timings}");
+            std::thread::sleep(Duration::from_millis(250));
+        }
+        panic!("no card in {n} Stops: {}", self.status());
+    }
+    /// Wait until `aiq status` contains every one of `parts` (the hook confirms a printed tip after it exits).
+    fn wait_status(&self, parts: &[&str]) -> String {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            let st = self.status();
+            if parts.iter().all(|p| st.contains(p)) || Instant::now() >= deadline {
+                return st;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
     /// Ingest is fire-and-forget; wait until the core has stored `n` prompts.
     fn wait_prompts(&self, n: usize) {
         let deadline = Instant::now() + Duration::from_secs(5);
@@ -134,7 +165,7 @@ fn e2e_reword_three_times_one_card_second_run_held() {
     let mut e = Env::new();
     e.start_core();
     let pid = e.reprompt_run("s1", 0);
-    let o = e.stop("s1", &pid);
+    let o = e.stop_until_card(|| e.stop("s1", &pid));
     assert_hook_stdout_contract(&o);
     let msg: Value = serde_json::from_slice(&o.stdout).expect("a card at this Stop");
     let text = msg["systemMessage"].as_str().unwrap();
@@ -154,7 +185,7 @@ fn e2e_reword_three_times_one_card_second_run_held() {
     let o2 = e.stop("s1", &pid2);
     assert_hook_stdout_contract(&o2);
     assert!(o2.stdout.is_empty(), "second card in the session must be held");
-    let st = e.status();
+    let st = e.wait_status(&["1 shown (ok)", "1 hold (session_budget)"]);
     assert!(st.contains("1 shown (ok)") && st.contains("1 hold (session_budget)"), "{st}");
     // aiq show prints the evidence prompts.
     let id = text.rsplit("aiq show ").next().unwrap().split_whitespace().next().unwrap();
@@ -433,15 +464,17 @@ fn e2e_no_color_card_is_plain_text() {
     e.start_core();
     let pid = e.reprompt_run("s1", 0);
     let p = json!({"session_id": "s1", "hook_event_name": "Stop", "stop_hook_active": false, "prompt_id": pid});
-    let mut ch = e
-        .cmd(&["hook", "claude-code", "Stop"])
-        .env("NO_COLOR", "1")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .spawn()
-        .unwrap();
-    ch.stdin.take().unwrap().write_all(p.to_string().as_bytes()).unwrap();
-    let o = ch.wait_with_output().unwrap();
+    let o = e.stop_until_card(|| {
+        let mut ch = e
+            .cmd(&["hook", "claude-code", "Stop"])
+            .env("NO_COLOR", "1")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        ch.stdin.take().unwrap().write_all(p.to_string().as_bytes()).unwrap();
+        ch.wait_with_output().unwrap()
+    });
     let msg: Value = serde_json::from_slice(&o.stdout).expect("a card at this Stop");
     let text = msg["systemMessage"].as_str().unwrap();
     assert!(text.starts_with("AIQ tip: this request went round"), "{text}");
