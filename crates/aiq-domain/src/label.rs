@@ -57,7 +57,7 @@ pub fn enabled(judge: Option<&str>, label: Option<&str>) -> bool {
 /// and CI's label replay gate fails until the answers are recorded again with the new prompt. A rewrite that
 /// told the model to name the job the whole task ends in measured worse on the laptop (2026-11-08, 20 real
 /// tasks, gpt-6.1-sol: 5 of 10 confident labels right against 10 of 18 for this prompt), so this one stays.
-pub const PROMPT_VERSION: &str = "label-1";
+pub const PROMPT_VERSION: &str = "label-2";
 
 /// Jobs a label names but never coaches from. In an agent tool a first prompt that reads as a question
 /// usually goes on to change code, so the analysis of the whole task names another job. Measured 2026-11-08 on
