@@ -74,9 +74,11 @@ pub const TASK_TYPES: [(&str, &str, &str); 31] = [
     ("ask_research", "explain", "Understanding how something works"),
     ("ask_research", "troubleshoot", "Finding the cause of a problem"),
     ("ask_research", "compare", "Comparing options"),
-    ("ask_research", "find", "Finding facts in files or data"),
+    ("ask_research", "find", "Looking up a fact"),
     ("ask_research", "research", "Researching a topic"),
-    ("ask_research", "analyse", "Analysing data"),
+    // "Analyze data" (Imran 2026-11-08, after a 60-task check passed 8/10 on data and non-data tasks): the
+    // outcome is a number, table, chart or trend computed from data; "find" is one fact.
+    ("ask_research", "analyse", "Analyzing data"),
     ("ask_research", "other", "Other questions"),
     // Run or ship it (Imran 2026-11-02, card: most tasks no pack covered were restart, release or set-up work).
     ("run_ship", "restart_fix", "Getting something running again"),
