@@ -617,3 +617,23 @@ summary: >-
   words, dry-day rules), the Home e2e "tip funnel" tests.
 - **Rule:** a feature whose job is to act on a moment counts, per period, the moments it saw and the ones it acted
   on, and each way a moment was passed over gets its own code. A new early return without a step is a defect.
+
+### DC-038 — A test reads, at one instant, a value the product is allowed to reach later or more than once
+- **Signature:** 2026-11-08, two CI flakes. (1) Windows rust job on #185: `e2e_a_tip_no_hook_says_it_printed_is_not_counted_and_comes_back`
+  found `AIQ-CARD-UNCONFIRMED 2`, expected 1. The test retries the turn end because a loaded runner can miss the
+  hook's 30 ms + 35 ms wait (STOP_WAIT_MS, ADR-0005), but a retry whose hook gave up after the core took the tip
+  is a real hand-over and is counted too (`hand_back` or expiry). (2) Linux ui job on main 69ad8fe: the tour test
+  read focus the moment `#tourhd` existed; the tour moves focus to Next one animation frame later, by design
+  (tour.tsx, so a closing palette can't take focus back), and focus was still on the page.
+- **Why it survives:** both pass on a fast machine every time; the window is a frame or a few ms wide, so a local
+  run never sees it. The product behaviour is right in both: the tip is not lost (it is ready again), and focus
+  does land on Next.
+- **Sweep:** e2e.rs asserts `AIQ-CARD-UNCONFIRMED` only here; e2e_copilot.rs already bounds its retries
+  (`stop_until_card`). Home's other `requestAnimationFrame` focus moves (App.tsx end of tour, Projects, Data) are
+  read with `waitForFunction` or not read right after; the skip-link focus read is native, not deferred.
+- **Control (tests):** the unconfirmed count is bounded by the hooks' own outcomes in `hook-timings.log`
+  (1 for the gone hook, plus at most 1 per retry that timed out or could not confirm; never 0, never more); the
+  tour test waits up to 2 s for focus on Next before asserting it.
+- **Rule:** when the product defers a step (a frame, a retry, a window) the test waits for that step with a bound,
+  and when a test retries, its exact counts allow what each retry may legitimately add, read from the product's
+  own record of the retry, never a looser guess.

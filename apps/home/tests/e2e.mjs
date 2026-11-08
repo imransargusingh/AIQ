@@ -1633,6 +1633,11 @@ await test("tour: Esc on any step, arrows move, focus stays in the coach mark, t
   await page.getByLabel("Type a page or action").fill("tour");
   await page.keyboard.press("Enter");
   await page.waitForSelector("#tourhd");
+  // The tour focuses Next a frame after it opens (tour.tsx), so the closing palette can't take focus back:
+  // wait for that frame instead of reading focus the moment the heading exists (ui flake on main 69ad8fe).
+  await page
+    .waitForFunction(() => document.activeElement?.textContent === "Next", null, { timeout: 2000 })
+    .catch(() => {});
   assert.equal(await page.evaluate(() => document.activeElement?.textContent), "Next", "focus on Next");
   await page.keyboard.press("ArrowRight");
   await page.waitForFunction((t) => document.querySelector("#tourhd")?.textContent === t, TOUR[1]);
