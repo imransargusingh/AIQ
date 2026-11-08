@@ -654,3 +654,23 @@ summary: >-
   `accept_needs_a_pack_job_a_named_kind_and_both_confidences_at_the_bar`; `aiq label --eval` exits 3 under the bar.
 - **Rule:** when a model predicts something checked later against a fuller reading, measure it against that
   reading on real data before it acts, keep the measurement as a replayed fixture, and fail CI when it drops.
+
+### DC-040 — A deferred action waits for a condition the person may never reach, and nothing escalates
+- **Signature:** 2026-11-08, laptop: the updater installs only "when AIQ is idle", and idle required AIQ home to be
+  closed. Imran keeps Home open (PID 44988 since 04:09:55Z), so 0.1.19, 0.1.20 and 0.1.21 were each downloaded and
+  replaced in turn over about 3 hours and none installed; 0.1.18 still ran at 07:04Z. `blocked` said "AIQ home is
+  open" the whole time; the box offered Update, which was not pressed. A second instance on the same path: a run
+  that AIQ home closed itself for exited without reopening Home when another update run held `update.lock`.
+- **Why it survives:** every test opens or closes Home on purpose, so "Home stays open for days" is never a case;
+  each part is correct alone (the script must not swap exes under a running Home), and the waiting state looks
+  like progress (a download, a box, a log line) while nothing ever completes.
+- **Sweep:** other waits on a person's state: tips (30-min quiet, cap; already counted by the tip funnel, DC-037),
+  the analysis queue (paused shows why and how many wait), Copilot turn end on an open permission prompt (stop
+  events thread; a missed confirm keeps the tip, no loss). The update path was the only one with no way forward
+  but the person's press. Every exit of upgrade.ps1 after AIQ home closed itself now reaches `Start-Home`.
+- **Control (tests):** `update::tests::home_installs_a_waiting_update_when_away_only_under_auto_and_not_every_minute`,
+  `an_away_install_records_its_try_and_the_next_open_is_minimised_once`, `updateNow.test.ts` awayInstallDue, the Home
+  e2e away-install case (fake clock), release.yml smoke "lock held: AIQ home opened again".
+- **Rule:** an action deferred until "the person is not using X" names the longest it may wait and what makes it
+  happen then (here: 10 minutes in the background), and every exit of a step that closed something the person had
+  open puts it back.
