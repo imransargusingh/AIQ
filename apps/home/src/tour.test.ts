@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { STEPS, place } from "./tour";
+import type { Snapshot } from "./types";
+import tour from "../tests/fixtures/tour.json";
 
 const pop = { w: 320, h: 200 };
 
@@ -22,9 +24,24 @@ describe("tour coach mark placement", () => {
 });
 
 describe("tour steps", () => {
-  it("are eight, one view each, short enough to read at a glance", () => {
-    expect(STEPS).toHaveLength(8);
-    expect(new Set(STEPS.map((s) => s.target)).size).toBe(8);
-    for (const s of STEPS) expect(s.body.split(" ").length).toBeLessThanOrEqual(25);
+  const ex = tour as unknown as Snapshot;
+  it("are nine, one view each, short enough to read at a glance", () => {
+    expect(STEPS).toHaveLength(9);
+    expect(new Set(STEPS.map((s) => String(s.target))).size).toBe(9);
+    for (const s of STEPS) expect(s.body(ex).split(" ").length).toBeLessThanOrEqual(25);
+  });
+  it("take every number from the snapshot, never typed in, so they follow the app's own windows and settings", () => {
+    const odd = structuredClone(ex);
+    odd.coaching.progress_days = 47;
+    odd.coaching.shift_days = 23;
+    odd.settings.daily_cap = 19;
+    const said = STEPS.map((s) => s.body(odd)).join(" ");
+    for (const n of ["47", "23", "19"]) expect(said).toContain(n);
+    // With the numbers taken out, nothing numeric is left: any digit in a step was typed, and will drift.
+    expect(said.replace(/\b(47|23|19)\b/g, "")).not.toMatch(/\d/);
+  });
+  it("name every tool that shows tips", () => {
+    const tips = STEPS.find((s) => s.title === "Tips show where you work")!.body(ex);
+    for (const t of ["Claude Code", "Copilot CLI", "VS Code"]) expect(tips).toContain(t);
   });
 });

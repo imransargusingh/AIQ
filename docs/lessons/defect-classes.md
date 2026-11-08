@@ -770,3 +770,20 @@ summary: >-
   aside says so".
 - **Rule:** a rule that leaves out a person's activity must decide at the grain where the marker is true (a turn, not
   a session or a surface), and every left-out activity must still show where the person looks for it.
+
+### DC-044 — Explanatory copy that restates a number or a list the app computes elsewhere
+- **Signature:** 2026-11-08, audit of the Home tour (`apps/home/src/tour.tsx`) against 0.1.27. The "Tasks, by kind"
+  step said "its 14-day trend" after #202 moved the trend to 30 days against 30; the tips step said "Up to 5 a day"
+  after tips a day became a setting (5/15/30/Custom) and named only Copilot CLI and VS Code though Claude Code shows
+  tips too. Home's "Automated, not counted" section (#205) had no step, and the example data had no growing habit, so
+  the habit-change line and chips #202 added never appeared in the tour.
+- **Why it survives:** the tour's text is a typed copy of facts that live in the read model and Settings. The tests
+  checked the step count and word length, not what the words claim, and the e2e only checked that each spotlight
+  found its element.
+- **Sweep:** the tour's nine steps (all rewritten). Other copy that restates a window already reads it from the
+  snapshot (`Tasks` header `progress_days`, Tips `daily_cap`, Home `shift_days`). Not swept: the Rung guide and the
+  landing page.
+- **Control:** tour bodies are functions of the snapshot; `tour.test.ts` sets odd values (47, 23, 19) and fails if
+  any step types a digit or misses one, and checks the tips step names every tool that shows tips. The e2e asserts the
+  example data fills what each step names (a growing habit under the ladder map and on Habits, a set-aside folder
+  with Count this folder).
