@@ -145,6 +145,13 @@ pub struct TipLineReply {
     /// As `TakeCardReply::plain`.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub plain: bool,
+    /// The line the status line prints, rendered by the core (colour per the highlight setting), so
+    /// `aiq-statusline.exe` never changes when a tip's look does (design auto-update U5n). Older cores omit it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub line: Option<String>,
+    /// The same line without colour, for a person who set `NO_COLOR`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub line_plain: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]

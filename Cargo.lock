@@ -33,6 +33,7 @@ dependencies = [
  "aiq-core",
  "aiq-domain",
  "aiq-home",
+ "aiq-statusline",
  "aiq-store",
  "chrono",
  "rusqlite",
@@ -93,6 +94,17 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+]
+
+[[package]]
+name = "aiq-statusline"
+version = "1.0.0"
+dependencies = [
+ "interprocess",
+ "serde_json",
+ "tempfile",
+ "widestring",
+ "windows-sys",
 ]
 
 [[package]]

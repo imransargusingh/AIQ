@@ -504,6 +504,14 @@ if ($Check -or $Apply) {
                 $extra = Join-Path $work $f  # not $from: that holds the version being left
                 if (Test-Path $extra) { Copy-Item -Force $extra (Join-Path $bin $f) }
             }
+            # aiq-statusline.exe stays the same file across releases (U5n), so it is copied only when it differs, and a
+            # copy that fails (Copilot running it this instant) keeps the one in place: never a reason to undo the update.
+            $slFrom = Join-Path $work 'aiq-statusline.exe'
+            $slTo = Join-Path $bin 'aiq-statusline.exe'
+            if ((Test-Path $slFrom) -and (-not (Test-Path $slTo) -or (Get-FileHash $slFrom).Hash -ne (Get-FileHash $slTo).Hash)) {
+                try { Copy-Item -Force $slFrom $slTo; Log 'AIQ-UPDATE-STATUSLINE: copied a new aiq-statusline.exe.' }
+                catch { Log "AIQ-UPDATE-STATUSLINE: kept the aiq-statusline.exe in place ($($_.Exception.Message))." }
+            }
             $now = Installed-Version
             Remove-Item -Recurse -Force $stage -ErrorAction SilentlyContinue
             Write-State @{ state = 'applied'; from = $from; installed = $now; installed_tag = $st.available; at = (Now-Utc); available = $null; staged = $null; blocked = $null; message = $null; skip = $null }

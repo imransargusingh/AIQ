@@ -83,12 +83,20 @@ foreach ($f in 'upgrade.ps1', 'aiq.vsix') {
         Write-Host "Copied: $(Join-Path $bin $f)"
     }
 }
+# aiq-statusline.exe, Copilot's status-line program, stays the same file across releases (design auto-update U5n:
+# Defender's ransomware rule refused a freshly installed aiq.exe started by cmd.exe). Copied only when it differs;
+# a copy that fails (Copilot running it this instant) keeps the one in place.
+$slFrom = Join-Path $src 'aiq-statusline.exe'
+$slTo = Join-Path $bin 'aiq-statusline.exe'
+if ((Test-Path $slFrom) -and (-not (Test-Path $slTo) -or (Get-FileHash $slFrom).Hash -ne (Get-FileHash $slTo).Hash)) {
+    try { Copy-Item -Force $slFrom $slTo; Write-Host "Copied: $slTo" } catch { Write-Host "Kept $slTo ($($_.Exception.Message))." }
+}
 # Copies keep the zip's "downloaded from the internet" mark. Running install.cmd was the person's yes, so take
 # the mark off the installed files: otherwise Windows can stop every later launch of AIQ home (Start menu,
 # update relaunch) on an "Open File - Security Warning" prompt, and a hidden launch would wait on it forever
 # (CI runner, 2026-11-03, measured: with the mark kept, the auto-update step hung 35 min where it starts
 # aiq-home.exe; that the prompt caused it is Inferred, and this smoke test now proves the fix or not).
-Get-ChildItem -File $bin | Where-Object { $_.Name -in 'aiq.exe', 'aiq-home.exe', 'upgrade.ps1', 'aiq.vsix' } | Unblock-File
+Get-ChildItem -File $bin | Where-Object { $_.Name -in 'aiq.exe', 'aiq-home.exe', 'aiq-statusline.exe', 'upgrade.ps1', 'aiq.vsix' } | Unblock-File
 
 # 2. User PATH. SetEnvironmentVariable at User scope writes HKCU\Environment and tells running programs.
 $record = @{ path_added = $false; shortcut = $null }

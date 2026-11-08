@@ -333,6 +333,7 @@ pub fn install_new(yes: bool) -> ExitCode {
     if !aiq_core::control::setup_done(&paths) {
         return ExitCode::SUCCESS;
     }
+    crate::install_copilot::refresh_wrapper();
     let tools = aiq_core::tools::found();
     let new = aiq_core::tools::newly_installed(&paths.tools_seen(), &as_seen(&tools));
     if new.is_empty() {

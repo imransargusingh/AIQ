@@ -404,7 +404,12 @@ fn e2e_install_copilot_round_trip_keeps_other_settings() {
         // The shape laptop probe run 2 proved: a bare path to a one-line .cmd wrapper.
         assert_eq!(cmd, wrapper.to_string_lossy());
         let w = std::fs::read_to_string(&wrapper).unwrap();
-        assert!(w.starts_with("@\"") && w.ends_with("\" statusline copilot\r\n"), "{w}");
+        // aiq-statusline.exe when it sits beside aiq.exe (U5n), else aiq.exe statusline copilot.
+        assert!(
+            w.starts_with("@\"")
+                && (w.ends_with("\" statusline copilot\r\n") || w.ends_with("aiq-statusline.exe\"\r\n")),
+            "{w}"
+        );
         let line = Command::new("cmd").args(["/d", "/c", cmd]).env("AIQ_HOME", e.home()).output().unwrap();
         assert!(line.status.success() && line.stderr.is_empty(), "the wrapper runs aiq");
     } else {

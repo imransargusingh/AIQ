@@ -55,8 +55,34 @@ jobs:
             exit 1
           }
           "version=$v" >> $env:GITHUB_OUTPUT
-      - name: Build aiq.exe
-        run: cargo build -p aiq --release --locked
+      - name: Build aiq.exe and aiq-statusline.exe
+        run: cargo build -p aiq -p aiq-statusline --release --locked
+      - name: aiq-statusline.exe - reuse the newest release's file while its version is unchanged (U5n)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Defender's ransomware rule (IT-set) refused a freshly installed aiq.exe started by cmd.exe, which is how
+          # Copilot runs its status line (laptop 2026-11-08). The status-line program is therefore the same file in
+          # every release until crates/aiq-statusline changes and its version is bumped.
+          $built = 'target/release/aiq-statusline.exe'
+          $ver = (Select-String -Path crates/aiq-statusline/Cargo.toml -Pattern '^version = "(.+)"').Matches[0].Groups[1].Value
+          $tag = gh release view --repo '${{ github.repository }}' --json tagName -q .tagName 2>$null
+          if (-not $tag) { "No published release: using this build of aiq-statusline $ver."; exit 0 }
+          $dl = Join-Path $env:RUNNER_TEMP 'prev-release'
+          gh release download $tag --repo '${{ github.repository }}' --pattern 'aiq-*-windows-x64.zip' --dir $dl
+          if ($LASTEXITCODE -ne 0) { Write-Error "could not download $tag's zip"; exit 1 }
+          $un = Join-Path $env:RUNNER_TEMP 'prev-unzipped'
+          Expand-Archive (Get-ChildItem $dl -Filter *.zip | Select-Object -First 1).FullName $un
+          $prev = Join-Path $un 'aiq-statusline.exe'
+          if (-not (Test-Path $prev)) { "$tag has no aiq-statusline.exe: using this build of $ver."; exit 0 }
+          $prevVer = ((& $prev --version) -replace '^aiq-statusline\s+', '').Trim()
+          if ($prevVer -ne $ver) { "$tag has aiq-statusline $prevVer; this build is ${ver}: using this build."; exit 0 }
+          git fetch --quiet --depth=1 origin "refs/tags/${tag}:refs/tags/${tag}"
+          git diff --quiet $tag HEAD -- crates/aiq-statusline
+          if ($LASTEXITCODE -ne 0) { Write-Error "crates/aiq-statusline changed since $tag but its version is still $ver. Bump it in crates/aiq-statusline/Cargo.toml."; exit 1 }
+          Copy-Item -Force $prev $built
+          "Reused $tag's aiq-statusline.exe ($ver), SHA-256 $((Get-FileHash $built).Hash)."
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -78,7 +104,7 @@ jobs:
           $v = '${{ steps.version.outputs.version }}'
           $stage = Join-Path $env:RUNNER_TEMP "aiq-$v-windows-x64"
           New-Item -ItemType Directory -Force $stage | Out-Null
-          Copy-Item target/release/aiq.exe, apps/home/src-tauri/target/release/aiq-home.exe, extensions/vscode/aiq.vsix, packaging/windows/install.cmd, packaging/windows/install.ps1, packaging/windows/upgrade.ps1, packaging/windows/README.txt $stage
+          Copy-Item target/release/aiq.exe, target/release/aiq-statusline.exe, apps/home/src-tauri/target/release/aiq-home.exe, extensions/vscode/aiq.vsix, packaging/windows/install.cmd, packaging/windows/install.ps1, packaging/windows/upgrade.ps1, packaging/windows/README.txt $stage
           New-Item -ItemType Directory -Force dist | Out-Null
           $zip = "dist/aiq-$v-windows-x64.zip"
           Compress-Archive -Path "$stage/*" -DestinationPath $zip
@@ -105,7 +131,12 @@ jobs:
           foreach ($f in 'aiq.exe', 'aiq-home.exe', 'aiq.vsix') { if (-not (Test-Path (Join-Path $bin $f))) { Write-Error "missing $f"; exit 1 } }
           if (-not ([Environment]::GetEnvironmentVariable('Path', 'User') -split ';' -contains $bin)) { Write-Error 'user PATH not set'; exit 1 }
           if (-not (Select-String -Quiet -Path (Join-Path $env:USERPROFILE '.aiq\upgrade-log.txt') -Pattern 'Z Installed AIQ ')) { Write-Error 'install wrote no upgrade-log line'; exit 1 }
-          foreach ($f in 'aiq.exe', 'aiq-home.exe', 'upgrade.ps1', 'aiq.vsix') { if (Get-Item (Join-Path $bin $f) -Stream Zone.Identifier -ErrorAction SilentlyContinue) { Write-Error "$f still marked as downloaded"; exit 1 } }
+          foreach ($f in 'aiq.exe', 'aiq-home.exe', 'aiq-statusline.exe', 'upgrade.ps1', 'aiq.vsix') { if (Get-Item (Join-Path $bin $f) -Stream Zone.Identifier -ErrorAction SilentlyContinue) { Write-Error "$f still marked as downloaded"; exit 1 } }
+          # Copilot's status-line program (U5n): installed, says its own version, and for an unknown session prints nothing and exits 0.
+          $sl = Join-Path $bin 'aiq-statusline.exe'
+          if (-not ((& $sl --version) -match '^aiq-statusline \d')) { Write-Error 'aiq-statusline.exe --version'; exit 1 }
+          $out = '{"session_id":"smoke"}' | & $sl
+          if ($LASTEXITCODE -ne 0 -or $out) { Write-Error "aiq-statusline.exe for an unknown session: exit $LASTEXITCODE, output '$out'"; exit 1 }
           if (-not (Test-Path (Join-Path ([Environment]::GetFolderPath('Programs')) 'AIQ.lnk'))) { Write-Error 'no shortcut'; exit 1 }
           if (-not (Test-Path (Join-Path $env:USERPROFILE '.copilot\hooks\aiq.json'))) { Write-Error 'Copilot not connected'; exit 1 }
           & (Join-Path $bin 'aiq.exe') version

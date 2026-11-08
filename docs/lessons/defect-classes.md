@@ -678,3 +678,22 @@ summary: >-
 - **Rule:** an action deferred until "the person is not using X" names the longest it may wait and what makes it
   happen then (here: 10 minutes in the background), and every exit of a step that closed something the person had
   open puts it back.
+
+### DC-041 — A freshly installed, unsigned exe started by a script host on a machine with Defender's ransomware rule
+- **Signature:** 2026-11-07/08: Windows showed "Risky action blocked … Use advanced protection against ransomware …
+  cmd.exe … .aiq\bin\aiq.exe" to an alpha user, and Imran's laptop logged event 1121 (rule C1DB55AB) 17 times for
+  AIQ's exes since 11-05: every one a start by cmd.exe or powershell.exe within about an hour of an update.
+- **Why it survives:** CI runners and home PCs do not run that IT-set rule, and the block needs a file only minutes
+  old. Each release writes new exes, so the window reopens on every update.
+- **Sweep:** every place AIQ starts its own exe from a script host: upgrade.ps1 (core and AIQ home after a swap:
+  PR #170 starts them through Explorer first), the Copilot status line (cmd.exe; this fix), install.ps1's last
+  step (starts the import and AIQ home while the person watches; left). Hooks are started by the tools directly;
+  the tip pop-up starts powershell.exe itself, not an AIQ exe.
+- **Control (product):** `aiq-statusline.exe`, the same file across releases (U5n); upgrade.ps1 starts through
+  Explorer (U5m).
+- **Control (tests):** release.yml reuses the previous release's `aiq-statusline.exe` while its version is
+  unchanged and fails when `crates/aiq-statusline` changed without a version bump;
+  `crates/aiq/tests/statusline_contract.rs` fails if its paths or request differ from the core's.
+- **Rule:** on Windows, an AIQ exe that a script host starts again and again must be a file that does not change
+  with every release; anything else starts AIQ directly or through Explorer.
+

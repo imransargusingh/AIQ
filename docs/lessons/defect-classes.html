@@ -432,4 +432,17 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <ul><li><strong>Control (tests):</strong> <code>update::tests::home_installs_a_waiting_update_when_away_only_under_auto_and_not_every_minute</code>,</li></ul>
 <p><code>an_away_install_records_its_try_and_the_next_open_is_minimised_once</code>, <code>updateNow.test.ts</code> awayInstallDue, the Home e2e away-install case (fake clock), release.yml smoke &quot;lock held: AIQ home opened again&quot;.</p>
 <ul><li><strong>Rule:</strong> an action deferred until &quot;the person is not using X&quot; names the longest it may wait and what makes it</li></ul>
-<p>happen then (here: 10 minutes in the background), and every exit of a step that closed something the person had open puts it back.</p></main></body></html>
+<p>happen then (here: 10 minutes in the background), and every exit of a step that closed something the person had open puts it back.</p>
+<h3>DC-041 — A freshly installed, unsigned exe started by a script host on a machine with Defender&#x27;s ransomware rule</h3>
+<ul><li><strong>Signature:</strong> 2026-11-07/08: Windows showed &quot;Risky action blocked … Use advanced protection against ransomware …</li></ul>
+<p>cmd.exe … .aiq\bin\aiq.exe&quot; to an alpha user, and Imran&#x27;s laptop logged event 1121 (rule C1DB55AB) 17 times for AIQ&#x27;s exes since 11-05: every one a start by cmd.exe or powershell.exe within about an hour of an update.</p>
+<ul><li><strong>Why it survives:</strong> CI runners and home PCs do not run that IT-set rule, and the block needs a file only minutes</li></ul>
+<p>old. Each release writes new exes, so the window reopens on every update.</p>
+<ul><li><strong>Sweep:</strong> every place AIQ starts its own exe from a script host: upgrade.ps1 (core and AIQ home after a swap:</li></ul>
+<p>PR #170 starts them through Explorer first), the Copilot status line (cmd.exe; this fix), install.ps1&#x27;s last step (starts the import and AIQ home while the person watches; left). Hooks are started by the tools directly; the tip pop-up starts powershell.exe itself, not an AIQ exe.</p>
+<ul><li><strong>Control (product):</strong> <code>aiq-statusline.exe</code>, the same file across releases (U5n); upgrade.ps1 starts through</li></ul>
+<p>Explorer (U5m).</p>
+<ul><li><strong>Control (tests):</strong> release.yml reuses the previous release&#x27;s <code>aiq-statusline.exe</code> while its version is</li></ul>
+<p>unchanged and fails when <code>crates/aiq-statusline</code> changed without a version bump; <code>crates/aiq/tests/statusline_contract.rs</code> fails if its paths or request differ from the core&#x27;s.</p>
+<ul><li><strong>Rule:</strong> on Windows, an AIQ exe that a script host starts again and again must be a file that does not change</li></ul>
+<p>with every release; anything else starts AIQ directly or through Explorer.</p></main></body></html>
