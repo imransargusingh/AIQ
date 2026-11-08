@@ -50,8 +50,8 @@ fn inner(paths: &Paths) -> &'static str {
         Ok(TipLineReply { card: Some(c), plain, .. }) => {
             (render_status_line(&c, crate::hook::color_allowed() && !plain), false)
         }
-        Ok(TipLineReply { waiting_card_id: Some(id), plain, .. }) => {
-            (render_waiting_marker(&id, crate::hook::color_allowed() && !plain), false)
+        Ok(TipLineReply { waiting_card_id: Some(_), plain, .. }) => {
+            (render_waiting_marker(crate::hook::color_allowed() && !plain), false)
         }
         // The trend is not a tip: plain text, no badge, so a tip still stands out when one comes.
         Ok(TipLineReply { trend: Some(t), .. }) => (t, true),

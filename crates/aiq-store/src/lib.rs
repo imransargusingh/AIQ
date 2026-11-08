@@ -1114,6 +1114,18 @@ impl Store {
             .map_err(err(codes::STORE_OPEN))
     }
 
+    /// The card delivered last on any surface: what `aiq show` with no id opens.
+    pub fn last_delivered_card_id(&self) -> Result<Option<String>> {
+        self.conn
+            .query_row(
+                "SELECT card_id FROM card_delivery ORDER BY delivered_utc_ms DESC, rowid DESC LIMIT 1",
+                [],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(err(codes::STORE_OPEN))
+    }
+
     /// The session's latest event kind (`prompt` / `stop`), by event time then arrival.
     pub fn last_event_kind(&self, surface: &str, session: &str) -> Result<Option<String>> {
         self.conn

@@ -48,11 +48,9 @@ mod tests {
                 .map(|(j, t, _)| aiq_domain::coach::card_label(j, t))
                 .max_by_key(|l| l.chars().count())
                 .unwrap_or_default();
-            let line = format!(
-                "AIQ tip: {} · aiq show 0193f1c2-aaaa-7bbb-8ccc-0123456789ab",
-                m.noticed.replace("{type}", &longest)
-            );
-            assert!(line.chars().count() <= 160, "{} chars: {line}", line.chars().count());
+            let line = format!("AIQ tip: {} · aiq show", m.noticed.trim_end_matches('.').replace("{type}", &longest));
+            // Measured 122 at most with the longest label (2026-11-08); the id-free line keeps it near a terminal's width.
+            assert!(line.chars().count() <= 125, "{} chars: {line}", line.chars().count());
         }
         // Every step the rung guardrails need for each job has a move.
         for job in aiq_domain::rung::PACK_JOBS {

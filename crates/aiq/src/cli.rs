@@ -522,6 +522,10 @@ pub fn show(card_id: &str) -> ExitCode {
         println!("AIQ can't open its data right now. Run `aiq status`.");
         return ExitCode::from(1);
     };
+    if r.card.is_none() && card_id.is_empty() {
+        println!("No tips yet.");
+        return ExitCode::from(1);
+    }
     print!("{}", render_show(&r));
     if r.card.is_none() { ExitCode::from(1) } else { ExitCode::SUCCESS }
 }

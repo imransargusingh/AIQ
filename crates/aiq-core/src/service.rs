@@ -1587,8 +1587,19 @@ impl<C: Clock> Service<C> {
         coaching::record_flag(&self.store, &self.pack, job, task_type, move_id, action, reason, note, now)
     }
 
-    /// Show a card's details and record that the person opened it (`opened_on`: cli / vscode).
+    /// Show a card's details and record that the person opened it (`opened_on`: cli / vscode). An empty
+    /// `card_id` means the tip delivered last, which the Copilot status line's `aiq show` opens.
+    /// simplify: the latest tip on any surface, not this session's. Ceiling: two tools getting tips within
+    /// minutes of each other can open the other one's tip. Upgrade trigger: a person reports `aiq show`
+    /// opened the wrong tip; then the status line passes its session.
     pub fn show(&mut self, card_id: &str, opened_on: &str) -> ShowReply {
+        let latest;
+        let card_id = if card_id.is_empty() {
+            latest = self.store.last_delivered_card_id().ok().flatten().unwrap_or_default();
+            latest.as_str()
+        } else {
+            card_id
+        };
         match self.store.card(card_id) {
             Ok(Some(r)) => {
                 if let Err(e) = self.store.insert_open(card_id, opened_on, self.clock.now().utc_ms) {

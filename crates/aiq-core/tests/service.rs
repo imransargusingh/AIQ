@@ -510,6 +510,15 @@ fn show_returns_card_reason_and_evidence() {
     let texts: Vec<_> = r.evidence.iter().map(|e| e.text.clone().unwrap()).collect();
     assert_eq!(texts, vec![BASE, R1, R2, R3]);
     assert!(h.svc().show("nope", "cli").card.is_none());
+    // No id: the tip delivered last (the Copilot status line ends in a bare `aiq show`).
+    let latest = h.svc().show("", "cli");
+    assert_eq!(latest.card.map(|c| c.card_id), Some(card.card_id));
+}
+
+#[test]
+fn show_without_id_and_no_tip_yet_has_no_card() {
+    let mut h = H::new();
+    assert!(h.svc().show("", "cli").card.is_none());
 }
 
 #[test]

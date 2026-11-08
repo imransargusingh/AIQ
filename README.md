@@ -61,7 +61,7 @@ on a company npm mirror). Remove an override once that mirror has the newer vers
 aiq install                 # connects every tool found (Claude Code, Copilot); AIQ home's first-run setup does this for you
 aiq install claude-code     # shows the change to ~/.claude/settings.json, asks, keeps a backup
 aiq status                  # running or paused, tips today, store size, hook times
-aiq show <card-id>          # a card, why it showed, and the prompts it counted
+aiq show [card-id]          # a card, why it showed, and the prompts it counted (no id: the latest)
 aiq pause | aiq resume
 aiq config set daily-cap 3
 aiq import --dry-run        # count your past Claude Code / Copilot CLI sessions; aiq import stores them

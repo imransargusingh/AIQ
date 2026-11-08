@@ -4,7 +4,7 @@
 // (Imran 2026-11-07, option A): one chip per task names it and shows the rung it is heading for; the chosen task's
 // chart shows below, and it stays chosen while the others move.
 import { useState } from "react";
-import { clock, jobName, plural, rungLabel, toolName } from "../format";
+import { clock, jobName, plural, rungLabel, sentence, toolName } from "../format";
 import { projectName } from "../project";
 import type { Ctx } from "../ui";
 import type { Live } from "../types";
@@ -198,7 +198,7 @@ export function RightNow(ctx: Ctx) {
         )}
         {l.tip && (
           <p className="rn-tip">
-            <span className="rn-badge">AIQ tip:</span> {l.tip.try_this} <span className="meta">· from turn {l.tip.turn}</span>
+            <span className="rn-badge">AIQ tip:</span> {sentence(l.tip.try_this)} <span className="meta">· from turn {l.tip.turn}</span>
           </p>
         )}
         <ul className="rn-why">
