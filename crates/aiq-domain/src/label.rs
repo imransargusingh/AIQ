@@ -101,6 +101,12 @@ pub fn envelope(tool: &str, first_prompt: &str, fence: &str) -> String {
     )
 }
 
+/// Whether a stored guess counts in its method's self-check: a label guess of a `NOT_COACHED` kind could
+/// never coach today, so it is not counted. The core and AIQ home both filter with this one definition.
+pub fn counts_in_check(method: &str, job: &str, task_type: &str) -> bool {
+    method != METHOD || !NOT_COACHED.contains(&(job, task_type))
+}
+
 /// The (job, kind) a label may coach from: a pack job, a named kind (never `other`, never `NOT_COACHED`), and
 /// both confidences at least the coaching bar (0.8, `rung::COACH_THRESHOLD`). A model's own confidence is not calibrated; the
 /// live self-check (`coach::check_guesses` over `method = label`) is what holds it to the 8-in-10 bar.
@@ -138,6 +144,9 @@ mod tests {
         assert_eq!(accept(&lab("other", 0.95, "other", 0.95)), None);
         assert_eq!(accept(&lab("ask_research", 0.99, "troubleshoot", 0.99)), None, "measured: usually a fix");
         assert_eq!(accept(&lab("code_change", 0.9, "fix_bug", 0.9)), Some(("code_change", "fix_bug")));
+        assert!(!counts_in_check(METHOD, "ask_research", "troubleshoot"));
+        assert!(counts_in_check("words", "ask_research", "troubleshoot"), "word guesses keep their own rule");
+        assert!(counts_in_check(METHOD, "code_change", "fix_bug"));
     }
 
     #[test]

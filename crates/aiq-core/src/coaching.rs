@@ -209,6 +209,7 @@ impl Cache {
                 guesses
                     .iter()
                     .filter(|g| g.method == method)
+                    .filter(|g| aiq_domain::label::counts_in_check(&g.method, &g.job, &g.task_type))
                     .map(|g| (g.task_id.as_str(), g.job.as_str(), g.task_type.as_str())),
                 &by_id,
                 &pack.coach,
