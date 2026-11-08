@@ -345,7 +345,10 @@ function Fetch($from, [string]$to, [bool]$local) {
 try {
     $script:lockHandle = [IO.File]::Open((Join-Path $aiqHome 'update.lock'), 'OpenOrCreate', 'ReadWrite', 'None')
 } catch {
+    # AIQ home may have closed itself for this run (Install now, or an away install while its own check held the
+    # lock): open it again, or it stays closed until the person opens it from the Start menu.
     Log 'Another AIQ update is running. Nothing changed.'
+    Start-Home
     exit 0
 }
 

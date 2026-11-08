@@ -513,7 +513,7 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
               )}
             </div>
             <span className="meta" data-testid="update-progress">
-              {update.msg ?? (up.note === "waiting" ? `AIQ ${ver(up.available)} is downloaded and checked.${up.blocked ? ` Last try waited: ${up.blocked}.` : ""}` : "Checks for a newer AIQ and installs it.")}
+              {update.msg ?? (up.note === "waiting" ? `AIQ ${ver(up.available)} is downloaded and checked.${up.mode === "auto" ? " It installs by itself when AIQ home has been in the background for 10 minutes, or when you close it." : ""}${up.blocked ? ` Last try waited: ${up.blocked}.` : ""}` : "Checks for a newer AIQ and installs it.")}
             </span>
           </>
         ) : (

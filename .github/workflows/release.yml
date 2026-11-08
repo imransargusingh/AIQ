@@ -309,6 +309,26 @@ jobs:
           powershell -ExecutionPolicy Bypass -File $up -Check -Apply -Feed $feed2
           if ((St).state -ne 'rolled_back' -or (Test-Path (Join-Path $aiq 'update'))) { Fail "reinstalled after rollback: $((St) | ConvertTo-Json -Compress)" }
 
+          # Another run holds the lock (AIQ home's own check) when AIQ home closes itself for an install: the run
+          # changes nothing and opens AIQ home again, so Home is never left closed (design auto-update U5n).
+          Get-Process -Name 'aiq-home' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          Start-Sleep -Seconds 1
+          $held = [IO.File]::Open((Join-Path $aiq 'update.lock'), 'OpenOrCreate', 'ReadWrite', 'None')
+          try {
+            powershell -ExecutionPolicy Bypass -File $up -Apply -Relaunch
+            if ($LASTEXITCODE -ne 0) { Fail "apply with the lock held: exit $LASTEXITCODE" }
+          } finally { $held.Dispose() }
+          if (-not (Select-String -Quiet -Path $ulog -Pattern 'Another AIQ update is running')) { Fail 'held lock not logged' }
+          $homeBack = $null
+          foreach ($i in 1..25) {
+            $homeBack = Get-Process -Name 'aiq-home' -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq (Join-Path $aiq 'bin\aiq-home.exe') }
+            if ($homeBack) { break }
+            Start-Sleep -Milliseconds 200
+          }
+          if (-not $homeBack) { Fail 'AIQ home left closed when another update run held the lock' }
+          $homeBack | Stop-Process -Force
+          Start-Sleep -Seconds 1
+
           # A waiting release that is not newer (installed another way after the check) is dropped, never swapped in:
           # the .old copies stay, so Go back still works (laptop 2026-11-04 04:17:03Z).
           $stage = Join-Path $aiq 'update'
