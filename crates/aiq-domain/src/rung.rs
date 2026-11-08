@@ -269,7 +269,44 @@ const PERSON_RAN: [&str; 6] =
     ["i ran ", "i ran the", "ran the tests myself", "ran them locally", "ran it locally", "i'll run"];
 const SPEC_MARKS: [&str; 7] = ["/spec", "spec.md", "/specs/", "/adr/", "/design/", "brief", "requirements.md"];
 
-fn is_edit_tool(name: &str) -> bool {
+/// The letters of a turn's step list (`ActionSummary::steps`), written by the core's action reader.
+pub mod step {
+    pub const EDIT: u8 = b'e';
+    /// A check whose result was not recorded.
+    pub const CHECK: u8 = b'c';
+    pub const PASSED: u8 = b'p';
+    pub const FAILED: u8 = b'f';
+    pub const COMMAND: u8 = b'x';
+    pub const SUBAGENT: u8 = b's';
+    pub const OTHER: u8 = b'r';
+    /// Leads the list when earlier steps were dropped.
+    pub const CUT: u8 = b'<';
+}
+
+/// Did the agent finish with a check, read from the task's steps in order? Some(true) when a check ran after the
+/// agent's last edit (or, with no edit, at all) and the last of them did not fail; Some(false) when no check ran
+/// after the last edit or the last one failed; None when a turn's order is unknown (no steps, or a list cut short
+/// before its last edit could be seen). A check whose result was not recorded counts as run, not as failed.
+pub fn finished_checked(turns: &[&ActionSummary]) -> Option<bool> {
+    let mut all = Vec::new();
+    for a in turns {
+        match a.steps.as_deref() {
+            Some(s) => all.extend_from_slice(s.as_bytes()),
+            // A turn with no tool calls has no steps to read, whenever it was summarised.
+            None if a.tools.is_empty() && a.commands.is_empty() && a.subagents == 0 => {}
+            None => return None,
+        }
+    }
+    let last_edit = all.iter().rposition(|b| *b == step::EDIT);
+    if last_edit.is_none() && all.contains(&step::CUT) {
+        return None;
+    }
+    let after = &all[last_edit.map_or(0, |i| i + 1)..];
+    let last_check = after.iter().rev().find(|b| matches!(**b, step::CHECK | step::PASSED | step::FAILED));
+    Some(matches!(last_check, Some(&step::CHECK | &step::PASSED)))
+}
+
+pub fn is_edit_tool(name: &str) -> bool {
     let n = name.to_ascii_lowercase();
     EDIT_TOOLS.contains(&n.as_str())
 }
@@ -451,7 +488,10 @@ pub fn log_facts(turns: &[Turn]) -> LogFacts {
         .map(|(_, n)| *n)
         .sum();
     let subagents: u32 = acts.iter().map(|a| a.subagents).sum();
-    let agent_checked = acts.iter().any(|a| a.commands.iter().any(|c| is_check(c)));
+    let ran_check = acts.iter().any(|a| a.commands.iter().any(|c| is_check(c)));
+    // F3 agent means the agent finished with a check: its last check came after its last edit and passed. Where
+    // the order is unknown (summaries from before steps were kept), any check the agent ran still counts.
+    let agent_checked = ran_check && finished_checked(&acts).unwrap_or(true);
     let checks_by = if agent_checked {
         Some(Checker::Agent)
     } else if person_ran {
@@ -1336,6 +1376,7 @@ mod tests {
             files: files.iter().map(|s| s.to_string()).collect(),
             commands: cmds.iter().map(|s| s.to_string()).collect(),
             subagents: subs,
+            steps: None,
         })
     }
 
@@ -1384,6 +1425,42 @@ mod tests {
         // Copilot CLI tool names count too.
         let cp = log_facts(&turns(&["x"], acts(&[("str_replace_editor", 1), ("create", 1)], &[], &[], 0)));
         assert_eq!(cp.edits, 2);
+    }
+
+    /// F3 agent means the agent finished with a check (step order, 2026-11-08): a test run before the last edit,
+    /// or one that failed last, is not a checked result. Summaries without steps keep the old rule.
+    #[test]
+    fn the_agent_checked_only_when_its_last_check_followed_its_last_edit_and_passed() {
+        let turn = |steps: Option<&str>| ActionSummary {
+            tools: [("Edit".to_owned(), 1), ("Bash".to_owned(), 1)].into(),
+            commands: vec!["cargo test".into()],
+            steps: steps.map(str::to_owned),
+            ..Default::default()
+        };
+        let f3 = |steps: &[Option<&str>]| {
+            let t: Vec<Turn> = steps
+                .iter()
+                .enumerate()
+                .map(|(i, s)| Turn { at_ms: i as i64, prompt: "fix it".into(), actions: Some(turn(*s)) })
+                .collect();
+            log_facts(&t).checks_by
+        };
+        assert_eq!(f3(&[Some("rep")]), Some(Checker::Agent), "edit, then a passing test");
+        assert_eq!(f3(&[Some("rec")]), Some(Checker::Agent), "a test whose result wasn't recorded still ran");
+        assert_eq!(f3(&[Some("rpe")]), Some(Checker::Nobody), "tested, then changed the code");
+        assert_eq!(f3(&[Some("ref")]), Some(Checker::Nobody), "the last test failed");
+        assert_eq!(f3(&[Some("efpx")]), Some(Checker::Agent), "a failure fixed and rerun green");
+        assert_eq!(f3(&[Some("ep"), Some("e")]), Some(Checker::Nobody), "a later turn edited after the test");
+        assert_eq!(f3(&[None]), Some(Checker::Agent), "no steps stored: any check the agent ran counts");
+        assert_eq!(f3(&[Some("ep"), None]), Some(Checker::Agent), "one turn without steps: order unknown");
+        // A turn with no tool calls doesn't hide the order of the others.
+        let t = vec![
+            Turn { at_ms: 0, prompt: "fix it".into(), actions: Some(turn(Some("epe"))) },
+            Turn { at_ms: 1, prompt: "thanks".into(), actions: Some(ActionSummary::default()) },
+        ];
+        assert_eq!(log_facts(&t).checks_by, Some(Checker::Nobody));
+        assert_eq!(finished_checked(&[&turn(Some("<ppp"))]), None, "cut short before any edit: unknown");
+        assert_eq!(finished_checked(&[&turn(Some("<epp"))]), Some(true));
     }
 
     /// DC-020: 78 of 541 real judgments were told "agent edited nothing, checks by nobody" from turns AIQ never

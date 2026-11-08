@@ -131,6 +131,7 @@ mod tests {
                 files: files.iter().map(|s| s.to_string()).collect(),
                 commands: cmds.iter().map(|s| s.to_string()).collect(),
                 subagents,
+                steps: None,
             }),
         }
     }
