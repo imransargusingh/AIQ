@@ -663,6 +663,25 @@ fn e2e_a_tip_no_hook_says_it_printed_is_not_counted_and_comes_back() {
     while !e.status().contains("Tips today: 1 of") && Instant::now() < deadline {
         std::thread::sleep(Duration::from_millis(20));
     }
+    // The gone hook's hand-over is counted once. A retry whose hook gave up after the core had taken the tip
+    // for it is a real hand-over too and counts as well (`hand_back` or expiry; Windows CI on #185 counted 2),
+    // so allow one more per such retry, read from the hooks' own outcomes, and never more.
     let st = e.status();
-    assert!(st.contains("Tips today: 1 of") && st.contains("AIQ-CARD-UNCONFIRMED 1"), "{st}");
+    let timings = std::fs::read_to_string(e.home().join("hook-timings.log")).unwrap_or_default();
+    let missed = timings
+        .lines()
+        .filter_map(|l| l.strip_prefix("Stop ").and_then(|r| r.split(' ').nth(1)))
+        .filter(|o| o.starts_with("stop-timeout") || o.starts_with("card-"))
+        .count();
+    let unconfirmed = st
+        .split("AIQ-CARD-UNCONFIRMED ")
+        .nth(1)
+        .and_then(|r| r.split(|c: char| !c.is_ascii_digit()).next())
+        .and_then(|n| n.parse::<usize>().ok())
+        .unwrap_or(0);
+    assert!(st.contains("Tips today: 1 of"), "{st}");
+    assert!(
+        (1..=1 + missed).contains(&unconfirmed),
+        "unconfirmed {unconfirmed}, missed retries {missed}:\n{st}\n{timings}"
+    );
 }
