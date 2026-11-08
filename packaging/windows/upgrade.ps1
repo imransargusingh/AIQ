@@ -16,7 +16,7 @@
 #   -WaitPid <id>   first wait up to 20 s for that process to end (AIQ home closing itself).
 #   -Relaunch       start AIQ home at the end (tried again for up to 15 s if Windows refuses it; never an error).
 #   -FailLaunches <n>  tests only: the first n starts of the core or AIQ home fail as if Windows refused them.
-#   -FailDirectOnly    tests only: with -FailLaunches, only the direct starts fail; the other way (AIQ home, Explorer) runs.
+#   -FailExplorer      tests only: with -FailLaunches, only the starts through Explorer fail.
 #   -Feed <folder>  tests only: latest.json and the files in that folder stand in for GitHub.
 #   -Site <url> -Api <url>   tests only: stand-ins for https://github.com and https://api.github.com.
 #
@@ -42,7 +42,7 @@ param(
     [int]$WaitPid = 0,
     [switch]$Relaunch,
     [int]$FailLaunches = 0,
-    [switch]$FailDirectOnly,
+    [switch]$FailExplorer,
     [string]$Feed,
     [string]$Site = 'https://github.com',
     [string]$Api = 'https://api.github.com'
@@ -95,58 +95,84 @@ function Home-Running {
     [bool](@(Get-Process -Name 'aiq-home' -ErrorAction SilentlyContinue |
         Where-Object { $_.Path -and $_.Path.StartsWith($bin, [StringComparison]::OrdinalIgnoreCase) }).Count)
 }
-# Start an exe just swapped in, and never throw. Laptop, 2026-11-05 23:22:12Z: Microsoft Defender's attack surface
-# reduction rule "Use advanced protection against ransomware" (set by IT; events 1121) refused both the core and AIQ
-# home, started by this script's powershell.exe right after the swap of 0.1.8, and that error, uncaught, ended the
-# script, so AIQ home never reopened. The same aiq.exe, started by a hook 8 s later, ran. So: try again after 1, 2, 4
-# and 8 s, and stop as soon as $running says it is up (a hook started the core, the person opened AIQ home). After
-# each refused start, $other tries another parent: Explorer for AIQ home (as the Start menu does), AIQ home's
-# windowless `--start-core` for the core (laptop, 2026-11-07 18:21:04Z, 0.1.14 to 0.1.15: AIQ home started at once,
-# the core was refused on all five tries). Which way worked is logged. $true when up.
+# Start an exe just swapped in, and never throw. Microsoft Defender's attack surface reduction rule "Use advanced
+# protection against ransomware" (set by IT; event 1121) refuses a freshly installed AIQ exe started by a script host.
+# Measured on the laptop, 11-05 to 11-08: every AIQ block was a start by powershell.exe or cmd.exe within about an hour
+# of an update (upgrade.ps1 3, the Copilot status line 2, Defender's own scan script 6); none by Explorer, by AIQ home
+# starting the core, or by the hooks. On 11-08 04:09:55Z AIQ home, refused directly, opened through Explorer.
+# So each start goes through Explorer first (the parent the Start menu gives it), and starts the exe from this script
+# only after two rounds of that failed. A refused start also ended the whole script once (11-05 23:22Z): never throw.
+# Rounds after 0, 1, 2, 4 and 8 s; stop as soon as $running says it is up (a hook, the person). Which way worked is
+# logged. $true when up.
 $script:failLaunches = $FailLaunches
-function Refused-For-Test([bool]$direct) {
-    if ($FailDirectOnly -and -not $direct) { return }
+function Refused-For-Test([string]$kind) {
+    if ($FailExplorer -and $kind -ne 'explorer') { return }
     if ($script:failLaunches -gt 0) { $script:failLaunches--; throw 'Access is denied (test).' }
 }
-function Start-Again([string]$exe, [string[]]$argv, [bool]$hidden, [scriptblock]$other, [string]$via, [scriptblock]$running, [string]$code, [string]$what) {
+# One way to start something: Explorer opening $target (an exe or a shortcut), or this script starting it.
+function Way-Explorer([string]$target) {
+    @{ kind = 'explorer'; via = ' through Explorer'; run = { Start-Process -FilePath (Join-Path $env:SystemRoot 'explorer.exe') -ArgumentList "`"$target`"" }.GetNewClosure() }
+}
+function Way-Direct([string]$exe, [string[]]$argv, [string]$via) {
+    @{ kind = 'direct'; via = $via; run = {
+        $a = @{ FilePath = $exe; WindowStyle = 'Hidden' }
+        if ($argv) { $a.ArgumentList = $argv }
+        Start-Process @a
+    }.GetNewClosure() }
+}
+function Start-Again([object[]]$ways, [scriptblock]$running, [string]$code, [string]$what) {
     $last = ''
+    $round = 0
     foreach ($wait in 0, 1, 2, 4, 8) {
         if ($wait) { Start-Sleep -Seconds $wait }
-        if (& $running) { Log "${code}: $what was already running again."; return $true }
-        try {
-            Refused-For-Test $true
-            $a = @{ FilePath = $exe }
-            if ($argv) { $a.ArgumentList = $argv }
-            if ($hidden) { $a.WindowStyle = 'Hidden' }
-            Start-Process @a
-            $tries = if ($last) { " (Windows refused it first: $last)" } else { '' }
-            Log "${code}: started $what again.$tries"
-            return $true
-        } catch { $last = $_.Exception.Message }
-        try {
-            Refused-For-Test $false
-            & $other
-            # Neither way reports back, so the process list says whether it is up.
-            foreach ($i in 1..15) {
-                if (& $running) { Log "${code}: started $what again $via (Windows refused the direct start: $last)."; return $true }
-                Start-Sleep -Milliseconds 200
-            }
-        } catch { }
+        $round++
+        foreach ($w in $ways) {
+            if ($w.kind -eq 'direct' -and $round -le 2) { continue }
+            if (& $running) { Log "${code}: $what was already running again."; return $true }
+            try {
+                Refused-For-Test $w.kind
+                & $w.run
+                # Neither Explorer nor a detached start reports back, so the process list says whether it is up.
+                foreach ($i in 1..15) {
+                    if (& $running) {
+                        $tries = if ($last) { " (refused first: $last)" } else { '' }
+                        Log "${code}: started $what again$($w.via).$tries"
+                        return $true
+                    }
+                    Start-Sleep -Milliseconds 200
+                }
+                if (-not $last) { $last = "not running 3 s after starting it$($w.via)" }
+            } catch { $last = $_.Exception.Message }
+        }
     }
     Log "${code}: could not start $what ($last)."
     return $false
 }
+# A shortcut to AIQ home's windowless start-only mode, so Explorer can start the core (Explorer passes no arguments).
+function Core-Shortcut {
+    $lnk = Join-Path $bin 'aiq-start-core.lnk'
+    $s = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk)
+    $s.TargetPath = Join-Path $bin 'aiq-home.exe'
+    $s.Arguments = '--start-core'
+    $s.WorkingDirectory = $bin
+    $s.WindowStyle = 7
+    $s.Save()
+    $lnk
+}
 function Start-Core {
     $exe = Join-Path $bin 'aiq.exe'
     if (-not $script:coreWasRunning -or -not (Test-Path $exe)) { return }
-    $viaHome = {
-        # Waited for, so it has exited before Start-Home asks whether AIQ home is running.
-        Start-Process -PassThru -FilePath (Join-Path $bin 'aiq-home.exe') -ArgumentList '--start-core' |
-            Wait-Process -Timeout 5 -ErrorAction SilentlyContinue
-    }
-    if (-not (Start-Again $exe @('core') $true $viaHome 'through AIQ home' { Core-Running } 'AIQ-UPDATE-CORE' 'the AIQ core')) {
+    $ways = @()
+    try { $ways += Way-Explorer (Core-Shortcut) } catch { Log "AIQ-UPDATE-CORE: no shortcut for Explorer ($($_.Exception.Message))." }
+    # AIQ home starts the core itself: measured to work on the laptop (11-07 18:21:05Z) when this script's start was refused.
+    $ways += Way-Direct (Join-Path $bin 'aiq-home.exe') @('--start-core') ' through AIQ home'
+    $ways += Way-Direct $exe @('core') ''
+    if (-not (Start-Again $ways { Core-Running } 'AIQ-UPDATE-CORE' 'the AIQ core')) {
         Log 'AIQ-UPDATE-CORE: the next hook, AIQ home or the next sign-in starts it.'
     }
+    # Its start-only run must have ended before Start-Home asks whether AIQ home is running.
+    Get-Process -Name 'aiq-home' -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith($bin, [StringComparison]::OrdinalIgnoreCase) } |
+        Wait-Process -Timeout 5 -ErrorAction SilentlyContinue
 }
 # -Relaunch: open AIQ home again (it closed itself for the update).
 function Start-Home {
@@ -155,8 +181,9 @@ function Start-Home {
     if (-not (Test-Path $exe)) { return }
     # The closing AIQ home must not count as "already running" (some paths return before the swap waited for it).
     if ($WaitPid) { Wait-Process -Id $WaitPid -Timeout 20 -ErrorAction SilentlyContinue }
-    $viaExplorer = { Start-Process -FilePath (Join-Path $env:SystemRoot 'explorer.exe') -ArgumentList "`"$exe`"" }
-    if (-not (Start-Again $exe @() $false $viaExplorer 'through Explorer' { Home-Running } 'AIQ-UPDATE-HOME' 'AIQ home')) {
+    $ways = @((Way-Explorer $exe), (Way-Direct $exe @() ''))
+    $ways[1].run = { Start-Process -FilePath $exe }.GetNewClosure()  # a window, not hidden
+    if (-not (Start-Again $ways { Home-Running } 'AIQ-UPDATE-HOME' 'AIQ home')) {
         Log 'AIQ-UPDATE-HOME: open AIQ from the Start menu; AIQ home starts the core too.'
     }
 }
