@@ -106,6 +106,8 @@ pub struct Service<C: Clock> {
     coach: Option<coaching::Cache>,
     /// AIQ-COACH-GUESS-LOW is logged once per core run.
     guess_low_logged: bool,
+    /// The label self-check's hold is logged once per core run, as the words' switch-off is.
+    label_low_logged: bool,
     popup: Option<Popup>,
     /// Tips handed to a turn-end hook that has not yet said it printed them (DC-022), by card id. In memory
     /// only: a core restart forgets them, and those tips are ready again. Bounded by the daily cap.
@@ -238,6 +240,7 @@ impl<C: Clock> Service<C> {
             vscode_asked_ms: None,
             coach: None,
             guess_low_logged: false,
+            label_low_logged: false,
             popup: None,
             handovers: std::collections::HashMap::new(),
             label_requester: None,
@@ -703,7 +706,14 @@ impl<C: Clock> Service<C> {
         trace_id: Option<&str>,
         started: std::time::Instant,
     ) -> Result<(), StoreError> {
-        let (words_on, labels_on) = (cache.words_on(mode, pack), cache.labels_on(mode, pack) && self.labels_enabled());
+        // Labels keep being asked for while their self-check holds their tips, so the check keeps measuring
+        // and can turn them back on. Before, a check below 8 in 10 stopped the asking, so it could never
+        // recover (laptop 2026-11-04 to 11-08: 6 of 10 right, no label and no tip for four days).
+        let words_on = cache.words_on(mode, pack);
+        let labels_on = self.labels_enabled();
+        if labels_on && !cache.labels_on(mode, pack) {
+            self.log_label_hold(cache);
+        }
         if !words_on && !labels_on {
             if !self.guess_low_logged {
                 self.guess_low_logged = true;
@@ -747,6 +757,21 @@ impl<C: Clock> Service<C> {
         })?;
         let kind = Kind { job: &g.job, task_type: &g.task_type, score: g.similarity, evidence: &g.neighbours };
         self.decide_kind(cache, pack, mode, surface, session, task_id, kind, "words", trace_id, started)
+    }
+
+    /// Log once per core run that the label self-check holds label tips (it was silent before).
+    fn log_label_hold(&mut self, cache: &coaching::Cache) {
+        if self.label_low_logged {
+            return;
+        }
+        self.label_low_logged = true;
+        self.counters.inc(codes::COACH_GUESS_LOW);
+        warn!(
+            error.code = codes::COACH_GUESS_LOW,
+            label_checked = cache.label_check.checked,
+            label_right = cache.label_check.right,
+            "next-step tips from kind labels held by AIQ's self-check; labels are still asked for and checked"
+        );
     }
 
     /// Labels can run: a labeller is wired, background judging is on and labels are not turned off.
@@ -811,10 +836,6 @@ impl<C: Clock> Service<C> {
         self.coach_cache()?;
         let cache = self.coach.take().expect("built above");
         let r = (|| {
-            if !cache.labels_on(&mode, &pack) {
-                outcome("label_self_check_off");
-                return Ok(());
-            }
             let score = label.job_confidence.min(label.task_type_confidence);
             self.store.insert_type_guess(&aiq_store::TypeGuessRow {
                 guess_id: new_id(),
@@ -827,6 +848,12 @@ impl<C: Clock> Service<C> {
                 utc_ms: self.clock.now().utc_ms,
                 method: aiq_domain::label::METHOD.into(),
             })?;
+            // Stored either way, so the self-check sees it once the task is analyzed; no tip while it holds.
+            if !cache.labels_on(&mode, &pack) {
+                self.log_label_hold(&cache);
+                outcome("label_held_by_self_check");
+                return Ok(());
+            }
             let evidence = [format!("label:{}", l.model.as_deref().unwrap_or(&l.provider))];
             let kind = Kind { job, task_type, score, evidence: &evidence };
             self.decide_kind(

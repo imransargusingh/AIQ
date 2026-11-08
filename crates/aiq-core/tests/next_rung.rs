@@ -583,7 +583,7 @@ fn a_label_tip_is_held_by_the_accuracy_pause_like_a_word_tip() {
 }
 
 #[test]
-fn labels_have_their_own_self_check_and_turn_off_below_eight_in_ten() {
+fn labels_have_their_own_self_check_hold_tips_below_eight_in_ten_and_keep_being_checked() {
     let mut h = H::new();
     h.seed();
     let asked = with_labeller(&mut h);
@@ -606,8 +606,15 @@ fn labels_have_their_own_self_check_and_turn_off_below_eight_in_ten() {
             .unwrap();
         }
     }
-    h.prompt("copilot-cli", "a", UNLIKE);
-    assert!(asked.lock().unwrap().is_empty(), "labels 7 of 10: AIQ stops asking");
+    let task = h.prompt("copilot-cli", "a", UNLIKE);
+    // Labels 7 of 10: AIQ still asks, so the check keeps measuring and can recover (it never could before).
+    assert_eq!(asked.lock().unwrap().len(), 1, "still asks for a label");
+    h.advance(10_000);
+    store_label(&h, &task, "a", "tests", 0.9);
+    h.svc.on_kind_label(&task).unwrap();
+    assert!(h.cp_turn_end("a").is_none(), "no tip from a label while the check holds");
+    let g = Store::open(&h.path).unwrap().type_guesses().unwrap();
+    assert!(g.iter().any(|g| g.task_id == task && g.method == "label"), "the label is stored, to be checked");
     let st = h.svc.status().coach.unwrap();
     let l = st.labels.unwrap();
     assert_eq!((l.checked, l.right), (10, 7));
