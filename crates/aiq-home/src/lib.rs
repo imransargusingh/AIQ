@@ -74,6 +74,37 @@ pub struct Snapshot {
     /// Where new tasks' tips went, today and over 7 days, and the recent days with no tip (design tip-funnel). The
     /// core's own reader (`aiq_core::funnel`), so Home and `aiq status` give the same numbers.
     pub tip_funnel: aiq_contracts::frames::TipFunnels,
+    /// The team tips file (aiq.team-tips.v1): one "Tool to try" per habit the pack has. Read in place on each
+    /// snapshot, never stored. Left out of the JSON when no file is set.
+    #[serde(skip_serializing_if = "TeamTips::is_unset")]
+    pub team_tips: TeamTips,
+}
+
+#[derive(Debug, Clone, PartialEq, Default, Serialize)]
+pub struct TeamTips {
+    /// True when a folder is set (`aiq team-tips add`).
+    pub set: bool,
+    /// Why the file can't be used, in AIQ's words (never the file's text). Tips show as usual.
+    pub problem: Option<String>,
+    pub tools: Vec<aiq_contracts::team_tips::TeamTool>,
+}
+
+impl TeamTips {
+    fn is_unset(&self) -> bool {
+        !self.set
+    }
+
+    pub fn read(paths: &Paths, pack: &PackV1) -> Self {
+        match aiq_core::team_tips::read(paths) {
+            aiq_core::team_tips::Status::NotSet => Self::default(),
+            aiq_core::team_tips::Status::Problem(e) => Self { set: true, problem: Some(e), tools: vec![] },
+            aiq_core::team_tips::Status::Ok(t) => Self {
+                set: true,
+                problem: None,
+                tools: t.tools.into_iter().filter(|x| pack.moves.iter().any(|m| m.move_id == x.move_id)).collect(),
+            },
+        }
+    }
 }
 
 /// One habit in the rung guide: the step it climbs from (1..=4), its job (or `any`), and the pack's own text.
@@ -846,6 +877,7 @@ fn empty(paths: &Paths, pack: &PackV1, now: Now) -> Snapshot {
             })
             .collect(),
         tip_funnel: Default::default(),
+        team_tips: TeamTips::read(paths, pack),
     }
 }
 
@@ -1791,5 +1823,35 @@ mod analysis_tests {
         let p = analysis_state(&tasks, &[], &[], true, true, 50, 0, n, GAP);
         assert_eq!(p.state, "paused");
         assert!(!p.start);
+    }
+}
+
+#[cfg(test)]
+mod team_tips_tests {
+    use super::*;
+
+    #[test]
+    fn team_tips_show_only_known_habits_and_stay_out_of_the_json_when_unset() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::at(dir.path());
+        let pack = aiq_domain::PackSource::load(&aiq_core::pack::BundledPack).unwrap();
+        let now = Now { utc_ms: 1_800_000_000_000, offset_min: 0 };
+        let json = serde_json::to_value(snapshot(&paths, &pack, now)).unwrap();
+        assert!(json.get("team_tips").is_none(), "no file set: no field");
+        let team = dir.path().join("team");
+        std::fs::create_dir_all(&team).unwrap();
+        std::fs::write(
+            team.join("team-tips.toml"),
+            "schema = \"aiq.team-tips.v1\"\n[[tools]]\nmove_id = \"check_code\"\ntool = \"T\"\nhow = \"h.\"\n\
+             [[tools]]\nmove_id = \"gone\"\ntool = \"G\"\nhow = \"g.\"\n",
+        )
+        .unwrap();
+        aiq_core::team_tips::set_folder(&paths, Some(&team)).unwrap();
+        let t = snapshot(&paths, &pack, now).team_tips;
+        assert!(t.set && t.problem.is_none());
+        assert_eq!(t.tools.iter().map(|x| x.move_id.as_str()).collect::<Vec<_>>(), ["check_code"]);
+        std::fs::write(team.join("team-tips.toml"), "schema = 1").unwrap();
+        let t = snapshot(&paths, &pack, now).team_tips;
+        assert!(t.set && t.problem.is_some() && t.tools.is_empty());
     }
 }

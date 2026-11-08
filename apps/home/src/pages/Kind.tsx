@@ -9,6 +9,7 @@ import { KIND_STATE, perWeek } from "../coach";
 import { day, jobName, plural, rungLabel, sentence, toolName, when } from "../format";
 import type { Coaching, KindRow, TaskRow } from "../types";
 import { Banners, Chip, Rung, Title, type Ctx } from "../ui";
+import { TeamToolLine, teamTool } from "../team";
 
 const REASONS: { v: FlagReason; label: string }[] = [
   { v: "evidence_wrong", label: "AIQ got these tasks wrong" },
@@ -111,6 +112,7 @@ export function Kind(ctx: Ctx & { kindId: string }) {
           <p>
             <b>Try this:</b> {k.next.try_this}
           </p>
+          <TeamToolLine t={teamTool(snap, k.next.move_id)} />
           <div className="group" style={{ gap: "var(--s2)" }}>
             <span id="kst" className="mute">A starter prompt. Fill in the parts in angle brackets; AIQ never sends it.</span>
             <pre className="starter" aria-labelledby="kst">{k.next.starter}</pre>

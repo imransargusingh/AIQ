@@ -19,6 +19,8 @@ export interface Endpoint {
 export interface Card {
   /** Not part of aiq.card.v1: set from the reply when the person turned the tip highlight off. */
   plain?: boolean;
+  /** The team's "Tool to try" line (team tips file), added by the core for VS Code only; never stored. */
+  team_tool?: string;
   schema: string;
   card_id: string;
   opportunity_id: string;
@@ -51,6 +53,8 @@ export interface ShowReply {
   delivered: boolean;
   evidence: EvidencePrompt[];
   leaned_on?: LeanedOn[];
+  /** The team's "Tool to try" line (team tips file), on VS Code only. */
+  team_tool?: string;
 }
 
 /** The person's answers to a tip (coaching-from-rungs D8), as the notification's buttons name them. */
@@ -154,9 +158,10 @@ export interface CoreClient {
 export function coreClient(ep: Endpoint): CoreClient {
   return {
     async takeCard() {
-      const r = await request<{ card: Card | null; plain?: boolean }>(ep, { op: "take_card_any", surface: SURFACE });
+      const r = await request<{ card: Card | null; plain?: boolean; team_tool?: string }>(ep, { op: "take_card_any", surface: SURFACE });
       if (r === null) return undefined;
-      return r.card && r.plain ? { ...r.card, plain: true } : r.card;
+      if (!r.card) return r.card;
+      return { ...r.card, ...(r.plain ? { plain: true } : {}), ...(r.team_tool ? { team_tool: r.team_tool } : {}) };
     },
     show: (cardId) => request<ShowReply>(ep, { op: "show", card_id: cardId, opened_on: SURFACE }),
     async feedback(cardId, answer) {
@@ -173,13 +178,15 @@ export function plain(s: string): string {
 }
 
 export function notificationText(c: Card): string {
-  return `AIQ tip: ${plain(c.noticed)} Try this: ${plain(c.try_this)}`;
+  const tool = c.team_tool ? ` ${plain(c.team_tool)}` : "";
+  return `AIQ tip: ${plain(c.noticed)} Try this: ${plain(c.try_this)}${tool}`;
 }
 
 export function detailsText(r: ShowReply): string {
   if (!r.card) return "No tip with that id.\n";
   const c = r.card;
-  let out = `AIQ tip: ${plain(c.noticed)}\nWhy: ${plain(c.why)}\nTry this: ${plain(c.try_this)}\n\n`;
+  const tool = r.team_tool ? `${plain(r.team_tool)}\n` : "";
+  let out = `AIQ tip: ${plain(c.noticed)}\nWhy: ${plain(c.why)}\nTry this: ${plain(c.try_this)}\n${tool}\n`;
   if (c.opportunity_id === "next_rung") {
     if (c.starter) out += `Starter prompt (copy and fill in; AIQ never sends it):\n  ${plain(c.starter)}\n\n`;
     out += "AIQ guessed the kind of task from these earlier tasks of yours:\n";
