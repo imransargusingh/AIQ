@@ -77,7 +77,7 @@ jobs:
           $prev = Join-Path $un 'aiq-statusline.exe'
           if (-not (Test-Path $prev)) { "$tag has no aiq-statusline.exe: using this build of $ver."; exit 0 }
           $prevVer = ((& $prev --version) -replace '^aiq-statusline\s+', '').Trim()
-          if ($prevVer -ne $ver) { "$tag has aiq-statusline $prevVer; this build is $ver: using this build."; exit 0 }
+          if ($prevVer -ne $ver) { "$tag has aiq-statusline $prevVer; this build is ${ver}: using this build."; exit 0 }
           git fetch --quiet --depth=1 origin "refs/tags/${tag}:refs/tags/${tag}"
           git diff --quiet $tag HEAD -- crates/aiq-statusline
           if ($LASTEXITCODE -ne 0) { Write-Error "crates/aiq-statusline changed since $tag but its version is still $ver. Bump it in crates/aiq-statusline/Cargo.toml."; exit 1 }
