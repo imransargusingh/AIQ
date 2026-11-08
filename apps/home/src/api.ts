@@ -1,15 +1,15 @@
-// The bridge to the Tauri shell (apps/home/src-tauri). Sixteen commands; nothing else leaves the page.
+// The bridge to the Tauri shell (apps/home/src-tauri). Eighteen commands; nothing else leaves the page.
 // Outside Tauri (the UI tests) a fixture stands in, set on window by the test before the page loads.
-import type { Outcome, Snapshot, TaskDetail } from "./types";
+import type { Outcome, Snapshot, TaskDetail, ToolFound } from "./types";
 
-export type SettingKey = "daily_cap" | "copilot_tip_stays" | "copilot_tip_in_chat" | "tip_popup" | "tip_highlight" | "next_rung_tips" | "judge" | "judge_daily_tasks" | "update" | `keep_on.${string}` | `project_name.${string}`;
+export type SettingKey = "daily_cap" | "copilot_tip_stays" | "copilot_tip_in_chat" | "tip_popup" | "tip_highlight" | "live_trend" | "next_rung_tips" | "judge" | "judge_daily_tasks" | "copilot_mid_turn" | "agent_actions" | "update" | `keep_on.${string}` | `project_name.${string}`;
 /** The reasons the core accepts (crates/aiq-core/src/coaching.rs FLAG_REASONS). */
 export type FlagReason = "evidence_wrong" | "not_useful" | "blocked" | "other";
 
 declare global {
   interface Window {
     __TAURI_INTERNALS__?: unknown;
-    __AIQ_FIXTURE__?: { snapshot: Snapshot; task?: TaskDetail; calls: { cmd: string; args: unknown }[]; fail?: string[] };
+    __AIQ_FIXTURE__?: { snapshot: Snapshot; task?: TaskDetail; calls: { cmd: string; args: unknown }[]; fail?: string[]; checkFinds?: string; checkDue?: boolean };
   }
 }
 
@@ -37,14 +37,16 @@ function fixture<T>(cmd: string, args: Record<string, unknown>): Promise<T> {
       out = s;
       break;
     case "set_setting":
-      if (!s.status.core) out = { ok: false, message: "AIQ isn't running, so settings can't change right now. It starts with your next prompt in Claude Code or Copilot." };
+      if (!s.status.core) out = { ok: false, message: "AIQ is starting, so this can't change yet. Try again in a moment." };
       else {
         if (args.key === "daily_cap") s.settings.daily_cap = Number(args.value);
-        if (args.key === "judge") s.settings.judge = args.value as Snapshot["settings"]["judge"];
+        if (args.key === "judge") [s.settings.judge, s.settings.judge_since_ms] = [args.value as Snapshot["settings"]["judge"], s.now_ms];
         if (args.key === "judge_daily_tasks") s.settings.judge_daily_tasks = Number(args.value);
+        if (args.key === "copilot_mid_turn") s.settings.copilot_mid_turn = args.value as Snapshot["settings"]["copilot_mid_turn"];
+        if (args.key === "agent_actions") s.settings.agent_actions = args.value as Snapshot["settings"]["agent_actions"];
         if (args.key === "update") s.update.mode = args.value as Snapshot["update"]["mode"];
         if (args.key === "copilot_tip_stays") s.settings.copilot_tip_stays = args.value as Snapshot["settings"]["copilot_tip_stays"];
-        if (args.key === "copilot_tip_in_chat" || args.key === "tip_popup" || args.key === "tip_highlight") s.settings[args.key] = args.value === "on";
+        if (args.key === "copilot_tip_in_chat" || args.key === "tip_popup" || args.key === "tip_highlight" || args.key === "live_trend") s.settings[args.key] = args.value === "on";
         const keep = String(args.key).startsWith("keep_on.") ? s.settings.accuracy_paused.find((p) => `keep_on.${p.scope}` === args.key) : undefined;
         if (String(args.key).startsWith("keep_on.") && !keep) {
           out = { ok: false, message: "Not changed: AIQ hasn't paused tips for that." };
@@ -118,34 +120,56 @@ function fixture<T>(cmd: string, args: Record<string, unknown>): Promise<T> {
       out = { ok: true, changed: ["C:\\Users\\you\\.copilot\\hooks\\aiq.json"] };
       break;
     case "run_update":
-      // The real shell closes the window after replying; the fixture only records the call.
+      // The real shell closes the window after replying; the fixture only records the call. A "check" behaves
+      // like upgrade.ps1 when the test sets `checkFinds`: a version stages it (waiting), "none" finds nothing,
+      // "error" can't reach GitHub; it writes its check time. With `checkDue` set, Home's own timed asks
+      // (check_if_due, check_on_open) run that check too, as the shell does once one is due.
       out = f.fail?.includes(cmd) ? { ok: false, message: "Could not start: updates run only for AIQ installed with install.ps1 on Windows." } : { ok: true };
+      const asked = args.action === "check" || (f.checkDue && String(args.action).startsWith("check_"));
+      if (asked && f.checkFinds !== undefined && !f.fail?.includes(cmd)) {
+        const found = f.checkFinds;
+        setTimeout(() => {
+          s.update.checked_ms = Date.now();
+          s.update.check_error = found === "error" ? "Unable to connect to the remote server" : null;
+          if (found !== "none" && found !== "error") Object.assign(s.update, { note: "waiting", available: found, latest: found });
+          else if (found === "none") s.update.latest = `v${s.update.running}`;
+        }, 300);
+      }
       break;
     case "disconnect_tool": {
       const t = s.setup.tools.find((x) => x.tool === args.tool);
       if (!t || !t.hooked) out = { ok: false, message: "Not changed: AIQ isn't connected to that tool.", changed: [] };
       else {
         t.hooked = false;
-        out = { ok: true, changed: [t.tool === "copilot" ? "C:\\Users\\you\\.copilot\\hooks\\aiq.json" : "C:\\Users\\you\\.claude\\settings.json"] };
+        const file = { copilot: "C:\\Users\\you\\.copilot\\hooks\\aiq.json", "claude-code": "C:\\Users\\you\\.claude\\settings.json", vscode: "C:\\Users\\you\\.vscode\\extensions\\extensions.json" };
+        out = { ok: true, changed: [file[t.tool]] };
       }
       break;
     }
     case "include_folder":
-      if (!s.status.core) out = { ok: false, message: "AIQ isn't running, so this can't change right now. It starts with your next prompt in Claude Code or Copilot." };
-      else if (!s.home.set_aside.some((x) => x.folder === args.folder)) out = { ok: false, message: "Not changed: that folder isn't set aside." };
+      if (!s.status.core) out = { ok: false, message: "AIQ is starting, so this can't change yet. Try again in a moment." };
+      else if (!s.home.set_aside.some((x) => x.folder === args.folder)) out = { ok: false, message: "Not changed: that folder is already counted." };
       else {
         s.home.set_aside = s.home.set_aside.filter((x) => x.folder !== args.folder);
         out = { ok: true };
       }
       break;
     case "judge_preview":
-      out = { ok: true, text: "AIQ judges each task you finish with AI.\n\n1 task is waiting to be judged. Nothing was sent.\n\nThe next task would be sent to your Copilot CLI like this:\n\n<task>refactor the login handler</task>" };
+      out = { ok: true, text: "AIQ analyzes each task you finish with AI.\n\n1 task is waiting to be analyzed. Nothing was sent.\n\nThe next task would be sent to your Copilot CLI like this:\n\n<task>refactor the login handler</task>" };
       break;
     case "open_privacy":
       out = { ok: true };
       break;
+    case "open_sign_in":
+    case "open_tool_help":
+      out = f.fail?.includes(cmd) ? { ok: false, message: "Couldn't open it. Open a terminal and run copilot, then /login." } : { ok: true };
+      break;
     case "finish_setup":
       s.setup.done = true;
+      out = s;
+      break;
+    case "tour_seen":
+      s.setup.tour_seen = true;
       out = s;
       break;
     default:
@@ -162,6 +186,8 @@ export const api = {
   task: (taskId: string) => invoke<TaskDetail | null>("task", { taskId }),
   forgetItem: (eventId: string) => invoke<Outcome>("forget_item", { eventId }),
   finishSetup: () => invoke<Snapshot>("finish_setup"),
+  /** The tour was taken, skipped or declined: Home stops offering it. */
+  tourSeen: () => invoke<Snapshot>("tour_seen"),
   /** Connect every tool found but not hooked yet (runs `aiq install --yes`). */
   connectTools: () => invoke<{ ok: boolean; message?: string; changed: string[] }>("connect_tools"),
   /** "This doesn't fit" (flag, with a reason) or its undo, for one kind of task's next step. */
@@ -172,13 +198,18 @@ export const api = {
   /** Settings' per-tip switch: turn a tip off before it shows (same as "Don't show this again"). */
   tipOff: (tipId: string) => invoke<Outcome>("tip_off", { tipId }),
   /** Settings' Disconnect: `aiq uninstall <tool> --yes`, which restores the tool's settings from AIQ's backup. */
-  disconnectTool: (tool: "claude-code" | "copilot") => invoke<{ ok: boolean; message?: string; changed: string[] }>("disconnect_tool", { tool }),
+  disconnectTool: (tool: ToolFound["tool"]) => invoke<{ ok: boolean; message?: string; changed: string[] }>("disconnect_tool", { tool }),
   /** Home's Include: AIQ watches a folder it set aside as automated again. */
   includeFolder: (folder: string) => invoke<Outcome>("include_folder", { folder }),
   /** What judging would send for the next task (`aiq judge --dry-run`). Nothing is sent. */
   judgePreview: () => invoke<{ ok: boolean; text: string }>("judge_preview"),
   /** Open the privacy page in the default browser (a fixed address). */
   openPrivacy: () => invoke<Outcome>("open_privacy"),
-  /** Install the waiting update or go back (AIQ home closes and reopens), or check now (it stays open). */
-  runUpdate: (action: "install" | "rollback" | "check") => invoke<Outcome>("run_update", { action }),
+  /** Open the tool in a new terminal so the person can sign in (fixed command per tool). */
+  openSignIn: (tool: "claude-code" | "copilot-cli") => invoke<Outcome>("open_sign_in", { tool }),
+  /** Open the tool's install page in the default browser (a fixed address per tool). */
+  openHelp: (tool: "claude-code" | "copilot-cli") => invoke<Outcome>("open_tool_help", { tool }),
+  /** Install the waiting update or go back (AIQ home closes and reopens), or check now (it stays open);
+   * `check_if_due` checks only when 15 minutes have passed since the last check (Home asks every minute). */
+  runUpdate: (action: "install" | "rollback" | "check" | "check_if_due" | "check_on_open") => invoke<Outcome>("run_update", { action }),
 };

@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Home Tour</title><style>
+:root { color-scheme: light dark; --bg:#f7f5ef; --panel:#fff; --text:#20201d;
+  --muted:#66645f; --line:#d9d5ca; --accent:#3157a4; --code:#f0eee7; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#171816; --panel:#20221f; --text:#f2f1eb; --muted:#b8b6ae;
+    --line:#3d403a; --accent:#8fb0ff; --code:#292c27; }
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text);
+  font:16px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif; }
+main { width:min(920px,calc(100% - 32px)); margin:32px auto; padding:40px;
+  background:var(--panel); border:1px solid var(--line); border-radius:12px; }
+h1,h2,h3,h4,h5,h6 { line-height:1.2; margin:1.5em 0 .55em; }
+h1 { margin-top:0; font-size:2.2rem; } h2 { border-bottom:1px solid var(--line); padding-bottom:.3em; }
+a { color:var(--accent); } code { background:var(--code); padding:.12em .35em; border-radius:4px; }
+pre { overflow:auto; padding:16px; background:var(--code); border-radius:8px; }
+pre code { padding:0; } blockquote { margin:1em 0; padding:.2em 1em; color:var(--muted);
+  border-left:4px solid var(--line); }
+table { width:100%; border-collapse:collapse; margin:1em 0; display:block; overflow:auto; }
+th,td { padding:.55em .75em; border:1px solid var(--line); text-align:left; vertical-align:top; }
+th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); }
+.source { color:var(--muted); font-size:.9rem; margin-bottom:2rem; }
+@media (max-width:640px) { main { width:100%; margin:0; padding:24px 18px; border:0; border-radius:0; } }
+</style></head><body><main><div class="source">Rendered from home-tour.md</div><h1>Design: AIQ home tour for new users</h1>
+<p>Imran asked for a built-in tour on 2026-11-04. Mockups: <code>/mnt/project-files/tour/tour-proposal.html</code>. He chose option A (tour on example data) on 2026-11-05 00:28Z. Options B (tour on own data, offered after 10 judged tasks) and C (a &quot;?&quot; hint per heading) were not chosen.</p>
+<table><thead><tr><th>#</th><th>Question</th><th>Decision</th><th>Why</th></tr></thead><tbody><tr><td>T1</td><td>What does the tour show?</td><td>Eight steps: Right now, How you work with agents, Is each kind moving up, Tasks by kind, the Day view, Habits, tips in the person&#x27;s tool, Settings. One title and one sentence each</td><td>One step per view the person will use. Text stays under 25 words a step (unit test)</td></tr><tr><td>T2</td><td>Whose data?</td><td>A fixed example snapshot, <code>apps/home/tests/fixtures/tour.json</code>, written by the Rust fixture example from <code>seed::tour</code> (progress + coaching + a full example day + an open task). Folder names are neutral; the generator fails if a real name is left. The person&#x27;s own status, update state and daily cap stay</td><td>A new install&#x27;s Home is empty for days. A fixture from the Rust read model can&#x27;t drift from the UI types. It loads only when a tour starts (own chunk)</td></tr><tr><td>T3</td><td>When is it offered, and when never again?</td><td>A corner card on Home after setup (not a modal, not on other pages). &quot;Take the tour&quot; and &quot;Not now&quot; both write a <code>tour-seen</code> flag file in the data folder (shell command <code>tour_seen</code>). Ctrl K, Settings &gt; Tools and the getting-started list start it any time</td><td>No manual burden and no undismissable banner. A file, like <code>setup-done</code>, works before the core ever ran; delete everything keeps it (app state, not the person&#x27;s data)</td></tr><tr><td>T4</td><td>Can the tour change anything?</td><td>No. The page under it is <code>inert</code> and covered by a blocking layer; the tour writes only its flag; single-key shortcuts are off while it is open</td><td>Example data must never reach the store or a judge call. e2e asserts the only write is <code>tour_seen</code></td></tr><tr><td>T5</td><td>Access</td><td><code>role=dialog</code> with <code>aria-modal</code>, focus on Next, Tab stays in the coach mark, Esc closes on any step, arrows move, status line announces start and end. axe clean in light, dark and high contrast</td><td>UI standard U-floor (WCAG 2.2 AA)</td></tr><tr><td>T6</td><td>Getting started</td><td>Stays the whole of empty Home; gains a &quot;Take the tour&quot; link</td><td>The list answers &quot;is it working?&quot;; the tour answers &quot;what will I see?&quot;</td></tr></tbody></table>
+<p><strong>Measured by:</strong> the shell logs <code>tour_seen</code> in <code>home.log</code> with its timing, like every command. Not recorded: how many steps a person reads before closing. Add a step counter to the flag file if that question comes up.</p></main></body></html>

@@ -1,8 +1,12 @@
 //! AIQ core: the long-lived, per-user process behind the hook client and the CLI.
+pub mod agent_actions;
+pub mod autostart;
 pub mod coaching;
 pub mod control;
+pub mod copilot_log;
 pub mod counters;
 pub mod ipc;
+pub mod live_trend;
 pub mod logging;
 pub mod pack;
 pub mod paths;

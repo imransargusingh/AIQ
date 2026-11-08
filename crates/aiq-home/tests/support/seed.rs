@@ -77,6 +77,30 @@ impl Seed {
         id
     }
 
+    /// The turn ended by `stop_id` had these actions recorded live (schema v9 `turn_action`); `tools` None writes
+    /// a not-recorded row.
+    pub fn turn_action(&mut self, stop_id: &str, surface: &str, session: &str, at: i64, tools: Option<&[(&str, i64)]>) {
+        let row = aiq_store::TurnActionRow {
+            stop_event_id: stop_id.into(),
+            surface: surface.into(),
+            surface_session_id: session.into(),
+            ts_utc_ms: at,
+            outcome: if tools.is_some() { "recorded" } else { "not_recorded" }.into(),
+            why: tools.is_none().then(|| "read_error".into()),
+            tool_calls: tools.map(|t| t.iter().map(|(_, n)| n).sum()),
+            commands: tools.map(|_| 0),
+            files: tools.map(|_| 0),
+            subagents: tools.map(|_| 0),
+            tools: tools.map(|t| {
+                serde_json::Value::Object(t.iter().map(|(k, n)| (k.to_string(), (*n).into())).collect()).to_string()
+            }),
+            bytes_read: 100,
+            read_ms: 1,
+            utc_ms: at,
+        };
+        self.store.insert_turn_action(&row).unwrap();
+    }
+
     /// The person deleted this prompt's text (the content row goes; the event stays).
     pub fn delete_text(&mut self, event_id: &str) {
         self.store.raw().execute("DELETE FROM content WHERE event_id = ?1", [event_id]).unwrap();
@@ -106,9 +130,76 @@ impl Seed {
             .unwrap();
         let card = serde_json::json!({
             "schema": "aiq.card.v1", "card_id": card_id, "opportunity_id": "reprompt", "tip_id": "reprompt.restate",
-            "noticed": "You reworded the same request 3 times in this task.",
+            "noticed": "This request went round 3 times. The agent may need one new detail.",
             "why": "Rewording often means the agent is missing context, not words.",
             "try_this": "Say what is wrong with the last answer and add the one fact it lacked.",
+            "evidence_ref": format!("aiq show {card_id}"), "pack_version": "bundled-4"
+        })
+        .to_string();
+        self.store
+            .insert_decision(
+                &NewDecision {
+                    decision_id: &decision_id,
+                    card_id: &card_id,
+                    signal_id: &signal_id,
+                    surface,
+                    session,
+                    outcome: "show_ready",
+                    reason_code: "ok",
+                    rule_id: "in_moment.v1",
+                    pack_version: "bundled-4",
+                    card_json: &card,
+                },
+                at,
+            )
+            .unwrap();
+        self.store
+            .insert_delivery(&card_id, surface, session, aiq_domain::clock::Now { utc_ms: at, offset_min: 0 })
+            .unwrap();
+        if opened {
+            self.store.insert_open(&card_id, "cli", at + MIN).unwrap();
+        }
+        card_id
+    }
+
+    /// A next-step tip for pack move `move_id` (tip id `next_rung.<move>`), delivered at `at`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn next_tip(
+        &mut self,
+        surface: &str,
+        session: &str,
+        at: i64,
+        evidence: Vec<String>,
+        move_id: &str,
+        try_this: &str,
+        opened: bool,
+    ) -> String {
+        let signal_id = self.id();
+        let card_id = self.id();
+        let decision_id = self.id();
+        self.store
+            .insert_signal(
+                &NewSignal {
+                    signal_id: &signal_id,
+                    task_id: &evidence[0],
+                    surface,
+                    session,
+                    detector_id: "next_rung",
+                    detector_version: 1,
+                    pack_version: "bundled-4",
+                    opportunity_id: "next_rung",
+                    reprompt_count: 0,
+                    score: 1.0,
+                    evidence: &evidence,
+                },
+                at,
+            )
+            .unwrap();
+        let card = serde_json::json!({
+            "schema": "aiq.card.v1", "card_id": card_id, "opportunity_id": "next_rung", "tip_id": format!("next_rung.{move_id}"),
+            "noticed": "This looks like a kind of task you repeat.",
+            "why": "One step would let the agent take more of it.",
+            "try_this": try_this,
             "evidence_ref": format!("aiq show {card_id}"), "pack_version": "bundled-4"
         })
         .to_string();
@@ -305,6 +396,30 @@ pub fn standard(paths: &Paths, with_import: bool) -> String {
     // A pipeline folder AIQ set aside: never a task.
     s.prompt("claude-code", "p1", now - 3 * DAY, Some(PIPELINE), "summarise record 1");
     s.set_aside(PIPELINE, now - 3 * DAY);
+    for i in 0..12 {
+        s.store
+            .insert_set_aside_session("claude-code", &format!("pa{i}"), PIPELINE, "burst", now - 3 * DAY + i * 90 * MIN)
+            .unwrap();
+    }
+    // AIQ's own probe folders (two `run0`s in different probes): Home folds them into one line.
+    for (i, f) in [
+        r"c:\users\imran\appdata\local\temp\aiq-copilot-probe-3glkf9fj\run0",
+        r"c:\users\imran\appdata\local\temp\aiq-copilot-probe-8qz2mk1d\run0",
+    ]
+    .iter()
+    .enumerate()
+    {
+        s.store.insert_folder_rule(f, "set_aside", "aiq-check", "live", now - 4 * DAY + i as i64 * MIN).unwrap();
+        s.store
+            .insert_set_aside_session(
+                "copilot-cli",
+                &format!("probe{i}"),
+                f,
+                "aiq-check",
+                now - 4 * DAY + i as i64 * MIN,
+            )
+            .unwrap();
+    }
     // A tip delivered today, not opened.
     let e = s.prompt("copilot-cli", "cp2", now - 30 * MIN, Some(FORESIGHT), "draft the release notes");
     s.tip("copilot-cli", "cp2", now - 20 * MIN, vec![e], false);
@@ -395,7 +510,13 @@ pub fn coach_row(
 /// a next step, fixing bugs is at the right rung, refactoring has too few tasks, one task is Uncertain.
 /// One tip is turned off, so Settings lists it.
 pub fn coaching(paths: &Paths) {
+    coaching_from(paths, 0);
+}
+
+/// `coaching` with its ids starting after `first`, so it can share a store with another seed.
+fn coaching_from(paths: &Paths, first: u32) {
     let mut s = Seed::new(paths);
+    s.n = first;
     let kinds: [(&str, &str, u8, &str, u32, &str); 16] = [
         ("code_change", "tests", 3, "judged", 0, "write unit tests for the parser"),
         ("code_change", "tests", 3, "judged", 0, "add tests for the date helpers"),
@@ -431,6 +552,53 @@ pub fn coaching(paths: &Paths) {
             utc_ms: NOW - DAY,
         })
         .unwrap();
+    // Next-step tips (UI review item 6): one before the newest code tasks, whose checks the person then ran (3
+    // of 3), and one before the specs, whose whole-draft habit didn't follow (0 of 3).
+    let ev = vec!["k0".to_string()];
+    s.next_tip(
+        "copilot-cli",
+        "k0",
+        NOW - 7 * 31 * 60 * MIN,
+        ev.clone(),
+        "check_code",
+        "Check the diff or run the tests before using the result.",
+        true,
+    );
+    s.next_tip(
+        "copilot-cli",
+        "k7",
+        NOW - 12 * 31 * 60 * MIN,
+        ev,
+        "hand_over_doc",
+        "Ask for the whole draft with what done means.",
+        false,
+    );
+}
+
+/// The tour's example data (design home-tour T2): every Home view filled at once. The progress seed (rung mix,
+/// ladder map, kinds), the coaching seed (habits, tip history) and a task open right now, in one store.
+pub fn tour(paths: &Paths) {
+    progress(paths);
+    coaching_from(paths, 5_000);
+    // A morning of finished work before the open task, so the Day view has a full day: three kinds, three rungs,
+    // and a quiet gap of over 30 minutes that shrinks.
+    let mut s = Seed::new(paths);
+    s.n = 20_000;
+    let morning: [(&str, &str, u8, &str, i64, &str); 4] = [
+        ("code_change", "fix_bug", 1, "right_rung", 200, "the checkout total is off by one cent, fix it"),
+        ("code_change", "tests", 3, "judged", 160, "write tests for the cart discounts"),
+        ("code_change", "tests", 3, "judged", 120, "cover the refund path with tests"),
+        ("write_doc", "spec", 2, "judged", 50, "draft the spec for saved carts"),
+    ];
+    for (i, (job, ty, cur, state, ago, text)) in morning.iter().enumerate() {
+        let at = NOW - ago * MIN;
+        let se = format!("t{i}");
+        let id = s.prompt("copilot-cli", &se, at, Some(AIQ), text);
+        s.prompt("copilot-cli", &se, at + 6 * MIN, Some(AIQ), "keep going");
+        s.stop("copilot-cli", &se, at + 14 * MIN);
+        s.store.insert_judgment(&coach_row(&id, job, ty, *cur, state, 0)).unwrap();
+    }
+    open_task(paths);
 }
 
 /// Rung progress (the success measure): kinds of task judged in the last 14 days and the 14 before.
@@ -460,4 +628,112 @@ pub fn progress(paths: &Paths) {
         s.stop("copilot-cli", &format!("p{i}"), at + 3 * MIN);
         s.store.insert_judgment(&coach_row(&id, job, ty, *cur, state, 0)).unwrap();
     }
+}
+
+/// A task open right now (design live-rung-trend): Copilot CLI, five prompts in the last 22 minutes, labelled
+/// Write a spec, the agent editing from turn 2, turn 4 not recorded, a tip delivered after turn 3, and the agent
+/// still on prompt 5.
+pub fn open_task(paths: &Paths) -> Seed {
+    let mut s = Seed::new(paths);
+    s.n = 10_000; // after the standard seed's ids
+    let (now, sv, se) = (NOW, "copilot-cli", "live1");
+    let first = "Write the spec for CSV export from the report page. Context: ops want one file per day; the \
+                 handler is in web/report/export.ts. Keep the column order unchanged.";
+    let at = |m: i64| now - 22 * MIN + m * MIN;
+    let p1 = s.prompt(sv, se, at(0), Some(AIQ), first);
+    s.store
+        .insert_kind_label(&aiq_store::KindLabelRow {
+            label_id: "lbl-live1".into(),
+            task_id: p1,
+            surface: sv.into(),
+            surface_session_id: se.into(),
+            provider: "copilot-cli".into(),
+            model: None,
+            outcome: "ok".into(),
+            job: Some("write_doc".into()),
+            job_confidence: Some(0.9),
+            task_type: Some("spec".into()),
+            task_type_confidence: Some(0.85),
+            requested_utc_ms: at(0),
+            started_utc_ms: at(0),
+            latency_ms: 900,
+            tokens_in: None,
+            tokens_out: None,
+            cost_usd: None,
+            utc_ms: at(0) + 900,
+        })
+        .unwrap();
+    let x = s.stop(sv, se, at(2));
+    s.turn_action(&x, sv, se, at(2), Some(&[("view", 3), ("grep", 1)]));
+    s.prompt(sv, se, at(4), Some(AIQ), "ok, draft it in docs/specs/export.md");
+    let x = s.stop(sv, se, at(8));
+    s.turn_action(&x, sv, se, at(8), Some(&[("view", 1), ("apply_patch", 2)]));
+    s.prompt(sv, se, at(10), Some(AIQ), "add the file name rule");
+    let x = s.stop(sv, se, at(12));
+    s.turn_action(&x, sv, se, at(12), Some(&[("apply_patch", 1)]));
+    s.tip(sv, se, at(12), vec!["3 prompts".into()], false);
+    s.prompt(sv, se, at(15), Some(AIQ), "and the header row");
+    let x = s.stop(sv, se, at(17));
+    s.turn_action(&x, sv, se, at(17), None);
+    s.prompt(sv, se, at(21), Some(AIQ), "tighten the wording");
+    s
+}
+
+/// Two more tasks open beside `open_task` (several open tasks, option A): a VS Code bug fix whose agent made the
+/// edits at its third turn and is working on the fourth, and a Claude Code task waiting for the person.
+pub fn more_open_tasks(paths: &Paths) {
+    let mut s = Seed::new(paths);
+    s.n = 20_000; // after open_task's ids
+    let (sv, se) = ("vscode", "vs2");
+    let at = |m: i64| NOW - 40 * MIN + m * MIN;
+    let p = s.prompt(sv, se, at(0), Some(AIQ), "why does the date parser drop the time zone?");
+    live_label(&mut s, &p, sv, se, at(0), "code_change", "fix_bug");
+    let x = s.stop(sv, se, at(3));
+    s.turn_action(&x, sv, se, at(3), Some(&[("read_file", 4)]));
+    s.prompt(sv, se, at(9), Some(AIQ), "show me where it reads the offset");
+    let x = s.stop(sv, se, at(12));
+    s.turn_action(&x, sv, se, at(12), Some(&[("read_file", 2), ("grep_search", 1)]));
+    s.prompt(sv, se, at(20), Some(AIQ), "fix it in src/parse.rs and keep the API");
+    let x = s.stop(sv, se, at(27));
+    s.turn_action(&x, sv, se, at(27), Some(&[("read_file", 1), ("apply_patch", 2)]));
+    s.prompt(sv, se, NOW - MIN / 2, Some(AIQ), "now the tests for it");
+    let (sv, se) = ("claude-code", "cc3");
+    let at = |m: i64| NOW - 12 * MIN + m * MIN;
+    let p = s.prompt(
+        sv,
+        se,
+        at(0),
+        Some(FORESIGHT),
+        "Write unit tests for the CSV export in web/report/export.ts. Cover empty days and the header row; done when \
+         the suite passes.",
+    );
+    live_label(&mut s, &p, sv, se, at(0), "code_change", "tests");
+    let x = s.stop(sv, se, at(6));
+    s.turn_action(&x, sv, se, at(6), Some(&[("Read", 3), ("Write", 1), ("Bash", 1)]));
+}
+
+/// A confident first-prompt label for a live task, as the core stores it.
+fn live_label(s: &mut Seed, task_id: &str, sv: &str, se: &str, at: i64, job: &str, ty: &str) {
+    s.store
+        .insert_kind_label(&aiq_store::KindLabelRow {
+            label_id: format!("lbl-{se}"),
+            task_id: task_id.into(),
+            surface: sv.into(),
+            surface_session_id: se.into(),
+            provider: sv.into(),
+            model: None,
+            outcome: "ok".into(),
+            job: Some(job.into()),
+            job_confidence: Some(0.9),
+            task_type: Some(ty.into()),
+            task_type_confidence: Some(0.85),
+            requested_utc_ms: at,
+            started_utc_ms: at,
+            latency_ms: 900,
+            tokens_in: None,
+            tokens_out: None,
+            cost_usd: None,
+            utc_ms: at + 900,
+        })
+        .unwrap();
 }

@@ -2,7 +2,7 @@
 [package]
 name = "aiq-home-app"
 description = "AIQ home: the private desktop app. Reads the person's local store; changes go through the core."
-version = "0.1.0"
+version = "0.1.19"
 edition = "2024"
 rust-version = "1.89"
 license = "UNLICENSED"
@@ -22,6 +22,7 @@ serde_json = "1"
 aiq-home = { path = "../../../crates/aiq-home" }
 aiq-core = { path = "../../../crates/aiq-core" }
 aiq-domain = { path = "../../../crates/aiq-domain" }
+tauri-plugin-single-instance = "2.4.5"
 
 [workspace]
 

@@ -28,26 +28,28 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <p>AIQ is a private coach for how you work with AI agents such as GitHub Copilot. It is not a report card and not a diagnostics tool. It helps you build better habits, one small step at a time.</p>
 <p>AIQ places each finished task on a five-step ladder: <strong>Assisted, Directed, Delegated, Orchestrated, Factory</strong>. When it sees an easy next step for the kind of task you just did, it shows one short tip in your tool, marked <strong>AIQ tip:</strong>. The goal is that, over a few weeks, the tasks you repeat move up a step. Only you see any of this. There is no manager view, no team view and no AIQ server.</p>
 <h2>Install (Windows, about two minutes, no admin rights)</h2>
-<ol><li>Download <code>aiq-0.1.0-windows-x64.zip</code> from</li></ol>
-<p>&lt;https://github.com/imransargusingh/AIQ/releases/latest&gt; and unzip it anywhere.</p>
-<ol><li>In a normal PowerShell window, in that folder, run:</li></ol>
+<ol><li>Open &lt;https://github.com/imransargusingh/AIQ/releases/latest&gt;, download the</li></ol>
+<p><code>aiq-&lt;version&gt;-windows-x64.zip</code> file listed there, and unzip it anywhere.</p>
+<ol><li>Double-click <code>install.cmd</code> in that folder. A window shows each step and waits for you to close it.</li></ol>
+<p>If you prefer a terminal, run this in a normal PowerShell window in that folder:</p>
 <pre><code>   powershell -ExecutionPolicy Bypass -File .\install.ps1</code></pre>
-<p>That is all. AIQ connects to the AI tools it finds, lists every file it changed, reads your past sessions on this computer, turns on judging (below) and opens AIQ home. There is nothing to set up.</p>
+<p>Typing <code>.\install.ps1</code> on its own does not work: Windows refuses it because the script is not signed.</p>
+<p>That is all. AIQ connects to the AI tools it finds, lists every file it changed, reads your past sessions on this computer, turns on analysis (below) and opens AIQ home. There is nothing to set up.</p>
 <p>The program files are not code-signed yet, so Windows or your company&#x27;s device rules may warn you. Check your employer&#x27;s rules before installing on a work computer.</p>
 <p><strong>To undo it fully:</strong> <code>aiq uninstall --all</code> takes AIQ out of every tool and removes its PATH entry and Start menu shortcut. Your AIQ data stays until you also run <code>aiq forget --all</code>.</p>
 <h2>What leaves your computer</h2>
 <p>Your prompts are stored only on your computer, in <code>%USERPROFILE%\.aiq</code>. AIQ sends no telemetry. Three things do go out:</p>
-<table><thead><tr><th>What</th><th>Where it goes</th><th>What it costs you</th><th>Turn it off</th></tr></thead><tbody><tr><td><strong>Judging your finished tasks.</strong> On from install. AIQ sends the task&#x27;s prompts (secrets removed) and a summary of what the agent did. Never your files or diffs.</td><td>Only to the tool that did the task, through <strong>your own</strong> sign-in, in a sealed call with no tools, plugins or MCP servers.</td><td>Two calls per task, at most 50 tasks a day by default. On Copilot each call counts against your plan&#x27;s premium requests.</td><td>AIQ home <strong>Settings &gt; Judging</strong>, or <code>aiq config set judge off</code></td></tr><tr><td><strong>A quick label of a new task.</strong> Only while judging is on, and only when AIQ can&#x27;t tell the kind of task from your past ones. It sends that task&#x27;s first prompt once (secrets removed).</td><td>Same tool, same sign-in, sealed the same way, with a small model.</td><td>At most 20 a day by default. On Copilot each label is one premium request.</td><td><code>aiq config set kind-label off</code> (judging off stops it too)</td></tr><tr><td><strong>A daily update check.</strong></td><td>GitHub&#x27;s public release page. It sends nothing about you.</td><td>Nothing.</td><td>Settings <strong>Don&#x27;t check for updates</strong>, or <code>aiq config set update off</code></td></tr></tbody></table>
+<table><thead><tr><th>What</th><th>Where it goes</th><th>What it costs you</th><th>Turn it off</th></tr></thead><tbody><tr><td><strong>Analyzing your finished tasks.</strong> On from install. AIQ sends the task&#x27;s prompts (secrets removed) and a summary of what the agent did. Never your files or diffs.</td><td>Only to the tool that did the task, through <strong>your own</strong> sign-in, in a sealed call with no tools, plugins or MCP servers.</td><td>Two calls per task, at most 500 tasks a day by default. On Copilot each call counts against your plan&#x27;s premium requests.</td><td>AIQ home <strong>Settings &gt; Analysis</strong>, or <code>aiq config set analysis off</code></td></tr><tr><td><strong>A quick label of a new task.</strong> Only while analysis is on, and only when AIQ can&#x27;t tell the kind of task from your past ones. It sends that task&#x27;s first prompt once (secrets removed).</td><td>Same tool, same sign-in, sealed the same way, with a small model.</td><td>At most 20 a day by default. On Copilot each label is one premium request.</td><td><code>aiq config set kind-label off</code> (analysis off stops it too)</td></tr><tr><td><strong>A daily update check.</strong></td><td>GitHub&#x27;s public release page. It sends nothing about you.</td><td>Nothing.</td><td>Settings <strong>Don&#x27;t check for updates</strong>, or <code>aiq config set update off</code></td></tr></tbody></table>
 <p>On a work account, your organisation&#x27;s rules for that account cover these calls, as they cover anything else you send through it. Full details: <a href="../privacy-and-terms.md">AIQ privacy and terms</a> (&lt;https://github.com/imransargusingh/AIQ/blob/main/docs/privacy-and-terms.md&gt;).</p>
 <h2>What to expect in the first days</h2>
-<ul><li><strong>Day one is mostly quiet.</strong> AIQ reads your past sessions and judges your finished tasks in the</li></ul>
+<ul><li><strong>Day one is mostly quiet.</strong> AIQ reads your past sessions and analyzes your finished tasks in the</li></ul>
 <p>background. You may see no tips at all at first. That is normal, not a fault.</p>
 <ul><li><strong>Tips are rare on purpose.</strong> At most 5 a day, only when AIQ is confident, and never in the middle of</li></ul>
 <p>your work. It shows a tip when the agent stops, or on the Copilot CLI status line.</p>
-<ul><li><strong>Some tips will be wrong.</strong> This is early software. If a tip or a judgment doesn&#x27;t fit how you work,</li></ul>
+<ul><li><strong>Some tips won&#x27;t fit.</strong> This is early software. If a tip or an analysis doesn&#x27;t fit how you work,</li></ul>
 <p>press <strong>This doesn&#x27;t fit</strong> in AIQ home. AIQ also checks itself and pauses a kind of tip when its own accuracy drops.</p>
-<ul><li><strong>AIQ updates itself</strong> about once a day when there is a new version, while AIQ home is closed. Your</li></ul>
-<p>data and settings stay.</p>
+<ul><li><strong>AIQ updates itself</strong> when there is a new version, while AIQ home is closed. To update straight</li></ul>
+<p>away, press <strong>Check for updates</strong> in AIQ home. Your data and settings stay.</p>
 <ul><li><strong>Need a break?</strong> <code>aiq pause</code>, then <code>aiq resume</code> when you&#x27;re ready.</li><li><strong>Progress takes weeks.</strong> AIQ needs several tasks of the same kind before it can show one moving up</li></ul>
 <p>a step.</p>
 <h2>Feedback and help</h2>

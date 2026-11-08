@@ -9,7 +9,7 @@ use aiq_contracts::codes;
 use aiq_contracts::event::{EventBody, EventV1, MAX_PROMPT_BYTES, PromptPayload, SCHEMA, StopPayload, cap_text};
 use aiq_contracts::frames::{Request, SpoolLine, TakeCardReply};
 use aiq_core::ipc;
-use aiq_core::paths::{Paths, bounded_append};
+use aiq_core::paths::{Paths, bounded_append, rotating_append};
 use aiq_core::spool;
 use serde_json::Value;
 use std::io::{Read, Write};
@@ -43,7 +43,10 @@ pub const STOP_WAIT_MS: u64 = 30;
 pub const STOP_REPLY_BUDGET: Duration = Duration::from_millis(35);
 const CORE_START_BACKOFF_S: u64 = 10;
 const SMALL_LOG_MAX: u64 = 32 * 1024;
-/// The timing log keeps about 1,000 runs at ~110 bytes a line; it restarts when full.
+/// One fill of the timing log, about 1,000 runs at ~120 bytes a line. When full it moves to
+/// `hook-timings.1.log`, so `aiq status` reads one to two fills. The status-line command writes here too, with
+/// this same cap: it used its own 32 KiB cap and emptied the log every time it passed 32 KiB (measured on
+/// Imran's laptop 2026-11-04: 15.5 KB, 323 lines).
 const TIMINGS_LOG_MAX: u64 = 128 * 1024;
 
 pub fn run(host: &str, event: &str) -> ExitCode {
@@ -57,8 +60,13 @@ pub fn run(host: &str, event: &str) -> ExitCode {
     .unwrap_or("panic");
     let total = start.elapsed().as_micros();
     let at = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-    let _ = bounded_append(&paths.hook_timings(), &timing_line(event, total, outcome, &marks, at), TIMINGS_LOG_MAX);
+    append_timing(&paths, &timing_line(event, total, outcome, &marks, at));
     ExitCode::SUCCESS
+}
+
+/// The only writer of the timing log (the hooks and the status-line command), so no caller can pass its own cap.
+pub fn append_timing(paths: &Paths, line: &str) {
+    let _ = rotating_append(&paths.hook_timings(), &paths.hook_timings_prev(), line, TIMINGS_LOG_MAX);
 }
 
 /// Where one hook run spent its time, so a slow run can be tied to a phase, a build and a time of day.
@@ -74,6 +82,9 @@ pub struct Marks {
     /// The working folder's tag (`automated::folder_tag`), so `aiq status` can leave out runs from folders
     /// AIQ sets aside as automated or as its own checks. Never the path itself.
     pub dir: Option<String>,
+    /// The session's tag (`automated::session_tag`), so a person's session in a set-aside folder counts like
+    /// it does for tasks (two or more prompts). Never the id itself.
+    pub session: Option<String>,
 }
 
 /// `<event> <total us> <outcome>` stays first, so older readers keep working; then `key=value` fields.
@@ -91,6 +102,9 @@ pub fn timing_line(event: &str, total_us: u128, outcome: &str, m: &Marks, at_uni
     }
     if let Some(d) = &m.dir {
         l += &format!(" dir={d}");
+    }
+    if let Some(t) = &m.session {
+        l += &format!(" s={t}");
     }
     l += &format!(" at={at_unix_s} v={}", env!("CARGO_PKG_VERSION"));
     l
@@ -145,6 +159,7 @@ fn inner_outcome(paths: &Paths, host: &str, event: &str, start: Instant, marks: 
         return "foreign";
     };
     marks.dir = ev.cwd.as_deref().and_then(aiq_domain::automated::folder_tag);
+    marks.session = aiq_domain::automated::session_tag(&ev.surface_session_id);
     if paths.pause_flag().exists() {
         return "paused"; // nothing captured while paused
     }
@@ -179,14 +194,19 @@ fn inner_outcome(paths: &Paths, host: &str, event: &str, start: Instant, marks: 
             }
         }
         EventBody::Stop(_) => {
-            let frame =
-                Request::TakeCard { token, trace_id: Some(trace_id.clone()), event: ev.clone(), wait_ms: STOP_WAIT_MS };
-            match ipc::request(
+            let frame = Request::TakeCard {
+                token: token.clone(),
+                trace_id: Some(trace_id.clone()),
+                event: ev.clone(),
+                wait_ms: STOP_WAIT_MS,
+            };
+            let (reply, written) = ipc::request_tracked(
                 paths,
                 &serde_json::to_string(&frame).unwrap_or_default(),
                 true,
                 SEND_BUDGET + STOP_REPLY_BUDGET,
-            ) {
+            );
+            match reply {
                 Ok(Some(line)) => match serde_json::from_str::<TakeCardReply>(&line) {
                     Ok(TakeCardReply { card: Some(card), plain }) => {
                         let color = color_allowed() && !plain;
@@ -196,17 +216,30 @@ fn inner_outcome(paths: &Paths, host: &str, event: &str, start: Instant, marks: 
                             claude_code_system_message(&card, color)
                         };
                         let mut out = std::io::stdout().lock();
-                        let _ = writeln!(out, "{text}");
-                        let _ = out.flush();
-                        "card"
+                        if writeln!(out, "{text}").and_then(|_| out.flush()).is_err() {
+                            return "card-unprinted"; // no confirmation: the tip stays ready for the next turn end
+                        }
+                        drop(out);
+                        // The tip counts as shown only once the core hears it was printed (DC-022).
+                        let shown = Request::Shown {
+                            token,
+                            card_id: card.card_id.clone(),
+                            surface: ev.surface.clone(),
+                            session: ev.surface_session_id.clone(),
+                        };
+                        let frame = serde_json::to_string(&shown).unwrap_or_default();
+                        match ipc::request(paths, &frame, false, SEND_BUDGET) {
+                            Ok(_) => "card",
+                            Err(_) => {
+                                count(paths, codes::HOOK_SHOWN_UNSENT);
+                                "card-unsent"
+                            }
+                        }
                     }
                     _ => "no-card",
                 },
                 Ok(None) => "no-card",
-                Err(e) if e.kind() == std::io::ErrorKind::TimedOut => {
-                    count(paths, codes::HOOK_STOP_TIMEOUT);
-                    "stop-timeout"
-                }
+                Err(e) if e.kind() == std::io::ErrorKind::TimedOut => stop_timed_out(paths, &trace_id, &ev, written),
                 // The sync Stop hook never starts the core: spool-plus-spawn measured over budget (S3a).
                 Err(_) => {
                     spool_frame(paths, &trace_id, &ev);
@@ -215,6 +248,18 @@ fn inner_outcome(paths: &Paths, host: &str, event: &str, start: Instant, marks: 
             }
         }
     }
+}
+
+/// The Stop hook's wait ran out. Written: the core holds the stop and only its reply was late. Not written:
+/// this process ends now and takes the half-done send with it, so the turn end goes to the spool (DC-034;
+/// the core ingests by event id, so a frame that got through after all is still stored once).
+fn stop_timed_out(paths: &Paths, trace_id: &str, ev: &EventV1, written: bool) -> &'static str {
+    count(paths, codes::HOOK_STOP_TIMEOUT);
+    if written {
+        return "stop-timeout";
+    }
+    spool_frame(paths, trace_id, ev);
+    "stop-timeout-spooled"
 }
 
 /// A Copilot CLI turn end, which shows its tip in the conversation (VS Code's turn ends never print).
@@ -358,14 +403,51 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn a_timed_out_stop_that_never_left_goes_to_the_spool() {
+        let d = tempfile::tempdir().unwrap();
+        let paths = Paths::at(d.path());
+        let stop = to_event(&json!({"session_id":"s","hook_event_name":"Stop"}), "Stop").unwrap();
+
+        assert_eq!(stop_timed_out(&paths, "t1", &stop, true), "stop-timeout");
+        assert!(!paths.spool().exists(), "the core already holds a written stop");
+
+        assert_eq!(stop_timed_out(&paths, "t2", &stop, false), "stop-timeout-spooled");
+        let lines = aiq_core::spool::take(&paths.spool(), &paths.spool_draining()).unwrap();
+        let (frames, bad) = aiq_core::spool::parse(&lines);
+        assert_eq!(bad, 0);
+        assert_eq!(frames.len(), 1, "the turn end is kept for the core");
+        assert_eq!(frames[0].event.event_id, stop.event_id);
+        let errors = std::fs::read_to_string(paths.hook_errors()).unwrap();
+        assert_eq!(errors.matches(codes::HOOK_STOP_TIMEOUT).count(), 2, "both timeouts still count");
+    }
+
+    #[test]
     fn timing_line_keeps_the_old_head_and_adds_phases_time_and_build() {
-        let m = Marks { host_ms: Some(40), read_us: Some(1200), prep_us: Some(300), dir: Some("0a1b2c3d".into()) };
+        let m = Marks {
+            host_ms: Some(40),
+            read_us: Some(1200),
+            prep_us: Some(300),
+            dir: Some("0a1b2c3d".into()),
+            session: Some("5e55a000".into()),
+        };
         let l = timing_line("UserPromptSubmit", 2000, "sent", &m, 1_762_000_000);
         assert!(l.starts_with(
-            "UserPromptSubmit 2000 sent host_ms=40 read_us=1200 prep_us=300 dir=0a1b2c3d at=1762000000 v="
+            "UserPromptSubmit 2000 sent host_ms=40 read_us=1200 prep_us=300 dir=0a1b2c3d s=5e55a000 at=1762000000 v="
         ));
         let bare = timing_line("Stop", 9, "paused", &Marks::default(), 5);
         assert_eq!(bare, format!("Stop 9 paused at=5 v={}", env!("CARGO_PKG_VERSION")));
+    }
+
+    #[test]
+    fn the_timing_log_has_one_writer() {
+        // Defect class HOOK-LOG-CAP: the status-line command wrote the same log with a 32 KiB cap and emptied it.
+        // Any other file that names the log must not append to anything; only hook::append_timing writes it.
+        for (name, src) in [("statusline.rs", include_str!("statusline.rs")), ("cli.rs", include_str!("cli.rs"))] {
+            assert!(
+                !(src.contains("hook_timings") && src.contains("_append(")),
+                "{name} names the timing log and appends; use hook::append_timing"
+            );
+        }
     }
 
     #[test]

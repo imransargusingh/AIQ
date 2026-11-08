@@ -136,4 +136,210 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <ul><li><strong>Sweep:</strong> other files AIQ reads that PowerShell writes: the release <code>upgrade.ps1</code> writes its log with</li></ul>
 <p><code>Add-Content</code> (ANSI code page; its lines are ASCII, so read as UTF-8) and <code>update.json</code> with <code>Set-Content -Encoding UTF8</code> (a BOM, already stripped by <code>update::strip_bom</code>). <code>hook-timings</code> is AIQ&#x27;s own.</p>
 <ul><li><strong>Control:</strong> <code>decode_log</code> reads UTF-16 LE/BE and UTF-8 with or without a BOM. Test</li></ul>
-<p><code>upgrade_logs_are_read_in_the_encodings_powershell_writes</code> builds the bytes PowerShell writes. Rule: a parser of a file another program writes is tested on that program&#x27;s bytes, not on a pasted line.</p></main></body></html>
+<p><code>upgrade_logs_are_read_in_the_encodings_powershell_writes</code> builds the bytes PowerShell writes. Rule: a parser of a file another program writes is tested on that program&#x27;s bytes, not on a pasted line.</p>
+<h3>DC-014 — The first key of a JSON map taken as the one that matters</h3>
+<ul><li><strong>Signature:</strong> a sealed <code>claude -p --model sonnet</code> judge call recorded its model as <code>claude-haiku-5-5</code>.</li></ul>
+<p>Claude Code adds a small helper call on another model, so <code>modelUsage</code> lists two models, and <code>serde_json</code>&#x27;s map sorts keys, so <code>keys().next()</code> named the helper.</p>
+<ul><li><strong>Why it survives:</strong> with one model in the map the first key is right; a short probe call lists one model,</li></ul>
+<p>only a real judge-sized call lists two. Nothing reads the recorded model back against the setting.</p>
+<ul><li><strong>Instances:</strong> 2026-11-03, found by the first <code>aiq judge --eval</code> run in the cloud (report showed</li></ul>
+<p>claude-haiku-5-5; replayed by hand: haiku 19 output tokens $0.0001, sonnet 77 tokens $0.017). <code>judge.rs</code> Claude path, and the same code on Copilot&#x27;s <code>modelMetrics</code>.</p>
+<ul><li><strong>Sweep:</strong> <code>grep -rn &quot;keys().next()&quot; crates</code>: the two judge sites only.</li><li><strong>Control:</strong> <code>main_model</code> picks the entry that cost most, else wrote most; test</li></ul>
+<p><code>the_judge_model_is_the_one_that_did_the_work_not_the_first_key</code>. Copilot&#x27;s entry shape is not recorded, so there it still keeps the first key (marked <code>assume:</code> in the code). Rule: never read meaning from a JSON map&#x27;s key order.</p>
+<h3>DC-015 — A fact the judge always hedges, read as unknown, demotes the rungs it should support</h3>
+<ul><li><strong>Signature:</strong> golden g1 cases h02, h11, h20: every run said F6 (output checked) yes at 0.5 to 0.55, under</li></ul>
+<p>the 0.6 fact bar, so F6 was unknown; Directed and Delegated both need F6, so one unsure fact took a Directed or Delegated task to Assisted and Uncertain.</p>
+<ul><li><strong>Why it survives:</strong> one bar for every model fact (D10) hides that some facts sit partly off the transcript,</li></ul>
+<p>where an honest model hedges. Unit tests build facts at 0.9; nothing scored placement against expected rungs until the judge eval (PR #90).</p>
+<ul><li><strong>Instances:</strong> 2026-11-03, <code>aiq judge --eval</code> replay: rung exact 20/32; 3 of the 12 rung misses were this.</li><li><strong>Sweep:</strong> replay table of every case&#x27;s facts vs expected rung: h06 is the same shape at 0.4 (left alone,</li></ul>
+<p>under the hedged bar); no other fact sat yes at 0.5 to 0.6 on a demoted case.</p>
+<ul><li><strong>Control:</strong> rubric r2 <code>hedged_review</code> (F6 yes in every run at 0.5 or more plus a re-prompt in the log);</li></ul>
+<p>test <code>a_hedged_yes_on_output_checked_counts_when_the_person_came_back_after_the_output</code>; the replay gate pins h02, h11, h20 placements. Rule: a guardrail&#x27;s fact bar is tuned per fact from eval data, and a lower bar needs a log fact to corroborate it.</p>
+<h3>DC-016 — Background work scheduled only on idle, starved by steady traffic</h3>
+<ul><li><strong>Signature:</strong> <code>e2e_copilot_tip_in_chat_off_leaves_it_to_the_status_line</code> failed once on the Windows</li></ul>
+<p>runner: one prompt&#x27;s 20 ms send missed, the hook spooled it, and the core drains the spool only when its command channel stays idle for 30 s. The test polls <code>aiq status</code> every 10 ms, so the idle tick never fired and the prompt never arrived within the 10 s wait.</p>
+<ul><li><strong>Why it survives:</strong> the idle tick looks like &quot;every 30 s&quot;, and on a quiet laptop it is. Only steady traffic</li></ul>
+<p>(a poller, a busy session, a test) shows it is &quot;30 s after the last command&quot;. A spool is rare, so the gap only shows on a slow shared runner.</p>
+<ul><li><strong>Instances:</strong> 2026-11-03, Windows CI, found by the Copilot capture thread (passed on re-run).</li><li><strong>Sweep:</strong> <code>grep -n &quot;recv_timeout(TICK)&quot; crates</code>: the writer loop is the only idle-scheduled work; its tick</li></ul>
+<p>also prunes and expires stale cards (harmless to delay; left on the tick).</p>
+<ul><li><strong>Control:</strong> the writer loop drains a non-empty spool before any command; test</li></ul>
+<p><code>e2e_spooled_frame_goes_in_at_the_next_command_not_the_idle_tick</code> (red without the fix). Rule: work that must happen soon is triggered by the event that makes it needed, never only by an idle timeout.</p>
+<h3>DC-017 — A desktop app that any launcher can open twice</h3>
+<ul><li><strong>Signature:</strong> 2026-11-03 02:11Z, two AIQ home windows open on the owner&#x27;s laptop; he started neither the</li></ul>
+<p>second nor (knowingly) the first. Each launch of <code>aiq-home.exe</code> opened its own window, with its own reads of the store and its own update button.</p>
+<ul><li><strong>Why it survives:</strong> several launchers start AIQ home (install.ps1 first run, upgrade.ps1 <code>-Relaunch</code></li></ul>
+<p>three times, the Start-menu shortcut, dev swap scripts) and each is right on its own. Nothing owned &quot;is one already open?&quot;, and a single tester rarely double-launches.</p>
+<ul><li><strong>Instances:</strong> 2026-11-03, laptop, after the 21st dev build install (launcher of the second still being</li></ul>
+<p>traced on the laptop).</p>
+<ul><li><strong>Sweep:</strong> <code>grep -rn &quot;aiq-home.exe&quot; packaging crates apps</code>: every launcher above goes through the exe, so one</li></ul>
+<p>guard in the exe covers them all.</p>
+<ul><li><strong>Control:</strong> <code>tauri-plugin-single-instance</code>, registered first in <code>main()</code>: a second launch shows the open</li></ul>
+<p>window and exits, and the open window writes <code>second_launch cwd=...</code> to home.log. Test <code>single_instance_guard_is_the_first_plugin</code>; CI&#x27;s Windows job launches the exe twice and fails on two processes. Rule: a per-user desktop app enforces one instance in the exe, never in each launcher.</p>
+<h3>DC-018 — One record reached by two capture paths, counted once per path</h3>
+<ul><li><strong>Signature:</strong> 2026-11-03, Imran&#x27;s store: a session captured live by the hooks (<code>event</code>) and again by</li></ul>
+<p><code>aiq import</code> (<code>import_event</code>) showed as two tasks, prompts 2–3 s apart. Both copies were judged (two premium requests) and sometimes got different kinds. Measured read-only: 7 sessions held both ways, 805 tasks where there were 785; 10 sessions&#x27; tasks judged twice.</p>
+<ul><li><strong>Why it survives:</strong> each path is right on its own and keys its rows its own way (<code>event_id</code> vs</li></ul>
+<p><code>import:&lt;tool&gt;:&lt;session&gt;:&lt;seq&gt;</code>), so no key collides. The overlap only exists once a person both runs the hooks and imports history, and VS Code&#x27;s live surface (<code>vscode</code>) differs from the file&#x27;s tool (<code>copilot-cli</code>), so even a session-id join by surface misses it.</p>
+<ul><li><strong>Instances:</strong> 2026-11-02 reinstall + import (noted then, not fixed); measured 2026-11-03 by the</li></ul>
+<p>intent-sessions thread.</p>
+<ul><li><strong>Sweep:</strong> every reader of <code>import_event</code>/<code>import_session</code> (<code>grep -rn &quot;FROM import_&quot; crates</code>): only the task</li></ul>
+<p>list builds tasks; the judge, task detail and kind label read prompts by the task list&#x27;s member ids. Data-tab counts (<code>imported_sessions</code>, <code>imported_events</code>) count stored rows, which is what they say.</p>
+<ul><li><strong>Control:</strong> the task list joins the copies (<code>crates/aiq-home/src/twins.rs</code>): same session id across the</li></ul>
+<p>tool family, twins (within 30 s with the same text, or within 3 s) are one prompt, the rest are the union. Tests <code>a_session_captured_live_and_imported_is_one_task</code> and <code>a_session_held_live_and_imported_is_judged_once_with_every_prompt</code> (red without the fix). Rule: when a second capture path writes the same thing, the one read model that builds the unit joins the paths before counting; never count per path.</p>
+<h3>DC-019 — A device fact that under-reads, labelled &quot;trust this over the text&quot;, overrules what the text shows</h3>
+<ul><li><strong>Signature:</strong> golden g1 h16, h17, a04, r03: the agent ran <code>lychee</code> + <code>markdownlint</code>, <code>scripts/check_brief.py</code>,</li></ul>
+<p><code>scripts/verify_refresh.py</code>, <code>scripts/rerun.sh &lt;test&gt;</code>. The check detector knew none of them, so the envelope said &quot;checks run by: nobody&quot;. GPT Sol trusted it (as told), set F6 no at 0.86 to 0.98 and placed rung 1.</p>
+<ul><li><strong>Why it survives:</strong> the detector is an allow-list tested on the commands its author thought of; Claude Sonnet</li></ul>
+<p>weighed the quoted commands and hid the gap, so only a second model exposed it. The spec&#x27;s F3 already named linters and evals.</p>
+<ul><li><strong>Instances:</strong> 2026-11-03, Copilot eval on the laptop (68 premium requests): 4 of 6 rung misses.</li><li><strong>Sweep:</strong> every command in golden g1 (<code>jq</code> over <code>steps[].command</code>): r04&#x27;s <code>pre-commit run</code> was missed too</li></ul>
+<p>(added); r02&#x27;s <code>sha256sum -c</code> is still not a check (left: the model placed r02 right from the text). Same class elsewhere: any log fact rendered as trusted (<code>agent edited files</code>, <code>sub-agents</code>, <code>spec named</code>) is an allow-list too.</p>
+<ul><li><strong>Control:</strong> fact set fs2 (linters, script names, test-name arguments); test</li></ul>
+<p><code>checks_are_read_as_command_lines_not_substrings</code> holds the four g1 commands and six near-misses; the Copilot eval runs on both providers before a fact-set change ships. Rule: a &quot;trusted&quot; device fact must say what it could not see, or be tested against every command in the golden set.</p>
+<h3>DC-020 — A device fact read from turns AIQ never recorded, shown as &quot;no&quot;</h3>
+<ul><li><strong>Signature:</strong> 78 of 541 judgments on Imran&#x27;s store (2026-11-03) were made with no agent actions in any turn,</li></ul>
+<p>and the envelope said &quot;agent edited files: no, checks run by: nobody (trust these over the quoted text)&quot;. The log path treated a turn with no stop row, or a live prompt with no match in the transcript, the same as a turn the agent spent doing nothing.</p>
+<ul><li><strong>Why it survives:</strong> <code>None</code> (not recorded) and &quot;read, no tool calls&quot; collapsed into one value; a single</li></ul>
+<p><code>actions_known</code> flag per task hid per-turn gaps; the golden set always has every turn recorded.</p>
+<ul><li><strong>Instances:</strong> 2 imported tasks with no stop rows and 2 live tasks with no matching transcript prompt among</li></ul>
+<p>the 78 (measured read-only on the laptop, <code>docs/investigations/no-actions/</code>). The other 74 really had no tool calls inside their prompts&#x27; windows, except 2 prompts below.</p>
+<ul><li><strong>Sweep:</strong> the Copilot import reader closes a turn at the first <code>assistant.turn_end</code>; 2 prompts lost 248 tool</li></ul>
+<p>calls that came after it, and 1 prompt&#x27;s 314 sub-agent calls (and its <code>subagent.started</code>) are not counted. Same family (an under-read stated as fact); its own change, not this one.</p>
+<ul><li><strong>Control:</strong> fact set fs3: <code>log_facts</code> keeps a yes seen in recorded turns and makes every no unknown when a turn</li></ul>
+<p>is not recorded; the envelope says &quot;not recorded&quot; and how many prompts. Tests <code>a_turn_not_recorded_makes_a_no_unknown_and_never_none</code>, <code>the_envelope_says_not_recorded_never_none_for_turns_aiq_did_not_record</code>, <code>an_imported_turn_without_a_stop_row_is_not_recorded_and_one_with_an_empty_stop_is_none</code>. Rule: a device fact is a no only when every input it covers was read.</p>
+<h3>DC-021 — A reader that ends a turn at an event the tool writes more than once per turn</h3>
+<ul><li><strong>Signature:</strong> the Copilot import reader closed a prompt&#x27;s turn at the first main-line <code>assistant.turn_end</code>.</li></ul>
+<p>Copilot writes one after each model round, so every tool call after the first round was dropped until the next prompt. Measured 2026-11-03 on Imran&#x27;s store (DC-020&#x27;s sweep): 2 prompts lost 248 tool calls.</p>
+<ul><li><strong>Why it survives:</strong> the fixture wrote one <code>turn_end</code> per prompt, the shape its author expected; the live reader</li></ul>
+<p>resets at each prompt and never read <code>turn_end</code>, so the two paths disagreed silently. And a reader fix alone reaches nothing already imported: unchanged files are never read again.</p>
+<ul><li><strong>Instances:</strong> <code>read_copilot</code> since <code>aiq import</code> was built; also the judge&#x27;s live-task path, which reads the</li></ul>
+<p>same function.</p>
+<ul><li><strong>Sweep:</strong> every reader that ends a unit on a tool&#x27;s marker (<code>grep -rn &quot;turn_end\|turn_start&quot; crates</code>): only</li></ul>
+<p><code>read_copilot</code>. Claude&#x27;s reader ends at the next prompt or end of file, as does the live reader.</p>
+<ul><li><strong>Control:</strong> a turn runs to the next prompt or the end of the file; test</li></ul>
+<p><code>copilot_reader_keeps_every_round_of_a_prompt_past_its_first_turn_end</code> (several rounds, a sub-agent&#x27;s own turn end, red on the old reader). <code>COPILOT_READER</code> is stored in the settings: a run with a different version reads every Copilot session again once (<code>a_new_copilot_reader_reads_unchanged_sessions_again_once</code>). Rule: a turn ends where the person acts, never at a marker the tool may repeat; any change to what a reader stores raises its reader version.</p>
+<h3>DC-022 — A tip handed over on a deadline the hook has already passed, recorded as shown</h3>
+<ul><li><strong>Signature:</strong> <code>e2e_claude_code_card_then_copilot_run_held_by_quiet_period</code> failed once on the Windows runner</li></ul>
+<p>(PR #112, 2026-11-03): the Claude Code Stop hook printed no card. Reproduced on a loaded 4-core Linux box (suite run 150 times beside 16 busy loops): 16 runs missed the card at the first turn end. Hook outcome <code>no-card</code> 13 (the core&#x27;s 30 ms window had passed; the card stayed show-ready) and <code>stop-timeout</code> 3 (the hook&#x27;s 55 ms wait ran out). In 1 of those 3 the core had already recorded the card as shown: the tip was lost, but it still counts against the daily cap and starts the quiet period. With the test fixed to retry a safe miss, 10 of a further 150 loaded runs hit the lost case.</p>
+<ul><li><strong>Why it survives:</strong> the hook and the core each keep their own clock. The core starts its 30 ms when it reads</li></ul>
+<p>the frame; the hook starts its 55 ms before it connects. A slow connect or a slow reply moves the core&#x27;s window past the hook&#x27;s deadline, and nothing tells the core the hook gave up. On a quiet laptop both finish in a few ms. The tests asserted the card at the first turn end, a timing property, so a safe miss and a lost card failed the same way.</p>
+<ul><li><strong>Instances:</strong> the Claude Code Stop hook and the Copilot CLI agentStop hook (same <code>TakeCard</code> path). For</li></ul>
+<p>Copilot CLI the status line still shows a card marked shown, so a lost chat line is softer there.</p>
+<ul><li><strong>Sweep:</strong> every hook-side wait on a core reply (<code>grep -n &quot;ipc::request(&quot; crates/aiq/src</code>): only <code>TakeCard</code></li></ul>
+<p>records state when it replies; ingests send no reply; status-line <code>TipLine</code> is the same shape but a missed refresh is retried by Copilot about once a second (handled in DC-016&#x27;s test).</p>
+<ul><li><strong>Control (tests):</strong> <code>Env::stop_until_card</code> in <code>crates/aiq/tests/e2e_copilot.rs</code> ends the turn again after a</li></ul>
+<p>miss, as the product does, and fails if a miss left the card anything but show-ready; its failure message carries <code>aiq status</code> and <code>hook-timings.log</code>, so the next CI failure names the hook outcome. A lost card still fails.</p>
+<ul><li><strong>Control (product):</strong> a tip handed to a turn-end hook is held in the core (<code>Service::hand_over</code>) and counts as</li></ul>
+<p>shown only when the hook sends <code>Shown</code> after printing it (<code>card_shown</code>). A hook that never confirms within <code>HANDOVER_CONFIRM_MS</code> (5 s), or whose reply the core could not pass back (<code>hand_back</code>), leaves the tip ready for the next turn end, counted as <code>AIQ-CARD-UNCONFIRMED</code>. While a tip is being printed, it counts as shown for the budget, both at hand-out and at the decision. No store change. Tests: <code>a_tip_the_hook_never_confirms_is_ready_ again_and_never_counted</code> and three others in <code>crates/aiq-core/tests/service.rs</code>; <code>e2e_a_tip_no_hook_says_it_printed_is_not_counted_and_comes_back</code> (red on the old code). Measured with <code>loaded-repro.sh</code>, 150 loaded runs: 0 lost tips (was 10). Card-printing Stop hook, 40 unloaded runs: p95 1.43 ms before, 1.78 ms after. Rule: a hand-over across two processes is complete only when the receiver says so; a sender&#x27;s own record of &quot;sent&quot; is a reservation.</p>
+<h3>DC-023 — An unauthenticated GitHub API call on the product&#x27;s normal path, sharing a per-address limit</h3>
+<ul><li><strong>Signature:</strong> 2026-11-04 00:13Z, Imran&#x27;s laptop: <code>aiq update --now</code> reported &quot;check failed (403) Forbidden&quot;.</li></ul>
+<p>Measured by the alpha thread: <code>api.github.com</code> answered 403 with <code>X-RateLimit-Limit 60</code>, <code>X-RateLimit-Remaining 0</code>, reset 00:58:43Z, for the laptop&#x27;s address; the repo is public and its release downloads worked. The 60 unauthenticated calls an hour are counted per public address, so everyone behind one office NAT shares them.</p>
+<ul><li><strong>Why it survives:</strong> on a home connection or a CI runner the limit is never near, so every test passed. The</li></ul>
+<p>failure needs many people on one address, which no test had.</p>
+<ul><li><strong>Instances:</strong> <code>packaging/windows/upgrade.ps1</code> <code>Latest-Release</code> (the only <code>api.github.com</code> call in the repo:</li></ul>
+<p>checked with <code>grep -rn api.github.com</code> over <code>*.rs *.ts *.tsx *.ps1 *.yml</code>). The core and AIQ home start this script and make no GitHub call of their own.</p>
+<ul><li><strong>Control (product):</strong> the tag comes from the <code>github.com/&lt;repo&gt;/releases/latest</code> redirect (HEAD, 302 to</li></ul>
+<p><code>.../releases/tag/&lt;tag&gt;</code>) and the assets from <code>releases/download/&lt;tag&gt;/</code>, neither under the API limit; the API is asked only when the redirect names no tag. A 403/429 from the API records <code>retry_at</code> (from <code>X-RateLimit-Reset</code> or <code>Retry-After</code>) and the core checks again then, not in an hour or a day (<code>check_due</code>, <code>kick_sleep</code>).</p>
+<ul><li><strong>Control (tests):</strong> <code>packaging/windows/tests/upgrade-network.ps1</code> on the Windows runner (release.yml) runs the</li></ul>
+<p>script against a local stand-in: redirect path makes no API call; no tag falls back to the API; a rate-limited API leaves <code>retry_at</code> at the reset. <code>a_rate_limited_check_waits_for_the_reset_not_the_hour</code> and <code>the_kicker_wakes_a_minute_after_a_reset_that_comes_before_the_hour</code> in <code>crates/aiq-core/src/update.rs</code>.</p>
+<ul><li><strong>Rule:</strong> a call the product makes by itself on every install never uses an unauthenticated API with a</li></ul>
+<p>per-address quota when an unmetered route exists; if it must, it reads the quota headers and waits for the reset.</p>
+<h3>DC-024 — A second install path that leaves the first path&#x27;s pending state behind</h3>
+<ul><li><strong>Signature:</strong> 2026-11-04, Imran&#x27;s laptop: 0.1.1&#x27;s <code>aiq update --now</code> staged 0.1.2 (update.json `state</li></ul>
+<p>waiting<code>, </code>staged aiq-0.1.2-windows-x64.zip<code>, </code>blocked AIQ home is open<code>). He then installed 0.1.2 with install.cmd. update.json still said waiting, so </code>aiq update` offered 0.1.2 &quot;when AIQ is idle&quot; and auto-update could swap 0.1.2 in over itself.</p>
+<ul><li><strong>Why it survives:</strong> install.ps1 and upgrade.ps1 both put exes in <code>.aiq\bin</code>, but only upgrade.ps1 knew about</li></ul>
+<p>update.json. Each path&#x27;s tests started from a clean state.</p>
+<ul><li><strong>Control (product):</strong> install.ps1 drops <code>available</code>/<code>staged</code>/<code>blocked</code>, sets <code>state current</code> and removes</li></ul>
+<p><code>.aiq\update</code> when the waiting release is this version or older (<code>AIQ-INSTALL-CLEARED-WAITING</code> in upgrade-log.txt); a newer waiting release stays.</p>
+<ul><li><strong>Control (tests):</strong> release.yml step &quot;install.ps1 drops a waiting update of the same version, keeps a newer</li></ul>
+<p>one&quot; on the Windows runner.</p>
+<ul><li><strong>Rule:</strong> every path that changes the installed version reconciles the state the other paths keep about it.</li><li><strong>Recurrence (2026-11-04 04:17:03Z, laptop):</strong> before #120 shipped, Home still offered the stale 0.1.2 and</li></ul>
+<p>Imran&#x27;s <strong>Install now</strong> ran <code>upgrade.ps1 -Apply</code> on it: a same-for-same swap that overwrote the <code>.old</code> copies (the way back to 0.1.1 was lost). A second path, same class: <code>-Apply</code> trusted <code>state waiting</code> without checking the installed version. <strong>Control:</strong> <code>-Apply</code> drops a staged release that is not newer than the installed one (<code>AIQ-UPDATE-NOT-NEWER</code>) before anything is stopped; <code>-Check</code>&#x27;s up-to-date branch also clears <code>staged</code> and <code>blocked</code>. Test: release.yml auto-update step, &quot;a waiting release that is not newer is dropped&quot; (the <code>.old</code> copy&#x27;s hash must not change).</p>
+<h3>DC-025 — A process stopped to replace its exe and never started again</h3>
+<ul><li><strong>Signature:</strong> 2026-11-04 04:17:03Z, laptop: <code>upgrade.ps1 -Apply</code> (Home&#x27;s Install now) stopped <code>aiq.exe</code> and</li></ul>
+<p><code>aiq-home.exe</code>, swapped, and relaunched only Home (<code>-Relaunch</code>). home.log showed <code>core=false</code> until a hook started the core at 04:22:53Z; Home said &quot;AIQ isn&#x27;t running&quot; for almost six minutes.</p>
+<ul><li><strong>Why it survives:</strong> the CI smoke test checked the exes and update.json after the swap, never what was</li></ul>
+<p>running. A hook restarts the core sooner or later, so it looks like a delay, not a fault.</p>
+<ul><li><strong>Control (product):</strong> <code>Stop-Aiq</code> records whether an <code>aiq.exe</code> was running; <code>-Apply</code> (success and put-back</li></ul>
+<p>paths) and <code>-Rollback</code> start <code>aiq core</code> hidden again when one was (<code>AIQ-UPDATE-CORE</code>). A second core exits at once (<code>CORE_ALREADY_RUNNING</code>). <code>Stop-Aiq</code> now waits for the processes to end before the swap.</p>
+<ul><li><strong>Control (tests):</strong> release.yml auto-update step starts a core before the idle apply and fails unless an</li></ul>
+<p><code>aiq.exe core</code> from the bin folder is running afterwards.</p>
+<ul><li><strong>Rule:</strong> whatever an update stops, it starts again, and the test asserts the running set, not only the files.</li></ul>
+<h3>DC-026 — One log, two writers, two caps</h3>
+<ul><li><strong>Signature:</strong> 2026-11-04, laptop on 0.1.2: <code>hook-timings.log</code> was 15.5 KB / 323 lines, oldest line 2026-11-03</li></ul>
+<p>14:17Z, though the hooks&#x27; cap is 128 KiB. The Copilot CLI status-line command appends to the same file with its own 32 KiB cap, so <code>bounded_append</code> emptied the hooks&#x27; log every time it passed 32 KiB. The hook-budget window (runs since the last upgrade) lost its runs each time.</p>
+<ul><li><strong>Why it survives:</strong> each writer is right on its own; the cap is an argument at every call site, and no test</li></ul>
+<p>reads two writers together. A plain truncate also empties the log at every fill, so a short log looks normal.</p>
+<ul><li><strong>Control (product):</strong> <code>hook::append_timing</code> is the only writer of the timing log (hooks and status line);</li></ul>
+<p>a full log rotates to <code>hook-timings.1.log</code> (<code>paths::rotating_append</code>) and <code>aiq status</code> reads both.</p>
+<ul><li><strong>Control (tests):</strong> <code>hook::tests::the_timing_log_has_one_writer</code> fails when another file names the timing log</li></ul>
+<p>and appends (red on the old statusline.rs); <code>paths::tests::rotating_append_keeps_the_previous_fill</code>.</p>
+<ul><li><strong>Sweep:</strong> <code>judge.log</code> and <code>label.log</code> have several writers, all with their file&#x27;s one <code>LOG_MAX</code>; <code>hook-errors.log</code></li></ul>
+<p>has one writer.</p>
+<ul><li><strong>Rule:</strong> a shared file has one writer function that owns its cap; callers pass only the line.</li></ul>
+<h3>DC-027 — A gate figure that applies an older, coarser rule than the product view it measures</h3>
+<ul><li><strong>Signature:</strong> 2026-11-04, laptop on 0.1.2: 34 hook runs since the install, <code>aiq status</code> said &quot;no hook runs since</li></ul>
+<p>then yet&quot; for G1. The figure left out every run in a set-aside folder (7 Copilot runs in foresight, template rule), while since PR #87 the task list counts a person&#x27;s session there (two or more prompts).</p>
+<ul><li><strong>Why it survives:</strong> PR #87 changed the task list and the judge; the hook figures read the same folder list</li></ul>
+<p>through a separate path (<code>split_hook_runs</code>) that nobody re-read. The figure was empty, not wrong-looking.</p>
+<ul><li><strong>Control (product):</strong> the timing log carries a session tag (<code>s=</code>, a hash, never the id); <code>cli::SetAside</code> splits</li></ul>
+<p>folders like the task list: <code>projects</code> and <code>aiq-check</code> leave out every run, other set-aside folders leave out only runs whose session has fewer than two prompt runs.</p>
+<ul><li><strong>Control (tests):</strong> <code>cli::tests::hook_budget_counts_a_persons_session_in_a_template_folder_like_tasks_do</code></li></ul>
+<p>(shaped like the laptop: foresight, the AIQ repo, an aiq-check folder, a pre-0.1.4 line, an automated run).</p>
+<ul><li><strong>Sweep:</strong> other readers of the folder list: <code>aiq status</code>&#x27;s folder listing (display only) and <code>aiq_home::tasks</code></li></ul>
+<p>(already per session). None else.</p>
+<ul><li><strong>Rule:</strong> when a set-aside rule changes, grep every reader of the folder list, not only the one in the change.</li></ul>
+<h3>DC-028 — A tool counted as installed because a folder with its name exists</h3>
+<ul><li><strong>Signature:</strong> 2026-11-05, an alpha user on 0.1.4 who never installed Claude Code: setup said &quot;Claude Code ·</li></ul>
+<p>connected&quot;. <code>tools::found_at</code> set <code>present</code> when <code>~/.claude</code> existed, so first-run setup ran <code>aiq install claude-code --yes</code>, created <code>~/.claude/settings.json</code> with AIQ&#x27;s hooks, and &quot;connected&quot; (hooks in the file) was then true of a tool that isn&#x27;t there. Reproduced in a container: an empty <code>~/.claude</code> and no <code>claude</code> program → <code>aiq install --yes</code> wrote the file. What created that user&#x27;s folder is not known (skills, CLAUDE.md or another tool&#x27;s Claude support all can).</p>
+<ul><li><strong>Why it survives:</strong> on every developer machine the folder and the tool go together, and the tests built a</li></ul>
+<p>&quot;present&quot; tool by making its folder, so the proxy was never tested against the thing it stood for.</p>
+<ul><li><strong>Control (product):</strong> Claude Code counts as installed only when its <code>claude</code> program is on PATH or in its own</li></ul>
+<p>install folder (<code>~/.local/bin</code>, <code>&lt;config&gt;/local</code>), or its config folder holds session transcripts (<code>projects/&lt;x&gt;</code>). Setup, Settings and the side panel say &quot;connected&quot; only for hooked <strong>and</strong> installed; hooks without the tool are &quot;not installed&quot; and can be removed. <code>aiq install --new</code> (core start, Home open) connects a tool installed after setup once; tools already seen (so one the person disconnected) are left alone (<code>tools-seen.json</code>).</p>
+<ul><li><strong>Control (tests):</strong> <code>tools::tests::a_bare_claude_folder_is_not_claude_code</code> ;</li></ul>
+<p><code>e2e_install_with_no_tool_connects_every_tool_found_and_names_the_undo</code> (bare folder → nothing written; red on 0.1.4, as the container repro showed); <code>e2e_hooks_left_in_a_claude_folder_without_claude_code_are_not_called_connected</code>; <code>e2e_install_new_connects_a_tool_installed_after_setup_once</code>; Home e2e &quot;a tool that isn&#x27;t installed says so&quot;.</p>
+<ul><li><strong>Sweep:</strong> Copilot still counts as present when <code>~/.copilot</code> exists; Copilot CLI and VS Code agent mode both</li></ul>
+<p>create it and both read the hook file AIQ writes there, so the folder is the right signal (assume: no other tool creates <code>~/.copilot</code>; if one does, the same symptom appears for Copilot). <code>import</code> and <code>judge</code> read tool folders only to find transcripts, so a bare folder gives them nothing to do.</p>
+<ul><li><strong>Rule:</strong> detect a tool by the tool (its program or the files only it writes), never by a folder others can make.</li></ul>
+<h3>DC-029 — Background work whose start, progress and failure reason never reach the screen</h3>
+<ul><li><strong>Signature:</strong> 2026-11-05, first outside user on 0.1.4 (Copilot only, 221 imported tasks). Home said &quot;Not judged</li></ul>
+<p>yet&quot; and &quot;AIQ judges your finished tasks in the background&quot; with no progress, no &quot;nothing to do&quot;, and no reason. Read from the code: analysis ran only from the core&#x27;s kicker, the core started only from a hook (so nothing ran until the first prompt after setup), and a missing or signed-out Copilot CLI was written to <code>judge.log</code> only.</p>
+<ul><li><strong>Why it survives:</strong> every piece was correct on its own (cap, back-off, lock, failure outcome in <code>judge_call</code>);</li></ul>
+<p>no view read them together, and the developer&#x27;s laptop always had a running core and a signed-in tool.</p>
+<ul><li><strong>Control (product):</strong> <code>aiq_home::Analysis</code> (state, waiting, analyzed, today, daily, finish day, blocked tool and</li></ul>
+<p>why) read from the same task list as the chart and from each provider&#x27;s newest call; Home&#x27;s card and Getting started read only it. Home starts <code>aiq judge --auto</code> itself when work waits and no call ran for 10 minutes.</p>
+<ul><li><strong>Control (tests):</strong> <code>aiq_home::analysis_tests</code> (fresh install, used-up share, signed-out tool, give-up, off and</li></ul>
+<p>paused) and the e2e &quot;first-run analysis&quot; test (working, today done, blocked with its one action).</p>
+<ul><li><strong>Sweep:</strong> other background work with a silent failure: the kind label (<code>kind_label</code> calls, shown in Settings),</li></ul>
+<p>the update check (<code>check_error</code> shown in Settings &gt; Updates). Both already surface a reason.</p>
+<ul><li><strong>Rule:</strong> background work ships with a state the person can see: what it is doing, how far, what (if anything)</li></ul>
+<p>they must do, and why it stopped.</p>
+<h3>DC-030 — A coverage test that checks a step has some move, not that each failing fact has one</h3>
+<ul><li><strong>Signature:</strong> 2026-11-05, Imran asked how users move from Directed to Delegated. Reading <code>rung::delegated</code> against</li></ul>
+<p>the pack showed a doc written in the chat, or a doc, question or run steered one step at a time (F12), had no next step, so its kind read &quot;AIQ isn&#x27;t sure yet&quot;. 11 job × step × fact gaps in all (docs F1/F12/F3, questions F12/F3, runs F12/F3, every job F9).</p>
+<ul><li><strong>Why it survives:</strong> <code>bundled_moves_…</code> asserted only that each job had <em>a</em> move at steps 1 to 3. One move per</li></ul>
+<p>step passed while the other facts of that step&#x27;s guardrail had none, and step 4 was not checked at all.</p>
+<ul><li><strong>Control (tests):</strong> <code>pack::tests::every_guardrail_fact_a_job_can_fail_has_a_move</code> fails each fact the next</li></ul>
+<p>rung&#x27;s guardrail reads, for each job and step 1 to 4, on a task that can sit at that step, and asserts a move of that step and job names it. Red on bundled-8 with the 11 gaps; green on bundled-9.</p>
+<ul><li><strong>Sweep:</strong> the guardrails are the only source of moves (<code>coach::moves_for</code>), so the test covers every way a</li></ul>
+<p>move is chosen. F9 is unknown until it is read from the log, so <code>saved_workflow</code> is guide text only for now.</p>
+<ul><li><strong>Rule:</strong> test coverage against the rule&#x27;s own inputs (each fact it reads), never against a count per group.</li></ul>
+<h3>DC-031 — A usage guard that runs after the paid work it guards</h3>
+<ul><li><strong>Signature:</strong> 2026-11-05, one-call study: <code>aiq analyze --eval --runs 8 --cases … --record f</code> made 272 Claude</li></ul>
+<p>calls ($4.51), then printed &quot;--record needs every case (drop --cases)&quot; and threw the answers away. The check sat after the run loop, next to the write it protects.</p>
+<ul><li><strong>Why it survives:</strong> the guard is correct and tested by reading the code; nobody runs the bad flag mix, so the</li></ul>
+<p>cost of checking late is never seen.</p>
+<ul><li><strong>Control:</strong> <code>parse_opts</code> refuses <code>--record</code> with <code>--cases</code> before any call;</li></ul>
+<p><code>judge_eval::tests::record_with_cases_is_refused_before_any_call</code>.</p>
+<ul><li><strong>Sweep:</strong> no other flag check sits after the paid loop in <code>judge_eval.rs</code> (read). <code>aiq label --eval</code> and</li></ul>
+<p><code>aiq analyze --check</code> were not read for this shape (assume: they parse first; if not, the same loss repeats there).</p>
+<ul><li><strong>Rule:</strong> validate every argument before the first paid or slow call, never beside the step that uses it.</li></ul>
+<h3>DC-032 — An accessibility check that reads colours while a theme change is still fading in</h3>
+<ul><li><strong>Signature:</strong> 2026-11-05, PR #150 CI: &quot;coaching: every page … (dark)&quot; failed once with a color-contrast hit on</li></ul>
+<p>the Settings nav link (<code>#5cc8c2</code> on <code>#ffffff</code>, 2:1), then passed on a re-run. The e2e <code>open()</code> set <code>data-theme</code> after load and ran axe at once; nav links and buttons fade their background over 100 ms, so axe sometimes read the new dark ink on the old light background. Reproduced 5 of 60 runs locally; real dark contrast is fine.</p>
+<ul><li><strong>Why it survives:</strong> most runs finish the fade before axe reads, so it looks like a one-off flake and a re-run</li></ul>
+<p>turns it green.</p>
+<ul><li><strong>Control:</strong> <code>tests/e2e.mjs</code> <code>settle()</code> waits for every running animation and transition to finish after a theme</li></ul>
+<p>switch (in <code>open()</code> and the Theme test) before axe runs: 0 of 60 locally, e2e 67/67 three times.</p>
+<ul><li><strong>Sweep:</strong> <code>open()</code> is the only place a test changes <code>data-theme</code>. The Theme test&#x27;s switch by click ran axe</li></ul>
+<p>straight after it, so it now settles too. No other test changes theme mid-page (<code>emulateMedia</code> in the Theme test runs no axe after it).</p>
+<ul><li><strong>Rule:</strong> after any change that restyles the page, wait for transitions to finish before measuring colours.</li></ul></main></body></html>

@@ -7,20 +7,29 @@
 #
 # Auto-update (started by the AIQ core, or by AIQ home's "Install now" / "Go back"):
 #   -Check          ask GitHub for a newer published release; download it and its SHA256SUMS into
-#                   %USERPROFILE%\.aiq\update and check the SHA-256. Nothing is swapped.
+#                   %USERPROFILE%\.aiq\update and check the SHA-256. Nothing is swapped. A release already
+#                   waiting is kept until a newer one is downloaded and checked, then replaced by it; the same
+#                   release is not downloaded again. With -Apply, a failed check still installs what waits.
 #   -Apply          install the release -Check left waiting, only when AIQ is idle: AIQ home closed and no
 #                   hook, judge or import running. Swaps the exes only (tool connections are left as they
 #                   are). If the swap fails part-way, the exes it changed are put back.
 #   -WaitPid <id>   first wait up to 20 s for that process to end (AIQ home closing itself).
-#   -Relaunch       start AIQ home at the end.
+#   -Relaunch       start AIQ home at the end (tried again for up to 15 s if Windows refuses it; never an error).
+#   -FailLaunches <n>  tests only: the first n starts of the core or AIQ home fail as if Windows refused them.
 #   -Feed <folder>  tests only: latest.json and the files in that folder stand in for GitHub.
+#   -Site <url> -Api <url>   tests only: stand-ins for https://github.com and https://api.github.com.
 #
 # The manual run asks GitHub for the newest PUBLISHED release (drafts are invisible), downloads its zip and
 # SHA256SUMS, refuses the zip unless its SHA-256 matches, unzips it to a temp folder and runs that release's
 # install.ps1 -NoLaunch, which stops AIQ, keeps the current exes as .old and copies the new ones in. Your data
 # and settings stay; the new core migrates the store on its next start. A line per run goes to
 # %USERPROFILE%\.aiq\upgrade-log.txt, and the outcome to %USERPROFILE%\.aiq\update.json (AIQ home reads it).
-# The one network call: api.github.com and the release download, over HTTPS. Nothing about you is sent.
+# The network calls, over HTTPS, nothing about you sent: github.com/<repo>/releases/latest (its redirect names the
+# newest tag) and that release's download URLs. Neither counts against GitHub's API limit of 60 calls an hour per
+# address, which a shared office address used up on 2026-11-04 (403). api.github.com is asked only when the
+# redirect gives no tag; when it refuses for its limit, update.json gets retry_at (when the limit resets).
+# update.json's `source` names which one answered the last good check (redirect or api): AIQ home checks every
+# 15 minutes only after the redirect answered, hourly after the API did, so it asks the API at most once an hour.
 [CmdletBinding()]
 param(
     [switch]$Rollback,
@@ -31,7 +40,10 @@ param(
     [switch]$Apply,
     [int]$WaitPid = 0,
     [switch]$Relaunch,
-    [string]$Feed
+    [int]$FailLaunches = 0,
+    [string]$Feed,
+    [string]$Site = 'https://github.com',
+    [string]$Api = 'https://api.github.com'
 )
 $ErrorActionPreference = 'Stop'
 
@@ -49,9 +61,90 @@ function Log([string]$m) {
 }
 function Now-Utc { (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ') }
 function Stop-Aiq {
-    Get-Process -Name 'aiq', 'aiq-home' -ErrorAction SilentlyContinue |
-        Where-Object { $_.Path -and $_.Path.StartsWith($bin, [StringComparison]::OrdinalIgnoreCase) } |
-        Stop-Process -Force -ErrorAction SilentlyContinue
+    $p = @(Get-Process -Name 'aiq', 'aiq-home' -ErrorAction SilentlyContinue |
+        Where-Object { $_.Path -and $_.Path.StartsWith($bin, [StringComparison]::OrdinalIgnoreCase) })
+    # Any aiq.exe counts as the core: -Apply runs only when no other aiq.exe is (Busy-Reason), and a hook that
+    # happens to be stopped during -Rollback only means the core is started once more than needed (it exits).
+    if ($p | Where-Object { $_.Name -eq 'aiq' }) { $script:coreWasRunning = $true }
+    $p | Stop-Process -Force -ErrorAction SilentlyContinue
+    # Wait for them to end, so their exes are free to replace.
+    $p | Wait-Process -Timeout 10 -ErrorAction SilentlyContinue
+}
+# Start the core again after Stop-Aiq stopped one. Without it AIQ stayed down until the next hook started it (laptop,
+# 2026-11-04: Home's Install now swapped at 04:17:03Z, core back at 04:22:53Z; Home said "AIQ isn't running").
+# A second core exits at once (CORE_ALREADY_RUNNING), so a start is harmless when one is already up; still, a core
+# that came back by itself (a hook) is not started again.
+$script:coreWasRunning = $false
+# Is an `aiq core` from bin running? $false when the process list can't be read (then a start is tried; it is harmless).
+function Core-Running {
+    try {
+        return [bool](@(Get-CimInstance Win32_Process -Filter "Name='aiq.exe'" | Where-Object {
+            $_.ExecutablePath -and $_.ExecutablePath.StartsWith($bin, [StringComparison]::OrdinalIgnoreCase) -and
+            ("$($_.CommandLine)" -replace '^\s*("[^"]*"|\S+)\s*', '').Trim() -eq 'core' }).Count)
+    } catch { return $false }
+}
+function Home-Running {
+    [bool](@(Get-Process -Name 'aiq-home' -ErrorAction SilentlyContinue |
+        Where-Object { $_.Path -and $_.Path.StartsWith($bin, [StringComparison]::OrdinalIgnoreCase) }).Count)
+}
+# Start an exe just swapped in, and never throw. Laptop, 2026-11-05 23:22:12Z: Microsoft Defender's attack surface
+# reduction rule "Use advanced protection against ransomware" (set by IT; events 1121) refused both the core and AIQ
+# home, started by this script's powershell.exe right after the swap of 0.1.8, and that error, uncaught, ended the
+# script, so AIQ home never reopened. The same aiq.exe, started by a hook 8 s later, ran. So: try again after 1, 2, 4
+# and 8 s, and stop as soon as $running says it is up (a hook started the core, the person opened AIQ home). With
+# $shell, a refused start is also tried through Explorer (the parent the Start menu gives it). Whether a later try or
+# Explorer gets past that rule is not measured: the log line says which way worked. $true when up.
+$script:failLaunches = $FailLaunches
+function Refused-For-Test {
+    if ($script:failLaunches -gt 0) { $script:failLaunches--; throw 'Access is denied (test).' }
+}
+function Start-Again([string]$exe, [string[]]$argv, [bool]$hidden, [bool]$shell, [scriptblock]$running, [string]$code, [string]$what) {
+    $last = ''
+    foreach ($wait in 0, 1, 2, 4, 8) {
+        if ($wait) { Start-Sleep -Seconds $wait }
+        if (& $running) { Log "${code}: $what was already running again."; return $true }
+        try {
+            Refused-For-Test
+            $a = @{ FilePath = $exe }
+            if ($argv) { $a.ArgumentList = $argv }
+            if ($hidden) { $a.WindowStyle = 'Hidden' }
+            Start-Process @a
+            $tries = if ($last) { " (Windows refused it first: $last)" } else { '' }
+            Log "${code}: started $what again.$tries"
+            return $true
+        } catch { $last = $_.Exception.Message }
+        if ($shell) {
+            try {
+                Refused-For-Test
+                # Explorer reports nothing back, so the process list says whether it opened.
+                Start-Process -FilePath (Join-Path $env:SystemRoot 'explorer.exe') -ArgumentList "`"$exe`""
+                foreach ($i in 1..15) {
+                    Start-Sleep -Milliseconds 200
+                    if (& $running) { Log "${code}: started $what again through Explorer (Windows refused the direct start: $last)."; return $true }
+                }
+            } catch { }
+        }
+    }
+    Log "${code}: could not start $what ($last)."
+    return $false
+}
+function Start-Core {
+    $exe = Join-Path $bin 'aiq.exe'
+    if (-not $script:coreWasRunning -or -not (Test-Path $exe)) { return }
+    if (-not (Start-Again $exe @('core') $true $false { Core-Running } 'AIQ-UPDATE-CORE' 'the AIQ core')) {
+        Log 'AIQ-UPDATE-CORE: the next hook, AIQ home or the next sign-in starts it.'
+    }
+}
+# -Relaunch: open AIQ home again (it closed itself for the update).
+function Start-Home {
+    if (-not $Relaunch) { return }
+    $exe = Join-Path $bin 'aiq-home.exe'
+    if (-not (Test-Path $exe)) { return }
+    # The closing AIQ home must not count as "already running" (some paths return before the swap waited for it).
+    if ($WaitPid) { Wait-Process -Id $WaitPid -Timeout 20 -ErrorAction SilentlyContinue }
+    if (-not (Start-Again $exe @() $false $true { Home-Running } 'AIQ-UPDATE-HOME' 'AIQ home')) {
+        Log 'AIQ-UPDATE-HOME: open AIQ from the Start menu; AIQ home starts the core too.'
+    }
 }
 function Installed-Version {
     try { ((& (Join-Path $bin 'aiq.exe') version) -replace '^aiq\s+', '').Trim() } catch { 'unknown' }
@@ -133,17 +226,75 @@ function Busy-Reason {
 }
 
 # The newest published release: tag and where its zip and SHA256SUMS are.
+# First the web redirect: github.com/<repo>/releases/latest answers 302 to .../releases/tag/<tag>. The release
+# workflow names the assets aiq-<version>-windows-x64.zip and SHA256SUMS, so their URLs follow from the tag.
+function Tag-From-Redirect {
+    $req = [Net.HttpWebRequest]::Create("$Site/$Repo/releases/latest")
+    $req.Method = 'HEAD'
+    $req.AllowAutoRedirect = $false
+    $req.UserAgent = 'aiq-upgrade'
+    $req.Timeout = 30000
+    # A 3xx with redirects off may return or throw, depending on the .NET version; either way read its headers.
+    try { $resp = $req.GetResponse() } catch {
+        $e = $_.Exception
+        while ($e -and -not ($e -is [Net.WebException])) { $e = $e.InnerException }
+        if (-not $e -or -not $e.Response) { throw }
+        $resp = $e.Response
+    }
+    try { $code = [int]$resp.StatusCode; $loc = "$($resp.Headers['Location'])" } finally { $resp.Close() }
+    if ($loc -match '/releases/tag/([^/?#]+)$') { return [Uri]::UnescapeDataString($Matches[1]) }
+    throw "releases/latest answered $code without a release tag"
+}
+# When api.github.com refused for its rate limit, the time it resets ('yyyy-MM-ddTHH:mm:ssZ'), else $null.
+# X-RateLimit-Reset is Unix seconds; Retry-After (a 429 or a secondary limit) is seconds from now.
+function Retry-At($resp) {
+    if (-not $resp) { return $null }
+    function Resp-Header([string]$n) {
+        $v = $null
+        try { $v = $resp.Headers[$n] } catch { }
+        if (-not $v) { try { $vals = $null; if ($resp.Headers.TryGetValues($n, [ref]$vals)) { $v = @($vals)[0] } } catch { } }
+        "$v"
+    }
+    $code = 0
+    try { $code = [int]$resp.StatusCode } catch { }
+    if ($code -ne 403 -and $code -ne 429) { return $null }
+    $sec = 0L
+    if ([long]::TryParse((Resp-Header 'Retry-After'), [ref]$sec)) {
+        return (Get-Date).ToUniversalTime().AddSeconds($sec).ToString('yyyy-MM-ddTHH:mm:ssZ')
+    }
+    if ((Resp-Header 'X-RateLimit-Remaining') -eq '0' -and [long]::TryParse((Resp-Header 'X-RateLimit-Reset'), [ref]$sec)) {
+        return [DateTimeOffset]::FromUnixTimeSeconds($sec).UtcDateTime.ToString('yyyy-MM-ddTHH:mm:ssZ')
+    }
+    return $null
+}
 function Latest-Release {
     if ($Feed) {
         $j = Get-Content -Raw (Join-Path $Feed 'latest.json') | ConvertFrom-Json
         return @{ tag = $j.tag_name; zip = (Join-Path $Feed $j.zip); sums = (Join-Path $Feed 'SHA256SUMS'); zipName = $j.zip; local = $true }
     }
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    $rel = Invoke-RestMethod -UseBasicParsing -Headers @{ 'User-Agent' = 'aiq-upgrade' } "https://api.github.com/repos/$Repo/releases/latest"
+    $why = ''
+    try {
+        $tag = Tag-From-Redirect
+        $zipName = "aiq-$($tag -replace '^v', '')-windows-x64.zip"
+        $base = "$Site/$Repo/releases/download/$([Uri]::EscapeDataString($tag))"
+        return @{ tag = $tag; zip = "$base/$zipName"; sums = "$base/SHA256SUMS"; zipName = $zipName; local = $false; via = 'redirect' }
+    } catch {
+        $why = "$($_.Exception.Message)"
+        Log "AIQ-UPDATE-REDIRECT: no tag from github.com ($why); asking api.github.com."
+    }
+    try {
+        $rel = Invoke-RestMethod -UseBasicParsing -Headers @{ 'User-Agent' = 'aiq-upgrade' } "$Api/repos/$Repo/releases/latest"
+    } catch {
+        $e = $_.Exception
+        while ($e -and -not $e.PSObject.Properties['Response']) { $e = $e.InnerException }
+        $script:retryAt = if ($e) { Retry-At $e.Response } else { $null }
+        throw
+    }
     $za = $rel.assets | Where-Object { $_.name -like 'aiq-*-windows-x64.zip' } | Select-Object -First 1
     $sa = $rel.assets | Where-Object { $_.name -eq 'SHA256SUMS' } | Select-Object -First 1
     if (-not $za -or -not $sa) { throw "release $($rel.tag_name) has no Windows zip or SHA256SUMS" }
-    return @{ tag = $rel.tag_name; zip = $za.browser_download_url; sums = $sa.browser_download_url; zipName = $za.name; local = $false }
+    return @{ tag = $rel.tag_name; zip = $za.browser_download_url; sums = $sa.browser_download_url; zipName = $za.name; local = $false; via = 'api' }
 }
 function Fetch($from, [string]$to, [bool]$local) {
     if ($local) { Copy-Item -Force $from $to } else { Invoke-WebRequest -UseBasicParsing $from -OutFile $to }
@@ -172,7 +323,8 @@ if ($Rollback) {
     # Auto-update must not put back the version the person just left; a newer release still installs.
     Write-State @{ state = 'rolled_back'; from = $from; installed = $to; skip = $leaving; installed_tag = $null; at = (Now-Utc); blocked = $null; message = $null }
     Log "Rolled back to AIQ $to. AIQ won't install $from again by itself. Run -Rollback again to return to it."
-    if ($Relaunch) { Start-Process -FilePath (Join-Path $bin 'aiq-home.exe') }
+    Start-Core
+    Start-Home
     exit 0
 }
 
@@ -181,61 +333,104 @@ if ($Check -or $Apply) {
     if ($Check) {
         $st = Read-State
         $have = Installed-Version
+        $script:retryAt = $null
+        # A release already waiting stays waiting until a newer one is downloaded and checked: a failed check or
+        # download never drops it, and with -Apply the run still goes on to install it (2026-11-05, laptop: 0.1.8
+        # waited from 18:58Z while AIQ home was open, and no check ran after it, so 0.1.9 at 20:32Z was never seen).
+        $waiting = $st.state -eq 'waiting' -and $st.staged -and (Test-Path (Join-Path $stage $st.staged))
+        $rel = $null
         try {
             $rel = Latest-Release
         } catch {
-            # No published release yet is a 404 here; a proxy or no network fails the same way. Retry next day.
-            Write-State @{ checked_at = (Now-Utc); installed = $have; check_error = "$($_.Exception.Message)" }
-            Log "AIQ-UPDATE-CHECK: could not ask for the newest release: $($_.Exception.Message)"
-            exit 1
+            # No published release, a proxy or no network: the core retries within the hour. GitHub's API limit
+            # (403 with X-RateLimit-Remaining 0): retry_at says when it resets, and the core retries then.
+            Write-State @{ checked_at = (Now-Utc); installed = $have; check_error = "$($_.Exception.Message)"; retry_at = $script:retryAt }
+            $after = if ($script:retryAt) { " Rate limited; retry after $($script:retryAt)." } else { '' }
+            Log "AIQ-UPDATE-CHECK: could not ask for the newest release: $($_.Exception.Message)$after"
+            if (-not ($Apply -and $waiting)) { exit 1 }
         }
-        $newV = Ver $rel.tag
-        $haveV = Ver $have
-        if (-not $newV -or ($haveV -and $newV -le $haveV)) {
-            Remove-Item -Recurse -Force $stage -ErrorAction SilentlyContinue
-            $keep = if ($st.state -in 'applied', 'rolled_back', 'failed') { $st.state } else { 'current' }
-            Write-State @{ checked_at = (Now-Utc); installed = $have; latest = $rel.tag; state = $keep; check_error = $null; available = $null }
-            Log "AIQ $have is up to date (newest release $($rel.tag))."
-        } elseif ($rel.tag -eq $st.skip) {
-            Write-State @{ checked_at = (Now-Utc); installed = $have; latest = $rel.tag; check_error = $null }
-            Log "Release $($rel.tag) is the one you rolled back from. AIQ won't install it by itself."
-        } else {
-            Remove-Item -Recurse -Force $stage -ErrorAction SilentlyContinue
-            New-Item -ItemType Directory -Force $stage | Out-Null
-            $zipPath = Join-Path $stage $rel.zipName
-            $sums = Join-Path $stage 'SHA256SUMS'
-            try {
-                Fetch $rel.zip $zipPath $rel.local
-                Fetch $rel.sums $sums $rel.local
-            } catch {
+        if ($rel) {
+            if ($rel.via) { Log "AIQ-UPDATE-SOURCE: the $($rel.via) named $($rel.tag)." }
+            $newV = Ver $rel.tag
+            $haveV = Ver $have
+            if (-not $newV -or ($haveV -and $newV -le $haveV)) {
                 Remove-Item -Recurse -Force $stage -ErrorAction SilentlyContinue
-                Write-State @{ checked_at = (Now-Utc); installed = $have; check_error = "$($_.Exception.Message)" }
-                Log "AIQ-UPDATE-CHECK: download of $($rel.tag) failed: $($_.Exception.Message)"
-                exit 1
+                $keep = if ($st.state -in 'applied', 'rolled_back', 'failed') { $st.state } else { 'current' }
+                Write-State @{ checked_at = (Now-Utc); installed = $have; latest = $rel.tag; source = $rel.via; state = $keep; check_error = $null; retry_at = $null; available = $null; staged = $null; blocked = $null }
+                Log "AIQ $have is up to date (newest release $($rel.tag))."
+            } elseif ($rel.tag -eq $st.skip) {
+                Write-State @{ checked_at = (Now-Utc); installed = $have; latest = $rel.tag; source = $rel.via; check_error = $null; retry_at = $null }
+                Log "Release $($rel.tag) is the one you rolled back from. AIQ won't install it by itself."
+            } elseif ($waiting -and $rel.tag -eq $st.available -and (Checksum-Ok (Join-Path $stage $st.staged) (Join-Path $stage 'SHA256SUMS'))) {
+                # AIQ-UPDATE-STILL-NEWEST: the waiting release is still the newest. Not downloaded again, so AIQ home
+                # can check every 15 minutes while one waits at the cost of one HEAD, not a 5 MB zip.
+                Write-State @{ checked_at = (Now-Utc); installed = $have; latest = $rel.tag; source = $rel.via; check_error = $null; retry_at = $null }
+                Log "AIQ-UPDATE-STILL-NEWEST: $($rel.tag) is already downloaded and waiting."
+            } else {
+                # Downloaded beside the waiting one and swapped in only once its checksum matches, so a failed
+                # download leaves the waiting release as it was.
+                $next = "$stage.new"
+                Remove-Item -Recurse -Force $next -ErrorAction SilentlyContinue
+                New-Item -ItemType Directory -Force $next | Out-Null
+                $zipPath = Join-Path $next $rel.zipName
+                $sums = Join-Path $next 'SHA256SUMS'
+                $got = $false
+                try {
+                    Fetch $rel.zip $zipPath $rel.local
+                    Fetch $rel.sums $sums $rel.local
+                    $got = $true
+                } catch {
+                    Write-State @{ checked_at = (Now-Utc); installed = $have; check_error = "$($_.Exception.Message)"; retry_at = $null }
+                    Log "AIQ-UPDATE-CHECK: download of $($rel.tag) failed: $($_.Exception.Message)"
+                }
+                if ($got -and -not (Checksum-Ok $zipPath $sums)) {
+                    $got = $false
+                    if ($waiting) {
+                        Write-State @{ checked_at = (Now-Utc); installed = $have; check_error = "the download of $($rel.tag) did not match its checksum"; retry_at = $null }
+                    } else {
+                        Write-State @{ checked_at = (Now-Utc); installed = $have; state = 'failed'; available = $null; message = "the download of $($rel.tag) did not match its checksum"; at = (Now-Utc); retry_at = $null }
+                    }
+                    Log "AIQ-UPGRADE-CHECKSUM: $($rel.zipName) does not match SHA256SUMS. Deleted; nothing changed."
+                }
+                if ($got) {
+                    Remove-Item -Recurse -Force $stage -ErrorAction SilentlyContinue
+                    Move-Item $next $stage
+                    $was = if ($waiting -and $st.available) { " It replaces $($st.available), which was waiting." } else { '' }
+                    Write-State @{ checked_at = (Now-Utc); installed = $have; latest = $rel.tag; source = $rel.via; state = 'waiting'; available = $rel.tag; staged = $rel.zipName; check_error = $null; retry_at = $null; message = $null }
+                    Log "AIQ $($rel.tag) downloaded and checked. It installs when AIQ is idle.$was"
+                } else {
+                    Remove-Item -Recurse -Force $next -ErrorAction SilentlyContinue
+                    if (-not ($Apply -and $waiting)) { exit 1 }
+                }
             }
-            if (-not (Checksum-Ok $zipPath $sums)) {
-                Remove-Item -Recurse -Force $stage -ErrorAction SilentlyContinue
-                Write-State @{ checked_at = (Now-Utc); installed = $have; state = 'failed'; available = $null; message = "the download of $($rel.tag) did not match its checksum"; at = (Now-Utc) }
-                Log "AIQ-UPGRADE-CHECKSUM: $($rel.zipName) does not match SHA256SUMS. Deleted; nothing changed."
-                exit 1
-            }
-            Write-State @{ checked_at = (Now-Utc); installed = $have; latest = $rel.tag; state = 'waiting'; available = $rel.tag; staged = $rel.zipName; check_error = $null; message = $null }
-            Log "AIQ $($rel.tag) downloaded and checked. It installs when AIQ is idle."
         }
     }
     if ($Apply) {
         $st = Read-State
         $zipPath = if ($st.staged) { Join-Path $stage $st.staged } else { '' }
         if ($st.state -ne 'waiting' -or -not $zipPath -or -not (Test-Path $zipPath)) {
-            if ($Relaunch) { Start-Process -FilePath (Join-Path $bin 'aiq-home.exe') }
+            Start-Home
             exit $code
+        }
+        # AIQ-UPDATE-NOT-NEWER: a staged release that is not newer than what is installed (the person installed it
+        # another way after the check) is dropped, never swapped in: a same-for-same swap stops AIQ for nothing
+        # and overwrites the .old copies, so "Go back" is lost (laptop, 2026-11-04 04:17:03Z).
+        $have = Installed-Version
+        $stagedV = Ver "$($st.available)"
+        $haveV = Ver $have
+        if ($stagedV -and $haveV -and $stagedV -le $haveV) {
+            Remove-Item -Recurse -Force $stage -ErrorAction SilentlyContinue
+            Write-State @{ state = 'current'; installed = $have; available = $null; staged = $null; blocked = $null }
+            Log "AIQ-UPDATE-NOT-NEWER: the waiting $($st.available) is not newer than AIQ $have. Dropped it; nothing changed."
+            Start-Home
+            exit 0
         }
         if ($WaitPid) { Wait-Process -Id $WaitPid -Timeout 20 -ErrorAction SilentlyContinue }
         $busy = Busy-Reason
         if ($busy) {
             Write-State @{ blocked = $busy }
             Log "AIQ $($st.available) is waiting: $busy."
-            if ($Relaunch) { Start-Process -FilePath (Join-Path $bin 'aiq-home.exe') }
+            Start-Home
             exit 3
         }
         # Checked again: the folder is the person's own, but a file changed since the check is not installed.
@@ -259,8 +454,12 @@ if ($Check -or $Apply) {
                 if (Test-Path $to) { Copy-Item -Force $to "$to.old" }
                 Copy-Item -Force (Join-Path $work $exe) $to
             }
-            $up = Join-Path $work 'upgrade.ps1'
-            if (Test-Path $up) { Copy-Item -Force $up (Join-Path $bin 'upgrade.ps1') }
+            # upgrade.ps1, and aiq.vsix (the VS Code extension): `aiq install --new` at the core's next start adds
+            # it to VS Code if VS Code is a tool AIQ hasn't seen before; an extension already added stays as it is.
+            foreach ($f in 'upgrade.ps1', 'aiq.vsix') {
+                $extra = Join-Path $work $f  # not $from: that holds the version being left
+                if (Test-Path $extra) { Copy-Item -Force $extra (Join-Path $bin $f) }
+            }
             $now = Installed-Version
             Remove-Item -Recurse -Force $stage -ErrorAction SilentlyContinue
             Write-State @{ state = 'applied'; from = $from; installed = $now; installed_tag = $st.available; at = (Now-Utc); available = $null; staged = $null; blocked = $null; message = $null; skip = $null }
@@ -277,7 +476,9 @@ if ($Check -or $Apply) {
         } finally {
             Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue
         }
-        if ($Relaunch) { Start-Process -FilePath (Join-Path $bin 'aiq-home.exe') }
+        # Stop-Aiq stopped the core on both paths (updated, or put back after a failed swap).
+        Start-Core
+        Start-Home
     }
     exit $code
 }

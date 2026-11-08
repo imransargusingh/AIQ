@@ -15,8 +15,7 @@ use std::time::{Duration, Instant};
 
 const CORE_TIMEOUT: Duration = Duration::from_secs(3);
 const LOG_MAX: u64 = 256 * 1024;
-const NOT_RUNNING: &str =
-    "AIQ isn't running, so this can't change right now. It starts with your next prompt in Claude Code or Copilot.";
+const NOT_RUNNING: &str = "AIQ is starting, so this can't change yet. Try again in a moment.";
 
 #[derive(Debug, Serialize)]
 #[serde(untagged)]
@@ -43,10 +42,37 @@ fn log(paths: &Paths, cmd: &str, started: Instant, result: &str) {
     let _ = aiq_core::paths::bounded_append(&paths.data.join("home.log"), &line, LOG_MAX);
 }
 
+/// This window's starts since the core last answered (`aiq_home::keep_core`).
+static CORE_TRIES: std::sync::Mutex<u32> = std::sync::Mutex::new(0);
+
 fn read(paths: &Paths) -> Snapshot {
     let pack = BundledPack.load().expect("bundled pack is validated at build time by aiq-core's tests");
     let s = aiq_home::snapshot(paths, &pack, aiq_core::sysclock::SystemClock.now());
-    aiq_home::with_core(s, paths)
+    let mut s = aiq_home::with_core(s, paths);
+    // Home starts the core when none runs (design aiq-home-app, "Core down"), so the person never has to.
+    let t = Instant::now();
+    let mut tries = CORE_TRIES.lock().unwrap_or_else(|e| e.into_inner());
+    match aiq_home::keep_core(&mut s, paths, &aiq_exe(), &mut tries) {
+        aiq_home::StartOutcome::None => {}
+        aiq_home::StartOutcome::Started => log(paths, "core_start", t, &format!("started try={}", *tries)),
+        aiq_home::StartOutcome::Refused(e) => log(paths, "core_start", t, &format!("refused try={} {e}", *tries)),
+    }
+    s
+}
+
+/// `aiq-home.exe --start-core`: what Windows runs at sign-in. Starts the core when none runs, then exits without
+/// opening a window (Home is a windowless exe, so nothing flashes).
+fn start_core_only() {
+    let t = Instant::now();
+    let paths = Paths::from_env();
+    let answered = aiq_home::core_answers(&paths, Duration::from_secs(2));
+    let (state, _, outcome) = aiq_home::ensure_core(&paths, answered, &aiq_exe(), &mut 0);
+    let r = match outcome {
+        aiq_home::StartOutcome::None => format!("not needed state={state:?}"),
+        aiq_home::StartOutcome::Started => "started".to_owned(),
+        aiq_home::StartOutcome::Refused(e) => format!("refused {e}"),
+    };
+    log(&paths, "start_core", t, &r);
 }
 
 async fn blocking<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> Result<T, String> {
@@ -64,6 +90,9 @@ async fn snapshot() -> Result<Snapshot, String> {
             None => format!("ok read_ms={} open_ms={} core={}", s.status.read_ms, s.status.open_ms, s.status.core),
         };
         log(&paths, "snapshot", t, &r);
+        if s.home.analysis.start {
+            start_analysis(&paths);
+        }
         s
     })
     .await
@@ -94,9 +123,11 @@ fn allowed_setting(key: &str) -> bool {
             | "next_rung_tips"
             | "judge"
             | "judge_daily_tasks"
+            | "copilot_mid_turn"
+            | "agent_actions"
+            | "live_trend"
             | "update"
-    )
-        || key.starts_with("keep_on.")
+    ) || key.starts_with("keep_on.")
         || key.starts_with(aiq_home::PROJECT_NAME)
 }
 
@@ -225,6 +256,36 @@ async fn tip_switch(tip_id: String, answer: &'static str) -> Result<Outcome, Str
     .await
 }
 
+/// When Home last started an analysis run (ms since the epoch); 0 = not this session.
+static ANALYSIS_STARTED: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
+
+/// Start `aiq judge --auto` hidden when the snapshot says work waits and nothing ran in the last 10 minutes
+/// (design first-run-analysis): analysis begins right after setup instead of after the first prompt starts the
+/// core. At most once per 10 minutes per Home; the judge's own lock keeps it to one run with the core's kicker.
+fn start_analysis(paths: &Paths) {
+    use std::sync::atomic::Ordering;
+    let now = aiq_core::sysclock::SystemClock.now().utc_ms;
+    let last = ANALYSIS_STARTED.load(Ordering::Relaxed);
+    if now < last + aiq_home::START_AFTER_MS
+        || ANALYSIS_STARTED.compare_exchange(last, now, Ordering::Relaxed, Ordering::Relaxed).is_err()
+    {
+        return;
+    }
+    let t = Instant::now();
+    let mut c = std::process::Command::new(aiq_exe());
+    c.args(["judge", "--auto"])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        c.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    let r = c.spawn();
+    log(paths, "start_analysis", t, if r.is_ok() { "ok" } else { "error" });
+}
+
 /// The `aiq` binary beside AIQ home (both live in `<data>/bin`), else `aiq` on PATH.
 fn aiq_exe() -> std::path::PathBuf {
     let name = if cfg!(windows) { "aiq.exe" } else { "aiq" };
@@ -294,7 +355,7 @@ fn run_aiq(args: &[&str]) -> Result<(bool, String, String), String> {
 
 /// The tools Settings can disconnect: the same names `aiq uninstall` takes.
 fn disconnectable(tool: &str) -> bool {
-    matches!(tool, "claude-code" | "copilot")
+    matches!(tool, "claude-code" | "copilot" | "vscode")
 }
 
 /// Settings' Disconnect: runs `aiq uninstall <tool> --yes`, which restores the tool's settings from AIQ's
@@ -387,13 +448,7 @@ async fn open_privacy() -> Result<Outcome, String> {
     blocking(|| {
         let t = Instant::now();
         let paths = Paths::from_env();
-        #[cfg(windows)]
-        let r = std::process::Command::new("explorer").arg(PRIVACY_URL).spawn();
-        #[cfg(target_os = "macos")]
-        let r = std::process::Command::new("open").arg(PRIVACY_URL).spawn();
-        #[cfg(all(unix, not(target_os = "macos")))]
-        let r = std::process::Command::new("xdg-open").arg(PRIVACY_URL).spawn();
-        let r = r.map(|_| ()).map_err(|e| format!("Could not open the browser ({e}). The page is at {PRIVACY_URL}"));
+        let r = open_url(PRIVACY_URL);
         log(&paths, "open_privacy", t, if r.is_ok() { "ok" } else { "error" });
         Outcome::from(r)
     })
@@ -414,6 +469,20 @@ async fn finish_setup() -> Result<Snapshot, String> {
     .await?
 }
 
+/// The tour was taken, skipped or declined (design home-tour T3): Home stops offering it.
+#[tauri::command]
+async fn tour_seen() -> Result<Snapshot, String> {
+    blocking(|| {
+        let t = Instant::now();
+        let paths = Paths::from_env();
+        let r = control::mark_tour_seen(&paths);
+        log(&paths, "tour_seen", t, if r.is_ok() { "ok" } else { "error" });
+        r.map_err(|e| format!("Could not save that the tour was seen: {e}"))?;
+        Ok(read(&paths))
+    })
+    .await?
+}
+
 /// "Install now" (`install`) or "Go back to the previous version" (`rollback`), design auto-update U5: start
 /// `upgrade.ps1`, which waits for this window to close, swaps the exes and opens AIQ home again. The window
 /// closes itself right after replying, so the swap never waits on it.
@@ -423,6 +492,28 @@ async fn run_update(app: tauri::AppHandle, action: String) -> Result<Outcome, St
     blocking(move || {
         let t = Instant::now();
         let paths = Paths::from_env();
+        // "check_if_due": AIQ home asks every minute while open. It starts a check only when one is due
+        // (update::home_check_due, 15 minutes), so a new release shows on Home within about 15 minutes;
+        // otherwise it does nothing.
+        // "check_on_open": the same, when AIQ home opens, due 10 minutes after the last check (update::HOME_OPEN_MS).
+        if action == "check_if_due" || action == "check_on_open" {
+            let now = aiq_core::sysclock::SystemClock.now().utc_ms;
+            let mode = update::stored_mode(&paths);
+            let st = update::read_state(&paths);
+            let due = if action == "check_on_open" {
+                update::home_open_check_due(now, &st, mode.as_deref())
+            } else {
+                update::home_check_due(now, &st, mode.as_deref())
+            };
+            if !update::supported(&paths) || !due {
+                return Outcome::from(Ok(()));
+            }
+            let r = update::start(&paths, Action::Check { apply: false }, None, false)
+                .map_err(|e| format!("Could not start: {e}."));
+            let result = if r.is_ok() { "started" } else { "refused" };
+            log(&paths, "run_update", t, &format!("action={action} {result}"));
+            return Outcome::from(r);
+        }
         // "check": look for a newer release and download it without installing (the person asked, so it runs
         // even with updates off); AIQ home stays open and shows "ready to install" once the script is done.
         let check = action == "check";
@@ -448,8 +539,100 @@ async fn run_update(app: tauri::AppHandle, action: String) -> Result<Outcome, St
     .await
 }
 
+/// A second launch of AIQ home (a shortcut, an upgrade relaunch, a script) shows the window already open and
+/// exits, so the person never has two AIQ home windows. The plugin must be the first one registered.
+fn show_open_window(app: &tauri::AppHandle, cwd: &str) {
+    use tauri::Manager;
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.unminimize();
+        let _ = w.show();
+        let _ = w.set_focus();
+    }
+    // home.log keeps the second launch's working folder: the only trace of who started it.
+    log(&Paths::from_env(), "second_launch", Instant::now(), &format!("focused the open window cwd={cwd}"));
+}
+
+/// At open, connect a tool installed since setup (`aiq install --new --yes`), so a person who installs Claude Code
+/// or Copilot later doesn't have to run setup again. A tool AIQ saw before, so one the person disconnected, is
+/// left alone. Runs beside the window; home.log records what changed.
+fn connect_new_tools() {
+    std::thread::spawn(|| {
+        let t = Instant::now();
+        let detail = match run_aiq(&["install", "--new", "--yes"]) {
+            Ok((ok, out, _)) => format!("{} changed={}", if ok { "ok" } else { "error" }, changed_lines(&out).len()),
+            Err(m) => format!("error {m}"),
+        };
+        log(&Paths::from_env(), "connect_new_tools", t, &detail);
+    });
+}
+
+/// The tools Home can open for sign-in or point to an install page: the providers AIQ analyzes through.
+fn analysis_tool(tool: &str) -> Option<(&'static str, &'static str)> {
+    // assume: these install pages stay put; a moved page shows the browser's 404, never a wrong action.
+    match tool {
+        "copilot-cli" => Some(("copilot", "https://github.com/github/copilot-cli")),
+        "claude-code" => Some(("claude", "https://code.claude.com/docs/en/setup")),
+        _ => None,
+    }
+}
+
+/// Open the tool in a new terminal window so the person can sign in there (`/login`). A fixed command per
+/// tool: the page can't run anything else. Windows only, like the install.
+#[tauri::command]
+async fn open_sign_in(tool: String) -> Result<Outcome, String> {
+    blocking(move || {
+        let t = Instant::now();
+        let paths = Paths::from_env();
+        let r = match analysis_tool(&tool) {
+            None => Err("Not a tool AIQ analyzes through.".to_string()),
+            #[cfg(windows)]
+            Some((exe, _)) => std::process::Command::new("cmd")
+                .args(["/c", "start", "", "cmd", "/k", exe])
+                .spawn()
+                .map(|_| ())
+                .map_err(|e| format!("Couldn't open a terminal ({e}). Open one and run {exe}, then /login.")),
+            #[cfg(not(windows))]
+            Some((exe, _)) => Err(format!("Open a terminal and run {exe}, then /login.")),
+        };
+        log(&paths, "open_sign_in", t, if r.is_ok() { "ok" } else { "error" });
+        Outcome::from(r)
+    })
+    .await
+}
+
+/// Open the tool's install page in the default browser (a fixed address per tool).
+#[tauri::command]
+async fn open_tool_help(tool: String) -> Result<Outcome, String> {
+    blocking(move || {
+        let t = Instant::now();
+        let paths = Paths::from_env();
+        let r = match analysis_tool(&tool) {
+            None => Err("Not a tool AIQ analyzes through.".to_string()),
+            Some((_, url)) => open_url(url),
+        };
+        log(&paths, "open_tool_help", t, if r.is_ok() { "ok" } else { "error" });
+        Outcome::from(r)
+    })
+    .await
+}
+
+fn open_url(url: &str) -> Result<(), String> {
+    #[cfg(windows)]
+    let r = std::process::Command::new("explorer").arg(url).spawn();
+    #[cfg(target_os = "macos")]
+    let r = std::process::Command::new("open").arg(url).spawn();
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let r = std::process::Command::new("xdg-open").arg(url).spawn();
+    r.map(|_| ()).map_err(|e| format!("Could not open the browser ({e}). The page is at {url}"))
+}
+
 fn main() {
+    if std::env::args().skip(1).any(|a| a == "--start-core") {
+        return start_core_only();
+    }
+    connect_new_tools();
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, cwd| show_open_window(app, &cwd)))
         .invoke_handler(tauri::generate_handler![
             snapshot,
             pause,
@@ -458,6 +641,7 @@ fn main() {
             task,
             forget_item,
             finish_setup,
+            tour_seen,
             guidance_flag,
             tip_on,
             tip_off,
@@ -466,7 +650,9 @@ fn main() {
             disconnect_tool,
             include_folder,
             judge_preview,
-            open_privacy
+            open_privacy,
+            open_sign_in,
+            open_tool_help
         ])
         .run(tauri::generate_context!())
         .expect("AIQ home could not start its window");
@@ -481,8 +667,13 @@ mod tests {
         assert!(allowed_setting("daily_cap"));
         assert!(allowed_setting("copilot_tip_stays"));
         assert!(allowed_setting("next_rung_tips"));
-        assert!(allowed_setting("tip_popup") && allowed_setting("copilot_tip_in_chat") && allowed_setting("tip_highlight"));
+        assert!(
+            allowed_setting("tip_popup") && allowed_setting("copilot_tip_in_chat") && allowed_setting("tip_highlight")
+        );
         assert!(allowed_setting("judge_daily_tasks"));
+        assert!(allowed_setting("copilot_mid_turn"));
+        assert!(allowed_setting("agent_actions"));
+        assert!(allowed_setting("live_trend"));
         assert!(allowed_setting("update"));
         assert!(!allowed_setting("paused"));
         assert!(!allowed_setting("anything"));
@@ -498,8 +689,11 @@ mod tests {
             src[start..].split(']').next().unwrap().split(',').map(str::trim).filter(|s| !s.is_empty()).collect();
         let build = include_str!("../build.rs");
         let cap: serde_json::Value = serde_json::from_str(include_str!("../capabilities/main.json")).unwrap();
-        let perms: Vec<String> =
+        let all: Vec<String> =
             cap["permissions"].as_array().unwrap().iter().map(|p| p.as_str().unwrap().to_string()).collect();
+        // Tauri's own permissions: only the title bar following the theme picked in Settings (theme.ts).
+        let (core, perms): (Vec<String>, Vec<String>) = all.into_iter().partition(|p| p.starts_with("core:"));
+        assert_eq!(core, ["core:window:allow-set-theme"], "the window may use no other Tauri permission");
         for c in &handler {
             assert!(build.contains(&format!("\"{c}\"")), "{c} missing from build.rs");
             assert!(
@@ -510,12 +704,24 @@ mod tests {
         assert_eq!(perms.len(), handler.len(), "capability file allows a command that doesn't exist");
     }
 
+    /// The single-instance guard is registered before anything else (the plugin's own rule), so a second
+    /// launch exits before it opens a window. CI's Windows job also launches the exe twice and counts processes.
+    #[test]
+    fn single_instance_guard_is_the_first_plugin() {
+        let src = include_str!("main.rs");
+        let main = &src[src.find("fn main() {").unwrap()..];
+        let first = main.find(".plugin(").expect("no plugin registered");
+        assert!(main[first..].starts_with(".plugin(tauri_plugin_single_instance::init("));
+        assert!(first < main.find(".invoke_handler(").unwrap());
+    }
+
     #[test]
     fn only_known_tools_can_be_disconnected() {
         assert!(disconnectable("claude-code"));
         assert!(disconnectable("copilot"));
         assert!(!disconnectable("--all"));
-        assert!(!disconnectable("vscode"));
+        assert!(disconnectable("vscode"), "AIQ's VS Code extension");
+        assert!(!disconnectable("copilot-cli"));
     }
 
     #[test]

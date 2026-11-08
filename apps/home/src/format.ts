@@ -14,7 +14,7 @@ export const rungLabel = (rung: number) => `${RUNGS[rung - 1].name} (${rung})`;
 
 const JOBS: Record<string, string> = { code_change: "Code a change", write_doc: "Write a spec or doc", ask_research: "Ask or research", run_ship: "Run or ship it", unclassified: "No job fits" };
 /** The job a task was judged to be. */
-export const jobName = (j: string | null) => (j ? JOBS[j] ?? j : "Not judged yet");
+export const jobName = (j: string | null) => (j ? JOBS[j] ?? j : "Not analyzed yet");
 
 const STATES: Record<string, string> = {
   judged: "",
@@ -33,6 +33,11 @@ export function folderName(path: string | null): string {
   if (!path) return "—";
   const parts = path.split(/[\\/]/).filter(Boolean);
   return parts[parts.length - 1] ?? path;
+}
+
+/** A path for a row: the user folder as `~`, so the distinguishing part fits. The full path is the title. */
+export function shortPath(path: string): string {
+  return path.replace(/^[a-z]:[\\/]users[\\/][^\\/]+(?=[\\/]|$)/i, "~").replace(/^\/(home|Users)\/[^/]+(?=\/|$)/, "~");
 }
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -99,3 +104,6 @@ export function jobOptions(tasks: TaskRow[]): { options: string[]; dropdown: boo
   const jobs = [...new Set(tasks.map(jobOf))].sort();
   return { options: ["All", ...jobs], dropdown: jobs.length > 4 };
 }
+
+/** Times a week for a table cell: "1.6", or "under 1". */
+export const perWeekShort = (n: number) => (n < 1 ? "under 1" : Number.isInteger(n) ? String(n) : n.toFixed(1));

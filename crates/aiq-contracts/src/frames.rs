@@ -20,6 +20,13 @@ pub enum Request {
         event: EventV1,
         wait_ms: u64,
     },
+    /// The turn-end hook printed the tip it took with `TakeCard` (DC-022). No reply.
+    Shown {
+        token: String,
+        card_id: String,
+        surface: String,
+        session: String,
+    },
     Status {
         token: String,
     },
@@ -93,6 +100,7 @@ impl Request {
         match self {
             Request::Ingest { token, .. }
             | Request::TakeCard { token, .. }
+            | Request::Shown { token, .. }
             | Request::Status { token }
             | Request::Show { token, .. }
             | Request::TipLine { token, .. }
@@ -128,6 +136,9 @@ pub struct TakeCardReply {
 pub struct TipLineReply {
     pub card: Option<CardV1>,
     pub waiting_card_id: Option<String>,
+    /// No tip: where the open task is heading, one plain line (design live-rung-trend D). Older cores omit it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trend: Option<String>,
     /// As `TakeCardReply::plain`.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub plain: bool,
@@ -149,6 +160,26 @@ pub struct StatusReply {
     /// Next-rung tips and AIQ's self-check of its type guesses (coaching-from-rungs D10).
     #[serde(default)]
     pub coach: Option<CoachStatus>,
+    /// Live agent actions read at each turn's end (design live-agent-actions). None with an older core.
+    #[serde(default)]
+    pub agent_actions: Option<ActionsStatus>,
+}
+
+/// Live agent actions since local midnight, counted from stored rows (measured).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct ActionsStatus {
+    /// The `agent_actions` switch.
+    pub enabled: bool,
+    /// Turns read today, and of those, turns AIQ could not read ("not recorded").
+    pub turns: u32,
+    pub not_recorded: u32,
+    /// Why turns were not recorded today: (reason, turns).
+    #[serde(default)]
+    pub why: Vec<(String, u32)>,
+    /// Read cost per turn today: 95th percentile and largest, ms; and the largest read, bytes. None with no turn.
+    pub p95_ms: Option<u64>,
+    pub max_ms: Option<u64>,
+    pub max_bytes: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]

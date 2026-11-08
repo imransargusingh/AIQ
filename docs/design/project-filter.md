@@ -73,7 +73,7 @@ Tasks so moving pages keeps the view. It resets when the app restarts (no hidden
 
 | Changes with the picker | Stays the same (and says so) |
 |---|---|
-| Most common rung and the rung scale | Your latest tip, Recent tips (P6) |
+| Most common rung and the rung scale | Your latest tips (P6) |
 | Tasks agents finished, "could be", the weekly chart | Set aside folders |
 | Is each kind of task moving up? | Judging today |
 | Where agents could do more | |

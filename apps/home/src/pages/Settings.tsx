@@ -1,10 +1,14 @@
 // Settings (spec US-H7): tips a day and how long a Copilot CLI tip stays, written through the core.
-// Quiet hours, tip types, preset and sharing wait for their phases; they say so.
-import { useState } from "react";
+// UI review 2026-11-04, item 8: a section index at the top, where tips show folded under one line, judging says
+// when it was switched off (a stored fact) and what "today" counts, Sharing is one privacy line under Judging, and
+// the keyboard switch sits with the tools.
+import { useState, type FormEvent } from "react";
 import { api, type SettingKey } from "../api";
 import type { Settings as S } from "../types";
 import { jobName, plural, when } from "../format";
 import { AccuracyPaused, Banners, Title, type Ctx } from "../ui";
+import { ver } from "../updateNow";
+import { THEMES } from "../theme";
 
 const STAYS: { v: S["copilot_tip_stays"]; label: string; note?: string }[] = [
   { v: "next-prompt", label: "Until your next prompt", note: "Default" },
@@ -19,6 +23,31 @@ const WHERE: { k: "copilot_tip_in_chat" | "tip_popup" | "tip_highlight"; label: 
   { k: "tip_highlight", label: "Highlight tips in yellow", note: "The \u201cAIQ tip:\u201d label in terminals, and the AIQ item in the VS Code status bar." },
 ];
 
+const TREND = { label: "Show where an open task is heading", note: "On Home while you work, and in the Copilot CLI status line between tips. An estimate; the analyzed rung replaces it when the task ends." };
+
+/** The section index: each entry scrolls to its card and moves focus to the heading. */
+const SECTIONS = [
+  ["st1", "Tips"],
+  ["st7", "What AIQ keeps"],
+  ["st3", "Analysis"],
+  ["st6", "Updates"],
+  ["st8", "Theme"],
+  ["st5", "Tools"],
+] as const;
+
+function jump(id: string) {
+  const h = document.getElementById(id);
+  if (!h) return;
+  // Scroll the page's own scroller only: scrollIntoView would also shift the window under the title bar.
+  const main = h.closest("main");
+  const nav = document.querySelector(".secnav");
+  if (main) {
+    const top = main.scrollTop + h.getBoundingClientRect().top - main.getBoundingClientRect().top - (nav?.getBoundingClientRect().height ?? 0) - 16;
+    main.scrollTo({ top, behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  }
+  h.focus({ preventScroll: true });
+}
+
 const NEXT: { v: S["next_rung_tips"]; label: string; note?: string }[] = [
   { v: "auto", label: "On, unless AIQ's guesses are often wrong", note: "Default" },
   { v: "on", label: "Always on" },
@@ -31,21 +60,24 @@ const UPDATE: { v: "auto" | "ask" | "off"; label: string; note?: string }[] = [
   { v: "off", label: "Don't check for updates" },
 ];
 
+/** Tips a day offered as buttons; Custom takes any whole number up to the core's limit (`MAX_DAILY_CAP`), which
+ * `aiq config set daily-cap` accepts too. Imran 2026-11-07: 5, 15, 30 and a way to type any limit. */
+const CAPS = [5, 15, 30];
+const MAX_CAP = 50;
+
 /** Daily judge caps offered as buttons; any other 0-500 value is set with `aiq config`. */
 const JUDGE_CAPS = [20, 50, 100, 200];
 
 export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: boolean) => void }) {
-  const { snap, announce, refresh, singleKeys, setSingleKeys } = ctx;
+  const { snap, announce, refresh, singleKeys, setSingleKeys, update } = ctx;
   const [msg, setMsg] = useState<string | null>(null);
   const down = !snap.status.core;
   const st = snap.settings;
   const up = snap.update;
-  const checkNow = async () => {
-    const r = await api.runUpdate("check");
-    const m = r.ok ? "Checking GitHub for a newer AIQ. If there is one, Home offers to install it." : r.message;
-    setMsg(r.ok ? null : m);
-    announce(m);
-  };
+  const judging = st.judge === "auto";
+  const jt = snap.home.judge_today;
+  // Switched off today: today's counts came before that (the switch time is a stored setting change).
+  const offToday = !judging && st.judge_since_ms != null && when(st.judge_since_ms, snap.now_ms, snap.offset_min).startsWith("Today");
   const goBack = async () => {
     const r = await api.runUpdate("rollback");
     const m = r.ok ? "Going back to the previous version. AIQ home closes and opens again." : r.message;
@@ -59,15 +91,15 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
     try {
       const r = await api.judgePreview();
       setPreview(r.text);
-      announce(r.ok ? "Showing what judging would send. Nothing was sent." : "AIQ couldn't make the preview.");
+      announce(r.ok ? "Showing what analysis would send. Nothing was sent." : "AIQ couldn't make the preview.");
     } catch (e) {
       setPreview(String((e as Error)?.message ?? e));
     }
     setPreviewing(false);
   };
   const [changedFiles, setChangedFiles] = useState<string[]>([]);
-  const TOOL_NAME = { "claude-code": "Claude Code", copilot: "GitHub Copilot" } as const;
-  const disconnect = async (tool: "claude-code" | "copilot") => {
+  const TOOL_NAME = { "claude-code": "Claude Code", copilot: "GitHub Copilot", vscode: "VS Code" } as const;
+  const disconnect = async (tool: keyof typeof TOOL_NAME) => {
     const r = await api.disconnectTool(tool);
     setChangedFiles(r.changed);
     const m = r.ok ? `Disconnected ${TOOL_NAME[tool]}. AIQ no longer sees its prompts.` : (r.message ?? "AIQ couldn't disconnect it.");
@@ -109,6 +141,18 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
     }
   };
 
+  // Custom tips a day: null until Custom is pressed; open while the saved value isn't one of the buttons.
+  const [custom, setCustom] = useState<string | null>(null);
+  const customOpen = custom !== null || !CAPS.includes(st.daily_cap);
+  const capText = (custom ?? String(st.daily_cap)).trim();
+  const capBad = !/^\d+$/.test(capText) || Number(capText) > MAX_CAP;
+  const setCap = async (e: FormEvent) => {
+    e.preventDefault();
+    if (capBad) return;
+    const n = Number(capText);
+    if (await change("daily_cap", String(n), `Tips a day set to ${n}.`)) setCustom(CAPS.includes(n) ? null : String(n));
+  };
+
   const change = async (key: SettingKey, value: string, done: string) => {
     const r = await api.setSetting(key, value);
     if (r.ok) {
@@ -119,6 +163,7 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
       setMsg(r.message);
       announce(r.message);
     }
+    return r.ok;
   };
 
   return (
@@ -126,65 +171,71 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
       <Banners {...ctx} />
       <header className="group">
         <Title>Settings</Title>
-        {down && <p className="mute">AIQ isn't running, so tip settings can't change right now. It starts with your next prompt in Claude Code or Copilot.</p>}
+        {down && <p className="mute">AIQ is starting, so tip settings can't change yet.</p>}
         {msg && !down && <p className="errtext" role="alert">{msg}</p>}
       </header>
+      <div className="secnav" role="navigation" aria-label="Settings sections">
+        {SECTIONS.map(([id, label]) => (
+          <button key={id} className="btnlink" onClick={() => jump(id)}>
+            {label}
+          </button>
+        ))}
+      </div>
 
       <section className="card" aria-labelledby="st1">
-        <h2 id="st1">Tips</h2>
+        <h2 id="st1" tabIndex={-1}>Tips</h2>
         <div className="group">
           <span id="cap">Tips a day, across all your tools</span>
           <div className="row">
             <div className="seg" role="group" aria-labelledby="cap">
-              {[1, 3, 5].map((n) => (
-                <button key={n} aria-pressed={snap.settings.daily_cap === n} disabled={down} onClick={() => change("daily_cap", String(n), `Tips a day set to ${n}.`)}>
+              {CAPS.map((n) => (
+                <button key={n} aria-pressed={!customOpen && st.daily_cap === n} disabled={down} onClick={() => { setCustom(null); change("daily_cap", String(n), `Tips a day set to ${n}.`); }}>
                   {n}
                 </button>
               ))}
+              <button aria-pressed={customOpen} disabled={down} onClick={() => setCustom(String(st.daily_cap))}>
+                Custom
+              </button>
             </div>
-            {![1, 3, 5].includes(snap.settings.daily_cap) && <span className="meta">Now {snap.settings.daily_cap}, set with aiq config</span>}
+            {customOpen && (
+              <form className="row" onSubmit={setCap}>
+                <input
+                  className={`input${capBad ? " err" : ""}`}
+                  style={{ width: "6ch" }}
+                  inputMode="numeric"
+                  aria-label={`Tips a day, 0 to ${MAX_CAP}`}
+                  aria-invalid={capBad}
+                  aria-describedby="cap-n"
+                  disabled={down}
+                  value={custom ?? String(st.daily_cap)}
+                  onChange={(e) => setCustom(e.target.value)}
+                />
+                <button className="btn" disabled={down || capBad || (custom ?? "") === String(st.daily_cap)}>
+                  Set
+                </button>
+                <span id="cap-n" className={capBad ? "errtext" : "meta"}>
+                  0 to {MAX_CAP}
+                </span>
+              </form>
+            )}
           </div>
         </div>
-        <fieldset className="group" style={{ border: 0, padding: 0, margin: 0 }} disabled={down}>
-          <legend style={{ padding: 0, marginBottom: "var(--s2)" }}>A Copilot CLI tip stays</legend>
-          {STAYS.map((s) => (
-            <label className="opt" key={s.v}>
-              <input
-                type="radio"
-                name="stays"
-                checked={snap.settings.copilot_tip_stays === s.v}
-                onChange={() => change("copilot_tip_stays", s.v, `A Copilot CLI tip now stays: ${s.label.toLowerCase()}.`)}
-              />
-              <span>
-                {s.label} {s.note && <span className="meta">· {s.note}</span>}
-              </span>
-            </label>
-          ))}
-          <span className="meta">Every tip stays in Habits and tips.</span>
-        </fieldset>
-        <div className="group" role="group" aria-labelledby="where">
-          <span id="where">Where tips show</span>
-          {WHERE.map((w) => (
-            <div key={w.k}>
-              <div className="row" style={{ justifyContent: "space-between" }}>
-                <span id={`w-${w.k}`}>{w.label}</span>
-                <button
-                  className="switch"
-                  role="switch"
-                  aria-checked={st[w.k]}
-                  aria-labelledby={`w-${w.k}`}
-                  aria-describedby={`wn-${w.k}`}
-                  disabled={down}
-                  onClick={() =>
-                    st[w.k] ? change(w.k, "off", `${w.label}: off.`) : change(w.k, "on", `${w.label}: on.`)
-                  }
-                />
-              </div>
-              <span className="meta" id={`wn-${w.k}`}>
-                {w.note}
-              </span>
-            </div>
-          ))}
+        <div>
+          <div className="row" style={{ justifyContent: "space-between" }}>
+            <span id="w-live_trend">{TREND.label}</span>
+            <button
+              className="switch"
+              role="switch"
+              aria-checked={st.live_trend}
+              aria-labelledby="w-live_trend"
+              aria-describedby="wn-live_trend"
+              disabled={down}
+              onClick={() => (st.live_trend ? change("live_trend", "off", `${TREND.label}: off.`) : change("live_trend", "on", `${TREND.label}: on.`))}
+            />
+          </div>
+          <span className="meta" id="wn-live_trend">
+            {TREND.note}
+          </span>
         </div>
         <fieldset className="group" style={{ border: 0, padding: 0, margin: 0 }} disabled={down}>
           <legend style={{ padding: 0, marginBottom: "var(--s2)" }}>Next-step tips, for the kinds of task you repeat</legend>
@@ -214,13 +265,13 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
         ) : (
           <span className="meta">
             {st.guess_checked > 0
-              ? `AIQ checks its guesses of the kind of task against the judge: right ${st.guess_right} of ${st.guess_checked} times so far. Below 8 in 10, it stops these tips by itself.`
-              : "AIQ checks its guesses of the kind of task against the judge. Below 8 in 10 right, it stops these tips by itself."}
+              ? `AIQ checks its guesses of the kind of task against its analysis: right ${st.guess_right} of ${st.guess_checked} times so far. Below 8 in 10, it stops these tips by itself.`
+              : "AIQ checks its guesses of the kind of task against its analysis. Below 8 in 10 right, it stops these tips by itself."}
           </span>
         )}
         <AccuracyPaused {...ctx} />
         {st.next_rung_tips === "auto" && st.accuracy_paused.length === 0 && (
-          <span className="meta">AIQ also pauses the tips for a job or kind of task by itself when an accuracy check finds a second model agrees with its judge less than 8 in 10 times.</span>
+          <span className="meta">AIQ also pauses the tips for a job or kind of task by itself when an accuracy check finds a second model agrees with AIQ's analysis less than 8 in 10 times.</span>
         )}
         {st.next_tips.length > 0 && (
           <details className="group">
@@ -258,29 +309,107 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
             </ul>
           </div>
         )}
+        <details className="group fold">
+          <summary>
+            Where tips show and how long they stay <span className="meta">· {WHERE.filter((w) => st[w.k]).length} of {WHERE.length} on · {STAYS.find((x) => x.v === st.copilot_tip_stays)?.label.toLowerCase()}</span>
+          </summary>
+          <div className="group" role="group" aria-label="Where tips show">
+            {WHERE.map((w) => (
+              <div key={w.k}>
+                <div className="row" style={{ justifyContent: "space-between" }}>
+                  <span id={`w-${w.k}`}>{w.label}</span>
+                  <button
+                    className="switch"
+                    role="switch"
+                    aria-checked={st[w.k]}
+                    aria-labelledby={`w-${w.k}`}
+                    aria-describedby={`wn-${w.k}`}
+                    disabled={down}
+                    onClick={() =>
+                      st[w.k] ? change(w.k, "off", `${w.label}: off.`) : change(w.k, "on", `${w.label}: on.`)
+                    }
+                  />
+                </div>
+                <span className="meta" id={`wn-${w.k}`}>
+                  {w.note}
+                </span>
+              </div>
+            ))}
+          </div>
+          <fieldset className="group" style={{ border: 0, padding: 0, margin: 0 }} disabled={down}>
+            <legend style={{ padding: 0, marginBottom: "var(--s2)" }}>A Copilot CLI tip stays</legend>
+            {STAYS.map((s) => (
+              <label className="opt" key={s.v}>
+                <input
+                  type="radio"
+                  name="stays"
+                  checked={snap.settings.copilot_tip_stays === s.v}
+                  onChange={() => change("copilot_tip_stays", s.v, `A Copilot CLI tip now stays: ${s.label.toLowerCase()}.`)}
+                />
+                <span>
+                  {s.label} {s.note && <span className="meta">· {s.note}</span>}
+                </span>
+              </label>
+            ))}
+            <span className="meta">Every tip stays in Habits and tips.</span>
+          </fieldset>
+        </details>
       </section>
 
-      <section className="card" aria-labelledby="st2">
-        <h2 id="st2">Keyboard</h2>
+      <section className="card" aria-labelledby="st7">
+        <h2 id="st7" tabIndex={-1}>What AIQ keeps</h2>
         <div className="row" style={{ justifyContent: "space-between" }}>
-          <span id="sk">Single-key shortcuts: G then a letter to go, P to pause, J and K in tables</span>
-          <button className="switch" role="switch" aria-checked={singleKeys} aria-labelledby="sk" onClick={() => setSingleKeys(!singleKeys)} />
+          <span id="midturn">Copilot messages you send while the agent is still working</span>
+          <button
+            className="switch"
+            role="switch"
+            aria-checked={st.copilot_mid_turn === "on"}
+            aria-labelledby="midturn"
+            disabled={down}
+            onClick={() =>
+              st.copilot_mid_turn === "on"
+                ? change("copilot_mid_turn", "off", "AIQ no longer keeps Copilot messages you send while the agent works.")
+                : change("copilot_mid_turn", "on", "AIQ keeps Copilot messages you send while the agent works.")
+            }
+          />
         </div>
-        <span className="meta">Ctrl+K opens the command palette either way.</span>
+        <span className="meta">
+          Copilot doesn't tell AIQ about these, so AIQ reads them from Copilot's own history file on this computer when the agent
+          stops. Nothing leaves your computer.
+        </span>
+        <div className="row" style={{ justifyContent: "space-between" }}>
+          <span id="actions">What the agent did in each turn</span>
+          <button
+            className="switch"
+            role="switch"
+            aria-checked={st.agent_actions === "on"}
+            aria-labelledby="actions"
+            disabled={down}
+            onClick={() =>
+              st.agent_actions === "on"
+                ? change("agent_actions", "off", "AIQ no longer counts what the agent did in each turn.")
+                : change("agent_actions", "on", "AIQ counts what the agent did in each turn.")
+            }
+          />
+        </div>
+        <span className="meta">
+          Counts only: tool calls, commands, files and helper agents, read from the tool's own history file when the agent
+          stops. No command text or file names. Nothing leaves your computer.
+        </span>
       </section>
 
       <section className="card" aria-labelledby="st3">
         <div className="head">
-          <h2 id="st3">Judging</h2>
-          <span className="chip">{snap.settings.judge === "auto" ? "Judging in the background" : "Off"}</span>
+          <h2 id="st3" tabIndex={-1}>Analysis</h2>
+          <span className="chip">{judging ? "Analysis in the background" : st.judge_since_ms != null ? `Off since ${when(st.judge_since_ms, snap.now_ms, snap.offset_min).replace(/^Today /, "").replace(/^Yesterday/, "yesterday")}` : "Off"}</span>
         </div>
         <p className="mute">
-          AIQ judges each finished task through the tool that already saw it, with your own sign-in: Claude Code tasks through your
+          AIQ analyzes each finished task through the tool that already saw it, with your own sign-in: Claude Code tasks through your
           Claude Code, Copilot and VS Code tasks through your Copilot CLI. It sends the task's prompts and a summary of what the agent
-          did, never your own edits. Judge calls use your plan's usage, and a work account's policies and logging apply.
+          did, never your own edits. Analysis calls use your plan's usage, and a work account's policies and logging apply.
         </p>
         <div className="row" style={{ justifyContent: "space-between" }}>
-          <span id="jon">Judge finished tasks in the background</span>
+          <span id="jon">Analyze finished tasks in the background</span>
           <button
             className="switch"
             role="switch"
@@ -289,13 +418,13 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
             disabled={down}
             onClick={() =>
               st.judge === "auto"
-                ? change("judge", "off", "Judging is off. AIQ judges no new tasks.")
-                : change("judge", "auto", "Judging is on.")
+                ? change("judge", "off", "Analysis is off. AIQ analyzes no new tasks.")
+                : change("judge", "auto", "Analysis is on.")
             }
           />
         </div>
         <div className="group">
-          <span id="jcap">Tasks judged a day, two calls each on your own plan</span>
+          <span id="jcap">Tasks analyzed a day, two calls each on your own plan</span>
           <div className="row">
             <div className="seg" role="group" aria-labelledby="jcap">
               {JUDGE_CAPS.map((n) => (
@@ -303,7 +432,7 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
                   key={n}
                   aria-pressed={snap.settings.judge_daily_tasks === n}
                   disabled={down}
-                  onClick={() => change("judge_daily_tasks", String(n), `Tasks judged a day set to ${n}.`)}
+                  onClick={() => change("judge_daily_tasks", String(n), `Tasks analyzed a day set to ${n}.`)}
                 >
                   {n}
                 </button>
@@ -312,11 +441,15 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
             {!JUDGE_CAPS.includes(snap.settings.judge_daily_tasks) && <span className="meta">Now {snap.settings.judge_daily_tasks}, set with aiq config</span>}
           </div>
         </div>
-        <p>
-          Up to {plural(snap.settings.judge_daily_tasks, "task")} a day. Today: {plural(snap.home.judge_today.tasks, "task")},{" "}
-          {plural(snap.home.judge_today.calls, "call")}
-          {snap.home.judge_today.failed_calls > 0 && <>, {snap.home.judge_today.failed_calls} failed</>}
-          {snap.home.judge_today.cost_usd !== null && <>, ${snap.home.judge_today.cost_usd.toFixed(2)} reported by Claude Code</>}.
+        <p data-testid="judge-today">
+          {judging ? <>Up to {plural(st.judge_daily_tasks, "task")} a day. Today: </> : <>AIQ analyzes no new task while this is off. {jt.tasks > 0 && (offToday ? "Earlier today, before it was off: " : "Analyzed today: ")}</>}
+          {(judging || jt.tasks > 0) && (
+            <>
+              {plural(jt.tasks, "task")}, {plural(jt.calls, "call")}
+              {jt.failed_calls > 0 && <>, {jt.failed_calls} failed</>}
+              {jt.cost_usd !== null && <>, ${jt.cost_usd.toFixed(2)} reported by Claude Code</>}.
+            </>
+          )}
         </p>
         <div className="row">
           <button className="btn" onClick={showPreview} disabled={previewing} aria-expanded={preview != null}>
@@ -329,15 +462,19 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
           )}
         </div>
         {preview != null && (
-          <pre className="preview" tabIndex={0} aria-label="What judging would send for the next task. Nothing was sent.">
+          <pre className="preview" tabIndex={0} aria-label="What analysis would send for the next task. Nothing was sent.">
             {preview}
           </pre>
         )}
+        <p className="meta" data-testid="privacy-line">
+          Sharing is off: AIQ shares nothing with anyone. Only analysis calls and the update check, which sends nothing about you, leave this computer.{" "}
+          <button className="btnlink" onClick={privacy}>Read the privacy page</button> (opens in your browser)
+        </p>
       </section>
 
       <section className="card" aria-labelledby="st6">
         <div className="head">
-          <h2 id="st6">Updates</h2>
+          <h2 id="st6" tabIndex={-1}>Updates</h2>
           <span className="chip">AIQ {up.running}</span>
         </div>
         {up.supported ? (
@@ -361,51 +498,63 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
             ) : (
             <span className="meta">
               {up.checked_ms != null ? `Last checked ${when(up.checked_ms, snap.now_ms, snap.offset_min)}.` : "Not checked yet."}
-              {up.check_error ? " That check didn't reach GitHub; AIQ tries again in a day." : ""} AIQ asks GitHub once a day whether a newer
-              version is out, checks the download's fingerprint, and keeps the version before so you can go back. Nothing about you is sent.
+              {up.check_error ? " That check didn't reach GitHub; AIQ tries again within the hour." : ""} AIQ asks GitHub once a day, and every
+              15 minutes while AIQ home is open, whether a newer version is out, checks the download's fingerprint, and keeps the version before so you can go back. Nothing about you is sent.
             </span>
             )}
-            {(up.mode === "off" || up.can_rollback) && (
-              <div className="row">
-                {up.mode === "off" && (
-                  <button className="btn" onClick={checkNow}>
-                    Check for updates now
-                  </button>
-                )}
-                {up.can_rollback && (
+            <div className="row">
+              <button className="btn" onClick={update.run} disabled={update.phase !== "idle"}>
+                {update.phase === "checking" ? "Checking…" : update.phase === "installing" ? "Installing…" : up.note === "waiting" ? `Update to ${ver(up.available)} now` : "Check for updates"}
+              </button>
+              {up.can_rollback && (
                 <button className="btn" onClick={goBack}>
                   Go back to the previous version
                 </button>
-                )}
-              </div>
-            )}
+              )}
+            </div>
+            <span className="meta" data-testid="update-progress">
+              {update.msg ?? (up.note === "waiting" ? `AIQ ${ver(up.available)} is downloaded and checked.${up.blocked ? ` Last try waited: ${up.blocked}.` : ""}` : "Checks for a newer AIQ and installs it.")}
+            </span>
           </>
         ) : (
           <p className="mute">This copy of AIQ wasn't installed from a release, so it doesn't update itself.</p>
         )}
       </section>
 
-      <section className="card" aria-labelledby="st4">
-        <div className="head">
-          <h2 id="st4">Sharing</h2>
-          <span className="chip">Off · only you see your data</span>
+      <section className="card" aria-labelledby="st8">
+        <h2 id="st8" tabIndex={-1}>Theme</h2>
+        <div className="row">
+          <div className="seg" role="group" aria-labelledby="st8">
+            {THEMES.map((t) => (
+              <button key={t.v} aria-pressed={ctx.theme === t.v} onClick={() => ctx.setTheme(t.v)}>
+                {t.label}
+              </button>
+            ))}
+          </div>
         </div>
-        <p className="mute">AIQ shares nothing with anyone. Only two things leave this computer: judge calls, through your own Claude Code or Copilot (see Judging), and the update check, which sends nothing about you (see Updates).</p>
-        <p className="meta">
-          <button className="btnlink" onClick={privacy}>Read the privacy page</button> (opens in your browser)
-        </p>
+        <span className="meta">Match Windows is the default. Windows high contrast themes always apply.</span>
       </section>
 
       <section className="card" aria-labelledby="st5">
         <div className="head">
-          <h2 id="st5">Setup</h2>
-          <button className="btn" onClick={() => ctx.go("setup")}>Run setup again</button>
+          <h2 id="st5" tabIndex={-1}>Tools and keyboard</h2>
+          <div className="row">
+            <button className="btn" onClick={ctx.startTour}>Take the tour</button>
+            <button className="btn" onClick={() => ctx.go("setup")}>Run setup again</button>
+          </div>
         </div>
-        <ul className="group" aria-label="Tools AIQ watches" style={{ listStyle: "none", margin: 0, padding: 0 }}>
-          {snap.setup.tools.filter((t) => t.present).map((t) => (
+        <ul className="group" aria-label="Tools AIQ connects to" style={{ listStyle: "none", margin: 0, padding: 0 }}>
+          {snap.setup.tools.filter((t) => t.present || t.hooked).map((t) => (
             <li className="row" key={t.tool} style={{ justifyContent: "space-between" }}>
               <span>
-                <b>{TOOL_NAME[t.tool]}</b> · {t.hooked ? "connected" : "not connected"}
+                <b>{TOOL_NAME[t.tool]}</b> ·{" "}
+                {!t.present
+                  ? t.tool === "vscode"
+                    ? "VS Code's code command not found, AIQ's extension still installed"
+                    : "not installed, AIQ's hooks still in its settings"
+                  : t.hooked
+                    ? "connected"
+                    : "not connected"}
               </span>
               {t.hooked && (
                 <button className="btn" onClick={() => disconnect(t.tool)} aria-label={`Disconnect ${TOOL_NAME[t.tool]}`}>
@@ -424,7 +573,12 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
             ))}
           </ul>
         )}
-        <p className="mute">Disconnect puts the tool's settings back as they were. Run setup again to connect a tool, or go through the privacy and tips steps again.</p>
+        <p className="mute">Disconnect puts the tool's settings back as they were (for VS Code, it removes AIQ's extension). Run setup again to connect a tool, or go through the privacy and tips steps again.</p>
+        <div className="row" style={{ justifyContent: "space-between" }}>
+          <span id="sk">Single-key shortcuts: G then a letter to go, P to pause, J and K in tables</span>
+          <button className="switch" role="switch" aria-checked={singleKeys} aria-labelledby="sk" onClick={() => setSingleKeys(!singleKeys)} />
+        </div>
+        <span className="meta">Ctrl+K opens the command palette either way.</span>
       </section>
     </div>
   );

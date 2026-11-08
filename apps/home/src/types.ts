@@ -15,6 +15,55 @@ export interface Snapshot {
   update: Update;
   /** One row per project with a task in the window, most room to grow first (design project-filter). */
   projects: Project[];
+  /** Every open task's live rung trend (design live-rung-trend C), newest activity first; empty when none is open or it is off. */
+  live: Live[];
+  /** The rung guide: every next-step move in pack order (pack data, the same for everyone). */
+  guide: GuideMove[];
+}
+
+export interface GuideMove {
+  move_id: string;
+  /** The rung the move climbs from (1 to 4). */
+  step: number;
+  /** A job id, or "any". */
+  job: string;
+  habit: string;
+  why: string;
+  try_this: string;
+  starter: string;
+  /** What the analysis counts as doing this habit. */
+  counts: string;
+}
+
+/** Mirrors crates/aiq-core `live_trend::LiveTrend` plus Home's task id and kind name. An estimate from what the
+ * agent did; the judge's rung replaces it when the task ends. */
+export interface Live {
+  surface: string;
+  session: string;
+  first_ms: number;
+  last_ms: number;
+  prompts: number;
+  /** The agent is working on the last prompt. */
+  working: boolean;
+  job: string | null;
+  task_type: string | null;
+  steps: { turn: number; at_ms: number; rung: number | null; recorded: boolean }[];
+  rung: number | null;
+  could: number | null;
+  did_turns: number[];
+  /** The work counted is looking things up (an answer or run job), not edits. */
+  did_is_lookup: boolean;
+  /** The first prompt had room for a goal and context; null when its text is gone. */
+  brief: boolean | null;
+  unrecorded: number[];
+  /** For each of `unrecorded`: no_log, read_error, too_large, unparsed, no_start or not_read. */
+  unrecorded_why: string[];
+  subagents: number;
+  tip: { card_id: string; turn: number; try_this: string } | null;
+  task_id: string;
+  kind: string | null;
+  /** The task's folder, so a chip names its project under any project filter. */
+  folder: string | null;
 }
 
 /** One project: tasks whose session ran in one folder (crates/aiq-home `Project`, design project-filter). */
@@ -49,11 +98,16 @@ export interface Update {
   message: string | null;
   checked_ms: number | null;
   check_error: string | null;
+  /** The newest release the last good check saw. */
+  latest: string | null;
   can_rollback: boolean;
 }
 
 export interface Status {
   core: boolean;
+  /** Only "failed" shows a banner; Home starts the core itself when none runs. */
+  core_state: "running" | "busy" | "starting" | "failed";
+  core_error: string | null;
   paused: boolean;
   store_found: boolean;
   last_event_ms: number | null;
@@ -71,11 +125,30 @@ export interface Home {
   rungs: [number, number, number, number, number];
   most_common_rung: number | null;
   judge_today: JudgeToday;
+  /** Where background analysis stands, for the first-run state (design first-run-analysis). */
+  analysis: Analysis;
   imported_in_window: number;
   weeks: { start_ms: number; tasks: number }[];
   by_tool: [string, number][];
-  set_aside: { folder: string; reason: string }[];
+  set_aside: SetAside[];
   tips_today: number;
+}
+
+/** A folder AIQ leaves out of coaching (design aiq-home-app D11). */
+export interface SetAside {
+  /** The full folder path (key). */
+  folder: string;
+  /** aiq-check, template, burst. */
+  reason: string;
+  since_ms: number;
+  /** AIQ's own check and probe folders: folded into one line. */
+  own: boolean;
+  /** Sessions AIQ left out here (live and imported). */
+  runs: number;
+  /** The newest of them; null when none is recorded. */
+  last_ms: number | null;
+  /** The person's own tasks here in the window, which AIQ kept. */
+  kept: number;
 }
 
 export interface TaskRow {
@@ -86,6 +159,10 @@ export interface TaskRow {
   last_ms: number;
   prompts: number;
   origin: "live" | "imported";
+  /** The tool's session the task's first prompt came from (Day view lanes). */
+  session: string;
+  /** Times of the task's prompts, in order (Day view ticks). */
+  prompt_ms: number[];
   /** code_change, write_doc, ask_research, run_ship or unclassified once judged. */
   job: string | null;
   rung: number | null;
@@ -196,6 +273,27 @@ export interface HabitRow {
   moved_back: boolean;
 }
 
+/** Background analysis, all measured from the store and the run lock; nothing estimated except `done_by_ms`. */
+export interface Analysis {
+  /** off: the person turned analysis off · paused: AIQ is paused · blocked: the last call to a tool failed so
+   *  that no task of that tool can be analyzed · working: tasks wait and today's share is not used up ·
+   *  today_done: tasks wait for tomorrow's share · done: nothing waits. */
+  state: "off" | "paused" | "blocked" | "working" | "today_done" | "done";
+  /** Finished tasks with no analysis yet (any age), that AIQ will analyze. */
+  waiting: number;
+  /** Tasks with a current analysis (any age). */
+  analyzed: number;
+  /** Tasks analyzed since local midnight, and the daily share. */
+  today: number;
+  daily: number;
+  /** A run holds the lock right now. */
+  running: boolean;
+  /** The day the waiting tasks are all analyzed at `daily` a day; null when nothing waits. */
+  done_by_ms: number | null;
+  /** Why analysis can't run, and for which tool. Null unless state is blocked. */
+  blocked: { tool: "claude-code" | "copilot-cli"; why: "missing" | "not_signed_in" } | null;
+}
+
 export interface JudgeToday {
   tasks: number;
   calls: number;
@@ -212,6 +310,10 @@ export interface TipRow {
   why: string;
   try_this: string;
   opened: boolean;
+  /** The pack's tip id: `next_rung.<move>` for a next-step tip; "" when the card couldn't be read. */
+  tip_id: string;
+  /** A next-step tip's habit in the first judged tasks after it where it fits; null for tips with no habit. */
+  after: { seen: number; checked: number } | null;
 }
 
 export interface Data {
@@ -242,8 +344,16 @@ export interface Settings {
   copilot_tip_in_chat: boolean;
   tip_popup: boolean;
   tip_highlight: boolean;
+  /** Show where the open task is heading: Home's Right now card and the Copilot CLI status line. */
+  live_trend: boolean;
   judge: "auto" | "off";
   judge_daily_tasks: number;
+  /** When judging was last switched on or off; null when it was never switched. */
+  judge_since_ms: number | null;
+  /** Read Copilot's own history file for messages sent while the agent works. */
+  copilot_mid_turn: "on" | "off";
+  /** At each turn's end, count what the agent did (tool calls, commands, files, sub-agents). */
+  agent_actions: "on" | "off";
   next_rung_tips: "auto" | "on" | "off";
   /** Next-step tips may show now. */
   next_rung_on: boolean;
@@ -283,11 +393,14 @@ export type Outcome = { ok: true } | { ok: false; message: string };
 /** First-run setup (design aiq-home-deferred-pages E5–E7). */
 export interface Setup {
   done: boolean;
+  /** The tour was taken, skipped or declined once, so Home doesn't offer it again. */
+  tour_seen: boolean;
   tools: ToolFound[];
 }
 
 export interface ToolFound {
-  tool: "claude-code" | "copilot";
+  /** vscode: AIQ's VS Code extension (it shows tips; Copilot's hooks see the prompts). */
+  tool: "claude-code" | "copilot" | "vscode";
   hooked: boolean;
   present: boolean;
   install: string;

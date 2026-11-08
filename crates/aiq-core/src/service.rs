@@ -32,7 +32,17 @@ pub const SETTING_COPILOT_TIP_STAYS: &str = "copilot_tip_stays";
 pub const SETTING_COPILOT_TIP_IN_CHAT: &str = "copilot_tip_in_chat";
 pub const SETTING_TIP_POPUP: &str = "tip_popup";
 pub const SETTING_TIP_HIGHLIGHT: &str = "tip_highlight";
-pub const SWITCH_SETTINGS: [&str; 3] = [SETTING_COPILOT_TIP_IN_CHAT, SETTING_TIP_POPUP, SETTING_TIP_HIGHLIGHT];
+/// `on` (default) or `off`: show where the open task is heading (design live-rung-trend): the Right now card on
+/// AIQ home and the trend in the Copilot CLI status line between tips. Imran 2026-11-03 "build C and D".
+pub const SETTING_LIVE_TREND: &str = "live_trend";
+pub const SWITCH_SETTINGS: [&str; 6] = [
+    SETTING_COPILOT_TIP_IN_CHAT,
+    SETTING_TIP_POPUP,
+    SETTING_TIP_HIGHLIGHT,
+    SETTING_COPILOT_MID_TURN,
+    SETTING_AGENT_ACTIONS,
+    SETTING_LIVE_TREND,
+];
 /// Surfaces whose tip shows in a terminal, where a pop-up helps when the person has looked away. VS Code
 /// shows its own notification, so it gets no pop-up.
 pub const POPUP_SURFACES: [&str; 2] = ["claude-code", "copilot-cli"];
@@ -40,8 +50,20 @@ pub const POPUP_SURFACES: [&str; 2] = ["claude-code", "copilot-cli"];
 /// `popup::show`; tests record).
 pub type Popup = Box<dyn Fn(&CardV1) + Send>;
 pub const MAX_DAILY_CAP: u32 = 50;
+/// `on` (default) or `off`: read Copilot's own session log at agentStop for messages typed while the agent was
+/// working, which fire no hook (`copilot_log`).
+pub const SETTING_COPILOT_MID_TURN: &str = "copilot_mid_turn";
+/// `on` (default) or `off`: at each turn's end, read the new part of the tool's own log and store what the agent
+/// did as counts (`agent_actions`, schema v9 `turn_action`). Imran 2026-11-03 "Let's do it", after the downsides.
+pub const SETTING_AGENT_ACTIONS: &str = "agent_actions";
+const MAX_LOG_OFFSETS: usize = 4096;
 /// Copilot CLI's surface name (the hook client uses the same constant).
 pub const COPILOT_CLI: &str = "copilot-cli";
+pub const VSCODE: &str = "vscode";
+/// The VS Code extension asks for a card every 2 s while VS Code is focused. With no ask for this long, VS
+/// Code tips show in the Copilot CLI status line instead (Imran, 2026-11-03: the extension was not
+/// installed on the laptop and its tips never showed).
+pub const VSCODE_FALLBACK_AFTER_MS: i64 = 10 * 60_000;
 
 /// `project_name.<folder key>`: the name the person gave a project in AIQ home (design project-filter P2).
 pub const SETTING_PROJECT_NAME: &str = "project_name.";
@@ -78,13 +100,23 @@ pub struct Service<C: Clock> {
     projects_folders: std::collections::HashSet<String>,
     /// Rule RC result per Claude Code session, read from its transcript head until settled (bounded).
     rc_checked: std::collections::HashMap<String, RcCheck>,
+    /// When the VS Code extension last asked for a card (core clock), in this core run.
+    vscode_asked_ms: Option<i64>,
     /// Coaching inputs derived from the store (design coaching-from-rungs); rebuilt when stale.
     coach: Option<coaching::Cache>,
     /// AIQ-COACH-GUESS-LOW is logged once per core run.
     guess_low_logged: bool,
     popup: Option<Popup>,
+    /// Tips handed to a turn-end hook that has not yet said it printed them (DC-022), by card id. In memory
+    /// only: a core restart forgets them, and those tips are ready again. Bounded by the daily cap.
+    handovers: std::collections::HashMap<String, Handover>,
     /// Starts a background label of a new task's first prompt (`aiq label`); None in tests and without a model.
     label_requester: Option<LabelRequester>,
+    /// Copilot's home, for its session logs. None (tests, unless set): mid-turn messages are not read.
+    copilot_home: Option<std::path::PathBuf>,
+    /// How far each live Copilot session's log has been read (bounded; a forgotten session is read again
+    /// from the start, and stable event ids make that store nothing twice).
+    log_offsets: std::collections::HashMap<String, u64>,
 }
 
 /// A new task whose kind the word guess could not name: label its first prompt in the background.
@@ -109,14 +141,42 @@ struct Kind<'a> {
 /// What the automated rule says about one live event.
 enum Gate {
     Record,
-    /// Record nothing (an app or script's session, or a first prompt held back).
-    Skip,
+    /// Record nothing (an app or script's session, or a first prompt held back), and the rule that said so.
+    Skip(&'static str),
     /// Record this held first prompt, then the event: a person's second prompt in a held session.
     Rescue(Box<EventV1>),
 }
 
+/// One turn's read of the tool's log: the actions, or why they are not recorded; and what the read cost.
+struct TurnRead {
+    acts: Option<crate::agent_actions::Actions>,
+    why: Option<&'static str>,
+    bytes: u64,
+    ms: u64,
+}
+
 /// First prompts held back at once (each a few KB at most, in memory).
 const MAX_HELD: usize = 1024;
+/// A turn-end hook that took a tip confirms it printed it within this long, or the tip is ready again for the
+/// next turn end (DC-022). The confirmation normally lands within the hook's 20 ms send.
+/// assume: 5 s covers a hook delayed between print and confirm on a loaded machine (measured: hook runs took at
+/// most ~0.12 s on a loaded 4-core runner, 2026-11-03). If false: a printed tip whose confirmation comes later is
+/// still recorded (`card_shown` accepts a late one) but may also show once more at the next turn end.
+pub const HANDOVER_CONFIRM_MS: i64 = 5_000;
+
+/// A tip handed to a turn-end hook, waiting for the hook to say it printed it.
+struct Handover {
+    at_ms: i64,
+    surface: String,
+    session: String,
+    card_json: String,
+}
+
+/// A show-ready card whose turn end is never seen expires this long after its decision.
+/// assume: a turn ends within 4 h (longest measured on the laptop: 42 min, 2026-11-02). Confirm: no
+/// `expired` card in `card_decision` whose session's next stop came after 4 h. If false: that long turn's
+/// tip is dropped (no wrong tip shown).
+const READY_TURN_MAX_MS: i64 = 4 * 3_600_000;
 
 /// Rule RC per session: a settled answer, or how many reads found the head not yet written.
 #[derive(Debug, Clone, Copy)]
@@ -153,6 +213,8 @@ pub enum TipLineOut {
     Full(CardV1),
     /// The "1 tip waiting" marker, with the card id for `aiq show`.
     Waiting(String),
+    /// No tip to show: where the open task is heading (design live-rung-trend D), plain text.
+    Trend(String),
 }
 
 fn new_id() -> String {
@@ -173,10 +235,14 @@ impl<C: Clock> Service<C> {
             held: Default::default(),
             projects_folders: Default::default(),
             rc_checked: Default::default(),
+            vscode_asked_ms: None,
             coach: None,
             guess_low_logged: false,
             popup: None,
+            handovers: std::collections::HashMap::new(),
             label_requester: None,
+            copilot_home: None,
+            log_offsets: Default::default(),
         };
         s.rebuild()?;
         Ok(s)
@@ -197,6 +263,11 @@ impl<C: Clock> Service<C> {
         engine.prune(now);
         self.engine = engine;
         Ok(())
+    }
+
+    /// Where Copilot keeps its session logs (`tools::copilot_home`); the core process sets it at start.
+    pub fn set_copilot_home(&mut self, home: std::path::PathBuf) {
+        self.copilot_home = Some(home);
     }
 
     /// Wire the background labeller (the `aiq` binary does; must return at once, never wait on a model).
@@ -262,6 +333,37 @@ impl<C: Clock> Service<C> {
 
     /// Ingest one event. Never panics; store failures are counted and logged.
     pub fn ingest(&mut self, ev: &EventV1, trace_id: Option<&str>) {
+        // An async stop (VS Code, or a Copilot CLI stop that reached the core by the spool): read the turn's
+        // mid-turn messages first, since they were typed before it. A stop the hook waits on (`take_card`)
+        // reads them after its reply instead (`after_stop`), off the hook's clock.
+        let turn = self.read_turn_log(ev, trace_id);
+        self.ingest_event(ev, trace_id);
+        self.record_turn_actions(ev, turn, trace_id);
+    }
+
+    /// The log a live session's turns are read from, and its kind. None: this surface has no log AIQ reads (or
+    /// Copilot's home is unknown); `Some((kind, None))`: the hook sent no transcript path.
+    fn turn_log(&self, ev: &EventV1) -> Option<(crate::agent_actions::LogKind, Option<std::path::PathBuf>)> {
+        use crate::agent_actions::LogKind;
+        match ev.surface.as_str() {
+            "claude-code" => Some((LogKind::Claude, ev.transcript.as_deref().map(std::path::PathBuf::from))),
+            // Copilot CLI and VS Code agent mode (Copilot target) write the same session log.
+            COPILOT_CLI | "vscode" => Some((
+                LogKind::Copilot,
+                Some(crate::copilot_log::session_log(self.copilot_home.as_deref()?, &ev.surface_session_id)?),
+            )),
+            _ => None,
+        }
+    }
+
+    /// The work after a stop's reply is sent: Copilot messages typed while the agent worked, and what the agent
+    /// did in the turn.
+    pub fn after_stop(&mut self, ev: &EventV1, trace_id: Option<&str>) {
+        let turn = self.read_turn_log(ev, trace_id);
+        self.record_turn_actions(ev, turn, trace_id);
+    }
+
+    fn ingest_event(&mut self, ev: &EventV1, trace_id: Option<&str>) {
         let _s = info_span!("core.ingest", trace_id = trace_id.unwrap_or(""), aiq.kind = ev.kind()).entered();
         if let Err(e) = self.ingest_inner(ev, trace_id) {
             self.fail(e);
@@ -277,8 +379,30 @@ impl<C: Clock> Service<C> {
             return Ok(());
         }
         match self.automated(ev)? {
-            Gate::Skip => {
+            Gate::Skip(reason) => {
                 self.counters.inc(codes::INGEST_AUTOMATED);
+                // One line per skipped event, so a lost prompt can be traced to its rule (2026-11-03: six first
+                // prompts of hand-typed VS Code sessions were dropped and nothing said why). No text, no path.
+                info!(
+                    trace_id = trace_id.unwrap_or(""),
+                    aiq.reason = reason,
+                    aiq.surface = ev.surface.as_str(),
+                    aiq.kind = ev.kind(),
+                    aiq.dir = ev.cwd.as_deref().and_then(aiq_domain::automated::folder_tag).unwrap_or_default(),
+                    "event set aside"
+                );
+                // Home counts set-aside sessions per folder (one row per session, first prompt's time). A failed write
+                // only leaves the count short; it never stops the skip.
+                if let (EventBody::Prompt(_), "aiq-check" | "folder" | "template" | "burst", Some(folder)) =
+                    (&ev.body, reason, ev.cwd.as_deref().map(folder_key).filter(|k| !k.is_empty()))
+                {
+                    let now = self.clock.now().utc_ms;
+                    if let Err(e) =
+                        self.store.insert_set_aside_session(&ev.surface, &ev.surface_session_id, &folder, reason, now)
+                    {
+                        warn!(error.code = e.code, "set-aside session not noted");
+                    }
+                }
                 return Ok(()); // an app or script drove this session: record nothing (import spec US-12)
             }
             // A person in a held session: record its first prompt (no tip now, it is late), then this one.
@@ -367,6 +491,163 @@ impl<C: Clock> Service<C> {
             self.next_rung(&ev.surface, &ev.surface_session_id, &ev.event_id, text, trace_id)?;
         }
         Ok(())
+    }
+
+    /// At a stop, read the new part of the tool's own log, read-only and off the hook's clock (the hook never
+    /// opens it: ~0.4 s on Imran's laptop, measured 2026-11-02). Copilot messages typed while the agent was working
+    /// fire no hook, so each is ingested as a prompt here (stable event ids and a same-text check keep a message
+    /// the hook did send from counting twice). The turn's actions are returned for `record_turn_actions`, which
+    /// stores them once the stop itself is stored. None: nothing to read (not a stop, paused, both switches off).
+    fn read_turn_log(&mut self, ev: &EventV1, trace_id: Option<&str>) -> Option<TurnRead> {
+        if !matches!(ev.body, EventBody::Stop(_)) || self.paused() {
+            return None;
+        }
+        use crate::agent_actions::{LogKind, read_back_to_prompt, read_since};
+        let (kind, path) = self.turn_log(ev)?;
+        let mid_turn = kind == LogKind::Copilot && self.switch_on(SETTING_COPILOT_MID_TURN);
+        let actions = self.switch_on(SETTING_AGENT_ACTIONS);
+        if !mid_turn && !actions {
+            return None;
+        }
+        let not_recorded = |why: &'static str, bytes: u64, ms: u64| {
+            actions.then_some(TurnRead { acts: None, why: Some(why), bytes, ms })
+        };
+        let Some(path) = path else { return not_recorded("no_log", 0, 0) }; // an older hook sent no transcript
+        let key = format!("{}/{}", ev.surface, ev.surface_session_id);
+        let known = self.log_offsets.get(&key).copied();
+        let started = std::time::Instant::now();
+        let read = match known {
+            Some(from) => read_since(&path, from, kind),
+            None => read_back_to_prompt(&path, kind),
+        };
+        let ms = started.elapsed().as_millis() as u64;
+        let read = match read {
+            Ok(r) => r,
+            Err(e) => {
+                self.counters.inc(codes::INGEST_LOG_READ);
+                let why = if e.kind() == std::io::ErrorKind::NotFound { "no_log" } else { "read_error" };
+                return not_recorded(why, 0, ms);
+            }
+        };
+        if self.log_offsets.len() >= MAX_LOG_OFFSETS {
+            self.log_offsets.clear();
+        }
+        self.log_offsets.insert(key, read.next);
+        if mid_turn {
+            self.store_mid_turn(ev, &read.steering, trace_id);
+        }
+        if !actions {
+            return None;
+        }
+        // Never a guess: a turn read only in part is "not recorded".
+        let why = if read.capped {
+            Some("too_large")
+        } else if read.bad_lines > 0 {
+            Some("unparsed")
+        } else if known.is_none() && !read.saw_prompt {
+            Some("no_start") // first read since the core started, and the turn began before the part read
+        } else {
+            None
+        };
+        Some(TurnRead { acts: why.is_none().then_some(read.actions), why, bytes: read.bytes, ms })
+    }
+
+    /// Ingest Copilot messages typed into the running turn, read from its log.
+    fn store_mid_turn(&mut self, ev: &EventV1, found: &[crate::copilot_log::Typed], trace_id: Option<&str>) {
+        let mut stored = 0;
+        for t in found {
+            let clean = aiq_domain::secrets::redact(&t.text).0;
+            let text = cap(&clean, aiq_contracts::event::MAX_PROMPT_BYTES);
+            if self.store.prompt_text_seen(&ev.surface, &ev.surface_session_id, &text).unwrap_or(false) {
+                continue;
+            }
+            let mut p = ev.clone();
+            p.event_id = crate::copilot_log::event_id(&ev.surface, &ev.surface_session_id, t);
+            p.ts = t.ts_ms.map(format_rfc3339_ms).unwrap_or_else(|| ev.ts.clone());
+            p.body = EventBody::Prompt(aiq_contracts::event::PromptPayload {
+                chars: t.text.chars().count() as u64,
+                truncated: clean.len() > text.len(),
+                text: Some(text.clone()),
+                prompt_id: None,
+            });
+            if let Err(e) = self.ingest_inner(&p, trace_id) {
+                self.fail(e);
+                continue;
+            }
+            // Not stored when the session or folder is set aside (that drop logs its own line).
+            if self.store.prompt_text_seen(&ev.surface, &ev.surface_session_id, &text).unwrap_or(false) {
+                stored += 1;
+                self.counters.inc(codes::INGEST_MID_TURN);
+            }
+        }
+        info!(trace_id = trace_id.unwrap_or(""), found = found.len(), stored, "copilot.mid_turn");
+    }
+
+    /// Store the turn's actions as one `turn_action` row, keyed by its stop: counts and tool names only. Only for
+    /// a stop the store kept (a set-aside or paused session records nothing). A replayed stop stores nothing.
+    fn record_turn_actions(&mut self, ev: &EventV1, turn: Option<TurnRead>, trace_id: Option<&str>) {
+        let Some(t) = turn else { return };
+        if !self.store.has_event(&ev.event_id).unwrap_or(false) {
+            return;
+        }
+        let now = self.clock.now().utc_ms;
+        let n = |x: u32| Some(i64::from(x));
+        let a = t.acts.as_ref();
+        let row = aiq_store::TurnActionRow {
+            stop_event_id: ev.event_id.clone(),
+            surface: ev.surface.clone(),
+            surface_session_id: ev.surface_session_id.clone(),
+            ts_utc_ms: parse_rfc3339_ms(&ev.ts).unwrap_or(now),
+            outcome: if a.is_some() { "recorded" } else { "not_recorded" }.into(),
+            why: t.why.map(str::to_owned),
+            tool_calls: a.and_then(|a| n(a.tool_calls())),
+            commands: a.and_then(|a| n(a.commands_run)),
+            files: a.and_then(|a| n(a.files.len() as u32)),
+            subagents: a.and_then(|a| n(a.subagents)),
+            tools: a.map(|a| serde_json::to_string(&a.tools).unwrap_or_default()),
+            bytes_read: t.bytes as i64,
+            read_ms: t.ms as i64,
+            utc_ms: now,
+        };
+        match self.store.insert_turn_action(&row) {
+            Ok(true) => {
+                if t.why.is_some() {
+                    self.counters.inc(codes::INGEST_ACTIONS_NOT_RECORDED);
+                }
+                info!(
+                    trace_id = trace_id.unwrap_or(""),
+                    aiq.surface = ev.surface.as_str(),
+                    outcome = row.outcome.as_str(),
+                    why = t.why.unwrap_or(""),
+                    tool_calls = row.tool_calls.unwrap_or(0),
+                    bytes = t.bytes,
+                    ms = t.ms,
+                    "agent.actions"
+                );
+            }
+            Ok(false) => {}
+            Err(e) => self.fail(e),
+        }
+    }
+
+    /// Live agent actions today, for `aiq status`: counted from stored rows.
+    fn actions_status(&self) -> aiq_contracts::frames::ActionsStatus {
+        let rows = self.store.turn_actions_since(self.clock.now().local_midnight_utc_ms()).unwrap_or_default();
+        let mut ms: Vec<u64> = rows.iter().map(|r| r.read_ms.max(0) as u64).collect();
+        ms.sort_unstable();
+        let mut why = std::collections::BTreeMap::<String, u32>::new();
+        for r in rows.iter().filter(|r| r.outcome != "recorded") {
+            *why.entry(r.why.clone().unwrap_or_default()).or_default() += 1;
+        }
+        aiq_contracts::frames::ActionsStatus {
+            enabled: self.switch_on(SETTING_AGENT_ACTIONS),
+            turns: rows.len() as u32,
+            not_recorded: why.values().sum(),
+            why: why.into_iter().collect(),
+            p95_ms: (!ms.is_empty()).then(|| ms[((ms.len() * 95).div_ceil(100)).saturating_sub(1)]),
+            max_ms: ms.last().copied(),
+            max_bytes: rows.iter().map(|r| r.bytes_read.max(0) as u64).max(),
+        }
     }
 
     /// The coaching cache, rebuilt when the store's coaching facts changed or it is an hour old.
@@ -688,7 +969,8 @@ impl<C: Clock> Service<C> {
         v
     }
 
-    /// The automated-session rule, live side.
+    /// The automated-session rule, live side. A skip names its rule (`projects`, `aiq-check`, `session`,
+    /// `folder`, `template`, `burst`) for the log.
     fn automated(&mut self, ev: &EventV1) -> Result<Gate, StoreError> {
         let (surface, session) = (ev.surface.as_str(), ev.surface_session_id.as_str());
         if ev.projects || self.projects_session(ev) {
@@ -698,7 +980,7 @@ impl<C: Clock> Service<C> {
                 if self.projects_folders.len() < 1024 && !k.is_empty() && self.projects_folders.insert(k) {
                     info!(aiq.reason = "projects", "Projects session set aside");
                 }
-                return Ok(Gate::Skip);
+                return Ok(Gate::Skip("projects"));
             }
         }
         if let Some(k) = ev.cwd.as_deref().filter(|c| is_aiq_check_folder(c)).map(folder_key) {
@@ -706,16 +988,16 @@ impl<C: Clock> Service<C> {
             // set-aside rule once, so `aiq status` lists it and `aiq include` brings it back.
             match self.store.folder_rules_now()?.get(&k).map(String::as_str) {
                 Some("include") => {}
-                Some(_) => return Ok(Gate::Skip),
+                Some(_) => return Ok(Gate::Skip("aiq-check")),
                 None => {
                     self.store.insert_folder_rule(&k, "set_aside", "aiq-check", "live", self.clock.now().utc_ms)?;
                     info!(aiq.reason = "aiq-check", "folder set aside: AIQ's own checks");
-                    return Ok(Gate::Skip);
+                    return Ok(Gate::Skip("aiq-check"));
                 }
             }
         }
         let EventBody::Prompt(p) = &ev.body else {
-            return Ok(if self.guard.is_ignored(surface, session) { Gate::Skip } else { Gate::Record });
+            return Ok(if self.guard.is_ignored(surface, session) { Gate::Skip("session") } else { Gate::Record });
         };
         if !self.guard.is_ignored(surface, session) && self.store.session_known(surface, session)? {
             return Ok(Gate::Record); // not a first prompt, and not a session being ignored
@@ -751,7 +1033,7 @@ impl<C: Clock> Service<C> {
             self.store.insert_folder_rule(&folder, "set_aside", reason.as_str(), "live", now)?;
             info!(aiq.reason = reason.as_str(), "folder set aside: automated sessions");
         }
-        Ok(Gate::Skip)
+        Ok(Gate::Skip(reason.as_str()))
     }
 
     /// Folders whose sessions AIQ ignores now, newest first: (folder, reason).
@@ -834,16 +1116,20 @@ impl<C: Clock> Service<C> {
             },
             now.utc_ms,
         )?;
+        // A tip a hook is printing right now counts as shown, as at the hand-out (DC-022).
+        self.expire_handovers();
+        let printing = self.handovers.len() as u32;
         let input = DecideInput {
             paused: self.paused(),
             job: p.job,
             core_opportunity: p.core_opportunity,
             score: p.score,
             threshold: p.threshold,
-            delivered_in_session: self.store.delivered_in_session(surface, session)?,
-            in_quiet_period: self.quiet()?,
+            delivered_in_session: self.handovers.values().any(|h| h.surface == surface && h.session == session)
+                || self.store.delivered_in_session(surface, session)?,
+            in_quiet_period: printing > 0 || self.quiet()?,
             ready_in_session: self.store.ready_card(surface, session)?.is_some(),
-            deliveries_counted_today: self.counted_today()?,
+            deliveries_counted_today: self.counted_today()? + printing,
             daily_cap: self.daily_cap(),
             suppressed: p.suppressed,
         };
@@ -873,12 +1159,13 @@ impl<C: Clock> Service<C> {
         Ok(())
     }
 
-    /// Expire show-ready cards not delivered within the expiry window, so a stale card never shows in a
-    /// later, unrelated turn.
+    /// Expire show-ready cards not delivered within the expiry window after their turn ended, so a stale
+    /// card never shows in a later, unrelated turn. The window runs from the turn's end, not the decision:
+    /// on the laptop (2026-11-03 14:18Z) a 37-minute Copilot turn lost its tip 5 minutes before it ended.
     pub fn expire_stale(&mut self) -> Result<(), StoreError> {
         let now = self.clock.now().utc_ms;
-        let before = now - self.pack.trigger.ready_expiry_min as i64 * 60_000;
-        for c in self.store.stale_ready(before)? {
+        let ended_before = now - self.pack.trigger.ready_expiry_min as i64 * 60_000;
+        for c in self.store.stale_ready(ended_before, now - READY_TURN_MAX_MS)? {
             self.store.insert_decision(
                 &NewDecision {
                     decision_id: &new_id(),
@@ -902,7 +1189,7 @@ impl<C: Clock> Service<C> {
     /// `fresh` is false when the request waited longer than the client will wait; then nothing is
     /// delivered, because a card handed to a client that already left would be lost.
     pub fn take_card(&mut self, ev: &EventV1, trace_id: Option<&str>, fresh: bool) -> Option<CardV1> {
-        self.ingest(ev, trace_id);
+        self.ingest_event(ev, trace_id);
         let _s = info_span!("core.take_card", trace_id = trace_id.unwrap_or("")).entered();
         match self.take_card_inner(ev, fresh) {
             Ok(c) => c,
@@ -929,7 +1216,93 @@ impl<C: Clock> Service<C> {
             return Ok(None); // the status line delivers it instead
         }
         let Some(ready) = self.store.ready_card(surface, session)? else { return Ok(None) };
-        self.deliver(&ready.card_id, &ready.card_json, surface, session)
+        self.hand_over(&ready.card_id, &ready.card_json, surface, session)
+    }
+
+    /// A turn-end hook takes the tip but it counts as shown only when the hook says it printed it
+    /// (`card_shown`): a hook that gave up waiting must not use up the tip (DC-022, measured 10 lost in 150
+    /// loaded test runs before this). Same budget checks as `deliver`.
+    fn hand_over(
+        &mut self,
+        card_id: &str,
+        card_json: &str,
+        surface: &str,
+        session: &str,
+    ) -> Result<Option<CardV1>, StoreError> {
+        if !self.may_hand_out(card_id, surface, session)? {
+            return Ok(None);
+        }
+        let h = Handover {
+            at_ms: self.clock.now().utc_ms,
+            surface: surface.to_owned(),
+            session: session.to_owned(),
+            card_json: card_json.to_owned(),
+        };
+        self.handovers.insert(card_id.to_owned(), h);
+        info!(aiq.outcome = "handed_over", aiq.surface = surface, "card handed to the hook");
+        Ok(serde_json::from_str(card_json).ok())
+    }
+
+    /// The turn-end hook printed the tip it took: record it as shown. A confirmation after the wait ran out is
+    /// still the truth and is recorded while the tip is still ready; anything else is counted and ignored.
+    pub fn card_shown(&mut self, card_id: &str, surface: &str, session: &str) {
+        let _s = info_span!("core.card_shown", aiq.surface = surface).entered();
+        let r = (|| -> Result<(), StoreError> {
+            let card_json = match self.handovers.remove(card_id) {
+                Some(h) if h.surface == surface && h.session == session => h.card_json,
+                Some(h) => {
+                    self.handovers.insert(card_id.to_owned(), h);
+                    self.counters.inc(codes::CARD_SHOWN_UNKNOWN);
+                    return Ok(());
+                }
+                None => match self.store.ready_card(surface, session)? {
+                    Some(r) if r.card_id == card_id => r.card_json,
+                    _ => {
+                        self.counters.inc(codes::CARD_SHOWN_UNKNOWN);
+                        return Ok(());
+                    }
+                },
+            };
+            self.record_delivery(card_id, &card_json, surface, session).map(|_| ())
+        })();
+        if let Err(e) = r {
+            self.fail(e);
+        }
+    }
+
+    /// The core could not pass a taken tip back to its hook (the hook's wait had ended): it is ready again now.
+    pub fn hand_back(&mut self, card_id: &str) {
+        if self.handovers.remove(card_id).is_some() {
+            self.counters.inc(codes::CARD_UNCONFIRMED);
+        }
+    }
+
+    /// Forget hand-overs whose hook never confirmed in time; each is counted, and its tip is ready again.
+    fn expire_handovers(&mut self) {
+        let now = self.clock.now().utc_ms;
+        let before = self.handovers.len();
+        self.handovers.retain(|_, h| now - h.at_ms < HANDOVER_CONFIRM_MS);
+        for _ in self.handovers.len()..before {
+            self.counters.inc(codes::CARD_UNCONFIRMED);
+        }
+    }
+
+    /// The budget (pause, one per session, quiet period, daily cap), with a tip a hook is printing right now
+    /// counted as shown, so no renderer gets a second tip while the first one's confirmation is on its way.
+    fn may_hand_out(&mut self, card_id: &str, surface: &str, session: &str) -> Result<bool, StoreError> {
+        self.expire_handovers();
+        if self.handovers.contains_key(card_id) {
+            return Ok(false);
+        }
+        let printing = self.handovers.len() as u32;
+        let in_session = self.handovers.values().any(|h| h.surface == surface && h.session == session);
+        Ok(may_deliver(
+            self.paused(),
+            in_session || self.store.delivered_in_session(surface, session)?,
+            printing > 0 || self.quiet()?,
+            self.counted_today()? + printing,
+            self.daily_cap(),
+        ))
     }
 
     /// Re-check the budget (pause, session, quiet period, daily cap) and record the hand-over in the
@@ -941,16 +1314,20 @@ impl<C: Clock> Service<C> {
         surface: &str,
         session: &str,
     ) -> Result<Option<CardV1>, StoreError> {
-        let ok = may_deliver(
-            self.paused(),
-            self.store.delivered_in_session(surface, session)?,
-            self.quiet()?,
-            self.counted_today()?,
-            self.daily_cap(),
-        );
-        if !ok {
+        if !self.may_hand_out(card_id, surface, session)? {
             return Ok(None);
         }
+        self.record_delivery(card_id, card_json, surface, session)
+    }
+
+    /// Record the tip as shown and raise the Windows pop-up where it is on.
+    fn record_delivery(
+        &mut self,
+        card_id: &str,
+        card_json: &str,
+        surface: &str,
+        session: &str,
+    ) -> Result<Option<CardV1>, StoreError> {
         self.store.insert_delivery(card_id, surface, session, self.clock.now())?;
         info!(aiq.outcome = "delivered", aiq.surface = surface, "card delivered");
         let card: Option<CardV1> = serde_json::from_str(card_json).ok();
@@ -997,20 +1374,65 @@ impl<C: Clock> Service<C> {
             return Ok(match (tip_line_state(self.copilot_tip_stays(), at, after, opened, now), card) {
                 (TipLine::Full, Some(c)) => Some(TipLineOut::Full(c)),
                 (TipLine::Waiting, _) => Some(TipLineOut::Waiting(card_id)),
-                _ => None,
+                _ => self.trend_line(surface, &session)?,
             });
         }
         if self.store.last_event_kind(surface, &session)?.as_deref() != Some("stop") {
-            return Ok(None); // mid-turn: a card never shows while the agent works
+            return self.trend_line(surface, &session); // mid-turn: a card never shows while the agent works
         }
-        let Some(ready) = self.store.ready_card(surface, &session)? else { return Ok(None) };
+        let ready = match self.store.ready_card(surface, &session)? {
+            Some(r) => Some(r),
+            None if surface == COPILOT_CLI && !self.vscode_extension_asking() => self.vscode_ready()?,
+            None => None,
+        };
+        let Some(ready) = ready else { return self.trend_line(surface, &session) };
+        // A VS Code tip shown here is delivered to this status line's session, so its lifetime follows
+        // this session's prompts like the line's own tips.
         Ok(self.deliver(&ready.card_id, &ready.card_json, surface, &session)?.map(TipLineOut::Full))
+    }
+
+    /// The open task's trend for the status line, when the person has it on and there is an estimate. Uses the
+    /// coaching rows already built (never rebuilds them on a status-line refresh) for "could reach".
+    fn trend_line(&self, surface: &str, session: &str) -> Result<Option<TipLineOut>, StoreError> {
+        if !self.switch_on(SETTING_LIVE_TREND) {
+            return Ok(None);
+        }
+        let started = std::time::Instant::now();
+        let now = self.clock.now().utc_ms;
+        let t = crate::live_trend::open_task(&self.store, surface, session, now, self.engine.idle_gap_ms())?;
+        let could = t.as_ref().and_then(|t| self.coach.as_ref().and_then(|c| crate::live_trend::could(c, t)));
+        let line = t.as_ref().and_then(|t| crate::live_trend::status_text(t, could));
+        info!(
+            aiq.surface = surface,
+            open = t.is_some(),
+            shown = line.is_some(),
+            ms = started.elapsed().as_millis() as u64,
+            "core.trend_line"
+        );
+        Ok(line.map(TipLineOut::Trend))
+    }
+
+    fn vscode_extension_asking(&self) -> bool {
+        self.vscode_asked_ms.is_some_and(|t| self.clock.now().utc_ms - t < VSCODE_FALLBACK_AFTER_MS)
+    }
+
+    /// The oldest show-ready VS Code card whose turn has ended.
+    fn vscode_ready(&self) -> Result<Option<aiq_store::ReadyCard>, StoreError> {
+        for c in self.store.ready_cards_on(VSCODE)? {
+            if self.store.last_event_kind(VSCODE, &c.session)?.as_deref() == Some("stop") {
+                return Ok(Some(c));
+            }
+        }
+        Ok(None)
     }
 
     /// A renderer that cannot name its session (the VS Code extension): deliver the oldest show-ready
     /// card of the surface whose session's turn has ended.
     pub fn take_card_any(&mut self, surface: &str) -> Option<CardV1> {
         let _s = info_span!("core.take_card_any", aiq.surface = surface).entered();
+        if surface == VSCODE {
+            self.vscode_asked_ms = Some(self.clock.now().utc_ms);
+        }
         let r = (|| -> Result<Option<CardV1>, StoreError> {
             self.expire_stale()?;
             for c in self.store.ready_cards_on(surface)? {
@@ -1122,6 +1544,7 @@ impl<C: Clock> Service<C> {
                 );
                 f
             },
+            agent_actions: Some(self.actions_status()),
             coach: self.coach.as_ref().map(|c| {
                 let mode = coaching::mode(&self.store);
                 CoachStatus {
@@ -1217,6 +1640,15 @@ impl<C: Clock> Service<C> {
         let now = self.clock.now().utc_ms;
         self.engine.prune(now);
     }
+}
+
+/// At most `max` bytes, cut on a character boundary.
+fn cap(s: &str, max: usize) -> String {
+    let mut i = s.len().min(max);
+    while !s.is_char_boundary(i) {
+        i -= 1;
+    }
+    s[..i].to_owned()
 }
 
 #[cfg(test)]

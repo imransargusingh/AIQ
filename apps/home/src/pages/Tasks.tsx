@@ -1,11 +1,16 @@
-// Tasks (spec US-H3 Tasks page). Lists tasks (the Task rule: one session, split at 30 idle minutes), each
-// with its judged job and rung, or "Not judged yet" (design rung-judge). States other than a plain judgment
-// carry a text label (Uncertain, Right rung, Capped by a blocker), never colour alone.
+// Tasks (spec US-H3 Tasks page). Opens on the kinds of task (UI review 2026-11-04, item 4): each kind's rung today,
+// what it could be, how often, and whether it moved in the last 14 days, with Your projects below. "All tasks"
+// lists tasks (the Task rule: one session, split at 30 idle minutes), each with its judged job and rung, or "Not
+// judged yet" (design rung-judge); "Day" is the Day view. States other than a plain judgment carry a text label
+// (Uncertain, Right rung, Capped by a blocker), never colour alone.
 import { useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { jobOf, jobOptions, plural, rungLabel, sortTasks, stateLabel, toolName, when, type Dir, type SortKey } from "../format";
-import { KindList } from "../coach";
-import { Banners, Chip, ProjectPicker, Title, type Ctx } from "../ui";
+import { jobName, jobOf, jobOptions, perWeekShort, plural, rungLabel, sortTasks, stateLabel, toolName, when, type Dir, type SortKey } from "../format";
+import { KIND_STATE } from "../coach";
+import { Banners, Chip, ProjectPicker, Rung, Title, type Ctx } from "../ui";
 import { projectName, projectOf } from "../project";
+import type { KindRow, ProgressRow } from "../types";
+import { DayView } from "./DayView";
+import { Projects } from "./Projects";
 
 const COLS: { key: SortKey; label: string; right?: boolean }[] = [
   { key: "when", label: "Started" },
@@ -13,11 +18,16 @@ const COLS: { key: SortKey; label: string; right?: boolean }[] = [
   { key: "prompts", label: "Prompts", right: true },
 ];
 
-export function Tasks(ctx: Ctx) {
+/** `start`: open on this view (the tour's Day step). */
+export function Tasks({ start, ...ctx }: Ctx & { start?: View }) {
   const { snap } = ctx;
   const [sort, setSort] = useState<{ key: SortKey; dir: Dir }>({ key: "when", dir: -1 });
   const [job, setJob] = useState("All");
   const [sel, setSel] = useState(0);
+  const hasKinds = snap.coaching.kinds.length > 0;
+  const [picked, setView] = useState<View | null>(start ?? null);
+  // Kinds first when there are kinds; until then the list (nothing to group yet).
+  const view: View = picked ?? (hasKinds ? "kinds" : "list");
   const body = useRef<HTMLTableSectionElement>(null);
   const { options, dropdown } = jobOptions(snap.tasks);
   const rows = useMemo(
@@ -49,12 +59,17 @@ export function Tasks(ctx: Ctx) {
         <div className="group">
           <Title>Tasks</Title>
           <p className="mute">
-            {plural(snap.home.tasks_in_window, "task")} in the last {snap.home.window_days} days, {snap.home.judged} judged.
-            {snap.home.judged < snap.home.tasks_in_window && " AIQ judges finished tasks through your own Claude Code or Copilot CLI, within a daily limit."}
+            {plural(snap.home.tasks_in_window, "task")} in the last {snap.home.window_days} days, {snap.home.judged} analyzed.
+            {snap.home.judged < snap.home.tasks_in_window && " AIQ analyzes finished tasks through your own Claude Code or Copilot CLI, within a daily limit."}
           </p>
         </div>
         {snap.tasks.length > 0 && (
           <div className="row">
+            <div className="seg" role="group" aria-label="View">
+              {hasKinds && <button aria-pressed={view === "kinds"} onClick={() => setView("kinds")}>Kinds</button>}
+              <button aria-pressed={view === "list"} onClick={() => setView("list")}>All tasks</button>
+              <button aria-pressed={view === "day"} onClick={() => setView("day")}>Day</button>
+            </div>
             <span className="meta" id="joblbl">Job</span>
             {dropdown ? (
               <select className="input" aria-labelledby="joblbl" value={job} onChange={(e) => setJob(e.target.value)}>
@@ -72,22 +87,14 @@ export function Tasks(ctx: Ctx) {
           </div>
         )}
       </header>
-      {snap.coaching.kinds.length > 0 && (
-        <section className="group" aria-labelledby="kinds">
-          <div className="head">
-            <h2 id="kinds">Kinds of task</h2>
-            <span className="meta">
-              The kind of each task is the judge's estimate. Most tasks first.
-              {snap.coaching.untyped > 0 && ` ${plural(snap.coaching.untyped, "task")} judged before kinds existed ${snap.coaching.untyped === 1 ? "isn't" : "aren't"} grouped.`}
-            </span>
-          </div>
-          <KindList label="Kinds of task" rows={snap.coaching.kinds} open={(k) => ctx.openKind(k.job, k.task_type)} />
-        </section>
-      )}
-      {snap.tasks.length === 0 ? (
+      {snap.tasks.length > 0 && view === "kinds" ? (
+        <Kinds {...ctx} rows={snap.coaching.kinds.filter((k) => job === "All" || jobName(k.job) === job)} />
+      ) : snap.tasks.length > 0 && view === "day" ? (
+        <DayView {...ctx} snap={{ ...snap, tasks: snap.tasks.filter((t) => job === "All" || jobOf(t) === job) }} />
+      ) : snap.tasks.length === 0 ? (
         <div className="empty">
           <b>No tasks yet.</b>
-          <span className="mute">A task shows here after you work with Claude Code, Copilot CLI or VS Code agent mode while AIQ is watching.</span>
+          <span className="mute">A task shows here after you work with Claude Code, Copilot CLI or VS Code agent mode while AIQ is on.</span>
         </div>
       ) : (
         <div className="tablewrap">
@@ -104,7 +111,9 @@ export function Tasks(ctx: Ctx) {
                 ))}
                 <th>Project</th>
                 <th>Job and kind</th>
-                <th>Rung</th>
+                <th>
+                  <span className="rung" title="How much of the task you handed to the agent, from Assisted (1) to Factory (5). Hover a rung to see what it means.">Rung</span>
+                </th>
               </tr>
             </thead>
             <tbody ref={body}>
@@ -127,7 +136,7 @@ export function Tasks(ctx: Ctx) {
                     {toolName(t.tool)} {t.origin === "imported" && <Chip>Imported</Chip>}
                   </td>
                   <td className="r num">{t.prompts}</td>
-                  <td title={t.folder ?? "Not recorded for tasks before this version"}>{projectName(snap, projectOf(t))}</td>
+                  <td title={t.folder ?? "Unknown for tasks before this version"}>{projectName(snap, projectOf(t))}</td>
                   <td className={t.job ? undefined : "mute"}>
                     {jobOf(t)}
                     {t.judgment?.task_type_label && <span className="meta"> · {t.judgment.task_type_label}</span>}
@@ -135,11 +144,11 @@ export function Tasks(ctx: Ctx) {
                   <td className={t.judgment ? undefined : "mute"}>
                     {t.judgment ? (
                       <>
-                        {rungLabel(t.judgment.current)}
+                        <Rung r={t.judgment.current} />
                         {stateLabel(t.judgment.state) && <> <Chip>{stateLabel(t.judgment.state)}</Chip></>}
                       </>
                     ) : (
-                      "Not judged yet"
+                      "Not analyzed yet"
                     )}
                   </td>
                 </tr>
@@ -148,7 +157,85 @@ export function Tasks(ctx: Ctx) {
           </table>
         </div>
       )}
-      {snap.tasks.length > 0 && <p className="meta">J and K move between rows, Enter opens a task. Select a column heading to sort.</p>}
+      {snap.tasks.length > 0 && view === "list" && <p className="meta">J and K move between rows, Enter opens a task. Select a column heading to sort.</p>}
+      {(view === "kinds" || (!hasKinds && view === "list")) && ctx.project === null && snap.projects.length > 1 && <Projects {...ctx} />}
     </div>
+  );
+}
+
+type View = "kinds" | "list" | "day";
+
+/** "↑ up from Directed (2)", from the same 14-day comparison as Home's progress (US-H5b). */
+function trendText(p: ProgressRow | undefined): { text: string; tone?: "ok" | "warn" } {
+  if (!p || p.trend === "too_few") return { text: "Too few tasks to say" };
+  if (p.trend === "same") return { text: "– same rung" };
+  const from = p.earlier_rung ? ` from ${rungLabel(p.earlier_rung)}` : "";
+  return p.trend === "up" ? { text: `↑ up${from}`, tone: "ok" } : { text: `↓ down${from}`, tone: "warn" };
+}
+
+/** The kinds of task as a table: a row opens the kind (its next step and starter prompt). */
+function Kinds(ctx: Ctx & { rows: KindRow[] }) {
+  const { snap, rows } = ctx;
+  const c = snap.coaching;
+  const progress = new Map(c.progress.map((p) => [`${p.job}/${p.task_type}`, p]));
+  return (
+    <>
+      <div className="tablewrap">
+        <table aria-label="Kinds of task">
+          <thead>
+            <tr>
+              <th>Kind of task</th>
+              <th>
+                <span className="rung" title="The rung most of this kind's analyzed tasks sit at.">Today</span>
+              </th>
+              <th>Could be</th>
+              <th className="r">A week</th>
+              <th className="r">Tasks</th>
+              <th>
+                Last {c.progress_days} days against the {c.progress_days} before
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((k) => {
+              const tr = trendText(progress.get(`${k.job}/${k.task_type}`));
+              const up = k.today != null && k.potential != null && k.potential > k.today;
+              return (
+                <tr key={`${k.job}/${k.task_type}`} onClick={() => ctx.openKind(k.job, k.task_type)}>
+                  <td>
+                    <a
+                      href={`#kind/${encodeURIComponent(k.job)}/${encodeURIComponent(k.task_type)}`}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        ctx.openKind(k.job, k.task_type);
+                      }}
+                    >
+                      <b>{k.label}</b>
+                    </a>
+                    <div className="meta">{jobName(k.job)}</div>
+                  </td>
+                  <td>{k.today != null ? <Chip><Rung r={k.today} /></Chip> : <span className="mute">—</span>}</td>
+                  <td>
+                    {up ? (
+                      <Chip tone="tried"><Rung r={k.potential!} /></Chip>
+                    ) : (
+                      <Chip tone={k.state === "right_rung" ? "ok" : undefined}>{KIND_STATE[k.state]}</Chip>
+                    )}
+                  </td>
+                  <td className="r num">{perWeekShort(k.per_week)}</td>
+                  <td className="r num">{k.tasks}</td>
+                  <td>{tr.tone ? <Chip tone={tr.tone}>{tr.text}</Chip> : <span className="meta">{tr.text}</span>}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className="meta">
+        Most tasks first. The kind of each task and its rung are AIQ's analysis; counts are measured. Open a kind for its next step and a starter prompt.
+        {c.untyped > 0 && ` ${plural(c.untyped, "task")} analyzed before kinds existed ${c.untyped === 1 ? "isn't" : "aren't"} grouped.`}
+      </p>
+    </>
   );
 }

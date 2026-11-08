@@ -2,14 +2,17 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api } from "./api";
 import type { Snapshot } from "./types";
-import { when } from "./format";
+import { RUNGS, rungLabel } from "./format";
+import { ver, type UpdatePhase } from "./updateNow";
+import type { Theme } from "./theme";
 
 /** Nav pages, plus places outside the nav: one task's detail, one kind of task (from Home or Tasks), setup. */
-export type Page = "home" | "tasks" | "tips" | "data" | "settings" | "task" | "kind" | "setup";
+export type Page = "home" | "tasks" | "guide" | "tips" | "data" | "settings" | "task" | "kind" | "setup";
 
 export const PAGES: { id: Exclude<Page, "task" | "kind" | "setup">; label: string; key: string }[] = [
   { id: "home", label: "Home", key: "H" },
   { id: "tasks", label: "Tasks", key: "T" },
+  { id: "guide", label: "Rung guide", key: "R" },
   { id: "tips", label: "Habits and tips", key: "B" },
   { id: "data", label: "Your data", key: "D" },
   { id: "settings", label: "Settings", key: "S" },
@@ -28,6 +31,13 @@ export interface Ctx {
   /** The project Home and Tasks show (a folder key, "" for no folder), or null for all (design project-filter P3). */
   project: string | null;
   setProject: (key: string | null) => void;
+  /** "Check for updates" (design auto-update U5h): what it is doing, its last result, and the press itself. */
+  update: { phase: UpdatePhase; msg: string | null; run: () => void };
+  /** Start the tour (design home-tour): Ctrl K, Settings and the getting-started list. */
+  startTour: () => void;
+  /** The theme picked in Settings or Ctrl K (theme.ts); "system" follows Windows. */
+  theme: Theme;
+  setTheme: (t: Theme) => void;
 }
 
 /** The picker's "All projects" value: a NUL can't be in any folder path, so no project key equals it. */
@@ -85,22 +95,18 @@ export function Banners({ snap, togglePause, refresh }: Pick<Ctx, "snap" | "togg
           <button className="btn" onClick={refresh}>Try again</button>
         </div>
       )}
-      {!s.core && !s.error && (
-        <div className="banner">
+      {s.core_state === "failed" && !s.error && (
+        <div className="banner bad" role="alert">
           <div className="grow">
-            {s.last_event_ms != null ? (
-              <>AIQ isn't running, so this shows what was stored at {when(s.last_event_ms, snap.now_ms, snap.offset_min)}.</>
-            ) : (
-              <>AIQ isn't running.</>
-            )}{" "}
-            It starts with your next prompt in Claude Code or Copilot.
+            <b>AIQ couldn't start.</b> It keeps trying.{s.core_error && <> <span className="meta">({s.core_error})</span></>}
           </div>
+          <button className="btn" onClick={refresh}>Try again</button>
         </div>
       )}
       {s.paused && (
         <div className="banner">
           <div className="grow">
-            <b>AIQ is paused.</b> Nothing is captured and no tips show.
+            <b>AIQ is paused.</b> It saves nothing new and shows no tips.
           </div>
           <button className="btn" onClick={togglePause}>
             Resume <kbd>P</kbd>
@@ -111,58 +117,89 @@ export function Banners({ snap, togglePause, refresh }: Pick<Ctx, "snap" | "togg
   );
 }
 
-/** Home's one line about updates (design auto-update U5): a version waiting, installed, failed or left. */
+const UPDATE_SEEN = "aiq.updateNoteSeen";
+/** The note this Home session already showed: it stays until Home closes, then never shows again. */
+let noteThisSession: string | null = null;
+
+function seenBefore(key: string): boolean {
+  if (noteThisSession === key) return false;
+  let before = false;
+  try {
+    before = localStorage.getItem(UPDATE_SEEN) === key;
+    localStorage.setItem(UPDATE_SEEN, key);
+  } catch {
+    /* No storage: the core's one-day limit still ends it. */
+  }
+  if (!before) noteThisSession = key;
+  return before;
+}
+
+/** The titlebar's update marker, on every page (design auto-update U5h): "Update to x.y.z" while one waits,
+ * else what Check for updates is doing or found. Nothing otherwise, so it takes no space in the page. */
+export function UpdateChip({ snap, update }: Pick<Ctx, "snap" | "update">) {
+  const u = snap.update;
+  if (!u.supported) return null;
+  if (update.phase === "idle" && u.note === "waiting") {
+    const when = u.mode === "auto" ? " It also installs by itself when you close AIQ home." : "";
+    const waited = u.blocked ? ` Last try waited: ${u.blocked}.` : "";
+    return (
+      <button className="chip updchip" data-testid="update-chip" onClick={update.run} title={`AIQ home closes, installs AIQ ${ver(u.available)} and opens again.${when}${waited}`}>
+        Update to {ver(u.available)}
+      </button>
+    );
+  }
+  if (!update.msg) return null;
+  return (
+    <span className={`chip${update.phase === "idle" ? "" : " tried"}`} data-testid="update-chip">
+      {update.msg}
+    </span>
+  );
+}
+
+/** Home's one line after an update ran (design auto-update U5, U5g): installed, failed or undone, a slim line
+ * shown on one Home session, a day at most (core), with a dismiss. A waiting update is the titlebar's marker. */
 export function UpdateLine({ snap, announce }: Pick<Ctx, "snap" | "announce">) {
   const u = snap.update;
   const [msg, setMsg] = useState<string | null>(null);
-  if (!u.supported || u.note === "none") return null;
-  const run = async (action: "install" | "rollback") => {
-    const r = await api.runUpdate(action);
-    const m = r.ok ? (action === "install" ? "Installing the update. AIQ home closes and opens again." : "Going back. AIQ home closes and opens again.") : r.message;
+  const key = `${u.note}:${u.at_ms ?? ""}`;
+  const [hidden, setHidden] = useState(() => u.note !== "none" && u.note !== "waiting" && seenBefore(key));
+  if (!u.supported || u.note === "none" || u.note === "waiting" || hidden) return null;
+  const run = async () => {
+    const r = await api.runUpdate("rollback");
+    const m = r.ok ? "Going back. AIQ home closes and opens again." : r.message;
     setMsg(m);
     announce(m);
   };
-  const at = u.at_ms != null ? when(u.at_ms, snap.now_ms, snap.offset_min) : "";
-  const ver = (v: string | null) => (v ?? "").replace(/^v/, "");
   let text: ReactNode;
   let action: ReactNode = null;
-  if (u.note === "waiting") {
-    text =
-      u.mode === "auto" ? (
-        <>AIQ {ver(u.available)} is ready. It installs by itself when you close AIQ home.</>
-      ) : (
-        <>AIQ {ver(u.available)} is ready to install.</>
-      );
-    action = (
-      <button className="btn" onClick={() => run("install")}>
-        Install now
-      </button>
-    );
-  } else if (u.note === "applied") {
-    text = (
-      <>
-        AIQ updated itself to {u.running} ({at}). Your data and settings are kept.
-      </>
-    );
-    if (u.can_rollback)
+  if (u.note === "applied") {
+    text = <>Updated to AIQ {ver(u.running)}.</>;
+    if (u.can_rollback && u.from)
       action = (
-        <button className="btn" onClick={() => run("rollback")}>
-          Go back to {u.from ?? "the previous version"}
+        <button className="btnlink" onClick={run}>
+          Go back to {ver(u.from)}
         </button>
       );
   } else if (u.note === "failed") {
-    text = <>AIQ couldn't install an update, so it kept {u.running}{u.message ? ` (${u.message})` : ""}. It tries again tomorrow.</>;
+    text = <>An update didn't install{u.message ? ` (${u.message})` : ""}; AIQ {ver(u.running)} kept. It tries again tomorrow.</>;
   } else {
-    text = <>You went back to AIQ {u.running}. AIQ won't install {u.from ?? "that version"} again by itself; a newer one still installs.</>;
+    text = <>Back on AIQ {ver(u.running)}. {u.from ? ver(u.from) : "That version"} won't install again by itself.</>;
   }
+  const dismiss = () => {
+    setHidden(true);
+    announce("Update note dismissed.");
+  };
   return (
-    <div className="banner" data-testid="update-line">
-      <div className="grow">
+    <p className="updnote meta" data-testid="update-line">
+      <span>
         {text}
-        {msg && <span className="meta"> {msg}</span>}
-      </div>
+        {msg && <> {msg}</>}
+      </span>
       {action}
-    </div>
+      <button className="btnlink x" aria-label="Dismiss update note" title="Dismiss" onClick={dismiss}>
+        ×
+      </button>
+    </p>
   );
 }
 
@@ -213,6 +250,13 @@ export const Chip = ({ children, tone }: { children: ReactNode; tone?: "ok" | "w
   <span className={`chip${tone ? ` ${tone}` : ""}`}>{children}</span>
 );
 
+/** A rung's name; hovering it says what the rung means (the full ladder is on Home, How you work with agents). */
+export const Rung = ({ r }: { r: number }) => (
+  <span className="rung" title={RUNGS[r - 1].means}>
+    {rungLabel(r)}
+  </span>
+);
+
 /** Prompts can be many KB; show a preview and keep the full text one click (or Enter) away. */
 const PREVIEW = 280;
 export function Content({ text }: { text: string }) {
@@ -250,11 +294,11 @@ export function AccuracyPaused({ snap, announce, refresh }: Pick<Ctx, "snap" | "
           <div className="grow">
             {p.kept_on ? (
               <>
-                <b>{p.label}:</b> next-step tips stay on because you chose to keep them, though a second model agreed with AIQ's judge only {p.agreed} of {p.checked} times.
+                <b>{p.label}:</b> next-step tips stay on because you chose to keep them, though a second model agreed with AIQ's analysis only {p.agreed} of {p.checked} times.
               </>
             ) : (
               <>
-                <b>{p.label}:</b> AIQ paused these next-step tips. A second model agreed with its judge only {p.agreed} of {p.checked} times, under 8 in 10. They come back by
+                <b>{p.label}:</b> AIQ paused these next-step tips. A second model agreed with AIQ's analysis only {p.agreed} of {p.checked} times, under 8 in 10. They come back by
                 themselves when a later accuracy check clears the bar.
               </>
             )}

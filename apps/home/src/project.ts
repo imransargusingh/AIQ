@@ -29,5 +29,5 @@ export function scoped(s: Snapshot, key: string | null): Snapshot {
 
 /** A project's name by key, for the Tasks list. */
 export function projectName(s: Snapshot, key: string): string {
-  return s.projects.find((p) => p.key === key)?.name ?? "Folder not recorded";
+  return s.projects.find((p) => p.key === key)?.name ?? "Folder unknown";
 }

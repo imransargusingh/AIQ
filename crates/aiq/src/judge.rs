@@ -12,10 +12,11 @@ use aiq_contracts::judge::{ActionSummary, Response, SCHEMA, extract_object, pars
 use aiq_core::paths::{Paths, bounded_append};
 use aiq_domain::clock::{DAY_MS, Now};
 use aiq_domain::rung::{self, Turn};
+use aiq_home::GIVE_UP;
 use aiq_home::TaskRow;
 use aiq_store::{CallOutcome, JudgmentRow, NewJudgeCall, Store};
 use serde_json::{Value, json};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
@@ -23,9 +24,9 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// A call that runs longer is killed (spec: 60 s p95 per judgment; one slow call must not hold the run).
 pub const CALL_TIMEOUT: Duration = Duration::from_secs(120);
-/// Back-off after the Nth failed call of a task (D8); the task is given up after `GIVE_UP` failed calls.
+/// Back-off after the Nth failed call of a task (D8); the task is given up after `GIVE_UP` failed calls (shared
+/// with Home, which counts given-up tasks out of "waiting").
 const BACKOFF_MS: [i64; 5] = [3_600_000, 6 * 3_600_000, DAY_MS, DAY_MS, DAY_MS];
-const GIVE_UP: usize = 6;
 const LOG_MAX: u64 = 256 * 1024;
 const CLAUDE: &str = "claude-code";
 const COPILOT: &str = "copilot-cli";
@@ -437,8 +438,15 @@ pub struct Settings {
     pub mode: Option<String>,
     pub daily_tasks: u32,
     pub claude_model: String,
+    /// The model the person named (None: Copilot's own pick, or AIQ's default when `copilot_default`).
     pub copilot_model: Option<String>,
+    /// No Copilot model set: analysis uses `rung::DEFAULT_COPILOT_MODEL`, falling back to Copilot's own pick.
+    pub copilot_default: bool,
     pub keep_copilot_sessions: bool,
+    /// Answers each task needs (1 or 2, `SETTING_CALLS`).
+    pub calls: u8,
+    /// Copilot's second call: a model id, or None for the first call's model (`same`).
+    pub copilot_second_model: Option<String>,
 }
 
 pub fn settings(store: &Store) -> Settings {
@@ -448,27 +456,52 @@ pub fn settings(store: &Store) -> Settings {
         daily_tasks: get(rung::SETTING_DAILY_TASKS).and_then(|v| v.parse().ok()).unwrap_or(rung::DEFAULT_DAILY_TASKS),
         claude_model: get(rung::SETTING_CLAUDE_MODEL).unwrap_or_else(|| rung::DEFAULT_CLAUDE_MODEL.into()),
         copilot_model: get(rung::SETTING_COPILOT_MODEL).filter(|m| m != "default"),
+        copilot_default: get(rung::SETTING_COPILOT_MODEL).is_none(),
         keep_copilot_sessions: get(rung::SETTING_COPILOT_SESSIONS).as_deref() == Some("keep"),
+        copilot_second_model: match get(rung::SETTING_COPILOT_SECOND_MODEL) {
+            None => Some(rung::DEFAULT_COPILOT_SECOND_MODEL.into()),
+            Some(m) if m == "same" => None,
+            Some(m) => Some(m),
+        },
+        calls: get(rung::SETTING_CALLS)
+            .and_then(|v| v.parse().ok())
+            .filter(|n| (1..=2).contains(n))
+            .unwrap_or(rung::DEFAULT_CALLS),
     }
 }
 
 /// The provider that already saw a task (US-5, T-B5-1). VS Code agent mode fires Copilot's hooks (J1).
 pub fn provider_for(tool: &str) -> Option<&'static str> {
-    match tool {
-        "claude-code" => Some(CLAUDE),
-        "copilot-cli" | "vscode" => Some(COPILOT),
-        _ => None,
-    }
+    aiq_home::analysis_provider(tool)
 }
 
 fn current_version(j: &JudgmentRow) -> bool {
     let rubric = j.rubric_version == rung::RUBRIC_VERSION
         || (rung::RUBRIC_VERSIONS_KEPT.contains(&j.rubric_version.as_str())
             && !rung::rubric_changes(&j.facts, aiq_contracts::judge::parse_read(&j.read).reprompts));
-    j.fact_set_version == rung::FACT_SET_VERSION
+    let fact_set = j.fact_set_version == rung::FACT_SET_VERSION
+        || (rung::FACT_SET_VERSIONS_KEPT.contains(&j.fact_set_version.as_str())
+            && !rung::fact_set_may_change(&j.facts));
+    fact_set
         && rubric
         && (j.judge_version == rung::JUDGE_VERSION
             || (rung::JUDGE_VERSIONS_KEPT.contains(&j.judge_version.as_str()) && j.job != "unclassified"))
+}
+
+/// A judgment outdated only because its kept fact set's log facts may read differently, whose task today has
+/// every turn's actions recorded (so no fact turns unknown) and gives the same F3: restamped at the current fact
+/// set without a model call (the model read the same envelope). None when a judge call is needed.
+pub fn restamp(j: &JudgmentRow, log: &rung::LogFacts) -> Option<JudgmentRow> {
+    let fresh = JudgmentRow { fact_set_version: rung::FACT_SET_VERSION.into(), ..j.clone() };
+    if current_version(j)
+        || !rung::FACT_SET_VERSIONS_KEPT.contains(&j.fact_set_version.as_str())
+        || !current_version(&fresh)
+    {
+        return None;
+    }
+    let stored = aiq_contracts::judge::parse_stored_facts(&j.facts).remove("F3").and_then(|f| f.checker);
+    (log.unrecorded == 0 && stored.as_deref() == log.checks_by.map(rung::Checker::as_str))
+        .then(|| JudgmentRow { judgment_id: uuid::Uuid::now_v7().to_string(), ..fresh })
 }
 
 /// Tasks to judge now, best first: closed, not judged at the current versions, not waiting out a retry,
@@ -568,9 +601,18 @@ fn transcript(homes: &Homes, tool: &str, session: &str) -> Option<import::Parsed
     }
 }
 
-/// The task's turns (prompt text and the agent's actions after it) and whether actions were available.
-/// Text the person deleted is skipped; an empty result means there is nothing left to judge.
-pub fn task_turns(store: &Store, homes: &Homes, t: &TaskRow) -> aiq_store::Result<(Vec<Turn>, bool)> {
+/// `import:{tool}:{source session id}:{seq}`, as the task list names imported prompts. Session ids may hold `:`.
+fn import_key(id: &str) -> Option<(&str, &str, i64)> {
+    let (tool, rest) = id.strip_prefix("import:")?.split_once(':')?;
+    let (sid, seq) = rest.rsplit_once(':')?;
+    Some((tool, sid, seq.parse().ok()?))
+}
+
+/// The task's turns (prompt text and the agent's actions after it). A turn's actions are `None` when AIQ did not
+/// record them (no stop row, no transcript, no matching prompt in it): unknown, never "the agent did nothing".
+/// A turn read with no tool calls is `Some` and empty. Text the person deleted is skipped; an empty result means
+/// there is nothing left to judge.
+pub fn task_turns(store: &Store, homes: &Homes, t: &TaskRow) -> aiq_store::Result<Vec<Turn>> {
     let c = store.raw();
     if t.origin == "imported" {
         let mut turns = Vec::new();
@@ -588,41 +630,47 @@ pub fn task_turns(store: &Store, homes: &Homes, t: &TaskRow) -> aiq_store::Resul
                 )
                 .ok()
                 .flatten();
-            let actions: Option<String> = c
+            // The stop row after the prompt: present means the import read the turn (NULL = no tool calls).
+            let stop: Option<Option<String>> = c
                 .query_row(
                     "SELECT actions FROM import_event WHERE tool = ?1 AND source_session_id = ?2 AND seq = ?3 AND kind = 'stop'",
                     rusqlite::params![tool, sid, seq + 1],
                     |r| r.get(0),
                 )
-                .ok()
-                .flatten();
+                .ok();
             if let Some(text) = text.filter(|t| !t.trim().is_empty()) {
-                turns.push(Turn { at_ms: *at, prompt: text, actions: actions.and_then(|a| ActionSummary::parse(&a)) });
+                turns.push(Turn { at_ms: *at, prompt: text, actions: stop.and_then(read_actions) });
             }
         }
-        return Ok((turns, true));
+        return Ok(turns);
     }
     let mut turns = Vec::new();
     for (id, at) in &t.members {
-        let text: Option<String> = c.query_row("SELECT text FROM content WHERE event_id = ?1", [id], |r| r.get(0)).ok();
+        // A live session's prompts the hooks missed come from its imported copy (aiq-home twins.rs).
+        let text: Option<String> = match import_key(id) {
+            Some((tool, sid, seq)) => c
+                .query_row(
+                    "SELECT text FROM import_event WHERE tool = ?1 AND source_session_id = ?2 AND seq = ?3",
+                    rusqlite::params![tool, sid, seq],
+                    |r| r.get(0),
+                )
+                .ok()
+                .flatten(),
+            None => c.query_row("SELECT text FROM content WHERE event_id = ?1", [id], |r| r.get(0)).ok(),
+        };
         if let Some(text) = text.filter(|t| !t.trim().is_empty()) {
             turns.push(Turn { at_ms: *at, prompt: text, actions: None });
         }
     }
     // Live events carry no actions: read them from the tool's own transcript, matching each prompt to the
     // transcript prompt nearest in time (within 2 minutes).
-    let Some(p) = transcript(homes, &t.tool, &t.session) else { return Ok((turns, false)) };
+    let Some(p) = transcript(homes, &t.tool, &t.session) else { return Ok(turns) };
     let mut tx: Vec<(i64, Option<ActionSummary>)> = Vec::new();
     for (i, ev) in p.events.iter().enumerate() {
         if ev.kind == "prompt"
             && let Some(ts) = ev.ts_utc_ms
         {
-            let acts = p
-                .events
-                .get(i + 1)
-                .filter(|n| n.kind == "stop")
-                .and_then(|n| n.actions.as_deref())
-                .and_then(ActionSummary::parse);
+            let acts = p.events.get(i + 1).filter(|n| n.kind == "stop").and_then(|n| read_actions(n.actions.clone()));
             tx.push((ts, acts));
         }
     }
@@ -633,7 +681,15 @@ pub fn task_turns(store: &Store, homes: &Homes, t: &TaskRow) -> aiq_store::Resul
             turn.actions = a.clone();
         }
     }
-    Ok((turns, true))
+    Ok(turns)
+}
+
+/// A read turn's stored actions: none stored means the reader saw no tool calls; unparseable means unknown.
+fn read_actions(stored: Option<String>) -> Option<ActionSummary> {
+    match stored {
+        None => Some(ActionSummary::default()),
+        Some(a) => ActionSummary::parse(&a),
+    }
 }
 
 // ------------------------------------------------------------------ one task
@@ -656,7 +712,9 @@ fn same_job_recent(judged: &HashMap<String, JudgmentRow>, job: &str, now_ms: i64
     judged.values().filter(|j| j.job == job && j.judged_utc_ms >= now_ms - 30 * DAY_MS).count() as u32
 }
 
-/// Judge one task: two runs through `provider`, then placement. Returns None when no run answered.
+/// Judge one task: `calls` answers (1 or 2) through `provider` (the second through `second` when given), then
+/// placement. Returns None when no run
+/// answered. With one call a failed call is tried once more, so a task never costs more than two calls.
 /// Every call is recorded, answered or not.
 #[allow(clippy::too_many_arguments)]
 pub fn judge_task(
@@ -666,11 +724,12 @@ pub fn judge_task(
     provider_name: &str,
     t: &TaskRow,
     turns: &[Turn],
-    actions_known: bool,
     judged: &HashMap<String, JudgmentRow>,
     reprompt: &aiq_contracts::pack::RepromptParams,
+    calls: u8,
+    second: Option<&dyn Provider>,
 ) -> aiq_store::Result<(Option<Judged>, Vec<CallResult>)> {
-    let log = rung::log_facts(turns, actions_known);
+    let log = rung::log_facts(turns);
     let fence = format!("AIQ-QUOTE-{}", uuid::Uuid::new_v4().simple());
     let user = rung::envelope(&t.tool, turns, &log, &fence);
     let schema = response_schema();
@@ -679,6 +738,9 @@ pub fn judge_task(
     let mut call_ids = Vec::new();
     let mut model = None;
     for run in 1..=2u8 {
+        if runs.len() >= calls as usize {
+            break;
+        }
         let session_id = uuid::Uuid::new_v4().to_string();
         if provider_name == COPILOT && record_judge_session(paths, &session_id).is_err() {
             // Never start a Copilot call AIQ could later mistake for the person's own session (US-11).
@@ -686,7 +748,9 @@ pub fn judge_task(
         }
         let started = now_ms();
         let mut r =
-            provider.call(&CallReq { system: rung::SYSTEM, user: &user, schema: &schema, session_id: &session_id });
+            // Two calls: the second goes to `second` when there is one (a different model; design one-call-analysis).
+            if run == 2 && calls == 2 { second.unwrap_or(provider) } else { provider }
+                .call(&CallReq { system: rung::SYSTEM, user: &user, schema: &schema, session_id: &session_id });
         if let Outcome::Ok(v) = &r.outcome {
             match parse_response(v.clone()) {
                 Ok(resp) => runs.push(resp),
@@ -724,12 +788,12 @@ pub fn judge_task(
     }
     let job = runs[0].job.clone();
     let (facts, mut p) = rung::place(&runs, &log, same_job_recent(judged, &job, now_ms()));
-    if runs.len() < 2 {
-        // Consistency needs two runs; one answer is shown, never coached.
+    if runs.len() < calls as usize {
+        // Asked for two answers and got one: no consistency check, so shown, never coached.
         p.uncertain = true;
         p.coachable = false;
         p.state = rung::State::Uncertain;
-        p.notes.push("Only one of the two judge runs answered, so AIQ marks this uncertain.".into());
+        p.notes.push("Only one of the two analysis runs answered, so AIQ marks this uncertain.".into());
         p.evidence.push(p.notes.last().cloned().unwrap_or_default());
     }
     let facts_json: serde_json::Map<String, Value> = facts
@@ -802,6 +866,8 @@ pub struct Report {
     pub uncertain: u32,
     pub failed: u32,
     pub skipped_no_text: u32,
+    /// Outdated only by the fact set, same log facts today: restamped without a model call.
+    pub restamped: u32,
     pub waiting: u32,
     pub budget_left: u32,
     /// Providers that could not be used this run, with why.
@@ -815,6 +881,8 @@ pub struct Run<'a> {
     pub homes: &'a Homes,
     pub claude: &'a dyn Provider,
     pub copilot: &'a dyn Provider,
+    /// Copilot's second call, when it goes to a different model.
+    pub copilot_second: Option<&'a dyn Provider>,
     pub now: Now,
     pub max: Option<u32>,
     /// `--only claude-code|copilot-cli`: judge only tasks that go to this provider.
@@ -845,20 +913,27 @@ pub fn run(r: &Run<'_>) -> Result<Report, String> {
             rep.waiting += 1;
             continue;
         }
-        let (turns, known) = task_turns(r.store, r.homes, t).map_err(|e| e.to_string())?;
+        let turns = task_turns(r.store, r.homes, t).map_err(|e| e.to_string())?;
         if turns.is_empty() {
             rep.skipped_no_text += 1;
             continue;
         }
-        let provider = if name == CLAUDE { r.claude } else { r.copilot };
-        let (j, results) = judge_task(r.store, r.paths, provider, name, t, &turns, known, &judged_now, &pack.reprompt)
-            .map_err(|e| e.to_string())?;
+        if let Some(row) = judged_now.get(&t.task_id).and_then(|j| restamp(j, &rung::log_facts(&turns))) {
+            r.store.insert_judgment(&row).map_err(|e| e.to_string())?;
+            judged_now.insert(t.task_id.clone(), row);
+            rep.restamped += 1;
+            continue;
+        }
+        let (provider, second) = if name == CLAUDE { (r.claude, None) } else { (r.copilot, r.copilot_second) };
+        let (j, results) =
+            judge_task(r.store, r.paths, provider, name, t, &turns, &judged_now, &pack.reprompt, set.calls, second)
+                .map_err(|e| e.to_string())?;
         allowed -= 1;
         rep.budget_left = rep.budget_left.saturating_sub(1);
         rep.cost_usd += results.iter().filter_map(|c| c.cost_usd).sum::<f64>();
         let line = match &j {
             Some(j) => format!(
-                "judged {} {} rung={} potential={} state={} ms={}",
+                "analyzed {} {} rung={} potential={} state={} ms={}",
                 t.task_id,
                 name,
                 j.row.current_rung,
@@ -1026,29 +1101,31 @@ pub fn turn_on_at_install(store: &Store, now_ms: i64) -> Result<AtInstall, Strin
 pub fn at_install_text(r: AtInstall, daily_tasks: u32) -> String {
     match r {
         AtInstall::TurnedOn => format!(
-            "Judging: turned on. {DISCLOSURE}\nAIQ judges up to {daily_tasks} new tasks a day in the background.\n\
-             Undo: aiq config set judge off (or Settings > Judging in AIQ home)\n"
+            "Analysis: turned on. {DISCLOSURE}\nAIQ analyzes up to {daily_tasks} new tasks a day in the background.\n\
+             Undo: aiq config set analysis off (or Settings > Analysis in AIQ home)\n"
         ),
         AtInstall::AlreadyOn => {
-            format!("Judging is already on (up to {daily_tasks} tasks a day). Turn it off: aiq config set judge off\n")
+            format!(
+                "Analysis is already on (up to {daily_tasks} tasks a day). Turn it off: aiq config set analysis off\n"
+            )
         }
-        AtInstall::KeptOff => "Judging stays off, as you set it. Turn it on: aiq config set judge auto\n".into(),
+        AtInstall::KeptOff => "Analysis stays off, as you set it. Turn it on: aiq config set analysis auto\n".into(),
     }
 }
 
 // ------------------------------------------------------------------ CLI
 
 pub(crate) const DISCLOSURE: &str =
-    "AIQ judges each task you finish with AI: the rung it was done at and the next step.
+    "AIQ analyzes each task you finish with AI: the rung it was done at and the next step.
 What is sent: the task's prompts and a summary of what the agent did (tools, files, commands). Never your
 own edits or diffs. Where: only to the tool that already saw the task, through your own sign-in:
   Claude Code tasks -> your Claude Code (`claude -p`, no tools, no hooks, no saved session)
   Copilot tasks     -> your Copilot CLI (no tools, none of your plugins or MCP servers; it runs in AIQ's
                       own folder, which AIQ deletes after each call unless you keep them:
-                      aiq config set judge-copilot-sessions keep)
+                      aiq config set analysis-copilot-sessions keep)
 When AIQ can't tell what kind of task you just started, it sends that task's first prompt once, the same
 way, to a small model, so a tip can show when your turn ends (up to 20 a day; aiq config set kind-label off).
-Judge calls use your plan's usage (two calls per task). A work account's admin policies, logging and
+Analysis calls use your plan's usage (two calls per task). A work account's admin policies, logging and
 retention apply to them. AIQ never reads or stores your sign-in.";
 
 fn now() -> Now {
@@ -1069,7 +1146,141 @@ pub(crate) fn providers(paths: &Paths, set: &Settings) -> (ClaudeCli, CopilotCli
     )
 }
 
+/// The models a Copilot task's second call tries: the second model, then the first call's models. None when
+/// the second call uses the first call's model (`same`), or names it.
+pub(crate) fn analysis_copilot_second_models(set: &Settings) -> Option<Vec<Option<String>>> {
+    let first = analysis_copilot_models(set);
+    let m = set.copilot_second_model.clone()?;
+    (first.first() != Some(&Some(m.clone()))).then(|| std::iter::once(Some(m)).chain(first).collect())
+}
+
+/// The Copilot models analysis tries, in order: the person's choice alone, else AIQ's default model then
+/// Copilot's own pick.
+pub(crate) fn analysis_copilot_models(set: &Settings) -> Vec<Option<String>> {
+    if set.copilot_default {
+        vec![Some(rung::DEFAULT_COPILOT_MODEL.into()), None]
+    } else {
+        vec![set.copilot_model.clone()]
+    }
+}
+
+/// Analysis through Copilot: AIQ's default model, falling back to Copilot's own pick when it is not offered
+/// (for the rest of the run) or a call to it fails (for that call). The model that answered is recorded on
+/// every call and judgment, and shown on the task page.
+fn analysis_copilot<'a>(
+    base: &'a CopilotCli,
+    models: Vec<Option<String>>,
+) -> ModelChain<impl Fn(Option<&str>, &CallReq<'_>) -> CallResult + 'a> {
+    ModelChain {
+        models,
+        at: std::cell::Cell::new(0),
+        on_error: true,
+        call: move |m: Option<&str>, req: &CallReq<'_>| {
+            CopilotCli {
+                exe: base.exe.clone(),
+                model: m.map(str::to_owned),
+                work: base.work.clone(),
+                keep_sessions: base.keep_sessions,
+            }
+            .call(req)
+        },
+    }
+}
+
 /// `aiq judge [--max <n>] [--only claude-code|copilot-cli] [--dry-run] [--auto]`
+/// `aiq judge --versions`: read-only. How the current judgments stand against today's versions: current,
+/// restamped without a model call, or judged again (by tool), and how many were judged with no agent actions
+/// in the log (their F1 and F3 read "no" from missing data).
+fn versions_cli(store: &Store, homes: &Homes) -> ExitCode {
+    let Ok(pack) = aiq_core::pack::parse(aiq_core::pack::BUNDLED_TOML) else { return ExitCode::FAILURE };
+    let Ok(tasks) = aiq_home::tasks(store, &pack, 0) else { return ExitCode::FAILURE };
+    let Ok(judged) = store.current_judgments() else { return ExitCode::FAILURE };
+    let n = now();
+    let calls = store.judge_calls_since(n.utc_ms - 7 * DAY_MS).unwrap_or_default();
+    // The same queue `run` walks, so "judged again" counts only tasks a run would send to the model.
+    let queued: HashSet<&str> = queue(&tasks, &judged, &calls, n.utc_ms, pack.idle_gap_min as i64 * 60_000, None)
+        .iter()
+        .map(|t| t.task_id.as_str())
+        .collect();
+    let (mut current, mut restamped, mut no_actions, mut no_text, mut held) = (0, 0, 0, 0, 0);
+    let mut again: BTreeMap<String, u32> = BTreeMap::new();
+    let mut why_again: BTreeMap<String, u32> = BTreeMap::new();
+    let mut rules_now: BTreeMap<&str, u32> = BTreeMap::new();
+    for t in &tasks {
+        let Some(j) = judged.get(&t.task_id) else { continue };
+        let read: Value = serde_json::from_str(&j.read).unwrap_or_default();
+        if read["actions"] == Value::Bool(false) {
+            no_actions += 1;
+        }
+        if current_version(j) {
+            current += 1;
+            continue;
+        }
+        if !queued.contains(t.task_id.as_str()) {
+            held += 1;
+            continue;
+        }
+        let turns = task_turns(store, homes, t).unwrap_or_default();
+        if turns.is_empty() {
+            no_text += 1;
+        } else {
+            let log = rung::log_facts(&turns);
+            if restamp(j, &log).is_some() {
+                restamped += 1;
+            } else {
+                *again.entry(t.tool.clone()).or_default() += 1;
+                // Why: the stored F3 against today's, and whether a turn is now "not recorded".
+                let was = aiq_contracts::judge::parse_stored_facts(&j.facts).remove("F3").and_then(|f| f.checker);
+                let why = format!(
+                    "{} {}: F3 {} -> {}{}",
+                    t.tool,
+                    j.fact_set_version,
+                    was.as_deref().unwrap_or("unknown"),
+                    log.checks_by.map_or("unknown", rung::Checker::as_str),
+                    if log.unrecorded > 0 { ", a turn not recorded" } else { "" }
+                );
+                *why_again.entry(why).or_default() += 1;
+                if was.as_deref() != Some("agent") && log.checks_by == Some(rung::Checker::Agent) {
+                    // Which rule now reads a check: rule names only, never the command (it is the person's).
+                    let rules: BTreeSet<&str> = turns
+                        .iter()
+                        .filter_map(|t| t.actions.as_ref())
+                        .flat_map(|a| a.commands.iter())
+                        .filter_map(|c| rung::check_rule(c))
+                        .collect();
+                    for r in rules {
+                        *rules_now.entry(r).or_default() += 1;
+                    }
+                }
+            }
+        }
+    }
+    println!(
+        "Analyses: {} (fact set {}, rubric {}, analysis {})",
+        current + restamped + no_text + held + again.values().sum::<u32>(),
+        rung::FACT_SET_VERSION,
+        rung::RUBRIC_VERSION,
+        rung::JUDGE_VERSION
+    );
+    println!("  current: {current}\n  kept without a model call: {restamped}");
+    for (tool, n) in &again {
+        println!("  analyzed again ({tool}): {n}");
+    }
+    for (why, n) in &why_again {
+        println!("    {why}: {n}");
+    }
+    if !rules_now.is_empty() {
+        println!("  tasks whose F3 now reads agent, by the rule that matched (a task can count under several):");
+        for (r, n) in &rules_now {
+            println!("    {r}: {n}");
+        }
+    }
+    println!("  outdated, no prompt text left (never sent): {no_text}");
+    println!("  outdated, not queued (still open, or gave up after {GIVE_UP} failures): {held}");
+    println!("  analyzed with no agent actions in the log: {no_actions}");
+    ExitCode::SUCCESS
+}
+
 pub fn cli(args: &[&str]) -> ExitCode {
     let paths = Paths::from_env();
     let auto = args.contains(&"--auto");
@@ -1086,7 +1297,7 @@ pub fn cli(args: &[&str]) -> ExitCode {
     }
     if aiq_core::control::is_paused(&paths) {
         if !auto {
-            println!("AIQ is paused, so it isn't judging. Resume with: aiq resume");
+            println!("AIQ is paused, so it isn't analyzing. Resume with: aiq resume");
         }
         return ExitCode::SUCCESS;
     }
@@ -1106,12 +1317,15 @@ pub fn cli(args: &[&str]) -> ExitCode {
     }
     let homes = Homes::from_env();
     let n = now();
+    if args.contains(&"--versions") {
+        return versions_cli(&store, &homes);
+    }
     if dry {
         return dry_run(&store, &homes, n, only);
     }
     let Some(_lock) = Lock::take(lock_path(&paths)) else {
         if !auto {
-            println!("AIQ is already judging in the background. Try again in a few minutes.");
+            println!("AIQ is already analyzing in the background. Try again in a few minutes.");
         }
         return ExitCode::SUCCESS;
     };
@@ -1127,17 +1341,21 @@ pub fn cli(args: &[&str]) -> ExitCode {
         println!("{DISCLOSURE}\n");
         let _ = store.set_setting(rung::SETTING_JUDGE, "auto", n.utc_ms);
         println!(
-            "From now on AIQ judges new tasks in the background, up to {} a day. Turn it off: aiq config set judge off\n",
+            "From now on AIQ analyzes new tasks in the background, up to {} a day. Turn it off: aiq config set analysis off\n",
             set.daily_tasks
         );
     }
     let (claude, copilot) = providers(&paths, &set);
+    let second_models = analysis_copilot_second_models(&set);
+    let copilot_second = second_models.map(|m| analysis_copilot(&copilot, m));
+    let copilot = analysis_copilot(&copilot, analysis_copilot_models(&set));
     let rep = run(&Run {
         store: &store,
         paths: &paths,
         homes: &homes,
         claude: &claude,
         copilot: &copilot,
+        copilot_second: copilot_second.as_ref().map(|p| p as &dyn Provider),
         now: n,
         max,
         only,
@@ -1156,24 +1374,27 @@ pub fn cli(args: &[&str]) -> ExitCode {
         }
         Err(e) => {
             let _ = bounded_append(&paths.data.join("judge.log"), &format!("error {e}"), LOG_MAX);
-            eprintln!("AIQ could not judge: {e}");
+            eprintln!("AIQ could not analyze: {e}");
             ExitCode::from(1)
         }
     }
 }
 
 pub fn render(rep: &Report, daily: u32) -> String {
-    let mut o = format!("Judged {} task{}", rep.judged, if rep.judged == 1 { "" } else { "s" });
+    let mut o = format!("Analyzed {} task{}", rep.judged, if rep.judged == 1 { "" } else { "s" });
     if rep.uncertain > 0 {
         o += &format!(" ({} uncertain: shown, never coached)", rep.uncertain);
     }
     o += ".\n";
     if rep.failed > 0 {
-        o += &format!("{} could not be judged this time; AIQ tries again later.\n", rep.failed);
+        o += &format!("{} could not be analyzed this time; AIQ tries again later.\n", rep.failed);
+    }
+    if rep.restamped > 0 {
+        o += &format!("{} kept their analysis: today's rules read them the same, so no model call.\n", rep.restamped);
     }
     if rep.skipped_no_text > 0 {
         o += &format!(
-            "{} had no prompt text left (you deleted it), so there is nothing to judge.\n",
+            "{} had no prompt text left (you deleted it), so there is nothing to analyze.\n",
             rep.skipped_no_text
         );
     }
@@ -1182,7 +1403,7 @@ pub fn render(rep: &Report, daily: u32) -> String {
     }
     if rep.waiting > 0 {
         o += &format!(
-            "{} more wait{} for tomorrow's budget ({daily} tasks a day; change it: aiq config set judge-daily-tasks <n>).\n",
+            "{} more wait{} for tomorrow's budget ({daily} tasks a day; change it: aiq config set analysis-daily-tasks <n>).\n",
             rep.waiting,
             if rep.waiting == 1 { "s" } else { "" }
         );
@@ -1210,14 +1431,14 @@ fn dry_run(store: &Store, homes: &Homes, n: Now, only: Option<&str>) -> ExitCode
     let used = tasks_today(&calls, n.local_midnight_utc_ms()) as u32;
     println!("{DISCLOSURE}\n");
     println!(
-        "{} tasks are waiting to be judged; today's budget has {} of {} left. Nothing was sent.",
+        "{} tasks are waiting to be analyzed; today's budget has {} of {} left. Nothing was sent.",
         q.len(),
         set.daily_tasks.saturating_sub(used),
         set.daily_tasks
     );
     if let Some(t) = q.first() {
-        let (turns, known) = task_turns(store, homes, t).unwrap_or_default();
-        let log = rung::log_facts(&turns, known);
+        let turns = task_turns(store, homes, t).unwrap_or_default();
+        let log = rung::log_facts(&turns);
         println!(
             "\nThe next task ({}, {}) would be sent to your {} like this:\n",
             t.task_id,
@@ -1331,12 +1552,12 @@ pub fn run_survey(
         let Some(j) = store.judgment(jid).map_err(|e| e.to_string())? else { continue };
         let Some(t) = by_id.get(j.task_id.as_str()) else { continue };
         let Some(name) = provider_for(&t.tool) else { continue };
-        let (turns, known) = task_turns(store, homes, t).map_err(|e| e.to_string())?;
+        let turns = task_turns(store, homes, t).map_err(|e| e.to_string())?;
         if turns.is_empty() {
             out.failed += 1;
             continue;
         }
-        let log = rung::log_facts(&turns, known);
+        let log = rung::log_facts(&turns);
         let fence = format!("AIQ-QUOTE-{}", uuid::Uuid::new_v4().simple());
         let user = rung::envelope(&t.tool, &turns, &log, &fence);
         let session_id = uuid::Uuid::new_v4().to_string();
@@ -1360,7 +1581,7 @@ pub fn run_survey(
 /// Kinds with counts, most first; up to five distinct labels each.
 pub fn survey_report(s: &Survey) -> String {
     let mut o = format!(
-        "What your tasks with no job are (both judge runs said other). Read by the tool that already saw each, \
+        "What your tasks with no job are (both analyze runs said other). Read by the tool that already saw each, \
 not by you (Inferred). {} of {} sampled answered:\n",
         s.of - s.failed as usize,
         s.of
@@ -1406,7 +1627,7 @@ Nothing was sent."
         return ExitCode::SUCCESS;
     }
     let Some(_lock) = Lock::take(lock_path(paths)) else {
-        println!("AIQ is judging in the background. Try again in a few minutes.");
+        println!("AIQ is analyzing in the background. Try again in a few minutes.");
         return ExitCode::SUCCESS;
     };
     let set = settings(store);
@@ -1458,10 +1679,12 @@ fn check_copilot_models(chosen: Option<String>, judge_models: &HashSet<String>) 
 }
 
 /// Calls through the first model that is offered; on "not available" moves to the next for the rest of the
-/// run (each miss costs Copilot's ~8 s refusal once, not once per task).
+/// run (each miss costs Copilot's ~8 s refusal once, not once per task). With `on_error`, a call that fails
+/// with an error is tried once on the next model too (timeouts and sign-in are not: the next would fail alike).
 struct ModelChain<F: Fn(Option<&str>, &CallReq<'_>) -> CallResult> {
     models: Vec<Option<String>>,
     at: std::cell::Cell<usize>,
+    on_error: bool,
     call: F,
 }
 
@@ -1473,6 +1696,9 @@ impl<F: Fn(Option<&str>, &CallReq<'_>) -> CallResult> Provider for ModelChain<F>
             if i + 1 < self.models.len() && model_not_available(&r.outcome) {
                 self.at.set(i + 1);
                 continue;
+            }
+            if self.on_error && i + 1 < self.models.len() && matches!(r.outcome, Outcome::Error(_)) {
+                return (self.call)(self.models[i + 1].as_deref(), req);
             }
             return r;
         }
@@ -1528,7 +1754,7 @@ fn check_candidates(
 fn no_job_group(j: &JudgmentRow) -> &'static str {
     match job_runs(j) {
         Some(r) => rung::no_job_cause(&r).map_or("no cause found", |c| c.words()),
-        None => "not recorded yet (judged before AIQ kept each run's pick)",
+        None => "not recorded yet (analyzed before AIQ kept each run's pick)",
     }
 }
 
@@ -1574,12 +1800,12 @@ pub fn run_check(
             rep.failed += 1;
             continue;
         }
-        let (turns, known) = task_turns(store, homes, t).map_err(|e| e.to_string())?;
+        let turns = task_turns(store, homes, t).map_err(|e| e.to_string())?;
         if turns.is_empty() {
             rep.skipped_no_text += 1;
             continue;
         }
-        let log = rung::log_facts(&turns, known);
+        let log = rung::log_facts(&turns);
         let fence = format!("AIQ-QUOTE-{}", uuid::Uuid::new_v4().simple());
         let user =
             rung::envelope_within(&t.tool, &turns, &log, &fence, rung::CHECK_PROMPT_CAP, rung::CHECK_ENVELOPE_CAP);
@@ -1668,7 +1894,7 @@ fn type_runs(j: &JudgmentRow) -> Option<Vec<rung::TypeRun>> {
 /// stored confidence can say (the merge keeps the lower run's confidence, so below the bar = not confident).
 fn kind_other_words(j: &JudgmentRow) -> &'static str {
     match type_runs(j) {
-        Some(r) => rung::kind_other_cause(&j.job, &r).map_or("both runs said other", |c| c.words()),
+        Some(r) => rung::kind_other_cause(&j.job, &r).map_or("the analysis said other", |c| c.words()),
         None if j.task_type_confidence.is_some_and(|c| c < rung::TASK_TYPE_THRESHOLD) => {
             "not confident (runs not kept)"
         }
@@ -1722,14 +1948,14 @@ fn kind_report(store: &Store) -> aiq_store::Result<String> {
     if !fallback.is_empty() {
         let w: Vec<String> =
             fallback.iter().map(|(k, c)| format!("{k} {} (second reading also other {})", c.n, c.k)).collect();
-        o += &format!("    Judge's kind was other because: {}\n", w.join("; "));
+        o += &format!("    The analysis named a kind of other because: {}\n", w.join("; "));
     }
     if !named_misses.is_empty() {
         let w: Vec<String> = named_misses.iter().map(|(k, n)| format!("{k} {n}")).collect();
-        o += &format!("    Judge named a kind, second reading named another: {}\n", w.join("; "));
+        o += &format!("    The analysis named a kind, the second reading named another: {}\n", w.join("; "));
     }
     if with_runs == 0 {
-        o += "    Rules for a kind of other: not measured yet (needs tasks judged by this build, then a check)\n";
+        o += "    Rules for a kind of other: not measured yet (needs tasks analyzed by this build, then a check)\n";
     } else {
         o += &format!(
             "    Rules for a kind of other (not in use; on the {with_runs} checks whose runs were kept, before -> after):\n"
@@ -1773,7 +1999,7 @@ pub fn check_report(store: &Store) -> aiq_store::Result<String> {
         }
     }
     o += &format!(
-        "  No job (judge said other, or its two runs disagreed; never coached): {} of {}\n",
+        "  No job (the analysis said other, or its two runs disagreed; never coached): {} of {}\n",
         no_job.k, no_job.n
     );
     // Why each no-job judgment has none (design no-job-tasks N1; recorded from judge j4 on).
@@ -1799,7 +2025,7 @@ pub fn check_report(store: &Store) -> aiq_store::Result<String> {
             guess.add(j.job == g.job && j.task_type.as_deref() == Some(g.task_type.as_str()));
         }
     }
-    o += &format!("  Live kind-of-task guess matched the judge: {}\n", guess.show());
+    o += &format!("  Live kind-of-task guess matched the analysis: {}\n", guess.show());
     // N4: answers to tips.
     let mut answers: std::collections::BTreeMap<String, u32> = Default::default();
     for f in store.tip_feedback_all()? {
@@ -1813,7 +2039,7 @@ pub fn check_report(store: &Store) -> aiq_store::Result<String> {
     );
 
     let Some(run) = store.latest_check_run()? else {
-        o += "\nNo accuracy check yet. Run: aiq judge --check --dry-run, then aiq judge --check\n";
+        o += "\nNo accuracy check yet. Run: aiq analyze --check --dry-run, then aiq analyze --check\n";
         return Ok(o);
     };
     let checks = store.checks_of_run(&run.run_id)?;
@@ -1856,14 +2082,14 @@ pub fn check_report(store: &Store) -> aiq_store::Result<String> {
     );
     if same_model > 0 {
         o += &format!(
-            "  Note: on {same_model} of them the second reader was the same model as the judge, so agreement reads high.\n"
+            "  Note: on {same_model} of them the second reader was the same model as the analysis, so agreement reads high.\n"
         );
     }
     o += &format!("  Job: {}\n", ag.job.show());
     if !ag.no_job_read_as.is_empty() {
         let picks: Vec<String> = ag.no_job_read_as.iter().map(|(j, n)| format!("{j} {n}")).collect();
         let total: u32 = ag.no_job_read_as.values().sum();
-        o += &format!("    Where the judge gave no job ({total}), the second reading said: {}\n", picks.join(", "));
+        o += &format!("    Where the analysis gave no job ({total}), the second reading said: {}\n", picks.join(", "));
         for (cause, said) in &no_job_said {
             let p: Vec<String> = said.iter().map(|(j, n)| format!("{j} {n}")).collect();
             o += &format!("      {cause}: {}\n", p.join(", "));
@@ -1872,7 +2098,7 @@ pub fn check_report(store: &Store) -> aiq_store::Result<String> {
     // Candidate rules for no-job tasks (design no-job-tasks R1-R2): measured here, not in use.
     let no_job_rows: Vec<&JudgmentRow> = judged.values().filter(|j| j.job == "unclassified").collect();
     if no_job_rows.iter().any(|j| job_runs(j).is_some()) {
-        o += "  Rules AIQ could use for tasks with no job (not in use; measured on your judgments):\n";
+        o += "  Rules AIQ could use for tasks with no job (not in use; measured on your analyses):\n";
         for (rule, words) in rung::CANDIDATE_RULES {
             let mut gives = 0u32;
             let mut agree = Count::default();
@@ -1897,18 +2123,18 @@ pub fn check_report(store: &Store) -> aiq_store::Result<String> {
     o += &kind_report(store)?;
     o += &format!("  Rung exact: {}\n", ag.rung_exact.show());
     o += &format!("  Rung within one: {}\n", ag.rung_within_one.show());
-    o += &format!("  Judge model's own rung exact (before AIQ's rules): {}\n", ag.model_rung_exact.show());
+    o += &format!("  Analysis model's own rung exact (before AIQ's rules): {}\n", ag.model_rung_exact.show());
     o += &format!(
-        "  Confident judgments only (the ones AIQ coaches): job {}; kind {}; rung exact {}\n",
+        "  Confident analyses only (the ones AIQ coaches): job {}; kind {}; rung exact {}\n",
         ag.confident_job.show(),
         ag.confident_type.show(),
         ag.confident_rung_exact.show()
     );
-    o += "  Facts (agree where both answered; can't settle; judge didn't know):\n";
+    o += "  Facts (agree where both answered; can't settle; analysis didn't know):\n";
     for id in aiq_contracts::check::FACTS {
         let t = ag.facts.get(id).copied().unwrap_or_default();
         o += &format!(
-            "    {id}: {}; can't settle {}; judge unknown {}\n",
+            "    {id}: {}; can't settle {}; analysis unknown {}\n",
             t.agree.show(),
             t.cant_settle,
             t.judge_unknown
@@ -2000,12 +2226,12 @@ fn check_cli(args: &[&str], paths: &Paths, store: &Store) -> ExitCode {
                 .count()
         };
         println!(
-            "AIQ would read {n} of your {} {} a second time, blind, through the tool that already saw each one:\n  Copilot: {} (about one premium request and ~11 s each, measured)\n  Claude Code: {} (billed to your Claude plan)\nIt picks them at random, spread across {}. The second reader is a different model from the same tool:\n  Claude Code: opus (check-claude-model to change)\n  Copilot: the first offered of gpt-6-astra, claude-sonnet-5.5, gpt-5.6-sol that the judge did not use (check-copilot-model to choose)\nNothing was sent.",
+            "AIQ would read {n} of your {} {} a second time, blind, through the tool that already saw each one:\n  Copilot: {} (about one premium request and ~11 s each, measured)\n  Claude Code: {} (billed to your Claude plan)\nIt picks them at random, spread across {}. The second reader is a different model from the same tool:\n  Claude Code: opus (check-claude-model to change)\n  Copilot: the first offered of gpt-6-astra, claude-sonnet-5.5, gpt-5.6-sol that the analysis did not use (check-copilot-model to choose)\nNothing was sent.",
             cands.len(),
             match scope {
-                CheckScope::All => "judged tasks".to_owned(),
-                CheckScope::NoJob => "judged tasks with no job".to_owned(),
-                CheckScope::Job(job) => format!("judged {job} tasks"),
+                CheckScope::All => "analyzed tasks".to_owned(),
+                CheckScope::NoJob => "analyzed tasks with no job".to_owned(),
+                CheckScope::Job(job) => format!("analyzed {job} tasks"),
             },
             by_tool(COPILOT),
             by_tool(CLAUDE),
@@ -2014,11 +2240,11 @@ fn check_cli(args: &[&str], paths: &Paths, store: &Store) -> ExitCode {
         return ExitCode::SUCCESS;
     }
     if n == 0 {
-        println!("No judged tasks yet, so there is nothing to check. AIQ judges new tasks in the background.");
+        println!("No analyzed tasks yet, so there is nothing to check. AIQ analyzes new tasks in the background.");
         return ExitCode::SUCCESS;
     }
     let Some(_lock) = Lock::take(lock_path(paths)) else {
-        println!("AIQ is judging in the background. Try again in a few minutes.");
+        println!("AIQ is analyzing in the background. Try again in a few minutes.");
         return ExitCode::SUCCESS;
     };
     let get = |k: &str| store.setting(k).ok().flatten();
@@ -2032,6 +2258,7 @@ fn check_cli(args: &[&str], paths: &Paths, store: &Store) -> ExitCode {
     let copilot = ModelChain {
         models: check_copilot_models(get(rung::SETTING_CHECK_COPILOT_MODEL), &judge_models),
         at: std::cell::Cell::new(0),
+        on_error: false,
         call: |m: Option<&str>, req: &CallReq<'_>| {
             CopilotCli {
                 exe: copilot.exe.clone(),
@@ -2043,7 +2270,7 @@ fn check_cli(args: &[&str], paths: &Paths, store: &Store) -> ExitCode {
         },
     };
     let seed = now_ms() as u64 ^ 0xA1C0_C4EC;
-    println!("Reading {n} judged tasks a second time. This takes about {} minutes.", (n * 12).div_ceil(60));
+    println!("Reading {n} analyzed tasks a second time. This takes about {} minutes.", (n * 12).div_ceil(60));
     match run_check(store, paths, &Homes::from_env(), &claude, &copilot, now_ms(), size, seed, scope) {
         Ok(r) => {
             for (p, why) in &r.unavailable {
@@ -2089,11 +2316,11 @@ mod tests {
         store.set_setting(rung::SETTING_JUDGE, "off", NOW + 2).unwrap();
         assert_eq!(turn_on_at_install(&store, NOW + 3).unwrap(), AtInstall::KeptOff);
         assert_eq!(settings(&store).mode.as_deref(), Some("off"), "a reinstall keeps it off");
-        let t = at_install_text(AtInstall::TurnedOn, 50);
+        let t = at_install_text(AtInstall::TurnedOn, rung::DEFAULT_DAILY_TASKS);
         assert!(
-            t.starts_with("Judging: turned on.") && t.contains("What is sent:") && t.contains("up to 50 new tasks")
+            t.starts_with("Analysis: turned on.") && t.contains("What is sent:") && t.contains("up to 500 new tasks")
         );
-        assert!(t.contains("Undo: aiq config set judge off"));
+        assert!(t.contains("Undo: aiq config set analysis off"));
     }
 
     #[test]
@@ -2269,11 +2496,53 @@ mod tests {
             homes: &e.homes,
             claude,
             copilot,
+            copilot_second: None,
             now: Now { utc_ms: NOW, offset_min: 0 },
             max,
             only,
         })
         .unwrap()
+    }
+
+    #[test]
+    fn a_session_held_live_and_imported_is_judged_once_with_every_prompt() {
+        let e = env();
+        // VS Code session sv, imported from Copilot's log: its copy of v1 (2 s later) and a prompt the hook missed.
+        let mut store = Store::open(&e.paths.db()).unwrap();
+        let at = NOW - 2 * 60 * MIN;
+        let ev = |ts: i64, text: &str| ImportedEvent {
+            kind: "prompt".into(),
+            ts_utc_ms: Some(ts),
+            text: Some(text.into()),
+            actions: None,
+        };
+        let session = ImportedSession {
+            tool: "copilot-cli".into(),
+            source_session_id: "sv".into(),
+            source_mtime_ms: 1,
+            folder: "/repo".into(),
+            started_utc_ms: Some(at),
+            human_turns: 2,
+            non_interactive: None,
+            template_key: None,
+            outcome: "imported".into(),
+            why: String::new(),
+            events: vec![ev(at + 2_000, "refactor the parser"), ev(at + 5 * MIN, "keep the old API")],
+        };
+        store.put_import_session("run2", &session).unwrap();
+        let pack = aiq_core::pack::parse(aiq_core::pack::BUNDLED_TOML).unwrap();
+        let tasks = aiq_home::tasks(&store, &pack, 0).unwrap();
+        let v: Vec<&TaskRow> = tasks.iter().filter(|t| t.session == "sv").collect();
+        assert_eq!(v.len(), 1, "one task, not one per copy");
+        assert_eq!((v[0].task_id.as_str(), v[0].prompts), ("v1", 2));
+        let turns = task_turns(&store, &e.homes, v[0]).unwrap();
+        let prompts: Vec<&str> = turns.iter().map(|t| t.prompt.as_str()).collect();
+        assert_eq!(prompts, ["refactor the parser", "keep the old API"]);
+        let judge = Fake::ok(2);
+        go(&e, &judge, &judge, None);
+        let judged = e.store.current_judgments().unwrap();
+        assert_eq!(judged.len(), 4, "three live tasks and one imported; the second copy of sv is not analyzed");
+        assert!(judged.keys().all(|k| !k.starts_with("import:copilot-cli:sv")));
     }
 
     #[test]
@@ -2296,7 +2565,7 @@ mod tests {
         assert!(c.sent.borrow().iter().all(|(u, _)| !u.contains("refactor the parser") && !u.contains("migrate")));
         let j = e.store.current_judgments().unwrap();
         assert_eq!(j.len(), 4);
-        assert!(!j.contains_key("o1"), "an open task is not judged");
+        assert!(!j.contains_key("o1"), "an open task is not analyzed");
         assert_eq!(j["a1"].current_rung, 2);
         assert_eq!(j["a1"].provider, "claude-code");
         assert_eq!(j["import:copilot-cli:cs:0"].origin, "imported");
@@ -2323,6 +2592,55 @@ mod tests {
         assert!(imp.0.contains("agent edited files: yes (3 edits)"));
         assert!(imp.0.contains("checks (tests, build, lint) run by: agent"));
         assert!(imp.0.contains("AIQ-QUOTE-"));
+    }
+
+    /// DC-020: an imported prompt whose stop row is there was read (no actions stored = no tool calls); one with
+    /// no stop row was not recorded, so its facts are unknown and the envelope says so.
+    #[test]
+    fn an_imported_turn_without_a_stop_row_is_not_recorded_and_one_with_an_empty_stop_is_none() {
+        let e = env();
+        let mut store = Store::open(&e.paths.db()).unwrap();
+        let at = NOW - 9 * DAY_MS;
+        let ev = |kind: &str, ts: i64, text: Option<&str>| ImportedEvent {
+            kind: kind.into(),
+            ts_utc_ms: Some(ts),
+            text: text.map(Into::into),
+            actions: None,
+        };
+        let session = ImportedSession {
+            tool: "copilot-cli".into(),
+            source_session_id: "cn".into(),
+            source_mtime_ms: 1,
+            folder: "/repo".into(),
+            started_utc_ms: Some(at),
+            human_turns: 2,
+            non_interactive: None,
+            template_key: None,
+            outcome: "imported".into(),
+            why: String::new(),
+            events: vec![
+                ev("prompt", at, Some("what does the loader do?")),
+                ev("stop", at + MIN, None),
+                ev("prompt", at + 2 * MIN, Some("and the cache?")),
+            ],
+        };
+        store.put_import_session("run3", &session).unwrap();
+        let pack = aiq_core::pack::parse(aiq_core::pack::BUNDLED_TOML).unwrap();
+        let tasks = aiq_home::tasks(&store, &pack, 0).unwrap();
+        let t = tasks.iter().find(|t| t.session == "cn").unwrap();
+        let turns = task_turns(&store, &e.homes, t).unwrap();
+        assert_eq!(turns[0].actions, Some(ActionSummary::default()), "read, no tool calls");
+        assert_eq!(turns[1].actions, None, "no stop row: not recorded");
+        let log = rung::log_facts(&turns);
+        assert_eq!((log.agent_edited, log.checks_by, log.unrecorded), (None, None, 1));
+        let judge = Fake::ok(2);
+        go(&e, &judge, &judge, None);
+        let sent = judge.sent.borrow();
+        let env = &sent.iter().find(|(u, _)| u.contains("what does the loader do?")).unwrap().0;
+        assert!(env.contains("run by: not recorded") && !env.contains("run by: nobody"), "{env}");
+        // A live task whose transcript is gone: every turn not recorded.
+        let live = tasks.iter().find(|t| t.task_id == "b1").unwrap();
+        assert!(task_turns(&store, &e.homes, live).unwrap().iter().all(|t| t.actions.is_none()));
     }
 
     #[test]
@@ -2380,6 +2698,7 @@ mod tests {
     #[test]
     fn one_good_run_is_shown_as_uncertain_never_coached() {
         let e = env();
+        e.store.set_setting(rung::SETTING_CALLS, "2", 0).unwrap();
         e.store.set_setting(rung::SETTING_DAILY_TASKS, "1", 0).unwrap();
         let p = Once(Fake::ok(2), RefCell::new(0));
         let rep = go(&e, &Fake::ok(2), &p, None);
@@ -2387,7 +2706,48 @@ mod tests {
         let j = &e.store.current_judgments().unwrap()["v1"];
         assert_eq!(j.state, "uncertain");
         assert!(!j.coachable);
-        assert!(j.evidence.contains("Only one of the two judge runs answered"));
+        assert!(j.evidence.contains("Only one of the two analysis runs answered"));
+    }
+
+    #[test]
+    fn one_call_setting_asks_once_and_coaches_on_that_answer() {
+        let e = env();
+        e.store.set_setting(rung::SETTING_CALLS, "1", 0).unwrap();
+        let (c, p) = (Fake::ok(2), Fake::ok(2));
+        let rep = go(&e, &c, &p, None);
+        assert_eq!(rep.judged, 4, "{rep:?}");
+        assert_eq!((c.calls(), p.calls()), (2, 2), "one call per task");
+        let j = &e.store.current_judgments().unwrap()["a1"];
+        assert_eq!((j.state.as_str(), j.coachable, j.current_rung), ("judged", true, 2));
+        assert!(!j.evidence.contains("Only one of the two"));
+    }
+
+    /// Times out on the first call, answers after.
+    struct Late(Fake, RefCell<u32>);
+    impl Provider for Late {
+        fn call(&self, req: &CallReq<'_>) -> CallResult {
+            *self.1.borrow_mut() += 1;
+            if *self.1.borrow() == 1 { CallResult::failed(Outcome::Timeout, 120_000) } else { self.0.call(req) }
+        }
+    }
+
+    #[test]
+    fn one_call_setting_tries_a_failed_call_once_more() {
+        let e = env();
+        e.store.set_setting(rung::SETTING_CALLS, "1", 0).unwrap();
+        e.store.set_setting(rung::SETTING_DAILY_TASKS, "1", 0).unwrap();
+        let p = Late(Fake::ok(2), RefCell::new(0));
+        let rep = go(&e, &Fake::ok(2), &p, None);
+        assert_eq!((rep.judged, *p.1.borrow()), (1, 2), "{rep:?}");
+        assert_eq!(e.store.current_judgments().unwrap()["v1"].state, "judged");
+    }
+
+    #[test]
+    fn calls_setting_takes_one_or_two() {
+        assert_eq!(rung::validate_setting(rung::SETTING_CALLS, "1"), Some(Ok("1".into())));
+        assert!(rung::validate_setting(rung::SETTING_CALLS, "3").unwrap().is_err());
+        let e = env();
+        assert_eq!(settings(&e.store).calls, rung::DEFAULT_CALLS);
     }
 
     #[test]
@@ -2497,12 +2857,49 @@ mod tests {
         };
         let hedged = r#"{"value":null,"confidence":0.55,"source":"model","disputed":false}"#;
         assert!(!current_version(&r1(hedged, r#"{"prompts":2,"reprompts":1}"#)));
-        assert!(!current_version(&r1(hedged, "{}")), "re-prompts not recorded: judge again");
+        assert!(!current_version(&r1(hedged, "{}")), "re-prompts not recorded: analyze again");
         assert!(current_version(&r1(hedged, r#"{"prompts":1,"reprompts":0}"#)));
         assert!(current_version(&r1(r#"{"value":null,"confidence":0.4,"source":"model","disputed":false}"#, "{}")));
         assert!(current_version(&r1(r#"{"value":null,"confidence":0.0,"source":"model","disputed":true}"#, "{}")));
         assert!(current_version(&r1(r#"{"value":true,"confidence":0.9,"source":"model","disputed":false}"#, "{}")));
         assert!(!current_version(&JudgmentRow { rubric_version: "r0".into(), ..j("write_doc", rung::JUDGE_VERSION) }));
+
+        // Fact set fs2 widens the agent's checks: fs1 judgments with F3 agent or unknown stay; nobody/person are
+        // restamped without a call when today's log gives the same F3, else judged again.
+        let fs1 = |f3: &str| JudgmentRow {
+            fact_set_version: "fs1".into(),
+            facts: format!(r#"{{"F3":{{"value":{f3},"source":"log"}}}}"#),
+            ..j("code_change", rung::JUDGE_VERSION)
+        };
+        assert!(current_version(&fs1(r#""agent""#)));
+        assert!(current_version(&fs1("null")));
+        assert!(!current_version(&fs1(r#""nobody""#)));
+        let log = |cmd: &str| {
+            let a = ActionSummary { commands: vec![cmd.into()], ..Default::default() };
+            rung::log_facts(&[Turn { at_ms: 0, prompt: "x".into(), actions: Some(a) }])
+        };
+        let same = restamp(&fs1(r#""nobody""#), &log("scripts/refresh.sh --all")).expect("same F3: no call");
+        assert_eq!(same.fact_set_version, rung::FACT_SET_VERSION);
+        assert!(current_version(&same));
+        assert!(restamp(&fs1(r#""nobody""#), &log("scripts/verify_refresh.py")).is_none(), "now the agent checked");
+        assert!(restamp(&fs1(r#""agent""#), &log("cargo test")).is_none(), "already current");
+        assert!(restamp(&JudgmentRow { judge_version: "j1".into(), ..fs1(r#""nobody""#) }, &log("ls")).is_none());
+        // Fact set fs3: a stored "no" from turns AIQ did not record is judged again; one from turns all read is
+        // restamped (same envelope).
+        let fs2 = JudgmentRow {
+            fact_set_version: "fs2".into(),
+            facts: r#"{"F1":{"value":false,"source":"log"},"F3":{"value":"nobody","source":"log"}}"#.into(),
+            ..j("ask_research", rung::JUDGE_VERSION)
+        };
+        assert!(!current_version(&fs2));
+        let unrecorded = rung::log_facts(&[Turn { at_ms: 0, prompt: "x".into(), actions: None }]);
+        assert!(restamp(&fs2, &unrecorded).is_none(), "now not recorded: analyze again");
+        assert!(restamp(&fs2, &log("ls")).is_some(), "every turn read, same facts: no call");
+        let yes = JudgmentRow {
+            facts: r#"{"F1":{"value":true,"source":"log"},"F3":{"value":"agent","source":"log"}}"#.into(),
+            ..fs2.clone()
+        };
+        assert!(current_version(&yes), "a yes cannot turn unknown");
     }
 
     #[test]
@@ -2687,11 +3084,100 @@ mod tests {
     }
 
     #[test]
+    fn analysis_uses_the_default_copilot_model_unless_the_person_names_one() {
+        let e = env();
+        let set = settings(&e.store);
+        assert!(set.copilot_default);
+        assert_eq!(analysis_copilot_models(&set), vec![Some(rung::DEFAULT_COPILOT_MODEL.into()), None]);
+        e.store.set_setting(rung::SETTING_COPILOT_MODEL, "default", 0).unwrap();
+        assert_eq!(analysis_copilot_models(&settings(&e.store)), vec![None], "default = Copilot's own pick");
+        e.store.set_setting(rung::SETTING_COPILOT_MODEL, "gpt-6.1-sol", 0).unwrap();
+        assert_eq!(analysis_copilot_models(&settings(&e.store)), vec![Some("gpt-6.1-sol".into())]);
+    }
+
+    #[test]
+    fn copilot_second_call_goes_to_the_second_model_by_default() {
+        let e = env();
+        let set = settings(&e.store);
+        assert_eq!(
+            analysis_copilot_second_models(&set),
+            Some(vec![Some(rung::DEFAULT_COPILOT_SECOND_MODEL.into()), Some(rung::DEFAULT_COPILOT_MODEL.into()), None]),
+            "Luna, then Sol, then Copilot's pick"
+        );
+        e.store.set_setting(rung::SETTING_COPILOT_SECOND_MODEL, "same", 0).unwrap();
+        assert_eq!(analysis_copilot_second_models(&settings(&e.store)), None);
+        e.store.set_setting(rung::SETTING_COPILOT_SECOND_MODEL, rung::DEFAULT_COPILOT_MODEL, 0).unwrap();
+        assert_eq!(analysis_copilot_second_models(&settings(&e.store)), None, "naming the first model = same");
+        // In a run: Copilot tasks send call 2 to the second provider; Claude Code tasks never do.
+        let e = env();
+        let (c, p, p2) = (Fake::ok(2), Fake::ok(2), Fake::ok(2));
+        let rep = run(&Run {
+            store: &e.store,
+            paths: &e.paths,
+            homes: &e.homes,
+            claude: &c,
+            copilot: &p,
+            copilot_second: Some(&p2),
+            now: Now { utc_ms: NOW, offset_min: 0 },
+            max: None,
+            only: None,
+        })
+        .unwrap();
+        assert_eq!(rep.judged, 4, "{rep:?}");
+        assert_eq!((c.calls(), p.calls(), p2.calls()), (4, 2, 2));
+    }
+
+    #[test]
+    fn analysis_falls_back_to_copilots_pick_when_a_call_fails_or_the_model_is_not_offered() {
+        let asked = RefCell::new(Vec::<Option<String>>::new());
+        let fail = RefCell::new("boom");
+        let chain = ModelChain {
+            models: vec![Some("sonnet".into()), None],
+            at: std::cell::Cell::new(0),
+            on_error: true,
+            call: |m: Option<&str>, _req: &CallReq<'_>| {
+                asked.borrow_mut().push(m.map(str::to_owned));
+                let outcome = match (m, *fail.borrow()) {
+                    (Some(_), "boom") => Outcome::Error("exit 1: something broke".into()),
+                    (Some(_), "timeout") => Outcome::Timeout,
+                    (Some(_), _) => {
+                        Outcome::Error("Error: Model \"sonnet\" from --model flag is not available.".into())
+                    }
+                    (None, _) => Outcome::Ok(json!({})),
+                };
+                CallResult {
+                    outcome,
+                    model: m.map(str::to_owned),
+                    latency_ms: 1,
+                    cost_usd: None,
+                    tokens_in: None,
+                    tokens_out: None,
+                }
+            },
+        };
+        let schema = json!({});
+        let req = CallReq { system: "s", user: "u", schema: &schema, session_id: "x" };
+        // A failed call is tried once on Copilot's pick; the next call starts on sonnet again.
+        assert!(matches!(chain.call(&req).outcome, Outcome::Ok(_)));
+        assert_eq!(*asked.borrow(), vec![Some("sonnet".into()), None]);
+        // A timeout is not retried on another model.
+        *fail.borrow_mut() = "timeout";
+        assert!(matches!(chain.call(&req).outcome, Outcome::Timeout));
+        // Not offered: Copilot's pick for the rest of the run.
+        *fail.borrow_mut() = "blocked";
+        asked.borrow_mut().clear();
+        assert!(matches!(chain.call(&req).outcome, Outcome::Ok(_)));
+        assert!(matches!(chain.call(&req).outcome, Outcome::Ok(_)));
+        assert_eq!(*asked.borrow(), vec![Some("sonnet".into()), None, None]);
+    }
+
+    #[test]
     fn check_model_chain_moves_past_a_model_that_is_not_offered_once() {
         let asked = RefCell::new(Vec::<Option<String>>::new());
         let chain = ModelChain {
             models: vec![Some("a".into()), Some("b".into()), None],
             at: std::cell::Cell::new(0),
+            on_error: false,
             call: |m: Option<&str>, _req: &CallReq<'_>| {
                 asked.borrow_mut().push(m.map(str::to_owned));
                 let outcome = if m == Some("a") {
@@ -2762,6 +3248,7 @@ mod tests {
     #[test]
     fn no_job_judgments_record_each_runs_pick_and_the_report_explains_them() {
         let e = env();
+        e.store.set_setting(rung::SETTING_CALLS, "2", 0).unwrap();
         let mut judge = Fake::ok(1);
         if let Some(a) = judge.answer.as_mut() {
             a["job"] = json!("other");
@@ -2776,9 +3263,9 @@ mod tests {
         let g = grader("ask_research", "explain", 1);
         run_check(&e.store, &e.paths, &e.homes, &g, &g, NOW, 30, 1, CheckScope::NoJob).unwrap();
         let rep = check_report(&e.store).unwrap();
-        assert!(rep.contains("Why: both runs said other 4"), "{rep}");
+        assert!(rep.contains("Why: the analysis said other 4"), "{rep}");
         assert!(rep.contains("R1 (") && rep.contains("gives a job to 0 of 4"), "{rep}");
-        assert!(rep.contains("      both runs said other: ask_research 4"), "{rep}");
+        assert!(rep.contains("      the analysis said other: ask_research 4"), "{rep}");
         // The no-job sample takes only no-job judgments.
         let run = e.store.latest_check_run().unwrap().unwrap();
         assert_eq!(run.sample.len(), 4);
@@ -2792,6 +3279,7 @@ mod tests {
     #[test]
     fn kind_report_pools_check_runs_explains_other_and_scores_rules_before_after() {
         let e = env();
+        e.store.set_setting(rung::SETTING_CALLS, "2", 0).unwrap();
         let mut judge = Fake::ok(2);
         if let Some(a) = judge.answer.as_mut() {
             a["task_type_confidence"] = json!(0.6);
@@ -2806,7 +3294,10 @@ mod tests {
         run_check(&e.store, &e.paths, &e.homes, &g, &g, NOW + 1, 30, 2, CheckScope::All).unwrap();
         let rep = check_report(&e.store).unwrap();
         assert!(rep.contains("Kind of task, all 2 check runs (where the job matched): 0 of 8"), "{rep}");
-        assert!(rep.contains("both runs named the kind, but not confidently 8 (second reading also other 0)"), "{rep}");
+        assert!(
+            rep.contains("the analysis named the kind, but not confidently 8 (second reading also other 0)"),
+            "{rep}"
+        );
         assert!(rep.contains("K2 (") && rep.contains("gives a kind to 8; 0 of 8 (0-25%) -> 8 of 8"), "{rep}");
         assert!(rep.contains("K1 (") && rep.contains("gives a kind to 0;"), "{rep}");
     }

@@ -31,11 +31,19 @@ impl Env {
         self.dir.path().join("copilot")
     }
     fn cmd(&self, args: &[&str]) -> Command {
-        let mut c = Command::new(BIN);
+        self.cmd_of(BIN.as_ref(), args)
+    }
+    /// VS Code's extensions folder for this test (never the machine's).
+    fn vscode_ext(&self) -> PathBuf {
+        self.dir.path().join("vscode-extensions")
+    }
+    fn cmd_of(&self, exe: &std::path::Path, args: &[&str]) -> Command {
+        let mut c = Command::new(exe);
         c.args(args)
             .env("AIQ_HOME", self.home())
             .env("CLAUDE_CONFIG_DIR", self.dir.path().join("claude"))
             .env("COPILOT_HOME", self.copilot())
+            .env("VSCODE_EXTENSIONS", self.vscode_ext())
             .env("NO_COLOR", "1")
             .env_remove("AIQ_INTERNAL")
             .current_dir(self.dir.path());
@@ -44,8 +52,41 @@ impl Env {
     fn run(&self, args: &[&str], stdin: &[u8]) -> Output {
         self.run_with(self.cmd(args), stdin)
     }
+    /// With a PATH that holds no `claude` or `code`, and no VS Code install folders, so tools installed on
+    /// the machine running the tests don't count as found (tool detection reads PATH and those folders).
+    fn run_clean(&self, args: &[&str]) -> Output {
+        self.run_clean_of(BIN.as_ref(), args)
+    }
+    fn run_clean_of(&self, exe: &std::path::Path, args: &[&str]) -> Output {
+        let bin = self.dir.path().join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        let mut c = self.cmd_of(exe, args);
+        c.env("PATH", &bin)
+            .env("LOCALAPPDATA", self.dir.path().join("lad"))
+            .env("ProgramFiles", self.dir.path().join("pf"))
+            .env("HOME", self.profile())
+            .env("USERPROFILE", self.profile());
+        self.run_with(c, b"")
+    }
+    /// The user's home for `run_clean`: VS Code Insiders' extensions folder is under it.
+    fn profile(&self) -> PathBuf {
+        self.dir.path().join("profile")
+    }
     fn run_with(&self, mut c: Command, stdin: &[u8]) -> Output {
-        let mut ch = c.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
+        c.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+        // A file this test just wrote (a copy of aiq, a fake `code`) can still be open for writing in a child
+        // another test thread forked meanwhile; Linux then refuses to run it (ETXTBSY) until that child execs.
+        // Wait it out instead of failing: a few short tries, then the real error.
+        let mut tries = 0;
+        let mut ch = loop {
+            match c.spawn() {
+                Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy && tries < 20 => {
+                    tries += 1;
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                }
+                r => break r.unwrap(),
+            }
+        };
         ch.stdin.take().unwrap().write_all(stdin).unwrap();
         ch.wait_with_output().unwrap()
     }
@@ -89,6 +130,51 @@ impl Env {
         );
         String::from_utf8(o.stdout).unwrap()
     }
+    /// At a turn end the core offers a ready card for 30 ms (STOP_WAIT_MS) and the hook waits 55 ms. On a
+    /// loaded runner the hook can miss that window and print nothing; the card then stays show-ready for the
+    /// next turn end, as in the product (e2e_concurrent_stops_deliver_once). Measured 2026-11-03 on a loaded
+    /// 4-core runner: 16 of 150 suite runs missed the first turn end, hook outcome `no-card` 13 and
+    /// `stop-timeout` 3. When the hook gave up after the core handed the card over, the card is held for that
+    /// hook's confirmation for HANDOVER_CONFIRM_MS, then ready again (DC-022). So end the turn until the card
+    /// prints, for up to twice that hold; every miss must keep the card show-ready, so a lost card still fails.
+    /// Returns the hook's stdout and how many turn ends it took.
+    fn stop_until_card(&self, stop: impl Fn() -> String) -> (String, usize) {
+        let hold = Duration::from_millis(aiq_core::service::HANDOVER_CONFIRM_MS as u64);
+        let deadline = Instant::now() + 2 * hold;
+        let mut n = 0;
+        while Instant::now() < deadline {
+            n += 1;
+            let out = stop();
+            if !out.is_empty() {
+                return (out, n);
+            }
+            let st = self.status();
+            let timings = std::fs::read_to_string(self.home().join("hook-timings.log")).unwrap_or_default();
+            assert!(st.contains("show-ready"), "a turn end printed nothing and the card is gone:\n{st}\n{timings}");
+            std::thread::sleep(Duration::from_millis(250));
+        }
+        panic!("no card in {n} turn ends over {:?}: {}", 2 * hold, self.status());
+    }
+    /// The status line where a tip is expected. Copilot refreshes it about once a second, and one refresh may
+    /// miss the 80 ms budget on a loaded runner (Windows CI, 2026-11-03), so look as Copilot does: a few
+    /// refreshes over up to 3 s.
+    fn tip_line(&self, session: &str, colour: bool) -> String {
+        let read = || {
+            let mut c = self.cmd(&["statusline", "copilot"]);
+            if colour {
+                c.env_remove("NO_COLOR");
+            }
+            let p = json!({"session": {"id": session}, "cwd": "/repo"});
+            String::from_utf8(self.run_with(c, p.to_string().as_bytes()).stdout).unwrap()
+        };
+        let deadline = Instant::now() + Duration::from_secs(3);
+        let mut line = read();
+        while line.is_empty() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(200));
+            line = read();
+        }
+        line
+    }
     fn statusline(&self, session: Option<&str>) -> String {
         let payload = session.map_or(json!({"cwd": "/repo"}), |s| json!({"session": {"id": s}, "cwd": "/repo"}));
         let o = self.run(&["statusline", "copilot"], payload.to_string().as_bytes());
@@ -122,27 +208,28 @@ fn e2e_copilot_reword_tip_in_status_line_after_turn_then_clears_on_next_prompt()
     e.start_core();
     e.reprompt_run("c1", 0);
     assert_eq!(e.statusline(Some("c1")), "", "no tip while the agent works");
-    let out = e.agent_stop("c1");
+    let (out, stops) = e.stop_until_card(|| e.agent_stop("c1"));
     assert_eq!(out.lines().count(), 1, "one progress line: {out}");
     let v: Value = serde_json::from_str(&out).unwrap();
     assert_eq!(v.as_object().unwrap().len(), 2, "only type and message: {out}");
     assert_eq!(v["type"], "progress");
     let msg = v["message"].as_str().unwrap();
-    assert!(msg.starts_with("AIQ tip: you've reworded this request 3 times") && msg.contains("Try this: "), "{msg}");
+    assert!(msg.starts_with("AIQ tip: this request went round 3 times") && msg.contains("Try this: "), "{msg}");
     for t in TEXTS {
         assert!(!msg.contains(t), "the tip never quotes prompt text");
     }
-    e.wait_for("1 stop");
-    let line = e.statusline(Some("c1"));
+    e.wait_for(&format!("{stops} stop"));
+    e.wait_for("Tips today: 1 of"); // the hook's "printed" note is its own send, after the turn end (DC-022)
+    let line = e.tip_line("c1", false);
     assert!(
-        line.starts_with("AIQ tip: you've reworded this request 3 times without adding new details · aiq show "),
+        line.starts_with("AIQ tip: this request went round 3 times. The agent may need one new detail · aiq show "),
         "{line}"
     );
     assert_eq!(line.lines().count(), 1);
     for t in TEXTS {
         assert!(!line.contains(t), "the tip never quotes prompt text");
     }
-    assert_eq!(e.statusline(Some("c1")), line, "refresh keeps it");
+    assert_eq!(e.tip_line("c1", false), line, "refresh keeps it");
     assert_eq!(e.statusline(Some("c2")), "", "another session never sees it");
     e.prompt("c1", "thanks, now add a test for the empty case");
     e.wait_for("5 prompt");
@@ -177,12 +264,13 @@ fn e2e_copilot_tip_stays_until_opened_setting() {
     assert!(e.run(&["config", "set", "copilot-tip-stays", "until-opened"], b"").status.success());
     assert!(!e.run(&["config", "set", "copilot-tip-stays", "forever"], b"").status.success());
     e.reprompt_run("c1", 0);
-    e.agent_stop("c1");
-    e.wait_for("1 stop");
-    let line = e.statusline(Some("c1"));
+    let (_, stops) = e.stop_until_card(|| e.agent_stop("c1"));
+    e.wait_for(&format!("{stops} stop"));
+    e.wait_for("Tips today: 1 of"); // the hook's "printed" note is its own send, after the turn end (DC-022)
+    let line = e.tip_line("c1", false);
     e.prompt("c1", "next: write the changelog entry");
     e.wait_for("5 prompt");
-    assert_eq!(e.statusline(Some("c1")), line);
+    assert_eq!(e.tip_line("c1", false), line);
     let id = line.trim().rsplit("aiq show ").next().unwrap();
     assert!(String::from_utf8(e.run(&["show", id], b"").stdout).unwrap().contains(TEXTS[0]));
     assert_eq!(e.statusline(Some("c1")), "", "opened: gone");
@@ -197,7 +285,12 @@ fn e2e_copilot_tip_in_chat_off_leaves_it_to_the_status_line() {
     e.reprompt_run("c1", 0);
     assert_eq!(e.agent_stop("c1"), "", "off: nothing in the conversation");
     e.wait_for("1 stop");
-    assert!(e.statusline(Some("c1")).starts_with("AIQ tip: you've reworded"), "the status line still shows it");
+    let line = e.tip_line("c1", false);
+    let timings = std::fs::read_to_string(e.home().join("hook-timings.log")).unwrap_or_default();
+    assert!(
+        line.starts_with("AIQ tip: this request went round"),
+        "the status line still shows it: {line:?}\n{timings}"
+    );
 }
 
 #[test]
@@ -206,16 +299,16 @@ fn e2e_tip_highlight_off_renders_plain_even_with_colour_allowed() {
     e.start_core();
     assert!(e.run(&["config", "set", "tip-highlight", "off"], b"").status.success());
     e.reprompt_run("c1", 0);
-    let mut c = e.cmd(&["hook", "copilot", "agentStop"]);
-    c.env_remove("NO_COLOR");
-    let o = e.run_with(c, json!({"sessionId": "c1", "stopReason": "end_turn"}).to_string().as_bytes());
-    let out = String::from_utf8(o.stdout).unwrap();
+    let (out, stops) = e.stop_until_card(|| {
+        let mut c = e.cmd(&["hook", "copilot", "agentStop"]);
+        c.env_remove("NO_COLOR");
+        let o = e.run_with(c, json!({"sessionId": "c1", "stopReason": "end_turn"}).to_string().as_bytes());
+        String::from_utf8(o.stdout).unwrap()
+    });
     assert!(out.contains("AIQ tip:") && !out.contains("\\u001b") && !out.contains('\u{1b}'), "{out}");
-    e.wait_for("1 stop");
-    let mut c = e.cmd(&["statusline", "copilot"]);
-    c.env_remove("NO_COLOR");
-    let line =
-        String::from_utf8(e.run_with(c, json!({"session": {"id": "c1"}}).to_string().as_bytes()).stdout).unwrap();
+    e.wait_for(&format!("{stops} stop"));
+    e.wait_for("Tips today: 1 of"); // the hook's "printed" note is its own send, after the turn end (DC-022)
+    let line = e.tip_line("c1", true);
     assert!(line.starts_with("AIQ tip:") && !line.contains('\u{1b}'), "{line}");
 }
 
@@ -229,11 +322,12 @@ fn e2e_claude_code_card_then_copilot_run_held_by_quiet_period() {
     }
     e.wait_for("4 prompt");
     let stop = json!({"session_id": "cc", "hook_event_name": "Stop", "stop_hook_active": false, "prompt_id": "p3"});
-    let o = e.run(&["hook", "claude-code", "Stop"], stop.to_string().as_bytes());
-    assert!(!o.stdout.is_empty(), "Claude Code card shown");
+    let (_, stops) = e.stop_until_card(|| {
+        String::from_utf8(e.run(&["hook", "claude-code", "Stop"], stop.to_string().as_bytes()).stdout).unwrap()
+    });
     e.reprompt_run("c1", 4);
     e.agent_stop("c1");
-    e.wait_for("2 stop");
+    e.wait_for(&format!("{} stop", stops + 1));
     assert_eq!(e.statusline(Some("c1")), "");
     assert!(e.status().contains("1 hold (quiet_period)"), "{}", e.status());
 }
@@ -374,16 +468,22 @@ fn e2e_install_with_no_tool_connects_every_tool_found_and_names_the_undo() {
     let e = Env::new();
     let claude = e.home().parent().unwrap().join("claude");
     // Nothing found: says so and changes nothing.
-    let o = e.run(&["install", "--yes"], b"");
+    let o = e.run_clean(&["install", "--yes"]);
     assert!(o.status.success());
     assert!(String::from_utf8_lossy(&o.stdout).contains("No supported AI tool found"));
-    assert!(!String::from_utf8_lossy(&o.stdout).contains("Judging"), "nothing connected: judging untouched");
+    assert!(!String::from_utf8_lossy(&o.stdout).contains("Analysis"), "nothing connected: analysis untouched");
     assert!(!e.copilot().exists() && !claude.exists());
 
-    // Both tools present (their folders exist): both get AIQ's hooks.
+    // A bare Claude Code folder (other tools and people make one) is not Claude Code: nothing written to it.
+    std::fs::create_dir_all(claude.join("skills")).unwrap();
+    let o = e.run_clean(&["install", "--yes"]);
+    assert!(String::from_utf8_lossy(&o.stdout).contains("No supported AI tool found"));
+    assert!(!claude.join("settings.json").exists(), "no settings created for a tool that isn't there");
+
+    // Both tools present (Copilot's folder; Claude Code's own transcripts): both get AIQ's hooks.
     std::fs::create_dir_all(e.copilot()).unwrap();
-    std::fs::create_dir_all(&claude).unwrap();
-    let o = e.run(&["install", "--yes"], b"");
+    std::fs::create_dir_all(claude.join("projects").join("C--repos-a")).unwrap();
+    let o = e.run_clean(&["install", "--yes"]);
     let out = String::from_utf8_lossy(&o.stdout).to_string();
     assert!(o.status.success(), "{out}\n{}", String::from_utf8_lossy(&o.stderr));
     assert!(e.copilot().join("hooks").join("aiq.json").exists());
@@ -398,17 +498,17 @@ fn e2e_install_with_no_tool_connects_every_tool_found_and_names_the_undo() {
     let want = [claude.join("settings.json"), e.copilot().join("hooks").join("aiq.json")];
     assert_eq!(changed, want.iter().map(|p| p.to_str().unwrap()).collect::<Vec<_>>(), "{out}");
     // A tool is connected, so background judging is on, with what is sent and how to undo it.
-    assert!(out.contains("Judging: turned on.") && out.contains("What is sent:"), "{out}");
-    assert!(out.contains("up to 50 new tasks a day") && out.contains("Undo: aiq config set judge off"), "{out}");
+    assert!(out.contains("Analysis: turned on.") && out.contains("What is sent:"), "{out}");
+    assert!(out.contains("up to 500 new tasks a day") && out.contains("Undo: aiq config set analysis off"), "{out}");
 
     // Run again: nothing left to connect.
-    let again = String::from_utf8_lossy(&e.run(&["install", "--yes"], b"").stdout).to_string();
+    let again = String::from_utf8_lossy(&e.run_clean(&["install", "--yes"]).stdout).to_string();
     assert!(
         again.contains("Claude Code is already connected.") && again.contains("GitHub Copilot is already connected."),
         "{again}"
     );
     assert!(!again.contains("Undo:"), "{again}");
-    assert!(again.contains("Judging is already on"), "{again}");
+    assert!(again.contains("Analysis is already on"), "{again}");
 
     // The person turns judging off: a later install keeps it off. Written to the store directly, because
     // `aiq config set` starts a core this test would not stop (on Windows it then locks aiq.exe).
@@ -416,8 +516,58 @@ fn e2e_install_with_no_tool_connects_every_tool_found_and_names_the_undo() {
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64;
     store.set_setting("judge", "off", now + 1_000).unwrap();
     drop(store);
-    let off = String::from_utf8_lossy(&e.run(&["install", "--yes"], b"").stdout).to_string();
-    assert!(off.contains("Judging stays off, as you set it."), "{off}");
+    let off = String::from_utf8_lossy(&e.run_clean(&["install", "--yes"]).stdout).to_string();
+    assert!(off.contains("Analysis stays off, as you set it."), "{off}");
+}
+
+/// After setup, a tool installed later is connected once by `aiq install --new` (AIQ home and the core run it
+/// at start); one the person disconnected stays disconnected. Hooks AIQ 0.1.4 wrote for a Claude Code that
+/// isn't installed are reported as such, not as connected.
+#[test]
+fn e2e_install_new_connects_a_tool_installed_after_setup_once() {
+    let e = Env::new();
+    let claude = e.home().parent().unwrap().join("claude");
+    std::fs::create_dir_all(e.copilot()).unwrap();
+    // Before setup is done, --new does nothing (setup connects).
+    assert!(e.run_clean(&["install", "--new", "--yes"]).status.success());
+    assert!(!e.copilot().join("hooks").join("aiq.json").exists());
+
+    assert!(e.run_clean(&["install", "--yes"]).status.success(), "setup connects Copilot");
+    std::fs::write(e.home().join("setup-done"), "done\n").unwrap();
+    assert!(e.run_clean(&["uninstall", "copilot", "--yes"]).status.success(), "the person disconnects Copilot");
+    let o = e.run_clean(&["install", "--new", "--yes"]);
+    assert!(o.stdout.is_empty(), "nothing new: {}", String::from_utf8_lossy(&o.stdout));
+    assert!(!e.copilot().join("hooks").join("aiq.json").exists(), "a disconnected tool stays disconnected");
+
+    // Claude Code installed after setup: connected once, and only it.
+    std::fs::create_dir_all(claude.join("projects").join("C--repos-a")).unwrap();
+    let out = String::from_utf8_lossy(&e.run_clean(&["install", "--new", "--yes"]).stdout).to_string();
+    let s: Value = serde_json::from_str(&std::fs::read_to_string(claude.join("settings.json")).unwrap()).unwrap();
+    assert!(aiq_core::tools::claude_has_aiq(&s), "{out}");
+    assert!(out.contains(&format!("Changed: {}", claude.join("settings.json").display())), "{out}");
+    assert!(!e.copilot().join("hooks").join("aiq.json").exists(), "{out}");
+
+    // The person disconnects it: the next start leaves it alone.
+    assert!(e.run_clean(&["uninstall", "claude-code", "--yes"]).status.success());
+    assert!(e.run_clean(&["install", "--new", "--yes"]).stdout.is_empty());
+    assert!(!claude.join("settings.json").exists());
+}
+
+#[test]
+fn e2e_hooks_left_in_a_claude_folder_without_claude_code_are_not_called_connected() {
+    let e = Env::new();
+    let claude = e.home().parent().unwrap().join("claude");
+    std::fs::create_dir_all(&claude).unwrap();
+    // What AIQ 0.1.4's setup wrote on a computer with only a bare folder.
+    let v =
+        json!({"hooks":{"Stop":[{"hooks":[{"type":"command","command":"aiq","args":["hook","claude-code","Stop"]}]}]}});
+    std::fs::write(claude.join("settings.json"), v.to_string()).unwrap();
+    let out = String::from_utf8_lossy(&e.run_clean(&["install", "--yes"]).stdout).to_string();
+    assert!(!out.contains("Claude Code is already connected"), "{out}");
+    assert!(
+        out.contains("Claude Code isn't installed on this computer") && out.contains("aiq uninstall claude-code"),
+        "{out}"
+    );
 }
 
 #[test]
@@ -425,10 +575,10 @@ fn e2e_uninstall_all_puts_every_tool_back_and_keeps_the_data() {
     let e = Env::new();
     let claude = e.home().parent().unwrap().join("claude");
     std::fs::create_dir_all(e.copilot()).unwrap();
-    std::fs::create_dir_all(&claude).unwrap();
+    std::fs::create_dir_all(claude.join("projects").join("C--repos-a")).unwrap();
     let mine = r#"{"model":"opus"}"#;
     std::fs::write(claude.join("settings.json"), mine).unwrap();
-    assert!(e.run(&["install", "--yes"], b"").status.success());
+    assert!(e.run_clean(&["install", "--yes"]).status.success());
     std::fs::create_dir_all(e.home()).unwrap();
     std::fs::write(e.home().join("keep.txt"), "data").unwrap();
 
@@ -466,4 +616,225 @@ fn e2e_install_with_no_tool_adds_the_status_line_only_when_experimental_is_alrea
     let after: Value =
         serde_json::from_str(&std::fs::read_to_string(e.copilot().join("settings.json")).unwrap()).unwrap();
     assert_eq!(after, original, "uninstall puts back exactly what was there");
+}
+
+/// A stand-in for a VS Code build's command (`code`, `code-insiders`) in the test's PATH: logs the command and
+/// its arguments and adds or removes the extension in that build's `extensions.json` the way VS Code does (the
+/// shape `aiq_core::tools::vscode_has_aiq` reads).
+fn fake_vscode(e: &Env, command: &str, ext_dir: &std::path::Path) -> PathBuf {
+    let bin = e.dir.path().join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    let (log, list) = (e.dir.path().join("code-log.txt"), ext_dir.join("extensions.json"));
+    std::fs::create_dir_all(ext_dir).unwrap();
+    let ours = r#"[{"identifier":{"id":"aiq-local.aiq-coach"},"version":"0.2.0"}]"#;
+    if cfg!(windows) {
+        let script = format!(
+            "@echo off\r\necho {command} %*>>\"{log}\"\r\nif \"%1\"==\"--install-extension\" (echo {ours}>\"{list}\")\r\nif \"%1\"==\"--uninstall-extension\" (echo []>\"{list}\")\r\n",
+            log = log.display(),
+            list = list.display(),
+        );
+        std::fs::write(bin.join(format!("{command}.cmd")), script).unwrap();
+    } else {
+        let script = format!(
+            "#!/bin/sh\necho {command} \"$@\" >> '{log}'\ncase \"$1\" in\n  --install-extension) echo '{ours}' > '{list}' ;;\n  --uninstall-extension) echo '[]' > '{list}' ;;\nesac\n",
+            log = log.display(),
+            list = list.display(),
+        );
+        let p = bin.join(command);
+        std::fs::write(&p, script).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+    }
+    log
+}
+
+fn fake_code(e: &Env) -> PathBuf {
+    fake_vscode(e, "code", &e.vscode_ext())
+}
+
+/// aiq with aiq.vsix beside it, as the release installs it.
+fn release_copy(e: &Env) -> PathBuf {
+    let rel = e.dir.path().join("release");
+    std::fs::create_dir_all(&rel).unwrap();
+    let exe = rel.join(std::path::Path::new(BIN).file_name().unwrap());
+    std::fs::copy(BIN, &exe).unwrap();
+    std::fs::write(rel.join("aiq.vsix"), b"PK").unwrap();
+    exe
+}
+
+/// VS Code found: `aiq install` adds AIQ's extension with VS Code's own command, from the `aiq.vsix` beside
+/// aiq, lists VS Code's extension list as changed and names the undo; a copy of AIQ without the file skips
+/// VS Code instead of failing setup; uninstall removes it. VS Code alone doesn't turn analysis on.
+#[test]
+fn e2e_install_adds_the_vscode_extension_beside_aiq_and_uninstall_removes_it() {
+    let e = Env::new();
+    let log = fake_code(&e);
+    let read_log = || std::fs::read_to_string(&log).unwrap_or_default();
+
+    // A developer build (no aiq.vsix beside it): VS Code is skipped with one line; setup still succeeds.
+    let o = e.run_clean(&["install", "--yes"]);
+    let out = String::from_utf8_lossy(&o.stdout).to_string();
+    assert!(o.status.success(), "{out}");
+    assert!(out.contains("VS Code:") && out.contains("Skipped: this copy of AIQ has no aiq.vsix"), "{out}");
+    assert!(read_log().is_empty(), "VS Code's command not run without the file");
+    assert!(!e.run_clean(&["install", "vscode", "--yes"]).status.success(), "by name, a missing file fails");
+
+    let exe = release_copy(&e);
+    let o = e.run_clean_of(&exe, &["install", "--yes"]);
+    let out = String::from_utf8_lossy(&o.stdout).to_string();
+    assert!(o.status.success(), "{out}\n{}", String::from_utf8_lossy(&o.stderr));
+    let ran = read_log();
+    assert!(ran.contains("--install-extension") && ran.contains("aiq.vsix") && ran.contains("--force"), "{ran}");
+    assert!(out.contains("Undo: aiq uninstall vscode"), "{out}");
+    assert!(out.contains("Agent mode with the session target set to Copilot"), "{out}");
+    let list = e.vscode_ext().join("extensions.json");
+    assert!(out.contains(&format!("Changed: {}", list.display())), "{out}");
+    assert!(!out.contains("Analysis"), "VS Code's extension alone doesn't turn analysis on: {out}");
+
+    let again = String::from_utf8_lossy(&e.run_clean_of(&exe, &["install", "--yes"]).stdout).to_string();
+    assert!(again.contains("VS Code is already connected."), "{again}");
+    // Where it shows: `aiq status` names it, and the attempt is kept for when no one read the output.
+    let status = String::from_utf8_lossy(&e.run_clean(&["status"]).stdout).to_string();
+    assert!(status.contains("VS Code: AIQ's extension is installed in VS Code\n"), "{status}");
+    let rec: Value =
+        serde_json::from_str(&std::fs::read_to_string(e.home().join("vscode-install.json")).unwrap()).unwrap();
+    assert_eq!(rec["builds"][0]["ok"], true, "{rec}");
+    assert_eq!(rec["builds"][0]["extension_listed_after"], true, "{rec}");
+
+    let o = e.run_clean(&["uninstall", "vscode", "--yes"]);
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stdout));
+    assert!(read_log().contains("--uninstall-extension aiq-local.aiq-coach"), "{}", read_log());
+    let o = e.run_clean(&["uninstall", "vscode", "--yes"]);
+    assert!(String::from_utf8_lossy(&o.stdout).contains("isn't installed in VS Code"));
+}
+
+/// Imran's laptop (2026-11-06): the update to 0.1.9 brought no aiq.vsix (0.1.8's updater copied only the exes),
+/// so the first `aiq install --new` couldn't add the extension, recorded VS Code as seen anyway, and no later
+/// update offered it again. VS Code now counts as seen only once the file is there, and a VS Code an older AIQ
+/// recorded that way is offered once more.
+#[test]
+fn e2e_install_new_adds_the_vscode_extension_once_an_update_brings_it() {
+    let e = Env::new();
+    let log = fake_code(&e);
+    let read_log = || std::fs::read_to_string(&log).unwrap_or_default();
+    let seen = e.home().join("tools-seen.json");
+    std::fs::create_dir_all(e.home()).unwrap();
+    std::fs::write(e.home().join("setup-done"), "done\n").unwrap();
+    std::fs::write(&seen, "[]").unwrap();
+
+    // No aiq.vsix yet: nothing added, nothing printed, VS Code not recorded.
+    let o = e.run_clean(&["install", "--new", "--yes"]);
+    assert!(o.status.success() && o.stdout.is_empty(), "{}", String::from_utf8_lossy(&o.stdout));
+    assert!(read_log().is_empty(), "{}", read_log());
+
+    // The next update brings the file: the extension is added once.
+    let exe = release_copy(&e);
+    let out = String::from_utf8_lossy(&e.run_clean_of(&exe, &["install", "--new", "--yes"]).stdout).to_string();
+    assert!(out.contains("Added to VS Code."), "{out}");
+    assert!(out.contains(&format!("Changed: {}", e.vscode_ext().join("extensions.json").display())), "{out}");
+
+    // The person removes it: it stays removed.
+    assert!(e.run_clean(&["uninstall", "vscode", "--yes"]).status.success());
+    let o = e.run_clean_of(&exe, &["install", "--new", "--yes"]);
+    assert!(o.stdout.is_empty(), "{}", String::from_utf8_lossy(&o.stdout));
+
+    // A computer where AIQ 0.1.9 to 0.1.13 recorded "vscode" without adding the extension: offered once more.
+    std::fs::write(&seen, r#"["vscode"]"#).unwrap();
+    let out = String::from_utf8_lossy(&e.run_clean_of(&exe, &["install", "--new", "--yes"]).stdout).to_string();
+    assert!(out.contains("Added to VS Code."), "{out}");
+    assert_eq!(read_log().matches("--install-extension").count(), 2, "{}", read_log());
+}
+
+/// A `code --install-extension` that fails leaves VS Code unseen, so the next core start or AIQ home open tries
+/// again; the failure is kept in `vscode-install.json` and `aiq status` names it. 0.1.14 recorded VS Code as
+/// seen before the command ran, so one failure would have stopped every later try, with no trace.
+#[test]
+fn e2e_a_failed_vscode_install_is_tried_again_and_shows_in_status() {
+    let e = Env::new();
+    let bin = e.dir.path().join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    if cfg!(windows) {
+        std::fs::write(
+            bin.join("code.cmd"),
+            "@echo off\r\necho Failed Installing Extensions: boom 1>&2\r\nexit /b 1\r\n",
+        )
+        .unwrap();
+    } else {
+        let p = bin.join("code");
+        std::fs::write(&p, "#!/bin/sh\necho 'Failed Installing Extensions: boom' >&2\nexit 1\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+    }
+    let seen = e.home().join("tools-seen.json");
+    std::fs::create_dir_all(e.home()).unwrap();
+    std::fs::write(e.home().join("setup-done"), "done\n").unwrap();
+    std::fs::write(&seen, "[]").unwrap();
+    let exe = release_copy(&e);
+
+    let out = String::from_utf8_lossy(&e.run_clean_of(&exe, &["install", "--new", "--yes"]).stdout).to_string();
+    assert!(out.contains("VS Code's command failed: Failed Installing Extensions: boom"), "{out}");
+    assert!(!std::fs::read_to_string(&seen).unwrap().contains("vscode"), "not seen, so tried again");
+    let status = String::from_utf8_lossy(&e.run_clean(&["status"]).stdout).to_string();
+    assert!(
+        status.contains("VS Code: AIQ's extension isn't installed in VS Code. Run: aiq install vscode"),
+        "{status}"
+    );
+    assert!(status.contains("Failed Installing Extensions: boom"), "{status}");
+
+    // VS Code's command works next time: added, and now seen.
+    let log = fake_code(&e);
+    let out = String::from_utf8_lossy(&e.run_clean_of(&exe, &["install", "--new", "--yes"]).stdout).to_string();
+    assert!(out.contains("Added to VS Code."), "{out}");
+    assert!(std::fs::read_to_string(&log).unwrap().contains("--install-extension"));
+    assert!(std::fs::read_to_string(&seen).unwrap().contains("vscode-extension"));
+    let status = String::from_utf8_lossy(&e.run_clean(&["status"]).stdout).to_string();
+    assert!(status.contains("VS Code: AIQ's extension is installed in VS Code\n"), "{status}");
+}
+
+/// Imran's laptop (2026-11-06): VS Code and VS Code Insiders both installed, Insiders used day to day. Setup
+/// adds AIQ's extension to both, each with its own command, and lists both extension lists as changed; a build
+/// that already has it still counts as connected only once the other has it too; uninstall removes both.
+#[test]
+fn e2e_install_adds_the_vscode_extension_to_insiders_too() {
+    let e = Env::new();
+    let insiders_ext = e.profile().join(".vscode-insiders").join("extensions");
+    fake_code(&e);
+    let log = fake_vscode(&e, "code-insiders", &insiders_ext);
+    let read_log = || std::fs::read_to_string(&log).unwrap_or_default();
+    let exe = release_copy(&e);
+
+    let o = e.run_clean_of(&exe, &["install", "--yes"]);
+    let out = String::from_utf8_lossy(&o.stdout).to_string();
+    assert!(o.status.success(), "{out}\n{}", String::from_utf8_lossy(&o.stderr));
+    assert!(out.contains("AIQ will add its extension to VS Code and VS Code Insiders"), "{out}");
+    let ran = read_log();
+    let installs: Vec<&str> = ran.lines().filter(|l| l.contains("--install-extension")).collect();
+    assert!(installs.iter().any(|l| l.starts_with("code --install-extension")), "{ran}");
+    assert!(installs.iter().any(|l| l.starts_with("code-insiders --install-extension")), "{ran}");
+    assert!(out.contains("Added to VS Code.") && out.contains("Added to VS Code Insiders."), "{out}");
+    for list in [e.vscode_ext().join("extensions.json"), insiders_ext.join("extensions.json")] {
+        assert!(out.contains(&format!("Changed: {}", list.display())), "{out}");
+    }
+    let again = String::from_utf8_lossy(&e.run_clean_of(&exe, &["install", "--yes"]).stdout).to_string();
+    assert!(again.contains("VS Code is already connected."), "{again}");
+
+    // Insiders lost it (removed in Insiders by hand): VS Code is no longer connected, so setup offers it again.
+    std::fs::write(insiders_ext.join("extensions.json"), "[]").unwrap();
+    let again = String::from_utf8_lossy(&e.run_clean_of(&exe, &["install", "--yes"]).stdout).to_string();
+    assert!(!again.contains("VS Code is already connected."), "{again}");
+    assert!(again.contains("Added to VS Code Insiders."), "{again}");
+
+    let o = e.run_clean(&["uninstall", "vscode", "--yes"]);
+    let out = String::from_utf8_lossy(&o.stdout).to_string();
+    assert!(o.status.success(), "{out}");
+    let ran = read_log();
+    assert!(ran.contains("code --uninstall-extension aiq-local.aiq-coach"), "{ran}");
+    assert!(ran.contains("code-insiders --uninstall-extension aiq-local.aiq-coach"), "{ran}");
+    assert!(out.contains("Removed the AIQ extension from VS Code Insiders."), "{out}");
 }

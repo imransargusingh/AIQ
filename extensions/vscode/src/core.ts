@@ -64,13 +64,19 @@ export const FEEDBACK_BUTTONS: [string, string][] = [
 export const SURFACE = "vscode";
 export const FRAME_TIMEOUT_MS = 500;
 
-/** Candidates for the aiq executable: the setting, PATH, then the usual install folders. */
+/**
+ * Candidates for the aiq executable: the setting, PATH, then the usual install folders. The installer's
+ * folder (~/.aiq/bin) comes right after PATH: install.ps1 adds it to the user PATH, but a VS Code that was
+ * already open keeps its old PATH until it restarts, and `aiq install` adds this extension to that VS Code.
+ */
 export function executableCandidates(setting: string, env: NodeJS.ProcessEnv, platform: string): string[] {
   const exe = platform === "win32" ? "aiq.exe" : "aiq";
   const out: string[] = [];
   if (setting.trim()) out.push(setting.trim());
   const sep = platform === "win32" ? ";" : ":";
   for (const dir of (env.PATH ?? env.Path ?? "").split(sep).filter(Boolean)) out.push(path.join(dir, exe));
+  const home = (platform === "win32" ? env.USERPROFILE : env.HOME) ?? os.homedir();
+  out.push(path.join(home, ".aiq", "bin", exe));
   if (platform === "win32" && env.LOCALAPPDATA) out.push(path.join(env.LOCALAPPDATA, "AIQ", "bin", exe));
   out.push(path.join(env.HOME ?? env.USERPROFILE ?? os.homedir(), ".local", "bin", exe));
   return out;
@@ -171,7 +177,7 @@ export function notificationText(c: Card): string {
 }
 
 export function detailsText(r: ShowReply): string {
-  if (!r.card) return "No card with that id.\n";
+  if (!r.card) return "No tip with that id.\n";
   const c = r.card;
   let out = `AIQ tip: ${plain(c.noticed)}\nWhy: ${plain(c.why)}\nTry this: ${plain(c.try_this)}\n\n`;
   if (c.opportunity_id === "next_rung") {
@@ -185,7 +191,7 @@ export function detailsText(r: ShowReply): string {
     return out + "\nTurn off tips for now: AIQ: Pause\n";
   }
   const texts = r.evidence.map((e) => e.text);
-  if (texts.every((t) => t === null)) return out + "The evidence for this card was deleted.\n";
+  if (texts.every((t) => t === null)) return out + "The prompts behind this tip were deleted.\n";
   out += "The prompts it counted:\n";
   r.evidence.forEach((e, i) => {
     out += `  ${i + 1}. ${e.ts}  ${e.text === null ? "(deleted)" : plain(e.text)}\n`;
@@ -232,9 +238,9 @@ export function statusText(s: State): { text: string; label: string; tooltip: st
 function plainStatusText(s: Exclude<State, "tip">): { text: string; tooltip: string } {
   switch (s) {
     case "on":
-      return { text: "AIQ on", tooltip: "AIQ watches quietly. Click for tips, pause or resume." };
+      return { text: "AIQ on", tooltip: "AIQ runs quietly in the background. Click for tips, pause or resume." };
     case "paused":
-      return { text: "AIQ paused", tooltip: "Nothing is captured and no tips show. Click to resume." };
+      return { text: "AIQ paused", tooltip: "It saves nothing new and shows no tips. Click to resume." };
     case "down":
       return { text: "AIQ not running", tooltip: "Starts with your next agent prompt." };
   }

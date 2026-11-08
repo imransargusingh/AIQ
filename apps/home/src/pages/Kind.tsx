@@ -1,12 +1,14 @@
 // One kind of task (design coaching-from-rungs, UI table "Type detail"; aiq-home US-H4). The next step is the
 // pack's text for a move AIQ derived from the judgments' facts, never the model's words. The judge's own words
 // about the last task show as plain text (TR-5). "This doesn't fit" withdraws the step for this kind; Undo
-// restores it. The rung is unchanged either way.
+// restores it. The rung is unchanged either way. "Moving up" (UI review 2026-11-04, item 9) draws each judged
+// task's rung over the window, split at the progress comparison, so you can see whether this kind is moving.
 import { useState } from "react";
 import { api, type FlagReason } from "../api";
 import { KIND_STATE, perWeek } from "../coach";
-import { jobName, plural, rungLabel, sentence, toolName, when } from "../format";
-import { Banners, Chip, Title, type Ctx } from "../ui";
+import { day, jobName, plural, rungLabel, sentence, toolName, when } from "../format";
+import type { Coaching, KindRow, TaskRow } from "../types";
+import { Banners, Chip, Rung, Title, type Ctx } from "../ui";
 
 const REASONS: { v: FlagReason; label: string }[] = [
   { v: "evidence_wrong", label: "AIQ got these tasks wrong" },
@@ -17,7 +19,7 @@ const REASONS: { v: FlagReason; label: string }[] = [
 
 const NO_STEP: Record<string, string> = {
   too_few: "AIQ isn't sure yet. It suggests a step once you've done a few more tasks of this kind.",
-  not_sure: "AIQ isn't sure yet. The judged tasks of this kind don't agree on one next step.",
+  not_sure: "AIQ isn't sure yet. The analyzed tasks of this kind don't agree on one next step.",
   right_rung: "This is the right rung for this task.",
   blocked: "Something outside your control caps this kind of task, such as a missing test command or a policy. AIQ won't coach it.",
 };
@@ -36,7 +38,7 @@ export function Kind(ctx: Ctx & { kindId: string }) {
       <div className="page">
         <Banners {...ctx} />
         <Title>Kind of task not found</Title>
-        <p className="mute">AIQ has no judged tasks of this kind in the last {snap.home.window_days} days.</p>
+        <p className="mute">AIQ has no analyzed tasks of this kind in the last {snap.home.window_days} days.</p>
         <p>
           <button className="btnlink" onClick={() => ctx.go("tasks")}>Back to Tasks</button>
         </p>
@@ -84,13 +86,23 @@ export function Kind(ctx: Ctx & { kindId: string }) {
           <Chip>{jobName(k.job)}</Chip>
           <Chip>{plural(k.tasks, "task")} in {snap.home.window_days} days</Chip>
           <Chip>{perWeek(k.per_week)}</Chip>
-          {k.today != null && <Chip>Today: {rungLabel(k.today)}</Chip>}
-          {k.potential != null && k.today != null && k.potential > k.today && <Chip>Could be: {rungLabel(k.potential)}</Chip>}
+          {k.today != null && <Chip>
+              <span>
+                Today: <Rung r={k.today} />
+              </span>
+            </Chip>}
+          {k.potential != null && k.today != null && k.potential > k.today && <Chip>
+              <span>
+                Could be: <Rung r={k.potential} />
+              </span>
+            </Chip>}
           <Chip tone={k.state === "right_rung" ? "ok" : undefined}>{KIND_STATE[k.state]}</Chip>
         </div>
         {k.uncertain > 0 && <p className="meta">{plural(k.uncertain, "task")} AIQ isn't sure about {k.uncertain === 1 ? "is" : "are"} left out of this.</p>}
         {msg && <p className="errtext" role="alert">{msg}</p>}
       </header>
+
+      <MovingUp k={k} tasks={tasks} c={snap.coaching} now={snap.now_ms} days={snap.home.window_days} off={snap.offset_min} />
 
       {k.state === "coach" && k.next ? (
         <section className="card" aria-labelledby="ks">
@@ -130,7 +142,7 @@ export function Kind(ctx: Ctx & { kindId: string }) {
         </section>
       ) : k.state === "flagged" && k.next ? (
         <section className="card" aria-labelledby="ks">
-          <h2 id="ks">You flagged this step</h2>
+          <h2 id="ks">You said this step doesn't fit</h2>
           <p className="mute">AIQ doesn't suggest “{k.next.habit}” for {k.label} any more.</p>
           <div className="row">
             <button className="btn" onClick={() => flag("undo")}>Undo</button>
@@ -148,7 +160,7 @@ export function Kind(ctx: Ctx & { kindId: string }) {
           <h2 id="kg">For your last task</h2>
           <p>{k.last_gap}</p>
           <p className="meta">
-            The judge's own words, shown as written.{" "}
+            What the analysis said, word for word.{" "}
             {k.last_task_id && (
               <button className="btnlink" onClick={() => openTask(k.last_task_id!)}>Open that task</button>
             )}
@@ -168,7 +180,14 @@ export function Kind(ctx: Ctx & { kindId: string }) {
                   {when(t.first_ms, snap.now_ms, snap.offset_min)} · {toolName(t.tool)}
                 </button>
                 <span className="meta">
-                  {t.judgment ? `${rungLabel(t.judgment.current)}${t.judgment.state === "uncertain" ? " · Uncertain" : ""}` : "Not judged yet"}
+                  {t.judgment ? (
+                    <>
+                      <Rung r={t.judgment.current} />
+                      {t.judgment.state === "uncertain" && " · Uncertain"}
+                    </>
+                  ) : (
+                    "Not analyzed yet"
+                  )}
                 </span>
               </li>
             ))}
@@ -176,5 +195,73 @@ export function Kind(ctx: Ctx & { kindId: string }) {
         )}
       </section>
     </div>
+  );
+}
+
+/** Rung of each judged task of this kind over the window, oldest left: dots joined by a line (Uncertain shown
+ *  hollow and left off the line), a dashed line where the kind could reach, and the split where "last 14 days"
+ *  starts. The move in the header is the same 14-day comparison Home and Tasks use. */
+function MovingUp({ k, tasks, c, now, days, off }: { k: KindRow; tasks: TaskRow[]; c: Coaching; now: number; days: number; off: number }) {
+  const judged = tasks.filter((t) => t.judgment).sort((a, b) => a.first_ms - b.first_ms);
+  if (judged.length === 0) return null;
+  const p = c.progress.find((x) => x.job === k.job && x.task_type === k.task_type);
+  const from = now - days * 86_400_000;
+  const x = (ms: number) => Math.min(100, Math.max(0, ((ms - from) / (now - from)) * 100));
+  const top = Math.min(5, Math.max(k.potential ?? 1, ...judged.map((t) => t.judgment!.current)) + 1);
+  const rows = Array.from({ length: top }, (_, i) => top - i);
+  const y = (r: number) => ((top - r) / (top - 1)) * 100;
+  const sure = judged.filter((t) => t.judgment!.state !== "uncertain");
+  const split = x(now - c.progress_days * 86_400_000);
+  const move = !p || p.trend === "too_few"
+    ? `Too few tasks to say: each half of ${c.progress_days} days needs ${c.progress_min} analyzed tasks.`
+    : p.trend === "same"
+      ? `Same rung, ${rungLabel(p.recent_rung!)}, in the last ${c.progress_days} days and the ${c.progress_days} before.`
+      : `${rungLabel(p.earlier_rung!)} → ${rungLabel(p.recent_rung!)}, last ${c.progress_days} days against the ${c.progress_days} before.`;
+  const label = `Rung of each analyzed task of this kind, oldest first: ${judged
+    .map((t) => `${day(t.first_ms, off)} ${rungLabel(t.judgment!.current)}${t.judgment!.state === "uncertain" ? " (uncertain)" : ""}`)
+    .join("; ")}.${k.potential != null && k.today != null && k.potential > k.today ? ` Could reach ${rungLabel(k.potential)}.` : ""}`;
+  return (
+    <section className="card" aria-labelledby="km">
+      <div className="head">
+        <h2 id="km">Moving up?</h2>
+        <span className="row meta">
+          {p && (p.trend === "up" || p.trend === "down") && <Chip tone={p.trend === "up" ? "ok" : "warn"}>{p.trend === "up" ? "Moved up" : "Moved down"}</Chip>}
+          {move}
+        </span>
+      </div>
+      <figure className="km" role="img" aria-label={label}>
+        <div className="km-y" aria-hidden="true">
+          {rows.map((r) => (
+            <span key={r} style={{ top: `${y(r)}%` }}>{rungLabel(r)}</span>
+          ))}
+        </div>
+        <div className="km-plot" aria-hidden="true">
+          {rows.map((r) => (
+            <i key={r} className="km-grid" style={{ top: `${y(r)}%` }} />
+          ))}
+          {k.potential != null && k.today != null && k.potential > k.today && <i className="km-could" style={{ top: `${y(k.potential)}%` }} />}
+          <i className="km-split" style={{ left: `${split}%` }} />
+          <svg viewBox="0 0 100 100" preserveAspectRatio="none">
+            <polyline points={sure.map((t) => `${x(t.first_ms)},${y(t.judgment!.current)}`).join(" ")} />
+          </svg>
+          {judged.map((t) => (
+            <i
+              key={t.task_id}
+              className={`km-dot${t.judgment!.state === "uncertain" ? " unsure" : ""}`}
+              style={{ left: `${x(t.first_ms)}%`, top: `${y(t.judgment!.current)}%` }}
+            />
+          ))}
+        </div>
+        <div className="km-x meta" aria-hidden="true">
+          <span style={{ left: 0 }}>{day(from, off)}</span>
+          <span style={{ left: `${split}%` }}>{c.progress_days} days ago</span>
+          <span style={{ right: 0 }}>Today</span>
+        </div>
+      </figure>
+      <p className="meta">
+        One dot per analyzed task; a hollow dot is one AIQ isn't sure about. {k.potential != null && k.today != null && k.potential > k.today && "The dashed line is where this kind could reach. "}
+        Rungs are AIQ's analysis.
+      </p>
+    </section>
   );
 }

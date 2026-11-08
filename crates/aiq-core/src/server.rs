@@ -69,6 +69,12 @@ pub enum Cmd {
         wait_ms: u64,
         reply: mpsc::Sender<TakeCardReply>,
     },
+    /// The turn-end hook printed the tip it took (DC-022).
+    Shown {
+        card_id: String,
+        surface: String,
+        session: String,
+    },
     Status {
         reply: mpsc::Sender<StatusReply>,
     },
@@ -134,8 +140,9 @@ pub fn run_with(paths: &Paths, labeller: Option<crate::service::LabelRequester>)
     let started = (|| {
         let pack = BundledPack.load().map_err(|d| CoreError { code: codes::STORE_OPEN, detail: d })?;
         let store = Store::open(&paths.db()).map_err(|e| CoreError { code: e.code, detail: e.detail })?;
-        let svc = Service::new(store, pack, SystemClock, counters.clone())
+        let mut svc = Service::new(store, pack, SystemClock, counters.clone())
             .map_err(|e| CoreError { code: e.code, detail: e.detail })?;
+        svc.set_copilot_home(crate::tools::copilot_home());
         Ok::<_, CoreError>(svc)
     })();
     let mut svc = match started {
@@ -159,6 +166,13 @@ pub fn run_with(paths: &Paths, labeller: Option<crate::service::LabelRequester>)
     write_user_only(&paths.token(), token.as_bytes()).map_err(fail(codes::STORE_OPEN))?;
     let listener = ipc::listen(paths).map_err(fail(codes::CORE_ALREADY_RUNNING))?;
     info!(pid = std::process::id(), "core started");
+    // Windows starts AIQ at sign-in from here on (design aiq-home-app, "Core down"). Off the start path.
+    let login_paths = paths.clone();
+    std::thread::spawn(move || match crate::autostart::ensure_login_start(&login_paths) {
+        Ok(true) => info!("AIQ now starts when you sign in to Windows"),
+        Ok(false) => {}
+        Err(e) => warn!(error.code = codes::CORE_LOGIN_START, error = %e, "could not set AIQ to start at sign-in"),
+    });
 
     let (tx, rx) = mpsc::sync_channel::<Cmd>(CHANNEL_CAPACITY);
     let writer_paths = paths.clone();
@@ -203,13 +217,25 @@ fn writer_loop(mut svc: Service<SystemClock>, rx: Receiver<Cmd>, paths: &Paths, 
             Err(mpsc::RecvTimeoutError::Timeout) => Cmd::DrainSpool,
             Err(mpsc::RecvTimeoutError::Disconnected) => break None,
         };
+        // A frame a hook spooled while the core was busy (its 20 ms send missed) goes in before the next
+        // command, not at the idle tick: steady traffic (a status poll, a busy session) never lets the
+        // tick fire, and the spooled prompt would wait behind later ones (Windows runner flake, 2026-11-03).
+        if !matches!(cmd, Cmd::DrainSpool) && paths.spool().exists() {
+            drain_spool(paths, &mut svc, counters);
+        }
         match cmd {
             Cmd::Ingest { event, trace_id } => svc.ingest(&event, trace_id.as_deref()),
             Cmd::TakeCard { event, trace_id, received, wait_ms, reply } => {
                 let fresh = received.elapsed() <= Duration::from_millis(wait_ms);
                 let card = svc.take_card(&event, trace_id.as_deref(), fresh);
-                let _ = reply.send(TakeCardReply { card, plain: !svc.switch_on(SETTING_TIP_HIGHLIGHT) });
+                let id = card.as_ref().map(|c| c.card_id.clone());
+                let sent = reply.send(TakeCardReply { card, plain: !svc.switch_on(SETTING_TIP_HIGHLIGHT) });
+                if let (Err(_), Some(id)) = (sent, id) {
+                    svc.hand_back(&id); // the hook's wait ended before the reply: it will never print this tip
+                }
+                svc.after_stop(&event, trace_id.as_deref());
             }
+            Cmd::Shown { card_id, surface, session } => svc.card_shown(&card_id, &surface, &session),
             Cmd::Status { reply } => {
                 let _ = reply.send(svc.status());
             }
@@ -219,8 +245,13 @@ fn writer_loop(mut svc: Service<SystemClock>, rx: Receiver<Cmd>, paths: &Paths, 
             Cmd::TipLine { surface, session, reply } => {
                 let plain = !svc.switch_on(SETTING_TIP_HIGHLIGHT);
                 let r = match svc.tip_line(&surface, session.as_deref()) {
-                    Some(TipLineOut::Full(c)) => TipLineReply { card: Some(c), waiting_card_id: None, plain },
-                    Some(TipLineOut::Waiting(id)) => TipLineReply { card: None, waiting_card_id: Some(id), plain },
+                    Some(TipLineOut::Full(c)) => {
+                        TipLineReply { card: Some(c), waiting_card_id: None, trend: None, plain }
+                    }
+                    Some(TipLineOut::Waiting(id)) => {
+                        TipLineReply { card: None, waiting_card_id: Some(id), trend: None, plain }
+                    }
+                    Some(TipLineOut::Trend(t)) => TipLineReply { trend: Some(t), plain, ..Default::default() },
                     None => TipLineReply::default(),
                 };
                 let _ = reply.send(r);
@@ -236,7 +267,7 @@ fn writer_loop(mut svc: Service<SystemClock>, rx: Receiver<Cmd>, paths: &Paths, 
             Cmd::IncludeFolder { folder, reply } => {
                 let r = match svc.include_folder(&folder) {
                     Ok(true) => Ok(()),
-                    Ok(false) => Err("that folder is not set aside".into()),
+                    Ok(false) => Err("that folder is already counted".into()),
                     Err(e) => Err(e.code.into()),
                 };
                 let _ = reply.send(r);
@@ -338,6 +369,11 @@ pub fn dispatch(req: Request, tx: &SyncSender<Cmd>, counters: &Counters, receive
             if let Err(TrySendError::Full(_)) = tx.try_send(Cmd::Ingest { event, trace_id }) {
                 counters.inc(codes::INGEST_BACKPRESSURE);
             }
+            Dispatch::NoReply
+        }
+        Request::Shown { card_id, surface, session, .. } => {
+            // Blocking: this connection's hook has already gone, and a lost note would show the tip again.
+            let _ = tx.send(Cmd::Shown { card_id, surface, session });
             Dispatch::NoReply
         }
         Request::TakeCard { event, trace_id, wait_ms, .. } => {

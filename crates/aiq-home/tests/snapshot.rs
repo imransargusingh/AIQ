@@ -72,11 +72,56 @@ fn tasks_follow_the_task_rule_window_and_set_aside() {
     assert_eq!(s.tasks[1].folder.as_deref(), Some(AIQ));
     assert_eq!(s.tasks[4].folder, None, "vscode prompts carried no folder");
     assert!(s.tasks.iter().all(|t| t.folder.as_deref() != Some(PIPELINE)));
-    assert_eq!(s.home.set_aside.len(), 1);
+    assert_eq!(s.home.set_aside.len(), 3, "pipeline and two AIQ probe folders");
+    assert_eq!((s.home.set_aside[0].folder.as_str(), s.home.set_aside[0].runs), (PIPELINE, 12));
     // Weeks: oldest first, last ends now: [-28d,-21d) [-21d,-14d) [-14d,-7d) [-7d,now). Tasks at -20d, -16d | -9d x2 | -2d, -30min.
     let w: Vec<u32> = s.home.weeks.iter().map(|w| w.tasks).collect();
     assert_eq!(w, vec![0, 2, 2, 2]);
     assert_eq!(s.home.by_tool[0], ("copilot-cli".to_string(), 3));
+}
+
+#[test]
+fn a_session_captured_live_and_imported_is_one_task() {
+    let d = tempfile::tempdir().unwrap();
+    let p = Paths::at(d.path());
+    let mut s = Seed::new(&p);
+    let t0 = NOW - 2 * DAY;
+    // VS Code agent mode: the hooks saw two prompts; Copilot's own log (imported) also holds the one typed while
+    // the agent worked, and its copies of the other two land 2-3 s later.
+    let v1 = s.prompt("vscode", "S", t0, Some(AIQ), "fix the build");
+    s.prompt("vscode", "S", t0 + 10 * MIN, Some(AIQ), "now the tests");
+    s.imported_session(
+        "copilot-cli",
+        "S",
+        AIQ,
+        "imported",
+        &[
+            (t0 + 2_500, "fix the build"),
+            (t0 + 5 * MIN, "use the other runner"),
+            (t0 + 10 * MIN + 3_000, "now the tests"),
+        ],
+    );
+    // Claude Code: the same session twice, nothing extra.
+    let c1 = s.prompt("claude-code", "C", t0 + DAY, Some(AIQ), "write the spec");
+    s.imported_session("claude-code", "C", AIQ, "imported", &[(t0 + DAY + 1_000, "write the spec")]);
+    // Imported only (before live capture began): a task as before.
+    s.imported_session("claude-code", "OLD", AIQ, "imported", &[(t0 - DAY, "an older session")]);
+    let snap = snap(&p);
+    assert!(snap.status.error.is_none(), "{:?}", snap.status.error);
+    let shape: Vec<(&str, &str, u32, &str)> =
+        snap.tasks.iter().map(|t| (t.task_id.as_str(), t.tool.as_str(), t.prompts, t.origin)).collect();
+    assert_eq!(
+        shape,
+        vec![
+            (c1.as_str(), "claude-code", 1, "live"),
+            (v1.as_str(), "vscode", 3, "live"),
+            ("import:claude-code:OLD:0", "claude-code", 1, "imported"),
+        ]
+    );
+    let merged = &snap.tasks[1];
+    assert_eq!(merged.members[1].0, "import:copilot-cli:S:2", "the prompt only the import holds joins in order");
+    assert_eq!(merged.folder.as_deref(), Some(AIQ));
+    assert_eq!(snap.home.tasks_in_window, 3);
 }
 
 #[test]
@@ -89,7 +134,7 @@ fn tips_settings_and_data() {
     assert_eq!(s.tips[0].tool, "copilot-cli");
     assert!(!s.tips[0].opened);
     assert!(s.tips[1].opened);
-    assert!(s.tips[1].noticed.starts_with("You reworded"));
+    assert!(s.tips[1].noticed.starts_with("This request went round"));
     assert_eq!(s.home.tips_today, 1);
     assert_eq!(s.settings.daily_cap, 3);
     assert_eq!(s.settings.copilot_tip_stays, "next-prompt");
@@ -231,7 +276,17 @@ fn setup_done_follows_the_flag() {
     aiq_core::control::finish_setup(&p).unwrap();
     let s = snap(&p);
     assert!(s.setup.done);
-    assert_eq!(s.setup.tools.iter().map(|t| t.tool).collect::<Vec<_>>(), vec!["claude-code", "copilot"]);
+    assert_eq!(s.setup.tools.iter().map(|t| t.tool).collect::<Vec<_>>(), vec!["claude-code", "copilot", "vscode"]);
+}
+
+#[test]
+fn tour_seen_follows_its_own_flag() {
+    let d = tempfile::tempdir().unwrap();
+    let p = Paths::at(d.path());
+    aiq_core::control::finish_setup(&p).unwrap();
+    assert!(!snap(&p).setup.tour_seen, "finishing setup doesn't count as seeing the tour");
+    aiq_core::control::mark_tour_seen(&p).unwrap();
+    assert!(snap(&p).setup.tour_seen);
 }
 
 /// A coaching judgment: Delegated, the person ran the checks (the kind coaches the step-3 moves).
@@ -392,4 +447,140 @@ fn a_renamed_project_keeps_its_name_and_an_empty_name_goes_back() {
     assert_eq!(names(&snap(&p)), vec![("AI coach".into(), true), (aiq_home::NO_FOLDER.into(), false)]);
     Seed::new(&p).setting(&format!("project_name.{AIQ}"), "", NOW - DAY);
     assert_eq!(names(&snap(&p)), vec![(aiq_home::NO_FOLDER.into(), false), ("aiq".into(), false)]);
+}
+
+/// Design live-rung-trend C: the open task's estimate after each turn, from recorded actions only.
+#[test]
+fn live_trend_reads_the_open_task_turn_by_turn() {
+    let d = tempfile::tempdir().unwrap();
+    let p = Paths::at(d.path());
+    coaching(&p);
+    open_task(&p);
+    let s = snap(&p);
+    let l = s.live.first().expect("a task is open");
+    assert_eq!(s.live.len(), 1, "one task open");
+    assert_eq!((l.trend.surface.as_str(), l.trend.prompts, l.trend.working), ("copilot-cli", 5, true));
+    // Turn 1 only read files (Assisted); turn 2 edited from a full brief (Delegated); turn 3 is the third prompt
+    // (Directed); turn 4 was not recorded, so it adds nothing and the estimate stays.
+    let rungs: Vec<Option<u8>> = l.trend.steps.iter().map(|x| x.rung).collect();
+    assert_eq!(rungs, [Some(1), Some(3), Some(2), Some(2)]);
+    assert_eq!(l.trend.unrecorded, [4]);
+    assert_eq!(l.trend.unrecorded_why, ["read_error"]);
+    assert_eq!((l.trend.rung, l.trend.could), (Some(2), Some(3)), "could reach comes from the spec kind's row");
+    assert_eq!(l.kind, Some("Writing a spec or PRD"));
+    assert_eq!(l.trend.tip.as_ref().map(|t| t.turn), Some(3));
+    assert!(s.tasks.iter().any(|t| t.task_id == l.task_id), "opens a task the list has");
+    let json = serde_json::to_string(l).unwrap();
+    assert!(!json.contains("tighten the wording") && !json.contains("Write the spec"), "no prompt text in the card");
+}
+
+/// Several open tasks (Imran 2026-11-07, option A): every live session with a turn ended inside the idle gap,
+/// the newest activity first. A session whose first turn is still running, or whose last event is older than the
+/// gap, is not open on the card.
+#[test]
+fn live_trend_lists_every_open_task_newest_activity_first() {
+    let d = tempfile::tempdir().unwrap();
+    let p = Paths::at(d.path());
+    coaching(&p);
+    let mut s = open_task(&p);
+    s.prompt("vscode", "vs2", NOW - 9 * MIN, Some(AIQ), "fix the date parser in src/parse.rs and run its tests");
+    s.stop("vscode", "vs2", NOW - MIN / 2);
+    s.prompt("claude-code", "cc3", NOW - MIN, Some(AIQ), "write tests for the export");
+    s.prompt("claude-code", "old", NOW - 50 * MIN, Some(AIQ), "rename the module");
+    s.stop("claude-code", "old", NOW - 40 * MIN);
+    drop(s);
+    let snap = snap(&p);
+    let open: Vec<(&str, &str)> =
+        snap.live.iter().map(|l| (l.trend.surface.as_str(), l.trend.session.as_str())).collect();
+    assert_eq!(open, [("vscode", "vs2"), ("copilot-cli", "live1")], "newest activity first; running and idle left out");
+    for l in &snap.live {
+        let t = snap.tasks.iter().find(|t| t.task_id == l.task_id).expect("each opens a task the list has");
+        assert_eq!(l.folder, t.folder, "the chip names the task's own project");
+    }
+    assert_ne!(snap.live[0].task_id, snap.live[1].task_id);
+}
+
+/// Judging off says since when only from a stored setting change (UI review item 8); never switched, no time.
+#[test]
+fn judging_says_when_it_was_last_switched() {
+    let d = tempfile::tempdir().unwrap();
+    let p = Paths::at(d.path());
+    standard(&p, false);
+    assert_eq!(snap(&p).settings.judge_since_ms, None, "never switched: no time");
+    let mut seed = Seed::new(&p);
+    seed.setting("judge", "auto", NOW - 3 * 60 * MIN);
+    seed.setting("judge", "off", NOW - 2 * 60 * MIN);
+    let s = snap(&p);
+    assert_eq!(s.settings.judge, "off");
+    assert_eq!(s.settings.judge_since_ms, Some(NOW - 2 * 60 * MIN), "the newest change");
+}
+
+#[test]
+fn live_trend_goes_when_the_task_ends_or_is_switched_off() {
+    let d = tempfile::tempdir().unwrap();
+    let p = Paths::at(d.path());
+    coaching(&p);
+    let mut seed = open_task(&p);
+    let later = Now { utc_ms: NOW + 31 * MIN, offset_min: 0 };
+    assert!(snapshot(&p, &BundledPack.load().unwrap(), later).live.is_empty(), "idle gap passed: the task ended");
+    seed.setting("live_trend", "off", NOW - MIN);
+    assert!(snap(&p).live.is_empty());
+}
+
+/// The Set aside list (design aiq-home-app D11): per folder, the sessions AIQ still leaves out (live and imported) and the newest one, the
+/// person's own tasks there it kept, and AIQ's own check folders after the person's.
+#[test]
+fn set_aside_rows_count_runs_kept_tasks_and_put_aiq_checks_last() {
+    let d = tempfile::tempdir().unwrap();
+    let p = Paths::at(d.path());
+    let check = r"c:\users\imran\appdata\local\temp\aiq-copilot-probe-1\run0";
+    {
+        let mut s = Seed::new(&p);
+        s.store.insert_folder_rule(check, "set_aside", "aiq-check", "live", NOW - 5 * DAY).unwrap();
+        s.set_aside(PIPELINE, NOW - 3 * DAY);
+        for (sid, at) in [("a1", NOW - 3 * DAY), ("a2", NOW - 2 * DAY), ("me", NOW - DAY)] {
+            s.store.insert_set_aside_session("copilot-cli", sid, PIPELINE, "template", at).unwrap();
+        }
+        // The person's session there: its second prompt rescued it, so it is recorded and kept, not set aside.
+        s.prompt("copilot-cli", "me", NOW - DAY, Some(PIPELINE), "look at the failing job");
+        s.prompt("copilot-cli", "me", NOW - DAY + MIN, Some(PIPELINE), "now fix it");
+        s.imported_session(
+            "copilot-cli",
+            "old",
+            r"C:\Users\Imran\source\repos\Pipeline",
+            "automated",
+            &[(NOW - 9 * DAY, "summarise record 9")],
+        );
+    }
+    let s = snap(&p);
+    assert!(s.status.error.is_none(), "{:?}", s.status.error);
+    type Row<'a> = (&'a str, &'a str, bool, u32, Option<i64>, u32);
+    let rows: Vec<Row> = s
+        .home
+        .set_aside
+        .iter()
+        .map(|r| (r.folder.as_str(), r.reason.as_str(), r.own, r.runs, r.last_ms, r.kept))
+        .collect();
+    assert_eq!(
+        rows,
+        vec![(PIPELINE, "burst", false, 3, Some(NOW - 2 * DAY), 1), (check, "aiq-check", true, 0, None, 0),],
+        "2 live + 1 imported set aside; the rescued session is kept, not counted"
+    );
+    assert_eq!(s.home.set_aside[0].since_ms, NOW - 3 * DAY);
+}
+
+/// A turn whose stop has no turn_action row (the core never read its log) is not recorded, with the reason
+/// `not_read`; a one-turn task with only that turn has no estimate.
+#[test]
+fn live_trend_names_a_turn_the_core_never_read() {
+    let d = tempfile::tempdir().unwrap();
+    let p = Paths::at(d.path());
+    let mut s = seed::Seed::new(&p);
+    let brief = "Fix the failing parser test in tests/parse.rs. Context: it fails only on Windows paths; keep the \
+                 public API unchanged and run the suite after";
+    s.prompt("vscode", "vs9", NOW - 44 * MIN, Some(AIQ), brief);
+    s.stop("vscode", "vs9", NOW - 2 * MIN);
+    let l = snap(&p).live.into_iter().next().expect("a task is open");
+    assert_eq!((l.trend.unrecorded.clone(), l.trend.unrecorded_why.clone()), (vec![1], vec!["not_read".to_string()]));
+    assert_eq!(l.trend.rung, None);
 }

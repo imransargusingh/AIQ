@@ -296,7 +296,7 @@ pub fn uninstall(yes: bool) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-/// `aiq install` with no tool named: connect every supported tool found on this computer that AIQ
+/// `aiq install` with no tool named: connect every supported tool installed on this computer that AIQ
 /// isn't hooked into yet (Imran, 2026-11-02: "Why isn't this done automatically when AIQ is
 /// installed?"). Each tool's own install runs unchanged: it shows the change, keeps a backup, and
 /// asks unless `--yes`. AIQ home's first-run setup runs this with `--yes`. Copilot is connected without
@@ -306,9 +306,66 @@ pub fn uninstall(yes: bool) -> ExitCode {
 pub fn install_found(yes: bool) -> ExitCode {
     let tools = aiq_core::tools::found();
     let todo: Vec<_> = tools.iter().filter(|t| t.present && !t.hooked).collect();
-    for t in tools.iter().filter(|t| t.hooked) {
+    for t in tools.iter().filter(|t| t.hooked && t.present) {
         println!("{} is already connected.", tool_name(t.tool));
     }
+    for t in tools.iter().filter(|t| t.hooked && !t.present) {
+        println!(
+            "{} isn't installed on this computer. AIQ's hooks are in its settings and start working once you install it. To remove them: aiq uninstall {}",
+            tool_name(t.tool),
+            t.tool
+        );
+    }
+    // Setup has connected everything present; from here on these are all already seen.
+    let seen = Paths::from_env().tools_seen();
+    let _ = aiq_core::tools::newly_installed(&seen, &as_seen(&tools));
+    let tried_vscode = todo.iter().any(|t| t.tool == "vscode");
+    let code = connect(yes, &tools, todo);
+    retry_vscode_unless_connected(&seen, tried_vscode);
+    code
+}
+
+/// `aiq install --new --yes` (AIQ home at open, and the core at start): after setup, connect a tool that was
+/// installed since AIQ last looked, the way setup would have. A tool AIQ saw before (and so one the person
+/// disconnected) is left alone. Prints nothing when there is nothing new.
+pub fn install_new(yes: bool) -> ExitCode {
+    let paths = Paths::from_env();
+    if !aiq_core::control::setup_done(&paths) {
+        return ExitCode::SUCCESS;
+    }
+    let tools = aiq_core::tools::found();
+    let new = aiq_core::tools::newly_installed(&paths.tools_seen(), &as_seen(&tools));
+    if new.is_empty() {
+        return ExitCode::SUCCESS;
+    }
+    let todo: Vec<_> = tools.iter().filter(|t| new.contains(&t.tool)).collect();
+    let code = connect(yes, &tools, todo);
+    retry_vscode_unless_connected(&paths.tools_seen(), new.contains(&"vscode"));
+    code
+}
+
+/// VS Code counts as seen only once AIQ's extension is really in it: if `code --install-extension` failed (or
+/// the person said no), the next core start or AIQ home open tries again, and `vscode-install.json` says why.
+/// 0.1.14 recorded VS Code as seen before the command ran, so one failure stopped every later try.
+fn retry_vscode_unless_connected(seen: &std::path::Path, tried: bool) {
+    if tried && !aiq_core::tools::found().iter().any(|t| t.tool == "vscode" && t.hooked) {
+        aiq_core::tools::forget_seen(seen, "vscode");
+    }
+}
+
+/// The tools as `newly_installed` should record them: VS Code counts as found only once this copy of AIQ has its
+/// extension file (aiq.vsix) to add, so a VS Code found before an update brought the file is still offered when
+/// it does, instead of being recorded as seen and skipped for good.
+fn as_seen(tools: &[aiq_core::tools::ToolFound]) -> Vec<aiq_core::tools::ToolFound> {
+    let can_add_vscode = crate::install_vscode::exe_vsix().is_some();
+    let mut tools = tools.to_vec();
+    for t in tools.iter_mut().filter(|t| t.tool == "vscode") {
+        t.present &= can_add_vscode;
+    }
+    tools
+}
+
+fn connect(yes: bool, tools: &[aiq_core::tools::ToolFound], todo: Vec<&aiq_core::tools::ToolFound>) -> ExitCode {
     if todo.is_empty() {
         if tools.iter().all(|t| !t.present) {
             println!(
@@ -328,12 +385,14 @@ pub fn install_found(yes: bool) -> ExitCode {
         println!("\n{}:", tool_name(t.tool));
         let code = match t.tool {
             "claude-code" => install(yes),
+            "vscode" => crate::install_vscode::install_with(yes, false),
             _ => crate::install_copilot::install_with(yes, false),
         };
         failed |= code != ExitCode::SUCCESS;
         println!("Undo: aiq uninstall {}", t.tool);
     }
-    if aiq_core::tools::found().iter().any(|t| t.hooked) {
+    // Analysis judges prompts the hooks saved; VS Code's extension only shows tips, so it alone doesn't count.
+    if aiq_core::tools::found().iter().any(|t| t.hooked && t.tool != "vscode") {
         println!();
         judging();
     }
@@ -353,26 +412,31 @@ fn judging() {
     let paths = Paths::from_env();
     let Ok(store) = crate::import::open_store(&paths) else {
         println!(
-            "Judging: AIQ couldn't open its store, so judging stays as it was. Turn it on: aiq config set judge auto"
+            "Analysis: AIQ couldn't open its store, so analysis stays as it was. Turn it on: aiq config set analysis auto"
         );
         return;
     };
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64);
     match crate::judge::turn_on_at_install(&store, now) {
         Ok(r) => print!("{}", crate::judge::at_install_text(r, crate::judge::settings(&store).daily_tasks)),
-        Err(e) => println!("Judging: not changed ({e}). Turn it on: aiq config set judge auto"),
+        Err(e) => println!("Analysis: not changed ({e}). Turn it on: aiq config set analysis auto"),
     }
 }
 
-/// Every file connecting or disconnecting a tool can write.
-fn connect_files() -> [std::path::PathBuf; 4] {
+/// Every file connecting or disconnecting a tool can write (VS Code's extension lists, one per VS Code build:
+/// VS Code's own command writes them).
+fn connect_files() -> Vec<std::path::PathBuf> {
     let ch = aiq_core::tools::copilot_home();
-    [
+    let mut files = vec![
         settings_path(),
         crate::install_copilot::hook_file(&ch),
         crate::install_copilot::wrapper_file(&ch),
         ch.join("settings.json"),
-    ]
+    ];
+    files.extend(
+        aiq_core::tools::vscode_builds().iter().map(|v| aiq_core::tools::vscode_extensions_list(&v.extensions)),
+    );
+    files
 }
 
 /// `aiq uninstall --all` (private-alpha design A7): disconnect every tool AIQ is connected to, list each
@@ -387,6 +451,7 @@ pub fn uninstall_all(yes: bool) -> ExitCode {
         println!("{}:", tool_name(t.tool));
         let code = match t.tool {
             "claude-code" => uninstall(yes),
+            "vscode" => crate::install_vscode::uninstall(yes),
             _ => crate::install_copilot::uninstall(yes),
         };
         failed |= code != ExitCode::SUCCESS;
@@ -408,6 +473,17 @@ pub fn uninstall_all(yes: bool) -> ExitCode {
         }
         Err(e) => {
             println!("Couldn't undo the Windows install's PATH entry or shortcut: {e}");
+            failed = true;
+        }
+    }
+    match aiq_core::autostart::remove_login_start() {
+        Ok(true) => {
+            changed = true;
+            println!("Removed: AIQ's start when you sign in to Windows");
+        }
+        Ok(false) => {}
+        Err(e) => {
+            println!("Couldn't remove AIQ's start at sign-in: {e}");
             failed = true;
         }
     }
@@ -499,6 +575,7 @@ fn set_user_path(_: &str) -> Result<(), String> {
 fn tool_name(tool: &str) -> &'static str {
     match tool {
         "claude-code" => "Claude Code",
+        "vscode" => "VS Code",
         _ => "GitHub Copilot",
     }
 }

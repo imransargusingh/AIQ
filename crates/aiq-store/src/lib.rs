@@ -16,9 +16,11 @@ pub const SCHEMA_V5: &str = include_str!("schema_v5.sql");
 pub const SCHEMA_V6: &str = include_str!("schema_v6.sql");
 pub const SCHEMA_V7: &str = include_str!("schema_v7.sql");
 pub const SCHEMA_V8: &str = include_str!("schema_v8.sql");
+pub const SCHEMA_V9: &str = include_str!("schema_v9.sql");
+pub const SCHEMA_V10: &str = include_str!("schema_v10.sql");
 /// Migration N takes the store from `user_version` N to N+1, in one transaction.
 pub const MIGRATIONS: &[&str] =
-    &[SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6, SCHEMA_V7, SCHEMA_V8];
+    &[SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6, SCHEMA_V7, SCHEMA_V8, SCHEMA_V9, SCHEMA_V10];
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StoreError {
@@ -292,6 +294,41 @@ pub struct KindLabelRow {
     pub tokens_out: Option<i64>,
     pub cost_usd: Option<f64>,
     pub utc_ms: i64,
+}
+
+/// One live turn's agent actions (schema v9 `turn_action`). Counts are None when `outcome` is `not_recorded`.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct TurnActionRow {
+    pub stop_event_id: String,
+    pub surface: String,
+    pub surface_session_id: String,
+    pub ts_utc_ms: i64,
+    pub outcome: String,
+    pub why: Option<String>,
+    pub tool_calls: Option<i64>,
+    pub commands: Option<i64>,
+    pub files: Option<i64>,
+    pub subagents: Option<i64>,
+    pub tools: Option<String>,
+    pub bytes_read: i64,
+    pub read_ms: i64,
+    pub utc_ms: i64,
+}
+
+/// One live event of a session with what the trend needs (`Store::session_events`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct SessionEvent {
+    pub event_id: String,
+    pub kind: String,
+    pub ts_utc_ms: i64,
+    pub text: Option<String>,
+    /// A stop's `turn_action.outcome` (recorded, not_recorded); None when no row exists.
+    pub action_outcome: Option<String>,
+    /// JSON {tool name: calls}, when recorded.
+    pub tools: Option<String>,
+    pub subagents: Option<i64>,
+    /// Why a stop's turn was not recorded (`turn_action.why`): no_log, read_error, too_large, unparsed, no_start.
+    pub why: Option<String>,
 }
 
 /// One answer to a tip (schema v6 `tip_feedback`).
@@ -614,6 +651,111 @@ impl Store {
         self.kind_labels_where("started_utc_ms >= ?1", [since_ms])
     }
 
+    /// Store one live turn's actions. False when that stop already has a row (a replayed stop stores nothing).
+    pub fn insert_turn_action(&self, t: &TurnActionRow) -> Result<bool> {
+        self.conn
+            .execute(
+                "INSERT OR IGNORE INTO turn_action (stop_event_id, surface, surface_session_id, ts_utc_ms, outcome, why,
+                   tool_calls, commands, files, subagents, tools, bytes_read, read_ms, utc_ms)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                params![
+                    t.stop_event_id,
+                    t.surface,
+                    t.surface_session_id,
+                    t.ts_utc_ms,
+                    t.outcome,
+                    t.why,
+                    t.tool_calls,
+                    t.commands,
+                    t.files,
+                    t.subagents,
+                    t.tools,
+                    t.bytes_read,
+                    t.read_ms,
+                    t.utc_ms
+                ],
+            )
+            .map(|n| n == 1)
+            .map_err(err(codes::STORE_WRITE))
+    }
+
+    /// Live turns whose actions were read at or after `since_ms`, oldest first. Empty before v9.
+    pub fn turn_actions_since(&self, since_ms: i64) -> Result<Vec<TurnActionRow>> {
+        if !self.has_table("turn_action")? {
+            return Ok(vec![]);
+        }
+        let mut st = self
+            .conn
+            .prepare(
+                "SELECT stop_event_id, surface, surface_session_id, ts_utc_ms, outcome, why, tool_calls, commands, files,
+                   subagents, tools, bytes_read, read_ms, utc_ms FROM turn_action WHERE utc_ms >= ?1 ORDER BY utc_ms, rowid",
+            )
+            .map_err(err(codes::STORE_OPEN))?;
+        let rows = st
+            .query_map([since_ms], |r| {
+                Ok(TurnActionRow {
+                    stop_event_id: r.get(0)?,
+                    surface: r.get(1)?,
+                    surface_session_id: r.get(2)?,
+                    ts_utc_ms: r.get(3)?,
+                    outcome: r.get(4)?,
+                    why: r.get(5)?,
+                    tool_calls: r.get(6)?,
+                    commands: r.get(7)?,
+                    files: r.get(8)?,
+                    subagents: r.get(9)?,
+                    tools: r.get(10)?,
+                    bytes_read: r.get(11)?,
+                    read_ms: r.get(12)?,
+                    utc_ms: r.get(13)?,
+                })
+            })
+            .map_err(err(codes::STORE_OPEN))?;
+        rows.collect::<rusqlite::Result<_>>().map_err(err(codes::STORE_OPEN))
+    }
+
+    /// A session's live events at or after `since_ms`, oldest first, each prompt with its text (None when
+    /// deleted or never stored) and each stop with its turn's recorded actions (None before v9, or when no row
+    /// was written). The live rung trend reads this (design live-rung-trend T2).
+    pub fn session_events(&self, surface: &str, session: &str, since_ms: i64) -> Result<Vec<SessionEvent>> {
+        let actions = if self.has_table("turn_action")? {
+            "a.outcome, a.tools, a.subagents, a.why"
+        } else {
+            "NULL, NULL, NULL, NULL"
+        };
+        let join =
+            if self.has_table("turn_action")? { "LEFT JOIN turn_action a ON a.stop_event_id = e.event_id" } else { "" };
+        let sql = format!(
+            "SELECT e.event_id, e.kind, e.ts_utc_ms, t.text, {actions}
+             FROM event e LEFT JOIN content t ON t.event_id = e.event_id {join}
+             WHERE e.surface = ?1 AND e.surface_session_id = ?2 AND e.ts_utc_ms >= ?3
+             ORDER BY e.ts_utc_ms, e.event_id"
+        );
+        let mut st = self.conn.prepare(&sql).map_err(err(codes::STORE_OPEN))?;
+        let rows = st
+            .query_map(params![surface, session, since_ms], |r| {
+                Ok(SessionEvent {
+                    event_id: r.get(0)?,
+                    kind: r.get(1)?,
+                    ts_utc_ms: r.get(2)?,
+                    text: r.get(3)?,
+                    action_outcome: r.get(4)?,
+                    tools: r.get(5)?,
+                    subagents: r.get(6)?,
+                    why: r.get(7)?,
+                })
+            })
+            .map_err(err(codes::STORE_OPEN))?;
+        rows.collect::<rusqlite::Result<_>>().map_err(err(codes::STORE_OPEN))
+    }
+
+    /// The event is stored (a stop of a set-aside or paused session is not).
+    pub fn has_event(&self, event_id: &str) -> Result<bool> {
+        self.conn
+            .query_row("SELECT EXISTS (SELECT 1 FROM event WHERE event_id = ?1)", [event_id], |r| r.get(0))
+            .map_err(err(codes::STORE_OPEN))
+    }
+
     pub fn insert_tip_feedback(&self, f: &TipFeedbackRow) -> Result<()> {
         self.conn
             .execute(
@@ -848,6 +990,20 @@ impl Store {
             .map_err(err(codes::STORE_OPEN))
     }
 
+    /// Is this exact prompt text already stored for the session? (A message read from Copilot's log that the
+    /// hook also sent.)
+    pub fn prompt_text_seen(&self, surface: &str, session: &str, text: &str) -> Result<bool> {
+        self.conn
+            .query_row(
+                "SELECT EXISTS (SELECT 1 FROM event e JOIN content c ON c.event_id = e.event_id
+                                WHERE e.surface = ?1 AND e.surface_session_id = ?2 AND e.kind = 'prompt'
+                                AND c.text = ?3)",
+                params![surface, session, text],
+                |r| r.get(0),
+            )
+            .map_err(err(codes::STORE_OPEN))
+    }
+
     pub fn insert_signal(&self, s: &NewSignal<'_>, now_ms: i64) -> Result<()> {
         let ev = serde_json::to_string(s.evidence).expect("strings serialize");
         self.conn
@@ -929,9 +1085,16 @@ impl Store {
             .next())
     }
 
-    /// Show-ready cards decided before `before_ms` and still undelivered (to expire).
-    pub fn stale_ready(&self, before_ms: i64) -> Result<Vec<ReadyCard>> {
-        self.ready_rows("AND d.utc_ms < ?1", &[&before_ms])
+    /// Show-ready cards still undelivered whose turn ended (the session's first stop received after the
+    /// decision) before `ended_before_ms`, or that were decided before `decided_before_ms` with no turn
+    /// end seen. Both times are core-clock (`received_utc_ms`, `utc_ms`).
+    pub fn stale_ready(&self, ended_before_ms: i64, decided_before_ms: i64) -> Result<Vec<ReadyCard>> {
+        self.ready_rows(
+            "AND (d.utc_ms < ?2 OR (SELECT min(e.received_utc_ms) FROM event e
+                   WHERE e.surface = d.surface AND e.surface_session_id = d.surface_session_id
+                     AND e.kind = 'stop' AND e.received_utc_ms >= d.utc_ms) < ?1)",
+            &[&ended_before_ms, &decided_before_ms],
+        )
     }
 
     pub fn delivered_in_session(&self, surface: &str, session: &str) -> Result<bool> {
@@ -1042,6 +1205,48 @@ impl Store {
         Ok(rows)
     }
 
+    /// Note one live session AIQ set aside at its first prompt. False when the session already has a row. A no-op
+    /// before v10.
+    pub fn insert_set_aside_session(
+        &self,
+        surface: &str,
+        session: &str,
+        folder: &str,
+        reason: &str,
+        utc_ms: i64,
+    ) -> Result<bool> {
+        if !self.has_table("set_aside_session")? {
+            return Ok(false);
+        }
+        self.conn
+            .execute(
+                "INSERT OR IGNORE INTO set_aside_session (surface, surface_session_id, folder, reason, utc_ms)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![surface, session, folder, reason, utc_ms],
+            )
+            .map(|n| n == 1)
+            .map_err(err(codes::STORE_WRITE))
+    }
+
+    /// Per folder key: (live sessions still set aside, the newest one's time). A session a person later sent a second
+    /// prompt to is recorded (it has a `surface_session` row) and is not counted. Empty before v10.
+    pub fn set_aside_session_counts(&self) -> Result<HashMap<String, (u32, i64)>> {
+        if !self.has_table("set_aside_session")? {
+            return Ok(HashMap::new());
+        }
+        let mut st = self
+            .conn
+            .prepare(
+                "SELECT a.folder, COUNT(*), MAX(a.utc_ms) FROM set_aside_session a
+                 WHERE NOT EXISTS (SELECT 1 FROM surface_session s
+                                   WHERE s.surface = a.surface AND s.surface_session_id = a.surface_session_id)
+                 GROUP BY a.folder",
+            )
+            .map_err(err(codes::STORE_OPEN))?;
+        let rows = st.query_map([], |r| Ok((r.get(0)?, (r.get(1)?, r.get(2)?)))).map_err(err(codes::STORE_OPEN))?;
+        rows.collect::<std::result::Result<_, _>>().map_err(err(codes::STORE_OPEN))
+    }
+
     /// Every folder's current rule: the newest action per folder (`set_aside` or `include`).
     pub fn folder_rules_now(&self) -> Result<HashMap<String, String>> {
         let mut st = self
@@ -1124,6 +1329,18 @@ impl Store {
             .map_err(err(codes::STORE_OPEN))?;
         let rows = st.query_map([prefix], |r| Ok((r.get(0)?, r.get(1)?))).map_err(err(codes::STORE_OPEN))?;
         rows.collect::<rusqlite::Result<Vec<_>>>().map_err(err(codes::STORE_OPEN))
+    }
+
+    /// When `key` last changed (its newest `setting_change` row), or None if it was never set.
+    pub fn setting_since(&self, key: &str) -> Result<Option<i64>> {
+        self.conn
+            .query_row(
+                "SELECT utc_ms FROM setting_change WHERE key = ?1 ORDER BY utc_ms DESC, rowid DESC LIMIT 1",
+                [key],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(err(codes::STORE_OPEN))
     }
 
     pub fn set_setting(&self, key: &str, value: &str, now_ms: i64) -> Result<()> {
@@ -1446,6 +1663,22 @@ impl Store {
     }
 
     /// Judge calls started at or after `since_ms`, oldest first (budget and retry back-off are derived from these).
+    /// Each provider's newest judge call: (provider, outcome, started). Says whether that tool works right now.
+    pub fn newest_judge_call_per_provider(&self) -> Result<Vec<(String, String, i64)>> {
+        if !self.has_table("judge_call")? {
+            return Ok(vec![]);
+        }
+        let mut st = self
+            .conn
+            .prepare(
+                // SQLite takes a bare column from the row that holds the MAX (documented for min/max aggregates).
+                "SELECT provider, outcome, MAX(started_utc_ms) FROM judge_call GROUP BY provider ORDER BY provider",
+            )
+            .map_err(err(codes::STORE_OPEN))?;
+        let rows = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).map_err(err(codes::STORE_OPEN))?;
+        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(err(codes::STORE_OPEN))
+    }
+
     pub fn judge_calls_since(&self, since_ms: i64) -> Result<Vec<CallOutcome>> {
         if !self.has_table("judge_call")? {
             return Ok(vec![]);

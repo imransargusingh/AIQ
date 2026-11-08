@@ -14,6 +14,8 @@ pub fn core() -> ExitCode {
     let paths = Paths::from_env();
     crate::judge::start_background(paths.clone());
     aiq_core::update::start_background(paths.clone());
+    // A tool installed after setup is connected at the next core start (or AIQ home open), not left waiting.
+    std::thread::spawn(|| crate::install::install_new(true));
     match server::run_with(&paths, Some(crate::label::requester())) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) if e.code == aiq_contracts::codes::CORE_ALREADY_RUNNING => {
@@ -121,9 +123,9 @@ fn status_text(paths: &Paths) -> (String, Vec<String>) {
         Some(s) => {
             let events: u64 = s.events_by_kind.iter().map(|(_, n)| n).sum();
             if s.paused {
-                out += "AIQ is paused. Nothing is captured and no tips show. Resume with: aiq resume\n";
+                out += "AIQ is paused. It saves nothing new and shows no tips. Resume with: aiq resume\n";
             } else if events == 0 {
-                out += "No activity yet. Use Claude Code or Copilot as usual; AIQ watches quietly.\n";
+                out += "No activity yet. Use Claude Code or Copilot as usual; AIQ runs quietly in the background.\n";
             } else {
                 out += "AIQ is running.\n";
             }
@@ -143,7 +145,7 @@ fn status_text(paths: &Paths) -> (String, Vec<String>) {
             for (folder, reason) in &s.automated_folders {
                 if reason == "projects" {
                     out += &format!(
-                        "Sessions Claude ran for you through claude.ai Projects or Remote Control are ignored in \
+                        "Sessions Claude ran for you through claude.ai Projects or Remote Control aren't counted in \
                          {folder}. To count them: aiq include \"{folder}\"\n"
                     );
                     continue;
@@ -154,7 +156,7 @@ fn status_text(paths: &Paths) -> (String, Vec<String>) {
                     "the same first prompt over and over"
                 };
                 out += &format!(
-                    "Automated sessions ignored in {folder} ({why}). If that is your own work: aiq include \"{folder}\"\n"
+                    "Automated, not counted: {folder} ({why}). If that is your own work: aiq include \"{folder}\"\n"
                 );
             }
             if let Some(c) = &s.coach {
@@ -173,15 +175,18 @@ fn status_text(paths: &Paths) -> (String, Vec<String>) {
                     c.right, c.checked, c.coached_types
                 );
                 if let Some(o) = c.other_pct {
-                    out += &format!("Judged tasks typed \"other\": {o}%\n");
+                    out += &format!("Analyzed tasks typed \"other\": {o}%\n");
                 }
                 out += &render_accuracy_paused(&c.accuracy_paused);
                 if let Some(l) = &c.labels {
                     out += &render_labels(l);
                 }
             }
+            if let Some(a) = &s.agent_actions {
+                out += &render_actions(a);
+            }
             if let Some((_, n)) = ignored {
-                out += &format!("Automated prompts ignored since the core started: {n}\n");
+                out += &format!("Automated prompts not counted since the core started: {n}\n");
             }
             if let Some((_, n)) = s.core_counters.iter().find(|(k, _)| k == aiq_contracts::codes::INGEST_SECRET_REMOVED)
             {
@@ -219,16 +224,24 @@ fn status_text(paths: &Paths) -> (String, Vec<String>) {
     }
     out += &format!("Claude Code: {}\n", crate::install::status_line());
     out += &format!("Copilot: {}\n", crate::install_copilot::status_line());
+    if let Some(l) = crate::install_vscode::status_line() {
+        out += &format!("VS Code: {l}\n");
+    }
+    let now_ms = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64);
+    let up = aiq_core::update::view(&paths, aiq_core::update::stored_mode(&paths).as_deref(), now_ms);
+    if let Some(l) = update_status_line(&up) {
+        out += &l;
+    }
     let spooled = std::fs::read_to_string(paths.spool()).map(|s| s.lines().count()).unwrap_or(0);
     if spooled > 0 {
         out += &format!("Queued while the core was down: {spooled} events\n");
     }
-    let aside: Vec<String> = reply
+    let aside = SetAside::from_folders(reply.iter().flat_map(|s| &s.automated_folders));
+    // The previous fill first, so the lines stay in time order.
+    let text = [paths.hook_timings_prev(), paths.hook_timings()]
         .iter()
-        .flat_map(|s| &s.automated_folders)
-        .filter_map(|(f, _)| aiq_domain::automated::folder_tag(f))
-        .collect();
-    let text = std::fs::read_to_string(paths.hook_timings()).unwrap_or_default();
+        .map(|p| std::fs::read_to_string(p).unwrap_or_default())
+        .collect::<String>();
     let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
     out += &hook_time_lines(&text, now, &aside);
     // upgrade.ps1 logs in the AIQ home; the laptop's dev swapper logs next to the exes. Newest of both.
@@ -311,7 +324,8 @@ pub const HOOK_BUDGET_MS: f64 = 100.0;
 
 /// Unix seconds of the last time the exes changed, from one upgrade log. Two writers, two line shapes and
 /// two places (`<home>\upgrade-log.txt` and `<home>\bin\upgrade-log.txt`; `status` reads both):
-/// `upgrade.ps1` writes `yyyy-mm-dd hh:mm:ssZ Upgraded AIQ…` / `… Rolled back to AIQ…` (lines where nothing
+/// `upgrade.ps1` writes `yyyy-mm-dd hh:mm:ssZ Upgraded AIQ…` / `… Rolled back to AIQ…`, `install.ps1` writes
+/// `… Installed AIQ…` (lines where nothing
 /// changed are skipped); the laptop's dev swapper writes `<RFC 3339 with offset> swapped aiq.exe (<n> bytes)`
 /// (measured 2026-11-02: `2026-11-02T14:00:57.7222903-08:00 swapped aiq.exe (5920768 bytes)`).
 /// assume: every exe change goes through one of the two. If false: the budget line says no upgrade is
@@ -320,7 +334,7 @@ pub fn last_upgrade(log: &str) -> Option<u64> {
     log.lines()
         .filter_map(|l| {
             let m = l.get(21..).unwrap_or("");
-            if m.starts_with("Upgraded AIQ") || m.starts_with("Rolled back to AIQ") {
+            if ["Upgraded AIQ", "Rolled back to AIQ", "Installed AIQ"].iter().any(|p| m.starts_with(p)) {
                 let t = chrono::NaiveDateTime::parse_from_str(l.get(..19)?, "%Y-%m-%d %H:%M:%S").ok()?;
                 return Some(t.and_utc().timestamp());
             }
@@ -337,7 +351,7 @@ pub fn last_upgrade(log: &str) -> Option<u64> {
 /// The figure that counts against the hook budget: AIQ's own part of each run (total less reading the
 /// host's input, which is the host's wait), p95 per event, over runs since the last upgrade, so a fix shows
 /// the day it is installed instead of when older lines age out. Same exclusions as the other hook figures.
-pub fn hook_budget_lines(text: &str, aside: &[String], since: Option<u64>) -> String {
+pub fn hook_budget_lines(text: &str, aside: &SetAside, since: Option<u64>) -> String {
     let Some(since) = since else {
         return format!(
             "Hook budget ({HOOK_BUDGET_MS:.0} ms p95, AIQ's own part): no upgrade recorded in {UPGRADE_LOG}, so \
@@ -377,18 +391,55 @@ pub fn hook_budget_lines(text: &str, aside: &[String], since: Option<u64>) -> St
 /// and AIQ's own judge calls (`internal`). Their time is the host's stdin wait, not AIQ's.
 const NOT_A_PERSON: [&str; 2] = ["automated", "internal"];
 
+/// The set-aside folders, as the timing log's folder tags, split the way the task list splits them (PR #87).
+#[derive(Debug, Default)]
+pub struct SetAside {
+    /// Every run left out: Claude's own Projects / Remote Control folders (`projects`) and AIQ's own check folders
+    /// (`aiq-check`), whose sessions the core records nothing for, however many prompts they send.
+    pub whole: Vec<String>,
+    /// Folders set aside as automated (burst, template, or the import's rule): a run counts when its session sent
+    /// two or more prompts, the rule's H ≥ 2, the same test that keeps a person's task there.
+    pub by_session: Vec<String>,
+}
+
+impl SetAside {
+    /// From the core's `(folder, reason)` list.
+    pub fn from_folders<'a>(folders: impl IntoIterator<Item = &'a (String, String)>) -> Self {
+        let mut s = Self::default();
+        for (f, reason) in folders {
+            let Some(tag) = aiq_domain::automated::folder_tag(f) else { continue };
+            if matches!(reason.as_str(), "projects" | "aiq-check") { s.whole.push(tag) } else { s.by_session.push(tag) }
+        }
+        s
+    }
+}
+
+/// Prompt events, by host: a session with two or more of these in the log is a person's.
+const PROMPT_EVENTS: [&str; 2] = ["UserPromptSubmit", "userPromptSubmitted"];
+
 /// Splits the timing log into the runs that count against AIQ's hook budget and the number left out: runs
-/// with a `NOT_A_PERSON` outcome, and runs whose folder tag is one AIQ sets aside (automated folders,
-/// Projects / Remote Control folders, AIQ's own check folders; `aside` holds their `folder_tag`s).
-/// Lines from builds before the tag are kept unless their outcome says otherwise.
-pub fn split_hook_runs<'a>(text: &'a str, aside: &[String]) -> (Vec<&'a str>, usize) {
+/// with a `NOT_A_PERSON` outcome, runs in a `whole` folder, and runs in a `by_session` folder whose session has
+/// fewer than two prompt runs in the log (or no session tag: builds before 0.1.4).
+/// Lines from builds before the folder tag are kept unless their outcome says otherwise.
+/// assume: the log holds a session's earlier prompts. If false (the log rotated twice since): that session's
+/// runs are left out until it sends two more, which the left-out count shows.
+pub fn split_hook_runs<'a>(text: &'a str, aside: &SetAside) -> (Vec<&'a str>, usize) {
+    let field = |l: &'a str, k: &str| l.split_whitespace().find_map(|w| w.strip_prefix(k));
+    let mut prompts: std::collections::HashMap<&str, u32> = Default::default();
+    for l in text.lines().filter(|l| l.split_whitespace().next().is_some_and(|e| PROMPT_EVENTS.contains(&e))) {
+        if let Some(s) = field(l, "s=") {
+            *prompts.entry(s).or_default() += 1;
+        }
+    }
     let mut left_out = 0;
     let kept = text
         .lines()
         .filter(|l| {
             let outcome = l.split_whitespace().nth(2).unwrap_or("");
-            let dir = l.split_whitespace().find_map(|w| w.strip_prefix("dir="));
-            let out = NOT_A_PERSON.contains(&outcome) || dir.is_some_and(|d| aside.iter().any(|a| a == d));
+            let in_folder = |set: &[String]| field(l, "dir=").is_some_and(|d| set.iter().any(|a| a == d));
+            let person = field(l, "s=").is_some_and(|s| prompts.get(s).is_some_and(|n| *n >= 2));
+            let out =
+                NOT_A_PERSON.contains(&outcome) || in_folder(&aside.whole) || (in_folder(&aside.by_session) && !person);
             left_out += usize::from(out);
             !out
         })
@@ -398,7 +449,7 @@ pub fn split_hook_runs<'a>(text: &'a str, aside: &[String]) -> (Vec<&'a str>, us
 
 /// p50 / p95 in-process hook time per event, from the hook's own timing log, over the runs that count
 /// against AIQ's budget, plus one line naming how many runs were left out.
-pub fn hook_time_lines(text: &str, now: u64, aside: &[String]) -> String {
+pub fn hook_time_lines(text: &str, now: u64, aside: &SetAside) -> String {
     let (kept, left_out) = split_hook_runs(text, aside);
     let text = kept.join("\n");
     let mut by: std::collections::BTreeMap<&str, Vec<u64>> = Default::default();
@@ -476,7 +527,7 @@ pub fn show(card_id: &str) -> ExitCode {
 }
 
 pub fn render_show(r: &ShowReply) -> String {
-    let Some(c) = &r.card else { return "No card with that id.\n".into() };
+    let Some(c) = &r.card else { return "No tip with that id.\n".into() };
     let mut out = format!("AIQ tip: {}\nWhy: {}\nTry this: {}\n\n", c.noticed, c.why, c.try_this);
     let status =
         if r.delivered { "shown".to_string() } else { r.outcome.clone().unwrap_or_default().replace('_', "-") };
@@ -500,7 +551,7 @@ pub fn render_show(r: &ShowReply) -> String {
         return out;
     }
     if r.evidence.iter().all(|e| e.text.is_none()) {
-        out += "The evidence for this card was deleted.\n";
+        out += "The prompts behind this tip were deleted.\n";
         return out;
     }
     out += "The prompts it counted:\n";
@@ -520,7 +571,7 @@ pub fn pause(on: bool) -> ExitCode {
     println!(
         "{}",
         if on {
-            "AIQ is paused. Nothing is captured and no tips show. Resume with: aiq resume"
+            "AIQ is paused. It saves nothing new and shows no tips. Resume with: aiq resume"
         } else {
             "AIQ resumed."
         }
@@ -539,7 +590,7 @@ pub fn include_folder(folder: &str) -> ExitCode {
         .and_then(|l| serde_json::from_str::<OkReply>(&l).ok());
     match r {
         Some(OkReply { ok: true, .. }) => {
-            println!("AIQ will watch sessions in {folder} again.");
+            println!("AIQ will include sessions in {folder} again.");
             ExitCode::SUCCESS
         }
         Some(OkReply { message, .. }) => {
@@ -553,15 +604,41 @@ pub fn include_folder(folder: &str) -> ExitCode {
     }
 }
 
+/// Live agent actions today (design live-agent-actions): turns read, turns not recorded and why, and what the
+/// reading cost per turn. All counted from stored rows.
+pub fn render_actions(a: &aiq_contracts::frames::ActionsStatus) -> String {
+    if !a.enabled {
+        return "What the agent did per turn: off (aiq config set agent-actions on)\n".into();
+    }
+    if a.turns == 0 {
+        return "What the agent did per turn: on, no turn read today\n".into();
+    }
+    let why: Vec<String> = a.why.iter().map(|(w, n)| format!("{w} {n}")).collect();
+    let missed = if a.not_recorded == 0 {
+        String::new()
+    } else {
+        format!(", not recorded {} ({})", a.not_recorded, why.join(", "))
+    };
+    format!(
+        "What the agent did per turn: {} turns read today{missed}. Reading cost per turn: p95 {} ms, max {} ms, \
+         largest read {} KB\n",
+        a.turns,
+        a.p95_ms.unwrap_or(0),
+        a.max_ms.unwrap_or(0),
+        a.max_bytes.unwrap_or(0).div_ceil(1024)
+    )
+}
+
 /// Jobs and kinds the accuracy check paused, and the one command that keeps each showing (design K6b).
 /// Kind labels (design kind-label): today's calls against the budget, and AIQ's own check of them.
 pub fn render_labels(l: &aiq_contracts::frames::LabelStatus) -> String {
     if !l.enabled {
-        return "Kind-of-task labels: off (on while background judging is on; aiq config set kind-label auto)\n".into();
+        return "Kind-of-task labels: off (on while background analysis is on; aiq config set kind-label auto)\n"
+            .into();
     }
     let ms = l.median_ms.map_or(String::new(), |m| format!(", median {:.1} s", m as f64 / 1000.0));
     format!(
-        "Kind-of-task labels today: {} of {} (answered {}, confident {}{ms}). Labels checked against the judge: \
+        "Kind-of-task labels today: {} of {} (answered {}, confident {}{ms}). Labels checked against the analysis: \
          right {} of {}\n",
         l.today, l.daily, l.answered, l.confident, l.right, l.checked
     )
@@ -572,14 +649,14 @@ pub fn render_accuracy_paused(p: &[aiq_contracts::frames::PausedScope]) -> Strin
     for s in p {
         if s.kept_on {
             out += &format!(
-                "Next-step tips for {}: kept on by you, though a second model agreed with the judge only {} of {} times. \
+                "Next-step tips for {}: kept on by you, though a second model agreed with AIQ's analysis only {} of {} times. \
                  Let AIQ decide again: aiq config set keep-on.{} auto\n",
                 s.label, s.agreed, s.checked, s.scope
             );
         } else {
             out += &format!(
-                "Next-step tips for {}: paused by AIQ. A second model agreed with the judge only {} of {} times \
-                 (under 8 in 10). They come back when a later check clears the bar (aiq judge --check). \
+                "Next-step tips for {}: paused by AIQ. A second model agreed with AIQ's analysis only {} of {} times \
+                 (under 8 in 10). They come back when a later check clears the bar (aiq analyze --check). \
                  Keep them showing: aiq config set keep-on.{} on\n",
                 s.label, s.agreed, s.checked, s.scope
             );
@@ -590,6 +667,9 @@ pub fn render_accuracy_paused(p: &[aiq_contracts::frames::PausedScope]) -> Strin
 
 /// `aiq config set <name> <value>`: one of the settings listed in the unknown-setting message.
 pub fn config_set(name: &str, value: &str) -> ExitCode {
+    // `analysis*` is the name users see; the stored keys and the old `judge*` names stay as they are.
+    let renamed = name.strip_prefix("analysis").map(|rest| format!("judge{rest}"));
+    let name = renamed.as_deref().unwrap_or(name);
     let keep_on = name.strip_prefix("keep-on.").map(|s| format!("keep_on.{s}"));
     let (key, done) = match name {
         _ if keep_on.is_some() => {
@@ -597,11 +677,15 @@ pub fn config_set(name: &str, value: &str) -> ExitCode {
         }
         "daily-cap" => ("daily_cap", format!("Daily tip limit set to {value}.")),
         "copilot-tip-stays" => ("copilot_tip_stays", format!("Copilot CLI tip stays: {value}.")),
-        "judge" => ("judge", format!("Background judging: {value}.")),
-        "judge-daily-tasks" => ("judge_daily_tasks", format!("Most tasks judged per day: {value}.")),
-        "judge-claude-model" => ("judge_claude_model", format!("Claude judge model: {value}.")),
-        "judge-copilot-model" => ("judge_copilot_model", format!("Copilot judge model: {value}.")),
-        "judge-copilot-sessions" => ("judge_copilot_sessions", format!("Copilot judge sessions: {value}.")),
+        "judge" => ("judge", format!("Background analysis: {value}.")),
+        "judge-daily-tasks" => ("judge_daily_tasks", format!("Most tasks analyzed per day: {value}.")),
+        "judge-claude-model" => ("judge_claude_model", format!("Claude analysis model: {value}.")),
+        "judge-copilot-model" => ("judge_copilot_model", format!("Copilot analysis model: {value}.")),
+        "judge-copilot-sessions" => ("judge_copilot_sessions", format!("Copilot analysis sessions: {value}.")),
+        "judge-calls" => ("judge_calls", format!("Model calls per analyzed task: {value}.")),
+        "judge-copilot-second-model" => {
+            ("judge_copilot_second_model", format!("Copilot analysis, second call's model: {value}."))
+        }
         "next-rung-tips" => ("next_rung_tips", format!("Next-step tips: {value}.")),
         "copilot-tip-in-chat" => ("copilot_tip_in_chat", format!("Copilot CLI tip in the conversation: {value}.")),
         "tip-popup" => ("tip_popup", format!("Windows pop-up for tips: {value}.")),
@@ -609,6 +693,9 @@ pub fn config_set(name: &str, value: &str) -> ExitCode {
         "check-claude-model" => ("check_claude_model", format!("Accuracy check, Claude model: {value}.")),
         "check-copilot-model" => ("check_copilot_model", format!("Accuracy check, Copilot model: {value}.")),
         "update" => ("update", format!("Updates: {value}.")),
+        "copilot-mid-turn" => ("copilot_mid_turn", format!("Copilot messages sent while the agent works: {value}.")),
+        "agent-actions" => ("agent_actions", format!("What the agent did in each turn: {value}.")),
+        "live-trend" => ("live_trend", format!("Where an open task is heading: {value}.")),
         "kind-label" => ("kind_label", format!("Kind-of-task labels: {value}.")),
         "kind-label-daily" => ("kind_label_daily", format!("Most kind labels per day: {value}.")),
         "kind-label-claude-model" => ("kind_label_claude_model", format!("Kind label, Claude model: {value}.")),
@@ -616,10 +703,10 @@ pub fn config_set(name: &str, value: &str) -> ExitCode {
         _ => {
             println!(
                 "Unknown setting {name}. Settings: daily-cap, copilot-tip-stays, copilot-tip-in-chat, tip-popup, \
-                 tip-highlight, judge, judge-daily-tasks, \
-                 judge-claude-model, judge-copilot-model, judge-copilot-sessions, next-rung-tips, check-claude-model, \
+                 tip-highlight, analysis, analysis-daily-tasks, \
+                 analysis-claude-model, analysis-copilot-model, analysis-copilot-sessions, analysis-calls, analysis-copilot-second-model, next-rung-tips, check-claude-model, \
                  check-copilot-model, update, kind-label, kind-label-daily, kind-label-claude-model, kind-label-copilot-model, \
-                 keep-on.<job or job/kind>."
+                 copilot-mid-turn, agent-actions, live-trend, keep-on.<job or job/kind>."
             );
             return ExitCode::from(2);
         }
@@ -728,7 +815,7 @@ pub fn confirm(question: &str, yes: bool) -> bool {
 
 pub fn forget_all(yes: bool) -> ExitCode {
     let paths = Paths::from_env();
-    if !confirm("Delete every prompt, signal and card AIQ stored on this machine? This cannot be undone.", yes) {
+    if !confirm("Delete every prompt, tip and count AIQ saved on this computer? This cannot be undone.", yes) {
         println!("Nothing deleted.");
         return ExitCode::SUCCESS;
     }
@@ -740,7 +827,7 @@ pub fn forget_all(yes: bool) -> ExitCode {
         Ok(()) => {
             let n = crate::judge::forget_judge_sessions(&paths, &crate::judge::Homes::from_env());
             if n > 0 {
-                println!("Also deleted {n} Copilot session(s) AIQ's judge had left.");
+                println!("Also deleted {n} Copilot session(s) AIQ's analysis had left.");
             }
             println!("Deleted. AIQ starts fresh with your next Claude Code prompt.");
             ExitCode::SUCCESS
@@ -761,13 +848,16 @@ mod tests {
     fn report_shows_no_folder_name_and_no_home() {
         let folders = vec![r"C:\Users\canary\src\secret-project".to_owned(), r"C:\Users\canary\src".to_owned()];
         let homes = vec![r"C:\Users\canary".to_owned()];
-        let text = "Automated sessions ignored in C:\\Users\\canary\\src\\secret-project (burst).\n\
-                    Automated sessions ignored in C:\\Users\\canary\\src (burst).\n\
+        let text = "Automated, not counted: C:\\Users\\canary\\src\\secret-project (burst).\n\
+                    Automated, not counted: C:\\Users\\canary\\src (burst).\n\
                     Copilot: installed in C:/Users/canary/.copilot\n\
                     Claude Code: installed in C:\\Users\\canary\\.claude\\settings.json\n";
         let out = redact(text, &folders, &homes);
         assert!(!out.contains("canary") && !out.contains("secret-project"), "{out}");
-        assert!(out.contains("ignored in folder-1 (burst)") && out.contains("ignored in folder-2 (burst)"), "{out}");
+        assert!(
+            out.contains("not counted: folder-1 (burst)") && out.contains("not counted: folder-2 (burst)"),
+            "{out}"
+        );
         assert!(out.contains("installed in ~/.copilot"), "{out}");
     }
 
@@ -796,7 +886,7 @@ mod tests {
              UserPromptSubmit 300000 sent host_ms=900 read_us=290000 prep_us=300 dir={tacit} at=99300 v=0.1.0\n\
              statusline 2000 none\n"
         );
-        let out = hook_time_lines(&text, now, &[tacit]);
+        let out = hook_time_lines(&text, now, &SetAside { by_session: vec![tacit], ..Default::default() });
         assert_eq!(
             out,
             "Hook time in-process, UserPromptSubmit: p50 1.0 ms, p95 1.0 ms (1 runs)\n\
@@ -805,8 +895,8 @@ mod tests {
              Hook times leave out 3 runs from sessions AIQ sets aside (automated sessions and AIQ's own checks)\n"
         );
         // Core not running: no folder list, so only the outcome rule applies; nothing left out says nothing.
-        assert!(hook_time_lines(&text, now, &[]).contains("leave out 2 runs"));
-        assert!(!hook_time_lines("Stop 200 no-card\n", now, &[]).contains("leave out"));
+        assert!(hook_time_lines(&text, now, &SetAside::default()).contains("leave out 2 runs"));
+        assert!(!hook_time_lines("Stop 200 no-card\n", now, &SetAside::default()).contains("leave out"));
     }
 
     #[test]
@@ -843,6 +933,10 @@ mod tests {
              2026-11-02T14:30:00-08:00 swapped aiq-home.exe (100 bytes)\n"
         );
         assert_eq!(last_upgrade(&dev), Some(1_793_656_857)); // 2026-11-02 22:00:57Z
+        // install.ps1 (a release install or reinstall) also changes the exes: measured 2026-11-03, the
+        // laptop's budget window kept counting from an older dev swap after a 04:09Z install.
+        let installed = format!("{dev}2026-11-03 04:09:00Z Installed AIQ 0.1.0 (install.ps1).\n");
+        assert_eq!(last_upgrade(&installed), Some(1_793_678_940)); // 2026-11-03 04:09:00Z
     }
 
     #[test]
@@ -854,14 +948,50 @@ mod tests {
                     UserPromptSubmit 900000 automated read_us=900000 at=1300 v=0.1.0\n\
                     Stop 150000 no-card read_us=1000 prep_us=100 at=1400 v=0.1.0\n";
         assert_eq!(
-            hook_budget_lines(text, &[], Some(since)),
+            hook_budget_lines(text, &SetAside::default(), Some(since)),
             "Hook budget (100 ms p95 of AIQ's own part, the figure for alpha gate G1), since the last upgrade at \
              1970-01-01 00:16Z:\n  \
              Stop: p95 149.0 ms over 1 runs, OVER budget\n  \
              UserPromptSubmit: p95 0.6 ms over 2 runs, within budget\n"
         );
-        assert!(hook_budget_lines("", &[], Some(since)).ends_with("  no hook runs since then yet\n"));
-        assert!(hook_budget_lines(text, &[], None).contains("no upgrade recorded"));
+        assert!(hook_budget_lines("", &SetAside::default(), Some(since)).ends_with("  no hook runs since then yet\n"));
+        assert!(hook_budget_lines(text, &SetAside::default(), None).contains("no upgrade recorded"));
+    }
+
+    #[test]
+    fn hook_budget_counts_a_persons_session_in_a_template_folder_like_tasks_do() {
+        // Shaped like Imran's laptop on 2026-11-04: foresight set aside by a template rule, the AIQ repo by rule RC.
+        let folders = [
+            (r"c:\repos\foresight".to_string(), "template".to_string()),
+            (r"c:\repos\aiq".to_string(), "projects".to_string()),
+            (r"c:\users\x\appdata\local\temp\aiq-check".to_string(), "aiq-check".to_string()),
+        ];
+        let aside = SetAside::from_folders(&folders);
+        assert_eq!((aside.whole.len(), aside.by_session.len()), (2, 1));
+        let tag = |f: &str| aiq_domain::automated::folder_tag(f).unwrap();
+        let (fs, aiq) = (tag(r"c:\repos\foresight"), tag(r"c:\repos\aiq"));
+        let s = |id: &str| aiq_domain::automated::session_tag(id).unwrap();
+        let (person, app, rc) = (s("person"), s("app"), s("rc"));
+        let text = format!(
+            "userPromptSubmitted 3000 sent read_us=1000 dir={fs} s={person} at=2000 v=0.1.4\n\
+             agentStop 5000 sent read_us=1000 dir={fs} s={person} at=2010 v=0.1.4\n\
+             userPromptSubmitted 4000 sent read_us=1000 dir={fs} s={person} at=2020 v=0.1.4\n\
+             userPromptSubmitted 90000 sent read_us=1000 dir={fs} s={app} at=2030 v=0.1.4\n\
+             agentStop 90000 sent read_us=1000 dir={fs} s={app} at=2040 v=0.1.4\n\
+             UserPromptSubmit 90000 sent read_us=1000 dir={aiq} s={rc} at=2050 v=0.1.4\n\
+             UserPromptSubmit 90000 sent read_us=1000 dir={aiq} s={rc} at=2060 v=0.1.4\n\
+             userPromptSubmitted 90000 sent read_us=1000 dir={fs} at=2070 v=0.1.2\n\
+             UserPromptSubmit 90000 automated read_us=1000 s={person} at=2080 v=0.1.4\n"
+        );
+        let (kept, left_out) = split_hook_runs(&text, &aside);
+        assert_eq!((kept.len(), left_out), (3, 6), "only the person's three foresight runs count");
+        assert_eq!(
+            hook_budget_lines(&text, &aside, Some(1_000)),
+            "Hook budget (100 ms p95 of AIQ's own part, the figure for alpha gate G1), since the last upgrade at \
+             1970-01-01 00:16Z:\n  \
+             agentStop: p95 4.0 ms over 1 runs, within budget\n  \
+             userPromptSubmitted: p95 3.0 ms over 2 runs, within budget\n"
+        );
     }
 
     #[test]
@@ -879,7 +1009,7 @@ mod tests {
             evidence: vec![],
             leaned_on: vec![],
         };
-        assert_eq!(render_show(&none), "No card with that id.\n");
+        assert_eq!(render_show(&none), "No tip with that id.\n");
     }
 
     #[test]
@@ -925,7 +1055,7 @@ mod tests {
         assert!(out.contains("Write tests for <function>.") && out.contains("copilot-cli  Writing tests"));
         assert!(out.contains("aiq helpful c") && !out.contains("pwned"));
         let gone = ShowReply { evidence: vec![EvidencePrompt { ts: "t".into(), text: None }], ..r };
-        assert!(render_show(&gone).contains("The evidence for this card was deleted."));
+        assert!(render_show(&gone).contains("The prompts behind this tip were deleted."));
     }
 }
 
@@ -1001,14 +1131,14 @@ fn render_progress(c: &aiq_home::Coaching) -> String {
     use aiq_domain::rung::{job_label, rung_name};
     let (d, min) = (c.progress_days, c.progress_min);
     let mut o = format!(
-        "Rung progress by kind of task: the typical rung (most common) of your judged tasks in the last {d} days\n\
-         against the {d} days before. Task counts are measured; rungs are the judge's reading. A kind needs\n\
-         at least {min} judged tasks in each half before AIQ says it moved.\n\n"
+        "Rung progress by kind of task: the typical rung (most common) of your analyzed tasks in the last {d} days\n\
+         against the {d} days before. Task counts are measured; rungs are AIQ's analysis. A kind needs\n\
+         at least {min} analyzed tasks in each half before AIQ says it moved.\n\n"
     );
     let up = c.progress.iter().filter(|r| r.trend == "up").count();
     let down = c.progress.iter().filter(|r| r.trend == "down").count();
     if c.progress.is_empty() {
-        o += &format!("No judged tasks with a kind in the last {} days yet.\n", 2 * d);
+        o += &format!("No analyzed tasks with a kind in the last {} days yet.\n", 2 * d);
         return o;
     }
     o += &format!("Moved up a rung: {up}. Moved down: {down}.\n\n");
@@ -1030,7 +1160,7 @@ fn render_progress(c: &aiq_home::Coaching) -> String {
             _ => "too few tasks to say".to_owned(),
         };
         o += &format!(
-            "{} [{}]: {what}\n  {} judged in the last {d} days, {} in the {d} before{}\n",
+            "{} [{}]: {what}\n  {} analyzed in the last {d} days, {} in the {d} before{}\n",
             r.label,
             job_label(&r.job),
             r.recent,
@@ -1050,20 +1180,20 @@ fn render_tips(
     days: u32,
 ) -> String {
     let mut o = format!(
-        "Next-step tips, on your judged tasks from the last {days} days (measured from your judgments, no model call).\n\
+        "Next-step tips, on your analyzed tasks from the last {days} days (measured from your analyses, no model call).\n\
          A tip shows in the moment only for a kind of task you repeat whose next step it is.\n\
          Next-step tips: {mode}{}\n\n",
         if on_now { "" } else { " (not showing now)" }
     );
     let jobs: Vec<String> = f4.iter().map(|(j, (n, k))| format!("{j} {k} of {n}")).collect();
     o += &format!(
-        "Requests the judge was sure had no goal, context or limits (any rung): {}\n\n",
-        if jobs.is_empty() { "no judged tasks yet".to_owned() } else { jobs.join(", ") }
+        "Requests AIQ's analysis was sure had no goal, context or limits (any rung): {}\n\n",
+        if jobs.is_empty() { "no analyzed tasks yet".to_owned() } else { jobs.join(", ") }
     );
     for (r, is_off) in reach.iter().zip(off) {
         let kinds: Vec<String> = r.kinds.iter().map(|(l, n)| format!("{l} ({n} tasks)")).collect();
         o += &format!(
-            "{} [{}{}]\n  applies to {} judged {}; can show now for: {}\n",
+            "{} [{}{}]\n  applies to {} analyzed {}; can show now for: {}\n",
             r.habit,
             if r.job == "any" { "every job" } else { r.job.as_str() },
             if *is_off { ", turned off" } else { "" },
@@ -1104,16 +1234,16 @@ mod tips_tests {
             ..Default::default()
         };
         let o = render_progress(&c);
-        assert!(o.contains("last 14 days") && o.contains("at least 3 judged tasks in each half"), "{o}");
+        assert!(o.contains("last 14 days") && o.contains("at least 3 analyzed tasks in each half"), "{o}");
         assert!(o.contains("Moved up a rung: 1. Moved down: 0."), "{o}");
         assert!(
-            o.contains("Writing tests [Code a change]: moved up 1 rung: Directed (2) -> Delegated (3)\n  4 judged in the last 14 days, 3 in the 14 before; 1 AIQ isn't sure about left out"),
+            o.contains("Writing tests [Code a change]: moved up 1 rung: Directed (2) -> Delegated (3)\n  4 analyzed in the last 14 days, 3 in the 14 before; 1 AIQ isn't sure about left out"),
             "{o}"
         );
         assert!(o.contains("same rung: Assisted (1)"), "{o}");
-        assert!(o.contains("Refactoring or cleaning up [Code a change]: too few tasks to say\n  1 judged"), "{o}");
+        assert!(o.contains("Refactoring or cleaning up [Code a change]: too few tasks to say\n  1 analyzed"), "{o}");
         let empty = aiq_home::Coaching { progress_days: 14, progress_min: 3, ..Default::default() };
-        assert!(render_progress(&empty).contains("No judged tasks with a kind in the last 28 days yet."));
+        assert!(render_progress(&empty).contains("No analyzed tasks with a kind in the last 28 days yet."));
     }
 
     #[test]
@@ -1138,9 +1268,9 @@ mod tips_tests {
         let o = render_tips(&r, &[false, true], &f4, "auto", true, 30);
         assert!(o.contains("last 30 days"));
         assert!(o.contains("no goal, context or limits (any rung): code_change 5 of 32"));
-        assert!(o.contains("Give the agent the goal [code_change]\n  applies to 4 judged tasks; can show now for: Writing tests (6 tasks)"));
+        assert!(o.contains("Give the agent the goal [code_change]\n  applies to 4 analyzed tasks; can show now for: Writing tests (6 tasks)"));
         assert!(o.contains(
-            "Give a written brief [every job, turned off]\n  applies to 1 judged task; can show now for: none yet"
+            "Give a written brief [every job, turned off]\n  applies to 1 analyzed task; can show now for: none yet"
         ));
         assert!(
             render_tips(&r, &[false, false], &Default::default(), "off", false, 30).contains("off (not showing now)")
@@ -1172,19 +1302,27 @@ mod tips_tests {
 pub fn update(rest: &[&str]) -> ExitCode {
     use aiq_core::update::{self, Action};
     let paths = Paths::from_env();
-    let mode = aiq_store::Store::open_read_only(&paths.db())
-        .ok()
-        .and_then(|s| s.setting(update::SETTING_UPDATE).ok().flatten());
+    let mode = update::stored_mode(&paths);
     let now = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64);
     let v = update::view(&paths, mode.as_deref(), now);
     if rest.contains(&"--now") {
-        // The script waits for this process to end, so it is not counted as AIQ being busy.
-        return match update::start(&paths, Action::Check { apply: true }, Some(std::process::id()), false) {
+        // The script waits for this process to end, so it is not counted as AIQ being busy. An update already
+        // downloaded is installed as it is, not downloaded again.
+        let action = if v.note == "waiting" { Action::Apply } else { Action::Check { apply: true } };
+        return match update::start(&paths, action, Some(std::process::id()), false) {
             Ok(()) => {
-                println!(
-                    "Checking for a newer AIQ now. If there is one, it installs as soon as AIQ is idle \
-                     (AIQ home closed). Run `aiq update` in a minute to see the result."
-                );
+                if action == Action::Apply {
+                    println!(
+                        "Installing AIQ {} as soon as AIQ is idle (AIQ home closed). Run `aiq update` in a minute \
+                         to see the result.",
+                        v.available.as_deref().unwrap_or("update").trim_start_matches('v')
+                    );
+                } else {
+                    println!(
+                        "Checking for a newer AIQ now. If there is one, it installs as soon as AIQ is idle \
+                         (AIQ home closed). Run `aiq update` in a minute to see the result."
+                    );
+                }
                 ExitCode::SUCCESS
             }
             Err(e) => {
@@ -1195,6 +1333,16 @@ pub fn update(rest: &[&str]) -> ExitCode {
     }
     print!("{}", update_text(&v, now));
     ExitCode::SUCCESS
+}
+
+/// `aiq status`'s one line about a newer AIQ, only while one is downloaded and waiting (design auto-update U6).
+fn update_status_line(v: &aiq_core::update::View) -> Option<String> {
+    if !v.supported || v.note != "waiting" {
+        return None;
+    }
+    let ver = v.available.as_deref().unwrap_or("A newer version").trim_start_matches('v');
+    let when = if v.mode == "auto" { " It installs when AIQ home is closed." } else { "" };
+    Some(format!("Update: AIQ {ver} is ready.{when} Install now: aiq update --now\n"))
 }
 
 fn update_text(v: &aiq_core::update::View, now: i64) -> String {
@@ -1223,7 +1371,7 @@ fn update_text(v: &aiq_core::update::View, now: i64) -> String {
         None => o.push_str("Not checked yet. The first check runs a few minutes after AIQ starts."),
     }
     if let Some(e) = &v.check_error {
-        o.push_str(&format!(" That check failed ({e}); it tries again in a day."));
+        o.push_str(&format!(" That check failed ({e}); it tries again within the hour."));
     }
     o.push('\n');
     let avail = v.available.as_deref().unwrap_or("A newer version");
@@ -1271,6 +1419,7 @@ mod update_tests {
             message: None,
             checked_ms: None,
             check_error: None,
+            latest: None,
             can_rollback: false,
         }
     }
@@ -1303,8 +1452,25 @@ mod update_tests {
     }
 
     #[test]
+    fn status_names_a_waiting_update_and_how_to_install_it() {
+        use super::update_status_line;
+        assert_eq!(update_status_line(&v()), None, "nothing waiting: no line");
+        let w = View { note: "waiting", available: Some("v0.1.1".into()), ..v() };
+        assert_eq!(
+            update_status_line(&w).as_deref(),
+            Some("Update: AIQ 0.1.1 is ready. It installs when AIQ home is closed. Install now: aiq update --now\n")
+        );
+        let ask = View { mode: "ask".into(), ..w.clone() };
+        assert_eq!(
+            update_status_line(&ask).as_deref(),
+            Some("Update: AIQ 0.1.1 is ready. Install now: aiq update --now\n")
+        );
+        assert_eq!(update_status_line(&View { supported: false, ..w }), None, "a dev copy never updates");
+    }
+
+    #[test]
     fn failed_check_says_when_it_retries() {
         let t = update_text(&View { checked_ms: Some(0), check_error: Some("404".into()), ..v() }, 0);
-        assert!(t.contains("That check failed (404); it tries again in a day."), "{t}");
+        assert!(t.contains("That check failed (404); it tries again within the hour."), "{t}");
     }
 }

@@ -158,8 +158,15 @@ fn ready_card_excludes_delivered_and_expired() {
     assert!(s.ready_card("claude-code", "s").unwrap().is_none());
     decide(&s, "d2", "c2", "show_ready", "ok", 40);
     assert_eq!(s.ready_card("claude-code", "s").unwrap().unwrap().card_id, "c2");
-    assert_eq!(s.stale_ready(41).unwrap().len(), 1);
-    assert!(s.stale_ready(40).unwrap().is_empty());
+    assert!(s.stale_ready(i64::MAX, 40).unwrap().is_empty(), "no turn end yet, inside the hard cap");
+    assert_eq!(s.stale_ready(0, 41).unwrap().len(), 1, "past the hard cap with no turn end");
+    let stop = |id| NewEvent { kind: "stop", prompt_chars: None, ..ev(id, "s", None) };
+    s.insert_event(&stop("st0"), 30).unwrap(); // an earlier turn's end: not this card's
+    assert!(s.stale_ready(i64::MAX, 0).unwrap().is_empty());
+    s.insert_event(&stop("st1"), 45).unwrap(); // the card's turn ends
+    s.insert_event(&stop("st2"), 90).unwrap();
+    assert!(s.stale_ready(45, 0).unwrap().is_empty(), "the window runs from the turn's end");
+    assert_eq!(s.stale_ready(46, 0).unwrap().len(), 1);
     decide(&s, "d3", "c2", "drop", "expired", 50);
     assert!(s.ready_card("claude-code", "s").unwrap().is_none());
     let rec = s.card("c2").unwrap().unwrap();
@@ -558,4 +565,31 @@ fn store_from_a_newer_aiq_is_refused_not_opened_as_if_current() {
         MIGRATIONS.len() as i64,
         "the store itself is untouched"
     );
+}
+
+#[test]
+fn v9_turn_actions_store_once_per_stop_and_are_append_only() {
+    let (_d, s) = open();
+    let row = TurnActionRow {
+        stop_event_id: "stop-1".into(),
+        surface: "claude-code".into(),
+        surface_session_id: "s".into(),
+        ts_utc_ms: 5,
+        outcome: "recorded".into(),
+        tool_calls: Some(3),
+        commands: Some(1),
+        files: Some(2),
+        subagents: Some(0),
+        tools: Some(r#"{"Bash":1,"Edit":2}"#.into()),
+        bytes_read: 900,
+        read_ms: 1,
+        utc_ms: 10,
+        ..Default::default()
+    };
+    assert!(s.insert_turn_action(&row).unwrap());
+    assert!(!s.insert_turn_action(&row).unwrap(), "a replayed stop stores nothing");
+    assert_eq!(s.turn_actions_since(0).unwrap(), vec![row]);
+    assert!(s.turn_actions_since(11).unwrap().is_empty());
+    let e = s.raw().execute("UPDATE turn_action SET tool_calls = 9", []).unwrap_err().to_string();
+    assert!(e.contains("AIQ-STORE-APPEND-ONLY"), "{e}");
 }

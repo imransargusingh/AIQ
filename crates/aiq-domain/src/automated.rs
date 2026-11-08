@@ -83,8 +83,19 @@ pub fn folder_tag(cwd: &str) -> Option<String> {
     if k.is_empty() {
         return None;
     }
-    let h = k.bytes().fold(0x811c_9dc5_u32, |h, b| (h ^ u32::from(b)).wrapping_mul(0x0100_0193));
-    Some(format!("{h:08x}"))
+    Some(short_tag(&k))
+}
+
+/// A session's tag for the hook's timing log (same hash as `folder_tag`), so `aiq status` can apply the rule's
+/// per-session verdict (H ≥ 2) to hook runs without the log holding session ids. None for an empty id.
+pub fn session_tag(session: &str) -> Option<String> {
+    (!session.is_empty()).then(|| short_tag(session))
+}
+
+/// FNV-1a 32-bit, 8 hex digits.
+fn short_tag(s: &str) -> String {
+    let h = s.bytes().fold(0x811c_9dc5_u32, |h, b| (h ^ u32::from(b)).wrapping_mul(0x0100_0193));
+    format!("{h:08x}")
 }
 
 /// Rule AIQ: a folder AIQ's own checks and probes run in, `<temp>\aiq-*` (or below it), e.g.

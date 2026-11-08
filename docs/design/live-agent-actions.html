@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Live Agent Actions</title><style>
+:root { color-scheme: light dark; --bg:#f7f5ef; --panel:#fff; --text:#20201d;
+  --muted:#66645f; --line:#d9d5ca; --accent:#3157a4; --code:#f0eee7; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#171816; --panel:#20221f; --text:#f2f1eb; --muted:#b8b6ae;
+    --line:#3d403a; --accent:#8fb0ff; --code:#292c27; }
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text);
+  font:16px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif; }
+main { width:min(920px,calc(100% - 32px)); margin:32px auto; padding:40px;
+  background:var(--panel); border:1px solid var(--line); border-radius:12px; }
+h1,h2,h3,h4,h5,h6 { line-height:1.2; margin:1.5em 0 .55em; }
+h1 { margin-top:0; font-size:2.2rem; } h2 { border-bottom:1px solid var(--line); padding-bottom:.3em; }
+a { color:var(--accent); } code { background:var(--code); padding:.12em .35em; border-radius:4px; }
+pre { overflow:auto; padding:16px; background:var(--code); border-radius:8px; }
+pre code { padding:0; } blockquote { margin:1em 0; padding:.2em 1em; color:var(--muted);
+  border-left:4px solid var(--line); }
+table { width:100%; border-collapse:collapse; margin:1em 0; display:block; overflow:auto; }
+th,td { padding:.55em .75em; border:1px solid var(--line); text-align:left; vertical-align:top; }
+th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); }
+.source { color:var(--muted); font-size:.9rem; margin-bottom:2rem; }
+@media (max-width:640px) { main { width:100%; margin:0; padding:24px 18px; border:0; border-radius:0; } }
+</style></head><body><main><div class="source">Rendered from live-agent-actions.md</div><h1>Capture the agent&#x27;s actions live</h1>
+<p><strong>Decision (Imran, 2026-11-03 06:43Z):</strong> &quot;Let&#x27;s do it&quot;, after the downsides were listed: AIQ records more about the work, it reads more on a laptop short on disk, and it can break quietly when a tool changes its log format.</p>
+<h2>Why</h2>
+<p>Live capture recorded only prompts and stops. Imported turns carry what the agent did (1,629 imported stops with actions on Imran&#x27;s store, 0 live, 2026-11-03). The live rung trace and the status-line trend need per-turn facts while a task is still open.</p>
+<h2>What runs, and where</h2>
+<table><thead><tr><th>Step</th><th>Where</th><th>Notes</th></tr></thead><tbody><tr><td>Stop arrives</td><td>hook → core</td><td>The hook never opens a log (opening the transcript cost ~0.4 s per hook, measured 2026-11-02).</td></tr><tr><td>Read new bytes</td><td>core, after the stop&#x27;s reply</td><td>Per-session offset; whole lines only; at most 16 MB. First read of a session since the core started reads the last 2 MB, and twice as far back each time until it finds the turn&#x27;s prompt, up to 16 MB (a fixed 16 MB took 296 ms on the laptop; a fixed 2 MB missed a 2.7 MB turn, 2026-11-04).</td></tr><tr><td>Summarise</td><td><code>aiq_core::agent_actions</code></td><td>The same summariser <code>aiq import</code> uses, so live and imported turns count alike. Restarts at each typed prompt; a Copilot steering message stays in its turn.</td></tr><tr><td>Store</td><td><code>turn_action</code> (schema v9)</td><td>One row per stop: tool calls, tool names with counts, commands, files, sub-agents, bytes read, read ms.</td></tr></tbody></table>
+<p>Sources: Claude Code <code>transcript_path</code> (already on every hook event); <code>&lt;copilot home&gt;/session-state/&lt;id&gt;/events.jsonl</code> for Copilot CLI and VS Code agent mode on the Copilot target (6 of 7 sessions seen both ways share ids). One read serves both this and the mid-turn message reader (PR #89).</p>
+<h2>Grain and privacy</h2>
+<p>One row is exactly one live stop the store kept. Counts are additive across turns except <code>files</code> (distinct per turn, capped at 50). No command text, no file names, no output. Nothing leaves the device. A set-aside or paused session stores no row. <code>aiq export</code> includes the table; deleting AIQ&#x27;s data deletes it.</p>
+<h2>Never a guess</h2>
+<p>A turn is <code>not_recorded</code>, with NULL counts and a reason, when: there is no log (<code>no_log</code>), the read failed (<code>read_error</code>), a relevant line did not parse (<code>unparsed</code>), more than 16 MB was waiting (<code>too_large</code>), or the first read since a core restart did not reach the turn&#x27;s start (<code>no_start</code>). Each counts <code>AIQ-INGEST-ACTIONS-NOT-RECORDED</code>.</p>
+<h2>Measured from day one</h2>
+<p><code>aiq status</code> shows turns read today, turns not recorded and why, and read cost per turn (p95 and max ms, largest read). Each read logs <code>agent.actions</code> with outcome, bytes and ms.</p>
+<h2>Also fixed</h2>
+<p>Copilot&#x27;s GPT models edit with <code>apply_patch</code>, whose argument is the patch text, so those edits counted 0 files. The summariser now takes file names from the patch&#x27;s <code>*** Update/Add/Delete File:</code> lines, for import too. assume: Copilot logs the patch as the raw <code>arguments</code> string or under <code>input</code>/<code>patch</code>. Confirm: a live turn that ran apply_patch shows files &gt; 0. If false: those turns count 0 files, as before.</p>
+<h2>Not covered (later step)</h2>
+<p>VS Code agent mode on the Local target, ask mode, inline chat and completions fire no Copilot hooks. Seeing them needs the AIQ VS Code extension to watch the chat. That is separate work, not a wall.</p>
+<h2>Composition with &quot;Stop counting sessions twice&quot; (PR #102)</h2>
+<p>Live actions live in <code>turn_action</code>; imported actions stay on <code>import_event</code>. Nothing reads <code>turn_action</code> yet, and the judge still reads imported actions only. A reader that joins the two must take the live row for a stop that has one and the imported turn otherwise, using the same session-id join PR #102 uses.</p></main></body></html>

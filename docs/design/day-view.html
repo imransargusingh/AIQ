@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Day View</title><style>
+:root { color-scheme: light dark; --bg:#f7f5ef; --panel:#fff; --text:#20201d;
+  --muted:#66645f; --line:#d9d5ca; --accent:#3157a4; --code:#f0eee7; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#171816; --panel:#20221f; --text:#f2f1eb; --muted:#b8b6ae;
+    --line:#3d403a; --accent:#8fb0ff; --code:#292c27; }
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text);
+  font:16px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif; }
+main { width:min(920px,calc(100% - 32px)); margin:32px auto; padding:40px;
+  background:var(--panel); border:1px solid var(--line); border-radius:12px; }
+h1,h2,h3,h4,h5,h6 { line-height:1.2; margin:1.5em 0 .55em; }
+h1 { margin-top:0; font-size:2.2rem; } h2 { border-bottom:1px solid var(--line); padding-bottom:.3em; }
+a { color:var(--accent); } code { background:var(--code); padding:.12em .35em; border-radius:4px; }
+pre { overflow:auto; padding:16px; background:var(--code); border-radius:8px; }
+pre code { padding:0; } blockquote { margin:1em 0; padding:.2em 1em; color:var(--muted);
+  border-left:4px solid var(--line); }
+table { width:100%; border-collapse:collapse; margin:1em 0; display:block; overflow:auto; }
+th,td { padding:.55em .75em; border:1px solid var(--line); text-align:left; vertical-align:top; }
+th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); }
+.source { color:var(--muted); font-size:.9rem; margin-bottom:2rem; }
+@media (max-width:640px) { main { width:100%; margin:0; padding:24px 18px; border:0; border-radius:0; } }
+</style></head><body><main><div class="source">Rendered from day-view.md</div><h1>Design: Day view, live rung trend, and goals inside a task</h1>
+<p>Imran, 2026-11-03: <em>&quot;I wonder if a better unit to reason about is &#x27;session&#x27; (... a time-bounded set of tasks that represent a user&#x27;s intent).&quot;</em> Then: <em>&quot;we could still provide users with a task-oriented view in near-real time with some indication of what the session is trending towards.&quot;</em> He liked options A, C and D from the rendered options (https://claude.ai/artifact/7LGhvfgLTQTLkUq8w5AsB8) and asked for row context in A.</p>
+<h2>Goal state</h2>
+<table><thead><tr><th></th><th></th></tr></thead><tbody><tr><td><strong>Goal</strong></td><td>Show a person&#x27;s day as sessions and tasks (A), and later where the open task is heading (C, D)</td></tr><tr><td><strong>Done when</strong></td><td>A ships on the Tasks page with row and block details on hover and focus; this note records why tasks stay the unit and the order of the later steps</td></tr><tr><td><strong>Not in scope</strong></td><td>Building C or D; splitting a task into goals; reading VS Code chat-panel files</td></tr><tr><td><strong>Tier</strong></td><td>T1 (UI view over existing data; no store change, no new data leaves the device)</td></tr></tbody></table>
+<h2>Evidence: tasks stay the unit (measured)</h2>
+<p>Read-only on Imran&#x27;s laptop store, 2026-11-03: 1,708 prompts, 293 sessions, 810 tasks, 532 judged. These counts include 7 sessions stored twice (live and imported), which &quot;Stop counting sessions twice&quot; fixes: 805 tasks become 785.</p>
+<table><thead><tr><th>Question</th><th>Measured</th></tr></thead><tbody><tr><td>Sessions holding more than one task</td><td>141 of 293 (48%)</td></tr><tr><td>Sessions with 2+ judged tasks that mix jobs / kinds</td><td>64 of 98 (65%) / 82 of 98 (84%)</td></tr><tr><td>Back-to-back tasks in one session with the same job and kind</td><td>57 of 335 (17%); two random tasks in one folder: 13%</td></tr><tr><td>Next task in another session, same folder, within 4 h, same job and kind</td><td>26 of 137 (19%)</td></tr><tr><td>Tasks running at the same time as another session</td><td>91 of 810 (11%)</td></tr><tr><td>Gaps between prompts inside a task of 10 to 30 minutes</td><td>415 of 898 (46%)</td></tr><tr><td>Hand read of 30 tasks with 4+ prompts: one goal / two / three or more</td><td>21 / 7 / 2 (one reader; 9 of 30 from one session)</td></tr></tbody></table>
+<p>So: the 30-minute cut already separates goals (17% vs 13% chance). Goals rarely span sessions. The gap is a goal change inside a task, in about 3 of 10 long tasks; long tasks are few, so roughly 3 to 5% of all tasks (Inferred from the sample). A shorter idle cut would split goals more often than it would catch a change.</p>
+<h2>Decisions</h2>
+<table><thead><tr><th>#</th><th>Decision</th><th>Why</th></tr></thead><tbody><tr><td>D1</td><td>Tasks stay the capture and judging unit; sessions and goals are views on top</td><td>Numbers above. Replacing tasks would re-judge everything (premium requests) for a few percent of tasks</td></tr><tr><td>D2</td><td>A: Tasks page gets a List / Day switch. Day shows one row per tool session for one day; each task is a block placed by time, coloured by its judged rung, with a tick per prompt</td><td>Answers &quot;where did my day go, and at what rung?&quot; The list stays the default, so nothing is replaced</td></tr><tr><td>D3</td><td>A row names the tool, project, time span and prompt count. Hover or focus shows the session summary: time span, tasks, prompts, kinds of task, how many are not judged yet, the rung most of its tasks sit at</td><td>Imran: &quot;the user would need more context on what each row is referring to&quot;</td></tr><tr><td>D4</td><td>A block&#x27;s hover or focus names the kind, time, prompts and rung in words, with &quot;could be&quot; when the judge saw a next rung. Enter or a click opens the existing task page</td><td>Rung is never colour alone (U-standard); the task page already holds the detail</td></tr><tr><td>D5</td><td>The Day view uses the same task rows as the list (same rule, same project and job filters)</td><td>The two can never disagree. It inherits the duplicate fix when that lands</td></tr><tr><td>D6</td><td>The snapshot now carries each task&#x27;s <code>session</code> and its prompt times (<code>prompt_ms</code>). Prompt ids and text still never reach the page</td><td>Lanes need the session; ticks need the times. Nothing new leaves the device</td></tr><tr><td>D7</td><td>The day shown first is the newest day with a task; Earlier / Later step through days that have tasks</td><td>No empty days to page through</td></tr></tbody></table>
+<h2>Later steps (not built here)</h2>
+<p><strong>Step 1: record the agent&#x27;s actions live (its own thread, &quot;Capture the agent&#x27;s actions live&quot;).</strong> C and D need to know what the agent did each turn. Today only imported history has that (the import summariser in <code>crates/aiq/src/import.rs</code>: tool counts, commands, files, sub-agents per turn); live stop events carry none (measured: 0 of the live stops, all 1,629 imported stops). Design agreed with Imran on 2026-11-03:</p>
+<ul><li>After each turn ends, the core (never the hook, rule RC; opening the transcript in the hook cost ~0.4 s on</li></ul>
+<p>the laptop) reads only the new part of the tool&#x27;s own log, read-only. Claude Code: the <code>transcript_path</code> already in every event. Copilot CLI and VS Code agent mode on the Copilot target: the Copilot session log the core already reads at each turn end (<code>crates/aiq-core/src/copilot_log.rs</code>, PR #89).</p>
+<ul><li>Reuse the import summariser so live and imported turns match. One append-only row per turn, counts and</li></ul>
+<p>tool names only (no command text, no file names), behind a switch in Settings &gt; What AIQ records.</p>
+<ul><li>Measure read time per turn from the first build. A failed read is &quot;not recorded&quot; plus a counter, never a</li></ul>
+<p>guess. Fix once, in the shared summariser, that Copilot&#x27;s <code>files</code> stays empty when <code>apply_patch</code> runs.</p>
+<ul><li>Per-tool hooks were rejected: Copilot hooks run synchronously (ADR-0005), about 65 to 70 ms per tool call.</li></ul>
+<p><strong>Coverage.</strong> VS Code agent mode on the Copilot target is covered by the Copilot log (6 of the 7 sessions stored twice were VS Code live sessions with Copilot CLI session ids). Not covered: VS Code agent mode on the Local target (runs no hooks), ask mode, inline chat. VS Code keeps chat-panel files per workspace (<code>chatSessions</code>, now <code>.jsonl</code> in Insiders, a format change since 1 November). Reading them is possible but is its own reader for an undocumented format; a field-names-only shape check comes first.</p>
+<p><strong>Step 2: C and D.</strong> C, a &quot;Right now&quot; card at the top of Home while a task is open: a step line of the estimated rung after each turn, the rung the task could reach, and the tip at the turn it applies to. D, the same trend in the existing status-line tip. Both are an estimate until the task ends; the judge&#x27;s rung replaces it. Imran gave the go on 2026-11-03 (&quot;build C and D&quot;); built as designed in <code>docs/design/live-rung-trend.md</code>.</p>
+<p><strong>Step 3: goals inside a task.</strong> The judge marks where the goal changes, in the same call it already makes, and names a kind per part; stored as append-only segment rows, never by rewriting tasks. Before it goes live, hand-label goal changes in 50 to 80 tasks from many sessions and switch on only what beats the plain time gap. The Day view then draws a dashed line inside a block where the goal changed.</p>
+<p><strong>Parked: babysitting tip.</strong> Measured: 14 of 810 tasks were mostly status checks, 11 of them from one session of scheduled prompts, none live (detector precision 19 of 20 prompts, 13 of 14 tasks). Too concentrated for a tip.</p>
+<h2>Surface list (A)</h2>
+<p>store (unchanged) → read model <code>aiq_home::TaskRow</code> serialises <code>session</code>, <code>prompt_ms</code> → <code>aiq.home.v1</code> snapshot → <code>types.ts</code> <code>TaskRow</code> → <code>day.ts</code> (lanes, days, axis) → <code>pages/DayView.tsx</code> + Tasks switch → styles. Fixtures regenerated from the Rust read model.</p>
+<h2>Tests</h2>
+<ul><li><code>apps/home/src/day.test.ts</code>: lanes per tool session in start order, kinds and usual rung, days follow the</li></ul>
+<p>core&#x27;s offset, axis in whole hours and past midnight.</p>
+<ul><li><code>apps/home/tests/e2e.mjs</code> &quot;Tasks Day view&quot;: a row per session, row summary and rung in words on focus,</li></ul>
+<p>Enter opens the task, no axe violations, no page scroll at 720 px.</p>
+<ul><li><code>crates/aiq-home/tests/snapshot.rs</code>: the snapshot still never carries prompt ids (<code>members</code>).</li></ul>
+<h2>Risks</h2>
+<table><thead><tr><th>Risk</th><th>Handling</th></tr></thead><tbody><tr><td>Snapshot grows by one number per prompt</td><td>~1,700 numbers on Imran&#x27;s store; the 5,000-prompt performance test still passes</td></tr><tr><td>Duplicate sessions show twice in the Day view until the dedup fix lands</td><td>Same as the list today; fixed for both by &quot;Stop counting sessions twice&quot;</td></tr><tr><td>Hover-only detail</td><td>Every row and block is focusable and shows the same detail on focus; blocks carry a full <code>aria-label</code></td></tr></tbody></table></main></body></html>

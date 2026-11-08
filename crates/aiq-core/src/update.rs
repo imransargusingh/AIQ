@@ -1,7 +1,9 @@
 //! Auto-update (design `docs/design/auto-update.md`). One mechanism: the installed `upgrade.ps1` does the
 //! network call, the checksum and the swap; this module decides *when*, starts it, and reads back its outcome
-//! (`update.json`) for `aiq update` and AIQ home. The core's kicker asks once an hour; a check runs at most once
-//! a day; a waiting update is applied only under "Update automatically", and only when AIQ is idle (the script
+//! (`update.json`) for `aiq update` and AIQ home. The core's kicker asks once an hour; a check runs once a day,
+//! hourly after one failed, or every 15 minutes while AIQ home is open (`home_check_due`), also while an update waits
+//! (a newer release replaces the waiting one); a waiting update is applied only under "Update automatically", and
+//! only when AIQ is idle, after an hourly check for a newer one (the script
 //! decides idle, because only it sees the processes at the moment of the swap).
 use crate::paths::Paths;
 use crate::sysclock::parse_rfc3339_ms as parse_utc_ms;
@@ -15,12 +17,33 @@ use std::time::Duration;
 pub const SETTING_UPDATE: &str = "update";
 pub const MODES: [&str; 3] = ["auto", "ask", "off"];
 pub const DEFAULT_MODE: &str = "auto";
-/// A check is due once this long has passed since the last one, successful or not.
+/// A check is due once this long has passed since the last successful one.
 pub const CHECK_EVERY_MS: i64 = 24 * 3600 * 1000;
-/// How long Home says "AIQ updated itself" after it did.
-pub const APPLIED_NOTE_MS: i64 = 7 * 24 * 3600 * 1000;
+/// The hourly cadence: after a check that failed (no release yet, no network, a proxy), and while AIQ home is
+/// open when the last check had to use api.github.com. Five minutes under an hour, so an hourly timer that fires
+/// a little early still finds it due.
+pub const HOURLY_MS: i64 = 55 * 60 * 1000;
+/// While AIQ home is open it checks this often (Imran, 2026-11-05: 0.1.8 went live just after an 18:02Z check
+/// and Home showed it at 18:58Z). Home asks every minute; this bar keeps it to one check per 15 minutes. A check
+/// is one HEAD of github.com/<repo>/releases/latest, which is not on GitHub's 60-an-hour API limit (measured
+/// 2026-11-05: 30 in a row all answered 302 with no rate-limit headers). Only when the last check had to use the
+/// API (`source` = "api") does Home fall back to HOURLY_MS, so a shared office address spends at most one API
+/// call an hour per person.
+pub const HOME_EVERY_MS: i64 = 15 * 60 * 1000;
+/// When AIQ home opens it checks if the last check is this old (Imran, 2026-11-04: 0.1.3 was out at 14:33Z and a
+/// Home opened after a 14:17Z check would not have seen it until ~15:12Z). The hourly timer and focus keep HOURLY_MS.
+pub const HOME_OPEN_MS: i64 = 10 * 60 * 1000;
+/// How long Home says "AIQ updated itself" (or that an update failed or was undone) after it happened. A day:
+/// Home also hides the note once it has been seen and offers a dismiss (Imran, 2026-11-04: a week-long banner at
+/// the top of Home took prime space).
+pub const APPLIED_NOTE_MS: i64 = 24 * 3600 * 1000;
 const KICK_FIRST: Duration = Duration::from_secs(5 * 60);
 const KICK_EVERY: Duration = Duration::from_secs(3600);
+
+/// The person's stored choice; None (the default) when unset or the store can't be read.
+pub fn stored_mode(paths: &Paths) -> Option<String> {
+    aiq_store::Store::open_read_only(&paths.db()).ok().and_then(|s| s.setting(SETTING_UPDATE).ok().flatten())
+}
 
 pub fn validate_mode(value: &str) -> Result<String, String> {
     if MODES.contains(&value) { Ok(value.to_owned()) } else { Err("update must be auto, ask or off".into()) }
@@ -46,6 +69,12 @@ pub struct State {
     pub message: Option<String>,
     /// A tag the person rolled back from; never installed again by itself.
     pub skip: Option<String>,
+    /// After a check GitHub's API refused for its rate limit (403/429): when the limit resets. The next check
+    /// waits for it rather than the hour (2026-11-04: a shared office address had used all 60 calls).
+    pub retry_at: Option<String>,
+    /// Which source answered the last good check: "redirect" (github.com, no API limit) or "api". Missing (a
+    /// script before 0.1.9, or the test feed) reads as the redirect, the source every release so far used.
+    pub source: Option<String>,
 }
 
 pub fn state_path(paths: &Paths) -> PathBuf {
@@ -110,14 +139,66 @@ pub fn decide(now_ms: i64, st: &State, mode: Option<&str>) -> Option<Action> {
         return None;
     }
     let auto = mode.unwrap_or(DEFAULT_MODE) == "auto";
-    let due = st.checked_at.as_deref().and_then(parse_utc_ms).is_none_or(|t| now_ms - t >= CHECK_EVERY_MS);
-    if due {
+    let waiting = st.state.as_deref() == Some("waiting");
+    if check_due(now_ms, st, CHECK_EVERY_MS) {
         Some(Action::Check { apply: auto })
-    } else if auto && st.state.as_deref() == Some("waiting") {
+    } else if auto && waiting && check_due(now_ms, st, HOURLY_MS) {
+        // Before installing what waits, ask whether something newer came out since it was downloaded, so AIQ home
+        // closing after hours never installs a stale release (2026-11-05, laptop: 0.1.8 waited from 18:58Z and
+        // 0.1.9 came out at 20:32Z). The script installs what waits even if this check fails.
+        Some(Action::Check { apply: true })
+    } else if auto && waiting {
         Some(Action::Apply)
     } else {
         None
     }
+}
+
+/// A check is due `every` after the last one, or about an hour after one that failed (a 404 before the first release
+/// is published made the laptop wait a full day on 2026-11-03). After a rate-limited one it is due when the limit
+/// resets (`retry_at`, at most a day on). Never checked, or an unreadable time: due.
+fn check_due(now_ms: i64, st: &State, every: i64) -> bool {
+    let Some(t) = st.checked_at.as_deref().and_then(parse_utc_ms) else { return true };
+    if st.check_error.is_none() {
+        return now_ms - t >= every;
+    }
+    match retry_at_ms(st) {
+        Some(r) => now_ms >= r.min(t + CHECK_EVERY_MS),
+        None => now_ms - t >= HOURLY_MS,
+    }
+}
+
+fn retry_at_ms(st: &State) -> Option<i64> {
+    st.check_error.as_ref().and(st.retry_at.as_deref()).and_then(parse_utc_ms)
+}
+
+/// How long the kicker sleeps: an hour, or less when a rate limit resets sooner (a minute after the reset, so
+/// the check lands after it).
+fn kick_sleep(now_ms: i64, st: &State) -> Duration {
+    match retry_at_ms(st).map(|r| r + 60_000 - now_ms) {
+        Some(ms) if ms > 0 && ms < KICK_EVERY.as_millis() as i64 => Duration::from_millis(ms.max(60_000) as u64),
+        _ => KICK_EVERY,
+    }
+}
+
+/// AIQ home asks this every minute while open, then starts a check (download, no install) when it says so: a
+/// person who keeps Home open sees a new release within about 15 minutes and can Install now, instead of waiting
+/// for the daily check. Not with updates off. It keeps checking while an update waits (2026-11-05, laptop: Home
+/// stopped checking once 0.1.8 waited at 18:58Z, so 0.1.9 at 20:32Z never showed): the script downloads only a
+/// newer release than the one waiting and replaces it, and keeps the one waiting when nothing newer is out.
+pub fn home_check_due(now_ms: i64, st: &State, mode: Option<&str>) -> bool {
+    home_due(now_ms, st, mode, HOME_EVERY_MS)
+}
+
+/// As `home_check_due`, for the moment AIQ home opens: due 10 minutes after the last check, not 15.
+pub fn home_open_check_due(now_ms: i64, st: &State, mode: Option<&str>) -> bool {
+    home_due(now_ms, st, mode, HOME_OPEN_MS)
+}
+
+/// After a check that needed api.github.com, Home waits the hour so it never spends the shared API limit faster.
+fn home_due(now_ms: i64, st: &State, mode: Option<&str>, every: i64) -> bool {
+    let every = if st.source.as_deref() == Some("api") { HOURLY_MS } else { every };
+    mode != Some("off") && check_due(now_ms, st, every)
 }
 
 /// The script's arguments for one action. `wait_pid`: the caller about to exit (AIQ home, the CLI).
@@ -198,17 +279,19 @@ pub fn start_background(paths: Paths) {
     std::thread::spawn(move || {
         std::thread::sleep(KICK_FIRST);
         loop {
-            let mode = aiq_store::Store::open_read_only(&paths.db())
-                .ok()
-                .and_then(|s| s.setting(SETTING_UPDATE).ok().flatten());
+            let mode = stored_mode(&paths);
             let now = chrono::Utc::now().timestamp_millis();
-            if let Some(action) = decide(now, &read_state(&paths), mode.as_deref()) {
+            let st = read_state(&paths);
+            if let Some(action) = decide(now, &st, mode.as_deref()) {
                 match start(&paths, action, None, false) {
                     Ok(()) => tracing::info!(?action, "update run started"),
                     Err(e) => tracing::warn!(error = %e, "update run did not start"),
                 }
             }
-            std::thread::sleep(KICK_EVERY);
+            // The state read before a check just started: a rate limit it hits is seen on the next wake.
+            let sleep = kick_sleep(now, &st);
+            tracing::debug!(sleep_s = sleep.as_secs(), "update kicker sleeping");
+            std::thread::sleep(sleep);
         }
     });
 }
@@ -229,17 +312,41 @@ pub struct View {
     pub message: Option<String>,
     pub checked_ms: Option<i64>,
     pub check_error: Option<String>,
+    /// The newest release the last good check saw (it may be one the person went back from, never installed).
+    pub latest: Option<String>,
     /// A previous version is kept (`.old` copies), so "Go back" can work.
     pub can_rollback: bool,
 }
 
+/// Same release, whether or not either side carries the tag's `v`.
+fn same_version(a: &str, b: &str) -> bool {
+    a.trim().trim_start_matches('v') == b.trim().trim_start_matches('v')
+}
+
+/// `1.2.3` (a leading `v` allowed) as numbers; None for anything else (a pre-release is never "not newer").
+fn numbers(v: &str) -> Option<Vec<u64>> {
+    v.trim().trim_start_matches('v').split('.').map(|p| p.parse().ok()).collect()
+}
+
+/// A waiting release that is this version or older: nothing to install (2026-11-04, laptop: Home offered
+/// "AIQ 0.1.2 is ready, Install now" while it ran 0.1.2, and Install now swapped 0.1.2 over itself).
+fn not_newer(available: &str, running: &str) -> bool {
+    matches!((numbers(available), numbers(running)), (Some(a), Some(r)) if a <= r)
+}
+
 pub fn view(paths: &Paths, mode: Option<&str>, now_ms: i64) -> View {
     let st = read_state(paths);
+    let running = env!("CARGO_PKG_VERSION");
     let at_ms = st.at.as_deref().and_then(parse_utc_ms);
     let recent = at_ms.is_some_and(|t| now_ms - t < APPLIED_NOTE_MS);
+    // An "update" from this version to itself changed nothing (2026-11-04, laptop: a stale waiting 0.1.2 was
+    // applied over the hand-installed 0.1.2). Say nothing, and offer no "Go back": the `.old` copies are this
+    // same version, so the real previous version is gone.
+    let applied_to_itself =
+        st.state.as_deref() == Some("applied") && st.from.as_deref().is_some_and(|f| same_version(f, running));
     let note = match st.state.as_deref() {
-        Some("waiting") => "waiting",
-        Some("applied") if recent => "applied",
+        Some("waiting") if !st.available.as_deref().is_some_and(|a| not_newer(a, running)) => "waiting",
+        Some("applied") if recent && st.from.is_some() && !applied_to_itself => "applied",
         Some("failed") if recent => "failed",
         Some("rolled_back") if recent => "rolled_back",
         _ => "none",
@@ -247,7 +354,7 @@ pub fn view(paths: &Paths, mode: Option<&str>, now_ms: i64) -> View {
     View {
         supported: supported(paths),
         mode: mode.filter(|m| MODES.contains(m)).unwrap_or(DEFAULT_MODE).to_owned(),
-        running: env!("CARGO_PKG_VERSION").to_owned(),
+        running: running.to_owned(),
         note,
         available: st.available.clone(),
         blocked: st.blocked.clone(),
@@ -256,7 +363,8 @@ pub fn view(paths: &Paths, mode: Option<&str>, now_ms: i64) -> View {
         message: st.message.clone(),
         checked_ms: st.checked_at.as_deref().and_then(parse_utc_ms),
         check_error: st.check_error.clone(),
-        can_rollback: paths.data.join("bin").join("aiq.exe.old").is_file(),
+        latest: st.latest.clone(),
+        can_rollback: !applied_to_itself && paths.data.join("bin").join("aiq.exe.old").is_file(),
     }
 }
 
@@ -279,7 +387,7 @@ mod tests {
     }
 
     #[test]
-    fn checks_once_a_day_whatever_the_last_outcome() {
+    fn a_good_check_is_repeated_once_a_day() {
         let s = st(Some("current"), Some(T0));
         assert_eq!(decide(t0() + CHECK_EVERY_MS - 1, &s, None), None);
         assert_eq!(decide(t0() + CHECK_EVERY_MS, &s, None), Some(Action::Check { apply: true }));
@@ -288,11 +396,130 @@ mod tests {
     }
 
     #[test]
+    fn a_failed_check_is_retried_within_the_hour_not_the_next_day() {
+        let failed = State { check_error: Some("404".into()), ..st(None, Some(T0)) };
+        assert_eq!(decide(t0() + HOURLY_MS - 1, &failed, None), None);
+        assert_eq!(decide(t0() + HOURLY_MS, &failed, None), Some(Action::Check { apply: true }));
+        assert_eq!(decide(t0() + HOURLY_MS, &failed, Some("ask")), Some(Action::Check { apply: false }));
+        assert_eq!(decide(t0() + HOURLY_MS, &failed, Some("off")), None);
+    }
+
+    #[test]
+    fn a_rate_limited_check_waits_for_the_reset_not_the_hour() {
+        // 2026-11-04 on the laptop: 403 with X-RateLimit-Remaining 0, reset 58 minutes later.
+        let reset = t0() + 58 * 60_000;
+        let limited = State {
+            check_error: Some("(403) Forbidden".into()),
+            retry_at: Some("2026-11-02T21:58:00Z".into()),
+            ..st(None, Some(T0))
+        };
+        assert_eq!(decide(t0() + HOURLY_MS, &limited, None), None, "the hour is not enough");
+        assert_eq!(decide(reset, &limited, None), Some(Action::Check { apply: true }));
+        assert!(!home_check_due(reset - 1, &limited, None));
+        assert!(home_check_due(reset, &limited, None));
+        // A sooner reset is also honoured.
+        let soon = State { retry_at: Some("2026-11-02T21:10:00Z".into()), ..limited.clone() };
+        assert_eq!(decide(t0() + 10 * 60_000, &soon, None), Some(Action::Check { apply: true }));
+        // A reset far off (a bad header) never stops checks past a day.
+        let far = State { retry_at: Some("2026-12-02T21:00:00Z".into()), ..limited.clone() };
+        assert_eq!(decide(t0() + CHECK_EVERY_MS, &far, None), Some(Action::Check { apply: true }));
+        // retry_at left over without an error, or unreadable, changes nothing.
+        let stale = State { check_error: None, ..limited.clone() };
+        assert_eq!(decide(t0() + HOURLY_MS, &stale, None), None);
+        let junk = State { retry_at: Some("soon".into()), ..limited };
+        assert_eq!(decide(t0() + HOURLY_MS, &junk, None), Some(Action::Check { apply: true }));
+    }
+
+    #[test]
+    fn the_kicker_wakes_a_minute_after_a_reset_that_comes_before_the_hour() {
+        let limited = |at: &str| State {
+            check_error: Some("(403) Forbidden".into()),
+            retry_at: Some(at.into()),
+            ..st(None, Some(T0))
+        };
+        assert_eq!(kick_sleep(t0(), &limited("2026-11-02T21:20:00Z")), Duration::from_secs(21 * 60));
+        assert_eq!(
+            kick_sleep(t0(), &limited("2026-11-02T20:59:30Z")),
+            Duration::from_secs(60),
+            "just passed: at least a minute"
+        );
+        assert_eq!(kick_sleep(t0(), &limited("2026-11-02T20:58:00Z")), KICK_EVERY, "long passed");
+        assert_eq!(kick_sleep(t0() - 30_000, &limited("2026-11-02T21:00:00Z")), Duration::from_secs(90));
+        assert_eq!(kick_sleep(t0(), &limited("2026-11-02T23:00:00Z")), KICK_EVERY);
+        assert_eq!(kick_sleep(t0(), &st(None, Some(T0))), KICK_EVERY);
+    }
+
+    #[test]
+    fn home_checks_every_15_minutes_while_open_but_never_with_updates_off() {
+        assert!(home_check_due(t0(), &State::default(), None), "never checked");
+        let ok = st(Some("current"), Some(T0));
+        assert!(!home_check_due(t0() + HOME_EVERY_MS - 1, &ok, None));
+        assert!(home_check_due(t0() + HOME_EVERY_MS, &ok, None));
+        assert!(home_check_due(t0() + HOME_EVERY_MS, &ok, Some("ask")));
+        assert!(!home_check_due(t0() + HOURLY_MS, &ok, Some("off")));
+        let redirect = State { source: Some("redirect".into()), ..ok.clone() };
+        assert!(home_check_due(t0() + HOME_EVERY_MS, &redirect, None));
+        // On open: 10 minutes, not 55; still never with updates off.
+        assert!(!home_open_check_due(t0() + HOME_OPEN_MS - 1, &ok, None));
+        assert!(home_open_check_due(t0() + HOME_OPEN_MS, &ok, None));
+        assert!(!home_open_check_due(t0() + HOURLY_MS, &ok, Some("off")));
+    }
+
+    #[test]
+    fn a_waiting_update_does_not_stop_home_checking_so_a_newer_release_replaces_it() {
+        // Laptop 2026-11-05: 0.1.8 waiting since 18:58Z with Home open; 0.1.9 out at 20:32Z was never seen.
+        let waiting = State { available: Some("v0.1.8".into()), ..st(Some("waiting"), Some(T0)) };
+        assert!(!home_check_due(t0() + HOME_EVERY_MS - 1, &waiting, None));
+        assert!(home_check_due(t0() + HOME_EVERY_MS, &waiting, None));
+        assert!(home_check_due(t0() + HOME_EVERY_MS, &waiting, Some("ask")));
+        assert!(home_open_check_due(t0() + HOME_OPEN_MS, &waiting, None));
+        assert!(!home_check_due(t0() + CHECK_EVERY_MS, &waiting, Some("off")));
+    }
+
+    #[test]
+    fn home_keeps_the_hour_after_an_api_check_or_a_failed_one_so_a_shared_address_keeps_its_api_limit() {
+        let api = State { source: Some("api".into()), ..st(Some("current"), Some(T0)) };
+        assert!(!home_check_due(t0() + HOME_EVERY_MS, &api, None));
+        assert!(!home_open_check_due(t0() + HOME_OPEN_MS, &api, None));
+        assert!(home_check_due(t0() + HOURLY_MS, &api, None));
+        let failed = State { check_error: Some("404".into()), ..st(Some("current"), Some(T0)) };
+        assert!(!home_check_due(t0() + HOME_EVERY_MS, &failed, None));
+        assert!(!home_open_check_due(t0() + HOME_OPEN_MS, &failed, None));
+        assert!(home_check_due(t0() + HOURLY_MS, &failed, None));
+        // Home's one-minute ask: at most 4 checks an hour after redirect checks, 1 after API checks.
+        let checks = |mut s: State| {
+            let mut n = 0;
+            for m in 1..=60 {
+                let now = t0() + m * 60_000;
+                if home_check_due(now, &s, None) {
+                    n += 1;
+                    s.checked_at = Some(crate::sysclock::format_rfc3339_ms(now));
+                }
+            }
+            n
+        };
+        assert_eq!(checks(st(Some("current"), Some(T0))), 4);
+        assert_eq!(checks(api), 1);
+    }
+
+    #[test]
     fn a_waiting_update_is_retried_hourly_only_under_auto() {
         let s = st(Some("waiting"), Some(T0));
-        assert_eq!(decide(t0() + 3_600_000, &s, None), Some(Action::Apply));
-        assert_eq!(decide(t0() + 3_600_000, &s, Some("auto")), Some(Action::Apply));
+        assert_eq!(decide(t0() + HOURLY_MS - 1, &s, None), Some(Action::Apply));
+        assert_eq!(decide(t0() + HOURLY_MS - 1, &s, Some("auto")), Some(Action::Apply));
         assert_eq!(decide(t0() + 3_600_000, &s, Some("ask")), None);
+    }
+
+    #[test]
+    fn the_kicker_checks_for_a_newer_release_before_installing_a_waiting_one_from_over_an_hour_ago() {
+        // Home closed hours after 0.1.8 was downloaded: ask first, so 0.1.9 is what installs. One run does both
+        // (-Check -Apply); a check that fails still installs what waits.
+        let s = st(Some("waiting"), Some(T0));
+        assert_eq!(decide(t0() + HOURLY_MS, &s, None), Some(Action::Check { apply: true }));
+        assert_eq!(decide(t0() + 3 * 3_600_000, &s, Some("auto")), Some(Action::Check { apply: true }));
+        assert_eq!(decide(t0() + 3 * 3_600_000, &s, Some("ask")), None);
+        // A check Home ran a few minutes ago is fresh enough: install straight away.
+        assert_eq!(decide(t0() + HOME_EVERY_MS, &s, None), Some(Action::Apply));
     }
 
     #[test]
@@ -346,6 +573,43 @@ mod tests {
         std::fs::write(state_path(&p), format!(r#"{{"state":"applied","from":"0.1.0","at":"{T0}"}}"#)).unwrap();
         assert_eq!(view(&p, None, t0() + 1000).note, "applied");
         assert_eq!(view(&p, None, t0() + APPLIED_NOTE_MS).note, "none");
+        assert_eq!(APPLIED_NOTE_MS, 24 * 3600 * 1000, "the note lasts a day, not a week");
+    }
+
+    #[test]
+    fn an_update_to_the_same_version_shows_nothing_and_offers_no_go_back() {
+        let d = tempfile::tempdir().unwrap();
+        let p = Paths::at(d.path());
+        std::fs::create_dir_all(d.path().join("bin")).unwrap();
+        std::fs::write(d.path().join("bin").join("aiq.exe.old"), b"x").unwrap();
+        let me = env!("CARGO_PKG_VERSION");
+        for from in [me.to_owned(), format!("v{me}")] {
+            std::fs::write(state_path(&p), format!(r#"{{"state":"applied","from":"{from}","at":"{T0}"}}"#)).unwrap();
+            let v = view(&p, None, t0() + 1000);
+            assert_eq!(v.note, "none", "from {from}");
+            assert!(!v.can_rollback, "the .old copy is this same version");
+        }
+        std::fs::write(state_path(&p), format!(r#"{{"state":"applied","from":"0.0.1","at":"{T0}"}}"#)).unwrap();
+        let v = view(&p, None, t0() + 1000);
+        assert_eq!((v.note, v.from.as_deref(), v.can_rollback), ("applied", Some("0.0.1"), true));
+        std::fs::write(state_path(&p), format!(r#"{{"state":"applied","at":"{T0}"}}"#)).unwrap();
+        assert_eq!(view(&p, None, t0() + 1000).note, "none", "no previous version known: nothing to name");
+    }
+
+    #[test]
+    fn a_waiting_release_that_is_not_newer_is_not_offered() {
+        let d = tempfile::tempdir().unwrap();
+        let p = Paths::at(d.path());
+        let me = env!("CARGO_PKG_VERSION");
+        for (tag, want) in [
+            (format!("v{me}"), "none"),
+            ("v0.0.1".into(), "none"),
+            ("v99.0.0".into(), "waiting"),
+            ("v99.0.0-rc1".into(), "waiting"),
+        ] {
+            std::fs::write(state_path(&p), format!(r#"{{"state":"waiting","available":"{tag}"}}"#)).unwrap();
+            assert_eq!(view(&p, None, t0()).note, want, "{tag}");
+        }
     }
 
     #[test]

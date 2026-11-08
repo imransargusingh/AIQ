@@ -74,6 +74,24 @@ jobs:
       - name: Shell unit tests
         working-directory: apps/home/src-tauri
         run: cargo test --locked
+      - name: Second launch focuses the open window and exits (single-instance guard)
+        shell: pwsh
+        run: |
+          $env:AIQ_HOME = Join-Path $env:RUNNER_TEMP 'aiq-single-instance'
+          New-Item -ItemType Directory -Force -Path $env:AIQ_HOME | Out-Null
+          $exe = Resolve-Path 'apps/home/src-tauri/target/release/aiq-home.exe'
+          $first = Start-Process -FilePath $exe -PassThru
+          Start-Sleep -Seconds 8
+          if ($first.HasExited) { throw "First AIQ home exited on its own (code $($first.ExitCode))." }
+          $second = Start-Process -FilePath $exe -PassThru
+          if (-not $second.WaitForExit(20000)) { Stop-Process -Id $first.Id, $second.Id -Force; throw 'Second AIQ home stayed open: two windows.' }
+          $left = @(Get-Process -Name 'aiq-home' -ErrorAction SilentlyContinue)
+          Write-Host "Second launch exited with code $($second.ExitCode); aiq-home processes left: $($left.Count)."
+          $log = Get-Content (Join-Path $env:AIQ_HOME 'home.log') -ErrorAction SilentlyContinue | Select-String 'second_launch'
+          Stop-Process -Id $first.Id -Force
+          if ($left.Count -ne 1) { throw "Expected one AIQ home, found $($left.Count)." }
+          if (-not $log) { throw 'The open window did not log the second launch in home.log.' }
+          Write-Host $log
       - uses: actions/upload-artifact@v4
         with:
           name: aiq-home-windows-x64

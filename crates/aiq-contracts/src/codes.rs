@@ -10,18 +10,38 @@ pub const INGEST_SHAPE: &str = "AIQ-INGEST-SHAPE";
 pub const INGEST_BACKPRESSURE: &str = "AIQ-INGEST-BACKPRESSURE";
 /// A prompt or stop of an automated session (import spec US-12): recorded nothing.
 pub const INGEST_AUTOMATED: &str = "AIQ-INGEST-AUTOMATED";
+/// A Copilot message typed while the agent was working, read from Copilot's own session log because no hook
+/// fires for it (`copilot_log`). A count, not an error.
+pub const INGEST_MID_TURN: &str = "AIQ-INGEST-MID-TURN";
+/// Copilot's session log could not be read at agentStop (missing file, locked). A count; nothing is lost but
+/// that read's mid-turn messages.
+pub const INGEST_LOG_READ: &str = "AIQ-INGEST-LOG-READ";
+/// A live turn whose agent actions AIQ could not read from the tool's log (no log, read error, a line that
+/// did not parse, more than 16 MB waiting). Stored as "not recorded", never guessed.
+pub const INGEST_ACTIONS_NOT_RECORDED: &str = "AIQ-INGEST-ACTIONS-NOT-RECORDED";
 /// A secret (API key, token, private key, password value) removed from a stored prompt (security review S2).
 /// A count, not an error.
 pub const INGEST_SECRET_REMOVED: &str = "AIQ-INGEST-SECRET-REMOVED";
 pub const DELIVERY_CONFLICT: &str = "AIQ-DELIVERY-CONFLICT";
+/// A tip handed to a turn-end hook that never said it printed it (its wait ran out first): the tip is ready
+/// again for the next turn end instead of counting as shown (DC-022). A count.
+pub const CARD_UNCONFIRMED: &str = "AIQ-CARD-UNCONFIRMED";
+/// A "tip printed" note for a tip that is neither handed over nor ready in that session. Ignored; a count.
+pub const CARD_SHOWN_UNKNOWN: &str = "AIQ-CARD-SHOWN-UNKNOWN";
+/// The hook printed a tip but could not tell the core (its 20 ms send missed). The tip may show once more.
+pub const HOOK_SHOWN_UNSENT: &str = "AIQ-HOOK-SHOWN-UNSENT";
 pub const STORE_OPEN: &str = "AIQ-STORE-OPEN";
 pub const STORE_MIGRATION: &str = "AIQ-STORE-MIGRATION";
 pub const STORE_WRITE: &str = "AIQ-STORE-WRITE";
 pub const STORE_APPEND_ONLY: &str = "AIQ-STORE-APPEND-ONLY";
 pub const CORE_ALREADY_RUNNING: &str = "AIQ-CORE-ALREADY-RUNNING";
 pub const CORE_START_BACKOFF: &str = "AIQ-CORE-START-BACKOFF";
+/// The core could not write the per-user Windows Run entry that starts AIQ at sign-in.
+pub const CORE_LOGIN_START: &str = "AIQ-CORE-LOGIN-START";
 /// AIQ home could not read the store (locked past the busy timeout, or unreadable).
 pub const HOME_STORE_READ: &str = "AIQ-HOME-STORE-READ";
+/// AIQ home could not run `aiq core` (the aiq exe beside it is missing or blocked).
+pub const HOME_CORE_START: &str = "AIQ-HOME-CORE-START";
 /// `aiq export` could not write its folder (not writable, disk full); the partial folder is removed.
 pub const EXPORT_WRITE: &str = "AIQ-EXPORT-WRITE";
 
@@ -53,15 +73,23 @@ pub const ALL: &[&str] = &[
     INGEST_SHAPE,
     INGEST_BACKPRESSURE,
     INGEST_AUTOMATED,
+    INGEST_MID_TURN,
+    INGEST_LOG_READ,
+    INGEST_ACTIONS_NOT_RECORDED,
     INGEST_SECRET_REMOVED,
     DELIVERY_CONFLICT,
+    CARD_UNCONFIRMED,
+    CARD_SHOWN_UNKNOWN,
+    HOOK_SHOWN_UNSENT,
     STORE_OPEN,
     STORE_MIGRATION,
     STORE_WRITE,
     STORE_APPEND_ONLY,
     CORE_ALREADY_RUNNING,
     CORE_START_BACKOFF,
+    CORE_LOGIN_START,
     HOME_STORE_READ,
+    HOME_CORE_START,
     EXPORT_WRITE,
     JUDGE_MISSING,
     JUDGE_SIGNIN,

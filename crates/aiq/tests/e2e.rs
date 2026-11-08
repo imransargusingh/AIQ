@@ -131,7 +131,7 @@ fn e2e_reword_three_times_one_card_second_run_held() {
     let text = msg["systemMessage"].as_str().unwrap();
     assert!(
         text.starts_with(
-            "\u{1b}[22;33m\u{1b}[1;30;43mAIQ tip:\u{1b}[22;49;33m you've reworded this request 3 times without adding new details."
+            "\u{1b}[22;33m\u{1b}[1;30;43mAIQ tip:\u{1b}[22;49;33m this request went round 3 times. The agent may need one new detail."
         ),
         "{text}"
     );
@@ -400,6 +400,25 @@ fn e2e_config_daily_cap_validates() {
 }
 
 #[test]
+fn e2e_analysis_names_and_old_judge_names_both_work() {
+    let mut e = Env::new();
+    e.start_core();
+    // Users see "analysis"; the old "judge" names stay accepted so earlier commands keep working.
+    let set = e.run(&["config", "set", "analysis-daily-tasks", "7"], b"");
+    assert!(set.status.success(), "{}", String::from_utf8_lossy(&set.stdout));
+    assert!(String::from_utf8_lossy(&set.stdout).contains("Most tasks analyzed per day: 7."));
+    assert!(e.run(&["config", "set", "judge-daily-tasks", "8"], b"").status.success());
+    let bad = e.run(&["config", "set", "analysis", "maybe"], b"");
+    assert!(!bad.status.success());
+    assert!(String::from_utf8_lossy(&bad.stdout).contains("analysis must be auto or off"));
+    for verb in ["analyze", "judge"] {
+        let o = e.run(&[verb, "--dry-run"], b"");
+        let out = String::from_utf8_lossy(&o.stdout);
+        assert!(out.starts_with("AIQ analyzes each task you finish"), "{verb}: {out}");
+    }
+}
+
+#[test]
 fn e2e_no_color_card_is_plain_text() {
     let mut e = Env::new();
     e.start_core();
@@ -416,7 +435,7 @@ fn e2e_no_color_card_is_plain_text() {
     let o = ch.wait_with_output().unwrap();
     let msg: Value = serde_json::from_slice(&o.stdout).expect("a card at this Stop");
     let text = msg["systemMessage"].as_str().unwrap();
-    assert!(text.starts_with("AIQ tip: you've reworded"), "{text}");
+    assert!(text.starts_with("AIQ tip: this request went round"), "{text}");
     assert!(!text.contains('\u{1b}'), "NO_COLOR means no escape codes");
 }
 
@@ -590,8 +609,60 @@ fn e2e_import_dry_run_then_import_status_and_forget_imported() {
     assert!(!run(&["status"]).contains("Imported history"));
     let done = run(&["import"]);
     assert!(done.contains("Import finished."), "{done}");
-    assert!(run(&["status"]).contains("Imported history: 1 sessions, 0 set aside"));
-    assert!(run(&["import"]).contains("0 imported, 0 set aside as automated, 1 unchanged"));
+    assert!(run(&["status"]).contains("Imported history: 1 sessions, 0 automated and not counted"));
+    assert!(run(&["import"]).contains("0 imported, 0 automated and not counted, 1 unchanged"));
     assert!(run(&["forget", "--imported", "--yes"]).contains("Deleted 1 imported sessions."));
     assert!(!run(&["status"]).contains("Imported history"));
+}
+
+#[test]
+fn e2e_spooled_frame_goes_in_at_the_next_command_not_the_idle_tick() {
+    // A hook whose send missed while the core was busy spools; the core must take it in before its next
+    // command, because a steady stream of commands keeps the 30 s idle tick from ever firing.
+    let down = Env::new();
+    assert!(down.stop("s", "p0").status.success());
+    let spooled = std::fs::read(down.home().join("spool.jsonl")).unwrap();
+    let mut e = Env::new();
+    e.start_core();
+    std::fs::write(e.home().join("spool.jsonl"), spooled).unwrap();
+    let st = e.status();
+    assert!(st.contains("1 stop"), "taken in at the very next command: {st}");
+    assert!(!e.home().join("spool.jsonl").exists());
+}
+
+/// DC-022: a hook that took a tip and then never printed it (its wait ran out, or it died) must not use the tip
+/// up. Before the fix the core counted it as shown the moment it handed it over: lost, yet it blocked the next.
+#[test]
+fn e2e_a_tip_no_hook_says_it_printed_is_not_counted_and_comes_back() {
+    let mut e = Env::new();
+    e.start_core();
+    let pid = e.reprompt_run("s", 0);
+    let paths = aiq_core::paths::Paths::at(&e.home());
+    let token = aiq_core::ipc::read_token(&paths).unwrap();
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64;
+    let stop = json!({"schema": aiq_contracts::event::SCHEMA, "event_id": "gone-hook-stop", "surface": "claude-code",
+                      "surface_session_id": "s", "seq": null, "ts": aiq_core::sysclock::format_rfc3339_ms(now),
+                      "collector_version": "test", "kind": "stop",
+                      "payload": {"stop_hook_active": false, "prompt_id": pid}});
+    // A hook that takes the tip with a generous wait, then goes away without printing or confirming it.
+    let frame = json!({"op": "take_card", "token": token, "trace_id": null, "event": stop, "wait_ms": 2000});
+    let reply = aiq_core::ipc::request(&paths, &frame.to_string(), true, Duration::from_secs(3)).unwrap().unwrap();
+    assert!(reply.contains("\"card\":{"), "the tip was handed over: {reply}");
+    assert!(e.status().contains("Tips today: 0 of"), "not counted: nobody printed it");
+    assert!(e.stop("s", &pid).stdout.is_empty(), "held while the first hook may still confirm");
+    std::thread::sleep(Duration::from_millis(aiq_core::service::HANDOVER_CONFIRM_MS as u64 + 100));
+    // The next turn end gets it. A loaded runner may miss the core's 30 ms window: that miss keeps it ready.
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut out = e.stop("s", &pid).stdout;
+    while out.is_empty() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(200));
+        out = e.stop("s", &pid).stdout;
+    }
+    assert!(String::from_utf8(out).unwrap().contains("AIQ tip:"), "ready again: {}", e.status());
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !e.status().contains("Tips today: 1 of") && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let st = e.status();
+    assert!(st.contains("Tips today: 1 of") && st.contains("AIQ-CARD-UNCONFIRMED 1"), "{st}");
 }
