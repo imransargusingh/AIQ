@@ -1,7 +1,7 @@
 {
   "name": "aiq-home",
   "private": true,
-  "version": "0.1.22",
+  "version": "0.1.23",
   "description": "AIQ home: the private desktop app (Tauri + React). Reads only the person's own local store.",
   "type": "module",
   "scripts": {
