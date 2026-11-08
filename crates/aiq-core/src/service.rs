@@ -96,6 +96,12 @@ pub struct Service<C: Clock> {
     /// a set-aside folder is recorded whole when its second prompt arrives (H ≥ 2). Never written to disk unless
     /// that happens. Bounded: on overflow all are dropped, and those sessions are recorded from their second prompt.
     held: std::collections::HashMap<(String, String), EventV1>,
+    /// Prompts of a Claude Code session that arrived while rule RC was unsettled (its transcript head not yet
+    /// written), in memory only. Recorded in order at the session's next event that is not held (its Stop at
+    /// the latest) unless the head then shows a Projects session; then dropped, so a Remote Control session never
+    /// leaves its first prompt behind as the person's task (DC-035). At most `RC_TRIES` per session (each event
+    /// is one read). Bounded like `held`.
+    rc_held: std::collections::HashMap<(String, String), Vec<EventV1>>,
     /// Folder keys where a claude.ai Projects / Remote Control session was set aside (rule RC), so
     /// "Include them" can be offered there although no folder rule exists. In memory; bounded.
     projects_folders: std::collections::HashSet<String>,
@@ -236,6 +242,7 @@ impl<C: Clock> Service<C> {
             counters,
             guard: Guard::new(),
             held: Default::default(),
+            rc_held: Default::default(),
             projects_folders: Default::default(),
             rc_checked: Default::default(),
             vscode_asked_ms: None,
@@ -384,7 +391,9 @@ impl<C: Clock> Service<C> {
         }
         match self.automated(ev)? {
             Gate::Skip(reason) => {
-                self.counters.inc(codes::INGEST_AUTOMATED);
+                if reason != "rc-pending" {
+                    self.counters.inc(codes::INGEST_AUTOMATED); // a held event is not set aside yet
+                }
                 // One line per skipped event, so a lost prompt can be traced to its rule (2026-11-03: six first
                 // prompts of hand-typed VS Code sessions were dropped and nothing said why). No text, no path.
                 info!(
@@ -1048,11 +1057,23 @@ impl<C: Clock> Service<C> {
         v
     }
 
+    /// A prompt whose session rule RC has read without an answer (head not yet written), with reads left. Only
+    /// prompts wait: by a Stop Claude Code has written the head, so a Stop that still finds none (a missing or
+    /// unreadable transcript) releases what waits rather than holding a whole session back.
+    fn rc_unsettled(&self, ev: &EventV1) -> bool {
+        let key = format!("{}/{}", ev.surface, ev.surface_session_id);
+        matches!(ev.body, EventBody::Prompt(_))
+            && ev.transcript.is_some()
+            && matches!(self.rc_checked.get(&key), Some(RcCheck::Unsettled(n)) if *n < RC_TRIES)
+    }
+
     /// The automated-session rule, live side. A skip names its rule (`projects`, `aiq-check`, `session`,
     /// `folder`, `template`, `burst`) for the log.
     fn automated(&mut self, ev: &EventV1) -> Result<Gate, StoreError> {
         let (surface, session) = (ev.surface.as_str(), ev.surface_session_id.as_str());
+        let rc_key = (surface.to_owned(), session.to_owned());
         if ev.projects || self.projects_session(ev) {
+            self.rc_held.remove(&rc_key); // Claude's own session from its first event: none of it is the person's
             // Rule RC: Claude's own Projects / Remote Control session, every event, unless included.
             let k = ev.cwd.as_deref().map(folder_key).unwrap_or_default();
             if self.store.folder_rules_now()?.get(&k).map(String::as_str) != Some("include") {
@@ -1073,6 +1094,19 @@ impl<C: Clock> Service<C> {
                     info!(aiq.reason = "aiq-check", "folder set aside: AIQ's own checks");
                     return Ok(Gate::Skip("aiq-check"));
                 }
+            }
+        }
+        if self.rc_unsettled(ev) {
+            if self.rc_held.len() >= MAX_HELD {
+                self.rc_held.clear();
+            }
+            self.rc_held.entry(rc_key).or_default().push(ev.clone());
+            return Ok(Gate::Skip("rc-pending"));
+        }
+        if let Some(earlier) = self.rc_held.remove(&rc_key) {
+            // Settled as the person's session: its held prompts go in first, through every other rule.
+            for e in &earlier {
+                self.ingest_inner(e, None)?;
             }
         }
         let EventBody::Prompt(p) = &ev.body else {

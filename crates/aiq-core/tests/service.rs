@@ -178,6 +178,9 @@ impl H {
     fn prompts(&mut self) -> u64 {
         self.svc().status().events_by_kind.iter().find(|(k, _)| k == "prompt").map_or(0, |(_, n)| *n)
     }
+    fn stops(&mut self) -> u64 {
+        self.svc().status().events_by_kind.iter().find(|(k, _)| k == "stop").map_or(0, |(_, n)| *n)
+    }
     fn tip(&mut self, session: &str) -> Option<TipLineOut> {
         self.svc().tip_line("copilot-cli", Some(session))
     }
@@ -1064,7 +1067,9 @@ fn the_core_reads_a_prompts_transcript_once_per_session_for_rule_rc() {
 
 // Laptop 2026-11-02 21:28Z: a Remote Control session's first prompt found its transcript not yet written,
 // AIQ remembered "not Projects", and every later event was recorded as the person's work. An unwritten head
-// is read again at the next event (prompt or Stop) until it settles the answer.
+// is read again at the next event (prompt or Stop) until it settles the answer. Laptop 2026-11-08 03:28Z
+// (DC-035): the prompt recorded while unsettled stayed behind as a task with no turn end; events now wait
+// in memory until the answer settles.
 #[test]
 fn an_unwritten_transcript_head_is_read_again_until_it_settles_rule_rc() {
     let d = tempfile::tempdir().unwrap();
@@ -1082,17 +1087,18 @@ fn an_unwritten_transcript_head_is_read_again_until_it_settles_rule_rc() {
         e.transcript = Some(t.to_string_lossy().into_owned());
         h.svc().ingest(&e, None);
     };
-    send(&mut h, "rc1", &t, "brief one"); // no file yet: recorded, unsettled
-    assert_eq!(h.prompts(), 1);
+    send(&mut h, "rc1", &t, "brief one"); // no file yet: held, unsettled
+    assert_eq!(h.prompts(), 0);
     let queue = "{\"type\":\"queue-operation\",\"operation\":\"enqueue\"}\n";
     std::fs::write(&t, queue).unwrap();
-    send(&mut h, "rc1", &t, "brief two"); // still no user record: unsettled
-    assert_eq!(h.prompts(), 2);
+    send(&mut h, "rc1", &t, "brief two"); // still no user record: held
+    assert_eq!(h.prompts(), 0);
     let marker = "{\"type\":\"user\",\"isMeta\":true,\"turnOrigin\":\"system\",\"entrypoint\":\"claude-desktop\"}\n";
     std::fs::write(&t, format!("{queue}{marker}")).unwrap();
     stop(&mut h, "rc1", &t);
     send(&mut h, "rc1", &t, "brief three");
-    assert_eq!(h.prompts(), 2, "settled at the Stop: the rest of the session is set aside");
+    assert_eq!(h.prompts(), 0, "settled at the Stop: the whole session is set aside, held prompts too");
+    assert_eq!(h.stops(), 0);
     assert_eq!(h.svc().status().automated_folders, vec![("c:\\repos\\aiq".to_string(), "projects".to_string())]);
 
     // A head that never settles is read at most RC_TRIES (8) times, then the session counts as the person's.
@@ -1103,7 +1109,17 @@ fn an_unwritten_transcript_head_is_read_again_until_it_settles_rule_rc() {
     }
     std::fs::write(&never, format!("{queue}{marker}")).unwrap();
     send(&mut h, "s2", &never, "task 8");
-    assert_eq!(h.prompts(), 11, "stopped looking after 8 unsettled reads");
+    assert_eq!(h.prompts(), 9, "stopped looking after 8 unsettled reads; the held ones went in first");
+
+    // A terminal session whose head is not written at its first prompt: the prompt waits for the Stop, then
+    // both are recorded, in order.
+    let cli = d.path().join("cli.jsonl");
+    send(&mut h, "cli1", &cli, "fix the bug");
+    assert_eq!(h.prompts(), 9);
+    std::fs::write(&cli, "{\"type\":\"user\",\"turnOrigin\":\"human\",\"entrypoint\":\"cli\"}\n").unwrap();
+    stop(&mut h, "cli1", &cli);
+    assert_eq!(h.prompts(), 10, "settled as the person's: the held first prompt is recorded");
+    assert_eq!(h.stops(), 1);
 }
 
 // Rule AIQ: sessions in AIQ's own check and probe folders (`<temp>\aiq-*`) are tests of AIQ, set aside
