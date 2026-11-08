@@ -1164,6 +1164,12 @@ pub(crate) fn analysis_copilot_models(set: &Settings) -> Vec<Option<String>> {
     }
 }
 
+/// A Copilot provider that tries `models` in order, the way analysis does (`analysis_copilot`). Kind labels use
+/// it so a label runs on the same model as the analysis it is checked against.
+pub(crate) fn copilot_chain(base: &CopilotCli, models: Vec<Option<String>>) -> impl Provider + '_ {
+    analysis_copilot(base, models)
+}
+
 /// Analysis through Copilot: AIQ's default model, falling back to Copilot's own pick when it is not offered
 /// (for the rest of the run) or a call to it fails (for that call). The model that answered is recorded on
 /// every call and judgment, and shown on the task page.

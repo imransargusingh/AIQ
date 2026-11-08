@@ -397,4 +397,26 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <ul><li><strong>Control (tests):</strong> <code>next_rung::every_new_task_ends_its_tip_path_at_a_counted_step</code>,</li></ul>
 <p><code>next_rung::held_self_checks_are_counted_as_their_own_steps</code>, <code>next_rung::status_carries_the_funnel_and_a_dry_working_day_warns</code>, <code>service::a_rescued_first_prompt_is_counted_on_the_tip_path</code>, <code>funnel::tests::*</code> (every step and hold reason has words, dry-day rules), the Home e2e &quot;tip funnel&quot; tests.</p>
 <ul><li><strong>Rule:</strong> a feature whose job is to act on a moment counts, per period, the moments it saw and the ones it acted</li></ul>
-<p>on, and each way a moment was passed over gets its own code. A new early return without a step is a defect.</p></main></body></html>
+<p>on, and each way a moment was passed over gets its own code. A new early return without a step is a defect.</p>
+<h3>DC-038 — A test reads, at one instant, a value the product is allowed to reach later or more than once</h3>
+<ul><li><strong>Signature:</strong> 2026-11-08, two CI flakes. (1) Windows rust job on #185: <code>e2e_a_tip_no_hook_says_it_printed_is_not_counted_and_comes_back</code></li></ul>
+<p>found <code>AIQ-CARD-UNCONFIRMED 2</code>, expected 1. The test retries the turn end because a loaded runner can miss the hook&#x27;s 30 ms + 35 ms wait (STOP_WAIT_MS, ADR-0005), but a retry whose hook gave up after the core took the tip is a real hand-over and is counted too (<code>hand_back</code> or expiry). (2) Linux ui job on main 69ad8fe: the tour test read focus the moment <code>#tourhd</code> existed; the tour moves focus to Next one animation frame later, by design (tour.tsx, so a closing palette can&#x27;t take focus back), and focus was still on the page.</p>
+<ul><li><strong>Why it survives:</strong> both pass on a fast machine every time; the window is a frame or a few ms wide, so a local</li></ul>
+<p>run never sees it. The product behaviour is right in both: the tip is not lost (it is ready again), and focus does land on Next.</p>
+<ul><li><strong>Sweep:</strong> e2e.rs asserts <code>AIQ-CARD-UNCONFIRMED</code> only here; e2e_copilot.rs already bounds its retries</li></ul>
+<p>(<code>stop_until_card</code>). Home&#x27;s other <code>requestAnimationFrame</code> focus moves (App.tsx end of tour, Projects, Data) are read with <code>waitForFunction</code> or not read right after; the skip-link focus read is native, not deferred.</p>
+<ul><li><strong>Control (tests):</strong> the unconfirmed count is bounded by the hooks&#x27; own outcomes in <code>hook-timings.log</code></li></ul>
+<p>(1 for the gone hook, plus at most 1 per retry that timed out or could not confirm; never 0, never more); the tour test waits up to 2 s for focus on Next before asserting it.</p>
+<ul><li><strong>Rule:</strong> when the product defers a step (a frame, a retry, a window) the test waits for that step with a bound,</li></ul>
+<p>and when a test retries, its exact counts allow what each retry may legitimately add, read from the product&#x27;s own record of the retry, never a looser guess.</p>
+<h3>DC-039 — A classifier scored against a different question than the one it is asked</h3>
+<ul><li><strong>Signature:</strong> 2026-11-08, Imran&#x27;s laptop: the kind label reads only a task&#x27;s first prompt; its self-check</li></ul>
+<p>scores it against the analysis of the whole task. 6 of 10 right, so label tips stopped on 11-04 for 4 days. The offline check before launch (11-03) gave 11 of 12 because it was scored on a different sample, and nothing re-ran it. Most misses were problem reports labelled <code>troubleshoot</code> whose task went on to a fix.</p>
+<ul><li><strong>Why it survives:</strong> the label is right about the prompt and wrong about the task, so reading the prompt</li></ul>
+<p>never shows the bug; only the score against later outcomes does, and no test held that score.</p>
+<ul><li><strong>Sweep:</strong> other first-prompt decisions checked against the whole task: the word guess (4 of 4, too few to</li></ul>
+<p>say) and the Right-now card (reads the live session, not checked against analysis). Copilot labels used Copilot&#x27;s own model pick when no model was set while analysis used AIQ&#x27;s default: fixed (<code>copilot_models</code>).</p>
+<ul><li><strong>Control (product):</strong> <code>label::NOT_COACHED</code> (troubleshoot labels never coach); labels use the analysis models.</li><li><strong>Control (tests):</strong> <code>label_replay_gate</code> (synthetic set, prompt pinned by <code>PROMPT_VERSION</code> and text, 8-in-10</li></ul>
+<p>floor, coverage floor, injection), <code>measured_labels_clear_the_bar</code> (real measured labels, no text), <code>accept_needs_a_pack_job_a_named_kind_and_both_confidences_at_the_bar</code>; <code>aiq label --eval</code> exits 3 under the bar.</p>
+<ul><li><strong>Rule:</strong> when a model predicts something checked later against a fuller reading, measure it against that</li></ul>
+<p>reading on real data before it acts, keep the measurement as a replayed fixture, and fail CI when it drops.</p></main></body></html>
