@@ -270,6 +270,10 @@ pub struct ActionSummary {
     pub commands: Vec<String>,
     #[serde(default)]
     pub subagents: u32,
+    /// The turn's steps in order, one letter each (`aiq_domain::rung::step`). None in summaries written before
+    /// steps were kept: the order is then unknown.
+    #[serde(default)]
+    pub steps: Option<String>,
 }
 
 impl ActionSummary {
