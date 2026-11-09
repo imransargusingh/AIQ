@@ -776,6 +776,23 @@ summary: >-
   on 0.1.27 the first read missed the record 2 of 2 times. Nothing alarmed while 269 prompts were left out over five
   days: `aside.<surface>` now carries today's left-out count, and Home's card (every state) and `aiq status` say so
   when at least 10 and 90% of a tool's prompts today were left out (`AsideNow::mostly_left_out`).
+- **Sweep, third pass (2026-11-09 14:12Z, laptop on 0.1.29):** a relayed brief queued during a busy turn ran the
+  prompt hook but wrote no record of its own. `turn_at` took the newest typed record, which was Imran's record from
+  the turn before, so the brief counted as his task. Each record now matches one prompt: the core keeps the records
+  a session's recent prompts matched (`rc_matched`, out-of-order safe), and a record stamped before the hook wins
+  over a later one (the core can read the transcript after the next turn is written). Test: step 5 of
+  `a_persons_own_turns_in_a_remote_control_session_count_and_relayed_ones_do_not` (red on main: 4 kept, not 3) and
+  the `taken` / "core read late" cases in `projects::tests`.
+- **Sweep, fourth pass (2026-11-09 20:46Z, 848 transcripts):** a Remote Control session started later is handed an
+  older project message again, as a person record (`turnOrigin=human`, `projectsUserTurn`). 3 pairs, always across
+  sessions, up to 6.5 h apart and across a core update; one message gave 4 counted turns. No structured field links the
+  two records (`turnAttributionKey` and `promptId` are each record's own); the only shared value is the wake envelope's
+  `<message id="cmsg_…">`. `textNotTyped` is no signal: a genuine typed Projects turn carries it too. Each project
+  message now counts once (`projects::delivered_id`, hashes kept in the `rc.delivered` setting, so a restart keeps
+  them; a replay of the same event is not a second delivery). A held prompt past `TURN_WAIT_MS` is re-read every 5 s,
+  not ~3 times a second (one brief: 2,256 reads in 12 minutes). Tests:
+  `a_project_message_handed_to_a_second_session_counts_once` (red with the rule off),
+  `a_held_prompt_past_its_wait_is_re_read_slowly`, `projects::tests::the_delivered_message_is_the_triggering_one…`.
 - **Rule:** a rule that leaves out a person's activity must decide at the grain where the marker is true (a turn, not
   a session or a surface), and every left-out activity must still show where the person looks for it, with a count
   that alarms when most of it is left out.

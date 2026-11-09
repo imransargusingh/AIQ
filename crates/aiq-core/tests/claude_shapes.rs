@@ -52,7 +52,10 @@ fn in_a_project_thread_the_persons_turn_is_their_own_and_the_relayed_brief_is_no
     let verdicts: Vec<_> = typed
         .iter()
         .map(|r| {
-            (r["turnOrigin"].as_str().unwrap().to_owned(), turn_at(&path("desktop-project-thread"), ms(r), 256 * 1024))
+            (
+                r["turnOrigin"].as_str().unwrap().to_owned(),
+                turn_at(&path("desktop-project-thread"), ms(r), &[], 256 * 1024).0,
+            )
         })
         .collect();
     assert_eq!(verdicts, [("human".to_owned(), Turn::Own), ("peer".to_owned(), Turn::Other)]);

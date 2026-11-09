@@ -1137,6 +1137,20 @@ fn a_persons_own_turns_in_a_remote_control_session_count_and_relayed_ones_do_not
     h.svc().ingest(&e, None);
     stop(&mut h);
     assert_eq!((h.prompts(), h.stops()), (2, 2));
+    // 5. Laptop 2026-11-09 14:12Z: a brief relayed during a busy turn runs the prompt hook 30 s after the person's
+    // turn but writes no record of its own. It must not take the person's record: not counted.
+    let e = prompt(&mut h, "my own turn");
+    let at = aiq_core::sysclock::parse_rfc3339_ms(&e.ts).unwrap();
+    file += &own(at - 40);
+    std::fs::write(&t, &file).unwrap();
+    h.svc().ingest(&e, None);
+    assert_eq!(h.prompts(), 3);
+    let mut relayed = e.clone();
+    relayed.event_id = format!("{}-r", e.event_id);
+    relayed.ts = aiq_core::sysclock::format_rfc3339_ms(at + 30_000);
+    h.svc().ingest(&relayed, None);
+    stop(&mut h);
+    assert_eq!(h.prompts(), 3, "the relayed brief did not borrow the person's record");
 }
 
 // Per-turn rule in every Claude Code session (Imran 2026-11-09, "count only turns a person typed"): 829 transcripts on
@@ -1751,4 +1765,79 @@ fn a_rescued_first_prompt_is_counted_on_the_tip_path() {
     h.cp_in("/ep", "person", R1, MIN);
     let steps = h.svc().store().tip_steps_since(0).unwrap();
     assert_eq!(steps.iter().map(|s| s.step.as_str()).collect::<Vec<_>>(), ["late_first_prompt"]);
+}
+
+// Laptop 2026-11-09 19:07Z: a relayed brief with no record of its own was re-read every ~316 ms for 12 minutes until its
+// Stop (2,256 reads). Past `TURN_WAIT_MS` a held prompt is re-read every 5 s; a late record still counts.
+#[test]
+fn a_held_prompt_past_its_wait_is_re_read_slowly() {
+    let d = tempfile::tempdir().unwrap();
+    let t = d.path().join("rc.jsonl");
+    let head = "{\"type\":\"user\",\"isMeta\":true,\"turnOrigin\":\"system\",\"entrypoint\":\"claude-desktop\"}\n";
+    std::fs::write(&t, head).unwrap();
+    let mut h = H::new();
+    let mut e = h.prompt("rc1", "brief");
+    e.cwd = Some("C:\\Repos\\Thatcher".into());
+    e.transcript = Some(t.to_string_lossy().into_owned());
+    h.svc().ingest(&e, None);
+    assert_eq!(h.prompts(), 0, "no record yet: held");
+    assert_eq!(h.svc().held_wait(), Some(std::time::Duration::from_millis(300)), "fresh: re-read fast");
+    h.clock.advance(11_000);
+    h.svc().recheck_held();
+    assert_eq!(h.svc().held_wait(), Some(std::time::Duration::from_millis(1_000)), "stale: the loop slows down");
+    let at = aiq_core::sysclock::parse_rfc3339_ms(&e.ts).unwrap();
+    let own = format!(
+        "{{\"type\":\"user\",\"turnOrigin\":\"human\",\"origin\":{{\"kind\":\"human\"}},\"projectsUserTurn\":true,\"timestamp\":\"{}\"}}\n",
+        aiq_core::sysclock::format_rfc3339_ms(at + 500)
+    );
+    std::fs::write(&t, format!("{head}{own}")).unwrap();
+    h.clock.advance(1_000);
+    h.svc().recheck_held();
+    assert_eq!(h.prompts(), 0, "not re-read a second after the last slow read");
+    h.clock.advance(4_000);
+    h.svc().recheck_held();
+    assert_eq!(h.prompts(), 1, "the slow re-read still finds the person's late record");
+}
+
+// Laptop 2026-11-09 (848 transcripts): a Remote Control session started later is handed an older project message
+// again, as a person record (3 pairs, hours apart, across a core update). The message counts once, also after a restart.
+#[test]
+fn a_project_message_handed_to_a_second_session_counts_once() {
+    let d = tempfile::tempdir().unwrap();
+    let ts = aiq_core::sysclock::format_rfc3339_ms;
+    let head = "{\"type\":\"user\",\"isMeta\":true,\"turnOrigin\":\"system\",\"entrypoint\":\"claude-desktop\"}\n";
+    let own = |ms: i64, id: &str| {
+        let body =
+            format!("<wake><message trigger=\\\"true\\\" id=\\\"{id}\\\" from=\\\"human\\\">ship it</message></wake>");
+        format!(
+            "{{\"type\":\"user\",\"turnOrigin\":\"human\",\"origin\":{{\"kind\":\"human\"}},\"projectsUserTurn\":true,\"textNotTyped\":true,\"message\":{{\"content\":\"{body}\"}},\"timestamp\":\"{}\"}}\n",
+            ts(ms)
+        )
+    };
+    let mut h = H::new();
+    let turn = |h: &mut H, session: &str, id: &str| -> EventV1 {
+        let t = d.path().join(format!("{session}.jsonl"));
+        let mut e = h.prompt(session, "ship it");
+        e.cwd = Some("C:\\Repos\\AIQ".into());
+        e.transcript = Some(t.to_string_lossy().into_owned());
+        let at = aiq_core::sysclock::parse_rfc3339_ms(&e.ts).unwrap();
+        let prior = std::fs::read_to_string(&t).unwrap_or_else(|_| head.to_string());
+        std::fs::write(&t, format!("{prior}{}", own(at - 40, id))).unwrap();
+        h.svc().ingest(&e, None);
+        let mut s = h.prompt(session, "unused");
+        s.body = EventBody::Stop(StopPayload { stop_hook_active: false, prompt_id: None });
+        s.transcript = e.transcript.clone();
+        h.svc().ingest(&s, None);
+        e
+    };
+    let first = turn(&mut h, "a", "cmsg_01aaa");
+    assert_eq!((h.prompts(), h.stops()), (1, 1), "the person's message, first delivery");
+    h.svc().ingest(&first, None);
+    assert_eq!(h.prompts(), 1, "the same event read again is not a second delivery");
+    turn(&mut h, "b", "cmsg_01bbb");
+    assert_eq!((h.prompts(), h.stops()), (2, 2), "a new message in a new session counts");
+    h.restart();
+    h.clock.advance(5 * 3_600_000);
+    turn(&mut h, "c", "cmsg_01aaa");
+    assert_eq!((h.prompts(), h.stops()), (2, 2), "handed again hours later, after a restart: not counted again");
 }
