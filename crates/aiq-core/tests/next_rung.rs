@@ -949,6 +949,10 @@ fn status_carries_the_funnel_and_a_dry_working_day_warns() {
     let f = h.svc.status().tip_funnel.expect("funnel");
     assert!(f.today.tasks >= 3 || f.week.tasks >= 6, "{f:?}");
     assert!(f.week.no_tip.iter().any(|c| c.code == "no_match"));
+    // The no-tip list shows how each task began, from the stored first prompt.
+    let first_word = UNLIKE.split_whitespace().next().unwrap();
+    let newest: Vec<_> = f.week.lost.iter().take(3).collect();
+    assert!(newest.iter().all(|t| t.opening.starts_with(first_word) && t.opening.ends_with('…')), "{newest:?}");
     h.advance(24 * HOUR);
     let f = h.svc.status().tip_funnel.unwrap();
     assert_eq!(f.droughts.len(), 1, "{f:?}");

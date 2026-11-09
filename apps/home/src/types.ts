@@ -97,6 +97,8 @@ export interface FunnelTask {
   words: string;
   /** Lost at "Tip ready" (true) or at "Kind of task clear" (false). */
   kind_known: boolean;
+  /** First words of the opening prompt, secrets removed; empty when not stored. */
+  opening?: string;
 }
 
 export interface TipDrought {

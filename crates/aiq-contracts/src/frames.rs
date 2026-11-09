@@ -274,6 +274,10 @@ pub struct FunnelTask {
     pub words: String,
     /// AIQ knew the kind of task (the task was lost at "Tip ready", not at "Kind of task clear").
     pub kind_known: bool,
+    /// The first words of the task's opening prompt, secrets removed (`funnel::opening`); empty when the text was
+    /// deleted or never stored. Shown only in the person's own Home.
+    #[serde(default)]
+    pub opening: String,
 }
 
 /// A count with its code and plain words (one definition of the words: `aiq_domain::funnel::words`).

@@ -1904,7 +1904,9 @@ for (const theme of ["light", "dark"]) {
     await more.click();
     assert.equal(await more.getAttribute("aria-expanded"), "true");
     assert.equal(await card.locator("#tf-lost li").count(), 5);
-    assert.match(await card.locator("#tf-lost li").first().innerText(), /Kind (of task not recognised|label never came back)/);
+    assert.equal(await card.locator("#tf-lost h4").first().innerText(), "Kind of task not recognised (4)", "grouped by reason, biggest first");
+    // The seeded tip-path tasks have no stored prompt: the row says so rather than showing nothing or a guess.
+    assert.match(await card.locator("#tf-lost li").first().innerText(), /Prompt not stored/);
     const why = await card.locator(".tf-why", { hasText: "Why tasks had no tip" }).innerText();
     assert.ok(why.includes("Kind labels on hold") && why.includes("Too few tasks of this kind"), why);
     assert.ok(!(await card.innerText()).toLowerCase().includes("judge"));
