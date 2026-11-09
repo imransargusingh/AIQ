@@ -457,7 +457,7 @@ export function App() {
       </div>
       <p className="sr" role="status" aria-live="polite">{said}</p>
       {palette && ctx && <Palette ctx={ctx} onClose={() => setPalette(false)} />}
-      {tour && <Tour step={tour.step} setStep={tourStep} end={endTour} />}
+      {tour && <Tour snap={tour.snap} step={tour.step} setStep={tourStep} end={endTour} />}
       {snap && !tour && page === "home" && snap.setup.done && !snap.setup.tour_seen && <TourOffer start={startTour} decline={markSeen} />}
     </div>
   );

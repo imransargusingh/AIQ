@@ -1692,8 +1692,8 @@ await test("projects: Your projects ranks folders on Tasks, the picker scopes Ho
   await solo.context().close();
 });
 
-// The tour (design home-tour): offered once after setup, eight steps on the example snapshot, Esc on any step.
-const TOUR = ["Right now", "How you work with agents", "Is each kind of task moving up?", "Tasks, by kind", "Your day", "Habits", "Tips show where you work", "Settings"];
+// The tour (design home-tour): offered once after setup, nine steps on the example snapshot, Esc on any step.
+const TOUR = ["Right now", "How you work with agents", "Is each kind of task moving up?", "Automated, not counted", "Tasks, by kind", "Your day", "Habits", "Tips show where you work", "Settings"];
 const READS = new Set(["snapshot", "run_update", "task"]);
 
 await test("tour: offered once after setup; Not now means never again", async () => {
@@ -1726,7 +1726,7 @@ await test("tour: offered once after setup; Not now means never again", async ()
   await other.context().close();
 });
 
-await test("tour: eight steps on example data, every view found, own data back after", async () => {
+await test("tour: nine steps on example data, every view found, own data back after", async () => {
   const page = await open("empty");
   await page.getByRole("button", { name: "Take the tour" }).first().click();
   for (let i = 0; i < TOUR.length; i++) {
@@ -1735,7 +1735,15 @@ await test("tour: eight steps on example data, every view found, own data back a
     await page.waitForSelector(".tour-spot", { timeout: 2000 });
     assert.equal(await page.locator(".titlebar .examplechip").innerText(), "Example data");
     assert.match(await page.locator(".tour-pop").innerText(), new RegExp(`${i + 1} of ${TOUR.length}`));
-    if (i === 0 || i === 4) assert.deepEqual(await axe(page), [], `step ${i + 1}`);
+    if (i === 0 || i === 3 || i === 5) assert.deepEqual(await axe(page), [], `step ${i + 1}`);
+    // The example data fills what each step names: a growing habit under the ladder map and on Habits, and a
+    // script-driven folder with its Count this folder button.
+    if (TOUR[i] === "Is each kind of task moving up?") assert.match(await page.locator(".hc-line").innerText(), /1 habit is growing/);
+    if (TOUR[i] === "Automated, not counted") assert.equal(await page.getByRole("button", { name: "Count nightly-report" }).count(), 1);
+    if (TOUR[i] === "Habits") {
+      assert.match(await page.locator(".hc-sum").innerText(), /1 growing/);
+      assert.match(await page.locator("section[aria-labelledby^=hab-]:has(.hc)").innerText(), /Growing in Writing tests/, "the spotlit rung has the growing habit");
+    }
     if (shots) await page.screenshot({ path: join(shots, `tour-${i + 1}.png`) });
     await page.getByRole("button", { name: i === TOUR.length - 1 ? "Done" : "Next", exact: true }).click();
   }

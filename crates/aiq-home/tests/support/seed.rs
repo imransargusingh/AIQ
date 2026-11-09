@@ -613,10 +613,44 @@ pub fn tour(paths: &Paths) {
         let id = s.prompt("copilot-cli", &se, at, Some(AIQ), text);
         s.prompt("copilot-cli", &se, at + 6 * MIN, Some(AIQ), "keep going");
         s.stop("copilot-cli", &se, at + 14 * MIN);
-        s.store.insert_judgment(&coach_row(&id, job, ty, *cur, state, 0)).unwrap();
+        let mut j = coach_row(&id, job, ty, *cur, state, 0);
+        // This morning's tests came with a written brief, so the habit the progress seed grows (0 of 5, then 5 of
+        // 5) still shows as growing once the coaching tasks join the last 30 days: the tour's habit line and chip.
+        if *ty == "tests" {
+            j.facts = j.facts.replace(r#""F7":{"value":false"#, r#""F7":{"value":true"#);
+        }
+        s.store.insert_judgment(&j).unwrap();
+    }
+    // Two more briefed test tasks earlier this week, so the growth is beyond chance (9 of 15 against 0 of 5).
+    for (i, d) in [2, 4].iter().enumerate() {
+        let at = NOW - d * DAY;
+        let se = format!("wb{i}");
+        let id =
+            s.prompt("copilot-cli", &se, at, Some(AIQ), "add tests for the coupon rules; the brief is in AGENTS.md");
+        s.stop("copilot-cli", &se, at + 9 * MIN);
+        let mut j = coach_row(&id, "code_change", "tests", 3, "judged", 0);
+        j.facts = j.facts.replace(r#""F7":{"value":false"#, r#""F7":{"value":true"#);
+        s.store.insert_judgment(&j).unwrap();
+    }
+    // A folder a script drives (design DC-043): the tour's "Automated, not counted" step has a row to point at.
+    s.prompt("claude-code", "nr1", NOW - 2 * DAY, Some(TOUR_SCRIPT), "summarise yesterday's orders");
+    s.store.insert_folder_rule(TOUR_SCRIPT, "set_aside", "template", "live", NOW - 2 * DAY).unwrap();
+    for i in 0..9 {
+        s.store
+            .insert_set_aside_session(
+                "claude-code",
+                &format!("nr{i}"),
+                TOUR_SCRIPT,
+                "template",
+                NOW - 2 * DAY + i * 4 * 60 * MIN,
+            )
+            .unwrap();
     }
     open_task(paths);
 }
+
+/// The tour's script-driven folder, already neutral (the fixture example renames only the seed's own folders).
+pub const TOUR_SCRIPT: &str = r"c:\users\you\source\repos\nightly-report";
 
 /// Rung progress (the success measure): kinds of task judged in the last 30 days and the 30 before.
 /// Writing tests moves up (Directed to Delegated) while its written-brief habit grows (0 of 5, then 5 of 5);

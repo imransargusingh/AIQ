@@ -1,4 +1,4 @@
-// The tour (design home-tour): eight steps over Home's views, shown on a fixed example snapshot so every view is
+// The tour (design home-tour): nine steps over Home's views, shown on a fixed example snapshot so every view is
 // full on a new install, whose own Home stays empty for days. Never starts by itself: Home offers it once after
 // setup, and Ctrl K, Settings and the getting-started list start it again. A spotlight on each view and a coach
 // mark beside it; the page under it can't be clicked, Esc ends it on any step, and the person's own data is back
@@ -11,10 +11,12 @@ export interface TourStep {
   page: Exclude<Page, "task" | "kind" | "setup">;
   /** Open Tasks on this view. */
   view?: "day";
-  /** The element the spotlight goes round. */
-  target: string;
+  /** The element the spotlight goes round; a list is tried in order, the first found wins. */
+  target: string | string[];
   title: string;
-  body: string;
+  /** Any number in it (days, tips a day) comes from the snapshot the tour shows, never typed here: a typed
+   * number drifts when the app's own window changes (the 14-day trend that became 30 days, #202). */
+  body: (s: Snapshot) => string;
   /** A sample of what a tip looks like in the person's tool. */
   tip?: string;
 }
@@ -24,51 +26,62 @@ export const STEPS: TourStep[] = [
     page: "home",
     target: "[data-testid=right-now]",
     title: "Right now",
-    body: "The task you're on, from its first prompt until 30 minutes of quiet. The trend shows how far agents are taking it.",
+    body: () => "Tasks open now, with how far agents are taking each. When nothing runs, it lists each connected tool and when it was last active.",
   },
   {
     page: "home",
     target: "section[aria-labelledby=rg]",
     title: "How you work with agents",
-    body: "Your tasks by rung, from Assisted to Factory. The change compares the last two weeks with the two before.",
+    body: (s) =>
+      `Your analyzed tasks by rung, from Assisted to Factory. The change compares the last ${s.coaching.shift_days} days with the ${s.coaching.shift_days} before.`,
   },
   {
     page: "home",
     target: "section[aria-labelledby=pg]",
     title: "Is each kind of task moving up?",
-    body: "Each kind of task on the ladder, with the next step that would lift it a rung.",
+    body: (s) =>
+      `Each kind of task on the ladder, last ${s.coaching.progress_days} days against the ${s.coaching.progress_days} before. Below: the next step up, and habits that are growing.`,
+  },
+  {
+    page: "home",
+    target: "section[aria-labelledby=hb]",
+    title: "Automated, not counted",
+    body: () => "AIQ leaves out runs an app or script started, so your counts show your own work. If a folder is yours, choose Count this folder.",
   },
   {
     page: "tasks",
     target: "table[aria-label='Kinds of task']",
     title: "Tasks, by kind",
-    body: "Every kind of task you do: where it sits today, where it could be, and its 14-day trend. Open a kind for its page.",
+    body: (s) =>
+      `Each kind of task: where it sits today, where it could be, and how it moved over ${s.coaching.progress_days} days. Open a kind for its page.`,
   },
   {
     page: "tasks",
     view: "day",
     target: "section[aria-labelledby=dayhd]",
     title: "Your day",
-    body: "One row per session, named by kind, with each task's rung. Long quiet gaps shrink so the work stands out.",
+    body: () => "One row per session, named by kind, with each task's rung. Long quiet gaps shrink so the work stands out.",
   },
   {
     page: "tips",
-    target: "section[aria-labelledby^=hab-]",
+    // The rung whose habits include one growing lately, so its change line is in the spotlight; else the first.
+    target: ["section[aria-labelledby^=hab-]:has(.hc)", "section[aria-labelledby^=hab-]"],
     title: "Habits",
-    body: "The habits AIQ coaches: the ones you're trying now, the ones you've adopted, and the ones not seen yet.",
+    body: () => "Habits by the rung they help you reach: the ones you're trying, the ones you've adopted, and which are growing lately.",
   },
   {
     page: "tips",
     target: "section[aria-labelledby=th]",
     title: "Tips show where you work",
-    body: "Up to 5 a day, in Copilot CLI's status line or VS Code, after a turn ends. Never while you type.",
+    body: (s) =>
+      `Up to ${s.settings.daily_cap} a day, in Claude Code, Copilot CLI or VS Code after a turn ends. Never while you type. Settings sets how many.`,
     tip: "Give the agent the failing test and let it run it until it passes.",
   },
   {
     page: "settings",
     target: ".secnav",
     title: "Settings",
-    body: "Tips, analysis, what AIQ keeps, updates, theme and tools. Take this tour again from Settings or Ctrl K.",
+    body: () => "Tips, what AIQ keeps, analysis, updates, theme and tools. Take this tour again from Settings or Ctrl K.",
   },
 ];
 
@@ -105,7 +118,7 @@ export function place(t: Box | null, pop: { w: number; h: number }, vw: number, 
   return { left: clampX(vw - pop.w - GAP), top: clampY(vh - pop.h - GAP) };
 }
 
-export function Tour({ step, setStep, end }: { step: number; setStep: (n: number) => void; end: () => void }) {
+export function Tour({ snap, step, setStep, end }: { snap: Snapshot; step: number; setStep: (n: number) => void; end: () => void }) {
   const s = STEPS[step];
   const last = step === STEPS.length - 1;
   const [box, setBox] = useState<Box | null>(null);
@@ -125,7 +138,7 @@ export function Tour({ step, setStep, end }: { step: number; setStep: (n: number
       setBox({ left: r.left, top: r.top, width: r.width, height: r.height });
     };
     const find = () => {
-      el = document.querySelector(s.target);
+      el = ([] as string[]).concat(s.target).reduce<Element | null>((f, q) => f ?? document.querySelector(q), null);
       if (el) {
         // Scroll AIQ home's own scroller (main), never the window, so the titlebar and side panel stay put. The
         // view sits a third of the way down, leaving room for the coach mark.
@@ -149,7 +162,7 @@ export function Tour({ step, setStep, end }: { step: number; setStep: (n: number
       window.removeEventListener("resize", measure);
       window.removeEventListener("scroll", measure, true);
     };
-  }, [s.target, step]);
+  }, [s, step]);
 
   useLayoutEffect(() => {
     const r = pop.current?.getBoundingClientRect();
@@ -212,7 +225,7 @@ export function Tour({ step, setStep, end }: { step: number; setStep: (n: number
       >
         <button className="tour-x" onClick={end} aria-label="Close the tour">✕</button>
         <h2 id="tourhd">{s.title}</h2>
-        <p id="tourbd" className="mute">{s.body}</p>
+        <p id="tourbd" className="mute">{s.body(snap)}</p>
         {s.tip && (
           <p className="tour-tip">
             <span className="b">AIQ tip:</span> {s.tip}

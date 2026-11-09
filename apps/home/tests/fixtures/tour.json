@@ -14,13 +14,13 @@
   },
   "home": {
     "window_days": 30,
-    "tasks_in_window": 39,
-    "judged": 38,
+    "tasks_in_window": 41,
+    "judged": 40,
     "uncertain": 2,
     "rungs": [
       8,
       13,
-      15,
+      17,
       0,
       0
     ],
@@ -34,7 +34,7 @@
     "analysis": {
       "state": "off",
       "waiting": 0,
-      "analyzed": 38,
+      "analyzed": 40,
       "today": 0,
       "daily": 500,
       "done_by_ms": null,
@@ -56,16 +56,26 @@
       },
       {
         "start_ms": 1792929600000,
-        "tasks": 20
+        "tasks": 22
       }
     ],
     "by_tool": [
       [
         "copilot-cli",
-        39
+        41
       ]
     ],
-    "set_aside": [],
+    "set_aside": [
+      {
+        "folder": "c:\\users\\you\\source\\repos\\nightly-report",
+        "reason": "template",
+        "since_ms": 1793361600000,
+        "own": false,
+        "runs": 8,
+        "last_ms": 1793476800000,
+        "kept": 0
+      }
+    ],
     "tips_today": 1
   },
   "tasks": [
@@ -325,6 +335,45 @@
       "session": "k0",
       "prompt_ms": [
         1793422800000
+      ]
+    },
+    {
+      "task_id": "019000020013-0000-7000-8000-000000000000",
+      "tool": "copilot-cli",
+      "folder": "c:\\users\\you\\source\\repos\\shop-api",
+      "first_ms": 1793361600000,
+      "last_ms": 1793361600000,
+      "prompts": 1,
+      "origin": "live",
+      "job": "code_change",
+      "rung": 3,
+      "judgment": {
+        "judged_ms": 1793534340000,
+        "state": "judged",
+        "current": 3,
+        "potential": 4,
+        "ceiling": 5,
+        "current_confidence": 0.85,
+        "potential_confidence": 0.85,
+        "job": "code_change",
+        "task_type": "tests",
+        "task_type_label": "Writing tests",
+        "coachable": true,
+        "evidence": [
+          "The agent wrote the tests."
+        ],
+        "gap": "Give the agent <b>a brief</b>.",
+        "blockers": [],
+        "provider": "copilot-cli",
+        "model": null,
+        "read_prompts": 2,
+        "read_chars": 0,
+        "read_actions": false,
+        "versions": "fs1 · r1 · j2"
+      },
+      "session": "wb0",
+      "prompt_ms": [
+        1793361600000
       ]
     },
     {
@@ -598,6 +647,45 @@
       "session": "k2",
       "prompt_ms": [
         1793199600000
+      ]
+    },
+    {
+      "task_id": "019000020015-0000-7000-8000-000000000000",
+      "tool": "copilot-cli",
+      "folder": "c:\\users\\you\\source\\repos\\shop-api",
+      "first_ms": 1793188800000,
+      "last_ms": 1793188800000,
+      "prompts": 1,
+      "origin": "live",
+      "job": "code_change",
+      "rung": 3,
+      "judgment": {
+        "judged_ms": 1793534340000,
+        "state": "judged",
+        "current": 3,
+        "potential": 4,
+        "ceiling": 5,
+        "current_confidence": 0.85,
+        "potential_confidence": 0.85,
+        "job": "code_change",
+        "task_type": "tests",
+        "task_type_label": "Writing tests",
+        "coachable": true,
+        "evidence": [
+          "The agent wrote the tests."
+        ],
+        "gap": "Give the agent <b>a brief</b>.",
+        "blockers": [],
+        "provider": "copilot-cli",
+        "model": null,
+        "read_prompts": 2,
+        "read_chars": 0,
+        "read_actions": false,
+        "versions": "fs1 · r1 · j2"
+      },
+      "session": "wb1",
+      "prompt_ms": [
+        1793188800000
       ]
     },
     {
@@ -1618,9 +1706,9 @@
     }
   ],
   "data": {
-    "events": 123,
-    "prompts": 64,
-    "turn_ends": 59,
+    "events": 128,
+    "prompts": 67,
+    "turn_ends": 61,
     "imported_sessions": 0,
     "imported_events": 0,
     "store_bytes": 336000,
@@ -1826,6 +1914,30 @@
         "deleted": false
       },
       {
+        "event_id": "019000020014-0000-7000-8000-000000000000",
+        "ts_ms": 1793362140000,
+        "tool": "copilot-cli",
+        "kind": "stop",
+        "text": null,
+        "deleted": false
+      },
+      {
+        "event_id": "019000020017-0000-7000-8000-000000000000",
+        "ts_ms": 1793361600000,
+        "tool": "claude-code",
+        "kind": "prompt",
+        "text": "summarise yesterday's orders",
+        "deleted": false
+      },
+      {
+        "event_id": "019000020013-0000-7000-8000-000000000000",
+        "ts_ms": 1793361600000,
+        "tool": "copilot-cli",
+        "kind": "prompt",
+        "text": "add tests for the coupon rules; the brief is in AGENTS.md",
+        "deleted": false
+      },
+      {
         "event_id": "019000000036-0000-7000-8000-000000000000",
         "ts_ms": 1793360760000,
         "tool": "copilot-cli",
@@ -1935,6 +2047,22 @@
         "tool": "copilot-cli",
         "kind": "prompt",
         "text": "cover the import path with tests",
+        "deleted": false
+      },
+      {
+        "event_id": "019000020016-0000-7000-8000-000000000000",
+        "ts_ms": 1793189340000,
+        "tool": "copilot-cli",
+        "kind": "stop",
+        "text": null,
+        "deleted": false
+      },
+      {
+        "event_id": "019000020015-0000-7000-8000-000000000000",
+        "ts_ms": 1793188800000,
+        "tool": "copilot-cli",
+        "kind": "prompt",
+        "text": "add tests for the coupon rules; the brief is in AGENTS.md",
         "deleted": false
       },
       {
@@ -2797,8 +2925,8 @@
   },
   "coaching": {
     "split": {
-      "tasks": 36,
-      "finished": 14,
+      "tasks": 38,
+      "finished": 16,
       "could": 12,
       "needs": 10,
       "uncertain": 2,
@@ -2825,8 +2953,8 @@
       },
       {
         "start_ms": 1792929600000,
-        "tasks": 18,
-        "finished": 9
+        "tasks": 20,
+        "finished": 11
       }
     ],
     "week_min": 3,
@@ -2835,9 +2963,9 @@
         "job": "code_change",
         "task_type": "tests",
         "label": "Writing tests",
-        "tasks": 15,
+        "tasks": 17,
         "uncertain": 2,
-        "per_week": 3.5,
+        "per_week": 4.0,
         "today": 3,
         "potential": 4,
         "state": "coach",
@@ -2856,10 +2984,12 @@
           "019000020004-0000-7000-8000-000000000000",
           "019000000033-0000-7000-8000-000000000000",
           "019000005001-0000-7000-8000-000000000000",
+          "019000020013-0000-7000-8000-000000000000",
           "019000000065-0000-7000-8000-000000000000",
           "019000005003-0000-7000-8000-000000000000",
           "019000000037-0000-7000-8000-000000000000",
           "019000005005-0000-7000-8000-000000000000",
+          "019000020015-0000-7000-8000-000000000000",
           "019000000041-0000-7000-8000-000000000000",
           "019000005007-0000-7000-8000-000000000000",
           "019000005009-0000-7000-8000-000000000000",
@@ -2934,9 +3064,9 @@
         "job": "code_change",
         "task_type": "tests",
         "label": "Writing tests",
-        "tasks": 15,
+        "tasks": 17,
         "uncertain": 2,
-        "per_week": 3.5,
+        "per_week": 4.0,
         "today": 3,
         "potential": 4,
         "state": "coach",
@@ -2955,10 +3085,12 @@
           "019000020004-0000-7000-8000-000000000000",
           "019000000033-0000-7000-8000-000000000000",
           "019000005001-0000-7000-8000-000000000000",
+          "019000020013-0000-7000-8000-000000000000",
           "019000000065-0000-7000-8000-000000000000",
           "019000005003-0000-7000-8000-000000000000",
           "019000000037-0000-7000-8000-000000000000",
           "019000005005-0000-7000-8000-000000000000",
+          "019000020015-0000-7000-8000-000000000000",
           "019000000041-0000-7000-8000-000000000000",
           "019000005007-0000-7000-8000-000000000000",
           "019000005009-0000-7000-8000-000000000000",
@@ -3078,8 +3210,8 @@
         "move_id": "brief",
         "name": "Paste the error or name the files, and say what not to touch",
         "state": "adopted",
-        "eligible": 21,
-        "seen": 21,
+        "eligible": 23,
+        "seen": 23,
         "moved_to": "adopted",
         "moved_ms": 1791972000000,
         "moved_back": false
@@ -3089,8 +3221,8 @@
         "move_id": "check_code",
         "name": "Ask for the test output in the reply",
         "state": "adopted",
-        "eligible": 21,
-        "seen": 21,
+        "eligible": 23,
+        "seen": 23,
         "moved_to": "adopted",
         "moved_ms": 1791972000000,
         "moved_back": false
@@ -3100,8 +3232,8 @@
         "move_id": "hand_over",
         "name": "Hand over the whole task and list what done looks like",
         "state": "adopted",
-        "eligible": 21,
-        "seen": 21,
+        "eligible": 23,
+        "seen": 23,
         "moved_to": "adopted",
         "moved_ms": 1791972000000,
         "moved_back": false
@@ -3111,8 +3243,8 @@
         "move_id": "let_agent_edit",
         "name": "Use agent mode and let it make the edits",
         "state": "adopted",
-        "eligible": 21,
-        "seen": 21,
+        "eligible": 23,
+        "seen": 23,
         "moved_to": "adopted",
         "moved_ms": 1791972000000,
         "moved_back": false
@@ -3122,8 +3254,8 @@
         "move_id": "written_brief",
         "name": "Keep an instructions file in the repo and point to it",
         "state": "tried",
-        "eligible": 21,
-        "seen": 5,
+        "eligible": 23,
+        "seen": 9,
         "moved_to": "tried",
         "moved_ms": 1792755360000,
         "moved_back": false
@@ -3133,7 +3265,7 @@
         "move_id": "agent_checks",
         "name": "Put the test command in your instructions file",
         "state": "not_yet",
-        "eligible": 21,
+        "eligible": 23,
         "seen": 0,
         "moved_to": null,
         "moved_ms": null,
@@ -3144,7 +3276,7 @@
         "move_id": "split_and_check",
         "name": "Give each separate part to a sub-agent, with a check between parts",
         "state": "not_yet",
-        "eligible": 21,
+        "eligible": 23,
         "seen": 0,
         "moved_to": null,
         "moved_ms": null,
@@ -3246,7 +3378,7 @@
         "job": "code_change",
         "task_type": "tests",
         "label": "Writing tests",
-        "recent": 13,
+        "recent": 15,
         "earlier": 5,
         "uncertain": 2,
         "recent_rung": 3,
@@ -3300,7 +3432,20 @@
     ],
     "progress_days": 30,
     "progress_min": 3,
-    "habit_changes": [],
+    "habit_changes": [
+      {
+        "job": "code_change",
+        "task_type": "tests",
+        "label": "Writing tests",
+        "move_id": "written_brief",
+        "habit": "Keep an instructions file in the repo and point to it",
+        "earlier_seen": 0,
+        "earlier_eligible": 5,
+        "recent_seen": 9,
+        "recent_eligible": 15,
+        "dir": "up"
+      }
+    ],
     "habit_change_min": 5,
     "shift_days": 14
   },
@@ -3324,13 +3469,13 @@
       "key": "c:\\users\\you\\source\\repos\\shop-api",
       "name": "shop-api",
       "renamed": false,
-      "tasks_in_window": 35,
-      "judged": 34,
+      "tasks_in_window": 37,
+      "judged": 36,
       "uncertain": 2,
       "rungs": [
         8,
         9,
-        15,
+        17,
         0,
         0
       ],
@@ -3351,19 +3496,19 @@
         },
         {
           "start_ms": 1792929600000,
-          "tasks": 20
+          "tasks": 22
         }
       ],
       "by_tool": [
         [
           "copilot-cli",
-          35
+          37
         ]
       ],
       "coaching": {
         "split": {
-          "tasks": 32,
-          "finished": 14,
+          "tasks": 34,
+          "finished": 16,
           "could": 8,
           "needs": 10,
           "uncertain": 2,
@@ -3390,8 +3535,8 @@
           },
           {
             "start_ms": 1792929600000,
-            "tasks": 18,
-            "finished": 9
+            "tasks": 20,
+            "finished": 11
           }
         ],
         "week_min": 3,
@@ -3400,9 +3545,9 @@
             "job": "code_change",
             "task_type": "tests",
             "label": "Writing tests",
-            "tasks": 15,
+            "tasks": 17,
             "uncertain": 2,
-            "per_week": 3.5,
+            "per_week": 4.0,
             "today": 3,
             "potential": 4,
             "state": "coach",
@@ -3421,10 +3566,12 @@
               "019000020004-0000-7000-8000-000000000000",
               "019000000033-0000-7000-8000-000000000000",
               "019000005001-0000-7000-8000-000000000000",
+              "019000020013-0000-7000-8000-000000000000",
               "019000000065-0000-7000-8000-000000000000",
               "019000005003-0000-7000-8000-000000000000",
               "019000000037-0000-7000-8000-000000000000",
               "019000005005-0000-7000-8000-000000000000",
+              "019000020015-0000-7000-8000-000000000000",
               "019000000041-0000-7000-8000-000000000000",
               "019000005007-0000-7000-8000-000000000000",
               "019000005009-0000-7000-8000-000000000000",
@@ -3495,9 +3642,9 @@
             "job": "code_change",
             "task_type": "tests",
             "label": "Writing tests",
-            "tasks": 15,
+            "tasks": 17,
             "uncertain": 2,
-            "per_week": 3.5,
+            "per_week": 4.0,
             "today": 3,
             "potential": 4,
             "state": "coach",
@@ -3516,10 +3663,12 @@
               "019000020004-0000-7000-8000-000000000000",
               "019000000033-0000-7000-8000-000000000000",
               "019000005001-0000-7000-8000-000000000000",
+              "019000020013-0000-7000-8000-000000000000",
               "019000000065-0000-7000-8000-000000000000",
               "019000005003-0000-7000-8000-000000000000",
               "019000000037-0000-7000-8000-000000000000",
               "019000005005-0000-7000-8000-000000000000",
+              "019000020015-0000-7000-8000-000000000000",
               "019000000041-0000-7000-8000-000000000000",
               "019000005007-0000-7000-8000-000000000000",
               "019000005009-0000-7000-8000-000000000000",
@@ -3635,8 +3784,8 @@
             "move_id": "brief",
             "name": "Paste the error or name the files, and say what not to touch",
             "state": "adopted",
-            "eligible": 21,
-            "seen": 21,
+            "eligible": 23,
+            "seen": 23,
             "moved_to": "adopted",
             "moved_ms": 1791972000000,
             "moved_back": false
@@ -3646,8 +3795,8 @@
             "move_id": "check_code",
             "name": "Ask for the test output in the reply",
             "state": "adopted",
-            "eligible": 21,
-            "seen": 21,
+            "eligible": 23,
+            "seen": 23,
             "moved_to": "adopted",
             "moved_ms": 1791972000000,
             "moved_back": false
@@ -3657,8 +3806,8 @@
             "move_id": "hand_over",
             "name": "Hand over the whole task and list what done looks like",
             "state": "adopted",
-            "eligible": 21,
-            "seen": 21,
+            "eligible": 23,
+            "seen": 23,
             "moved_to": "adopted",
             "moved_ms": 1791972000000,
             "moved_back": false
@@ -3668,8 +3817,8 @@
             "move_id": "let_agent_edit",
             "name": "Use agent mode and let it make the edits",
             "state": "adopted",
-            "eligible": 21,
-            "seen": 21,
+            "eligible": 23,
+            "seen": 23,
             "moved_to": "adopted",
             "moved_ms": 1791972000000,
             "moved_back": false
@@ -3679,8 +3828,8 @@
             "move_id": "written_brief",
             "name": "Keep an instructions file in the repo and point to it",
             "state": "tried",
-            "eligible": 21,
-            "seen": 5,
+            "eligible": 23,
+            "seen": 9,
             "moved_to": "tried",
             "moved_ms": 1792755360000,
             "moved_back": false
@@ -3690,7 +3839,7 @@
             "move_id": "agent_checks",
             "name": "Put the test command in your instructions file",
             "state": "not_yet",
-            "eligible": 21,
+            "eligible": 23,
             "seen": 0,
             "moved_to": null,
             "moved_ms": null,
@@ -3701,7 +3850,7 @@
             "move_id": "split_and_check",
             "name": "Give each separate part to a sub-agent, with a check between parts",
             "state": "not_yet",
-            "eligible": 21,
+            "eligible": 23,
             "seen": 0,
             "moved_to": null,
             "moved_ms": null,
@@ -3803,7 +3952,7 @@
             "job": "code_change",
             "task_type": "tests",
             "label": "Writing tests",
-            "recent": 13,
+            "recent": 15,
             "earlier": 5,
             "uncertain": 2,
             "recent_rung": 3,
@@ -3857,7 +4006,20 @@
         ],
         "progress_days": 30,
         "progress_min": 3,
-        "habit_changes": [],
+        "habit_changes": [
+          {
+            "job": "code_change",
+            "task_type": "tests",
+            "label": "Writing tests",
+            "move_id": "written_brief",
+            "habit": "Keep an instructions file in the repo and point to it",
+            "earlier_seen": 0,
+            "earlier_eligible": 5,
+            "recent_seen": 9,
+            "recent_eligible": 15,
+            "dir": "up"
+          }
+        ],
         "habit_change_min": 5,
         "shift_days": 14
       }
@@ -4174,6 +4336,10 @@
     {
       "surface": "copilot-cli",
       "last_ms": 1793534340000
+    },
+    {
+      "surface": "claude-code",
+      "last_ms": 1793361600000
     }
   ],
   "aside": [],
