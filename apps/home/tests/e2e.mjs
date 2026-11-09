@@ -1918,6 +1918,15 @@ for (const theme of ["light", "dark"]) {
     if (shots) await card.screenshot({ path: join(shots, `tips-funnel-${theme}.png`) });
     await page.context().close();
 
+    // A failed label says what the call ran into (2026-11-09 devbox: 15 rows of a bare "Kind label failed").
+    const failed = await open("full", {
+      hash: "#tips",
+      edit: (s) => Object.assign(s.tip_funnel.week.lost[0], { code: "label_failed", words: "kind label failed", detail: "Copilot CLI isn't signed in for AIQ's label call" }),
+    });
+    await failed.locator("button.tf-more").click();
+    assert.match(await failed.locator(".tf-detail").first().textContent(), /^Copilot CLI isn't signed in for AIQ's label call$/);
+    await failed.context().close();
+
     // A row opens the task's page (the rendered page, not just the address: 0.1.31 changed only the hash).
     const real = await open("full", {
       theme: theme === "light" ? undefined : theme,

@@ -99,6 +99,8 @@ export interface FunnelTask {
   kind_known: boolean;
   /** First words of the opening prompt, secrets removed; empty when not stored. */
   opening?: string;
+  /** For a failed kind label: what the call ran into. */
+  detail?: string;
 }
 
 export interface TipDrought {

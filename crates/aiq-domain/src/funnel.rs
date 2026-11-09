@@ -216,6 +216,20 @@ pub fn opening(text: &str) -> String {
     out
 }
 
+/// What a failed kind-label call ran into (a `kind_label.outcome` other than `ok`), in plain words naming the tool
+/// that made the call. Shown beside "Kind label failed" so the cause is visible without opening label.log.
+pub fn label_failure_words(outcome: &str, provider: &str) -> String {
+    let tool = tool_words(provider);
+    match outcome {
+        "not_signed_in" => format!("{tool} isn't signed in for AIQ's label call"),
+        "missing" => format!("AIQ couldn't find {tool} to run the label call"),
+        "timeout" => format!("the label call to {tool} took too long"),
+        "schema" => format!("{tool}'s label answer couldn't be read"),
+        "error" => format!("the label call to {tool} returned an error"),
+        _ => String::new(),
+    }
+}
+
 pub const OPENING_WORDS: usize = 8;
 pub const OPENING_CHARS: usize = 60;
 
@@ -322,6 +336,7 @@ pub fn build(steps: &[StepRow], cards: &[CardRow], since_ms: i64, days: u32) -> 
                 words: words(&last.step).to_owned(),
                 kind_known: known,
                 opening: String::new(),
+                detail: String::new(),
             });
         }
     }
@@ -618,6 +633,19 @@ mod tests {
         let s = opening("use token ghp_0123456789abcdefghijklmnopqrstuvwxyzAB now");
         assert!(!s.contains("ghp_0123"), "{s}");
         assert!(s.chars().count() <= OPENING_CHARS + 1);
+    }
+
+    #[test]
+    fn a_failed_label_names_what_the_call_ran_into() {
+        assert_eq!(
+            label_failure_words("not_signed_in", "copilot-cli"),
+            "Copilot CLI isn't signed in for AIQ's label call"
+        );
+        assert_eq!(label_failure_words("timeout", "claude-code"), "the label call to Claude Code took too long");
+        for o in ["missing", "schema", "error"] {
+            assert!(!label_failure_words(o, "copilot-cli").is_empty(), "{o}");
+        }
+        assert_eq!(label_failure_words("ok", "copilot-cli"), "");
     }
 
     #[test]

@@ -22,6 +22,12 @@ pub fn tip_funnels(store: &Store, now: Now) -> Result<TipFunnels, StoreError> {
         if let Ok(Some((_, Some(text)))) = store.task_first_prompt(&t.task_id) {
             t.opening = funnel::opening(&text);
         }
+        if t.code == "label_failed"
+            && let Ok(labels) = store.kind_labels_of(&t.task_id)
+            && let Some(l) = labels.last()
+        {
+            t.detail = funnel::label_failure_words(&l.outcome, &l.provider);
+        }
     }
     Ok(f)
 }

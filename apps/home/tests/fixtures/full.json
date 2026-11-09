@@ -1287,7 +1287,8 @@
           "code": "label_asked",
           "words": "kind label never came back",
           "kind_known": false,
-          "opening": ""
+          "opening": "",
+          "detail": ""
         }
       ]
     },
@@ -1359,7 +1360,8 @@
           "code": "label_asked",
           "words": "kind label never came back",
           "kind_known": false,
-          "opening": ""
+          "opening": "",
+          "detail": ""
         },
         {
           "task_id": "y5",
@@ -1368,7 +1370,8 @@
           "code": "kind_too_few",
           "words": "too few tasks of this kind analyzed yet",
           "kind_known": true,
-          "opening": ""
+          "opening": "",
+          "detail": ""
         },
         {
           "task_id": "y4",
@@ -1377,7 +1380,8 @@
           "code": "label_held",
           "words": "kind labels on hold: their accuracy check is under 8 in 10",
           "kind_known": true,
-          "opening": ""
+          "opening": "",
+          "detail": ""
         },
         {
           "task_id": "y3",
@@ -1386,7 +1390,8 @@
           "code": "label_held",
           "words": "kind labels on hold: their accuracy check is under 8 in 10",
           "kind_known": true,
-          "opening": ""
+          "opening": "",
+          "detail": ""
         },
         {
           "task_id": "y2",
@@ -1395,7 +1400,8 @@
           "code": "no_match",
           "words": "kind of task not recognised",
           "kind_known": false,
-          "opening": ""
+          "opening": "",
+          "detail": ""
         },
         {
           "task_id": "y1",
@@ -1404,7 +1410,8 @@
           "code": "no_match",
           "words": "kind of task not recognised",
           "kind_known": false,
-          "opening": ""
+          "opening": "",
+          "detail": ""
         },
         {
           "task_id": "y0",
@@ -1413,7 +1420,8 @@
           "code": "no_match",
           "words": "kind of task not recognised",
           "kind_known": false,
-          "opening": ""
+          "opening": "",
+          "detail": ""
         },
         {
           "task_id": "d2c",
@@ -1422,7 +1430,8 @@
           "code": "kind_right_rung",
           "words": "you already work this kind at its right rung",
           "kind_known": true,
-          "opening": ""
+          "opening": "",
+          "detail": ""
         },
         {
           "task_id": "d2b",
@@ -1431,7 +1440,8 @@
           "code": "no_match",
           "words": "kind of task not recognised",
           "kind_known": false,
-          "opening": ""
+          "opening": "",
+          "detail": ""
         }
       ]
     },

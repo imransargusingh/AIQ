@@ -278,6 +278,10 @@ pub struct FunnelTask {
     /// deleted or never stored. Shown only in the person's own Home.
     #[serde(default)]
     pub opening: String,
+    /// Why, when the reason alone doesn't say: for a failed kind label, what the call ran into
+    /// (`funnel::label_failure_words`). Empty otherwise.
+    #[serde(default)]
+    pub detail: String,
 }
 
 /// A count with its code and plain words (one definition of the words: `aiq_domain::funnel::words`).

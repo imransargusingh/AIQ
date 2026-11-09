@@ -782,6 +782,10 @@ fn the_second_try_is_the_last_and_a_sure_first_label_never_retries() {
     store_failed_label(&h, &t, "b");
     h.svc.on_kind_label(&t).unwrap();
     assert_eq!(last_step(&h, &t), "label_failed");
+    // The funnel's task list says what the failed call ran into, from the stored label row.
+    let f = h.svc.status().tip_funnel.unwrap();
+    let lost = f.week.lost.iter().find(|l| l.task_id == t).expect("listed");
+    assert_eq!(lost.detail, "the label call to Copilot CLI took too long");
     // A question label is sure: no second try.
     h.advance(2 * HOUR);
     let t = h.prompt("copilot-cli", "c", UNLIKE);

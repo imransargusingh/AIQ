@@ -174,7 +174,10 @@ export function TipFunnelCard({ snap, openTask }: { snap: Snapshot; openTask: Ct
                       >
                         <span className="tf-when">{when(t.first_ms, snap.now_ms, snap.offset_min)}</span>
                         <span className="meta tf-tool">{toolName(t.surface)}</span>
-                        <span className="grow tf-open">{t.opening ? `“${t.opening}”` : <span className="meta">Prompt not stored</span>}</span>
+                        <span className="grow tf-open">
+                          {t.opening ? `“${t.opening}”` : <span className="meta">Prompt not stored</span>}
+                          {t.detail && <span className="meta tf-detail">{sentence(t.detail)}</span>}
+                        </span>
                         <span className="tf-go">Open ›</span>
                       </a>
                     </li>

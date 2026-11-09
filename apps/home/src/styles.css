@@ -559,6 +559,7 @@ button.tf-more:hover{filter:brightness(1.15)}
 .tf-when{font:var(--t-mono);font-variant-numeric:tabular-nums;white-space:nowrap;min-width:16ch}
 .tf-tool{min-width:11ch;white-space:nowrap}
 .tf-open{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tf-detail{display:block;white-space:normal}
 .tf-go{font:var(--t-caption);color:var(--primary);white-space:nowrap}
 .tf-group h4{font:var(--t-body);font-weight:600;margin:var(--s3) 0 var(--s1)}
 .tf-group > p.meta{margin:0 0 var(--s2)}
