@@ -358,6 +358,7 @@ jobs:
           } finally { $held.Dispose() }
           if (-not $run.WaitForExit(30000)) { Fail 'apply did not go on after the lock was released' }
           if (-not (Select-String -Quiet -Path $ulog -Pattern 'AIQ-UPDATE-LOCK: the other update run finished; going on\.')) { Fail 'wait for the lock not logged' }
+          if (-not (Select-String -Quiet -Path $ulog -Pattern 'AIQ-UPDATE-LOCK: an update run already holds the lock')) { Fail 'start of the wait not logged' }
           if (@(Select-String -Path $ulog -Pattern 'Another AIQ update is running').Count -ne $gaveUp) { Fail 'apply gave up on a lock that was released' }
           $homeBack = $null
           foreach ($i in 1..25) {

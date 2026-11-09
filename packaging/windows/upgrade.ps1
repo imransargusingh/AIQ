@@ -357,7 +357,7 @@ if (-not (Take-Lock)) {
     # changed", and 0.1.29 stayed waiting for the next try 30 minutes later. A check, or the core's run, gives up.
     $waited = $false
     if ($Relaunch -and ($Apply -or $Rollback) -and -not $Check) {
-        Log "AIQ-UPDATE-LOCK: another AIQ update is running; waiting up to $LockWaitSec s for it to finish."
+        Log "AIQ-UPDATE-LOCK: an update run already holds the lock; waiting up to $LockWaitSec s for it to finish."
         $until = (Get-Date).AddSeconds($LockWaitSec)
         while (-not $waited -and (Get-Date) -lt $until) {
             Start-Sleep -Milliseconds 500
