@@ -1907,14 +1907,19 @@ for (const theme of ["light", "dark"]) {
     assert.equal(await card.locator("#tf-lost h4").first().innerText(), "Kind of task not recognised (4)", "grouped by reason, biggest first");
     // The seeded tip-path tasks have no stored prompt: the row says so rather than showing nothing or a guess.
     assert.match(await card.locator("#tf-lost li").first().innerText(), /Prompt not stored/);
+    assert.equal(await card.locator(".tf-why", { hasText: "Why tasks had no tip" }).count(), 0, "the summary hides while the list is open");
+    assert.deepEqual(await axe(page), [], "the open list passes accessibility checks");
+    if (shots) await card.screenshot({ path: join(shots, `tips-funnel-open-${theme}.png`) });
+    const first = card.locator("#tf-lost a").first();
+    const href = await first.getAttribute("href");
+    await more.click();
     const why = await card.locator(".tf-why", { hasText: "Why tasks had no tip" }).innerText();
     assert.ok(why.includes("Kind labels on hold") && why.includes("Too few tasks of this kind"), why);
     assert.ok(!(await card.innerText()).toLowerCase().includes("judge"));
     assert.deepEqual(await axe(page), []);
     if (shots) await card.screenshot({ path: join(shots, `tips-funnel-${theme}.png`) });
-    const first = card.locator("#tf-lost a").first();
-    const href = await first.getAttribute("href");
-    await first.click();
+    await more.click();
+    await card.locator("#tf-lost a").first().click();
     await page.waitForFunction((h) => location.hash === h, href);
     await page.context().close();
 
