@@ -241,7 +241,7 @@ fn writer_loop(mut svc: Service<SystemClock>, rx: Receiver<Cmd>, paths: &Paths, 
         // A frame a hook spooled while the core was busy (its 20 ms send missed) goes in before the next
         // command, not at the idle tick: steady traffic (a status poll, a busy session) never lets the
         // tick fire, and the spooled prompt would wait behind later ones (Windows runner flake, 2026-11-03).
-        if !matches!(cmd, Cmd::DrainSpool) && paths.spool().exists() {
+        if !matches!(cmd, Cmd::DrainSpool) && (paths.spool().exists() || spool::pending(&paths.spool_dir()) > 0) {
             drain_spool(paths, &mut svc, counters);
         }
         match cmd {
@@ -336,13 +336,14 @@ fn writer_loop(mut svc: Service<SystemClock>, rx: Receiver<Cmd>, paths: &Paths, 
 }
 
 pub fn drain_spool<C: aiq_domain::clock::Clock>(paths: &Paths, svc: &mut Service<C>, counters: &Counters) {
-    let lines = match spool::take(&paths.spool(), &paths.spool_draining()) {
-        Ok(l) => l,
-        Err(e) => {
-            warn!(error = %e, "spool drain failed");
-            return;
+    // Frames an older hook appended to the single file, then the frame files (DC-048).
+    let mut lines = Vec::new();
+    for got in [spool::take(&paths.spool(), &paths.spool_draining()), spool::take_frames(&paths.spool_dir())] {
+        match got {
+            Ok(l) => lines.extend(l),
+            Err(e) => warn!(error = %e, "spool drain failed"),
         }
-    };
+    }
     if lines.is_empty() {
         return;
     }
@@ -506,6 +507,10 @@ pub fn forget_files(paths: &Paths) -> std::io::Result<()> {
             Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e),
             _ => {}
         }
+    }
+    match std::fs::remove_dir_all(paths.spool_dir()) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e),
+        _ => {}
     }
     Ok(())
 }

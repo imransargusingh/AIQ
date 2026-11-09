@@ -152,6 +152,15 @@ impl Drop for Env {
     }
 }
 
+/// The frames the hook spooled, one file each in `spool.d` (DC-048), oldest first.
+fn spooled(home: &std::path::Path) -> Vec<String> {
+    let mut v: Vec<_> = std::fs::read_dir(home.join("spool.d"))
+        .map(|d| d.flatten().map(|f| f.path()).filter(|p| p.extension().is_some_and(|x| x == "jsonl")).collect())
+        .unwrap_or_default();
+    v.sort();
+    v.iter().map(|p| std::fs::read_to_string(p).unwrap()).collect()
+}
+
 fn assert_hook_stdout_contract(o: &Output) {
     assert!(o.status.success(), "hook must exit 0");
     if o.stdout.is_empty() {
@@ -271,9 +280,9 @@ fn e2e_core_down_stop_exits_zero_within_budget_p95_and_spools() {
     let budget = std::env::var("AIQ_E2E_BUDGET_MS").ok().and_then(|v| v.parse().ok()).unwrap_or(100);
     assert!(p95 <= Duration::from_millis(budget), "p95 {p95:?} > {budget} ms");
     eprintln!("core-down Stop hook p95: {p95:?} over {} runs", times.len());
-    let spool = std::fs::read_to_string(e.home().join("spool.jsonl")).unwrap();
-    assert_eq!(spool.lines().count(), 50);
-    assert!(!spool.contains("token"));
+    let spool = spooled(&e.home());
+    assert_eq!(spool.len(), 50);
+    assert!(spool.iter().all(|f| f.lines().count() == 1 && !f.contains("token")));
     assert!(!e.home().join("core.lock").exists() || e.status().contains("not running"), "Stop never starts the core");
 }
 
@@ -287,7 +296,7 @@ fn e2e_core_down_prompt_starts_core_once_core_survives_and_drains_spool() {
     e.wait_prompts(2);
     let errs = std::fs::read_to_string(e.home().join("hook-errors.log")).unwrap_or_default();
     assert!(errs.lines().filter(|l| *l == "AIQ-CORE-START-BACKOFF").count() <= 1, "{errs}");
-    assert!(!e.home().join("spool.jsonl").exists(), "spool drained");
+    assert!(spooled(&e.home()).is_empty(), "spool drained");
     // Clean up the detached core.
     assert!(e.run(&["forget", "--all", "--yes"], b"").status.success());
 }
@@ -393,10 +402,12 @@ fn e2e_forget_all_deletes_store_and_spool() {
     e.start_core();
     e.reprompt_run("s", 0);
     std::fs::write(e.home().join("spool.jsonl"), "x\n").unwrap();
+    std::fs::create_dir_all(e.home().join("spool.d")).unwrap();
+    std::fs::write(e.home().join("spool.d").join("f.jsonl"), "x\n").unwrap();
     let o = e.run(&["forget", "--all", "--yes"], b"");
     assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stdout));
     let _ = e.core.take().map(|mut c| c.wait()); // the core exits by itself
-    for f in ["aiq.db", "aiq.db-wal", "spool.jsonl"] {
+    for f in ["aiq.db", "aiq.db-wal", "spool.jsonl", "spool.d"] {
         assert!(!e.home().join(f).exists(), "{f} still exists");
     }
 }
@@ -667,13 +678,15 @@ fn e2e_spooled_frame_goes_in_at_the_next_command_not_the_idle_tick() {
     // command, because a steady stream of commands keeps the 30 s idle tick from ever firing.
     let down = Env::new();
     assert!(down.stop("s", "p0").status.success());
-    let spooled = std::fs::read(down.home().join("spool.jsonl")).unwrap();
+    let frame = spooled(&down.home());
+    assert_eq!(frame.len(), 1);
     let mut e = Env::new();
     e.start_core();
-    std::fs::write(e.home().join("spool.jsonl"), spooled).unwrap();
+    std::fs::create_dir_all(e.home().join("spool.d")).unwrap();
+    std::fs::write(e.home().join("spool.d").join("f.jsonl"), &frame[0]).unwrap();
     let st = e.status();
     assert!(st.contains("1 stop"), "taken in at the very next command: {st}");
-    assert!(!e.home().join("spool.jsonl").exists());
+    assert!(spooled(&e.home()).is_empty());
 }
 
 /// DC-022: a hook that took a tip and then never printed it (its wait ran out, or it died) must not use the tip

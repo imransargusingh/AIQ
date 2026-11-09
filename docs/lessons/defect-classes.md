@@ -866,3 +866,23 @@ summary: >-
   exactly 5 / 15 / 30 / Custom, Custom sets 8, and the stale sentence is gone.
 - **Rule:** a setting shown on more than one screen is one component with one list of choices; a second screen
   never types its own.
+
+### DC-048 — A reader that renames and deletes a file another process still has open for append
+- **Signature:** 2026-11-09, Windows CI on PR #219: `e2e_reword_three_times_one_card_second_run_held` stored 7 of 8
+  prompts after 5 s; status showed `AIQ-HOOK-SPOOLED 1`, no "Queued while the core was down" line and no spool file.
+  The hook had opened `spool.jsonl` for append; the core's drain renamed it to `spool.draining.jsonl`, read it
+  (empty), and deleted it; the hook then wrote its frame into the deleted file. No bad line, no error, nothing left.
+  Passed on re-run.
+- **Why it survives:** each half is correct alone. Append is safe between writers, and rename-then-read is a safe
+  snapshot, but only if no writer holds the file open across the rename. The window is the microseconds between
+  the hook's open and its write, so it only shows on a slow shared runner. Measured on the laptop (0.1.31,
+  11-03 to 11-09): 66 frames spooled, 67 lines drained, 12 of 12 timed frames drained within 13 s; none lost.
+- **Sweep:** every `append(true)` and every `fs::rename` in `crates`. Only the spool is read-then-deleted; the logs
+  (`logging.rs`, `paths::rotating_append`, the status-line log) rename to a kept `prev` file, so a late write lands
+  in `prev` and survives. Store and judge appends are never renamed.
+- **Control:** the hook writes one file per frame in `spool.d/`, under a temporary name, then renames it into
+  place (`spool::append_frame`); the core takes only renamed `*.jsonl` files (`spool::take_frames`). Test
+  `a_drain_between_the_hooks_open_and_write_loses_nothing` shows the old file losing the frame and the new one
+  keeping it. The old single file is still drained, for frames an older hook wrote.
+- **Rule:** a file that one process writes and another consumes is handed over whole by an atomic rename; the
+  consumer never renames or deletes a file a writer may still hold open.

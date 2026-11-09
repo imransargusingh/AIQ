@@ -261,7 +261,8 @@ fn status_text(paths: &Paths) -> (String, Vec<String>) {
     if let Some(l) = update_status_line(&up) {
         out += &l;
     }
-    let spooled = std::fs::read_to_string(paths.spool()).map(|s| s.lines().count()).unwrap_or(0);
+    let spooled = std::fs::read_to_string(paths.spool()).map(|s| s.lines().count()).unwrap_or(0)
+        + aiq_core::spool::pending(&paths.spool_dir());
     if spooled > 0 {
         out += &format!("Queued while the core was down: {spooled} events\n");
     }

@@ -375,7 +375,7 @@ fn spool_frame(paths: &Paths, trace_id: &str, ev: &EventV1) {
     let line = serde_json::to_string(&SpoolLine { trace_id: Some(trace_id.to_owned()), event: ev.clone() })
         .unwrap_or_default();
     let _ = paths.ensure_dirs();
-    match spool::append(&paths.spool(), &line, spool::MAX_SPOOL_BYTES) {
+    match spool::append_frame(&paths.spool_dir(), &ev.event_id, &line, spool::MAX_SPOOL_BYTES) {
         Ok(0) => {}
         Ok(n) => (0..n).for_each(|_| count(paths, codes::SPOOL_DROPPED)),
         Err(_) => count(paths, codes::STORE_WRITE),
@@ -411,10 +411,10 @@ mod tests {
         let stop = to_event(&json!({"session_id":"s","hook_event_name":"Stop"}), "Stop").unwrap();
 
         assert_eq!(stop_timed_out(&paths, "t1", &stop, true), "stop-timeout");
-        assert!(!paths.spool().exists(), "the core already holds a written stop");
+        assert_eq!(aiq_core::spool::pending(&paths.spool_dir()), 0, "the core already holds a written stop");
 
         assert_eq!(stop_timed_out(&paths, "t2", &stop, false), "stop-timeout-spooled");
-        let lines = aiq_core::spool::take(&paths.spool(), &paths.spool_draining()).unwrap();
+        let lines = aiq_core::spool::take_frames(&paths.spool_dir()).unwrap();
         let (frames, bad) = aiq_core::spool::parse(&lines);
         assert_eq!(bad, 0);
         assert_eq!(frames.len(), 1, "the turn end is kept for the core");
