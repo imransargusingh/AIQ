@@ -115,23 +115,23 @@ pub fn is_own(r: &Value) -> bool {
 /// `taken`: the times of the records the session's earlier prompts were matched to. Each record matches one prompt only
 /// (laptop 2026-11-09 14:12Z: a relayed brief queued during a busy turn ran the prompt hook but wrote no record of its
 /// own, and took the person's record from the turn before, so it counted as theirs). Returns the turn and the time of
-/// the record it was matched to.
-pub fn turn_at(path: &Path, prompt_ms: i64, taken: &[i64], max_bytes: u64) -> (Turn, Option<i64>) {
+/// the record it was matched to, and the project message the record delivers (`delivered_id`).
+pub fn turn_at(path: &Path, prompt_ms: i64, taken: &[i64], max_bytes: u64) -> Matched {
     use std::io::{Seek, SeekFrom};
-    let Ok(mut f) = std::fs::File::open(path) else { return (Turn::Unknown, None) };
-    let Ok(len) = f.metadata().map(|m| m.len()) else { return (Turn::Unknown, None) };
+    let Ok(mut f) = std::fs::File::open(path) else { return (Turn::Unknown, None, None) };
+    let Ok(len) = f.metadata().map(|m| m.len()) else { return (Turn::Unknown, None, None) };
     let start = len.saturating_sub(max_bytes);
     if f.seek(SeekFrom::Start(start)).is_err() {
-        return (Turn::Unknown, None);
+        return (Turn::Unknown, None, None);
     }
     let mut buf = Vec::new();
     if f.take(max_bytes).read_to_end(&mut buf).is_err() {
-        return (Turn::Unknown, None);
+        return (Turn::Unknown, None, None);
     }
     let text = String::from_utf8_lossy(&buf);
     let lines = text.lines().skip(usize::from(start > 0)); // a cut first line is not a record
-    let mut before: Option<(i64, Turn)> = None;
-    let mut after: Option<(i64, Turn)> = None;
+    let mut before: Option<(i64, Turn, Option<String>)> = None;
+    let mut after: Option<(i64, Turn, Option<String>)> = None;
     for r in lines.filter_map(|l| serde_json::from_str::<Value>(l).ok()).filter(typed) {
         let Some(ts) = r["timestamp"].as_str().and_then(crate::sysclock::parse_rfc3339_ms) else { continue };
         if taken.contains(&ts) || ts > prompt_ms + 2_000 {
@@ -145,17 +145,45 @@ pub fn turn_at(path: &Path, prompt_ms: i64, taken: &[i64], max_bytes: u64) -> (T
             Turn::Other
         };
         if ts <= prompt_ms {
-            if before.is_none_or(|(b, _)| ts >= b) {
-                before = Some((ts, turn));
+            if before.as_ref().is_none_or(|(b, ..)| ts >= *b) {
+                before = Some((ts, turn, delivered_id(&r)));
             }
-        } else if after.is_none_or(|(b, _)| ts < b) {
-            after = Some((ts, turn));
+        } else if after.as_ref().is_none_or(|(b, ..)| ts < *b) {
+            after = Some((ts, turn, delivered_id(&r)));
         }
     }
     match before.or(after) {
-        Some((ts, turn)) if ts >= prompt_ms - TURN_MATCH_MS => (turn, Some(ts)),
-        _ => (Turn::Unknown, None),
+        Some((ts, turn, id)) if ts >= prompt_ms - TURN_MATCH_MS => (turn, Some(ts), id),
+        _ => (Turn::Unknown, None, None),
     }
+}
+
+/// `turn_at`'s result: the turn, the time of the record matched, and the project message that record delivers.
+pub type Matched = (Turn, Option<i64>, Option<String>);
+
+/// The project message a Projects record delivers: the `id` of the wake envelope's `<message>` element that triggered
+/// the turn, else of its first `<message>`. Measured 2026-11-09 (848 transcripts): 206 of 236 person records carry one;
+/// no structured field does (`turnAttributionKey` and `promptId` are the record's own). A session started later is
+/// handed an older message again, and its record carries the same id (3 pairs, always across sessions).
+pub fn delivered_id(r: &Value) -> Option<String> {
+    let c = &r["message"]["content"];
+    let text: String = match c {
+        Value::String(s) => s.clone(),
+        Value::Array(parts) => parts.iter().filter_map(|p| p["text"].as_str()).collect::<Vec<_>>().join("\n"),
+        _ => return None,
+    };
+    let mut first = None;
+    for tag in text.split("<message ").skip(1).filter_map(|t| t.split('>').next()) {
+        let Some(id) = tag.split("id=\"").nth(1).and_then(|v| v.split('"').next()) else { continue };
+        if !id.starts_with("cmsg_") {
+            continue;
+        }
+        if tag.contains("trigger=\"true\"") {
+            return Some(id.to_owned());
+        }
+        first.get_or_insert_with(|| id.to_owned());
+    }
+    first
 }
 
 #[cfg(test)]
@@ -213,6 +241,19 @@ mod tests {
     }
 
     #[test]
+    fn the_delivered_message_is_the_triggering_one_in_the_wake_envelope() {
+        let wake = |body: &str| json!({"type":"user","turnOrigin":"human","message":{"content":body}});
+        let two = r#"<wake><message id="cmsg_old" from="human">a</message><message trigger="true" id="cmsg_new">b</message></wake>"#;
+        assert_eq!(delivered_id(&wake(two)).as_deref(), Some("cmsg_new"), "the trigger wins");
+        let one = r#"<wake><message from="human" id="cmsg_only">a</message></wake>"#;
+        assert_eq!(delivered_id(&wake(one)).as_deref(), Some("cmsg_only"), "else the first");
+        let parts = json!({"type":"user","message":{"content":[{"type":"text","text":one}]}});
+        assert_eq!(delivered_id(&parts).as_deref(), Some("cmsg_only"), "content as parts");
+        assert_eq!(delivered_id(&wake("fix the <message id=\"x\"> parser")), None, "not a project message id");
+        assert_eq!(delivered_id(&wake("fix the login test")), None, "a terminal turn delivers none");
+    }
+
+    #[test]
     fn a_persons_typed_turn_is_told_from_a_relayed_one_by_its_own_record() {
         let d = tempfile::tempdir().unwrap();
         let p = d.path().join("t.jsonl");
@@ -236,11 +277,15 @@ mod tests {
             "a relayed brief; the tool result is not a turn"
         );
         // A record already matched to the previous prompt is not matched again (laptop 14:12Z, 2026-11-09).
-        assert_eq!(turn_at(&p, ms(11), &[], TAIL_BYTES), (Turn::Own, Some(ms(10))));
-        assert_eq!(turn_at(&p, ms(20), &[ms(10)], TAIL_BYTES), (Turn::Unknown, None), "no record of its own yet");
+        assert_eq!(turn_at(&p, ms(11), &[], TAIL_BYTES), (Turn::Own, Some(ms(10)), None));
+        assert_eq!(turn_at(&p, ms(20), &[ms(10)], TAIL_BYTES), (Turn::Unknown, None, None), "no record of its own yet");
         // Read after the next turn was written: the record stamped before the hook wins over the later one.
-        assert_eq!(turn_at(&p, ms(29), &[], TAIL_BYTES), (Turn::Own, Some(ms(10))), "core read late");
-        assert_eq!(turn_at(&p, ms(9), &[], TAIL_BYTES), (Turn::Own, Some(ms(10))), "record a moment after the hook");
+        assert_eq!(turn_at(&p, ms(29), &[], TAIL_BYTES), (Turn::Own, Some(ms(10)), None), "core read late");
+        assert_eq!(
+            turn_at(&p, ms(9), &[], TAIL_BYTES),
+            (Turn::Own, Some(ms(10)), None),
+            "record a moment after the hook"
+        );
         assert_eq!(
             turn_at(&p, ms(10) + TURN_MATCH_MS + 31_000, &[], TAIL_BYTES).0,
             Turn::Unknown,

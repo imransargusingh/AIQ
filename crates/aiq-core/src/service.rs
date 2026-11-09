@@ -118,6 +118,8 @@ pub struct Service<C: Clock> {
     rc_matched: std::collections::HashMap<(String, String), Vec<i64>>,
     /// When `recheck_held` last re-read sessions whose head is unwritten (core clock).
     head_rechecked_ms: i64,
+    /// Project messages already counted as a person's turn, by hash, oldest first (`DELIVERED_KEY`); None until read.
+    rc_delivered: Option<std::collections::VecDeque<String>>,
     /// When held prompts older than `TURN_WAIT_MS` were last re-read (`recheck_held`).
     stale_rechecked_ms: i64,
     /// When the VS Code extension last asked for a card (core clock), in this core run.
@@ -296,6 +298,10 @@ const HEAD_RECHECK_MS: i64 = 1_000;
 /// record of its own was re-read every ~316 ms for 12 minutes until its Stop (2,256 reads); a record is written at most
 /// 2.1 s after the hook (measured 2026-11-08), so after 10 s a slow re-read loses nothing but a few seconds.
 const STALE_RECHECK_MS: i64 = 5_000;
+/// Setting key: hashes of the project messages already counted as a person's turn (`rc_redelivered`).
+const DELIVERED_KEY: &str = "rc.delivered";
+/// How many hashes `DELIVERED_KEY` keeps (236 person records in 848 transcripts, measured 2026-11-09).
+const DELIVERED_KEEP: usize = 1_024;
 /// How often `note_aside` rewrites an unchanged surface's time.
 const ASIDE_EVERY_MS: i64 = 5 * 60_000;
 
@@ -352,6 +358,7 @@ impl<C: Clock> Service<C> {
             rc_matched: Default::default(),
             head_rechecked_ms: 0,
             stale_rechecked_ms: 0,
+            rc_delivered: None,
             vscode_asked_ms: None,
             coach: None,
             guess_low_logged: false,
@@ -1421,7 +1428,7 @@ impl<C: Clock> Service<C> {
         let started = std::time::Instant::now();
         let key = (ev.surface.clone(), ev.surface_session_id.clone());
         let taken = self.rc_matched.get(&key).map(Vec::as_slice).unwrap_or_default();
-        let (mut turn, matched) = turn_at(std::path::Path::new(t), at, taken, TAIL_BYTES);
+        let (mut turn, matched, delivered) = turn_at(std::path::Path::new(t), at, taken, TAIL_BYTES);
         if let Some(m) = matched {
             if self.rc_matched.len() >= 4096 {
                 self.rc_matched.clear();
@@ -1432,6 +1439,11 @@ impl<C: Clock> Service<C> {
                 seen.remove(0);
             }
             seen.push(m);
+        }
+        if turn == Turn::Own && delivered.is_some_and(|id| self.rc_redelivered(&id, &ev.event_id)) {
+            // A later session handed an older project message again (laptop 2026-11-09: 3 of 206): counted once.
+            info!(aiq.reason = "redelivered", "rc.turn redelivered");
+            turn = Turn::Other;
         }
         if turn == Turn::Unmarked {
             // No `turnOrigin` at all: an older Claude Code. Inside a Projects session that is Claude's own relay
@@ -1445,6 +1457,31 @@ impl<C: Clock> Service<C> {
         };
         info!(ms = started.elapsed().as_millis() as u64, turn = name, projects = marker, "rc.turn");
         turn
+    }
+
+    /// True when this project message was already counted as a person's turn; else remembers it. Kept in the store,
+    /// so a message handed again after the core restarts (hours later, across an update) is still known.
+    /// The same event read again (a replay) is not a second delivery: each entry is `<message hash>.<event hash>`.
+    fn rc_redelivered(&mut self, id: &str, event_id: &str) -> bool {
+        let fnv = |s: &str| s.bytes().fold(0xcbf29ce484222325u64, |h, x| (h ^ x as u64).wrapping_mul(0x100000001b3));
+        let (h, e) = (format!("{:016x}", fnv(id)), format!("{:016x}", fnv(event_id)));
+        if self.rc_delivered.is_none() {
+            let v = self.store.setting(DELIVERED_KEY).ok().flatten().unwrap_or_default();
+            self.rc_delivered = Some(v.split_whitespace().map(str::to_owned).collect());
+        }
+        let seen = self.rc_delivered.get_or_insert_with(Default::default);
+        if let Some(was) = seen.iter().find_map(|v| v.strip_prefix(&h).and_then(|r| r.strip_prefix('.'))) {
+            return was != e;
+        }
+        if seen.len() >= DELIVERED_KEEP {
+            seen.pop_front();
+        }
+        seen.push_back(format!("{h}.{e}"));
+        let v = seen.iter().map(String::as_str).collect::<Vec<_>>().join(" ");
+        if let Err(e) = self.store.set_setting(DELIVERED_KEY, &v, self.clock.now().utc_ms) {
+            warn!(error.code = e.code, "delivered message not noted");
+        }
+        false
     }
 
     /// The automated-session rule, live side. A skip names its rule (`projects`, `aiq-check`, `session`,

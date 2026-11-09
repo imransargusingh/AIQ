@@ -1798,3 +1798,46 @@ fn a_held_prompt_past_its_wait_is_re_read_slowly() {
     h.svc().recheck_held();
     assert_eq!(h.prompts(), 1, "the slow re-read still finds the person's late record");
 }
+
+// Laptop 2026-11-09 (848 transcripts): a Remote Control session started later is handed an older project message
+// again, as a person record (3 pairs, hours apart, across a core update). The message counts once, also after a restart.
+#[test]
+fn a_project_message_handed_to_a_second_session_counts_once() {
+    let d = tempfile::tempdir().unwrap();
+    let ts = aiq_core::sysclock::format_rfc3339_ms;
+    let head = "{\"type\":\"user\",\"isMeta\":true,\"turnOrigin\":\"system\",\"entrypoint\":\"claude-desktop\"}\n";
+    let own = |ms: i64, id: &str| {
+        let body =
+            format!("<wake><message trigger=\\\"true\\\" id=\\\"{id}\\\" from=\\\"human\\\">ship it</message></wake>");
+        format!(
+            "{{\"type\":\"user\",\"turnOrigin\":\"human\",\"origin\":{{\"kind\":\"human\"}},\"projectsUserTurn\":true,\"textNotTyped\":true,\"message\":{{\"content\":\"{body}\"}},\"timestamp\":\"{}\"}}\n",
+            ts(ms)
+        )
+    };
+    let mut h = H::new();
+    let turn = |h: &mut H, session: &str, id: &str| -> EventV1 {
+        let t = d.path().join(format!("{session}.jsonl"));
+        let mut e = h.prompt(session, "ship it");
+        e.cwd = Some("C:\\Repos\\AIQ".into());
+        e.transcript = Some(t.to_string_lossy().into_owned());
+        let at = aiq_core::sysclock::parse_rfc3339_ms(&e.ts).unwrap();
+        let prior = std::fs::read_to_string(&t).unwrap_or_else(|_| head.to_string());
+        std::fs::write(&t, format!("{prior}{}", own(at - 40, id))).unwrap();
+        h.svc().ingest(&e, None);
+        let mut s = h.prompt(session, "unused");
+        s.body = EventBody::Stop(StopPayload { stop_hook_active: false, prompt_id: None });
+        s.transcript = e.transcript.clone();
+        h.svc().ingest(&s, None);
+        e
+    };
+    let first = turn(&mut h, "a", "cmsg_01aaa");
+    assert_eq!((h.prompts(), h.stops()), (1, 1), "the person's message, first delivery");
+    h.svc().ingest(&first, None);
+    assert_eq!(h.prompts(), 1, "the same event read again is not a second delivery");
+    turn(&mut h, "b", "cmsg_01bbb");
+    assert_eq!((h.prompts(), h.stops()), (2, 2), "a new message in a new session counts");
+    h.restart();
+    h.clock.advance(5 * 3_600_000);
+    turn(&mut h, "c", "cmsg_01aaa");
+    assert_eq!((h.prompts(), h.stops()), (2, 2), "handed again hours later, after a restart: not counted again");
+}
