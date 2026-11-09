@@ -24,6 +24,10 @@ impl Seed {
         Self { store: Store::open(&paths.db()).unwrap(), n: 0 }
     }
 
+    /// A second seed over a seeded store: its event ids start past the first one's.
+    pub fn skip_ids(&mut self, n: u32) {
+        self.n += n;
+    }
     fn id(&mut self) -> String {
         self.n += 1;
         format!("0190{:08}-0000-7000-8000-000000000000", self.n)

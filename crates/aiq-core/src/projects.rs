@@ -75,8 +75,12 @@ pub fn scan(path: &Path, max_bytes: u64) -> Head {
 pub enum Turn {
     /// The person typed it (on the computer or through Remote Control).
     Own,
-    /// A relayed brief, another Claude's message, or a record with no sign of a person.
+    /// A relayed brief, another Claude's message, a scheduled run, a turn the desktop app started (`turnOrigin =
+    /// "sdk"`): a record that names an origin other than a person.
     Other,
+    /// A typed record with no `turnOrigin` at all (an older Claude Code, or the brief that starts a Remote Control
+    /// session): the caller decides from the session.
+    Unmarked,
     /// No typed record near the prompt's time yet (not written, or the file is unreadable).
     Unknown,
 }
@@ -98,11 +102,10 @@ fn typed(r: &Value) -> bool {
         && (r["message"]["content"].is_string() || r.get("turnOrigin").is_some() || r.get("origin").is_some())
 }
 
-/// True when the person typed this record.
+/// True when the person typed this record. Measured 2026-11-09 (829 transcripts): every person-typed record carries
+/// `turnOrigin = "human"` (72 desktop or phone, with `projectsUserTurn`; 29 terminal); no other kind of turn does.
 pub fn is_own(r: &Value) -> bool {
     r.get("turnOrigin").and_then(Value::as_str) == Some("human")
-        && (r.get("projectsUserTurn").and_then(Value::as_bool) == Some(true)
-            || r["origin"]["kind"].as_str() == Some("human"))
 }
 
 /// The turn of the prompt whose hook ran at `prompt_ms`: the newest typed record stamped at most 2 s after it, if that
@@ -121,21 +124,22 @@ pub fn turn_at(path: &Path, prompt_ms: i64, max_bytes: u64) -> Turn {
     }
     let text = String::from_utf8_lossy(&buf);
     let lines = text.lines().skip(usize::from(start > 0)); // a cut first line is not a record
-    let mut best: Option<(i64, bool)> = None;
+    let mut best: Option<(i64, Turn)> = None;
     for r in lines.filter_map(|l| serde_json::from_str::<Value>(l).ok()).filter(typed) {
         let Some(ts) = r["timestamp"].as_str().and_then(crate::sysclock::parse_rfc3339_ms) else { continue };
         if ts <= prompt_ms + 2_000 && best.is_none_or(|(b, _)| ts >= b) {
-            best = Some((ts, is_own(&r)));
+            let turn = if is_own(&r) {
+                Turn::Own
+            } else if r.get("turnOrigin").is_none() && r.get("origin").is_none() {
+                Turn::Unmarked
+            } else {
+                Turn::Other
+            };
+            best = Some((ts, turn));
         }
     }
     match best {
-        Some((ts, own)) if ts >= prompt_ms - TURN_MATCH_MS => {
-            if own {
-                Turn::Own
-            } else {
-                Turn::Other
-            }
-        }
+        Some((ts, turn)) if ts >= prompt_ms - TURN_MATCH_MS => turn,
         _ => Turn::Unknown,
     }
 }
@@ -215,8 +219,25 @@ mod tests {
         assert_eq!(turn_at(&p, ms(31), TAIL_BYTES), Turn::Other, "a relayed brief; the tool result is not a turn");
         assert_eq!(turn_at(&p, ms(10) + TURN_MATCH_MS + 31_000, TAIL_BYTES), Turn::Unknown, "record not written yet");
         assert_eq!(turn_at(&d.path().join("gone.jsonl"), ms(10), TAIL_BYTES), Turn::Unknown);
-        // A record with only turnOrigin human and no other sign is not counted as the person's.
-        assert!(!is_own(&json!({"type":"user","turnOrigin":"human"})));
+        // Measured shapes, 829 transcripts (2026-11-09): a scheduled run and a desktop-app turn name another origin;
+        // a terminal turn is the person's; a record with no origin at all is left to the caller.
+        let shape = |extra: serde_json::Value| {
+            let mut r = json!({"type":"user","message":{"content":"x"},"timestamp":at(50)});
+            r.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());
+            std::fs::write(&p, format!("{r}\n")).unwrap();
+            turn_at(&p, ms(50), TAIL_BYTES)
+        };
+        assert_eq!(
+            shape(
+                json!({"turnOrigin":"scheduled","origin":{"kind":"task-notification","subkind":"scheduled-trigger"}})
+            ),
+            Turn::Other
+        );
+        assert_eq!(shape(json!({"turnOrigin":"sdk","entrypoint":"claude-desktop"})), Turn::Other);
+        assert_eq!(shape(json!({"turnOrigin":"task_notification","origin":{"kind":"task-notification"}})), Turn::Other);
+        assert_eq!(shape(json!({"turnOrigin":"human","origin":{"kind":"human"},"entrypoint":"cli"})), Turn::Own);
+        assert_eq!(shape(json!({})), Turn::Unmarked);
+        assert!(is_own(&json!({"type":"user","turnOrigin":"human"})));
         // The tail cut mid-record skips the cut line and still finds the turn.
         let pad = json!({"type":"assistant","message":{"content":"x".repeat(5000)}}).to_string();
         std::fs::write(&p, format!("{pad}\n{own}\n")).unwrap();

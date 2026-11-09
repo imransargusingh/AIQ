@@ -215,6 +215,7 @@ export function RightNow(ctx: Ctx) {
           </button>
         </p>
       </div>
+      <LeftOut snap={ctx.snap} />
     </section>
   );
 }
@@ -266,10 +267,52 @@ export function quiet(snap: Snapshot) {
 /** Why a tool's newest activity isn't counted, in plain words (rule names from the core's set-aside rules). */
 export function asideText(tools: { name: string; aside: string | null }[]): string {
   const names = tools.map((t) => t.name).join(" and ");
-  const projects = tools.every((t) => t.aside === "projects");
-  return projects
+  const all = (r: string) => tools.every((t) => t.aside === r);
+  return all("projects")
     ? `${names}'s newest activity is Claude's own work in a claude.ai project, so AIQ doesn't count it. Turns you type yourself count.`
-    : `${names}'s newest activity looks like an app or script ran it, so AIQ doesn't count it.`;
+    : all("not-typed")
+      ? `${names}'s newest activity was scheduled or started by an app, not typed, so AIQ doesn't count it.`
+      : `${names}'s newest activity looks like an app or script ran it, so AIQ doesn't count it.`;
+}
+
+/** Same bar as crates/aiq-contracts `AsideNow::mostly_left_out` (10 prompts, 90%; Imran 2026-11-09). */
+export const LEFT_OUT_MIN = 10;
+export const LEFT_OUT_SHARE = 0.9;
+const NAME: Record<string, string> = { "claude-code": "Claude Code", "copilot-cli": "Copilot", vscode: "VS Code" };
+const LEFT_WHY: Record<string, string> = {
+  projects: "Claude's own work in a claude.ai project",
+  "not-typed": "scheduled or started by an app, not typed",
+};
+
+/** Tools most of whose prompts today were left out as automated, in plain words. */
+export function leftOut(snap: Snapshot): { surface: string; text: string }[] {
+  return snap.aside
+    .filter((a) => a.left_out_today >= LEFT_OUT_MIN && a.left_out_today >= LEFT_OUT_SHARE * (a.left_out_today + a.counted_today))
+    .map((a) => ({
+      surface: a.surface,
+      text: `Today AIQ left out ${a.left_out_today} of ${a.left_out_today + a.counted_today} ${NAME[a.surface] ?? toolName(a.surface)} prompts as automated, not counted: ${LEFT_WHY[a.reason] ?? "an app or script seems to run them"}.`,
+    }));
+}
+
+/** Imran 2026-11-09: 269 Claude Code prompts were left out over five days and nothing said so. Shown whatever the card
+ * shows, so an open task from another tool never hides it. */
+function LeftOut({ snap }: { snap: Snapshot }) {
+  const rows = leftOut(snap);
+  if (rows.length === 0) return null;
+  return (
+    <div className="rn-left" data-testid="right-now-left-out">
+      {rows.map((r) => (
+        <p key={r.surface} className="meta">
+          {r.text}
+        </p>
+      ))}
+      <p className="meta">
+        <button className="btnlink" onClick={() => document.getElementById("hb")?.scrollIntoView({ behavior: "smooth" })}>
+          See what's not counted
+        </button>
+      </p>
+    </div>
+  );
 }
 
 function Quiet(ctx: Ctx) {
@@ -338,7 +381,7 @@ function Quiet(ctx: Ctx) {
             })}
           </ul>
           {state === "idle" && <p className="meta">A task shows here once the agent replies to your first prompt.</p>}
-          {state === "idle" && aside.length > 0 && (
+          {state === "idle" && aside.length > 0 && leftOut(snap).length === 0 && (
             <p className="meta rn-hint" data-testid="right-now-aside">
               {asideText(aside)}{" "}
               <button className="btnlink" onClick={() => document.getElementById("hb")?.scrollIntoView({ behavior: "smooth" })}>
@@ -357,6 +400,7 @@ function Quiet(ctx: Ctx) {
           )}
         </>
       )}
+      <LeftOut snap={snap} />
     </section>
   );
 }

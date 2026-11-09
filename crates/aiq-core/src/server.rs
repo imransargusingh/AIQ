@@ -221,9 +221,20 @@ fn reconcile_pause(paths: &Paths, svc: &mut Service<SystemClock>) {
 }
 
 fn writer_loop(mut svc: Service<SystemClock>, rx: Receiver<Cmd>, paths: &Paths, counters: &Counters) {
+    let mut rechecked = std::time::Instant::now();
     let shutdown = loop {
-        let cmd = match rx.recv_timeout(TICK) {
+        // A prompt waiting for its transcript record is re-read soon, not at the next hook (`Service::held_wait`),
+        // whether the core is idle or busy.
+        let wait = svc.held_wait();
+        if let Some(w) = wait
+            && rechecked.elapsed() >= w
+        {
+            svc.recheck_held();
+            rechecked = std::time::Instant::now();
+        }
+        let cmd = match rx.recv_timeout(wait.unwrap_or(TICK)) {
             Ok(c) => c,
+            Err(mpsc::RecvTimeoutError::Timeout) if wait.is_some() => continue,
             Err(mpsc::RecvTimeoutError::Timeout) => Cmd::DrainSpool,
             Err(mpsc::RecvTimeoutError::Disconnected) => break None,
         };

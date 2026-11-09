@@ -109,12 +109,16 @@ export interface Starting {
   working: boolean;
 }
 
-/** Mirrors crates/aiq-home `Aside`: one tool's newest activity AIQ left out as automated (up to 5 min stale). */
+/** Mirrors crates/aiq-contracts `AsideNow`: one tool's newest activity AIQ left out as automated (up to 5 min stale). */
 export interface Aside {
   surface: string;
   last_ms: number;
-  /** projects, aiq-check, session, folder, template, burst */
+  /** projects, not-typed, aiq-check, session, folder, template, burst */
   reason: string;
+  /** Prompts of this tool left out today (local day). */
+  left_out_today: number;
+  /** Prompts of this tool counted today (local day). */
+  counted_today: number;
 }
 
 /** Mirrors crates/aiq-home `Seen`: one tool's newest event. */

@@ -113,6 +113,31 @@ pub fn redact(text: &str, folders: &[String], homes: &[String]) -> String {
 }
 
 /// `aiq status` as text, and the folder names it mentions (for the help report's redaction).
+/// A line per tool when most of its prompts today were left out as automated (Imran 2026-11-09): 269 Claude Code
+/// prompts were left out over five days and nothing said so.
+fn left_out_lines(aside: &[aiq_contracts::frames::AsideNow]) -> String {
+    let mut out = String::new();
+    for a in aside.iter().filter(|a| a.mostly_left_out()) {
+        let tool = match a.surface.as_str() {
+            "claude-code" => "Claude Code",
+            "copilot-cli" => "Copilot CLI",
+            "vscode" => "VS Code",
+            other => other,
+        };
+        let why = match a.reason.as_str() {
+            "projects" => "Claude's own work in a claude.ai project",
+            "not-typed" => "scheduled or started by an app, not typed",
+            _ => "an app or script seems to run them",
+        };
+        out += &format!(
+            "Automated, not counted: {} of {} {tool} prompts today ({why}). See them in Home > Automated, not counted.\n",
+            a.left_out_today,
+            a.left_out_today + a.counted_today
+        );
+    }
+    out
+}
+
 fn status_text(paths: &Paths) -> (String, Vec<String>) {
     let paths = paths.clone();
     let mut folders: Vec<String> = Vec::new();
@@ -148,8 +173,8 @@ fn status_text(paths: &Paths) -> (String, Vec<String>) {
             for (folder, reason) in &s.automated_folders {
                 if reason == "projects" {
                     out += &format!(
-                        "Sessions Claude ran for you through claude.ai Projects or Remote Control aren't counted in \
-                         {folder}. To count them: aiq include \"{folder}\"\n"
+                        "Turns Claude relays through claude.ai Projects or Remote Control aren't counted in {folder}; \
+                         turns you type there are. To count them all: aiq include \"{folder}\"\n"
                     );
                     continue;
                 }
@@ -162,6 +187,7 @@ fn status_text(paths: &Paths) -> (String, Vec<String>) {
                     "Automated, not counted: {folder} ({why}). If that is your own work: aiq include \"{folder}\"\n"
                 );
             }
+            out += &left_out_lines(&s.aside);
             if let Some(c) = &s.coach {
                 let state = match (c.mode.as_str(), c.tips_on) {
                     ("off", _) => "off (you turned them off)".to_owned(),
@@ -1015,6 +1041,25 @@ mod tests {
         );
         assert!(hook_budget_lines("", &SetAside::default(), Some(since)).ends_with("  no hook runs since then yet\n"));
         assert!(hook_budget_lines(text, &SetAside::default(), None).contains("no upgrade recorded"));
+    }
+
+    #[test]
+    fn status_says_when_most_of_a_tools_prompts_today_were_left_out() {
+        let row = |left: u32, counted: u32, reason: &str| aiq_contracts::frames::AsideNow {
+            surface: "claude-code".into(),
+            last_ms: 1,
+            reason: reason.into(),
+            left_out_today: left,
+            counted_today: counted,
+        };
+        assert_eq!(
+            left_out_lines(&[row(46, 2, "projects")]),
+            "Automated, not counted: 46 of 48 Claude Code prompts today (Claude's own work in a claude.ai project). \
+             See them in Home > Automated, not counted.\n"
+        );
+        assert!(left_out_lines(&[row(18, 2, "not-typed")]).contains("18 of 20 Claude Code prompts today (scheduled"));
+        assert_eq!(left_out_lines(&[row(9, 0, "burst")]), "", "under 10 prompts: too few to say");
+        assert_eq!(left_out_lines(&[row(17, 3, "burst")]), "", "85%: under the 90% bar");
     }
 
     #[test]

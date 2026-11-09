@@ -1421,6 +1421,16 @@ impl Store {
             })
     }
 
+    /// Prompts stored at or after `since_ms`, per surface.
+    pub fn prompts_by_surface_since(&self, since_ms: i64) -> Result<HashMap<String, u32>> {
+        let mut st = self
+            .conn
+            .prepare("SELECT surface, count(*) FROM event WHERE kind = 'prompt' AND ts_utc_ms >= ?1 GROUP BY surface")
+            .map_err(err(codes::STORE_OPEN))?;
+        let rows = st.query_map([since_ms], |r| Ok((r.get(0)?, r.get(1)?))).map_err(err(codes::STORE_OPEN))?;
+        rows.collect::<rusqlite::Result<HashMap<_, _>>>().map_err(err(codes::STORE_OPEN))
+    }
+
     pub fn setting(&self, key: &str) -> Result<Option<String>> {
         self.conn
             .query_row("SELECT value FROM current_setting WHERE key = ?1", [key], |r| r.get(0))
