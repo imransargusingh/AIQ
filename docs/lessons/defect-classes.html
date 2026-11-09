@@ -495,4 +495,37 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <ul><li><strong>Sweep:</strong> the tour&#x27;s nine steps (all rewritten). Other copy that restates a window already reads it from the</li></ul>
 <p>snapshot (<code>Tasks</code> header <code>progress_days</code>, Tips <code>daily_cap</code>, Home <code>shift_days</code>). Not swept: the Rung guide and the landing page.</p>
 <ul><li><strong>Control:</strong> tour bodies are functions of the snapshot; <code>tour.test.ts</code> sets odd values (47, 23, 19) and fails if</li></ul>
-<p>any step types a digit or misses one, and checks the tips step names every tool that shows tips. The e2e asserts the example data fills what each step names (a growing habit under the ladder map and on Habits, a set-aside folder with Count this folder).</p></main></body></html>
+<p>any step types a digit or misses one, and checks the tips step names every tool that shows tips. The e2e asserts the example data fills what each step names (a growing habit under the ladder map and on Habits, a set-aside folder with Count this folder).</p>
+<h3>DC-045 — Two timers started together on the same period race for one lock, and the loser gives up</h3>
+<ul><li><strong>Signature:</strong> 2026-11-09 02:52:28Z, laptop on 0.1.28 with 0.1.29 waiting: AIQ home&#x27;s check (<code>check_if_due</code>) and</li></ul>
+<p>its away install (<code>install_if_away</code>) ran from two <code>setInterval</code>s of 60 s started in the same mount, so they fire within milliseconds. When a check was due the two started 18 ms apart; the check took <code>update.lock</code>, the install logged &quot;Another AIQ update is running. Nothing changed.&quot;, Home reopened, and the recorded try held the next one back 30 minutes. Measured by the alpha thread from upgrade-log.txt and home.log.</p>
+<ul><li><strong>Why it survives:</strong> each path is correct alone and each test runs one of them; the lock is correct; &quot;gave up,</li></ul>
+<p>nothing changed&quot; looks like a designed hold, and the state stays <code>waiting</code> with no error.</p>
+<ul><li><strong>Sweep:</strong> other paths that start upgrade.ps1: the core&#x27;s kicker (<code>Check -Apply</code>, no Home involved, giving up is</li></ul>
+<p>harmless: it retries hourly), Install now and Go back (Home closed itself, so they now wait for the lock too), the Settings check (a check: giving up is harmless). Other paired Home timers: the snapshot refresh and the starting-core retry only read; neither starts a run.</p>
+<ul><li><strong>Control (tests):</strong> <code>update::tests::home_minute_starts_an_away_install_or_a_check_never_both</code> (one minute&#x27;s ask</li></ul>
+<p>starts one run), <code>updateNow.test.ts</code> minuteAsk (Home sends one ask a minute), release.yml smoke &quot;AIQ-UPDATE-LOCK&quot; (an install AIQ home closed itself for waits for a held lock and goes on; one that outlasts the wait reopens Home).</p>
+<ul><li><strong>Rule:</strong> work that takes a shared lock is started from one scheduler, and a run that already closed something</li></ul>
+<p>the person had open waits for the lock (bounded) rather than giving up.</p>
+<h3>DC-046 — A funnel stage counted from a different population than the stages above it</h3>
+<ul><li><strong>Signature:</strong> 2026-11-09, Imran&#x27;s Tips page: &quot;0 of 6 new tasks had a tip ready this week&quot; over bars Tip ready 0,</li></ul>
+<p>Shown 1. New tasks → Kind known → Tip ready counted tasks from <code>tip_path</code> (recorded only since #184, 11-08); Shown and Opened counted every card first decided in the 7 days. The one shown card (11-03 15:19Z, Copilot CLI) belonged to a task with no <code>tip_path</code> row. Measured read-only on a copy of the laptop&#x27;s aiq.db.</p>
+<ul><li><strong>Why it survives:</strong> each count was right on its own, the code comment even said &quot;Shown can pass Tip found&quot;, and</li></ul>
+<p>the fixtures had more ready tips than shown ones, so no test saw a bar grow.</p>
+<ul><li><strong>Sweep:</strong> <code>aiq status</code> prints the same funnel: it now names <code>tip shown</code> (same tasks) beside the all-tips counts.</li></ul>
+<p>The drought check uses deliveries on purpose (any tip shown that day clears it). The progress ladder and habit counts don&#x27;t stack stages.</p>
+<ul><li><strong>Control (tests):</strong> <code>funnel::tests::shown_and_opened_follow_the_same_tasks_so_they_never_pass_tip_ready</code> (the</li></ul>
+<p>laptop case), <code>next_rung.rs</code> status test (the store links a shown tip to its task through <code>signal</code>), <code>funnel.test.ts</code> (every bar ≤ the one above), and the e2e checks the rendered bars never grow.</p>
+<ul><li><strong>Rule:</strong> in a funnel, each stage is a subset of the one above, drawn from the same rows; anything else is named</li></ul>
+<p>on its own line, never as a bar.</p>
+<h3>DC-047 — One setting offered by two screens, each with its own copy of the choices</h3>
+<ul><li><strong>Signature:</strong> 2026-11-09, Imran&#x27;s screenshot of first-run setup: &quot;How many tips a day?&quot; offered 1 / 3 / 5 (default)</li></ul>
+<p>and &quot;At most one per session, shown when the agent pauses&quot; after the earlier change moved Settings to 5 / 15 / 30 / Custom (Imran, 2026-11-07). Setup and Settings each held a literal list; the specs even recorded the split (&quot;1, 3 or 5 at setup; 5, 15, 30 … in Settings&quot;) instead of flagging it.</p>
+<ul><li><strong>Why it survives:</strong> the change was asked for on one screen, and the other screen&#x27;s tests pinned the old buttons</li></ul>
+<p>(&quot;3&quot;, &quot;5 (default)&quot;), so they stayed green. DC-044 covered copy that restates a computed fact, not a control.</p>
+<ul><li><strong>Sweep:</strong> first-run setup against Settings and the core, every step. Tips step: same picker now, rules line from</li></ul>
+<p>the core&#x27;s budget (one a session, 30-min quiet, 72 h same tip). Tools step: Copilot CLI tips also show in the conversation (<code>copilot_tip_in_chat</code>, default on). Analysis step already reads <code>judge_daily_tasks</code>; Privacy and Your history steps match current behaviour. Specs D3 and H9 updated. Not changed: the signed-off mockup (<code>docs/mockups/aiq-home.html</code>), a historical record.</p>
+<ul><li><strong>Control:</strong> <code>apps/home/src/tipsCap.tsx</code> is the only place the choices (<code>CAPS</code>, <code>MAX_CAP</code>) and the rules line</li></ul>
+<p>(<code>TIP_RULES</code>) live; Settings and Setup both render <code>TipsCap</code>. The setup e2e asserts the setup group&#x27;s buttons are exactly 5 / 15 / 30 / Custom, Custom sets 8, and the stale sentence is gone.</p>
+<ul><li><strong>Rule:</strong> a setting shown on more than one screen is one component with one list of choices; a second screen</li></ul>
+<p>never types its own.</p></main></body></html>
