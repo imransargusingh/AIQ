@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AWAY_INSTALL_MS, awayInstallDue, checkOutcome, outcomeText } from "./updateNow";
+import { AWAY_INSTALL_MS, awayInstallDue, checkOutcome, minuteAsk, outcomeText } from "./updateNow";
 import type { Update } from "./types";
 
 const base: Update = {
@@ -59,5 +59,21 @@ describe("awayInstallDue (design auto-update U5n)", () => {
     expect(awayInstallDue({ ...waiting, mode: "off" }, away, t, "idle")).toBe(false);
     expect(awayInstallDue({ ...waiting, note: "none" }, away, t, "idle")).toBe(false);
     expect(awayInstallDue({ ...waiting, supported: false }, away, t, "idle")).toBe(false);
+  });
+});
+
+describe("minuteAsk: one update ask a minute (laptop 2026-11-09 02:52:28Z race)", () => {
+  const waiting: Update = { ...base, note: "waiting", available: "v0.1.29", blocked: "AIQ home is open" };
+  const away = 5_000_000;
+  const due = away + AWAY_INSTALL_MS;
+  it("asks for the away install instead of the check when it is due", () => {
+    expect(minuteAsk(waiting, away, due, "idle", false)).toBe("install_if_away");
+  });
+  it("asks for a check otherwise: in the window, too soon, on the tour, before the first snapshot", () => {
+    expect(minuteAsk(waiting, null, due, "idle", false)).toBe("check_if_due");
+    expect(minuteAsk(waiting, away, due - 1, "idle", false)).toBe("check_if_due");
+    expect(minuteAsk(waiting, away, due, "idle", true)).toBe("check_if_due");
+    expect(minuteAsk(null, away, due, "idle", false)).toBe("check_if_due");
+    expect(minuteAsk({ ...waiting, note: "none" }, away, due, "idle", false)).toBe("check_if_due");
   });
 });

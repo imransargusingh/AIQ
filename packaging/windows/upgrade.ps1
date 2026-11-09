@@ -15,6 +15,9 @@
 #                   are). If the swap fails part-way, the exes it changed are put back.
 #   -WaitPid <id>   first wait up to 20 s for that process to end (AIQ home closing itself).
 #   -Relaunch       start AIQ home at the end (tried again for up to 15 s if Windows refuses it; never an error).
+#                   With -Apply or -Rollback, a run that finds another update running waits for it (up to
+#                   -LockWaitSec, 300 s) instead of giving up: AIQ home closed itself for this run.
+#   -LockWaitSec <s>   tests: how long that wait lasts.
 #   -FailLaunches <n>  tests only: the first n starts of the core or AIQ home fail as if Windows refused them.
 #   -FailExplorer      tests only: with -FailLaunches, only the starts through Explorer fail.
 #   -Feed <folder>  tests only: latest.json and the files in that folder stand in for GitHub.
@@ -45,7 +48,8 @@ param(
     [switch]$FailExplorer,
     [string]$Feed,
     [string]$Site = 'https://github.com',
-    [string]$Api = 'https://api.github.com'
+    [string]$Api = 'https://api.github.com',
+    [int]$LockWaitSec = 300
 )
 $ErrorActionPreference = 'Stop'
 
@@ -342,14 +346,32 @@ function Fetch($from, [string]$to, [bool]$local) {
 }
 
 # One update run at a time: an exclusive handle on update.lock, released when this process ends.
-try {
-    $script:lockHandle = [IO.File]::Open((Join-Path $aiqHome 'update.lock'), 'OpenOrCreate', 'ReadWrite', 'None')
-} catch {
-    # AIQ home may have closed itself for this run (Install now, or an away install while its own check held the
-    # lock): open it again, or it stays closed until the person opens it from the Start menu.
-    Log 'Another AIQ update is running. Nothing changed.'
-    Start-Home
-    exit 0
+function Take-Lock {
+    try { $script:lockHandle = [IO.File]::Open((Join-Path $aiqHome 'update.lock'), 'OpenOrCreate', 'ReadWrite', 'None'); $true }
+    catch { $false }
+}
+if (-not (Take-Lock)) {
+    # AIQ-UPDATE-LOCK: an install or a rollback that AIQ home closed itself for (-Relaunch: Install now, Go back, an
+    # away install) waits for the other run (a check downloading, the core's run) instead of giving up. Laptop,
+    # 2026-11-09 02:52:28Z: Home's check took the lock 18 ms before its away install, which logged "Nothing
+    # changed", and 0.1.29 stayed waiting for the next try 30 minutes later. A check, or the core's run, gives up.
+    $waited = $false
+    if ($Relaunch -and ($Apply -or $Rollback) -and -not $Check) {
+        Log "AIQ-UPDATE-LOCK: another AIQ update is running; waiting up to $LockWaitSec s for it to finish."
+        $until = (Get-Date).AddSeconds($LockWaitSec)
+        while (-not $waited -and (Get-Date) -lt $until) {
+            Start-Sleep -Milliseconds 500
+            $waited = Take-Lock
+        }
+        if ($waited) { Log 'AIQ-UPDATE-LOCK: the other update run finished; going on.' }
+    }
+    if (-not $waited) {
+        # AIQ home may have closed itself for this run: open it again, or it stays closed until the person opens it
+        # from the Start menu.
+        Log 'Another AIQ update is running. Nothing changed.'
+        Start-Home
+        exit 0
+    }
 }
 
 if ($Rollback) {

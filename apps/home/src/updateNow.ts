@@ -71,3 +71,17 @@ export function awayInstallDue(u: Update, awaySince: number | null, now: number,
     now - awaySince >= AWAY_INSTALL_MS
   );
 }
+
+/** Home's once-a-minute ask: the away install when it is due, else a check (the shell checks only when one is due,
+ * and turns an away install it holds back into that check). One ask a minute, never both: laptop 2026-11-09
+ * 02:52:28Z, a check and an away install started 18 ms apart, the check took the update lock and the install gave
+ * up, so 0.1.29 stayed waiting. No away install during the tour. */
+export function minuteAsk(
+  u: Update | null,
+  awaySince: number | null,
+  now: number,
+  phase: UpdatePhase,
+  touring: boolean,
+): "install_if_away" | "check_if_due" {
+  return u && !touring && awayInstallDue(u, awaySince, now, phase) ? "install_if_away" : "check_if_due";
+}

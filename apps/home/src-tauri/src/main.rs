@@ -515,49 +515,50 @@ async fn run_update(app: tauri::AppHandle, action: String) -> Result<Outcome, St
     blocking(move || {
         let t = Instant::now();
         let paths = Paths::from_env();
-        // "check_if_due": AIQ home asks every minute while open. It starts a check only when one is due
-        // (update::home_check_due, 15 minutes), so a new release shows on Home within about 15 minutes;
-        // otherwise it does nothing.
-        // "check_on_open": the same, when AIQ home opens, due 10 minutes after the last check (update::HOME_OPEN_MS).
-        if action == "check_if_due" || action == "check_on_open" {
+        // AIQ home asks once a minute while open: "install_if_away" when its window has been in the background for
+        // update::AWAY_INSTALL_MS while an update waits (design auto-update U5n), else "check_if_due". One ask starts
+        // at most one run (update::home_step): an away install under "Update automatically", at most once per
+        // update::AWAY_RETRY_MS, which closes Home (upgrade.ps1 reopens it minimised); otherwise a check when one is
+        // due (update::home_check_due, 15 minutes), so a new release shows on Home within about 15 minutes. Two asks
+        // in the same minute raced for the script's lock (laptop 2026-11-09 02:52:28Z) and the install gave up.
+        // "check_on_open": a check when AIQ home opens, due 10 minutes after the last check (update::HOME_OPEN_MS).
+        if action == "check_if_due" || action == "install_if_away" || action == "check_on_open" {
             let now = aiq_core::sysclock::SystemClock.now().utc_ms;
             let mode = update::stored_mode(&paths);
             let st = update::read_state(&paths);
-            let due = if action == "check_on_open" {
-                update::home_open_check_due(now, &st, mode.as_deref())
+            let step = if !update::supported(&paths) {
+                update::HomeStep::Nothing
+            } else if action == "check_on_open" {
+                if update::home_open_check_due(now, &st, mode.as_deref()) {
+                    update::HomeStep::Check
+                } else {
+                    update::HomeStep::Nothing
+                }
             } else {
-                update::home_check_due(now, &st, mode.as_deref())
+                update::home_step(&paths, now, &st, mode.as_deref(), action == "install_if_away")
             };
-            if !update::supported(&paths) || !due {
-                return Outcome::from(Ok(()));
+            let r = match step {
+                update::HomeStep::Nothing => return Outcome::from(Ok(())),
+                update::HomeStep::Check => update::start(&paths, Action::Check { apply: false }, None, false),
+                update::HomeStep::AwayInstall => update::start(&paths, Action::Apply, Some(std::process::id()), true),
             }
-            let r = update::start(&paths, Action::Check { apply: false }, None, false)
-                .map_err(|e| format!("Could not start: {e}."));
-            let result = if r.is_ok() { "started" } else { "refused" };
-            log(&paths, "run_update", t, &format!("action={action} {result}"));
-            return Outcome::from(r);
-        }
-        // "install_if_away": AIQ home has been in the background for update::AWAY_INSTALL_MS (the window measures
-        // that) while an update waits (design auto-update U5n). Under "Update automatically" it installs as Install
-        // now does, and the AIQ home upgrade.ps1 reopens starts minimised; at most once per update::AWAY_RETRY_MS.
-        // Otherwise it does nothing and Home stays open.
-        if action == "install_if_away" {
-            let now = aiq_core::sysclock::SystemClock.now().utc_ms;
-            let mode = update::stored_mode(&paths);
-            let st = update::read_state(&paths);
-            if !update::supported(&paths) || !update::begin_away_install(&paths, now, &st, mode.as_deref()) {
-                return Outcome::from(Ok(()));
-            }
-            let r = update::start(&paths, Action::Apply, Some(std::process::id()), true)
-                .map_err(|e| format!("Could not start: {e}."));
-            log(&paths, "run_update", t, &format!("action={action} {}", if r.is_ok() { "started" } else { "refused" }));
-            if r.is_ok() {
-                std::thread::spawn(move || {
-                    std::thread::sleep(Duration::from_millis(400));
-                    app.exit(0);
-                });
-            } else {
-                update::cancel_reopen_minimized(&paths);
+            .map_err(|e| format!("Could not start: {e}."));
+            let what = if step == update::HomeStep::Check { "check" } else { "install" };
+            log(
+                &paths,
+                "run_update",
+                t,
+                &format!("action={action} {what} {}", if r.is_ok() { "started" } else { "refused" }),
+            );
+            if step == update::HomeStep::AwayInstall {
+                if r.is_ok() {
+                    std::thread::spawn(move || {
+                        std::thread::sleep(Duration::from_millis(400));
+                        app.exit(0);
+                    });
+                } else {
+                    update::cancel_reopen_minimized(&paths);
+                }
             }
             return Outcome::from(r);
         }

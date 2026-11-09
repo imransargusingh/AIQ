@@ -1527,8 +1527,13 @@ await test("auto-update: the titlebar marker, one-press Update now, Go back, the
   await background(left, true);
   await left.clock.runFor(9 * 60_000);
   assert.equal(await aways(left), 0, "9 minutes away: not yet");
+  const minuteAsks = (p) =>
+    p.evaluate(() => window.__AIQ_FIXTURE__.calls.filter((c) => c.cmd === "run_update" && ["check_if_due", "install_if_away"].includes(c.args.action)).length);
+  const beforeDue = await minuteAsks(left);
   await left.clock.runFor(2 * 60_000);
   assert.ok((await aways(left)) >= 1, "10 minutes away: Home asks for the install");
+  // One ask a minute (DC-045, laptop 2026-11-09 02:52:28Z): the install replaces that minute's check, never both.
+  assert.equal((await minuteAsks(left)) - beforeDue, 2, "two minutes: two update asks, not a check and an install each");
   const asked = await aways(left);
   await background(left, false);
   await left.clock.runFor(30 * 60_000);
