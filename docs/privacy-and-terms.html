@@ -42,7 +42,7 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <ul><li><strong>A summary of what the agent did</strong> in each turn. For past sessions (<code>aiq import</code>): which tools it</li></ul>
 <p>used, which files it touched and which commands it ran. For live turns: counts only (tool calls by tool name, commands, files and helper agents), with no command text or file names. AIQ reads this from your tools&#x27; own history files on your computer when the agent stops, and only reads them. It does not store the agent&#x27;s replies or your file contents. Settings &gt; What AIQ keeps turns the live counts off.</p>
 <ul><li><strong>Past sessions</strong>, if you run <code>aiq import</code> (the installer starts it once). It reads your Claude</li></ul>
-<p>Code and Copilot CLI history from this computer. Runs that look automated (a script or app driving the tool) are set aside; <code>aiq include &lt;folder&gt;</code> brings a folder back.</p>
+<p>Code and Copilot CLI history from this computer. Runs that look automated (a script or app driving the tool) are automated and not counted; <code>aiq include &lt;folder&gt;</code> counts a folder again.</p>
 <ul><li><strong>AIQ&#x27;s own results</strong>: tips shown, what you said about them, analyses of your tasks, and your</li></ul>
 <p>settings.</p>
 <h2>Where it is kept, and how it is protected</h2>
@@ -87,6 +87,13 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <p>itself.</p>
 <ul><li>To see which version you have: AIQ home shows it at the bottom of the side panel and in Settings,</li></ul>
 <p>under Updates. In a terminal, run <code>aiq version</code> or <code>aiq update</code>.</p>
+<h3>3. Team tips (only in builds made with a team tips repo)</h3>
+<ul><li>Some AIQ builds can add a <strong>Tool to try</strong> line naming a tool your team uses. Those builds download one</li></ul>
+<p>file, <code>team-tips.toml</code>, from your team&#x27;s repo every hour with <code>git</code>, using the sign-in Git Credential Manager already keeps for that site. AIQ never sees the sign-in, sends nothing about you, and never opens a sign-in window by itself. Without a sign-in or access, nothing is downloaded and tips show as usual.</p>
+<ul><li>The file&#x27;s text is never stored in AIQ&#x27;s database, logged, exported or sent anywhere. The lines show</li></ul>
+<p>on Copilot CLI, VS Code and AIQ home, never on Claude Code.</p>
+<ul><li>Settings, under <strong>Team tips</strong>, shows where the lines come from and has <strong>Stop using</strong>. In a terminal:</li></ul>
+<p><code>aiq team-tips</code> and <code>aiq team-tips off</code>.</p>
 <h3>3. Nothing else</h3>
 <ul><li><strong>No telemetry.</strong> AIQ sends no usage statistics, crash reports or analytics to anyone.</li><li>AIQ home makes no network calls.</li><li>Two files are made only when you ask, and stay on your computer until you choose to send them:</li></ul>
 <p><code>aiq export</code> (all your data, prompts included) and <code>aiq status --report</code> (a help file with counts, timings and error codes; no prompt text, and folders shown as <code>folder-1</code>, <code>folder-2</code>).</p>

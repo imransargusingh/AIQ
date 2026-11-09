@@ -56,6 +56,10 @@ jobs:
           }
           "version=$v" >> $env:GITHUB_OUTPUT
       - name: Build aiq.exe and aiq-statusline.exe
+        # The team tips repo's address comes from a repository secret, so it is built into aiq.exe but never written
+        # in this public repo (team tips, Imran 2026-11-08). Unset: no download, tips work as before.
+        env:
+          AIQ_TEAM_TIPS_REPO: ${{ secrets.AIQ_TEAM_TIPS_REPO }}
         run: cargo build -p aiq -p aiq-statusline --release --locked
       - name: aiq-statusline.exe - reuse the newest release's file while its version is unchanged (U5n)
         shell: pwsh

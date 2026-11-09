@@ -59,6 +59,18 @@ impl Paths {
     pub fn team_tips_pointer(&self) -> PathBuf {
         self.data.join("team-tips-folder.txt")
     }
+    /// The folder the core found by itself holding a team tips file; one line, a path.
+    pub fn team_tips_found(&self) -> PathBuf {
+        self.data.join("team-tips-found.txt")
+    }
+    /// AIQ's own copy of the team's repo, downloaded from the address built into the release.
+    pub fn team_tips_download(&self) -> PathBuf {
+        self.data.join("team-tips")
+    }
+    /// The last team tips search's outcome code; one line.
+    pub fn team_tips_outcome(&self) -> PathBuf {
+        self.data.join("team-tips-outcome.txt")
+    }
     pub fn spool(&self) -> PathBuf {
         self.data.join("spool.jsonl")
     }

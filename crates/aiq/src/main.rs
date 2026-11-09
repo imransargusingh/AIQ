@@ -48,8 +48,8 @@ Usage:
                                       How long a tip stays in Copilot CLI's status line
   aiq import [--dry-run]              Add your past Claude Code and Copilot CLI sessions to AIQ
   aiq include <folder>                Count a folder again that AIQ marked automated, not counted
-  aiq team-tips add <folder>          Add your team's Tool to try lines from <folder>/team-tips.toml
-                                      (shown on Copilot and Home, never on Claude Code); also: check, remove
+  aiq team-tips                       Where your team's Tool to try lines come from (AIQ gets them by itself);
+                                      also: sign-in, off, auto, add <folder>
   aiq helpful|not|snooze|off <card-id>  Tell AIQ what you thought of a tip (snooze: 7 days; off: never again)
   aiq on <tip-id>                     Let AIQ show a tip you turned off
   aiq flag <job>/<type> <move> <reason> [note]  This doesn't fit: stop a next step for one kind of task

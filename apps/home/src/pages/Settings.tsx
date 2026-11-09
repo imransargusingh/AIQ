@@ -9,6 +9,7 @@ import { jobName, plural, when } from "../format";
 import { AccuracyPaused, Banners, Title, type Ctx } from "../ui";
 import { ver } from "../updateNow";
 import { THEMES } from "../theme";
+import { teamTipsText } from "../team";
 
 const STAYS: { v: S["copilot_tip_stays"]; label: string; note?: string }[] = [
   { v: "next-prompt", label: "Until your next prompt", note: "Default" },
@@ -71,6 +72,7 @@ const JUDGE_CAPS = [20, 50, 100, 200];
 export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: boolean) => void }) {
   const { snap, announce, refresh, singleKeys, setSingleKeys, update } = ctx;
   const [msg, setMsg] = useState<string | null>(null);
+  const [teamBusy, setTeamBusy] = useState(false);
   const down = !snap.status.core;
   const st = snap.settings;
   const up = snap.update;
@@ -355,6 +357,41 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
           </fieldset>
         </details>
       </section>
+
+      {snap.team_tips && (snap.team_tips.state !== "none" || snap.team_tips.repo) && (
+        <section className="card" aria-labelledby="st9">
+          <h2 id="st9" tabIndex={-1}>Team tips</h2>
+          {(() => {
+            const tt = teamTipsText(snap.team_tips);
+            return (
+              <div className="row" style={{ justifyContent: "space-between" }}>
+                <span>{tt.line}</span>
+                {tt.action && (
+                  <button
+                    className="btn"
+                    disabled={teamBusy}
+                    onClick={() => {
+                      const a = tt.action!;
+                      setTeamBusy(true);
+                      api.teamTips(a.does).then(
+                        () => {
+                          announce(a.does === "off" ? "Team tips are off." : a.does === "auto" ? "Team tips are on." : "Signed in? AIQ checked your team's tips.");
+                          refresh();
+                        },
+                        () => announce("AIQ couldn't change team tips."),
+                      ).finally(() => setTeamBusy(false));
+                    }}
+                  >
+                    {tt.action.label}
+                  </button>
+                )}
+              </div>
+            );
+          })()}
+          {snap.team_tips.problem && <span className="meta">AIQ can't use your team's file: {snap.team_tips.problem}. Tips show as usual.</span>}
+          <span className="meta">Shown on Copilot CLI, VS Code and here. Never on Claude Code.</span>
+        </section>
+      )}
 
       <section className="card" aria-labelledby="st7">
         <h2 id="st7" tabIndex={-1}>What AIQ keeps</h2>

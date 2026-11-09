@@ -87,8 +87,13 @@ pub struct Snapshot {
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize)]
 pub struct TeamTips {
-    /// True when a folder is set (`aiq team-tips add`).
+    /// True when a file is in use (downloaded, found or chosen).
     pub set: bool,
+    /// Where it comes from, for Settings: `download` (the team's repo), `found` (a clone next to other repos),
+    /// `chosen`, `off`, `sign_in` (the team's repo needs a sign-in once), `no_git`, or `none`. Never the address.
+    pub state: String,
+    /// True when this AIQ was built with a team repo to download from.
+    pub repo: bool,
     /// Why the file can't be used, in AIQ's words (never the file's text). Tips show as usual.
     pub problem: Option<String>,
     pub tools: Vec<aiq_contracts::team_tips::TeamTool>,
@@ -96,17 +101,29 @@ pub struct TeamTips {
 
 impl TeamTips {
     fn is_unset(&self) -> bool {
-        !self.set
+        self.state == "none" && !self.repo
     }
 
     pub fn read(paths: &Paths, pack: &PackV1) -> Self {
-        match aiq_core::team_tips::read(paths) {
-            aiq_core::team_tips::Status::NotSet => Self::default(),
-            aiq_core::team_tips::Status::Problem(e) => Self { set: true, problem: Some(e), tools: vec![] },
-            aiq_core::team_tips::Status::Ok(t) => Self {
+        use aiq_core::team_tips::{self as tt, Source};
+        let outcome = tt::last_outcome(paths);
+        let state = match (tt::source(paths), outcome.as_deref()) {
+            (Source::Off, _) => "off",
+            (Source::Chosen(_), _) => "chosen",
+            (Source::Found(p), _) if p == paths.team_tips_download() => "download",
+            (Source::Found(_), _) => "found",
+            (Source::None, Some("no_access")) => "sign_in",
+            (Source::None, Some("git_missing")) => "no_git",
+            (Source::None, _) => "none",
+        };
+        let base = Self { state: state.into(), repo: tt::repo_url().is_some(), ..Self::default() };
+        match tt::read(paths) {
+            tt::Status::NotSet => base,
+            tt::Status::Problem(e) => Self { set: true, problem: Some(e), ..base },
+            tt::Status::Ok(t) => Self {
                 set: true,
-                problem: None,
                 tools: t.tools.into_iter().filter(|x| pack.moves.iter().any(|m| m.move_id == x.move_id)).collect(),
+                ..base
             },
         }
     }
@@ -1939,5 +1956,13 @@ mod team_tips_tests {
         std::fs::write(team.join("team-tips.toml"), "schema = 1").unwrap();
         let t = snapshot(&paths, &pack, now).team_tips;
         assert!(t.set && t.problem.is_some() && t.tools.is_empty());
+        assert_eq!(t.state, "chosen");
+        aiq_core::team_tips::set_off(&paths).unwrap();
+        let t = snapshot(&paths, &pack, now).team_tips;
+        assert_eq!((t.state.as_str(), t.set), ("off", false));
+        // Back to automatic with the team's repo out of reach: Settings offers the one-time sign-in.
+        aiq_core::team_tips::set_folder(&paths, None).unwrap();
+        std::fs::write(paths.team_tips_outcome(), "no_access\n").unwrap();
+        assert_eq!(snapshot(&paths, &pack, now).team_tips.state, "sign_in");
     }
 }

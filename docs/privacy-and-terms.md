@@ -133,6 +133,18 @@ suggests a next step. To do that, it asks an AI model to read the task.
 - To see which version you have: AIQ home shows it at the bottom of the side panel and in Settings,
   under Updates. In a terminal, run `aiq version` or `aiq update`.
 
+### 3. Team tips (only in builds made with a team tips repo)
+
+- Some AIQ builds can add a **Tool to try** line naming a tool your team uses. Those builds download one
+  file, `team-tips.toml`, from your team's repo every hour with `git`, using the sign-in Git Credential
+  Manager already keeps for that site. AIQ never sees the sign-in, sends nothing about you, and never
+  opens a sign-in window by itself. Without a sign-in or access, nothing is downloaded and tips show
+  as usual.
+- The file's text is never stored in AIQ's database, logged, exported or sent anywhere. The lines show
+  on Copilot CLI, VS Code and AIQ home, never on Claude Code.
+- Settings, under **Team tips**, shows where the lines come from and has **Stop using**. In a terminal:
+  `aiq team-tips` and `aiq team-tips off`.
+
 ### 3. Nothing else
 
 - **No telemetry.** AIQ sends no usage statistics, crash reports or analytics to anyone.
