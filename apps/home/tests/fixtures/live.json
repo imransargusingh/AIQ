@@ -2619,7 +2619,8 @@
         {
           "code": "copilot-cli",
           "words": "Copilot CLI",
-          "count": 1
+          "count": 1,
+          "help": ""
         }
       ],
       "opened": 0,
@@ -2643,7 +2644,8 @@
         {
           "code": "copilot-cli",
           "words": "Copilot CLI",
-          "count": 1
+          "count": 1,
+          "help": ""
         }
       ],
       "opened": 0,
