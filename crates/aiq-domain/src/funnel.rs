@@ -2,8 +2,9 @@
 //! Pure: rows and the time come in, the counts go out. Built so a stretch with no tips is visible (2026-11-04 to
 //! 11-08 AIQ showed no tip at all and nothing said so).
 use crate::clock::{DAY_MS, Now, local_day};
-use aiq_contracts::frames::{FunnelCount, TipDrought, TipFunnel};
+use aiq_contracts::frames::{FunnelCount, FunnelTask, TipDrought, TipFunnel};
 use std::collections::HashMap;
+use std::collections::HashSet;
 
 /// One point where a live new task's tip path ended or began to wait (`tip_path` row). Each exit of the core's
 /// next-step path writes exactly one of these; `LabelAsked` is followed by the label's own end.
@@ -147,7 +148,7 @@ pub fn words(code: &str) -> &'static str {
         "no_match" => "kind of task not recognised",
         "label_asked" => "kind label never came back",
         "label_failed" => "kind label failed",
-        "label_unsure" => "kind label not sure enough",
+        "label_unsure" => "AIQ wasn't sure what kind of task it was",
         "label_not_coached" => "kind label says it's a question; labels don't give tips for questions",
         "label_retry" => "kind label asked again from a later prompt, and it never came back",
         "label_late" => "kind label came after the next task started",
@@ -170,6 +171,25 @@ pub fn words(code: &str) -> &'static str {
         _ => "other",
     }
 }
+
+/// What helps, for the no-tip reasons a person can act on or should not worry about; empty for the rest. Shown
+/// under the reason on Home. Coaching tone: what to try, never what went wrong.
+pub fn help(code: &str) -> &'static str {
+    match code {
+        "no_match" | "label_unsure" | "label_retry" => {
+            "AIQ reads how a task starts. Opening with one sentence that names the job, like \"Fix the login crash when the token expires\", helps it find a tip."
+        }
+        "label_held" | "guess_held" => {
+            "AIQ holds these while it rechecks its own accuracy. Nothing to do on your side."
+        }
+        "kind_too_few" | "kind_new" => "Tips for a kind start once AIQ has analyzed a few tasks of it.",
+        "tips_off" => "Next-step tips can be turned on in Settings.",
+        _ => "",
+    }
+}
+
+/// At most this many no-tip tasks are listed (newest first); the counts still cover them all.
+pub const LOST_MAX: usize = 50;
 
 /// The tool a tip showed in, in plain words.
 pub fn tool_words(surface: &str) -> &str {
@@ -202,6 +222,10 @@ pub struct CardRow {
     pub shown_on: Option<String>,
     pub opened: bool,
     pub answered: bool,
+    /// The task the card's signal fired on, and whether it is a next-step tip (`coach::DETECTOR`) rather than one
+    /// that fired mid-task.
+    pub task_id: Option<String>,
+    pub next_step: bool,
 }
 
 /// A delivery's local day (for the drought check), as the store returns it.
@@ -219,7 +243,12 @@ pub const DROUGHT_MIN_TASKS: u32 = 3;
 fn bump(v: &mut Vec<FunnelCount>, code: &str) {
     match v.iter_mut().find(|c| c.code == code) {
         Some(c) => c.count += 1,
-        None => v.push(FunnelCount { code: code.to_owned(), words: words(code).to_owned(), count: 1 }),
+        None => v.push(FunnelCount {
+            code: code.to_owned(),
+            words: words(code).to_owned(),
+            count: 1,
+            help: help(code).to_owned(),
+        }),
     }
 }
 
@@ -241,24 +270,55 @@ fn latest_steps(steps: &[StepRow], since_ms: i64) -> HashMap<&str, (&StepRow, &S
 /// The funnel of tasks first seen and tips first decided at or after `since_ms`.
 pub fn build(steps: &[StepRow], cards: &[CardRow], since_ms: i64, days: u32) -> TipFunnel {
     let mut f = TipFunnel { days, ..TipFunnel::default() };
-    for (_, last) in latest_steps(steps, since_ms).values() {
+    let mut decided: HashSet<&str> = HashSet::new();
+    for (task, (first, last)) in latest_steps(steps, since_ms) {
         f.tasks += 1;
         let step = Step::parse(&last.step);
-        if step.is_some_and(Step::kind_known) {
+        let known = step.is_some_and(Step::kind_known);
+        if known {
             f.kind_known += 1;
         }
         if step == Some(Step::Decided) {
             f.tip_found += 1;
+            decided.insert(task);
         } else {
             bump(&mut f.no_tip, &last.step);
+            f.lost.push(FunnelTask {
+                task_id: task.to_owned(),
+                surface: first.surface.clone(),
+                first_ms: first.utc_ms,
+                code: last.step.clone(),
+                words: words(&last.step).to_owned(),
+                kind_known: known,
+            });
         }
     }
+    f.lost.sort_by(|a, b| b.first_ms.cmp(&a.first_ms).then_with(|| a.task_id.cmp(&b.task_id)));
+    f.lost.truncate(LOST_MAX);
+    // A task's next-step tip counts once at Shown and Opened, so those bars never pass Tip ready.
+    let (mut shown_tasks, mut opened_tasks): (HashSet<&str>, HashSet<&str>) = (HashSet::new(), HashSet::new());
     for c in cards.iter().filter(|c| c.first_utc_ms >= since_ms) {
         f.tips += 1;
+        if c.shown_on.is_some() {
+            match c.task_id.as_deref().filter(|t| c.next_step && decided.contains(t)) {
+                Some(t) => {
+                    shown_tasks.insert(t);
+                    if c.opened {
+                        opened_tasks.insert(t);
+                    }
+                }
+                None => f.other_shown += 1,
+            }
+        }
         if let Some(on) = &c.shown_on {
             match f.shown.iter_mut().find(|s| &s.code == on) {
                 Some(s) => s.count += 1,
-                None => f.shown.push(FunnelCount { code: on.clone(), words: tool_words(on).to_owned(), count: 1 }),
+                None => f.shown.push(FunnelCount {
+                    code: on.clone(),
+                    words: tool_words(on).to_owned(),
+                    count: 1,
+                    help: String::new(),
+                }),
             }
             f.opened += c.opened as u32;
             f.answered += c.answered as u32;
@@ -270,6 +330,8 @@ pub fn build(steps: &[StepRow], cards: &[CardRow], since_ms: i64, days: u32) -> 
             bump(&mut f.held, &c.reason);
         }
     }
+    f.tip_shown = shown_tasks.len() as u32;
+    f.tip_opened = opened_tasks.len() as u32;
     f.no_tip = sorted(f.no_tip);
     f.held = sorted(f.held);
     f.shown = sorted(f.shown);
@@ -342,7 +404,13 @@ mod tests {
             shown_on: shown_on.map(Into::into),
             opened: false,
             answered: false,
+            task_id: None,
+            next_step: false,
         }
+    }
+
+    fn tip_for(task: &str, id: &str, shown_on: Option<&str>) -> CardRow {
+        CardRow { task_id: Some(task.into()), next_step: true, ..card(id, "show_ready", "ok", shown_on) }
     }
 
     #[test]
@@ -462,6 +530,62 @@ mod tests {
         assert_eq!((f.expired, f.waiting), (1, 1));
         let held: Vec<_> = f.held.iter().map(|h| h.code.as_str()).collect();
         assert_eq!(held, ["accuracy_paused", "cooldown", "daily_cap", "quiet_period"]);
+    }
+
+    #[test]
+    fn shown_and_opened_follow_the_same_tasks_so_they_never_pass_tip_ready() {
+        // The 2026-11-09 laptop case: 6 new tasks, none with a tip, and one tip shown that week for a task from
+        // before the funnel counted. Home said "0 had a tip ready" next to "Shown 1".
+        let t = NOW.utc_ms - 3 * H;
+        let mut steps: Vec<StepRow> = (0..6).map(|i| step(&format!("n{i}"), Step::LabelUnsure, t + i)).collect();
+        steps.push(step("d", Step::Decided, t + 10));
+        steps.push(step("e", Step::Decided, t + 11));
+        let mut opened = tip_for("d", "c1", Some("copilot-cli"));
+        opened.opened = true;
+        let mid_task = CardRow { next_step: false, ..tip_for("n0", "c3", Some("vscode")) };
+        let cards = [
+            opened,
+            tip_for("d", "c2", Some("copilot-cli")), // shown again: still one task
+            mid_task,
+            tip_for("old-task", "c4", Some("copilot-cli")),
+            tip_for("e", "c5", None), // held
+        ];
+        let f = build(&steps, &cards, NOW.utc_ms - 24 * H, 1);
+        assert_eq!((f.tasks, f.tip_found, f.tip_shown, f.tip_opened), (8, 2, 1, 1));
+        assert_eq!(f.other_shown, 2, "the mid-task tip and the older task's tip; a re-show is the same task's tip");
+        assert_eq!(f.shown.iter().map(|c| c.count).sum::<u32>(), 4, "every shown tip still counts by tool");
+        assert!(f.tip_shown <= f.tip_found && f.tip_opened <= f.tip_shown);
+    }
+
+    #[test]
+    fn lost_tasks_are_listed_newest_first_with_their_reason_and_stage() {
+        let t = NOW.utc_ms - 3 * H;
+        let steps = [
+            step("a", Step::LabelAsked, t),
+            step("a", Step::LabelUnsure, t + 5),
+            step("b", Step::KindTooFew, t + 1),
+            step("c", Step::Decided, t + 2),
+        ];
+        let f = build(&steps, &[], NOW.utc_ms - 24 * H, 1);
+        let lost: Vec<_> = f.lost.iter().map(|l| (l.task_id.as_str(), l.code.as_str(), l.kind_known)).collect();
+        assert_eq!(lost, [("b", "kind_too_few", true), ("a", "label_unsure", false)]);
+        assert_eq!(f.lost[1].first_ms, t, "a task's time is when it began");
+        assert_eq!(f.lost[1].words, "AIQ wasn't sure what kind of task it was");
+        let many: Vec<_> = (0..LOST_MAX + 5).map(|i| step(&format!("x{i}"), Step::NoMatch, t + i as i64)).collect();
+        let f = build(&many, &[], NOW.utc_ms - 24 * H, 1);
+        assert_eq!((f.lost.len(), f.tasks as usize), (LOST_MAX, LOST_MAX + 5));
+    }
+
+    #[test]
+    fn reasons_a_person_can_act_on_carry_what_helps() {
+        let f = build(&[step("a", Step::LabelUnsure, NOW.utc_ms - H)], &[], 0, 1);
+        assert!(f.no_tip[0].help.starts_with("AIQ reads how a task starts."));
+        assert_eq!(help("label_failed"), "");
+        for code in ["no_match", "label_unsure", "label_retry", "label_held", "guess_held", "kind_too_few", "tips_off"]
+        {
+            let h = help(code).to_lowercase();
+            assert!(!h.is_empty() && !h.contains("judg") && !h.contains("watch"), "{code}");
+        }
     }
 
     #[test]

@@ -962,4 +962,7 @@ fn status_carries_the_funnel_and_a_dry_working_day_warns() {
     let f = h.svc.status().tip_funnel.unwrap();
     assert!(f.droughts.iter().all(|d| d.day != aiq_domain::funnel::iso_date(T0 / 86_400_000)), "{f:?}");
     assert_eq!(f.week.shown.iter().map(|c| c.count).sum::<u32>(), 1);
+    // The shown tip is this task's next-step tip: the store links it to the task (signal), so Home's Shown bar
+    // counts it under Tip ready rather than as another tip.
+    assert_eq!((f.week.tip_found, f.week.tip_shown, f.week.other_shown), (1, 1, 0), "{f:?}");
 }

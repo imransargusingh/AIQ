@@ -1273,7 +1273,11 @@
         }
       ],
       "opened": 0,
-      "answered": 0
+      "answered": 0,
+      "tip_shown": 1,
+      "tip_opened": 0,
+      "other_shown": 0,
+      "lost": []
     },
     "week": {
       "days": 7,
@@ -1324,7 +1328,11 @@
         }
       ],
       "opened": 1,
-      "answered": 0
+      "answered": 0,
+      "tip_shown": 2,
+      "tip_opened": 1,
+      "other_shown": 0,
+      "lost": []
     },
     "droughts": [
       {

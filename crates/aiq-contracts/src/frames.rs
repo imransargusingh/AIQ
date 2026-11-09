@@ -246,6 +246,34 @@ pub struct TipFunnel {
     /// Shown tips the person opened, and answered (Helpful, Not helpful, Snooze, Don't show again).
     pub opened: u32,
     pub answered: u32,
+    /// Of the `tip_found` tasks, those whose next-step tip was shown, and of those, opened. These follow the same
+    /// tasks as `tasks` → `tip_found`, so they never pass `tip_found` (`shown` counts every tip, from any task).
+    #[serde(default)]
+    pub tip_shown: u32,
+    #[serde(default)]
+    pub tip_opened: u32,
+    /// Tips shown in the period that are not one of the `tip_shown` next-step tips: tips that fire mid-task, and
+    /// tips for tasks from before the funnel began counting.
+    #[serde(default)]
+    pub other_shown: u32,
+    /// The tasks that got no tip, newest first (at most `funnel::LOST_MAX`), so a person can see which ones and why.
+    #[serde(default)]
+    pub lost: Vec<FunnelTask>,
+}
+
+/// A new task that got no next-step tip, and why.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct FunnelTask {
+    pub task_id: String,
+    /// Tool id (`copilot-cli`, `claude-code`, `vscode`).
+    pub surface: String,
+    /// When the task began (its first tip-path row).
+    pub first_ms: i64,
+    /// The task's latest tip-path step, and its words.
+    pub code: String,
+    pub words: String,
+    /// AIQ knew the kind of task (the task was lost at "Tip ready", not at "Kind of task clear").
+    pub kind_known: bool,
 }
 
 /// A count with its code and plain words (one definition of the words: `aiq_domain::funnel::words`).
@@ -254,6 +282,9 @@ pub struct FunnelCount {
     pub code: String,
     pub words: String,
     pub count: u32,
+    /// What helps, in a sentence, when the person can do something about this reason (`funnel::help`); else empty.
+    #[serde(default)]
+    pub help: String,
 }
 
 /// A working day with no tip shown.

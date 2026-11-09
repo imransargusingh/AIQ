@@ -618,7 +618,11 @@
       "expired": 0,
       "shown": [],
       "opened": 0,
-      "answered": 0
+      "answered": 0,
+      "tip_shown": 0,
+      "tip_opened": 0,
+      "other_shown": 0,
+      "lost": []
     },
     "week": {
       "days": 0,
@@ -632,7 +636,11 @@
       "expired": 0,
       "shown": [],
       "opened": 0,
-      "answered": 0
+      "answered": 0,
+      "tip_shown": 0,
+      "tip_opened": 0,
+      "other_shown": 0,
+      "lost": []
     },
     "droughts": []
   }
