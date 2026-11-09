@@ -22,7 +22,7 @@ describe("Right now, several open tasks (option A)", () => {
   });
 });
 
-import { ago, asideText, quiet, QUIET_HINT_MS } from "./pages/RightNow";
+import { ago, asideText, leftOut, quiet, QUIET_HINT_MS } from "./pages/RightNow";
 import full from "../tests/fixtures/full.json";
 
 describe("Right now with nothing open (Imran 2026-11-08)", () => {
@@ -52,8 +52,8 @@ describe("Right now with nothing open (Imran 2026-11-08)", () => {
       { surface: "copilot-cli", last_ms: base.now_ms - 60_000 },
     ];
     const aside = [
-      { surface: "claude-code", last_ms: base.now_ms - 2 * 60_000, reason: "projects" },
-      { surface: "copilot-cli", last_ms: base.now_ms - 30 * 60_000, reason: "burst" },
+      { surface: "claude-code", last_ms: base.now_ms - 2 * 60_000, reason: "projects", left_out_today: 0, counted_today: 0 },
+      { surface: "copilot-cli", last_ms: base.now_ms - 30 * 60_000, reason: "burst", left_out_today: 0, counted_today: 0 },
     ];
     const q = quiet(at({ starting: [], seen, aside, setup: { ...base.setup, tools } }));
     expect(q.tools).toEqual([
@@ -65,6 +65,24 @@ describe("Right now with nothing open (Imran 2026-11-08)", () => {
       "Claude Code's newest activity is Claude's own work in a claude.ai project, so AIQ doesn't count it. Turns you type yourself count.",
     );
     expect(asideText([{ name: "Copilot", aside: "burst" }])).toBe("Copilot's newest activity looks like an app or script ran it, so AIQ doesn't count it.");
+  });
+  it("says when most of a tool's prompts today were left out: 10 or more, and 90% or more (Imran 2026-11-09)", () => {
+    const row = (left_out_today: number, counted_today: number, reason = "not-typed") => ({
+      surface: "claude-code",
+      last_ms: base.now_ms,
+      reason,
+      left_out_today,
+      counted_today,
+    });
+    expect(leftOut(at({ aside: [row(18, 2)] }))).toEqual([
+      { surface: "claude-code", text: "Today AIQ left out 18 of 20 Claude Code prompts as automated, not counted: scheduled or started by an app, not typed." },
+    ]);
+    expect(leftOut(at({ aside: [row(46, 2, "projects")] }))[0].text).toMatch(/46 of 48 Claude Code prompts.*claude\.ai project\.$/);
+    expect(leftOut(at({ aside: [row(9, 0)] }))).toEqual([]);
+    expect(leftOut(at({ aside: [row(17, 3)] }))).toEqual([]);
+    expect(asideText([{ name: "Claude Code", aside: "not-typed" }])).toBe(
+      "Claude Code's newest activity was scheduled or started by an app, not typed, so AIQ doesn't count it.",
+    );
   });
   it("says how long ago in minutes within the hour, then the day and time", () => {
     const now = base.now_ms;

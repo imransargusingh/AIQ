@@ -176,7 +176,38 @@ pub struct StatusReply {
     /// Where new tasks' tips went: today and the last 7 days (design tip-funnel). None with an older core.
     #[serde(default)]
     pub tip_funnel: Option<TipFunnels>,
+    /// Each tool's newest activity left out as automated, with today's counts (`aiq_core::service::aside_now`).
+    #[serde(default)]
+    pub aside: Vec<AsideNow>,
 }
+
+/// One tool's newest activity AIQ left out as automated, and today's prompt counts (Imran 2026-11-08/09: the card
+/// called a busy tool idle; nothing said when most of a tool's prompts were left out). Up to 5 minutes stale.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct AsideNow {
+    pub surface: String,
+    pub last_ms: i64,
+    /// The rule: projects, not-typed, aiq-check, session, folder, template, burst.
+    pub reason: String,
+    /// Prompts of this tool left out today (local day). 0 when the value predates the count.
+    pub left_out_today: u32,
+    /// Prompts of this tool counted today (local day), from the events.
+    pub counted_today: u32,
+}
+
+impl AsideNow {
+    /// Most of today's prompts were left out: at least `LEFT_OUT_MIN` of them, and at least `LEFT_OUT_SHARE` of all.
+    /// simplify: one fixed bar (10 prompts, 90%), Imran's card 2026-11-09. Upgrade trigger: the line shows on a day the
+    /// person says was mostly automation they meant to leave out.
+    pub fn mostly_left_out(&self) -> bool {
+        let all = self.left_out_today + self.counted_today;
+        self.left_out_today >= LEFT_OUT_MIN && f64::from(self.left_out_today) >= LEFT_OUT_SHARE * f64::from(all)
+    }
+}
+
+/// See `AsideNow::mostly_left_out`. Home's card uses the same values (apps/home RightNow.tsx).
+pub const LEFT_OUT_MIN: u32 = 10;
+pub const LEFT_OUT_SHARE: f64 = 0.9;
 
 /// The tip funnel over two periods, and the recent working days with no tip (design tip-funnel). Measured.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]

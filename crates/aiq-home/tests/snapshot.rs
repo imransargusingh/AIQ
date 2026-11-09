@@ -625,12 +625,34 @@ fn set_aside_activity_reaches_the_card() {
     let d = tempfile::tempdir().unwrap();
     let p = Paths::at(d.path());
     standard(&p, false);
-    let s = Seed::new(&p);
-    s.store.set_setting("aside.claude-code", &format!("{} projects", NOW - 2 * MIN), NOW - 2 * MIN).unwrap();
+    let mut s = Seed::new(&p);
+    s.skip_ids(10_000);
+    let today = now().local_day();
+    let v = format!("{} projects {today} 46", NOW - 2 * MIN);
+    s.store.set_setting("aside.claude-code", &v, NOW - 2 * MIN).unwrap();
     s.store.set_setting("aside.copilot-cli", "not-a-time burst", NOW).unwrap();
+    // Yesterday's count is not today's.
+    s.store.set_setting("aside.vscode", &format!("{} template {} 9", NOW - DAY, today - 1), NOW - DAY).unwrap();
+    s.prompt("claude-code", "today1", NOW - 5 * MIN, Some(AIQ), "fix the flaky login test in the api service");
+    let mid = now().local_midnight_utc_ms();
+    let want: u32 = s
+        .store
+        .raw()
+        .query_row(
+            "SELECT count(*) FROM event WHERE surface = 'claude-code' AND kind = 'prompt' AND ts_utc_ms >= ?1",
+            [mid],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(want > 0);
     drop(s);
     let snap = snap(&p);
-    let aside: Vec<(&str, i64, &str)> =
-        snap.aside.iter().map(|a| (a.surface.as_str(), a.last_ms, a.reason.as_str())).collect();
-    assert_eq!(aside, [("claude-code", NOW - 2 * MIN, "projects")], "a malformed value is left out, not guessed");
+    let aside: Vec<(&str, i64, &str, u32)> =
+        snap.aside.iter().map(|a| (a.surface.as_str(), a.last_ms, a.reason.as_str(), a.left_out_today)).collect();
+    assert_eq!(
+        aside,
+        [("claude-code", NOW - 2 * MIN, "projects", 46), ("vscode", NOW - DAY, "template", 0)],
+        "a malformed value is left out, not guessed"
+    );
+    assert_eq!(snap.aside[0].counted_today, want, "today's counted prompts come from the events");
 }

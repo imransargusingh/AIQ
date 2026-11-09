@@ -768,8 +768,17 @@ summary: >-
   0 of 1 kept), `projects::tests::a_persons_typed_turn_is_told_from_a_relayed_one_by_its_own_record`,
   `set_aside_activity_reaches_the_card`, `rightnow.test.ts` set-aside case, e2e "a tool whose newest activity was set
   aside says so".
+- **Sweep, second pass (2026-11-09, 829 transcripts):** sessions with no Projects marker were never read per turn,
+  so 1 scheduled run (`turnOrigin=scheduled`, `scheduled-trigger`) and 14 desktop-app turns (`turnOrigin=sdk`) were
+  counted as the person's. The per-turn rule now runs in every Claude Code session: only `turnOrigin=human` counts
+  (reason `not-typed` otherwise). A missing record outside Projects sessions still counts after 10 s or at the Stop,
+  so a slow write never loses a person's turn. Held prompts are re-read every 300 ms (`held_wait`, `recheck_held`):
+  on 0.1.27 the first read missed the record 2 of 2 times. Nothing alarmed while 269 prompts were left out over five
+  days: `aside.<surface>` now carries today's left-out count, and Home's card (every state) and `aiq status` say so
+  when at least 10 and 90% of a tool's prompts today were left out (`AsideNow::mostly_left_out`).
 - **Rule:** a rule that leaves out a person's activity must decide at the grain where the marker is true (a turn, not
-  a session or a surface), and every left-out activity must still show where the person looks for it.
+  a session or a surface), and every left-out activity must still show where the person looks for it, with a count
+  that alarms when most of it is left out.
 
 ### DC-044 — Explanatory copy that restates a number or a list the app computes elsewhere
 - **Signature:** 2026-11-08, audit of the Home tour (`apps/home/src/tour.tsx`) against 0.1.27. The "Tasks, by kind"

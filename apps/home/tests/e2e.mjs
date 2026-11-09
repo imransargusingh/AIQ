@@ -669,7 +669,7 @@ await test("Right now card, nothing open: a tool whose newest activity was set a
         { surface: "copilot-cli", last_ms: s.now_ms - 12 * 60_000 },
         { surface: "claude-code", last_ms: s.now_ms - 26 * 3_600_000 },
       ];
-      s.aside = [{ surface: "claude-code", last_ms: s.now_ms - 2 * 60_000, reason: "projects" }];
+      s.aside = [{ surface: "claude-code", last_ms: s.now_ms - 2 * 60_000, reason: "projects", left_out_today: 3, counted_today: 0 }];
     },
   });
   const card = page.getByTestId("right-now");
@@ -686,6 +686,31 @@ await test("Right now card, nothing open: a tool whose newest activity was set a
   assert.deepEqual(page.errors, []);
   await page.context().close();
 });
+
+// Imran 2026-11-09: 269 Claude Code prompts were left out over five days and nothing said so. When most of a tool's
+// prompts today were left out, the card says so in every state, an open task included.
+for (const fixture of ["full", "live"]) {
+  await test(`Right now card: most of a tool's prompts left out today says so (${fixture}), no axe violations`, async () => {
+    const page = await open(fixture, {
+      edit: (s) => {
+        if (fixture === "full") s.starting = [];
+        s.aside = [{ surface: "claude-code", last_ms: s.now_ms - 60_000, reason: "not-typed", left_out_today: 18, counted_today: 2 }];
+      },
+    });
+    const warn = page.getByTestId("right-now-left-out");
+    assert.match(
+      await warn.innerText(),
+      /^Today AIQ left out 18 of 20 Claude Code prompts as automated, not counted: scheduled or started by an app, not typed\.\s*See what's not counted$/,
+    );
+    assert.equal(await page.getByTestId("right-now-aside").count(), 0, "one line, not two");
+    assert.doesNotMatch(await page.getByTestId("right-now").innerText(), /Watching|Monitoring|judge|warning/i);
+    assert.deepEqual(await axe(page), []);
+    if (shots) await page.screenshot({ path: join(shots, `right-now-left-out-${fixture}.png`) });
+    await warn.getByRole("button", { name: "See what's not counted" }).click();
+    assert.deepEqual(page.errors, []);
+    await page.context().close();
+  });
+}
 
 await test("Right now card: a task whose first turn is running shows as starting, not as nothing", async () => {
   const page = await open("full");

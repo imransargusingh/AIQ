@@ -111,7 +111,11 @@ pub struct Service<C: Clock> {
     /// them), so its Stop goes with it. In memory; bounded.
     rc_own: std::collections::HashMap<(String, String), bool>,
     /// Per surface, when `note_aside` last wrote and for which rule.
-    aside_noted: std::collections::HashMap<String, (i64, String)>,
+    aside_noted: std::collections::HashMap<String, AsideNoted>,
+    /// Held prompts whose record never showed outside a Projects session: counted as the person's (`typed_gate`).
+    rc_force_own: std::collections::HashSet<String>,
+    /// When `recheck_held` last re-read sessions whose head is unwritten (core clock).
+    head_rechecked_ms: i64,
     /// When the VS Code extension last asked for a card (core clock), in this core run.
     vscode_asked_ms: Option<i64>,
     /// Coaching inputs derived from the store (design coaching-from-rungs); rebuilt when stale.
@@ -230,8 +234,60 @@ enum RcCheck {
 /// 0 ms; a written head settles on its first user record, so this bound is rarely reached).
 const RC_TRIES: u32 = 8;
 
+/// What `note_aside` last wrote for one surface, and today's count so far.
+struct AsideNoted {
+    at: i64,
+    reason: String,
+    day: i64,
+    n: u32,
+}
+
+/// An `aside.<surface>` value: (utc_ms, reason, local day, prompts set aside that day). Values written before the
+/// count existed have only the first two. Malformed parts read as None / 0, never as a guess.
+pub fn parse_aside(v: &str) -> (Option<i64>, String, Option<i64>, u32) {
+    let mut it = v.split(' ');
+    let ms = it.next().and_then(|x| x.parse().ok());
+    let reason = it.next().unwrap_or_default().to_owned();
+    let day = it.next().and_then(|x| x.parse().ok());
+    let n = it.next().and_then(|x| x.parse().ok()).unwrap_or(0);
+    (ms, reason, day, n)
+}
+
+/// Each surface's `aside.<surface>` value with today's counted prompts, for Home and `aiq status`. A malformed value
+/// is left out, never guessed.
+pub fn aside_now(
+    store: &Store,
+    now: aiq_domain::clock::Now,
+) -> Result<Vec<aiq_contracts::frames::AsideNow>, StoreError> {
+    if !store.has_table("setting_change")? {
+        return Ok(vec![]);
+    }
+    let counted = store.prompts_by_surface_since(now.local_midnight_utc_ms())?;
+    Ok(store
+        .settings_with_prefix(ASIDE_KEY)?
+        .into_iter()
+        .filter_map(|(k, v)| {
+            let (ms, reason, day, n) = parse_aside(&v);
+            let surface = k[ASIDE_KEY.len()..].to_owned();
+            Some(aiq_contracts::frames::AsideNow {
+                counted_today: counted.get(&surface).copied().unwrap_or(0),
+                surface,
+                last_ms: ms?,
+                reason: Some(reason).filter(|r| !r.is_empty())?,
+                left_out_today: if day == Some(now.local_day()) { n } else { 0 },
+            })
+        })
+        .collect())
+}
+
 /// Setting key prefix for a surface's newest set-aside activity (`note_aside`); Home reads it.
 pub const ASIDE_KEY: &str = "aside.";
+/// A held prompt outside a Projects session whose record has not shown by then counts as the person's.
+const TURN_WAIT_MS: i64 = 10_000;
+/// How often held prompts' records are re-read while any wait (`held_wait`).
+const RECHECK_MS: u64 = 300;
+/// How often a held prompt whose session head is unwritten is re-read (`recheck_held`).
+const HEAD_RECHECK_MS: i64 = 1_000;
 /// How often `note_aside` rewrites an unchanged surface's time.
 const ASIDE_EVERY_MS: i64 = 5 * 60_000;
 
@@ -284,6 +340,8 @@ impl<C: Clock> Service<C> {
             rc_checked: Default::default(),
             rc_own: Default::default(),
             aside_noted: Default::default(),
+            rc_force_own: Default::default(),
+            head_rechecked_ms: 0,
             vscode_asked_ms: None,
             coach: None,
             guess_low_logged: false,
@@ -445,7 +503,7 @@ impl<C: Clock> Service<C> {
                     "event set aside"
                 );
                 if reason != "rc-pending" {
-                    self.note_aside(&ev.surface, reason);
+                    self.note_aside(&ev.surface, reason, matches!(ev.body, EventBody::Prompt(_)));
                 }
                 // Home counts set-aside sessions per folder (one row per session, first prompt's time). A failed write
                 // only leaves the count short; it never stops the skip.
@@ -1170,25 +1228,151 @@ impl<C: Clock> Service<C> {
     }
 
     /// Home's Right now card says when a tool's newest activity was left out as automated (Imran 2026-11-08: the card
-    /// read "Nothing in progress" and showed Claude Code idle for a day while every one of his turns was set aside).
-    /// A setting per surface, `aside.<surface>` = "<utc_ms> <reason>".
-    /// simplify: written at most every `ASIDE_EVERY_MS` per surface unless the reason changes, so the card's time is up
-    /// to 5 minutes stale. Ceiling: the setting log grows ~12 rows an hour per busy surface. Upgrade trigger: the
-    /// setting_change table passes 100k rows, or a person asks for the exact time.
-    fn note_aside(&mut self, surface: &str, reason: &str) {
-        let now = self.clock.now().utc_ms;
-        if let Some((at, r)) = self.aside_noted.get(surface)
-            && r == reason
-            && now - at < ASIDE_EVERY_MS
-        {
+    /// read "Nothing in progress" and showed Claude Code idle for a day while every one of his turns was set aside),
+    /// and warns when most of a tool's prompts today were (Imran 2026-11-09). A setting per surface,
+    /// `aside.<surface>` = "<utc_ms> <reason> <local day> <prompts set aside that day>".
+    /// simplify: written at most every `ASIDE_EVERY_MS` per surface unless the reason or the day changes, so the card's
+    /// time and count are up to 5 minutes stale. Ceiling: the setting log grows ~12 rows an hour per busy surface.
+    /// Upgrade trigger: the setting_change table passes 100k rows, or a person asks for the exact time.
+    fn note_aside(&mut self, surface: &str, reason: &str, prompt: bool) {
+        let now = self.clock.now();
+        let day = now.local_day();
+        let key = format!("{ASIDE_KEY}{surface}");
+        if !self.aside_noted.contains_key(surface) {
+            if self.aside_noted.len() >= 64 {
+                return;
+            }
+            // After a restart, today's count goes on from what was written.
+            let stored = self.store.setting(&key).ok().flatten().map(|v| parse_aside(&v)).unwrap_or_default();
+            let n = if stored.2 == Some(day) { stored.3 } else { 0 };
+            self.aside_noted.insert(surface.to_owned(), AsideNoted { at: i64::MIN, reason: String::new(), day, n });
+        }
+        let Some(a) = self.aside_noted.get_mut(surface) else { return };
+        if a.day != day {
+            (a.day, a.n) = (day, 0);
+            a.at = i64::MIN; // a new day is written at once
+        }
+        a.n += u32::from(prompt);
+        if a.reason == reason && now.utc_ms - a.at < ASIDE_EVERY_MS {
             return;
         }
-        if let Err(e) = self.store.set_setting(&format!("{ASIDE_KEY}{surface}"), &format!("{now} {reason}"), now) {
+        let value = format!("{} {reason} {day} {}", now.utc_ms, a.n);
+        (a.at, a.reason) = (now.utc_ms, reason.to_owned());
+        if let Err(e) = self.store.set_setting(&key, &value, now.utc_ms) {
             warn!(error.code = e.code, "set-aside activity not noted");
-            return;
         }
-        if self.aside_noted.len() < 64 || self.aside_noted.contains_key(surface) {
-            self.aside_noted.insert(surface.to_owned(), (now, reason.to_owned()));
+    }
+
+    /// The person said "count this folder": every turn there counts, as before rule RC.
+    fn rc_included(&self, ev: &EventV1) -> Result<bool, StoreError> {
+        let k = ev.cwd.as_deref().map(folder_key).unwrap_or_default();
+        Ok(self.store.folder_rules_now()?.get(&k).map(String::as_str) == Some("include"))
+    }
+
+    /// The per-turn rule. `None`: the person's turn, on to the other rules. `Some(skip)`: not typed by a person, or
+    /// waiting for its record. Prompts held earlier are decided first, in order. In a Projects session (`marker`) a
+    /// turn with no sign of a person does not count, and one whose record is still missing at its Stop is dropped.
+    /// Elsewhere a record with no `turnOrigin` (older Claude Code) counts, and a missing record counts at the Stop or
+    /// after `TURN_WAIT_MS`, as before this rule: a person's turn is never lost to a slow write.
+    fn typed_gate(&mut self, ev: &EventV1, marker: bool) -> Result<Option<Gate>, StoreError> {
+        use crate::projects::Turn;
+        let key = (ev.surface.clone(), ev.surface_session_id.clone());
+        let stop = matches!(ev.body, EventBody::Stop(_));
+        let now = self.clock.now().utc_ms;
+        let mut again = vec![];
+        for e in self.rc_held.remove(&key).unwrap_or_default() {
+            let aged = parse_rfc3339_ms(&e.ts).is_some_and(|t| now - t >= TURN_WAIT_MS);
+            match self.rc_prompt_turn(&e, marker) {
+                Turn::Own => {
+                    self.rc_force_own.insert(e.event_id.clone()); // decided: not read a second time on the way in
+                    self.ingest_inner(&e, None)?;
+                }
+                Turn::Unknown if !stop && (marker || !aged) => again.push(e),
+                Turn::Unknown if !marker => {
+                    self.rc_force_own.insert(e.event_id.clone());
+                    self.ingest_inner(&e, None)?;
+                }
+                _ => {
+                    self.rc_own.insert(key.clone(), false);
+                }
+            }
+        }
+        if !again.is_empty() {
+            self.rc_held.insert(key.clone(), again);
+        }
+        let own = match &ev.body {
+            EventBody::Prompt(_) => match self.rc_prompt_turn(ev, marker) {
+                Turn::Own => true,
+                Turn::Other | Turn::Unmarked => false,
+                // Re-read by `recheck_held` past the wait: outside a Projects session, the person's.
+                Turn::Unknown if !marker && parse_rfc3339_ms(&ev.ts).is_some_and(|t| now - t >= TURN_WAIT_MS) => true,
+                Turn::Unknown => {
+                    if marker {
+                        self.note_projects_folder(ev.cwd.as_deref().map(folder_key).unwrap_or_default());
+                    }
+                    if self.rc_held.len() >= MAX_HELD {
+                        self.rc_held.clear();
+                    }
+                    self.rc_held.entry(key).or_default().push(ev.clone());
+                    return Ok(Some(Gate::Skip("rc-pending")));
+                }
+            },
+            // A turn end belongs to the turn its prompt started. With no verdict (a core restart mid-turn), the
+            // session's default: a Projects session's turns are Claude's, any other's the person's.
+            EventBody::Stop(_) => self.rc_own.get(&key).copied().unwrap_or(!marker),
+        };
+        if !stop {
+            if self.rc_own.len() >= 4096 {
+                self.rc_own.clear();
+            }
+            self.rc_own.insert(key, own);
+        }
+        if own {
+            return Ok(None);
+        }
+        if marker {
+            self.note_projects_folder(ev.cwd.as_deref().map(folder_key).unwrap_or_default());
+            return Ok(Some(Gate::Skip("projects")));
+        }
+        Ok(Some(Gate::Skip("not-typed")))
+    }
+
+    /// How long the core waits before re-reading held prompts' records (`recheck_held`), while any wait. None when
+    /// nothing waits. Measured 2026-11-09 on 0.1.27: a turn's record was not in the file when the core first read it
+    /// (2 of 2), though stamped before the hook, so the first read is often "unknown".
+    pub fn held_wait(&self) -> Option<std::time::Duration> {
+        if self.rc_held.keys().any(|k| self.head_decided(k)) {
+            Some(std::time::Duration::from_millis(RECHECK_MS))
+        } else if !self.rc_held.is_empty() {
+            Some(std::time::Duration::from_millis(HEAD_RECHECK_MS as u64))
+        } else {
+            None
+        }
+    }
+
+    /// Rule RC's head check is done for this session: settled, or out of reads.
+    fn head_decided(&self, k: &(String, String)) -> bool {
+        match self.rc_checked.get(&format!("{}/{}", k.0, k.1)) {
+            Some(RcCheck::Settled(_)) => true,
+            Some(RcCheck::Unsettled(n)) => *n >= RC_TRIES,
+            None => false,
+        }
+    }
+
+    /// Re-read held prompts, so a person's turn shows within a second instead of at its Stop. A session whose head is
+    /// still unwritten is re-read at most every `HEAD_RECHECK_MS`, so its `RC_TRIES` reads span about 8 s (measured
+    /// 2026-11-02: the head is written 64 ms to 3.7 s before the first hook).
+    pub fn recheck_held(&mut self) {
+        let now = self.clock.now().utc_ms;
+        let heads = now - self.head_rechecked_ms >= HEAD_RECHECK_MS;
+        if heads {
+            self.head_rechecked_ms = now;
+        }
+        let keys: Vec<_> = self.rc_held.keys().filter(|k| heads || self.head_decided(k)).cloned().collect();
+        for k in keys {
+            for e in self.rc_held.remove(&k).unwrap_or_default() {
+                self.ingest_event(&e, None);
+            }
         }
     }
 
@@ -1202,18 +1386,26 @@ impl<C: Clock> Service<C> {
     /// Rule RC per turn: who typed this prompt, from its own record near the transcript's end (`projects::turn_at`).
     /// Measured 2026-11-08: the record is written 28 ms to 2.1 s before the core gets the prompt (101 of 102 turns).
     /// An event with no transcript (an older hook that set `projects` itself) cannot be read: not the person's.
-    fn rc_prompt_turn(&self, ev: &EventV1) -> crate::projects::Turn {
+    fn rc_prompt_turn(&mut self, ev: &EventV1, marker: bool) -> crate::projects::Turn {
         use crate::projects::{TAIL_BYTES, Turn, turn_at};
+        if self.rc_force_own.remove(&ev.event_id) {
+            return Turn::Own; // decided already: a missing record counts for a person outside Projects sessions
+        }
         let Some(t) = ev.transcript.as_deref() else { return Turn::Other };
         let at = parse_rfc3339_ms(&ev.ts).unwrap_or_else(|| self.clock.now().utc_ms);
         let started = std::time::Instant::now();
-        let turn = turn_at(std::path::Path::new(t), at, TAIL_BYTES);
+        let mut turn = turn_at(std::path::Path::new(t), at, TAIL_BYTES);
+        if turn == Turn::Unmarked {
+            // No `turnOrigin` at all: an older Claude Code. Inside a Projects session that is Claude's own relay
+            // (the brief that starts a Remote Control session has none); elsewhere it is a person typing.
+            turn = if marker { Turn::Other } else { Turn::Own };
+        }
         let name = match turn {
             Turn::Own => "own",
-            Turn::Other => "other",
+            Turn::Other | Turn::Unmarked => "other",
             Turn::Unknown => "unknown",
         };
-        info!(ms = started.elapsed().as_millis() as u64, turn = name, "rc.turn");
+        info!(ms = started.elapsed().as_millis() as u64, turn = name, projects = marker, "rc.turn");
         turn
     }
 
@@ -1222,55 +1414,17 @@ impl<C: Clock> Service<C> {
     fn automated(&mut self, ev: &EventV1) -> Result<Gate, StoreError> {
         let (surface, session) = (ev.surface.as_str(), ev.surface_session_id.as_str());
         let rc_key = (surface.to_owned(), session.to_owned());
-        if ev.projects || self.projects_session(ev) {
-            // Rule RC: a claude.ai Projects / Remote Control session. Per turn, not per session (Imran 2026-11-08: the
-            // whole session was set aside although he typed 33 of its 40 turns, on the laptop and the phone): a turn
-            // the person typed counts on any device; Claude's relayed briefs and other sessions' messages do not.
-            let k = ev.cwd.as_deref().map(folder_key).unwrap_or_default();
-            if self.store.folder_rules_now()?.get(&k).map(String::as_str) != Some("include") {
-                // Prompts held while the head was unwritten, or while their own record was not yet found: decided
-                // now, in order. At a Stop every record of the turn is written, so one still not found is not counted.
-                let stop = matches!(ev.body, EventBody::Stop(_));
-                let mut again = vec![];
-                for e in self.rc_held.remove(&rc_key).unwrap_or_default() {
-                    match self.rc_prompt_turn(&e) {
-                        crate::projects::Turn::Own => self.ingest_inner(&e, None)?,
-                        crate::projects::Turn::Unknown if !stop => again.push(e),
-                        _ => {
-                            self.rc_own.insert(rc_key.clone(), false);
-                        }
-                    }
-                }
-                if !again.is_empty() {
-                    self.rc_held.insert(rc_key.clone(), again);
-                }
-                let own = match &ev.body {
-                    EventBody::Prompt(_) => match self.rc_prompt_turn(ev) {
-                        crate::projects::Turn::Own => true,
-                        crate::projects::Turn::Other => false,
-                        crate::projects::Turn::Unknown => {
-                            self.note_projects_folder(k);
-                            if self.rc_held.len() >= MAX_HELD {
-                                self.rc_held.clear();
-                            }
-                            self.rc_held.entry(rc_key).or_default().push(ev.clone());
-                            return Ok(Gate::Skip("rc-pending"));
-                        }
-                    },
-                    // A turn end belongs to the turn its prompt started.
-                    EventBody::Stop(_) => self.rc_own.get(&rc_key).copied().unwrap_or(false),
-                };
-                if let EventBody::Prompt(_) = ev.body {
-                    if self.rc_own.len() >= 4096 {
-                        self.rc_own.clear();
-                    }
-                    self.rc_own.insert(rc_key.clone(), own);
-                }
-                if !own {
-                    self.note_projects_folder(k);
-                    return Ok(Gate::Skip("projects"));
-                }
-            }
+        let marker = ev.projects || self.projects_session(ev);
+        // Who typed the turn, from its own transcript record (Claude Code only: the only tool whose hook names a
+        // transcript). Imran 2026-11-08, "regardless of the surface": a turn a person typed counts on any device; a
+        // relayed brief, another session's message, a scheduled run or a turn the desktop app started does not
+        // (829 transcripts on the laptop, 2026-11-09: 1 `scheduled`, 14 desktop `sdk` turns in sessions with no
+        // Projects marker were counted). A session whose head is still unwritten waits below (`rc_unsettled`).
+        if (marker || (ev.transcript.is_some() && !self.rc_unsettled(ev)))
+            && !self.rc_included(ev)?
+            && let Some(gate) = self.typed_gate(ev, marker)?
+        {
+            return Ok(gate);
         }
         if let Some(k) = ev.cwd.as_deref().filter(|c| is_aiq_check_folder(c)).map(folder_key) {
             // Rule AIQ: AIQ's own check and probe folders, every event, unless included. The folder gets a
@@ -1848,6 +2002,7 @@ impl<C: Clock> Service<C> {
             },
             agent_actions: Some(self.actions_status()),
             tip_funnel: crate::funnel::tip_funnels(&self.store, self.clock.now()).ok(),
+            aside: aside_now(&self.store, self.clock.now()).unwrap_or_default(),
             coach: self.coach.as_ref().map(|c| {
                 let mode = coaching::mode(&self.store);
                 CoachStatus {

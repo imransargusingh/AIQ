@@ -68,13 +68,17 @@ impl Env {
     fn status(&self) -> String {
         String::from_utf8(self.run(&["status"], b"").stdout).unwrap()
     }
-    /// A terminal session's transcript as Claude Code has written it by the prompt hook: a human user record, so
-    /// rule RC settles "not Projects" at once and the prompt is stored without waiting for the Stop (DC-035).
+    /// A terminal session's transcript as Claude Code has written it by the prompt hook: the prompt's own user record,
+    /// typed by a person and stamped now, so rule RC settles "not Projects" at once (DC-035) and the per-turn rule
+    /// counts the turn without waiting (DC-043).
     fn transcript(&self) -> String {
         let t = self.dir.path().join("t.jsonl");
-        if !t.exists() {
-            std::fs::write(&t, "{\"type\":\"user\",\"turnOrigin\":\"human\",\"entrypoint\":\"cli\"}\n").unwrap();
-        }
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64;
+        let ts = aiq_core::sysclock::format_rfc3339_ms(now);
+        let rec =
+            format!("{{\"type\":\"user\",\"turnOrigin\":\"human\",\"entrypoint\":\"cli\",\"timestamp\":\"{ts}\"}}\n");
+        let mut f = std::fs::OpenOptions::new().create(true).append(true).open(&t).unwrap();
+        std::io::Write::write_all(&mut f, rec.as_bytes()).unwrap();
         t.to_string_lossy().into_owned()
     }
     fn prompt(&self, session: &str, text: &str, pid: &str) -> Output {

@@ -166,15 +166,7 @@ pub struct Starting {
     pub working: bool,
 }
 
-/// One surface's newest activity that AIQ left out as automated (see `Snapshot::aside`).
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct Aside {
-    pub surface: String,
-    /// Up to 5 minutes stale (the core rewrites it at most that often, `Service::note_aside`).
-    pub last_ms: i64,
-    /// The rule: projects, aiq-check, session, folder, template, burst.
-    pub reason: String,
-}
+pub use aiq_contracts::frames::AsideNow as Aside;
 
 /// One surface's newest event (see `Snapshot::seen`).
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -1109,20 +1101,7 @@ fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()>
     }
     if store.has_table("setting_change").map_err(|e| e.to_string())? {
         // Activity left out as automated, so the card does not call a busy tool idle (Imran 2026-11-08).
-        let prefix = aiq_core::service::ASIDE_KEY;
-        s.aside = store
-            .settings_with_prefix(prefix)
-            .map_err(|e| e.to_string())?
-            .into_iter()
-            .filter_map(|(k, v)| {
-                let (ms, reason) = v.split_once(' ')?;
-                Some(Aside {
-                    surface: k[prefix.len()..].to_owned(),
-                    last_ms: ms.parse().ok()?,
-                    reason: reason.to_owned(),
-                })
-            })
-            .collect();
+        s.aside = aiq_core::service::aside_now(store, now).map_err(|e| e.to_string())?;
     }
     {
         let mut st = q(c.prepare(

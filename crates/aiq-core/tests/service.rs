@@ -1049,18 +1049,22 @@ fn the_core_reads_a_prompts_transcript_once_per_session_for_rule_rc() {
     let plain = d.path().join("cli.jsonl");
     std::fs::write(&plain, "{\"type\":\"user\",\"turnOrigin\":\"human\",\"entrypoint\":\"cli\"}\n").unwrap();
     let mut h = H::new();
-    let send = |h: &mut H, session: &str, t: &std::path::Path| {
+    // The person's typed record, stamped as Claude Code stamps it: when the prompt was sent.
+    let send = |h: &mut H, session: &str, t: &std::path::Path, head: &str| {
         let mut e = h.prompt(session, "do the thing");
         e.cwd = Some("C:\\Repos\\AIQ".into());
         e.transcript = Some(t.to_string_lossy().into_owned());
+        if !head.is_empty() {
+            let typed = format!("{{\"type\":\"user\",\"turnOrigin\":\"human\",\"timestamp\":\"{}\"}}\n", e.ts);
+            std::fs::write(t, format!("{head}{typed}")).unwrap();
+        }
         h.svc().ingest(&e, None);
     };
-    send(&mut h, "rc1", &marked);
-    send(&mut h, "cli1", &plain);
+    send(&mut h, "rc1", &marked, "");
+    send(&mut h, "cli1", &plain, "{\"type\":\"user\",\"turnOrigin\":\"human\",\"entrypoint\":\"cli\"}\n");
     assert_eq!(h.prompts(), 1, "the Projects session is set aside, the terminal one recorded");
-    // The answer is remembered: a changed file is not read again for the same session.
-    std::fs::write(&plain, "{\"type\":\"user\",\"turnOrigin\":\"peer\"}\n").unwrap();
-    send(&mut h, "cli1", &plain);
+    // The answer is remembered: a changed head is not read again for the same session.
+    send(&mut h, "cli1", &plain, "{\"type\":\"user\",\"turnOrigin\":\"peer\"}\n");
     assert_eq!(h.prompts(), 2);
     assert_eq!(h.svc().status().automated_folders, vec![("c:\\repos\\aiq".to_string(), "projects".to_string())]);
 }
@@ -1119,7 +1123,7 @@ fn a_persons_own_turns_in_a_remote_control_session_count_and_relayed_ones_do_not
     assert_eq!((h.prompts(), h.stops()), (1, 1), "Claude's relayed turn is not counted");
     // Home's card says the newest activity was left out, and by which rule.
     let noted = h.svc().store().setting("aside.claude-code").unwrap().expect("set-aside activity noted");
-    assert!(noted.ends_with(" projects"), "{noted}");
+    assert_eq!(aiq_core::service::parse_aside(&noted).1, "projects", "{noted}");
     // 3. The record lands after the hook: the prompt waits, then counts at its Stop.
     let e = prompt(&mut h, "now the api");
     h.svc().ingest(&e, None);
@@ -1133,6 +1137,59 @@ fn a_persons_own_turns_in_a_remote_control_session_count_and_relayed_ones_do_not
     h.svc().ingest(&e, None);
     stop(&mut h);
     assert_eq!((h.prompts(), h.stops()), (2, 2));
+}
+
+// Per-turn rule in every Claude Code session (Imran 2026-11-09, "count only turns a person typed"): 829 transcripts on
+// the laptop held a scheduled run and 14 turns the desktop app started, in sessions with no Projects marker, and both
+// were counted as his work. Only `turnOrigin = "human"` counts; a record not written yet is re-read shortly.
+#[test]
+fn only_typed_turns_count_in_sessions_without_the_projects_marker() {
+    let d = tempfile::tempdir().unwrap();
+    let mut h = H::new();
+    let rec = |origin: &str, ts: &str| {
+        format!(
+            "{{\"type\":\"user\",\"turnOrigin\":\"{origin}\",\"entrypoint\":\"claude-desktop\",\"message\":{{\"content\":\"x\"}},\"timestamp\":\"{ts}\"}}\n"
+        )
+    };
+    let run = |h: &mut H, session: &str, origin: Option<&str>| {
+        let t = d.path().join(format!("{session}.jsonl"));
+        let mut e = h.prompt(session, "do the thing");
+        e.cwd = Some("C:\\Repos\\Thatcher".into());
+        e.transcript = Some(t.to_string_lossy().into_owned());
+        let body = origin.map(|o| rec(o, &e.ts)).unwrap_or_default();
+        let mut f = std::fs::OpenOptions::new().create(true).append(true).open(&t).unwrap();
+        std::io::Write::write_all(&mut f, body.as_bytes()).unwrap();
+        h.svc().ingest(&e, None);
+        let mut s = e.clone();
+        s.event_id = format!("{}-s", e.event_id);
+        s.body = EventBody::Stop(StopPayload { stop_hook_active: false, prompt_id: None });
+        s
+    };
+    let stop = run(&mut h, "sched", Some("scheduled"));
+    h.svc().ingest(&stop, None);
+    let stop = run(&mut h, "app", Some("sdk"));
+    h.svc().ingest(&stop, None);
+    assert_eq!((h.prompts(), h.stops()), (0, 0), "a scheduled run and an app-started turn are not counted");
+    let noted = h.svc().store().setting("aside.claude-code").unwrap().unwrap();
+    let (_, reason, day, n) = aiq_core::service::parse_aside(&noted);
+    assert_eq!((reason.as_str(), day), ("not-typed", Some(h.clock.now().local_day())), "{noted}");
+    assert!(n >= 1, "today's left-out prompts are counted: {noted}");
+    let st = h.svc().status();
+    assert_eq!(st.aside.len(), 1, "status carries the same row Home reads");
+    let stop = run(&mut h, "mine", Some("human"));
+    h.svc().ingest(&stop, None);
+    assert_eq!((h.prompts(), h.stops()), (1, 1), "a typed turn and its end count");
+    // The record lands after the hook: the prompt waits, and a re-read a moment later counts it before its Stop.
+    let late = run(&mut h, "late", None);
+    assert_eq!(h.prompts(), 1);
+    assert!(h.svc().held_wait().is_some(), "the core re-reads soon");
+    let t = d.path().join("late.jsonl");
+    std::fs::write(&t, rec("human", &late.ts)).unwrap();
+    h.svc().recheck_held();
+    assert_eq!(h.prompts(), 2, "counted on the re-read, so the card shows it while the turn runs");
+    assert!(h.svc().held_wait().is_none());
+    h.svc().ingest(&late, None);
+    assert_eq!(h.stops(), 2);
 }
 
 // Laptop 2026-11-02 21:28Z: a Remote Control session's first prompt found its transcript not yet written,
@@ -1179,7 +1236,11 @@ fn an_unwritten_transcript_head_is_read_again_until_it_settles_rule_rc() {
     }
     std::fs::write(&never, format!("{queue}{marker}")).unwrap();
     send(&mut h, "s2", &never, "task 8");
-    assert_eq!(h.prompts(), 9, "stopped looking after 8 unsettled reads; the held ones went in first");
+    assert_eq!(h.prompts(), 8, "stopped looking after 8 unsettled reads; the held ones went in first");
+    // "task 8" has no typed record yet: it waits, then counts as the person's (not a Projects session).
+    h.clock.advance(10_000);
+    h.svc().recheck_held();
+    assert_eq!(h.prompts(), 9, "a missing record never loses a person's turn outside Projects sessions");
 
     // A terminal session whose head is not written at its first prompt: the prompt waits for the Stop, then
     // both are recorded, in order.
