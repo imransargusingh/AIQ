@@ -74,6 +74,10 @@ impl Paths {
     pub fn spool(&self) -> PathBuf {
         self.data.join("spool.jsonl")
     }
+    /// One file per spooled frame (`spool::append_frame`).
+    pub fn spool_dir(&self) -> PathBuf {
+        self.data.join("spool.d")
+    }
     pub fn spool_draining(&self) -> PathBuf {
         self.data.join("spool.draining.jsonl")
     }

@@ -252,7 +252,8 @@ mod tests {
         let p = Paths::at(d.path());
         p.ensure_dirs().unwrap();
         std::fs::write(p.spool(), "x\n").unwrap();
+        crate::spool::append_frame(&p.spool_dir(), "e1", "x", crate::spool::MAX_SPOOL_BYTES).unwrap();
         forget_all(&p, Duration::from_millis(50)).unwrap();
-        assert!(!p.spool().exists());
+        assert!(!p.spool().exists() && !p.spool_dir().exists());
     }
 }

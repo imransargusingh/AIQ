@@ -198,6 +198,15 @@ impl Drop for Env {
     }
 }
 
+/// The frames the hook spooled, one file each in `spool.d` (DC-048), oldest first.
+fn spooled(home: &std::path::Path) -> Vec<String> {
+    let mut v: Vec<_> = std::fs::read_dir(home.join("spool.d"))
+        .map(|d| d.flatten().map(|f| f.path()).filter(|p| p.extension().is_some_and(|x| x == "jsonl")).collect())
+        .unwrap_or_default();
+    v.sort();
+    v.iter().map(|p| std::fs::read_to_string(p).unwrap()).collect()
+}
+
 fn chrono_ms() -> i64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64
 }
@@ -353,8 +362,7 @@ fn e2e_copilot_core_down_hook_and_statusline_exit_zero_silently() {
     assert!(o.status.success() && o.stdout.is_empty());
     e.agent_stop("c1"); // agentStop never starts the core
     assert!(e.status().contains("not running"));
-    let spool = std::fs::read_to_string(e.home().join("spool.jsonl")).unwrap();
-    assert_eq!(spool.lines().count(), 1);
+    assert_eq!(spooled(&e.home()).len(), 1);
 }
 
 #[test]
