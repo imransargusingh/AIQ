@@ -17,7 +17,7 @@ import { Setup } from "./pages/Setup";
 import { Kind } from "./pages/Kind";
 import { STEPS, Tour, TourOffer, exampleSnapshot } from "./tour";
 import { THEMES, readTheme, saveTheme, type Theme } from "./theme";
-import { CHECK_POLL_MS, CHECK_WAIT_MS, awayInstallDue, checkOutcome, outcomeText, ver, type UpdatePhase } from "./updateNow";
+import { CHECK_POLL_MS, CHECK_WAIT_MS, checkOutcome, minuteAsk, outcomeText, ver, type UpdatePhase } from "./updateNow";
 
 const REFRESH_MS = 15_000;
 /** While the core starts (Home started it, or it is opening its store), look again soon. */
@@ -214,16 +214,14 @@ export function App() {
   // when the window gets focus, ask the shell to check. It checks only when one is due (15 minutes since the last,
   // an hour after a failed check or one that needed GitHub's API; never with updates off), so the ask is a file
   // read; the next snapshot read shows the update box once the download is checked.
+  // The minute's ask itself is in the away-install effect below: one ask a minute, so a check and an install never
+  // start together (laptop 2026-11-09 02:52:28Z: they did, 18 ms apart, and the install gave up on the lock).
   useEffect(() => {
     const ask = () => void api.runUpdate("check_if_due").catch(() => undefined);
     // On open the bar is 10 minutes since the last check, not 15 (update::HOME_OPEN_MS).
     void api.runUpdate("check_on_open").catch(() => undefined);
-    const t = setInterval(ask, UPDATE_ASK_MS);
     window.addEventListener("focus", ask);
-    return () => {
-      clearInterval(t);
-      window.removeEventListener("focus", ask);
-    };
+    return () => window.removeEventListener("focus", ask);
   }, []);
 
   // Away install (design auto-update U5n): under "Update automatically", a waiting update installs once this
@@ -243,8 +241,7 @@ export function App() {
     mark();
     const ask = () => {
       const { snap: s, phase, tour: touring } = live.current;
-      if (!s || touring || !awayInstallDue(s.update, away.current, Date.now(), phase)) return;
-      void api.runUpdate("install_if_away").catch(() => undefined);
+      void api.runUpdate(minuteAsk(s?.update ?? null, away.current, Date.now(), phase, touring)).catch(() => undefined);
     };
     const t = setInterval(ask, UPDATE_ASK_MS);
     window.addEventListener("focus", mark);

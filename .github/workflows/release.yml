@@ -344,13 +344,36 @@ jobs:
           powershell -ExecutionPolicy Bypass -File $up -Check -Apply -Feed $feed2
           if ((St).state -ne 'rolled_back' -or (Test-Path (Join-Path $aiq 'update'))) { Fail "reinstalled after rollback: $((St) | ConvertTo-Json -Compress)" }
 
-          # Another run holds the lock (AIQ home's own check) when AIQ home closes itself for an install: the run
-          # changes nothing and opens AIQ home again, so Home is never left closed (design auto-update U5n).
+          # AIQ-UPDATE-LOCK: another run (AIQ home's own check) holds the lock when AIQ home closes itself for an
+          # install. The install waits for it and goes on (laptop 2026-11-09 02:52:28Z: it gave up and 0.1.29 stayed
+          # waiting)...
           Get-Process -Name 'aiq-home' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
           Start-Sleep -Seconds 1
+          $gaveUp = @(Select-String -Path $ulog -Pattern 'Another AIQ update is running').Count
           $held = [IO.File]::Open((Join-Path $aiq 'update.lock'), 'OpenOrCreate', 'ReadWrite', 'None')
           try {
-            powershell -ExecutionPolicy Bypass -File $up -Apply -Relaunch
+            $run = Start-Process -PassThru -WindowStyle Hidden -FilePath powershell -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $up, '-Apply', '-Relaunch', '-LockWaitSec', '60'
+            Start-Sleep -Seconds 3
+            if ($run.HasExited) { Fail 'apply with the lock held did not wait for it' }
+          } finally { $held.Dispose() }
+          if (-not $run.WaitForExit(30000)) { Fail 'apply did not go on after the lock was released' }
+          if (-not (Select-String -Quiet -Path $ulog -Pattern 'AIQ-UPDATE-LOCK: the other update run finished; going on\.')) { Fail 'wait for the lock not logged' }
+          if (-not (Select-String -Quiet -Path $ulog -Pattern 'AIQ-UPDATE-LOCK: an update run already holds the lock')) { Fail 'start of the wait not logged' }
+          if (@(Select-String -Path $ulog -Pattern 'Another AIQ update is running').Count -ne $gaveUp) { Fail 'apply gave up on a lock that was released' }
+          $homeBack = $null
+          foreach ($i in 1..25) {
+            $homeBack = Get-Process -Name 'aiq-home' -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq (Join-Path $aiq 'bin\aiq-home.exe') }
+            if ($homeBack) { break }
+            Start-Sleep -Milliseconds 200
+          }
+          if (-not $homeBack) { Fail 'AIQ home left closed after the install waited for the lock' }
+          $homeBack | Stop-Process -Force
+          Start-Sleep -Seconds 1
+          # ...and when the other run outlasts the wait, it changes nothing and opens AIQ home again, so Home is never
+          # left closed (design auto-update U5n).
+          $held = [IO.File]::Open((Join-Path $aiq 'update.lock'), 'OpenOrCreate', 'ReadWrite', 'None')
+          try {
+            powershell -ExecutionPolicy Bypass -File $up -Apply -Relaunch -LockWaitSec 2
             if ($LASTEXITCODE -ne 0) { Fail "apply with the lock held: exit $LASTEXITCODE" }
           } finally { $held.Dispose() }
           if (-not (Select-String -Quiet -Path $ulog -Pattern 'Another AIQ update is running')) { Fail 'held lock not logged' }

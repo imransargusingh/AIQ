@@ -249,6 +249,31 @@ pub fn begin_away_install(paths: &Paths, now_ms: i64, st: &State, mode: Option<&
     true
 }
 
+/// What AIQ home's once-a-minute ask starts: never both an install and a check. Laptop, 2026-11-09 02:52:28Z:
+/// Home's check and its away install started 18 ms apart, the check took the script's lock, the install logged
+/// "Another AIQ update is running. Nothing changed." and the next try waited 30 minutes; 0.1.29 stayed waiting.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HomeStep {
+    /// Install the waiting update (Home has been away `AWAY_INSTALL_MS`); the try is recorded.
+    AwayInstall,
+    /// Look for a newer release (download only).
+    Check,
+    Nothing,
+}
+
+/// The step for one minute. `away`: Home has been in the background `AWAY_INSTALL_MS` (Home measures that). An
+/// away install that is not due (an earlier try in the last `AWAY_RETRY_MS`, or "Ask first") falls back to the
+/// check, so Home keeps finding newer releases while it sits in the background.
+pub fn home_step(paths: &Paths, now_ms: i64, st: &State, mode: Option<&str>, away: bool) -> HomeStep {
+    if away && begin_away_install(paths, now_ms, st, mode) {
+        HomeStep::AwayInstall
+    } else if home_check_due(now_ms, st, mode) {
+        HomeStep::Check
+    } else {
+        HomeStep::Nothing
+    }
+}
+
 /// The away install could not start: AIQ home stays open, so the marker must not minimise a later open.
 pub fn cancel_reopen_minimized(paths: &Paths) {
     let _ = std::fs::remove_file(reopen_minimized_path(paths));
@@ -625,6 +650,33 @@ mod tests {
         assert!(begin_away_install(&paths, now + 2 * AWAY_RETRY_MS, &w, None));
         cancel_reopen_minimized(&paths);
         assert!(!take_reopen_minimized(&paths, now + 2 * AWAY_RETRY_MS + 1));
+    }
+
+    #[test]
+    fn home_minute_starts_an_away_install_or_a_check_never_both() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::at(dir.path());
+        // A waiting update and a check due on the same minute (laptop 2026-11-09 02:52:28Z): only the install.
+        let mut w = st(Some("waiting"), Some(T0));
+        w.staged = Some("aiq-0.1.29-windows-x64.zip".into());
+        let now = t0() + HOME_EVERY_MS;
+        assert!(home_check_due(now, &w, None), "the check is due too");
+        assert_eq!(home_step(&paths, now, &w, None, true), HomeStep::AwayInstall);
+        // The next minutes: the try holds the install back, so Home checks instead, and stays quiet once checked.
+        assert_eq!(home_step(&paths, now + 60_000, &w, None, true), HomeStep::Check);
+        let mut checked = w.clone();
+        checked.checked_at = Some(crate::sysclock::format_rfc3339_ms(now + 60_000));
+        assert_eq!(home_step(&paths, now + 120_000, &checked, None, true), HomeStep::Nothing);
+        // In the window (not away): only the check, and no try is recorded.
+        let dir2 = tempfile::tempdir().unwrap();
+        let paths2 = Paths::at(dir2.path());
+        assert_eq!(home_step(&paths2, now, &w, None, false), HomeStep::Check);
+        assert!(!away_try_path(&paths2).exists());
+        // "Ask first": away never installs; the check still runs.
+        assert_eq!(home_step(&paths2, now, &w, Some("ask"), true), HomeStep::Check);
+        assert!(!away_try_path(&paths2).exists());
+        // Updates off: nothing.
+        assert_eq!(home_step(&paths2, now, &w, Some("off"), true), HomeStep::Nothing);
     }
 
     #[test]

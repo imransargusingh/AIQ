@@ -796,3 +796,22 @@ summary: >-
   any step types a digit or misses one, and checks the tips step names every tool that shows tips. The e2e asserts the
   example data fills what each step names (a growing habit under the ladder map and on Habits, a set-aside folder
   with Count this folder).
+
+### DC-045 — Two timers started together on the same period race for one lock, and the loser gives up
+- **Signature:** 2026-11-09 02:52:28Z, laptop on 0.1.28 with 0.1.29 waiting: AIQ home's check (`check_if_due`) and
+  its away install (`install_if_away`) ran from two `setInterval`s of 60 s started in the same mount, so they fire
+  within milliseconds. When a check was due the two started 18 ms apart; the check took `update.lock`, the install
+  logged "Another AIQ update is running. Nothing changed.", Home reopened, and the recorded try held the next one
+  back 30 minutes. Measured by the alpha thread from upgrade-log.txt and home.log.
+- **Why it survives:** each path is correct alone and each test runs one of them; the lock is correct; "gave up,
+  nothing changed" looks like a designed hold, and the state stays `waiting` with no error.
+- **Sweep:** other paths that start upgrade.ps1: the core's kicker (`Check -Apply`, no Home involved, giving up is
+  harmless: it retries hourly), Install now and Go back (Home closed itself, so they now wait for the lock too), the
+  Settings check (a check: giving up is harmless). Other paired Home timers: the snapshot refresh and the
+  starting-core retry only read; neither starts a run.
+- **Control (tests):** `update::tests::home_minute_starts_an_away_install_or_a_check_never_both` (one minute's ask
+  starts one run), `updateNow.test.ts` minuteAsk (Home sends one ask a minute), release.yml smoke
+  "AIQ-UPDATE-LOCK" (an install AIQ home closed itself for waits for a held lock and goes on; one that outlasts the
+  wait reopens Home).
+- **Rule:** work that takes a shared lock is started from one scheduler, and a run that already closed something
+  the person had open waits for the lock (bounded) rather than giving up.
