@@ -1283,7 +1283,10 @@ impl<C: Clock> Service<C> {
         for e in self.rc_held.remove(&key).unwrap_or_default() {
             let aged = parse_rfc3339_ms(&e.ts).is_some_and(|t| now - t >= TURN_WAIT_MS);
             match self.rc_prompt_turn(&e, marker) {
-                Turn::Own => self.ingest_inner(&e, None)?,
+                Turn::Own => {
+                    self.rc_force_own.insert(e.event_id.clone()); // decided: not read a second time on the way in
+                    self.ingest_inner(&e, None)?;
+                }
                 Turn::Unknown if !stop && (marker || !aged) => again.push(e),
                 Turn::Unknown if !marker => {
                     self.rc_force_own.insert(e.event_id.clone());
