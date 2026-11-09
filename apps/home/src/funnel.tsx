@@ -2,13 +2,11 @@
 // with no tip. Tips stopped for four days (2026-11-04 to 11-08) and nothing showed it. Every number and every reason's
 // words come from the core's reader (aiq_core::funnel), so Home and `aiq status` agree.
 import { useState } from "react";
-import { plural, sentence } from "./format";
-import type { Snapshot, TipDrought, TipFunnel } from "./types";
+import { plural, sentence, toolName, when } from "./format";
+import type { FunnelTask, Snapshot, TipDrought, TipFunnel } from "./types";
 import type { Ctx } from "./ui";
 
 const DAY = 86_400_000;
-
-export const shownCount = (f: TipFunnel) => f.shown.reduce((n, s) => n + s.count, 0);
 
 /** One sentence that says what the week's funnel means: how many tasks had a tip, and the main reason the rest didn't. */
 export function funnelInsight(f: TipFunnel): string {
@@ -16,7 +14,7 @@ export function funnelInsight(f: TipFunnel): string {
   const ready = `${f.tip_found} of ${plural(f.tasks, "new task")} had a tip ready this week`;
   const top = f.no_tip[0];
   if (!top || f.tip_found === f.tasks) return `${ready}.`;
-  return `${ready}. Main reason the others didn't: ${top.words} (${top.count}).`;
+  return `${ready}. Most common reason: ${top.words} (${top.count}).`;
 }
 
 /** "yesterday" or "on Fri 6 Nov", for a YYYY-MM-DD local day. */
@@ -74,14 +72,15 @@ interface Stage {
   n: number;
 }
 
-/** The stages as bars; the step that lost the most is marked. Shown can pass Tip found: mid-task tips count too. */
+/** The stages as bars, each a subset of the one above (Shown and Opened follow the Tip ready tasks only); the step
+ * that lost the most is marked. */
 export function stages(f: TipFunnel): { stages: Stage[]; biggestLoss: number | null } {
   const s: Stage[] = [
     { label: "New tasks", n: f.tasks },
-    { label: "Kind known", n: f.kind_known },
+    { label: "Kind of task clear", n: f.kind_known },
     { label: "Tip ready", n: f.tip_found },
-    { label: "Shown", n: shownCount(f) },
-    { label: "Opened", n: f.opened },
+    { label: "Tip shown", n: f.tip_shown ?? 0 },
+    { label: "Tip opened", n: f.tip_opened ?? 0 },
   ];
   let biggestLoss: number | null = null;
   let most = 0;
@@ -92,19 +91,34 @@ export function stages(f: TipFunnel): { stages: Stage[]; biggestLoss: number | n
   return { stages: s, biggestLoss };
 }
 
+/** The tasks lost at a bar: before the kind was clear (1), or with the kind clear but no tip (2). */
+export const lostAt = (f: TipFunnel, stage: number): FunnelTask[] => (f.lost ?? []).filter((t) => t.kind_known === (stage === 2));
+
+/** "Also shown this week: 1 tip from other work." Tips outside these bars, so Shown never passes Tip ready. */
+export function otherLine(f: TipFunnel): string | null {
+  const n = f.other_shown ?? 0;
+  return n > 0 ? `Also shown this week: ${plural(n, "tip")} from earlier tasks or mid-task.` : null;
+}
+
 /** Tips page: the week's funnel, why tasks had no tip, and why ready tips were held. */
 export function TipFunnelCard({ snap }: { snap: Snapshot }) {
   const f = snap.tip_funnel.week;
+  const [open, setOpen] = useState(false);
   if (f.tasks === 0 && f.tips === 0) return null;
   const { stages: st, biggestLoss } = stages(f);
   const max = Math.max(1, ...st.map((s) => s.n));
   const held = [...f.held];
   if (f.expired > 0) held.push({ code: "expired", words: "ready, but the session ended first", count: f.expired });
+  const top = f.no_tip[0];
+  const help = top && f.tip_found < f.tasks ? top.help : "";
+  const lost = biggestLoss == null ? [] : lostAt(f, biggestLoss);
+  const other = otherLine(f);
   return (
     <section className="group" aria-labelledby="tf">
       <h2 id="tf">Tips this week</h2>
       <div className="card funnel">
         <p className="tf-insight">{funnelInsight(f)}</p>
+        {help && <p className="tf-help">{help}</p>}
         <ol className="tf-bars">
           {st.map((s, i) => (
             <li key={s.label} className={i === biggestLoss ? "tf-loss" : undefined}>
@@ -113,10 +127,35 @@ export function TipFunnelCard({ snap }: { snap: Snapshot }) {
                 <span className="tf-bar" style={{ width: `${(100 * s.n) / max}%` }} />
               </span>
               <span className="tf-n">{s.n}</span>
-              <span className="tf-tag">{i === biggestLoss ? "Most lost here" : ""}</span>
+              <span className="tf-tag">
+                {i === biggestLoss && lost.length > 0 && (
+                  <button className="link tf-more" aria-expanded={open} aria-controls="tf-lost" onClick={() => setOpen(!open)}>
+                    {open ? "Hide tasks" : `Most lost here: see ${lost.length === 1 ? "the task" : `the ${lost.length} tasks`}`}
+                  </button>
+                )}
+                {i === biggestLoss && lost.length === 0 && "Most lost here"}
+              </span>
             </li>
           ))}
         </ol>
+        {other && <p className="meta">{other}</p>}
+        {open && lost.length > 0 && (
+          <div className="tf-why" id="tf-lost">
+            <h3>{biggestLoss === 1 ? "Tasks where the kind wasn't clear" : "Tasks with the kind clear, but no tip"}</h3>
+            <ul className="tf-lost">
+              {lost.map((t) => (
+                <li key={t.task_id}>
+                  <a href={`#task/${encodeURIComponent(t.task_id)}`}>
+                    <span className="tf-when">{when(t.first_ms, snap.now_ms, snap.offset_min)}</span>
+                    <span className="meta">{toolName(t.surface)}</span>
+                    <span className="grow">{sentence(t.words)}</span>
+                    <span aria-hidden="true">›</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         {f.no_tip.length > 0 && (
           <div className="tf-why">
             <h3>Why tasks had no tip</h3>

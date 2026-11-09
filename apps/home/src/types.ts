@@ -70,6 +70,13 @@ export interface TipFunnel {
   shown: FunnelCount[];
   opened: number;
   answered: number;
+  /** Of the tip_found tasks: tip shown, and of those, opened. Never more than tip_found. */
+  tip_shown: number;
+  tip_opened: number;
+  /** Other tips shown in the period: mid-task tips, and tips for tasks from before the funnel counted. */
+  other_shown: number;
+  /** Tasks with no tip, newest first (capped in Rust). */
+  lost: FunnelTask[];
 }
 
 /** A count with its code and plain words (the words come from Rust: one definition). */
@@ -77,6 +84,19 @@ export interface FunnelCount {
   code: string;
   words: string;
   count: number;
+  /** What helps, when the person can act on it; empty otherwise. */
+  help?: string;
+}
+
+/** A new task that got no tip, and why. */
+export interface FunnelTask {
+  task_id: string;
+  surface: string;
+  first_ms: number;
+  code: string;
+  words: string;
+  /** Lost at "Tip ready" (true) or at "Kind of task clear" (false). */
+  kind_known: boolean;
 }
 
 export interface TipDrought {

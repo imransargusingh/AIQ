@@ -822,3 +822,37 @@ summary: >-
   wait reopens Home).
 - **Rule:** work that takes a shared lock is started from one scheduler, and a run that already closed something
   the person had open waits for the lock (bounded) rather than giving up.
+
+### DC-046 — A funnel stage counted from a different population than the stages above it
+- **Signature:** 2026-11-09, Imran's Tips page: "0 of 6 new tasks had a tip ready this week" over bars Tip ready 0,
+  Shown 1. New tasks → Kind known → Tip ready counted tasks from `tip_path` (recorded only since #184, 11-08);
+  Shown and Opened counted every card first decided in the 7 days. The one shown card (11-03 15:19Z, Copilot CLI)
+  belonged to a task with no `tip_path` row. Measured read-only on a copy of the laptop's aiq.db.
+- **Why it survives:** each count was right on its own, the code comment even said "Shown can pass Tip found", and
+  the fixtures had more ready tips than shown ones, so no test saw a bar grow.
+- **Sweep:** `aiq status` prints the same funnel: it now names `tip shown` (same tasks) beside the all-tips counts.
+  The drought check uses deliveries on purpose (any tip shown that day clears it). The progress ladder and habit
+  counts don't stack stages.
+- **Control (tests):** `funnel::tests::shown_and_opened_follow_the_same_tasks_so_they_never_pass_tip_ready` (the
+  laptop case), `next_rung.rs` status test (the store links a shown tip to its task through `signal`),
+  `funnel.test.ts` (every bar ≤ the one above), and the e2e checks the rendered bars never grow.
+- **Rule:** in a funnel, each stage is a subset of the one above, drawn from the same rows; anything else is named
+  on its own line, never as a bar.
+
+### DC-047 — One setting offered by two screens, each with its own copy of the choices
+- **Signature:** 2026-11-09, Imran's screenshot of first-run setup: "How many tips a day?" offered 1 / 3 / 5 (default)
+  and "At most one per session, shown when the agent pauses" after the earlier change moved Settings to
+  5 / 15 / 30 / Custom (Imran, 2026-11-07). Setup and Settings each held a literal list; the specs even recorded
+  the split ("1, 3 or 5 at setup; 5, 15, 30 … in Settings") instead of flagging it.
+- **Why it survives:** the change was asked for on one screen, and the other screen's tests pinned the old buttons
+  ("3", "5 (default)"), so they stayed green. DC-044 covered copy that restates a computed fact, not a control.
+- **Sweep:** first-run setup against Settings and the core, every step. Tips step: same picker now, rules line from
+  the core's budget (one a session, 30-min quiet, 72 h same tip). Tools step: Copilot CLI tips also show in the
+  conversation (`copilot_tip_in_chat`, default on). Analysis step already reads `judge_daily_tasks`; Privacy and
+  Your history steps match current behaviour. Specs D3 and H9 updated. Not changed: the signed-off mockup
+  (`docs/mockups/aiq-home.html`), a historical record.
+- **Control:** `apps/home/src/tipsCap.tsx` is the only place the choices (`CAPS`, `MAX_CAP`) and the rules line
+  (`TIP_RULES`) live; Settings and Setup both render `TipsCap`. The setup e2e asserts the setup group's buttons are
+  exactly 5 / 15 / 30 / Custom, Custom sets 8, and the stale sentence is gone.
+- **Rule:** a setting shown on more than one screen is one component with one list of choices; a second screen
+  never types its own.

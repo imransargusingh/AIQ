@@ -985,8 +985,19 @@ await test("setup: first run walks five steps with Back; Start only after I unde
   assert.ok(t.includes("On a work account, your organisation's policies apply"));
   await cont.click();
   assert.equal(await h1(), "How many tips a day?");
-  await page.getByRole("button", { name: "3", exact: true }).click();
-  await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Tips a day set to 3.");
+  // Reported 2026-11-09: setup kept 1 / 3 / 5 after Settings moved to 5 / 15 / 30 / Custom. Both use one picker now.
+  const capGroup = page.getByRole("group", { name: "Tips a day, across all your tools" });
+  assert.deepEqual(await capGroup.getByRole("button").allInnerTexts(), ["5", "15", "30", "Custom"]);
+  t = await page.locator("main").innerText();
+  assert.ok(t.includes("5 is the default."), t);
+  assert.ok(t.includes("at most one a session, never within 30 minutes of another, and the same tip not again for 3 days"), t);
+  assert.ok(!t.includes("when the agent pauses"), t);
+  await page.getByRole("button", { name: "15", exact: true }).click();
+  await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Tips a day set to 15.");
+  await page.getByRole("button", { name: "Custom", exact: true }).click();
+  await page.getByLabel("Tips a day, 0 to 50").fill("8");
+  await page.getByRole("button", { name: "Set", exact: true }).click();
+  await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Tips a day set to 8.");
   assert.deepEqual(await axe(page), []);
   await cont.click();
   assert.equal(await h1(), "One thing to know before you start");
@@ -1002,7 +1013,7 @@ await test("setup: first run walks five steps with Back; Start only after I unde
   await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Setup done. AIQ is on.");
   assert.equal(await page.locator("nav").count(), 1);
   const calls = await page.evaluate(() => window.__AIQ_FIXTURE__.calls.filter((c) => !String(c.args?.action ?? "").startsWith("check_")).map((c) => c.cmd).filter((c) => c !== "snapshot"));
-  assert.deepEqual(calls, ["connect_tools", "set_setting", "set_setting", "set_setting", "finish_setup"], "connected once, not again on Back");
+  assert.deepEqual(calls, ["connect_tools", "set_setting", "set_setting", "set_setting", "set_setting", "finish_setup"], "connected once, not again on Back");
   await page.context().close();
 });
 
@@ -1026,7 +1037,7 @@ await test("setup: core down keeps the default tips a day and says so; keys don'
   assert.equal(await page.locator("dialog[open]").count(), 0);
   for (let i = 0; i < 3; i++) await page.getByRole("button", { name: "Continue" }).click();
   assert.ok((await page.locator("main").innerText()).includes("AIQ is starting, so this stays at 5 for now."));
-  assert.equal(await page.getByRole("button", { name: "5 (default)", exact: true }).isDisabled(), true);
+  assert.equal(await page.getByRole("button", { name: "5", exact: true }).isDisabled(), true);
   assert.deepEqual(await axe(page), []);
   await page.context().close();
 });
@@ -1893,13 +1904,27 @@ for (const theme of ["light", "dark"]) {
     const page = await open("full", { theme: theme === "light" ? undefined : theme, hash: "#tips" });
     const card = page.locator("section[aria-labelledby=tf]");
     const insight = await card.locator(".tf-insight").textContent();
-    assert.match(insight, /^\d+ of \d+ new tasks had a tip ready this week\. Main reason the others didn't: kind of task not recognised \(\d+\)\.$/);
-    assert.equal(await card.locator(".tf-loss .tf-label").textContent(), "Kind known", "most were lost before the kind was known");
-    const why = await card.locator(".tf-why").first().innerText();
+    assert.match(insight, /^\d+ of \d+ new tasks had a tip ready this week\. Most common reason: kind of task not recognised \(\d+\)\.$/);
+    assert.match(await card.locator(".tf-help").textContent(), /^AIQ reads how a task starts\./, "what helps sits under the headline");
+    assert.equal(await card.locator(".tf-loss .tf-label").textContent(), "Kind of task clear", "most were lost before the kind was clear");
+    const ns = (await card.locator(".tf-bars .tf-n").allTextContents()).map(Number);
+    ns.slice(1).forEach((n, i) => assert.ok(n <= ns[i], `bar ${i + 1} (${n}) passes the one above (${ns[i]})`));
+    const more = card.locator("button.tf-more");
+    assert.equal(await more.textContent(), "Most lost here: see the 5 tasks");
+    assert.equal(await more.getAttribute("aria-expanded"), "false");
+    await more.click();
+    assert.equal(await more.getAttribute("aria-expanded"), "true");
+    assert.equal(await card.locator("#tf-lost li").count(), 5);
+    assert.match(await card.locator("#tf-lost li").first().innerText(), /Kind (of task not recognised|label never came back)/);
+    const why = await card.locator(".tf-why", { hasText: "Why tasks had no tip" }).innerText();
     assert.ok(why.includes("Kind labels on hold") && why.includes("Too few tasks of this kind"), why);
     assert.ok(!(await card.innerText()).toLowerCase().includes("judge"));
     assert.deepEqual(await axe(page), []);
     if (shots) await card.screenshot({ path: join(shots, `tips-funnel-${theme}.png`) });
+    const first = card.locator("#tf-lost a").first();
+    const href = await first.getAttribute("href");
+    await first.click();
+    await page.waitForFunction((h) => location.hash === h, href);
     await page.context().close();
 
     const home = await open("full", { theme: theme === "light" ? undefined : theme, hash: "#home" });

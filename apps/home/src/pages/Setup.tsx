@@ -5,13 +5,14 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import type { Snapshot, ToolFound } from "../types";
 import { Title, type Ctx } from "../ui";
+import { DEFAULT_CAP, TIP_RULES, TipsCap } from "../tipsCap";
 
 const STEPS = ["Privacy", "Tools", "Analysis", "Tips", "Your history"];
 // adding: while AIQ connects it; offer: before. VS Code gets an extension, not hooks (VS Code's own command adds it).
 const HOOKS = { adding: "Adding AIQ's hooks. AIQ backs up the file first.", offer: "AIQ adds its hooks and backs up the file first." };
 const TOOL: Record<ToolFound["tool"], { name: string; where: string; adding: string; offer: string }> = {
   "claude-code": { name: "Claude Code", where: "Tips show when Claude Code finishes a turn.", ...HOOKS },
-  copilot: { name: "GitHub Copilot", where: "Copilot CLI and VS Code agent mode share these hooks. Tips show in Copilot CLI's status line.", ...HOOKS },
+  copilot: { name: "GitHub Copilot", where: "Copilot CLI and VS Code agent mode share these hooks. Tips show in Copilot CLI's conversation and status line.", ...HOOKS },
   vscode: {
     name: "VS Code",
     where: "Tips show in VS Code after a Copilot agent turn, when Copilot Chat is in Agent mode with the session target set to Copilot.",
@@ -71,6 +72,7 @@ export function Setup(ctx: Ctx & { rerun: boolean; finish: (s: Snapshot) => void
       announce(`Tips a day set to ${n}.`);
       refresh();
     } else setMsg(r.message);
+    return r.ok;
   };
   const setJudge = async (on: boolean) => {
     const r = await api.setSetting("judge", on ? "auto" : "off");
@@ -274,16 +276,13 @@ export function Setup(ctx: Ctx & { rerun: boolean; finish: (s: Snapshot) => void
           <>
             <header className="group">
               <Title>How many tips a day?</Title>
-              <p className="mute">At most one per session, shown when the agent pauses. Change it any time in Settings.</p>
+              <p className="mute">{DEFAULT_CAP} is the default. Change it any time in Settings, under Tips.</p>
             </header>
-            <div className="seg" role="group" aria-label="Tips a day">
-              {[1, 3, 5].map((n) => (
-                <button key={n} aria-pressed={snap.settings.daily_cap === n} disabled={down} onClick={() => setCap(n)}>
-                  {n}
-                  {n === 5 ? " (default)" : ""}
-                </button>
-              ))}
+            <div className="group">
+              <span id="scap">Tips a day, across all your tools</span>
+              <TipsCap value={snap.settings.daily_cap} down={down} labelledBy="scap" set={setCap} />
             </div>
+            <p className="meta">{TIP_RULES}</p>
             {down && (
               <p className="mute">
                 AIQ is starting, so this stays at {snap.settings.daily_cap} for now. You can change it in Settings later.
