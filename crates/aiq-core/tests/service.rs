@@ -1137,6 +1137,20 @@ fn a_persons_own_turns_in_a_remote_control_session_count_and_relayed_ones_do_not
     h.svc().ingest(&e, None);
     stop(&mut h);
     assert_eq!((h.prompts(), h.stops()), (2, 2));
+    // 5. Laptop 2026-11-09 14:12Z: a brief relayed during a busy turn runs the prompt hook 30 s after the person's
+    // turn but writes no record of its own. It must not take the person's record: not counted.
+    let e = prompt(&mut h, "my own turn");
+    let at = aiq_core::sysclock::parse_rfc3339_ms(&e.ts).unwrap();
+    file += &own(at - 40);
+    std::fs::write(&t, &file).unwrap();
+    h.svc().ingest(&e, None);
+    assert_eq!(h.prompts(), 3);
+    let mut relayed = e.clone();
+    relayed.event_id = format!("{}-r", e.event_id);
+    relayed.ts = aiq_core::sysclock::format_rfc3339_ms(at + 30_000);
+    h.svc().ingest(&relayed, None);
+    stop(&mut h);
+    assert_eq!(h.prompts(), 3, "the relayed brief did not borrow the person's record");
 }
 
 // Per-turn rule in every Claude Code session (Imran 2026-11-09, "count only turns a person typed"): 829 transcripts on

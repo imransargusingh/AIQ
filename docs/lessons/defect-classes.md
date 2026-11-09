@@ -776,6 +776,13 @@ summary: >-
   on 0.1.27 the first read missed the record 2 of 2 times. Nothing alarmed while 269 prompts were left out over five
   days: `aside.<surface>` now carries today's left-out count, and Home's card (every state) and `aiq status` say so
   when at least 10 and 90% of a tool's prompts today were left out (`AsideNow::mostly_left_out`).
+- **Sweep, third pass (2026-11-09 14:12Z, laptop on 0.1.29):** a relayed brief queued during a busy turn ran the
+  prompt hook but wrote no record of its own. `turn_at` took the newest typed record, which was Imran's record from
+  the turn before, so the brief counted as his task. Each record now matches one prompt: the core keeps the records
+  a session's recent prompts matched (`rc_matched`, out-of-order safe), and a record stamped before the hook wins
+  over a later one (the core can read the transcript after the next turn is written). Test: step 5 of
+  `a_persons_own_turns_in_a_remote_control_session_count_and_relayed_ones_do_not` (red on main: 4 kept, not 3) and
+  the `taken` / "core read late" cases in `projects::tests`.
 - **Rule:** a rule that leaves out a person's activity must decide at the grain where the marker is true (a turn, not
   a session or a surface), and every left-out activity must still show where the person looks for it, with a count
   that alarms when most of it is left out.

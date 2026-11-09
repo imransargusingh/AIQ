@@ -108,39 +108,53 @@ pub fn is_own(r: &Value) -> bool {
     r.get("turnOrigin").and_then(Value::as_str) == Some("human")
 }
 
-/// The turn of the prompt whose hook ran at `prompt_ms`: the newest typed record stamped at most 2 s after it, if that
-/// record is at most `TURN_MATCH_MS` older. Reads the last `max_bytes` only.
-pub fn turn_at(path: &Path, prompt_ms: i64, max_bytes: u64) -> Turn {
+/// The turn of the prompt whose hook ran at `prompt_ms`: the newest typed record stamped at or before it, else the
+/// first one stamped at most 2 s after it, if that record is at most `TURN_MATCH_MS` older. The core may read the
+/// transcript after later turns are written, so a later record never wins over one stamped before the hook.
+/// Reads the last `max_bytes` only.
+/// `taken`: the times of the records the session's earlier prompts were matched to. Each record matches one prompt only
+/// (laptop 2026-11-09 14:12Z: a relayed brief queued during a busy turn ran the prompt hook but wrote no record of its
+/// own, and took the person's record from the turn before, so it counted as theirs). Returns the turn and the time of
+/// the record it was matched to.
+pub fn turn_at(path: &Path, prompt_ms: i64, taken: &[i64], max_bytes: u64) -> (Turn, Option<i64>) {
     use std::io::{Seek, SeekFrom};
-    let Ok(mut f) = std::fs::File::open(path) else { return Turn::Unknown };
-    let Ok(len) = f.metadata().map(|m| m.len()) else { return Turn::Unknown };
+    let Ok(mut f) = std::fs::File::open(path) else { return (Turn::Unknown, None) };
+    let Ok(len) = f.metadata().map(|m| m.len()) else { return (Turn::Unknown, None) };
     let start = len.saturating_sub(max_bytes);
     if f.seek(SeekFrom::Start(start)).is_err() {
-        return Turn::Unknown;
+        return (Turn::Unknown, None);
     }
     let mut buf = Vec::new();
     if f.take(max_bytes).read_to_end(&mut buf).is_err() {
-        return Turn::Unknown;
+        return (Turn::Unknown, None);
     }
     let text = String::from_utf8_lossy(&buf);
     let lines = text.lines().skip(usize::from(start > 0)); // a cut first line is not a record
-    let mut best: Option<(i64, Turn)> = None;
+    let mut before: Option<(i64, Turn)> = None;
+    let mut after: Option<(i64, Turn)> = None;
     for r in lines.filter_map(|l| serde_json::from_str::<Value>(l).ok()).filter(typed) {
         let Some(ts) = r["timestamp"].as_str().and_then(crate::sysclock::parse_rfc3339_ms) else { continue };
-        if ts <= prompt_ms + 2_000 && best.is_none_or(|(b, _)| ts >= b) {
-            let turn = if is_own(&r) {
-                Turn::Own
-            } else if r.get("turnOrigin").is_none() && r.get("origin").is_none() {
-                Turn::Unmarked
-            } else {
-                Turn::Other
-            };
-            best = Some((ts, turn));
+        if taken.contains(&ts) || ts > prompt_ms + 2_000 {
+            continue;
+        }
+        let turn = if is_own(&r) {
+            Turn::Own
+        } else if r.get("turnOrigin").is_none() && r.get("origin").is_none() {
+            Turn::Unmarked
+        } else {
+            Turn::Other
+        };
+        if ts <= prompt_ms {
+            if before.is_none_or(|(b, _)| ts >= b) {
+                before = Some((ts, turn));
+            }
+        } else if after.is_none_or(|(b, _)| ts < b) {
+            after = Some((ts, turn));
         }
     }
-    match best {
-        Some((ts, turn)) if ts >= prompt_ms - TURN_MATCH_MS => turn,
-        _ => Turn::Unknown,
+    match before.or(after) {
+        Some((ts, turn)) if ts >= prompt_ms - TURN_MATCH_MS => (turn, Some(ts)),
+        _ => (Turn::Unknown, None),
     }
 }
 
@@ -214,18 +228,32 @@ mod tests {
         let tool = json!({"type":"user","message":{"content":[{"type":"tool_result"}]},"timestamp":at(40)});
         let rows = [&head, &own, &relay, &tool].map(|r| r.to_string()).join("\n");
         std::fs::write(&p, format!("{rows}\n")).unwrap();
-        assert_eq!(turn_at(&p, ms(10), TAIL_BYTES), Turn::Own);
-        assert_eq!(turn_at(&p, ms(11), TAIL_BYTES), Turn::Own, "hook a moment after the record");
-        assert_eq!(turn_at(&p, ms(31), TAIL_BYTES), Turn::Other, "a relayed brief; the tool result is not a turn");
-        assert_eq!(turn_at(&p, ms(10) + TURN_MATCH_MS + 31_000, TAIL_BYTES), Turn::Unknown, "record not written yet");
-        assert_eq!(turn_at(&d.path().join("gone.jsonl"), ms(10), TAIL_BYTES), Turn::Unknown);
+        assert_eq!(turn_at(&p, ms(10), &[], TAIL_BYTES).0, Turn::Own);
+        assert_eq!(turn_at(&p, ms(11), &[], TAIL_BYTES).0, Turn::Own, "hook a moment after the record");
+        assert_eq!(
+            turn_at(&p, ms(31), &[], TAIL_BYTES).0,
+            Turn::Other,
+            "a relayed brief; the tool result is not a turn"
+        );
+        // A record already matched to the previous prompt is not matched again (laptop 14:12Z, 2026-11-09).
+        assert_eq!(turn_at(&p, ms(11), &[], TAIL_BYTES), (Turn::Own, Some(ms(10))));
+        assert_eq!(turn_at(&p, ms(20), &[ms(10)], TAIL_BYTES), (Turn::Unknown, None), "no record of its own yet");
+        // Read after the next turn was written: the record stamped before the hook wins over the later one.
+        assert_eq!(turn_at(&p, ms(29), &[], TAIL_BYTES), (Turn::Own, Some(ms(10))), "core read late");
+        assert_eq!(turn_at(&p, ms(9), &[], TAIL_BYTES), (Turn::Own, Some(ms(10))), "record a moment after the hook");
+        assert_eq!(
+            turn_at(&p, ms(10) + TURN_MATCH_MS + 31_000, &[], TAIL_BYTES).0,
+            Turn::Unknown,
+            "record not written yet"
+        );
+        assert_eq!(turn_at(&d.path().join("gone.jsonl"), ms(10), &[], TAIL_BYTES).0, Turn::Unknown);
         // Measured shapes, 829 transcripts (2026-11-09): a scheduled run and a desktop-app turn name another origin;
         // a terminal turn is the person's; a record with no origin at all is left to the caller.
         let shape = |extra: serde_json::Value| {
             let mut r = json!({"type":"user","message":{"content":"x"},"timestamp":at(50)});
             r.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());
             std::fs::write(&p, format!("{r}\n")).unwrap();
-            turn_at(&p, ms(50), TAIL_BYTES)
+            turn_at(&p, ms(50), &[], TAIL_BYTES).0
         };
         assert_eq!(
             shape(
@@ -241,6 +269,6 @@ mod tests {
         // The tail cut mid-record skips the cut line and still finds the turn.
         let pad = json!({"type":"assistant","message":{"content":"x".repeat(5000)}}).to_string();
         std::fs::write(&p, format!("{pad}\n{own}\n")).unwrap();
-        assert_eq!(turn_at(&p, ms(10), own.to_string().len() as u64 + 100), Turn::Own);
+        assert_eq!(turn_at(&p, ms(10), &[], own.to_string().len() as u64 + 100).0, Turn::Own);
     }
 }

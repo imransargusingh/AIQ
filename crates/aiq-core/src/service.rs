@@ -114,6 +114,8 @@ pub struct Service<C: Clock> {
     aside_noted: std::collections::HashMap<String, AsideNoted>,
     /// Held prompts whose record never showed outside a Projects session: counted as the person's (`typed_gate`).
     rc_force_own: std::collections::HashSet<String>,
+    /// Per session, the times of the transcript records its recent prompts were matched to (`projects::turn_at`).
+    rc_matched: std::collections::HashMap<(String, String), Vec<i64>>,
     /// When `recheck_held` last re-read sessions whose head is unwritten (core clock).
     head_rechecked_ms: i64,
     /// When the VS Code extension last asked for a card (core clock), in this core run.
@@ -341,6 +343,7 @@ impl<C: Clock> Service<C> {
             rc_own: Default::default(),
             aside_noted: Default::default(),
             rc_force_own: Default::default(),
+            rc_matched: Default::default(),
             head_rechecked_ms: 0,
             vscode_asked_ms: None,
             coach: None,
@@ -1394,7 +1397,20 @@ impl<C: Clock> Service<C> {
         let Some(t) = ev.transcript.as_deref() else { return Turn::Other };
         let at = parse_rfc3339_ms(&ev.ts).unwrap_or_else(|| self.clock.now().utc_ms);
         let started = std::time::Instant::now();
-        let mut turn = turn_at(std::path::Path::new(t), at, TAIL_BYTES);
+        let key = (ev.surface.clone(), ev.surface_session_id.clone());
+        let taken = self.rc_matched.get(&key).map(Vec::as_slice).unwrap_or_default();
+        let (mut turn, matched) = turn_at(std::path::Path::new(t), at, taken, TAIL_BYTES);
+        if let Some(m) = matched {
+            if self.rc_matched.len() >= 4096 {
+                self.rc_matched.clear();
+            }
+            // Prompts can reach the core out of order, so keep the session's recent matches, not only the last.
+            let seen = self.rc_matched.entry(key).or_default();
+            if seen.len() >= 32 {
+                seen.remove(0);
+            }
+            seen.push(m);
+        }
         if turn == Turn::Unmarked {
             // No `turnOrigin` at all: an older Claude Code. Inside a Projects session that is Claude's own relay
             // (the brief that starts a Remote Control session has none); elsewhere it is a person typing.
