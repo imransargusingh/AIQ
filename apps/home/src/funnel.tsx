@@ -114,7 +114,7 @@ export function otherLine(f: TipFunnel): string | null {
 }
 
 /** Tips page: the week's funnel, why tasks had no tip, and why ready tips were held. */
-export function TipFunnelCard({ snap }: { snap: Snapshot }) {
+export function TipFunnelCard({ snap, openTask }: { snap: Snapshot; openTask: Ctx["openTask"] }) {
   const f = snap.tip_funnel.week;
   const [open, setOpen] = useState(false);
   if (f.tasks === 0 && f.tips === 0) return null;
@@ -164,7 +164,14 @@ export function TipFunnelCard({ snap }: { snap: Snapshot }) {
                 <ul className="tf-lost">
                   {g.tasks.map((t) => (
                     <li key={t.task_id}>
-                      <a href={`#task/${encodeURIComponent(t.task_id)}`}>
+                      <a
+                        href={`#task/${encodeURIComponent(t.task_id)}`}
+                        onClick={(e) => {
+                          // Home routes by state, not by hash changes: a bare link only rewrote the address.
+                          e.preventDefault();
+                          openTask(t.task_id);
+                        }}
+                      >
                         <span className="tf-when">{when(t.first_ms, snap.now_ms, snap.offset_min)}</span>
                         <span className="meta tf-tool">{toolName(t.surface)}</span>
                         <span className="grow tf-open">{t.opening ? `“${t.opening}”` : <span className="meta">Prompt not stored</span>}</span>
