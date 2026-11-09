@@ -1766,3 +1766,35 @@ fn a_rescued_first_prompt_is_counted_on_the_tip_path() {
     let steps = h.svc().store().tip_steps_since(0).unwrap();
     assert_eq!(steps.iter().map(|s| s.step.as_str()).collect::<Vec<_>>(), ["late_first_prompt"]);
 }
+
+// Laptop 2026-11-09 19:07Z: a relayed brief with no record of its own was re-read every ~316 ms for 12 minutes until its
+// Stop (2,256 reads). Past `TURN_WAIT_MS` a held prompt is re-read every 5 s; a late record still counts.
+#[test]
+fn a_held_prompt_past_its_wait_is_re_read_slowly() {
+    let d = tempfile::tempdir().unwrap();
+    let t = d.path().join("rc.jsonl");
+    let head = "{\"type\":\"user\",\"isMeta\":true,\"turnOrigin\":\"system\",\"entrypoint\":\"claude-desktop\"}\n";
+    std::fs::write(&t, head).unwrap();
+    let mut h = H::new();
+    let mut e = h.prompt("rc1", "brief");
+    e.cwd = Some("C:\\Repos\\Thatcher".into());
+    e.transcript = Some(t.to_string_lossy().into_owned());
+    h.svc().ingest(&e, None);
+    assert_eq!(h.prompts(), 0, "no record yet: held");
+    assert_eq!(h.svc().held_wait(), Some(std::time::Duration::from_millis(300)), "fresh: re-read fast");
+    h.clock.advance(11_000);
+    h.svc().recheck_held();
+    assert_eq!(h.svc().held_wait(), Some(std::time::Duration::from_millis(1_000)), "stale: the loop slows down");
+    let at = aiq_core::sysclock::parse_rfc3339_ms(&e.ts).unwrap();
+    let own = format!(
+        "{{\"type\":\"user\",\"turnOrigin\":\"human\",\"origin\":{{\"kind\":\"human\"}},\"projectsUserTurn\":true,\"timestamp\":\"{}\"}}\n",
+        aiq_core::sysclock::format_rfc3339_ms(at + 500)
+    );
+    std::fs::write(&t, format!("{head}{own}")).unwrap();
+    h.clock.advance(1_000);
+    h.svc().recheck_held();
+    assert_eq!(h.prompts(), 0, "not re-read a second after the last slow read");
+    h.clock.advance(4_000);
+    h.svc().recheck_held();
+    assert_eq!(h.prompts(), 1, "the slow re-read still finds the person's late record");
+}

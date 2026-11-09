@@ -118,6 +118,8 @@ pub struct Service<C: Clock> {
     rc_matched: std::collections::HashMap<(String, String), Vec<i64>>,
     /// When `recheck_held` last re-read sessions whose head is unwritten (core clock).
     head_rechecked_ms: i64,
+    /// When held prompts older than `TURN_WAIT_MS` were last re-read (`recheck_held`).
+    stale_rechecked_ms: i64,
     /// When the VS Code extension last asked for a card (core clock), in this core run.
     vscode_asked_ms: Option<i64>,
     /// Coaching inputs derived from the store (design coaching-from-rungs); rebuilt when stale.
@@ -290,6 +292,10 @@ const TURN_WAIT_MS: i64 = 10_000;
 const RECHECK_MS: u64 = 300;
 /// How often a held prompt whose session head is unwritten is re-read (`recheck_held`).
 const HEAD_RECHECK_MS: i64 = 1_000;
+/// How often a held prompt older than `TURN_WAIT_MS` is re-read. Laptop 2026-11-09 19:07Z: a relayed brief with no
+/// record of its own was re-read every ~316 ms for 12 minutes until its Stop (2,256 reads); a record is written at most
+/// 2.1 s after the hook (measured 2026-11-08), so after 10 s a slow re-read loses nothing but a few seconds.
+const STALE_RECHECK_MS: i64 = 5_000;
 /// How often `note_aside` rewrites an unchanged surface's time.
 const ASIDE_EVERY_MS: i64 = 5 * 60_000;
 
@@ -345,6 +351,7 @@ impl<C: Clock> Service<C> {
             rc_force_own: Default::default(),
             rc_matched: Default::default(),
             head_rechecked_ms: 0,
+            stale_rechecked_ms: 0,
             vscode_asked_ms: None,
             coach: None,
             guess_low_logged: false,
@@ -1344,13 +1351,19 @@ impl<C: Clock> Service<C> {
     /// nothing waits. Measured 2026-11-09 on 0.1.27: a turn's record was not in the file when the core first read it
     /// (2 of 2), though stamped before the hook, so the first read is often "unknown".
     pub fn held_wait(&self) -> Option<std::time::Duration> {
-        if self.rc_held.keys().any(|k| self.head_decided(k)) {
+        let now = self.clock.now().utc_ms;
+        if self.rc_held.iter().any(|(k, held)| self.head_decided(k) && Self::held_fresh(held, now)) {
             Some(std::time::Duration::from_millis(RECHECK_MS))
         } else if !self.rc_held.is_empty() {
             Some(std::time::Duration::from_millis(HEAD_RECHECK_MS as u64))
         } else {
             None
         }
+    }
+
+    /// True while any of a session's held prompts is younger than `TURN_WAIT_MS`: its record may still be written.
+    fn held_fresh(held: &[EventV1], now: i64) -> bool {
+        held.iter().any(|e| parse_rfc3339_ms(&e.ts).is_none_or(|t| now - t < TURN_WAIT_MS))
     }
 
     /// Rule RC's head check is done for this session: settled, or out of reads.
@@ -1371,7 +1384,16 @@ impl<C: Clock> Service<C> {
         if heads {
             self.head_rechecked_ms = now;
         }
-        let keys: Vec<_> = self.rc_held.keys().filter(|k| heads || self.head_decided(k)).cloned().collect();
+        let stale = now - self.stale_rechecked_ms >= STALE_RECHECK_MS;
+        if stale {
+            self.stale_rechecked_ms = now;
+        }
+        let keys: Vec<_> = self
+            .rc_held
+            .iter()
+            .filter(|(k, held)| if self.head_decided(k) { stale || Self::held_fresh(held, now) } else { heads })
+            .map(|(k, _)| k.clone())
+            .collect();
         for k in keys {
             for e in self.rc_held.remove(&k).unwrap_or_default() {
                 self.ingest_event(&e, None);
