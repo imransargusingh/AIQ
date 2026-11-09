@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { dayWords, droughtLine, funnelInsight, stages } from "./funnel";
+import { dayWords, droughtLine, funnelInsight, lostAt, otherLine, stages } from "./funnel";
 import type { TipFunnel } from "./types";
 
 const f = (o: Partial<TipFunnel> = {}): TipFunnel => ({
   days: 7, tasks: 20, kind_known: 5, tip_found: 1, tips: 3, waiting: 0, expired: 1, opened: 0, answered: 0,
+  tip_shown: 1, tip_opened: 0, other_shown: 1, lost: [],
   no_tip: [{ code: "no_match", words: "kind of task not recognised", count: 15 }],
   held: [], shown: [{ code: "copilot-cli", words: "Copilot CLI", count: 2 }], ...o,
 });
@@ -12,7 +13,7 @@ const NOW = Date.UTC(2026, 10, 8, 12);
 
 describe("tip funnel", () => {
   it("says how many tasks had a tip and the main reason the rest didn't", () => {
-    expect(funnelInsight(f())).toBe("1 of 20 new tasks had a tip ready this week. Main reason the others didn't: kind of task not recognised (15).");
+    expect(funnelInsight(f())).toBe("1 of 20 new tasks had a tip ready this week. Most common reason: kind of task not recognised (15).");
     expect(funnelInsight(f({ tasks: 0 }))).toBe("No new tasks this week yet.");
     expect(funnelInsight(f({ tasks: 2, tip_found: 2, no_tip: [] }))).toBe("2 of 2 new tasks had a tip ready this week.");
   });
@@ -21,7 +22,23 @@ describe("tip funnel", () => {
     expect(stages(f()).biggestLoss).toBe(1);
     expect(stages(f({ kind_known: 19, tip_found: 2 })).biggestLoss).toBe(2);
     expect(stages(f({ tasks: 3, kind_known: 3, tip_found: 3 })).biggestLoss).toBeNull();
-    expect(stages(f()).stages.map((s) => s.n)).toEqual([20, 5, 1, 2, 0]);
+    expect(stages(f()).stages.map((s) => s.n)).toEqual([20, 5, 1, 1, 0]);
+  });
+
+  it("keeps every bar within the one above, and names other shown tips apart (2026-11-09: Shown 1 under Tip ready 0)", () => {
+    const laptop = f({ tasks: 6, kind_known: 0, tip_found: 0, tip_shown: 0, other_shown: 1, shown: [{ code: "copilot-cli", words: "Copilot CLI", count: 1 }] });
+    const n = stages(laptop).stages.map((s) => s.n);
+    expect(n).toEqual([6, 0, 0, 0, 0]);
+    n.slice(1).forEach((x, i) => expect(x).toBeLessThanOrEqual(n[i]));
+    expect(otherLine(laptop)).toBe("Also shown this week: 1 tip from earlier tasks or mid-task.");
+    expect(otherLine(f({ other_shown: 0 }))).toBeNull();
+  });
+
+  it("lists the tasks lost at the marked bar", () => {
+    const t = (id: string, kind_known: boolean) => ({ task_id: id, surface: "vscode", first_ms: NOW, code: "x", words: "x", kind_known });
+    const g = f({ lost: [t("a", false), t("b", true), t("c", false)] });
+    expect(lostAt(g, 1).map((x) => x.task_id)).toEqual(["a", "c"]);
+    expect(lostAt(g, 2).map((x) => x.task_id)).toEqual(["b"]);
   });
 
   it("names a dry day as yesterday or by its date", () => {

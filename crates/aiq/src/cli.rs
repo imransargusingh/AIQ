@@ -691,8 +691,8 @@ pub fn render_funnel(f: &aiq_contracts::frames::TipFunnels) -> String {
         }
         let shown: u32 = p.shown.iter().map(|c| c.count).sum();
         out += &format!(
-            "Tips, {name}: {} new tasks, kind known {}, tip found {}. Tips {}, shown {shown}, opened {}, answered {}\n",
-            p.tasks, p.kind_known, p.tip_found, p.tips, p.opened, p.answered
+            "Tips, {name}: {} new tasks, kind known {}, tip found {}, tip shown {}. Tips {}, shown {shown}, opened {}, answered {}\n",
+            p.tasks, p.kind_known, p.tip_found, p.tip_shown, p.tips, p.opened, p.answered
         );
         if name == "today" {
             continue; // the week's detail covers today
@@ -1352,8 +1352,12 @@ mod tips_tests {
     #[test]
     fn funnel_leads_with_a_dry_day_and_names_every_loss_in_plain_words() {
         use aiq_contracts::frames::{FunnelCount, TipDrought, TipFunnel, TipFunnels};
-        let c =
-            |code: &str, n| FunnelCount { code: code.into(), words: aiq_domain::funnel::words(code).into(), count: n };
+        let c = |code: &str, n| FunnelCount {
+            code: code.into(),
+            words: aiq_domain::funnel::words(code).into(),
+            count: n,
+            ..FunnelCount::default()
+        };
         let week = TipFunnel {
             days: 7,
             tasks: 20,
@@ -1364,9 +1368,15 @@ mod tips_tests {
             held: vec![c("cooldown", 1)],
             waiting: 0,
             expired: 3,
-            shown: vec![FunnelCount { code: "copilot-cli".into(), words: "Copilot CLI".into(), count: 2 }],
+            shown: vec![FunnelCount {
+                code: "copilot-cli".into(),
+                words: "Copilot CLI".into(),
+                count: 2,
+                ..FunnelCount::default()
+            }],
             opened: 0,
             answered: 0,
+            ..TipFunnel::default()
         };
         let f = TipFunnels {
             today: TipFunnel { days: 1, ..TipFunnel::default() },
@@ -1376,7 +1386,9 @@ mod tips_tests {
         let out = render_funnel(&f);
         let first = out.lines().next().unwrap();
         assert_eq!(first, "No tips on 2026-11-07 across 9 tasks. Main reason: kind of task not recognised (7 tasks).");
-        assert!(out.contains("Tips, last 7 days: 20 new tasks, kind known 5, tip found 1. Tips 6, shown 2"));
+        assert!(
+            out.contains("Tips, last 7 days: 20 new tasks, kind known 5, tip found 1, tip shown 0. Tips 6, shown 2")
+        );
         assert!(out.contains("No tip: 15 kind of task not recognised; 4 too few tasks of this kind analyzed yet"));
         assert!(out.contains("Held: 1 same tip shown in the last 72 hours"));
         assert!(out.contains("Ready, but the session ended first: 3"));

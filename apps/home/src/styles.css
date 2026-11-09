@@ -551,6 +551,12 @@ main:has(.secnav){scroll-padding-top:56px}
 .tf-why h3{font:var(--t-heading);margin:var(--s3) 0 var(--s2)}
 .tf-why ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:var(--s2)}
 .tf-why .tf-n{margin-right:var(--s3)}
+.tf-help{margin:0;color:var(--ink-mute);font:var(--t-body)}
+button.tf-more{background:none;border:0;padding:0;font:var(--t-caption);color:var(--warning);text-decoration:underline;text-underline-offset:2px;cursor:pointer;white-space:nowrap}
+button.tf-more:hover{filter:brightness(1.15)}
+.tf-lost a{display:flex;align-items:baseline;gap:var(--s4);color:inherit;text-decoration:none;padding:var(--s2) var(--s3);border-radius:var(--r-sm)}
+.tf-lost a:hover,.tf-lost a:focus-visible{background:var(--canvas-soft)}
+.tf-when{font:var(--t-mono);font-variant-numeric:tabular-nums;white-space:nowrap;min-width:16ch}
 
 /* Team tips file: the "Tool to try" line under a tip (primary rule, soft fill; text stays ink for contrast). */
 .team-tool{border-left:3px solid var(--primary);background:var(--canvas-soft);padding:var(--s3) var(--s4);border-radius:0 var(--r-sm) var(--r-sm) 0}

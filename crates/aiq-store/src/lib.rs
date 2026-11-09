@@ -562,14 +562,15 @@ impl Store {
             "SELECT d.card_id, (SELECT min(x.utc_ms) FROM card_decision x WHERE x.card_id = d.card_id) AS first,
                     d.outcome, d.reason_code,
                     (SELECT v.surface FROM card_delivery v WHERE v.card_id = d.card_id),
-                    EXISTS (SELECT 1 FROM card_open o WHERE o.card_id = d.card_id), {answered}
-             FROM card_decision d
+                    EXISTS (SELECT 1 FROM card_open o WHERE o.card_id = d.card_id), {answered},
+                    s.task_id, s.detector_id = ?2
+             FROM card_decision d LEFT JOIN signal s ON s.signal_id = d.signal_id
              WHERE d.rowid = (SELECT max(rowid) FROM card_decision x WHERE x.card_id = d.card_id) AND first >= ?1
              ORDER BY first"
         );
         let mut st = self.conn.prepare(&sql).map_err(err(codes::STORE_OPEN))?;
         let rows = st
-            .query_map([since_ms], |r| {
+            .query_map(params![since_ms, aiq_domain::coach::DETECTOR], |r| {
                 Ok(aiq_domain::funnel::CardRow {
                     card_id: r.get(0)?,
                     first_utc_ms: r.get(1)?,
@@ -578,6 +579,8 @@ impl Store {
                     shown_on: r.get(4)?,
                     opened: r.get(5)?,
                     answered: r.get(6)?,
+                    task_id: r.get(7)?,
+                    next_step: r.get::<_, Option<bool>>(8)?.unwrap_or(false),
                 })
             })
             .map_err(err(codes::STORE_OPEN))?;

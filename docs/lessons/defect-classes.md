@@ -815,3 +815,19 @@ summary: >-
   wait reopens Home).
 - **Rule:** work that takes a shared lock is started from one scheduler, and a run that already closed something
   the person had open waits for the lock (bounded) rather than giving up.
+
+### DC-046 — A funnel stage counted from a different population than the stages above it
+- **Signature:** 2026-11-09, Imran's Tips page: "0 of 6 new tasks had a tip ready this week" over bars Tip ready 0,
+  Shown 1. New tasks → Kind known → Tip ready counted tasks from `tip_path` (recorded only since #184, 11-08);
+  Shown and Opened counted every card first decided in the 7 days. The one shown card (11-03 15:19Z, Copilot CLI)
+  belonged to a task with no `tip_path` row. Measured read-only on a copy of the laptop's aiq.db.
+- **Why it survives:** each count was right on its own, the code comment even said "Shown can pass Tip found", and
+  the fixtures had more ready tips than shown ones, so no test saw a bar grow.
+- **Sweep:** `aiq status` prints the same funnel: it now names `tip shown` (same tasks) beside the all-tips counts.
+  The drought check uses deliveries on purpose (any tip shown that day clears it). The progress ladder and habit
+  counts don't stack stages.
+- **Control (tests):** `funnel::tests::shown_and_opened_follow_the_same_tasks_so_they_never_pass_tip_ready` (the
+  laptop case), `next_rung.rs` status test (the store links a shown tip to its task through `signal`),
+  `funnel.test.ts` (every bar ≤ the one above), and the e2e checks the rendered bars never grow.
+- **Rule:** in a funnel, each stage is a subset of the one above, drawn from the same rows; anything else is named
+  on its own line, never as a bar.
