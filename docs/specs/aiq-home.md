@@ -76,7 +76,7 @@ rung is judged (`rung-model.md`); sync across devices; weekly summary emails.
 | H6 | No next step coached below 0.8 confidence | rung-model |
 | H7 | Raw prompts stay on device until the person deletes them (one item, older than a date, all) | ADR-0002 |
 | H8 | Lost machine means lost history; stated at setup | Imran, 2026-10-31 |
-| H9 | Daily tip limit, default 5: 1, 3 or 5 at setup; 5, 15, 30 or any whole number 0 to 50 (Custom) in Settings, the same range `aiq config set daily-cap` takes (Imran, 2026-11-07) | coaching-loop D3 |
+| H9 | Daily tip limit, default 5: 5, 15, 30 or any whole number 0 to 50 (Custom), at setup and in Settings alike (setup aligned 2026-11-09), the same range `aiq config set daily-cap` takes (Imran, 2026-11-07) | coaching-loop D3 |
 | H10 | Habit states Not yet / Tried / Adopted (rule D5) | coaching-loop D5 |
 | H11 | Judge runs under the person's own account: their signed-in Claude Code (`claude -p`), else their own API key; Copilot via VS Code's language model API; work-account caveat shown at setup | ADR-0007, amended by Q5 (Imran, 2026-11-01). Basis: Claude Code legal-and-compliance page allows signing in to unmodified Claude Code with one's own plan |
 | H12 | Keyboard-first UI style | coaching-loop |

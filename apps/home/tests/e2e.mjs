@@ -985,8 +985,19 @@ await test("setup: first run walks five steps with Back; Start only after I unde
   assert.ok(t.includes("On a work account, your organisation's policies apply"));
   await cont.click();
   assert.equal(await h1(), "How many tips a day?");
-  await page.getByRole("button", { name: "3", exact: true }).click();
-  await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Tips a day set to 3.");
+  // Reported 2026-11-09: setup kept 1 / 3 / 5 after Settings moved to 5 / 15 / 30 / Custom. Both use one picker now.
+  const capGroup = page.getByRole("group", { name: "Tips a day, across all your tools" });
+  assert.deepEqual(await capGroup.getByRole("button").allInnerTexts(), ["5", "15", "30", "Custom"]);
+  t = await page.locator("main").innerText();
+  assert.ok(t.includes("5 is the default."), t);
+  assert.ok(t.includes("at most one a session, never within 30 minutes of another, and the same tip not again for 3 days"), t);
+  assert.ok(!t.includes("when the agent pauses"), t);
+  await page.getByRole("button", { name: "15", exact: true }).click();
+  await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Tips a day set to 15.");
+  await page.getByRole("button", { name: "Custom", exact: true }).click();
+  await page.getByLabel("Tips a day, 0 to 50").fill("8");
+  await page.getByRole("button", { name: "Set", exact: true }).click();
+  await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Tips a day set to 8.");
   assert.deepEqual(await axe(page), []);
   await cont.click();
   assert.equal(await h1(), "One thing to know before you start");
@@ -1002,7 +1013,7 @@ await test("setup: first run walks five steps with Back; Start only after I unde
   await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Setup done. AIQ is on.");
   assert.equal(await page.locator("nav").count(), 1);
   const calls = await page.evaluate(() => window.__AIQ_FIXTURE__.calls.filter((c) => !String(c.args?.action ?? "").startsWith("check_")).map((c) => c.cmd).filter((c) => c !== "snapshot"));
-  assert.deepEqual(calls, ["connect_tools", "set_setting", "set_setting", "set_setting", "finish_setup"], "connected once, not again on Back");
+  assert.deepEqual(calls, ["connect_tools", "set_setting", "set_setting", "set_setting", "set_setting", "finish_setup"], "connected once, not again on Back");
   await page.context().close();
 });
 
@@ -1026,7 +1037,7 @@ await test("setup: core down keeps the default tips a day and says so; keys don'
   assert.equal(await page.locator("dialog[open]").count(), 0);
   for (let i = 0; i < 3; i++) await page.getByRole("button", { name: "Continue" }).click();
   assert.ok((await page.locator("main").innerText()).includes("AIQ is starting, so this stays at 5 for now."));
-  assert.equal(await page.getByRole("button", { name: "5 (default)", exact: true }).isDisabled(), true);
+  assert.equal(await page.getByRole("button", { name: "5", exact: true }).isDisabled(), true);
   assert.deepEqual(await axe(page), []);
   await page.context().close();
 });
