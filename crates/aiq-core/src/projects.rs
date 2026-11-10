@@ -174,7 +174,12 @@ pub fn delivered_id(r: &Value) -> Option<String> {
     };
     let mut first = None;
     for tag in text.split("<message ").skip(1).filter_map(|t| t.split('>').next()) {
-        let Some(id) = tag.split("id=\"").nth(1).and_then(|v| v.split('"').next()) else { continue };
+        // The `id` attribute itself, not one that ends in it: the laptop's envelope has `author-id` before `id`
+        // (2026-11-10 14:43Z, 0.1.32: the seeded message was counted again, no `rc.delivered` row written).
+        let Some(id) = tag.split_whitespace().find_map(|a| a.strip_prefix("id=\"")).and_then(|v| v.split('"').next())
+        else {
+            continue;
+        };
         if !id.starts_with("cmsg_") {
             continue;
         }
@@ -245,6 +250,9 @@ mod tests {
         let wake = |body: &str| json!({"type":"user","turnOrigin":"human","message":{"content":body}});
         let two = r#"<wake><message id="cmsg_old" from="human">a</message><message trigger="true" id="cmsg_new">b</message></wake>"#;
         assert_eq!(delivered_id(&wake(two)).as_deref(), Some("cmsg_new"), "the trigger wins");
+        // Attribute order as measured on the laptop (2026-11-10): `author-id` comes before `id`.
+        let real = r#"<wake><message trigger="true" from="human" trust="principal" author-id="user_01x" id="cmsg_real" sent-at="2026-11-10T00:02:25Z" mention="false">a</message></wake>"#;
+        assert_eq!(delivered_id(&wake(real)).as_deref(), Some("cmsg_real"), "author-id is not the id");
         let one = r#"<wake><message from="human" id="cmsg_only">a</message></wake>"#;
         assert_eq!(delivered_id(&wake(one)).as_deref(), Some("cmsg_only"), "else the first");
         let parts = json!({"type":"user","message":{"content":[{"type":"text","text":one}]}});

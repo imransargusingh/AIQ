@@ -793,6 +793,12 @@ summary: >-
   not ~3 times a second (one brief: 2,256 reads in 12 minutes). Tests:
   `a_project_message_handed_to_a_second_session_counts_once` (red with the rule off),
   `a_held_prompt_past_its_wait_is_re_read_slowly`, `projects::tests::the_delivered_message_is_the_triggering_one…`.
+- **Sweep, fifth pass (2026-11-10 14:43Z, laptop on 0.1.32):** a seeded session start counted Imran's message again
+  and no `rc.delivered` row was written. The envelope's attributes are `trigger, from, trust, author-id, id, sent-at,
+  mention`; `delivered_id` split on `id="` and took `author-id`'s value, which is not a `cmsg_` id, so it found none.
+  The tests' envelope was written by hand with `id` before `author-id`, so they passed. Control: `delivered_id` matches
+  the whole attribute name, and both tests use the measured attribute order. Lesson: a parser of a measured shape is
+  tested against the measured shape (attribute order included), never a hand-written one.
 - **Rule:** a rule that leaves out a person's activity must decide at the grain where the marker is true (a turn, not
   a session or a surface), and every left-out activity must still show where the person looks for it, with a count
   that alarms when most of it is left out.
