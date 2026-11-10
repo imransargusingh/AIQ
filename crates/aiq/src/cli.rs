@@ -1217,7 +1217,8 @@ pub fn tips() -> ExitCode {
 }
 
 /// `aiq progress`: each kind of task's typical rung in the last 14 days against the 14 before, read with
-/// the same snapshot AIQ home reads (read-only, no model call), so both show the same numbers.
+/// the same snapshot AIQ home reads (read-only, no model call), so both show the same numbers; then the
+/// Milestones record.
 pub fn progress() -> ExitCode {
     let paths = Paths::from_env();
     let pack = match aiq_domain::PackSource::load(&aiq_core::pack::BundledPack) {
@@ -1234,7 +1235,15 @@ pub fn progress() -> ExitCode {
         return ExitCode::from(1);
     }
     print!("{}", render_progress(&s.coaching));
+    print!("{}", render_milestones(&s.coaching, utc_ms, &local_day));
     ExitCode::SUCCESS
+}
+
+/// A day on this computer's clock: "2026-11-10".
+fn local_day(ms: i64) -> String {
+    chrono::DateTime::from_timestamp_millis(ms)
+        .map(|t| t.with_timezone(&chrono::Local).format("%Y-%m-%d").to_string())
+        .unwrap_or_default()
 }
 
 fn render_progress(c: &aiq_home::Coaching) -> String {
@@ -1282,6 +1291,48 @@ fn render_progress(c: &aiq_home::Coaching) -> String {
         );
     }
     o += &render_habit_changes(c);
+    o
+}
+
+/// The Milestones page in text (same rule and words as AIQ Home's page): one entry per kind for its highest
+/// rung reached, plus every typical-rung move, newest first. Milestones read the whole history and stay once
+/// earned. Before the first, the kinds closest to one.
+fn render_milestones(c: &aiq_home::Coaching, now_ms: i64, day: &dyn Fn(i64) -> String) -> String {
+    use aiq_domain::rung::rung_name;
+    let (n, d) = (c.milestone_tasks, c.milestone_days);
+    let mut o = format!(
+        "\nMilestones: a step counts when {n} tasks of one kind reach a higher rung within {d} days, or when its\n\
+         typical rung moves up by more than chance. Milestones stay once earned. See them in AIQ Home.\n"
+    );
+    let reached = |m: &&aiq_home::MilestoneRow| m.kind == "reached";
+    let highest = |m: &aiq_home::MilestoneRow| {
+        !c.milestones.iter().filter(reached).any(|x| x.job == m.job && x.task_type == m.task_type && x.rung > m.rung)
+    };
+    let shown: Vec<_> = c.milestones.iter().filter(|m| m.kind == "moved_up" || highest(m)).collect();
+    if shown.is_empty() {
+        if c.milestones_near.is_empty() {
+            return o + "No milestones yet.\n";
+        }
+        o += "No milestones yet. Closest:\n";
+        for m in &c.milestones_near {
+            o += &format!("  {}: {} ({}), {} of {n} tasks\n", m.label, rung_name(m.rung), m.rung, m.have);
+        }
+        return o;
+    }
+    for m in shown {
+        let what = match (m.kind, m.from_rung) {
+            ("moved_up", Some(f)) => format!(
+                "moved up to {} ({}) from {} ({f}): the typical rung of its last {} days",
+                rung_name(m.rung),
+                m.rung,
+                rung_name(f),
+                c.progress_days
+            ),
+            _ => format!("reached {} ({}): {n} tasks within {d} days", rung_name(m.rung), m.rung),
+        };
+        let new = if now_ms - m.earned_ms < aiq_domain::coach::MILESTONE_NOTE_WITHIN_MS { "  New" } else { "" };
+        o += &format!("  {}  {} {what}{new}\n", day(m.earned_ms), m.label);
+    }
     o
 }
 
@@ -1434,6 +1485,67 @@ mod tips_tests {
         assert!(o.contains("Habits: none changed by more than chance yet (each needs 0 tasks"), "{o}");
         let empty = aiq_home::Coaching { progress_days: 14, progress_min: 3, ..Default::default() };
         assert!(render_progress(&empty).contains("No analyzed tasks with a kind in the last 28 days yet."));
+    }
+
+    #[test]
+    fn progress_lists_milestones_newest_first_one_per_kind_and_the_closest_before_the_first() {
+        const DAY: i64 = 86_400_000;
+        let now = 100 * DAY;
+        let ms = |ty: &str, kind: &'static str, rung, from_rung, earned_ms| aiq_home::MilestoneRow {
+            job: "code_change".into(),
+            task_type: ty.into(),
+            label: aiq_contracts::judge::task_type_label("code_change", ty).unwrap(),
+            kind,
+            rung,
+            from_rung,
+            earned_ms,
+            first_ms: earned_ms,
+        };
+        let c = aiq_home::Coaching {
+            milestones: vec![
+                ms("tests", "reached", 3, None, now - DAY),
+                ms("feature", "moved_up", 3, Some(1), now - 20 * DAY),
+                ms("tests", "reached", 2, None, now - 30 * DAY),
+            ],
+            milestone_tasks: 3,
+            milestone_days: 30,
+            progress_days: 30,
+            ..Default::default()
+        };
+        let day = |m: i64| format!("day {}", m / DAY);
+        let o = render_milestones(&c, now, &day);
+        assert!(o.contains("a step counts when 3 tasks of one kind reach a higher rung within 30 days"), "{o}");
+        assert!(o.contains("Milestones stay once earned. See them in AIQ Home."), "{o}");
+        assert!(
+            o.ends_with(
+                "  day 99  Writing tests reached Delegated (3): 3 tasks within 30 days  New\n  \
+                 day 80  Adding a feature moved up to Delegated (3) from Assisted (1): the typical rung of its last 30 days\n"
+            ),
+            "{o}"
+        );
+        assert!(!o.contains("Directed"), "a lower rung of the same kind folds into its highest: {o}");
+
+        let near = aiq_home::Coaching {
+            milestones_near: vec![aiq_home::NearMilestoneRow {
+                job: "code_change".into(),
+                task_type: "tests".into(),
+                label: "Writing tests",
+                rung: 2,
+                have: 2,
+            }],
+            milestone_tasks: 3,
+            milestone_days: 30,
+            ..Default::default()
+        };
+        assert!(
+            render_milestones(&near, now, &day)
+                .ends_with("No milestones yet. Closest:\n  Writing tests: Directed (2), 2 of 3 tasks\n")
+        );
+        let none = aiq_home::Coaching { milestone_tasks: 3, milestone_days: 30, ..Default::default() };
+        assert!(render_milestones(&none, now, &day).ends_with("No milestones yet.\n"));
+        for w in ["judge", "watch", "monitor", "badge", "streak", "score"] {
+            assert!(!o.to_lowercase().contains(w), "{w} in {o}");
+        }
     }
 
     #[test]

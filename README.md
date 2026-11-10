@@ -133,7 +133,7 @@ deletes everything AIQ stored.
 ```
 aiq status                  # what AIQ is doing, tips today, store size, hook times
 aiq show [card-id]          # a tip, why it showed, and the prompts it counted (no id: the latest)
-aiq progress                # each kind of task's typical rung now against before
+aiq progress                # each kind of task's typical rung now against before, and your milestones
 aiq tips                    # each next-step tip, whether it is on, and how often it would show
 aiq pause | aiq resume
 aiq config set daily-cap 5  # most tips a day, all tools together (0-50)
