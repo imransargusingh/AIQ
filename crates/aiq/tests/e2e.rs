@@ -397,6 +397,22 @@ fn e2e_logs_never_contain_prompt_text() {
 }
 
 #[test]
+fn e2e_core_logs_its_version_at_start() {
+    // A read-only check after an update reads the core's version from aiq.log, without running aiq.exe.
+    let mut e = Env::new();
+    e.start_core();
+    e.stop_core();
+    let log = std::fs::read_to_string(e.home().join("aiq.log")).unwrap();
+    let started: Vec<Value> = log
+        .lines()
+        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+        .filter(|v| v["fields"]["message"] == "core started")
+        .collect();
+    assert_eq!(started.len(), 1, "one start line per core start:\n{log}");
+    assert_eq!(started[0]["fields"]["version"], env!("CARGO_PKG_VERSION"), "start line names the version");
+}
+
+#[test]
 fn e2e_forget_all_deletes_store_and_spool() {
     let mut e = Env::new();
     e.start_core();

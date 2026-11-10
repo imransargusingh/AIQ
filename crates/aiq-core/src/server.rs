@@ -165,7 +165,8 @@ pub fn run_with(paths: &Paths, labeller: Option<crate::service::LabelRequester>)
     let token = ipc::new_token();
     write_user_only(&paths.token(), token.as_bytes()).map_err(fail(codes::STORE_OPEN))?;
     let listener = ipc::listen(paths).map_err(fail(codes::CORE_ALREADY_RUNNING))?;
-    info!(pid = std::process::id(), "core started");
+    // The version is read from here after an update (a read-only check cannot run `aiq --version`).
+    info!(pid = std::process::id(), version = env!("CARGO_PKG_VERSION"), "core started");
     // Windows starts AIQ at sign-in from here on (design aiq-home-app, "Core down"). Off the start path.
     let login_paths = paths.clone();
     std::thread::spawn(move || match crate::autostart::ensure_login_start(&login_paths) {
