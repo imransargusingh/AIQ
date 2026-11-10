@@ -332,7 +332,7 @@ pub fn label_jobs(
         .iter()
         .map(|job| {
             let pts = points.get(*job).map(Vec::as_slice).unwrap_or(&[]);
-            let bar = label::job_bar(pts, min, precision);
+            let bar = label::live_bar(job, pts, min, precision);
             (job.to_string(), (bar, label::earned(job, pts, bar, min, precision)))
         })
         .collect())

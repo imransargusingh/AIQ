@@ -174,7 +174,10 @@ What changed:
 4. **A bar from measured accuracy** (`label::job_bar`). Each job's bar is the lowest of 0.8, 0.7, 0.6 and 0.5 at
    which its own labels were at least 8 of 10 right over at least 10. The default is 0.8. On `measured.json`
    code_change earns 0.5 (19 of 20 right) and the others keep 0.8. Under this rule, 24 of 26 confident labels
-   were right, against 16 of 19 under the old kind-level rule.
+   were right, against 16 of 19 under the old kind-level rule. A computer with fewer than 10 checked labels of
+   its own for a job starts at that job's `label::START_BARS` entry (code_change 0.5, from `measured.json`; a
+   test recomputes it), via `label::live_bar`. Measured 2026-11-10: the laptop had 2 checked code_change labels,
+   so the 0.5 bar never applied there and "generat the fix" (code_change 0.78) stayed unsure.
 5. **Questions earn label tips** (`label::earned`, replacing `NOT_COACHED_JOBS`). Question labels coach only once
    their own check clears 8 of 10. Today they stay held.
 6. **A sure answer key** (`coach::ANSWER_KEY_MIN`). The self-checks score a guess only against an analysis that is

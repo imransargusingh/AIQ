@@ -595,7 +595,9 @@ fn a_sure_job_with_an_unsure_kind_still_gives_the_jobs_tip() {
     h.seed();
     with_labeller(&mut h);
     let t = h.prompt("copilot-cli", "s", UNLIKE);
-    store_label_two(&h, &t, "s", 0.9, "fix_bug", 0.6);
+    // Shaped like the laptop's "generat the fix" (2026-11-08): code_change 0.78, fix_bug 0.74, no checked labels yet,
+    // so the measured start bar (0.5) decides.
+    store_label_two(&h, &t, "s", 0.78, "fix_bug", 0.74);
     h.svc.on_kind_label(&t).unwrap();
     let card = full(h.cp_turn_end("s")).expect("a tip from the job's row");
     assert_eq!(card.tip_id, "next_rung.written_brief");
@@ -606,7 +608,7 @@ fn a_sure_job_with_an_unsure_kind_still_gives_the_jobs_tip() {
     // Unsure of the job: no tip, as before.
     h.advance(80 * HOUR);
     let t = h.prompt("copilot-cli", "u", UNLIKE);
-    store_label_two(&h, &t, "u", 0.6, "fix_bug", 0.95);
+    store_label_two(&h, &t, "u", 0.45, "fix_bug", 0.95);
     h.svc.on_kind_label(&t).unwrap();
     assert!(full(h.cp_turn_end("u")).is_none());
     assert_eq!(last_step(&h, &t), "label_unsure");
@@ -618,9 +620,9 @@ fn an_unsure_label_or_one_for_a_task_the_session_left_raises_nothing() {
     h.seed();
     with_labeller(&mut h);
     let t1 = h.prompt("copilot-cli", "s", UNLIKE);
-    store_label(&h, &t1, "s", "tests", 0.7);
+    store_label(&h, &t1, "s", "tests", 0.45);
     h.svc.on_kind_label(&t1).unwrap();
-    assert!(full(h.cp_turn_end("s")).is_none(), "below 0.8: no guess, no tip");
+    assert!(full(h.cp_turn_end("s")).is_none(), "below the bar: no guess, no tip");
     assert!(Store::open(&h.path).unwrap().type_guesses().unwrap().iter().all(|g| g.task_id != t1));
     // A new task in another session, whose session then moves on before the label is back.
     h.advance(2 * HOUR);
@@ -748,7 +750,7 @@ fn a_hi_then_a_real_ask_labels_the_real_ask_once_and_the_tip_shows() {
     assert_eq!(asked.lock().unwrap().len(), 1);
     assert_eq!(asked.lock().unwrap()[0].prompt_id, None, "the first label reads the first prompt");
     h.advance(10_000);
-    store_label(&h, &task, "s", "tests", 0.5);
+    store_label(&h, &task, "s", "tests", 0.4);
     h.svc.on_kind_label(&task).unwrap();
     assert_eq!(last_step(&h, &task), "label_unsure");
     assert!(h.cp_turn_end("s").is_none());
@@ -788,7 +790,7 @@ fn a_real_ask_sent_before_the_first_label_is_back_is_labelled_when_it_comes_back
     let task = h.prompt("copilot-cli", "s", "hi");
     let later = h.prompt("copilot-cli", "s", FULLER);
     assert_eq!(asked.lock().unwrap().len(), 1, "nothing to retry yet: the first label is still out");
-    store_label(&h, &task, "s", "tests", 0.5);
+    store_label(&h, &task, "s", "tests", 0.4);
     h.svc.on_kind_label(&task).unwrap();
     {
         let a = asked.lock().unwrap();
@@ -809,11 +811,11 @@ fn the_second_try_is_the_last_and_a_sure_first_label_never_retries() {
     let asked = with_labeller(&mut h);
     // Second label unsure too: the task ends there and asks no third time.
     let t = h.prompt("copilot-cli", "a", "hi");
-    store_label(&h, &t, "a", "tests", 0.5);
+    store_label(&h, &t, "a", "tests", 0.4);
     h.svc.on_kind_label(&t).unwrap();
     h.prompt("copilot-cli", "a", FULLER);
     h.advance(10_000);
-    store_label(&h, &t, "a", "tests", 0.6);
+    store_label(&h, &t, "a", "tests", 0.45);
     h.svc.on_kind_label(&t).unwrap();
     assert_eq!(last_step(&h, &t), "label_unsure");
     h.prompt("copilot-cli", "a", "the remember me cookie also expires early, look at the token refresh code");
@@ -821,7 +823,7 @@ fn the_second_try_is_the_last_and_a_sure_first_label_never_retries() {
     // A failed second label is counted as failed, not as the first label's "not sure".
     h.advance(2 * HOUR);
     let t = h.prompt("copilot-cli", "b", "hi");
-    store_label(&h, &t, "b", "tests", 0.5);
+    store_label(&h, &t, "b", "tests", 0.4);
     h.svc.on_kind_label(&t).unwrap();
     h.prompt("copilot-cli", "b", FULLER);
     h.advance(10_000);
@@ -843,7 +845,7 @@ fn the_second_try_is_the_last_and_a_sure_first_label_never_retries() {
     // Labels turned off between the two prompts: nothing is sent.
     h.advance(2 * HOUR);
     let t = h.prompt("copilot-cli", "d", "hi");
-    store_label(&h, &t, "d", "tests", 0.5);
+    store_label(&h, &t, "d", "tests", 0.4);
     h.svc.on_kind_label(&t).unwrap();
     h.svc.set("kind_label", "off").unwrap();
     h.prompt("copilot-cli", "d", FULLER);
@@ -918,7 +920,7 @@ fn every_new_task_ends_its_tip_path_at_a_counted_step() {
     assert_eq!(last_step(&h, &t), "label_failed");
     h.advance(2 * HOUR);
     let t = h.prompt("copilot-cli", "f", UNLIKE);
-    store_label(&h, &t, "f", "tests", 0.7);
+    store_label(&h, &t, "f", "tests", 0.45);
     h.svc.on_kind_label(&t).unwrap();
     assert_eq!(last_step(&h, &t), "label_unsure");
     // A sure label of a job labels never coach from (a question) is named apart from "not sure".
