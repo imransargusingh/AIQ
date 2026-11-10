@@ -69,6 +69,22 @@ pub const EARN_JOBS: [&str; 1] = ["ask_research"];
 /// Job-confidence bars a label may coach at, highest first (`job_bar`). Never above the coaching bar.
 pub const BARS: [f64; 4] = [0.8, 0.7, 0.6, 0.5];
 
+/// Starting bars for a job on a computer that has checked fewer than `min` of its own labels for it (`live_bar`):
+/// `job_bar` over `evals/label/measured.json`, 2026-11-10, where code_change was right 19 of 20 times from 0.5. Other
+/// jobs measured too few or too often wrong there, so they start at the coaching bar. Measured on the laptop
+/// 2026-11-10: it had 2 checked code_change labels, so "generat the fix" (code_change 0.78) stayed "not sure".
+/// A test recomputes these from the file, so they cannot drift from it.
+pub const START_BARS: [(&str, f64); 1] = [("code_change", 0.5)];
+
+/// The bar a job's label must reach on this computer: its own `job_bar` once it has `min` checked labels, before that
+/// its `START_BARS` entry (else the coaching bar).
+pub fn live_bar(job: &str, points: &[Point], min: u32, precision: f64) -> f64 {
+    if (points.len() as u32) < min {
+        return START_BARS.iter().find(|(j, _)| *j == job).map_or(rung::COACH_THRESHOLD, |(_, b)| *b);
+    }
+    job_bar(points, min, precision)
+}
+
 /// The system prompt: the judge's own JOB and TASK TYPE definitions, cut from `rung::SYSTEM`, so the label
 /// and the judgment it is checked against use one vocabulary (never two definitions of a kind).
 pub fn system() -> String {
@@ -191,6 +207,9 @@ mod tests {
         let right = |c: f64, n: usize| std::iter::repeat_n((c, true), n);
         let wrong = |c: f64, n: usize| std::iter::repeat_n((c, false), n);
         assert_eq!(job_bar(&[], 10, 0.8), 0.8, "nothing measured: the coaching bar");
+        assert_eq!(live_bar("code_change", &[(0.78, true); 2], 10, 0.8), 0.5, "too few of its own: the measured start");
+        assert_eq!(live_bar("write_doc", &[], 10, 0.8), 0.8, "no measured start: the coaching bar");
+        assert_eq!(live_bar("code_change", &[(0.9, false); 10], 10, 0.8), 0.8, "enough of its own: they decide");
         let p: Vec<Point> = right(0.9, 10).chain(right(0.65, 3)).chain(wrong(0.65, 1)).collect();
         assert_eq!(job_bar(&p, 10, 0.8), 0.5, "13 of 14 from 0.6 down: the lowest bar");
         let p: Vec<Point> = right(0.9, 9).chain(wrong(0.9, 1)).chain(wrong(0.75, 3)).collect();

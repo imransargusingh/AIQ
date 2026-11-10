@@ -190,9 +190,10 @@ pub fn help(code: &str) -> &'static str {
 
 /// The first words of an opening prompt for the no-tip list: secrets removed, whitespace collapsed, at most
 /// `OPENING_WORDS` words and `OPENING_CHARS` characters, "…" when cut. Enough to recognise the task and see how it
-/// began; the task page has the rest.
+/// began; the task page has the rest. A Projects / Remote Control envelope shows the person's own words
+/// (`text::own_words`), never the `<wake …>` wrapper (laptop list, 2026-11-10: 9 of 12 rows showed the wrapper).
 pub fn opening(text: &str) -> String {
-    let (clean, _) = crate::secrets::redact(text);
+    let (clean, _) = crate::secrets::redact(&crate::text::own_words(text));
     let words: Vec<&str> = clean.split_whitespace().collect();
     let mut out = String::new();
     let mut cut = words.len() > OPENING_WORDS;
@@ -628,6 +629,8 @@ mod tests {
         assert_eq!(opening("fix   it\nplease"), "fix it please");
         assert_eq!(opening("one two three four five six seven eight nine"), "one two three four five six seven eight…");
         assert_eq!(opening(""), "");
+        let wake = "<wake reason=\"mention\" current-time=\"2026-11-10T16:35:11Z\">\n  <thread ts=\"cmsg_a\">\n    <message trigger=\"true\" from=\"human\" id=\"cmsg_b\">look at the funnel screenshot</message>\n  </thread>\n</wake>";
+        assert_eq!(opening(wake), "look at the funnel screenshot", "the person's words, not the wrapper");
         let long = "a".repeat(80);
         assert_eq!(opening(&long).chars().count(), OPENING_CHARS + 1);
         let s = opening("use token ghp_0123456789abcdefghijklmnopqrstuvwxyzAB now");

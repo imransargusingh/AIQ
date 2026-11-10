@@ -1030,6 +1030,10 @@ mod tests {
             }
         }
         assert_eq!(label::job_bar(&points("code_change"), 10, 0.8), 0.5);
+        for job in aiq_domain::rung::PACK_JOBS {
+            let start = label::live_bar(job, &[], 10, 0.8);
+            assert_eq!(start, label::job_bar(&points(job), 10, 0.8), "START_BARS for {job} matches this file");
+        }
         assert!(!label::earned("ask_research", &points("ask_research"), 0.8, 10, 0.8));
         assert_eq!(e.passes(), Some(true), "{} of {}", e.confident_right, e.confident);
         assert!(e.confident > 19, "covers more than the kind-level rule's 19: {}", e.confident);
