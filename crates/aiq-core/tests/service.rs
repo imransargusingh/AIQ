@@ -1801,14 +1801,16 @@ fn a_held_prompt_past_its_wait_is_re_read_slowly() {
 
 // Laptop 2026-11-09 (848 transcripts): a Remote Control session started later is handed an older project message
 // again, as a person record (3 pairs, hours apart, across a core update). The message counts once, also after a restart.
+// Envelope attributes in the laptop's order (2026-11-10): `author-id` before `id`.
 #[test]
 fn a_project_message_handed_to_a_second_session_counts_once() {
     let d = tempfile::tempdir().unwrap();
     let ts = aiq_core::sysclock::format_rfc3339_ms;
     let head = "{\"type\":\"user\",\"isMeta\":true,\"turnOrigin\":\"system\",\"entrypoint\":\"claude-desktop\"}\n";
     let own = |ms: i64, id: &str| {
-        let body =
-            format!("<wake><message trigger=\\\"true\\\" id=\\\"{id}\\\" from=\\\"human\\\">ship it</message></wake>");
+        let body = format!(
+            "<wake><message trigger=\\\"true\\\" from=\\\"human\\\" trust=\\\"principal\\\" author-id=\\\"user_01x\\\" id=\\\"{id}\\\" sent-at=\\\"2026-11-10T00:02:25Z\\\">ship it</message></wake>"
+        );
         format!(
             "{{\"type\":\"user\",\"turnOrigin\":\"human\",\"origin\":{{\"kind\":\"human\"}},\"projectsUserTurn\":true,\"textNotTyped\":true,\"message\":{{\"content\":\"{body}\"}},\"timestamp\":\"{}\"}}\n",
             ts(ms)
