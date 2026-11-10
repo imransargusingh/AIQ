@@ -146,7 +146,7 @@ export function Tips(ctx: Ctx) {
         {msg && <p className="errtext" role="alert">{msg}</p>}
         <ChangeChips changes={c.habit_changes} days={c.progress_days} />
       </header>
-      <TipFunnelCard snap={ctx.snap} />
+      <TipFunnelCard snap={ctx.snap} openTask={ctx.openTask} />
       {c.habits.length === 0 ? (
         <section className="group" aria-labelledby="hab">
           <div className="head">

@@ -557,6 +557,12 @@ button.tf-more:hover{filter:brightness(1.15)}
 .tf-lost a{display:flex;align-items:baseline;gap:var(--s4);color:inherit;text-decoration:none;padding:var(--s2) var(--s3);border-radius:var(--r-sm)}
 .tf-lost a:hover,.tf-lost a:focus-visible{background:var(--canvas-soft)}
 .tf-when{font:var(--t-mono);font-variant-numeric:tabular-nums;white-space:nowrap;min-width:16ch}
+.tf-tool{min-width:11ch;white-space:nowrap}
+.tf-open{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tf-detail{display:block;white-space:normal}
+.tf-go{font:var(--t-caption);color:var(--primary);white-space:nowrap}
+.tf-group h4{font:var(--t-body);font-weight:600;margin:var(--s3) 0 var(--s1)}
+.tf-group > p.meta{margin:0 0 var(--s2)}
 
 /* Team tips file: the "Tool to try" line under a tip (primary rule, soft fill; text stays ink for contrast). */
 .team-tool{border-left:3px solid var(--primary);background:var(--canvas-soft);padding:var(--s3) var(--s4);border-radius:0 var(--r-sm) var(--r-sm) 0}

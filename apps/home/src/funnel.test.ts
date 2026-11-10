@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dayWords, droughtLine, funnelInsight, lostAt, otherLine, stages } from "./funnel";
+import { byReason, dayWords, droughtLine, funnelInsight, lostAt, otherLine, stages } from "./funnel";
 import type { TipFunnel } from "./types";
 
 const f = (o: Partial<TipFunnel> = {}): TipFunnel => ({
@@ -39,6 +39,12 @@ describe("tip funnel", () => {
     const g = f({ lost: [t("a", false), t("b", true), t("c", false)] });
     expect(lostAt(g, 1).map((x) => x.task_id)).toEqual(["a", "c"]);
     expect(lostAt(g, 2).map((x) => x.task_id)).toEqual(["b"]);
+  });
+
+  it("groups the listed tasks by reason, biggest group first, keeping each group newest first", () => {
+    const t = (id: string, code: string) => ({ task_id: id, surface: "vscode", first_ms: NOW, code, words: code, kind_known: false });
+    const g = byReason([t("1", "label_asked"), t("2", "label_unsure"), t("3", "label_unsure")]);
+    expect(g.map((x) => [x.code, x.tasks.map((y) => y.task_id)])).toEqual([["label_unsure", ["2", "3"]], ["label_asked", ["1"]]]);
   });
 
   it("names a dry day as yesterday or by its date", () => {

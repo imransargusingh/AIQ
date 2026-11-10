@@ -12,9 +12,22 @@ pub fn tip_funnels(store: &Store, now: Now) -> Result<TipFunnels, StoreError> {
     let steps = store.tip_steps_since(week - DAY_MS)?;
     let cards = store.card_funnel_since(week)?;
     let deliveries = store.deliveries_since(week - DAY_MS)?;
-    Ok(TipFunnels {
+    let mut f = TipFunnels {
         today: funnel::build(&steps, &cards, midnight, 1),
         week: funnel::build(&steps, &cards, week, 7),
         droughts: funnel::droughts(&steps, &deliveries, now, 7),
-    })
+    };
+    for t in f.today.lost.iter_mut().chain(f.week.lost.iter_mut()) {
+        // A text that can't be read leaves the line without words ("not recorded"), never a wrong one.
+        if let Ok(Some((_, Some(text)))) = store.task_first_prompt(&t.task_id) {
+            t.opening = funnel::opening(&text);
+        }
+        if t.code == "label_failed"
+            && let Ok(labels) = store.kind_labels_of(&t.task_id)
+            && let Some(l) = labels.last()
+        {
+            t.detail = funnel::label_failure_words(&l.outcome, &l.provider);
+        }
+    }
+    Ok(f)
 }

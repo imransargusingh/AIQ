@@ -782,6 +782,10 @@ fn the_second_try_is_the_last_and_a_sure_first_label_never_retries() {
     store_failed_label(&h, &t, "b");
     h.svc.on_kind_label(&t).unwrap();
     assert_eq!(last_step(&h, &t), "label_failed");
+    // The funnel's task list says what the failed call ran into, from the stored label row.
+    let f = h.svc.status().tip_funnel.unwrap();
+    let lost = f.week.lost.iter().find(|l| l.task_id == t).expect("listed");
+    assert_eq!(lost.detail, "the label call to Copilot CLI took too long");
     // A question label is sure: no second try.
     h.advance(2 * HOUR);
     let t = h.prompt("copilot-cli", "c", UNLIKE);
@@ -949,6 +953,10 @@ fn status_carries_the_funnel_and_a_dry_working_day_warns() {
     let f = h.svc.status().tip_funnel.expect("funnel");
     assert!(f.today.tasks >= 3 || f.week.tasks >= 6, "{f:?}");
     assert!(f.week.no_tip.iter().any(|c| c.code == "no_match"));
+    // The no-tip list shows how each task began, from the stored first prompt.
+    let first_word = UNLIKE.split_whitespace().next().unwrap();
+    let newest: Vec<_> = f.week.lost.iter().take(3).collect();
+    assert!(newest.iter().all(|t| t.opening.starts_with(first_word) && t.opening.ends_with('…')), "{newest:?}");
     h.advance(24 * HOUR);
     let f = h.svc.status().tip_funnel.unwrap();
     assert_eq!(f.droughts.len(), 1, "{f:?}");

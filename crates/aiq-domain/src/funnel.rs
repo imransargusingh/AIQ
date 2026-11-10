@@ -188,6 +188,51 @@ pub fn help(code: &str) -> &'static str {
     }
 }
 
+/// The first words of an opening prompt for the no-tip list: secrets removed, whitespace collapsed, at most
+/// `OPENING_WORDS` words and `OPENING_CHARS` characters, "…" when cut. Enough to recognise the task and see how it
+/// began; the task page has the rest.
+pub fn opening(text: &str) -> String {
+    let (clean, _) = crate::secrets::redact(text);
+    let words: Vec<&str> = clean.split_whitespace().collect();
+    let mut out = String::new();
+    let mut cut = words.len() > OPENING_WORDS;
+    for w in words.iter().take(OPENING_WORDS) {
+        let next = if out.is_empty() { w.chars().count() } else { out.chars().count() + 1 + w.chars().count() };
+        if next > OPENING_CHARS {
+            if out.is_empty() {
+                out = w.chars().take(OPENING_CHARS).collect();
+            }
+            cut = true;
+            break;
+        }
+        if !out.is_empty() {
+            out.push(' ');
+        }
+        out.push_str(w);
+    }
+    if cut {
+        out.push('…');
+    }
+    out
+}
+
+/// What a failed kind-label call ran into (a `kind_label.outcome` other than `ok`), in plain words naming the tool
+/// that made the call. Shown beside "Kind label failed" so the cause is visible without opening label.log.
+pub fn label_failure_words(outcome: &str, provider: &str) -> String {
+    let tool = tool_words(provider);
+    match outcome {
+        "not_signed_in" => format!("{tool} isn't signed in for AIQ's label call"),
+        "missing" => format!("AIQ couldn't find {tool} to run the label call"),
+        "timeout" => format!("the label call to {tool} took too long"),
+        "schema" => format!("{tool}'s label answer couldn't be read"),
+        "error" => format!("the label call to {tool} returned an error"),
+        _ => String::new(),
+    }
+}
+
+pub const OPENING_WORDS: usize = 8;
+pub const OPENING_CHARS: usize = 60;
+
 /// At most this many no-tip tasks are listed (newest first); the counts still cover them all.
 pub const LOST_MAX: usize = 50;
 
@@ -290,6 +335,8 @@ pub fn build(steps: &[StepRow], cards: &[CardRow], since_ms: i64, days: u32) -> 
                 code: last.step.clone(),
                 words: words(&last.step).to_owned(),
                 kind_known: known,
+                opening: String::new(),
+                detail: String::new(),
             });
         }
     }
@@ -574,6 +621,31 @@ mod tests {
         let many: Vec<_> = (0..LOST_MAX + 5).map(|i| step(&format!("x{i}"), Step::NoMatch, t + i as i64)).collect();
         let f = build(&many, &[], NOW.utc_ms - 24 * H, 1);
         assert_eq!((f.lost.len(), f.tasks as usize), (LOST_MAX, LOST_MAX + 5));
+    }
+
+    #[test]
+    fn opening_keeps_the_first_words_and_never_a_secret() {
+        assert_eq!(opening("fix   it\nplease"), "fix it please");
+        assert_eq!(opening("one two three four five six seven eight nine"), "one two three four five six seven eight…");
+        assert_eq!(opening(""), "");
+        let long = "a".repeat(80);
+        assert_eq!(opening(&long).chars().count(), OPENING_CHARS + 1);
+        let s = opening("use token ghp_0123456789abcdefghijklmnopqrstuvwxyzAB now");
+        assert!(!s.contains("ghp_0123"), "{s}");
+        assert!(s.chars().count() <= OPENING_CHARS + 1);
+    }
+
+    #[test]
+    fn a_failed_label_names_what_the_call_ran_into() {
+        assert_eq!(
+            label_failure_words("not_signed_in", "copilot-cli"),
+            "Copilot CLI isn't signed in for AIQ's label call"
+        );
+        assert_eq!(label_failure_words("timeout", "claude-code"), "the label call to Claude Code took too long");
+        for o in ["missing", "schema", "error"] {
+            assert!(!label_failure_words(o, "copilot-cli").is_empty(), "{o}");
+        }
+        assert_eq!(label_failure_words("ok", "copilot-cli"), "");
     }
 
     #[test]

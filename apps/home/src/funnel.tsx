@@ -94,6 +94,19 @@ export function stages(f: TipFunnel): { stages: Stage[]; biggestLoss: number | n
 /** The tasks lost at a bar: before the kind was clear (1), or with the kind clear but no tip (2). */
 export const lostAt = (f: TipFunnel, stage: number): FunnelTask[] => (f.lost ?? []).filter((t) => t.kind_known === (stage === 2));
 
+/** The tasks grouped by reason, groups in the order of the reason counts (most first). */
+export function byReason(tasks: FunnelTask[]): { code: string; words: string; tasks: FunnelTask[] }[] {
+  const groups: { code: string; words: string; tasks: FunnelTask[] }[] = [];
+  for (const t of tasks) {
+    const g = groups.find((x) => x.code === t.code);
+    if (g) g.tasks.push(t);
+    else groups.push({ code: t.code, words: t.words, tasks: [t] });
+  }
+  return groups.sort((a, b) => b.tasks.length - a.tasks.length);
+}
+
+const helpOf = (f: TipFunnel, code: string) => f.no_tip.find((c) => c.code === code)?.help ?? "";
+
 /** "Also shown this week: 1 tip from other work." Tips outside these bars, so Shown never passes Tip ready. */
 export function otherLine(f: TipFunnel): string | null {
   const n = f.other_shown ?? 0;
@@ -101,7 +114,7 @@ export function otherLine(f: TipFunnel): string | null {
 }
 
 /** Tips page: the week's funnel, why tasks had no tip, and why ready tips were held. */
-export function TipFunnelCard({ snap }: { snap: Snapshot }) {
+export function TipFunnelCard({ snap, openTask }: { snap: Snapshot; openTask: Ctx["openTask"] }) {
   const f = snap.tip_funnel.week;
   const [open, setOpen] = useState(false);
   if (f.tasks === 0 && f.tips === 0) return null;
@@ -142,21 +155,39 @@ export function TipFunnelCard({ snap }: { snap: Snapshot }) {
         {open && lost.length > 0 && (
           <div className="tf-why" id="tf-lost">
             <h3>{biggestLoss === 1 ? "Tasks where the kind wasn't clear" : "Tasks with the kind clear, but no tip"}</h3>
-            <ul className="tf-lost">
-              {lost.map((t) => (
-                <li key={t.task_id}>
-                  <a href={`#task/${encodeURIComponent(t.task_id)}`}>
-                    <span className="tf-when">{when(t.first_ms, snap.now_ms, snap.offset_min)}</span>
-                    <span className="meta">{toolName(t.surface)}</span>
-                    <span className="grow">{sentence(t.words)}</span>
-                    <span aria-hidden="true">›</span>
-                  </a>
-                </li>
-              ))}
-            </ul>
+            {byReason(lost).map((g) => (
+              <div key={g.code} className="tf-group">
+                <h4>
+                  {sentence(g.words)} <span className="meta">({g.tasks.length})</span>
+                </h4>
+                {g.code !== top?.code && helpOf(f, g.code) && <p className="meta">{helpOf(f, g.code)}</p>}
+                <ul className="tf-lost">
+                  {g.tasks.map((t) => (
+                    <li key={t.task_id}>
+                      <a
+                        href={`#task/${encodeURIComponent(t.task_id)}`}
+                        onClick={(e) => {
+                          // Home routes by state, not by hash changes: a bare link only rewrote the address.
+                          e.preventDefault();
+                          openTask(t.task_id);
+                        }}
+                      >
+                        <span className="tf-when">{when(t.first_ms, snap.now_ms, snap.offset_min)}</span>
+                        <span className="meta tf-tool">{toolName(t.surface)}</span>
+                        <span className="grow tf-open">
+                          {t.opening ? `“${t.opening}”` : <span className="meta">Prompt not stored</span>}
+                          {t.detail && <span className="meta tf-detail">{sentence(t.detail)}</span>}
+                        </span>
+                        <span className="tf-go">Open ›</span>
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
           </div>
         )}
-        {f.no_tip.length > 0 && (
+        {!open && f.no_tip.length > 0 && (
           <div className="tf-why">
             <h3>Why tasks had no tip</h3>
             <ul>
