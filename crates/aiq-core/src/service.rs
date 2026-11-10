@@ -184,7 +184,8 @@ pub type LabelRequester = Box<dyn Fn(LabelRequest) + Send>;
 /// A task's kind, from a word guess or a label, with what it rests on.
 struct Kind<'a> {
     job: &'a str,
-    task_type: &'a str,
+    /// None: the kind is not sure, so the job's own row coaches (`coach::job_rows`).
+    task_type: Option<&'a str>,
     score: f64,
     evidence: &'a [String],
 }
@@ -635,7 +636,7 @@ impl<C: Clock> Service<C> {
     fn later_prompt(&mut self, surface: &str, session: &str, event_id: &str, text: &str) {
         let Some(task) = self.engine.task_id(surface, session).map(str::to_owned) else { return };
         let Some(wait) = self.label_wait.get(&task) else { return };
-        if features(text, &self.pack.reprompt).words.len() < RETRY_MIN_WORDS {
+        if features(&aiq_domain::text::own_words(text), &self.pack.reprompt).words.len() < RETRY_MIN_WORDS {
             return;
         }
         match wait {
@@ -882,7 +883,7 @@ impl<C: Clock> Service<C> {
         if labels_on && !cache.labels_on(mode, pack) {
             self.log_label_hold(cache);
         }
-        let words = features(text, &pack.reprompt).words;
+        let words = features(&aiq_domain::text::own_words(text), &pack.reprompt).words;
         let guess = coach::guess_type(&words, &cache.neighbours, &pack.coach);
         if !words_on {
             if let Some(g) = &guess {
@@ -942,7 +943,7 @@ impl<C: Clock> Service<C> {
             utc_ms: now.utc_ms,
             method: "words".into(),
         })?;
-        let kind = Kind { job: &g.job, task_type: &g.task_type, score: g.similarity, evidence: &g.neighbours };
+        let kind = Kind { job: &g.job, task_type: Some(&g.task_type), score: g.similarity, evidence: &g.neighbours };
         self.decide_kind(cache, pack, mode, surface, session, task_id, kind, "words", trace_id, started)
     }
 
@@ -1044,68 +1045,75 @@ impl<C: Clock> Service<C> {
             task_type: l.task_type.clone().unwrap_or_default(),
             task_type_confidence: l.task_type_confidence.unwrap_or(0.0),
         };
-        let Some((job, task_type)) = aiq_domain::label::accept(&label) else {
-            if aiq_domain::label::sure_but_not_coached(&label) {
-                outcome("label_job_not_coached");
-                self.label_wait.remove(task_id);
-                self.tip_step(task_id, &l.surface, Step::LabelNotCoached);
-            } else {
-                outcome("label_not_confident");
-                self.tip_step(task_id, &l.surface, Step::LabelUnsure);
-                // Not sure: the task's next fuller prompt gets the one second try (now, if one came meanwhile).
-                match self.label_wait.remove(task_id) {
-                    Some(LabelWait::Asked { later: Some(p) }) => {
-                        self.retry_label(&l.surface, &l.surface_session_id, task_id, &p)
-                    }
-                    Some(LabelWait::Asked { later: None }) => {
-                        self.label_wait.insert(task_id.to_owned(), LabelWait::Unsure);
-                    }
-                    _ => {}
+        let pack = self.pack.clone();
+        self.coach_cache()?;
+        let cache = self.coach.take().expect("built above");
+        let r = self.decide_label(&cache, &pack, &mode, task_id, &l, &label, &outcome, started);
+        self.coach = Some(cache);
+        r
+    }
+
+    /// The label's half of `on_kind_label`, with the coaching cache in hand: the job's own bar and earned rule
+    /// (`label::job_bar`, `label::earned`), then the decision by job, worded by the kind when that is sure.
+    #[allow(clippy::too_many_arguments)]
+    fn decide_label(
+        &mut self,
+        cache: &coaching::Cache,
+        pack: &aiq_contracts::pack::PackV1,
+        mode: &str,
+        task_id: &str,
+        l: &aiq_store::KindLabelRow,
+        label: &aiq_domain::label::Label,
+        outcome: &dyn Fn(&str),
+        started: std::time::Instant,
+    ) -> Result<(), StoreError> {
+        let (bar, earned) = cache.label_job(&label.job);
+        let Some((job, task_type)) = aiq_domain::label::accept(label, bar) else {
+            outcome("label_not_confident");
+            self.tip_step(task_id, &l.surface, Step::LabelUnsure);
+            // Not sure: the task's next fuller prompt gets the one second try (now, if one came meanwhile).
+            match self.label_wait.remove(task_id) {
+                Some(LabelWait::Asked { later: Some(p) }) => {
+                    self.retry_label(&l.surface, &l.surface_session_id, task_id, &p)
                 }
+                Some(LabelWait::Asked { later: None }) => {
+                    self.label_wait.insert(task_id.to_owned(), LabelWait::Unsure);
+                }
+                _ => {}
             }
             return Ok(());
         };
         self.label_wait.remove(task_id);
-        let pack = self.pack.clone();
-        self.coach_cache()?;
-        let cache = self.coach.take().expect("built above");
-        let r = (|| {
-            let score = label.job_confidence.min(label.task_type_confidence);
-            self.store.insert_type_guess(&aiq_store::TypeGuessRow {
-                guess_id: new_id(),
-                task_id: task_id.to_owned(),
-                surface: l.surface.clone(),
-                job: job.to_owned(),
-                task_type: task_type.to_owned(),
-                similarity: score,
-                neighbours: vec![],
-                utc_ms: self.clock.now().utc_ms,
-                method: aiq_domain::label::METHOD.into(),
-            })?;
-            // Stored either way, so the self-check sees it once the task is analyzed; no tip while it holds.
-            if !cache.labels_on(&mode, &pack) {
-                self.log_label_hold(&cache);
-                outcome("label_held_by_self_check");
-                self.tip_step(task_id, &l.surface, Step::LabelHeld);
-                return Ok(());
-            }
-            let evidence = [format!("label:{}", l.model.as_deref().unwrap_or(&l.provider))];
-            let kind = Kind { job, task_type, score, evidence: &evidence };
-            self.decide_kind(
-                &cache,
-                &pack,
-                &mode,
-                &l.surface,
-                &l.surface_session_id,
-                task_id,
-                kind,
-                "label",
-                None,
-                started,
-            )
-        })();
-        self.coach = Some(cache);
-        r
+        if !earned {
+            // Sure of a job whose labels have not earned tips (questions, measured mostly wrong): no guess is
+            // stored, so it never counts against the check, as before.
+            outcome("label_job_not_coached");
+            self.tip_step(task_id, &l.surface, Step::LabelNotCoached);
+            return Ok(());
+        }
+        let score = label.job_confidence;
+        let stored_type = task_type.unwrap_or(coach::ANY_KIND);
+        self.store.insert_type_guess(&aiq_store::TypeGuessRow {
+            guess_id: new_id(),
+            task_id: task_id.to_owned(),
+            surface: l.surface.clone(),
+            job: job.to_owned(),
+            task_type: stored_type.to_owned(),
+            similarity: score,
+            neighbours: vec![],
+            utc_ms: self.clock.now().utc_ms,
+            method: aiq_domain::label::METHOD.into(),
+        })?;
+        // Stored either way, so the self-check sees it once the task is analyzed; no tip while it holds.
+        if !cache.labels_on(mode, pack) {
+            self.log_label_hold(cache);
+            outcome("label_held_by_self_check");
+            self.tip_step(task_id, &l.surface, Step::LabelHeld);
+            return Ok(());
+        }
+        let evidence = [format!("label:{}", l.model.as_deref().unwrap_or(&l.provider))];
+        let kind = Kind { job, task_type, score, evidence: &evidence };
+        self.decide_kind(cache, pack, mode, &l.surface, &l.surface_session_id, task_id, kind, "label", None, started)
     }
 
     /// The next-step decision for a task whose kind is known (from words or a label): the kind's coached move,
@@ -1125,10 +1133,13 @@ impl<C: Clock> Service<C> {
         started: std::time::Instant,
     ) -> Result<(), StoreError> {
         let now = self.clock.now();
-        let row = cache
-            .rows
-            .iter()
-            .find(|r| r.job == g.job && r.task_type == g.task_type && r.state == coach::RowState::Coach);
+        // The kind's own row when the kind is sure; the job's row when it is not, or when the kind has too few
+        // tasks to say (TooFew, NotSure). A kind at its right rung, blocked or flagged is never overruled by its job.
+        let kind_row = g.task_type.and_then(|t| cache.rows.iter().find(|r| r.job == g.job && r.task_type == t));
+        let use_job = kind_row.is_none_or(|r| matches!(r.state, coach::RowState::TooFew | coach::RowState::NotSure));
+        let job_row = || cache.job_rows.iter().find(|r| r.job == g.job);
+        let chosen = if use_job { job_row() } else { kind_row };
+        let row = chosen.filter(|r| r.state == coach::RowState::Coach);
         let Some((row, m)) = row.and_then(|r| {
             let id = r.move_id.as_deref()?;
             pack.moves.iter().find(|m| m.move_id == id).map(|m| (r, m))
@@ -1140,13 +1151,12 @@ impl<C: Clock> Service<C> {
                 coach.outcome = "not_coachable",
                 "coach.guess"
             );
-            let state = cache.rows.iter().find(|r| r.job == g.job && r.task_type == g.task_type).map(|r| r.state);
-            self.tip_step(task_id, surface, Step::for_kind(state));
+            self.tip_step(task_id, surface, Step::for_kind(chosen.map(|r| r.state)));
             return Ok(());
         };
         let tip = coach::tip_id(&m.move_id);
         let cooldown_ms = pack.coach.move_cooldown_h as i64 * 3_600_000;
-        let accuracy = cache.paused_for(&self.store, mode, &row.job, &row.task_type).map(|v| {
+        let accuracy = cache.paused_for(&self.store, mode, &row.job, g.task_type.unwrap_or(&row.task_type)).map(|v| {
             self.counters.inc(codes::COACH_ACCURACY_PAUSED);
             info!(
                 scope = v.scope.key().as_str(),
@@ -1173,7 +1183,8 @@ impl<C: Clock> Service<C> {
                 }
             }
         };
-        let card = compose_move(m, &row.job, &row.task_type, &new_id(), &pack.version);
+        // The tip names the kind when it is sure, even when the job's row picked the habit.
+        let card = compose_move(m, &row.job, g.task_type.unwrap_or(&row.task_type), &new_id(), &pack.version);
         let (job, threshold) = (row.job.clone(), pack.coach.match_threshold);
         self.decide_and_record(
             surface,

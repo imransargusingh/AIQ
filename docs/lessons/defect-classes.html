@@ -545,4 +545,15 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <ul><li><strong>Control:</strong> the hook writes one file per frame in <code>spool.d/</code>, under a temporary name, then renames it into</li></ul>
 <p>place (<code>spool::append_frame</code>); the core takes only renamed <code>*.jsonl</code> files (<code>spool::take_frames</code>). Test <code>a_drain_between_the_hooks_open_and_write_loses_nothing</code> shows the old file losing the frame and the new one keeping it. The old single file is still drained, for frames an older hook wrote.</p>
 <ul><li><strong>Rule:</strong> a file that one process writes and another consumes is handed over whole by an atomic rename; the</li></ul>
-<p>consumer never renames or deletes a file a writer may still hold open.</p></main></body></html>
+<p>consumer never renames or deletes a file a writer may still hold open.</p>
+<h3>DC-049 — A gate that needs two confidences when only one of them decides the outcome</h3>
+<ul><li><strong>Signature:</strong> 2026-11-10, Imran: &quot;something is clearly broken with the logic that determines when tips are</li></ul>
+<p>shown.&quot; On a copy of the laptop&#x27;s aiq.db, 0 of 15 new tasks since 11-08 reached a tip. 11 stopped at &quot;label unsure&quot;, because the job and the kind both had to reach 0.8. Yet every habit is defined per job, so the kind only worded the tip. Sure jobs matched the analysis 17 of 21 times, sure jobs and kinds 9 of 13. The 2 tips that were ready were then dropped, because the row (gap on most tasks over 30 days) and the habit (Adopted over 14 days) were two definitions of whether the person already does it.</p>
+<ul><li><strong>Why it survives:</strong> each gate is right alone, and each was tuned on its own measured misses. The kind was in</li></ul>
+<p>the row key, so it looked load-bearing. The tests pinned &quot;both at 0.8&quot;, and no test asked what a tip needs.</p>
+<ul><li><strong>Sweep:</strong> every input to the tip decision against what it decides. The kind was needed for wording only, so it</li></ul>
+<p>now words the tip and no longer stops it. The Adopted state of a habit now feeds the rows (<code>coach::adopted</code>), so the row and the live drop agree. The self-check answer key needed a sure analysis (<code>ANSWER_KEY_MIN</code>). The word guess keeps the kind: its neighbours are matched by kind, and the kind is its output. The accuracy pause keeps per-kind scopes.</p>
+<ul><li><strong>Control (tests):</strong> <code>a_sure_job_with_an_unsure_kind_still_gives_the_jobs_tip</code>,</li></ul>
+<p><code>an_adopted_habit_is_not_coached_and_the_next_move_is</code>, <code>a_job_row_coaches_across_kinds_too_few_to_coach_alone</code>, and <code>measured_labels_clear_the_bar_under_the_live_per_job_rule</code> (the real laptop labels).</p>
+<ul><li><strong>Rule:</strong> a gate holds only on the inputs its outcome depends on. One fact, such as &quot;already does this&quot;, has one</li></ul>
+<p>definition that every reader shares.</p></main></body></html>

@@ -892,3 +892,25 @@ summary: >-
   keeping it. The old single file is still drained, for frames an older hook wrote.
 - **Rule:** a file that one process writes and another consumes is handed over whole by an atomic rename; the
   consumer never renames or deletes a file a writer may still hold open.
+
+### DC-049 — A gate that needs two confidences when only one of them decides the outcome
+- **Signature:** 2026-11-10, Imran: "something is clearly broken with the logic that determines when tips are
+  shown." On a copy of the laptop's aiq.db, 0 of 15 new tasks since 11-08 reached a tip. 11 stopped at "label
+  unsure", because the job and the kind both had to reach 0.8. Yet every habit is defined per job, so the kind only
+  worded the tip. Sure jobs matched the analysis 17 of 21 times, sure jobs and kinds 9 of 13. The 2 tips that were
+  ready were then dropped, because the row (gap on most tasks over 30 days) and the habit (Adopted over 14 days)
+  were two definitions of whether the person already does it.
+- **Why it survives:** each gate is right alone, and each was tuned on its own measured misses. The kind was in
+  the row key, so it looked load-bearing. The tests pinned "both at 0.8", and no test asked what a tip needs.
+- **Sweep:** every input to the tip decision against what it decides. The kind was needed for wording only, so it
+  now words the tip and no longer stops it. The Adopted state of a habit now feeds the rows (`coach::adopted`),
+  so the row and the live drop agree. The self-check answer key needed a sure analysis (`ANSWER_KEY_MIN`). The
+  word guess keeps the kind: its neighbours are matched by kind, and the kind is its output. The accuracy pause
+  keeps per-kind scopes.
+- **Control (tests):** `a_sure_job_with_an_unsure_kind_still_gives_the_jobs_tip`,
+  `an_adopted_habit_is_not_coached_and_the_next_move_is`,
+  `a_job_row_coaches_across_kinds_too_few_to_coach_alone`, and
+  `measured_labels_clear_the_bar_under_the_live_per_job_rule` (the real laptop labels).
+- **Rule:** a gate holds only on the inputs its outcome depends on. One fact, such as "already does this", has one
+  definition that every reader shares.
+

@@ -322,11 +322,12 @@ pub struct Eval {
     pub answered: u32,
     pub job_right: u32,
     pub kind_right: u32,
-    /// Labels confident enough to coach from (`label::accept`), and how many of those named the judge's kind.
+    /// Labels confident enough to coach from (`label::offline`), and how many of those named the judge's job (labels
+    /// coach by job; the kind only words the tip).
     pub confident: u32,
     pub confident_right: u32,
     pub latencies: Vec<i64>,
-    /// Each confident label that named another kind than the analysis: (label, analysis), as `job/kind`.
+    /// Each confident label that named another job than the analysis: (label, analysis), as `job/kind`.
     pub misses: Vec<(String, String)>,
 }
 
@@ -359,10 +360,10 @@ pub fn run_eval(cases: &[EvalCase], claude: &dyn Provider, copilot: &dyn Provide
         let kind_ok = job_ok && l.task_type == c.task_type;
         e.job_right += u32::from(job_ok);
         e.kind_right += u32::from(kind_ok);
-        if label::accept(&l).is_some() {
+        if label::offline(&l).is_some() {
             e.confident += 1;
-            e.confident_right += u32::from(kind_ok);
-            if !kind_ok {
+            e.confident_right += u32::from(job_ok);
+            if !job_ok {
                 e.misses.push((format!("{}/{}", l.job, l.task_type), format!("{}/{}", c.job, c.task_type)));
             }
         }
@@ -386,7 +387,7 @@ pub fn eval_report(e: &Eval) -> String {
          Answered: {} of {}\n\
          Job the same as the analysis: {} of {}\n\
          Kind the same as the analysis: {} of {}\n\
-         Confident enough to coach from (both at least 0.8, a named kind): {}; of those, the analyzed kind: {} of {}\n\
+         Confident enough to coach from (a job other than questions at 0.8 or more): {}; of those, the analyzed job: {} of {}\n\
          Call time: median {med}, longest {max}\n\
          {bar}{misses}\
          Live, a confident label coaches only while AIQ's own check of labels stays at 8 in 10 or better.\n",
@@ -488,7 +489,7 @@ pub fn golden() -> Golden {
 }
 
 /// Score answers to golden cases (case id, answer) the way the live self-check scores a label: only confident
-/// labels count toward the bar; a confident label is right when its job and kind are both accepted.
+/// labels count toward the bar; a confident label is right when its job is accepted (labels coach by job).
 pub fn score_golden(g: &Golden, answers: &[(String, serde_json::Value)]) -> Eval {
     let by_id: std::collections::HashMap<&str, &GoldenCase> = g.cases.iter().map(|c| (c.id.as_str(), c)).collect();
     let mut e = Eval::default();
@@ -501,11 +502,11 @@ pub fn score_golden(g: &Golden, answers: &[(String, serde_json::Value)]) -> Eval
         let kind_ok = job_ok && c.expect.kind.contains(&l.task_type);
         e.job_right += u32::from(job_ok);
         e.kind_right += u32::from(kind_ok);
-        if label::accept(&l).is_some() {
+        if label::offline(&l).is_some() {
             e.confident += 1;
-            e.confident_right += u32::from(kind_ok);
-            if !kind_ok {
-                e.misses.push((format!("{id}: {}/{}", l.job, l.task_type), c.expect.kind.join("|")));
+            e.confident_right += u32::from(job_ok);
+            if !job_ok {
+                e.misses.push((format!("{id}: {}/{}", l.job, l.task_type), c.expect.job.join("|")));
             }
         }
     }
@@ -851,7 +852,7 @@ mod tests {
         let f = Fake::ok(answer());
         let e = run_eval(&cases, &f, &f);
         assert_eq!((e.sent, e.answered, e.job_right, e.kind_right), (3, 3, 2, 1));
-        assert_eq!((e.confident, e.confident_right), (3, 1));
+        assert_eq!((e.confident, e.confident_right), (3, 2), "confident labels are scored on their job");
         let r = eval_report(&e);
         assert!(r.contains("Kind the same as the analysis: 1 of 3") && r.contains("median 4.0 s"), "{r}");
     }
@@ -904,7 +905,7 @@ mod tests {
         let coachable = answers
             .iter()
             .filter(|(id, _)| {
-                g.cases.iter().any(|c| &c.id == id && !label::NOT_COACHED_JOBS.contains(&c.expect.job[0].as_str()))
+                g.cases.iter().any(|c| &c.id == id && !label::EARN_JOBS.contains(&c.expect.job[0].as_str()))
             })
             .count() as u32;
         assert!(e.confident * 3 >= coachable, "confident on only {} of {coachable}", e.confident);
@@ -985,11 +986,52 @@ mod tests {
                 task_type: ty.into(),
                 task_type_confidence: r["tc"].as_f64().unwrap(),
             };
-            if label::accept(&l).is_some() {
+            if label::offline(&l).is_some() {
                 e.confident += 1;
-                e.confident_right += u32::from(r["label"] == r["analysis"]);
+                let job_of = |v: &Value| v.as_str().unwrap().split_once('/').unwrap().0.to_owned();
+                e.confident_right += u32::from(job_of(&r["label"]) == job_of(&r["analysis"]));
             }
         }
         assert_eq!(e.passes(), Some(true), "{} of {} confident measured labels right", e.confident_right, e.confident);
+    }
+
+    /// The live rule over the same real labels: each job's bar from its own labels (`label::job_bar`), questions
+    /// only once earned (`label::earned`). Measured 2026-11-10: code_change earns 0.5 (19 of 20), questions stay
+    /// held (11 of 40), and the confident labels stay above 8 in 10 while covering more tasks than the 19 the
+    /// kind-level rule did.
+    #[test]
+    fn measured_labels_clear_the_bar_under_the_live_per_job_rule() {
+        let m: Value = serde_json::from_str(include_str!("../../../evals/label/measured.json")).unwrap();
+        let rows: Vec<(label::Label, String)> = m["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| {
+                let (job, ty) = r["label"].as_str().unwrap().split_once('/').unwrap();
+                let l = label::Label {
+                    job: job.into(),
+                    job_confidence: r["jc"].as_f64().unwrap(),
+                    task_type: ty.into(),
+                    task_type_confidence: r["tc"].as_f64().unwrap(),
+                };
+                (l, r["analysis"].as_str().unwrap().split_once('/').unwrap().0.to_owned())
+            })
+            .collect();
+        let points = |job: &str| -> Vec<label::Point> {
+            rows.iter().filter(|(l, _)| l.job == job).map(|(l, a)| (l.job_confidence, &l.job == a)).collect()
+        };
+        let mut e = Eval::default();
+        for (l, analysis) in &rows {
+            let p = points(&l.job);
+            let bar = label::job_bar(&p, 10, 0.8);
+            if label::earned(&l.job, &p, bar, 10, 0.8) && label::accept(l, bar).is_some() {
+                e.confident += 1;
+                e.confident_right += u32::from(&l.job == analysis);
+            }
+        }
+        assert_eq!(label::job_bar(&points("code_change"), 10, 0.8), 0.5);
+        assert!(!label::earned("ask_research", &points("ask_research"), 0.8, 10, 0.8));
+        assert_eq!(e.passes(), Some(true), "{} of {}", e.confident_right, e.confident);
+        assert!(e.confident > 19, "covers more than the kind-level rule's 19: {}", e.confident);
     }
 }

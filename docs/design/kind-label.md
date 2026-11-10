@@ -12,7 +12,7 @@ links:
   - { to: design-kind-of-task, rel: relates-to }
   - { to: design-judge-accuracy-check, rel: relates-to }
   - { to: privacy-and-terms, rel: relates-to }
-review-by: 2027-05-02
+review-by: 2027-05-10
 summary: >-
   Next-step tips almost never fired because the word-match guess could not name a new task's kind
   (8 of 9 new tasks on 2026-11-02). When the word guess finds nothing, AIQ now asks a small model, through
@@ -143,6 +143,46 @@ Controls: `evals/label/golden.json` (59 synthetic first prompts) with recorded a
 stay at 8 in 10 and cover a third of the set). `evals/label/measured.json` replays the real measured labels
 (hashed ids, no text) through today's `accept` (`measured_labels_clear_the_bar`). `aiq label --eval` prints
 whether the bar is cleared, names each miss, and exits 3 under the bar.
+
+## Coach by job (2026-11-10)
+
+Imran, 2026-11-10: "devise a better/more accurate way to classify tasks" (thread "Find habit-forming psychology
+opportunities", card "All five steps"). Measured read-only on a copy of the laptop's aiq.db the same day: 0 of the
+15 new tasks since 11-08 reached a tip. 11 stopped at "label unsure", 2 were sure questions, and 2 were decided
+and then dropped because the habit was already Adopted.
+
+| Finding | Measured |
+| --- | --- |
+| A sure label's job matches the analysis | 17 of 21 live; non-question jobs 23 of 24 in `measured.json` |
+| A sure label's job and kind both match | 9 of 13 live |
+| Habits are defined per job, never per kind | Every `[[moves]]` in `bundled.toml` has a `job`, none a kind |
+| Claude Code first prompts were Projects envelopes | 7 of 7 since 11-08, about 470 characters, labelled `other` at 0.3 to 0.5 |
+| Sure question labels name the right job | 11 of 40 (`measured.json`), 9 of 12 live |
+| The analysis is sure enough to be the answer key | It named no job on 13 of 36 labelled tasks |
+| First-turn agent actions name the job (tested as rules) | 236 of 423 imported tasks (56%), so it is not built |
+
+What changed:
+
+1. **The person's own words** (`text::own_words`). The label and the word guess read the person's message inside a
+   Projects `<wake>` envelope, not the envelope itself.
+2. **Coach by job** (`label::accept`, `coach::job_rows`). A label coaches when its job is sure. A sure kind words the
+   tip ("fixing a bug or failing test"), and an unsure kind words it by the job ("changing code"). The kind's own
+   row still decides when it has enough tasks, and a kind at its right rung, blocked or flagged is never
+   overruled by its job.
+3. **The next habit when one is adopted** (`coach::adopted`). The rows skip a habit the person already adopted
+   and coach the next one. Before, the row and the habit used two definitions, so the tip was dropped.
+4. **A bar from measured accuracy** (`label::job_bar`). Each job's bar is the lowest of 0.8, 0.7, 0.6 and 0.5 at
+   which its own labels were at least 8 of 10 right over at least 10. The default is 0.8. On `measured.json`
+   code_change earns 0.5 (19 of 20 right) and the others keep 0.8. Under this rule, 24 of 26 confident labels
+   were right, against 16 of 19 under the old kind-level rule.
+5. **Questions earn label tips** (`label::earned`, replacing `NOT_COACHED_JOBS`). Question labels coach only once
+   their own check clears 8 of 10. Today they stay held.
+6. **A sure answer key** (`coach::ANSWER_KEY_MIN`). The self-checks score a guess only against an analysis that is
+   at least 0.8 sure of its job. Labels are checked on their job alone.
+
+Not built: rules that name the job from what the agent did (56% on imported tasks, under the bar), and tips
+corrected by the person as an answer key ("This doesn't fit" names a habit and a kind, not the task, so it can't
+mark a label wrong without a store change).
 
 ## Instrumentation
 

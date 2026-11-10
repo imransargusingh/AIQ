@@ -59,13 +59,15 @@ pub fn enabled(judge: Option<&str>, label: Option<&str>) -> bool {
 /// tasks, gpt-6.1-sol: 5 of 10 confident labels right against 10 of 18 for this prompt), so this one stays.
 pub const PROMPT_VERSION: &str = "label-2";
 
-/// Jobs a label names but never coaches from. In an agent tool a first prompt that reads as a question
-/// usually goes on to change code, so the analysis of the whole task names another job. Measured 2026-11-08 on
-/// the laptop (gpt-6.1-sol, label-1): confident `ask_research` labels were right 6 of 14 on the 20 newest
-/// tasks and 2 of 22 on 60 fresh ones; all other confident labels 16 of 19 (4 of 4 and 12 of 15). Leaving out
-/// only `troubleshoot` (0.1.22) looked like 8 of 10 on the first 20 and was 13 of 29 on the fresh 60. Word
+/// Jobs a label names but coaches from only once its own self-check has earned it (`earned`). In an agent tool a
+/// first prompt that reads as a question usually goes on to change code, so the analysis of the whole task names
+/// another job. Measured on the laptop: confident `ask_research` labels named the analysis's job 11 of 40 times in
+/// `evals/label/measured.json` (2026-11-08) and 9 of 12 on live labels (2026-11-10); the other jobs 23 of 24. Word
 /// guesses and the analysis still coach questions and research.
-pub const NOT_COACHED_JOBS: [&str; 1] = ["ask_research"];
+pub const EARN_JOBS: [&str; 1] = ["ask_research"];
+
+/// Job-confidence bars a label may coach at, highest first (`job_bar`). Never above the coaching bar.
+pub const BARS: [f64; 4] = [0.8, 0.7, 0.6, 0.5];
 
 /// The system prompt: the judge's own JOB and TASK TYPE definitions, cut from `rung::SYSTEM`, so the label
 /// and the judgment it is checked against use one vocabulary (never two definitions of a kind).
@@ -94,41 +96,58 @@ fn cut(s: &str, max: usize) -> String {
     format!("{} [… cut]", &s[..i])
 }
 
-/// The user message: the tool and the first prompt, secrets removed again, cut, inside a per-call fence.
+/// The user message: the tool and the person's own words of the first prompt (`text::own_words`: a Projects
+/// envelope is unwrapped), secrets removed again, cut, inside a per-call fence.
 pub fn envelope(tool: &str, first_prompt: &str, fence: &str) -> String {
-    let text = cut(&secrets::redact(first_prompt.trim()).0, PROMPT_CAP);
+    let text = cut(&secrets::redact(crate::text::own_words(first_prompt).trim()).0, PROMPT_CAP);
     format!(
         "Tool the task is done in: {tool}\n\n{fence} START OF QUOTED FIRST PROMPT\n{text}\n{fence} END OF QUOTED FIRST PROMPT\n"
     )
 }
 
-/// Whether a stored guess counts in its method's self-check: a label guess of a `NOT_COACHED_JOBS` job could
-/// never coach today, so it is not counted. The core and AIQ home both filter with this one definition.
-pub fn counts_in_check(method: &str, job: &str, _task_type: &str) -> bool {
-    method != METHOD || !NOT_COACHED_JOBS.contains(&job)
+/// One label as its self-check scores it: the job confidence it gave, and whether the analysis of the whole task
+/// later named the same job.
+pub type Point = (f64, bool);
+
+/// The job-confidence bar for one job, from its own measured labels (newest first, `points`): the lowest of `BARS`
+/// at which at least `min` labels were given and at least `precision` of them named the analysis's job; else the
+/// coaching bar (0.8). A model's own confidence is not calibrated; this ties it to what was measured.
+/// Measured 2026-11-10 on `evals/label/measured.json`, jobs other than questions: 23 of 24 right at 0.8, 25 of 29
+/// at 0.7, 26 of 30 at 0.6.
+pub fn job_bar(points: &[Point], min: u32, precision: f64) -> f64 {
+    BARS.iter().rev().copied().find(|b| clears(points, *b, min, precision)).unwrap_or(rung::COACH_THRESHOLD)
 }
 
-/// A label `accept` turns down only because its job is in `NOT_COACHED_JOBS`: sure enough, of a named kind,
-/// but a job labels never coach from. The tip funnel names this apart from "not sure enough".
-pub fn sure_but_not_coached(l: &Label) -> bool {
-    let bar = rung::COACH_THRESHOLD;
-    NOT_COACHED_JOBS.contains(&l.job.as_str())
-        && l.task_type != "other"
-        && l.job_confidence >= bar
-        && l.task_type_confidence >= bar
+fn clears(points: &[Point], bar: f64, min: u32, precision: f64) -> bool {
+    let sure: Vec<&Point> = points.iter().filter(|(c, _)| *c >= bar).collect();
+    sure.len() as u32 >= min && sure.iter().filter(|(_, r)| *r).count() as f64 >= precision * sure.len() as f64
 }
 
-/// The (job, kind) a label may coach from: a pack job, a named kind (never `other`) of a job labels coach (not `NOT_COACHED_JOBS`), and
-/// both confidences at least the coaching bar (0.8, `rung::COACH_THRESHOLD`). A model's own confidence is not calibrated; the
-/// live self-check (`coach::check_guesses` over `method = label`) is what holds it to the 8-in-10 bar.
-pub fn accept(l: &Label) -> Option<(&str, &str)> {
-    let bar = rung::COACH_THRESHOLD;
-    (rung::PACK_JOBS.contains(&l.job.as_str())
-        && l.task_type != "other"
-        && !NOT_COACHED_JOBS.contains(&l.job.as_str())
-        && l.job_confidence >= bar
-        && l.task_type_confidence >= bar)
-        .then_some((l.job.as_str(), l.task_type.as_str()))
+/// A job in `EARN_JOBS` coaches from labels only when its own labels cleared the bar (`min` checked, `precision`
+/// right at `bar`); any other job does unless its labels measured under the bar.
+pub fn earned(job: &str, points: &[Point], bar: f64, min: u32, precision: f64) -> bool {
+    let sure = points.iter().filter(|(c, _)| *c >= bar).count() as u32;
+    if EARN_JOBS.contains(&job) {
+        clears(points, bar, min, precision)
+    } else {
+        sure < min || clears(points, bar, min, precision)
+    }
+}
+
+/// `accept` without a live self-check (evals and `aiq label --eval`): at the coaching bar, and never a job in
+/// `EARN_JOBS`, which has not earned it offline.
+pub fn offline(l: &Label) -> Option<(&str, Option<&str>)> {
+    accept(l, rung::COACH_THRESHOLD).filter(|(j, _)| !EARN_JOBS.contains(j))
+}
+
+/// What a label may coach from: a pack job at or above `job_bar`, and its kind when that is named (never `other`)
+/// and at or above the coaching bar. The kind only words the tip; every habit is defined per job (design
+/// kind-label, "Coach by job"), so an unsure kind no longer stops a tip.
+pub fn accept(l: &Label, job_bar: f64) -> Option<(&str, Option<&str>)> {
+    (rung::PACK_JOBS.contains(&l.job.as_str()) && l.job_confidence >= job_bar).then(|| {
+        let sure_kind = l.task_type != "other" && l.task_type_confidence >= rung::COACH_THRESHOLD;
+        (l.job.as_str(), sure_kind.then_some(l.task_type.as_str()))
+    })
 }
 
 #[cfg(test)]
@@ -147,24 +166,48 @@ mod tests {
     }
 
     #[test]
-    fn accept_needs_a_pack_job_a_named_kind_and_both_confidences_at_the_bar() {
-        assert_eq!(accept(&lab("code_change", 0.8, "feature", 0.8)), Some(("code_change", "feature")));
-        assert_eq!(accept(&lab("code_change", 0.79, "feature", 0.9)), None);
-        assert_eq!(accept(&lab("code_change", 0.9, "feature", 0.79)), None);
-        assert_eq!(accept(&lab("ask_research", 0.95, "other", 0.95)), None);
-        assert_eq!(accept(&lab("other", 0.95, "other", 0.95)), None);
-        assert_eq!(accept(&lab("ask_research", 0.99, "troubleshoot", 0.99)), None, "measured: usually a fix");
-        assert_eq!(accept(&lab("ask_research", 0.99, "find", 0.99)), None, "measured: usually a code change");
-        assert_eq!(accept(&lab("run_ship", 0.9, "release", 0.9)), Some(("run_ship", "release")));
-        assert_eq!(accept(&lab("code_change", 0.9, "fix_bug", 0.9)), Some(("code_change", "fix_bug")));
-        assert!(sure_but_not_coached(&lab("ask_research", 0.99, "troubleshoot", 0.99)));
-        assert!(!sure_but_not_coached(&lab("ask_research", 0.7, "troubleshoot", 0.99)), "unsure stays unsure");
-        assert!(!sure_but_not_coached(&lab("ask_research", 0.99, "other", 0.99)));
-        assert!(!sure_but_not_coached(&lab("code_change", 0.7, "fix_bug", 0.7)));
-        assert!(!counts_in_check(METHOD, "ask_research", "troubleshoot"));
-        assert!(!counts_in_check(METHOD, "ask_research", "find"));
-        assert!(counts_in_check("words", "ask_research", "troubleshoot"), "word guesses keep their own rule");
-        assert!(counts_in_check(METHOD, "code_change", "fix_bug"));
+    fn accept_needs_a_pack_job_at_its_bar_and_keeps_the_kind_only_when_sure() {
+        let bar = rung::COACH_THRESHOLD;
+        assert_eq!(accept(&lab("code_change", 0.8, "feature", 0.8), bar), Some(("code_change", Some("feature"))));
+        assert_eq!(accept(&lab("code_change", 0.79, "feature", 0.9), bar), None);
+        assert_eq!(
+            accept(&lab("code_change", 0.9, "feature", 0.79), bar),
+            Some(("code_change", None)),
+            "an unsure kind no longer stops a tip"
+        );
+        assert_eq!(accept(&lab("run_ship", 0.95, "other", 0.95), bar), Some(("run_ship", None)));
+        assert_eq!(accept(&lab("other", 0.95, "other", 0.95), bar), None);
+        assert_eq!(
+            accept(&lab("code_change", 0.7, "fix_bug", 0.9), 0.7),
+            Some(("code_change", Some("fix_bug"))),
+            "a measured lower bar"
+        );
+        assert_eq!(offline(&lab("ask_research", 0.99, "troubleshoot", 0.99)), None, "measured: usually a fix");
+        assert_eq!(offline(&lab("run_ship", 0.9, "release", 0.9)), Some(("run_ship", Some("release"))));
+    }
+
+    #[test]
+    fn the_job_bar_is_the_lowest_one_its_own_labels_cleared() {
+        let right = |c: f64, n: usize| std::iter::repeat_n((c, true), n);
+        let wrong = |c: f64, n: usize| std::iter::repeat_n((c, false), n);
+        assert_eq!(job_bar(&[], 10, 0.8), 0.8, "nothing measured: the coaching bar");
+        let p: Vec<Point> = right(0.9, 10).chain(right(0.65, 3)).chain(wrong(0.65, 1)).collect();
+        assert_eq!(job_bar(&p, 10, 0.8), 0.5, "13 of 14 from 0.6 down: the lowest bar");
+        let p: Vec<Point> = right(0.9, 9).chain(wrong(0.9, 1)).chain(wrong(0.75, 3)).collect();
+        assert_eq!(job_bar(&p, 10, 0.8), 0.8, "0.7 would be 9 of 13");
+        let p: Vec<Point> = right(0.9, 6).chain(wrong(0.9, 4)).collect();
+        assert_eq!(job_bar(&p, 10, 0.8), 0.8, "never above the coaching bar, even under it");
+    }
+
+    #[test]
+    fn a_question_label_must_earn_its_tips_and_others_must_not_lose_them() {
+        let p: Vec<Point> = std::iter::repeat_n((0.9, true), 8).chain(std::iter::repeat_n((0.9, false), 2)).collect();
+        assert!(earned("ask_research", &p, 0.8, 10, 0.8));
+        assert!(!earned("ask_research", &p[..9], 0.8, 10, 0.8), "too few checked");
+        assert!(!earned("ask_research", &[(0.9, true); 3], 0.8, 10, 0.8));
+        assert!(earned("code_change", &[], 0.8, 10, 0.8), "never checked: coaches, as before");
+        let bad: Vec<Point> = std::iter::repeat_n((0.9, false), 10).collect();
+        assert!(!earned("code_change", &bad, 0.8, 10, 0.8), "measured under the bar");
     }
 
     #[test]
@@ -175,6 +218,12 @@ mod tests {
         assert!(e.len() < PROMPT_CAP + 300);
         let secret = envelope("claude-code", "use key ghp_0123456789abcdefghijklmnopqrstuvwxyzAB", "F2");
         assert!(!secret.contains("ghp_0123456789abcdefghijklmnopqrstuvwxyzAB"), "{secret}");
+        let wrapped = envelope(
+            "claude-code",
+            "<wake reason=\"mention\"><message trigger=\"true\" from=\"human\" id=\"cmsg_1\">fix the login test</message><system-note>x</system-note></wake>",
+            "F3",
+        );
+        assert!(wrapped.contains("\nfix the login test\n") && !wrapped.contains("wake"), "{wrapped}");
     }
 
     #[test]

@@ -485,7 +485,8 @@ fn store_label_of(h: &H, task: &str, session: &str, job: &str, task_type: &str, 
             model: Some("small".into()),
             outcome: "ok".into(),
             job: Some(job.into()),
-            job_confidence: Some(0.95),
+            // One confidence for both: a test's "unsure" label is unsure of its job, which is what stops a tip now.
+            job_confidence: Some(conf),
             task_type: Some(task_type.into()),
             task_type_confidence: Some(conf),
             requested_utc_ms: h.now(),
@@ -524,7 +525,11 @@ fn no_word_match_asks_for_a_label_and_the_label_decides_the_tip_before_the_turn_
     let g: Vec<_> =
         Store::open(&h.path).unwrap().type_guesses().unwrap().into_iter().filter(|g| g.task_id == task).collect();
     assert_eq!(g.len(), 1);
-    assert_eq!((g[0].method.as_str(), g[0].similarity, g[0].neighbours.len()), ("label", 0.9, 0));
+    assert_eq!(
+        (g[0].method.as_str(), g[0].similarity, g[0].neighbours.len()),
+        ("label", 0.9, 0),
+        "the score is the job confidence: labels coach by job"
+    );
     // A repeated notice decides nothing again.
     h.svc.on_kind_label(&task).unwrap();
     assert_eq!(Store::open(&h.path).unwrap().type_guesses().unwrap().iter().filter(|g| g.task_id == task).count(), 1);
@@ -554,6 +559,57 @@ fn a_word_match_needs_no_label_and_labels_stay_off_without_judging_or_when_turne
     h.prompt("copilot-cli", "z", UNLIKE);
     assert_eq!(asked.lock().unwrap().len(), 1);
     assert!(h.svc.set("kind_label_daily", "501").is_err());
+}
+
+/// A label sure of the job but not the kind: the job's own row picks the habit, worded by the job (design
+/// kind-label, "Coach by job"). Before, both had to reach 0.8 (laptop 2026-11-10: 11 of 15 new tasks stopped there).
+fn store_label_two(h: &H, task: &str, session: &str, job_conf: f64, task_type: &str, kind_conf: f64) {
+    Store::open(&h.path)
+        .unwrap()
+        .insert_kind_label(&aiq_store::KindLabelRow {
+            label_id: format!("l2-{task}"),
+            task_id: task.into(),
+            surface: "copilot-cli".into(),
+            surface_session_id: session.into(),
+            provider: "copilot-cli".into(),
+            model: Some("small".into()),
+            outcome: "ok".into(),
+            job: Some("code_change".into()),
+            job_confidence: Some(job_conf),
+            task_type: Some(task_type.into()),
+            task_type_confidence: Some(kind_conf),
+            requested_utc_ms: h.now(),
+            started_utc_ms: h.now(),
+            latency_ms: 6_000,
+            tokens_in: None,
+            tokens_out: None,
+            cost_usd: None,
+            utc_ms: h.now(),
+        })
+        .unwrap();
+}
+
+#[test]
+fn a_sure_job_with_an_unsure_kind_still_gives_the_jobs_tip() {
+    let mut h = H::new();
+    h.seed();
+    with_labeller(&mut h);
+    let t = h.prompt("copilot-cli", "s", UNLIKE);
+    store_label_two(&h, &t, "s", 0.9, "fix_bug", 0.6);
+    h.svc.on_kind_label(&t).unwrap();
+    let card = full(h.cp_turn_end("s")).expect("a tip from the job's row");
+    assert_eq!(card.tip_id, "next_rung.written_brief");
+    assert!(card.noticed.starts_with("this looks like changing code."), "{}", card.noticed);
+    let g = Store::open(&h.path).unwrap().type_guesses().unwrap();
+    let g = g.iter().find(|g| g.task_id == t).expect("the label's guess is stored");
+    assert_eq!((g.job.as_str(), g.task_type.as_str()), ("code_change", "any"));
+    // Unsure of the job: no tip, as before.
+    h.advance(80 * HOUR);
+    let t = h.prompt("copilot-cli", "u", UNLIKE);
+    store_label_two(&h, &t, "u", 0.6, "fix_bug", 0.95);
+    h.svc.on_kind_label(&t).unwrap();
+    assert!(full(h.cp_turn_end("u")).is_none());
+    assert_eq!(last_step(&h, &t), "label_unsure");
 }
 
 #[test]
@@ -590,32 +646,17 @@ fn a_label_tip_is_held_by_the_accuracy_pause_like_a_word_tip() {
 }
 
 #[test]
-fn a_label_guess_of_a_kind_labels_no_longer_coach_is_not_counted_in_the_label_check() {
+fn a_sure_question_label_stores_no_guess_until_questions_earn_label_tips() {
     let mut h = H::new();
     h.seed();
     let _asked = with_labeller(&mut h);
-    {
-        let s = Store::open(&h.path).unwrap();
-        for i in 0..10 {
-            let id = format!("ts{i}");
-            s.insert_judgment(&judgment(&id, "fix_bug")).unwrap();
-            s.insert_type_guess(&TypeGuessRow {
-                guess_id: id.clone(),
-                task_id: id,
-                surface: "copilot-cli".into(),
-                job: "ask_research".into(),
-                task_type: "troubleshoot".into(),
-                similarity: 0.9,
-                neighbours: vec![],
-                utc_ms: 1,
-                method: "label".into(),
-            })
-            .unwrap();
-        }
-    }
-    h.prompt("copilot-cli", "a", UNLIKE);
+    let t = h.prompt("copilot-cli", "a", UNLIKE);
+    store_label_of(&h, &t, "a", "ask_research", "troubleshoot", 0.95);
+    h.svc.on_kind_label(&t).unwrap();
+    assert_eq!(last_step(&h, &t), "label_not_coached");
+    assert!(Store::open(&h.path).unwrap().type_guesses().unwrap().iter().all(|g| g.task_id != t));
     let l = h.svc.status().coach.unwrap().labels.unwrap();
-    assert_eq!((l.checked, l.right), (0, 0), "troubleshoot labels never coach, so they never hold label tips");
+    assert_eq!((l.checked, l.right), (0, 0), "an unearned question label never counts against label tips");
 }
 
 #[test]
@@ -627,7 +668,12 @@ fn labels_have_their_own_self_check_hold_tips_below_eight_in_ten_and_keep_being_
         let s = Store::open(&h.path).unwrap();
         for i in 0..10 {
             let id = format!("lg{i}");
-            s.insert_judgment(&judgment(&id, if i < 7 { "tests" } else { "fix_bug" })).unwrap();
+            // Labels are checked on their job: the three misses were another job.
+            let mut j = judgment(&id, "tests");
+            if i >= 7 {
+                (j.job, j.task_type) = ("write_doc".into(), Some("spec".into()));
+            }
+            s.insert_judgment(&j).unwrap();
             s.insert_type_guess(&TypeGuessRow {
                 guess_id: id.clone(),
                 task_id: id,
@@ -893,10 +939,16 @@ fn every_new_task_ends_its_tip_path_at_a_counted_step() {
     store_label(&h, &t, "h", "tests", 0.9);
     h.svc.on_kind_label(&t).unwrap();
     assert_eq!(last_step(&h, &t), "decided");
-    // A kind none of the person's tasks has been analyzed as yet.
+    // A kind none of the person's tasks has been analyzed as yet: the job's own row decides (coach by job).
     h.advance(2 * HOUR);
     let t = h.prompt("copilot-cli", "i", UNLIKE);
     store_label(&h, &t, "i", "fix_bug", 0.9);
+    h.svc.on_kind_label(&t).unwrap();
+    assert_eq!(last_step(&h, &t), "decided");
+    // A job none of the person's tasks has been analyzed as yet.
+    h.advance(2 * HOUR);
+    let t = h.prompt("copilot-cli", "j", UNLIKE);
+    store_label_of(&h, &t, "j", "write_doc", "spec", 0.9);
     h.svc.on_kind_label(&t).unwrap();
     assert!(last_step(&h, &t).starts_with("kind_"), "{}", last_step(&h, &t));
     // Every row's step is one the funnel knows.
@@ -913,7 +965,12 @@ fn held_self_checks_are_counted_as_their_own_steps() {
         for i in 0..10 {
             for method in ["words", "label"] {
                 let id = format!("{method}{i}");
-                s.insert_judgment(&judgment(&id, if i < 7 { "tests" } else { "fix_bug" })).unwrap();
+                // Labels are checked on their job: the three misses were another job.
+                let mut j = judgment(&id, "tests");
+                if i >= 7 {
+                    (j.job, j.task_type) = ("write_doc".into(), Some("spec".into()));
+                }
+                s.insert_judgment(&j).unwrap();
                 s.insert_type_guess(&TypeGuessRow {
                     guess_id: id.clone(),
                     task_id: id,
