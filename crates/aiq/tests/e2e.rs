@@ -760,3 +760,67 @@ fn e2e_a_tip_no_hook_says_it_printed_is_not_counted_and_comes_back() {
         "unconfirmed {unconfirmed}, missed retries {missed}:\n{st}\n{timings}"
     );
 }
+
+// ---- the one-time milestone note (Milestones design, Imran 2026-11-10) ----
+
+/// Three analysed "Writing tests" tasks at Delegated: the kind reaches a milestone, and the next Claude Code turn
+/// end with no tip says it once, as a systemMessage in the trend's colour; the next turn end says nothing.
+#[test]
+fn e2e_claude_code_says_a_new_milestone_once() {
+    let mut e = Env::new();
+    e.start_core();
+    for i in 0..3 {
+        let o = e.prompt(&format!("old{i}"), "write unit tests for the parser module", &format!("old{i}-p0"));
+        assert!(o.status.success() && o.stdout.is_empty(), "UserPromptSubmit never prints");
+    }
+    e.wait_prompts(3);
+    let store = aiq_store::Store::open(&e.home().join("aiq.db")).unwrap();
+    for p in store.prompts_for_rebuild(0).unwrap() {
+        store.insert_judgment(&delegated_tests(&p.event_id)).unwrap();
+    }
+    drop(store);
+    e.prompt("s1", "keep going", "s1-p0");
+    e.wait_prompts(4);
+    let o = e.stop("s1", "s1-p0");
+    assert_hook_stdout_contract(&o);
+    let msg: Value = serde_json::from_slice(&o.stdout).expect("the milestone note at this Stop");
+    let text = msg["systemMessage"].as_str().unwrap();
+    assert!(text.contains("AIQ milestone: Writing tests reached Delegated · see it in AIQ Home"), "{text}");
+    assert!(!text.contains("AIQ tip"), "{text}");
+    e.prompt("s1", "and the lexer", "s1-p1");
+    e.wait_prompts(5);
+    assert!(e.stop("s1", "s1-p1").stdout.is_empty(), "said once");
+}
+
+fn delegated_tests(task_id: &str) -> aiq_store::JudgmentRow {
+    aiq_store::JudgmentRow {
+        judgment_id: format!("j-{task_id}"),
+        task_id: task_id.into(),
+        origin: "live".into(),
+        provider: "claude-code".into(),
+        model: None,
+        judged_utc_ms: 1,
+        job: "code_change".into(),
+        job_confidence: 0.9,
+        model_rung: 3,
+        current_rung: 3,
+        current_confidence: 0.85,
+        potential_rung: 3,
+        potential_confidence: 0.85,
+        ceiling_rung: 5,
+        state: "right_rung".into(),
+        coachable: false,
+        facts: "{}".into(),
+        evidence: r#"["The agent wrote the tests."]"#.into(),
+        gap: String::new(),
+        blockers: "[]".into(),
+        placement: "[]".into(),
+        read: r#"{"prompts":1,"reprompts":0,"corrections":0}"#.into(),
+        call_ids: "[]".into(),
+        fact_set_version: "fs1".into(),
+        rubric_version: "r1".into(),
+        judge_version: "j2".into(),
+        task_type: Some("tests".into()),
+        task_type_confidence: Some(0.9),
+    }
+}

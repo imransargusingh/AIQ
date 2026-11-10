@@ -4,7 +4,7 @@ use crate::counters::Counters;
 use crate::ipc;
 use crate::pack::BundledPack;
 use crate::paths::{Paths, write_user_only};
-use crate::service::{SETTING_PAUSED, SETTING_TIP_HIGHLIGHT, Service, TipLineOut};
+use crate::service::{SETTING_PAUSED, SETTING_TIP_HIGHLIGHT, Service, TipLineOut, VSCODE};
 use crate::spool;
 use crate::sysclock::SystemClock;
 use aiq_contracts::codes;
@@ -251,10 +251,19 @@ fn writer_loop(mut svc: Service<SystemClock>, rx: Receiver<Cmd>, paths: &Paths, 
                 let fresh = received.elapsed() <= Duration::from_millis(wait_ms);
                 let card = svc.take_card(&event, trace_id.as_deref(), fresh);
                 let id = card.as_ref().map(|c| c.card_id.clone());
-                let sent =
-                    reply.send(TakeCardReply { card, plain: !svc.switch_on(SETTING_TIP_HIGHLIGHT), team_tool: None });
-                if let (Err(_), Some(id)) = (sent, id) {
-                    svc.hand_back(&id); // the hook's wait ended before the reply: it will never print this tip
+                // No tip this turn: a milestone just earned is said once instead (Claude Code only).
+                let note = if card.is_none() && fresh { svc.stop_note(&event) } else { None };
+                let plain = !svc.switch_on(SETTING_TIP_HIGHLIGHT);
+                let text = note.as_ref().map(|n| n.text.clone());
+                let sent = reply.send(TakeCardReply { card, plain, team_tool: None, note: text });
+                if sent.is_err() {
+                    // The hook's wait ended before the reply: it will never print this tip or note.
+                    if let Some(id) = id {
+                        svc.hand_back(&id);
+                    }
+                    if let Some(n) = &note {
+                        svc.unclaim_note(n);
+                    }
                 }
                 svc.after_stop(&event, trace_id.as_deref());
             }
@@ -286,7 +295,16 @@ fn writer_loop(mut svc: Service<SystemClock>, rx: Receiver<Cmd>, paths: &Paths, 
                 let card = if received.elapsed() <= RENDER_WAIT { svc.take_card_any(&surface) } else { None };
                 // VS Code may name the team's tool (team tips file); the hook surfaces render their own line.
                 let team_tool = card.as_ref().and_then(|c| crate::team_tips::line_on(paths, &surface, &c.tip_id));
-                let _ = reply.send(TakeCardReply { card, plain: !svc.switch_on(SETTING_TIP_HIGHLIGHT), team_tool });
+                // No tip waiting: a milestone just earned, said once in VS Code.
+                let waiting = received.elapsed() <= RENDER_WAIT;
+                let note = if card.is_none() && waiting && surface == VSCODE { svc.vscode_note() } else { None };
+                let text = note.as_ref().map(|n| n.text.clone());
+                let plain = !svc.switch_on(SETTING_TIP_HIGHLIGHT);
+                if reply.send(TakeCardReply { card, plain, team_tool, note: text }).is_err()
+                    && let Some(n) = &note
+                {
+                    svc.unclaim_note(n);
+                }
             }
             Cmd::Setting { key, value, reply } => {
                 let _ = reply.send(svc.set(&key, &value));
@@ -534,6 +552,11 @@ pub fn tip_line_reply(out: Option<TipLineOut>, plain: bool, tool: Option<&str>) 
         Some(TipLineOut::Trend(t)) => {
             let (line, line_plain) = lines(&|color| render_trend_line(&t, color));
             TipLineReply { trend: Some(t), plain, line, line_plain, ..Default::default() }
+        }
+        // A milestone is not a tip either: the trend's cyan, so a yellow tip still stands out.
+        Some(TipLineOut::Milestone(m)) => {
+            let (line, line_plain) = lines(&|color| render_trend_line(&m, color));
+            TipLineReply { milestone: Some(m), plain, line, line_plain, ..Default::default() }
         }
         None => TipLineReply::default(),
     }

@@ -147,8 +147,13 @@ export function request<T>(ep: Endpoint, frame: Record<string, unknown>, timeout
   });
 }
 
+/** A milestone just earned, said once when no tip waits (Milestones design, Imran 2026-11-10). */
+export interface Note {
+  note: string;
+}
+
 export interface CoreClient {
-  takeCard(): Promise<Card | null | undefined>; // undefined: core not reachable
+  takeCard(): Promise<Card | Note | null | undefined>; // undefined: core not reachable
   show(cardId: string): Promise<ShowReply | null>;
   /** Record an answer; false when the core refused or is not reachable ("AIQ isn't running"). */
   feedback(cardId: string, answer: string): Promise<boolean>;
@@ -158,9 +163,9 @@ export interface CoreClient {
 export function coreClient(ep: Endpoint): CoreClient {
   return {
     async takeCard() {
-      const r = await request<{ card: Card | null; plain?: boolean; team_tool?: string }>(ep, { op: "take_card_any", surface: SURFACE });
+      const r = await request<{ card: Card | null; plain?: boolean; team_tool?: string; note?: string }>(ep, { op: "take_card_any", surface: SURFACE });
       if (r === null) return undefined;
-      if (!r.card) return r.card;
+      if (!r.card) return r.note ? { note: r.note } : null;
       return { ...r.card, ...(r.plain ? { plain: true } : {}), ...(r.team_tool ? { team_tool: r.team_tool } : {}) };
     },
     show: (cardId) => request<ShowReply>(ep, { op: "show", card_id: cardId, opened_on: SURFACE }),
@@ -212,19 +217,20 @@ export const POLL_MS = 2_000;
 export const DOWN_POLL_MS = 10_000;
 
 /**
- * One poll: never asks while paused; takes at most one card. Returns the state to show, the card to
- * notify (if any), and when to poll next. simplify: polling, not push. Ceiling: 0.5 frames/s per focused
+ * One poll: never asks while paused; takes at most one card. Returns the state to show, the card or
+ * milestone note to notify (if any), and when to poll next. simplify: polling, not push. Ceiling: 0.5 frames/s per focused
  * window. Upgrade trigger: a second VS Code consumer of core events (Phase 3 feedback).
  */
 export async function pollOnce(
   client: CoreClient,
   focused: boolean,
   waiting: Card | undefined,
-): Promise<{ state: State; card?: Card; nextMs: number }> {
+): Promise<{ state: State; card?: Card; note?: string; nextMs: number }> {
   if (client.paused()) return { state: "paused", nextMs: POLL_MS };
   if (!focused) return { state: waiting ? "tip" : "on", nextMs: POLL_MS };
   const card = await client.takeCard();
   if (card === undefined) return { state: waiting ? "tip" : "down", nextMs: DOWN_POLL_MS };
+  if (card && "note" in card) return { state: waiting ? "tip" : "on", note: plain(card.note), nextMs: POLL_MS };
   if (card) return { state: "tip", card, nextMs: POLL_MS };
   return { state: waiting ? "tip" : "on", nextMs: POLL_MS };
 }

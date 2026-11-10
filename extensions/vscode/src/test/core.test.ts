@@ -5,7 +5,7 @@ import * as fs from "node:fs";
 import * as net from "node:net";
 import * as os from "node:os";
 import * as path from "node:path";
-import { Card, CoreClient, DOWN_POLL_MS, FEEDBACK_BUTTONS, POLL_MS, coreClient, detailsText, executableCandidates, notificationText, pollOnce, request, statusText } from "../core";
+import { Card, CoreClient, Note, DOWN_POLL_MS, FEEDBACK_BUTTONS, POLL_MS, coreClient, detailsText, executableCandidates, notificationText, pollOnce, request, statusText } from "../core";
 
 const card: Card = {
   schema: "aiq.card.v1",
@@ -19,7 +19,7 @@ const card: Card = {
   pack_version: "bundled-2",
 };
 
-function fake(o: { paused?: boolean; take?: Card | null | undefined }): CoreClient & { asked: number } {
+function fake(o: { paused?: boolean; take?: Card | Note | null | undefined }): CoreClient & { asked: number } {
   const c = {
     asked: 0,
     paused: () => o.paused ?? false,
@@ -54,6 +54,13 @@ test("pollOnce_card_notifiesAndShowsWaiting", async () => {
 test("pollOnce_coreDown_backsOffAndKeepsWaitingTip", async () => {
   assert.deepEqual(await pollOnce(fake({ take: undefined }), true, undefined), { state: "down", nextMs: DOWN_POLL_MS });
   assert.equal((await pollOnce(fake({ take: undefined }), true, card)).state, "tip");
+});
+
+test("pollOnce_milestoneNote_notifiesOnceWithoutATipWaiting", async () => {
+  const note = "AIQ milestone: Writing tests reached Delegated · see it in AIQ Home";
+  assert.deepEqual(await pollOnce(fake({ take: { note } }), true, undefined), { state: "on", note, nextMs: POLL_MS });
+  assert.equal((await pollOnce(fake({ take: { note: "a\u001b[31mb" } }), true, card)).note, "a [31mb", "plain text, tip still waiting");
+  assert.equal((await pollOnce(fake({ take: { note } }), true, card)).state, "tip");
 });
 
 test("pollOnce_noCard_on", async () => {
@@ -102,13 +109,15 @@ test("request_realSocket_sendsTokenAndParsesReply_wrongTokenGetsNull", async () 
   fs.writeFileSync(path.join(dir, "token"), "secret\n");
   const seen: Record<string, unknown>[] = [];
   let plainReply = false;
+  let noteReply = false;
   const server = net.createServer((c) => {
     c.setEncoding("utf8");
     c.once("data", (d: string) => {
       const f = JSON.parse(d.trim());
       seen.push(f);
       if (f.token !== "secret") return c.destroy(); // the core closes a bad-token frame without reply
-      c.end(JSON.stringify(plainReply ? { card, plain: true } : { card }) + "\n");
+      const reply = noteReply ? { card: null, note: "AIQ milestone: x" } : plainReply ? { card, plain: true } : { card };
+      c.end(JSON.stringify(reply) + "\n");
     });
   });
   await new Promise<void>((r) => server.listen(sock, r));
@@ -117,6 +126,8 @@ test("request_realSocket_sendsTokenAndParsesReply_wrongTokenGetsNull", async () 
     assert.deepEqual(await coreClient(ep).takeCard(), card);
     plainReply = true;
     assert.deepEqual(await coreClient(ep).takeCard(), { ...card, plain: true }, "highlight off reaches the extension");
+    noteReply = true;
+    assert.deepEqual(await coreClient(ep).takeCard(), { note: "AIQ milestone: x" }, "a milestone note when no tip waits");
     assert.deepEqual(seen[0], { op: "take_card_any", surface: "vscode", token: "secret" });
     fs.writeFileSync(ep.token, "stale");
     assert.equal(await request(ep, { op: "status" }), null);

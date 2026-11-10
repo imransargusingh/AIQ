@@ -132,6 +132,10 @@ pub struct TakeCardReply {
     /// VS Code only: the team's "Tool to try" line for this tip (team tips file), read in place, never stored.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub team_tool: Option<String>,
+    /// No tip: a milestone just earned, said once (`milestone_note_text`). Claude Code and VS Code only. Older
+    /// cores omit it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
 }
 
 /// Status-line reply: the full card, or only the id of a card that is waiting to be opened, or neither.
@@ -142,6 +146,9 @@ pub struct TipLineReply {
     /// No tip: where the open task is heading, one plain line (design live-rung-trend D). Older cores omit it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub trend: Option<String>,
+    /// No tip: a milestone just earned, said once (Milestones). Older cores omit it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub milestone: Option<String>,
     /// As `TakeCardReply::plain`.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub plain: bool,

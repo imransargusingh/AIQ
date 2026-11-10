@@ -61,6 +61,7 @@ const MAX_LOG_OFFSETS: usize = 4096;
 /// Copilot CLI's surface name (the hook client uses the same constant).
 pub const COPILOT_CLI: &str = "copilot-cli";
 pub const VSCODE: &str = "vscode";
+pub const CLAUDE_CODE: &str = "claude-code";
 /// The VS Code extension asks for a card every 2 s while VS Code is focused. With no ask for this long, VS
 /// Code tips show in the Copilot CLI status line instead (Imran, 2026-11-03: the extension was not
 /// installed on the laptop and its tips never showed).
@@ -301,6 +302,25 @@ const HEAD_RECHECK_MS: i64 = 1_000;
 const STALE_RECHECK_MS: i64 = 5_000;
 /// Setting key: hashes of the project messages already counted as a person's turn (`rc_redelivered`).
 const DELIVERED_KEY: &str = "rc.delivered";
+/// The newest milestone already said once (its `earned_ms`), so each milestone gets one note (Milestones design,
+/// Imran 2026-11-10 "Build as mocked").
+const MILESTONE_SEEN_KEY: &str = "milestone.seen_ms";
+/// Where the current milestone note was said ({surface, session, at_ms, text}): that session keeps it on its
+/// status line until its next prompt. "" when none.
+const MILESTONE_NOTE_KEY: &str = "milestone.note";
+
+/// The one line a milestone note reads, on every surface.
+pub fn milestone_note_text(words: &str) -> String {
+    format!("AIQ milestone: {words} · see it in AIQ Home")
+}
+
+/// A milestone note claimed for one place, with the seen mark it replaced so a note that never reached the person
+/// can be put back (`unclaim_note`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct NoteClaim {
+    pub text: String,
+    pub prev_seen: Option<String>,
+}
 /// How many hashes `DELIVERED_KEY` keeps (236 person records in 848 transcripts, measured 2026-11-09).
 const DELIVERED_KEEP: usize = 1_024;
 /// How often `note_aside` rewrites an unchanged surface's time.
@@ -332,6 +352,8 @@ pub enum TipLineOut {
     Waiting(String),
     /// No tip to show: where the open task is heading (design live-rung-trend D), plain text.
     Trend(String),
+    /// No tip to show and a milestone just earned: its one note (`milestone_note_text`), plain text.
+    Milestone(String),
 }
 
 fn new_id() -> String {
@@ -1916,7 +1938,7 @@ impl<C: Clock> Service<C> {
             return Ok(match (tip_line_state(self.copilot_tip_stays(), at, after, opened, now), card) {
                 (TipLine::Full, Some(c)) => Some(TipLineOut::Full(c)),
                 (TipLine::Waiting, _) => Some(TipLineOut::Waiting(card_id)),
-                _ => self.trend_line(surface, &session)?,
+                _ => self.quiet_line(surface, &session)?,
             });
         }
         if self.store.last_event_kind(surface, &session)?.as_deref() != Some("stop") {
@@ -1927,10 +1949,93 @@ impl<C: Clock> Service<C> {
             None if surface == COPILOT_CLI && !self.vscode_extension_asking() => self.vscode_ready()?,
             None => None,
         };
-        let Some(ready) = ready else { return self.trend_line(surface, &session) };
+        let Some(ready) = ready else { return self.quiet_line(surface, &session) };
         // A VS Code tip shown here is delivered to this status line's session, so its lifetime follows
         // this session's prompts like the line's own tips.
         Ok(self.deliver(&ready.card_id, &ready.card_json, surface, &session)?.map(TipLineOut::Full))
+    }
+
+    /// After a turn ends with no tip to show: the milestone note if there is one for this session, else the trend.
+    fn quiet_line(&mut self, surface: &str, session: &str) -> Result<Option<TipLineOut>, StoreError> {
+        if self.store.last_event_kind(surface, session)?.as_deref() == Some("stop")
+            && let Some(n) = self.milestone_note(surface, session)?
+        {
+            return Ok(Some(TipLineOut::Milestone(n.text)));
+        }
+        self.trend_line(surface, session)
+    }
+
+    /// The milestone note for this session: the one it already holds until its next prompt, else the newest
+    /// milestone not yet said (claimed here, so no other place says it). None when there is nothing new.
+    pub fn milestone_note(&mut self, surface: &str, session: &str) -> Result<Option<NoteClaim>, StoreError> {
+        if let Some(v) = self.store.setting(MILESTONE_NOTE_KEY)?.filter(|v| !v.is_empty())
+            && let Ok(n) = serde_json::from_str::<serde_json::Value>(&v)
+            && n["surface"] == surface
+            && n["session"] == session
+            && let (Some(at), Some(text)) = (n["at_ms"].as_i64(), n["text"].as_str())
+            && self.store.prompts_after(surface, session, at)? == 0
+        {
+            return Ok(Some(NoteClaim { text: text.to_owned(), prev_seen: None }));
+        }
+        let now = self.clock.now().utc_ms;
+        let prev_seen = self.store.setting(MILESTONE_SEEN_KEY)?;
+        let seen = prev_seen.as_deref().and_then(|v| v.parse::<i64>().ok()).unwrap_or(0);
+        let Some((earned, words)) = coach::milestone_to_note(&self.coach_cache()?.milestones, seen, now)
+            .map(|m| (m.earned_ms, coach::milestone_words(m)))
+        else {
+            return Ok(None);
+        };
+        let text = milestone_note_text(&words);
+        let note = serde_json::json!({ "surface": surface, "session": session, "at_ms": now, "text": text });
+        self.store.set_setting(MILESTONE_SEEN_KEY, &earned.to_string(), now)?;
+        self.store.set_setting(MILESTONE_NOTE_KEY, &note.to_string(), now)?;
+        info!(aiq.surface = surface, aiq.outcome = "milestone_note", "milestone note claimed");
+        Ok(Some(NoteClaim { text, prev_seen }))
+    }
+
+    /// A claimed note never reached the person (the hook's wait ran out): put the seen mark back so the next
+    /// turn end says it. A note the session already held stays as it was.
+    pub fn unclaim_note(&mut self, n: &NoteClaim) {
+        let now = self.clock.now().utc_ms;
+        let back = n.prev_seen.clone().unwrap_or_else(|| "0".into());
+        if let Err(e) = self
+            .store
+            .set_setting(MILESTONE_SEEN_KEY, &back, now)
+            .and_then(|_| self.store.set_setting(MILESTONE_NOTE_KEY, "", now))
+        {
+            self.fail(e);
+        }
+    }
+
+    /// Claude Code's turn end with no tip: the milestone note, said in the conversation (`systemMessage`).
+    /// Copilot CLI says it on its status line instead; turn ends with the agent still running say nothing.
+    pub fn stop_note(&mut self, ev: &EventV1) -> Option<NoteClaim> {
+        let EventBody::Stop(stop) = &ev.body else { return None };
+        if ev.surface != CLAUDE_CODE || stop.stop_hook_active || self.paused() {
+            return None;
+        }
+        self.milestone_note(&ev.surface, &ev.surface_session_id).unwrap_or_else(|e| {
+            self.fail(e);
+            None
+        })
+    }
+
+    /// VS Code polls with no tip waiting: the milestone note, once its newest session's turn has ended.
+    pub fn vscode_note(&mut self) -> Option<NoteClaim> {
+        if self.paused() {
+            return None;
+        }
+        let r = (|| -> Result<Option<NoteClaim>, StoreError> {
+            let Some(session) = self.store.latest_session(VSCODE)? else { return Ok(None) };
+            if self.store.last_event_kind(VSCODE, &session)?.as_deref() != Some("stop") {
+                return Ok(None);
+            }
+            self.milestone_note(VSCODE, &session)
+        })();
+        r.unwrap_or_else(|e| {
+            self.fail(e);
+            None
+        })
     }
 
     /// The open task's trend for the status line, when the person has it on and there is an estimate. Uses the

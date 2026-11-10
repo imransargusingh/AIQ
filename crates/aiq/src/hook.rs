@@ -1,10 +1,11 @@
 //! `aiq hook claude-code <event>` and `aiq hook copilot <event>`: the hot path. Guarantees (Phase 1
 //! design: Exposed contract 1; Phase 2 design: Exposed contract 1): always exits 0; never opens the store
-//! or loads the pack. Claude Code: stdout is empty, or exactly one `{"systemMessage": …}` on Stop; never
+//! or loads the pack. Claude Code: stdout is empty, or exactly one `{"systemMessage": …}` (a tip or a milestone
+//! note) on Stop; never
 //! `additionalContext`, `decision` or `continue`. Copilot: stderr is always empty; stdout is empty, or on
 //! a Copilot CLI `agentStop` exactly one display-only `{"type":"progress",…}` line with the tip (setting
 //! `copilot_tip_in_chat`, default on); never `decision`, `additionalContext` or exit code 2.
-use aiq_contracts::card::{claude_code_system_message, copilot_progress_message_with_tool};
+use aiq_contracts::card::{claude_code_note_message, claude_code_system_message, copilot_progress_message_with_tool};
 use aiq_contracts::codes;
 use aiq_contracts::event::{EventBody, EventV1, MAX_PROMPT_BYTES, PromptPayload, SCHEMA, StopPayload, cap_text};
 use aiq_contracts::frames::{Request, SpoolLine, TakeCardReply};
@@ -236,6 +237,18 @@ fn inner_outcome(paths: &Paths, host: &str, event: &str, start: Instant, marks: 
                                 count(paths, codes::HOOK_SHOWN_UNSENT);
                                 "card-unsent"
                             }
+                        }
+                    }
+                    // No tip: a milestone just earned, said once in the conversation (Claude Code only).
+                    // simplify: printed without a "shown" confirmation; a note lost here is still on the Milestones
+                    // page. Upgrade trigger: a note reported missing from a turn end that printed nothing.
+                    Ok(TakeCardReply { card: None, note: Some(note), plain, .. }) if host != "copilot" => {
+                        let text = claude_code_note_message(&note, color_allowed() && !plain);
+                        let mut out = std::io::stdout().lock();
+                        if writeln!(out, "{text}").and_then(|_| out.flush()).is_err() {
+                            "note-unprinted"
+                        } else {
+                            "note"
                         }
                     }
                     _ => "no-card",

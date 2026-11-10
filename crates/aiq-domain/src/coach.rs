@@ -691,6 +691,30 @@ pub fn milestones(tasks: &[JudgedTask], now_ms: i64, p: &CoachParams) -> Vec<Mil
     out
 }
 
+/// A milestone earned this recently still gets its one note where the person works (status line, Claude Code,
+/// VS Code); an older one is only on the Milestones page.
+pub const MILESTONE_NOTE_WITHIN_MS: i64 = 7 * DAY_MS;
+
+/// The milestone to say once: the newest earned after `seen_ms` and within `MILESTONE_NOTE_WITHIN_MS`. A move
+/// beats a rung reached on the same day, then the higher rung. None when nothing new.
+pub fn milestone_to_note(ms: &[Milestone], seen_ms: i64, now_ms: i64) -> Option<&Milestone> {
+    ms.iter().filter(|m| m.earned_ms > seen_ms && now_ms - m.earned_ms < MILESTONE_NOTE_WITHIN_MS).max_by(|a, b| {
+        a.earned_ms
+            .cmp(&b.earned_ms)
+            .then_with(|| (a.kind == MilestoneKind::MovedUp).cmp(&(b.kind == MilestoneKind::MovedUp)))
+            .then_with(|| a.rung.cmp(&b.rung))
+    })
+}
+
+/// "Fixing a bug or failing test reached Delegated", "Adding a feature moved up to Delegated".
+pub fn milestone_words(m: &Milestone) -> String {
+    let rung = crate::rung::rung_name(m.rung);
+    match m.kind {
+        MilestoneKind::Reached => format!("{} reached {rung}", m.label),
+        MilestoneKind::MovedUp => format!("{} moved up to {rung}", m.label),
+    }
+}
+
 /// A kind of task partway to its next milestone: `have` of `MILESTONE_TASKS` tasks at `rung` or higher in the
 /// last `MILESTONE_DAYS`.
 #[derive(Debug, Clone, PartialEq)]
@@ -1958,6 +1982,32 @@ mod tests {
         assert_eq!(m.len(), 1, "{m:?}");
         assert_eq!((m[0].from_rung, m[0].rung), (Some(2), 3));
         assert!(m[0].earned_ms <= NOW && m[0].earned_ms > NOW - 9 * DAY_MS, "the first day it held: {:?}", m[0]);
+    }
+
+    #[test]
+    fn the_note_names_the_newest_unseen_milestone_from_the_last_week() {
+        let m = |kind, rung, ago: i64| Milestone {
+            job: "code_change".into(),
+            task_type: "fix_bug".into(),
+            label: "Fixing a bug or failing test",
+            kind,
+            rung,
+            from_rung: None,
+            earned_ms: NOW - ago * DAY_MS,
+            first_ms: NOW - 40 * DAY_MS,
+        };
+        let ms = vec![
+            m(MilestoneKind::Reached, 2, 2),
+            m(MilestoneKind::Reached, 3, 2),
+            m(MilestoneKind::MovedUp, 2, 2),
+            m(MilestoneKind::Reached, 3, 9),
+        ];
+        let n = milestone_to_note(&ms, 0, NOW).unwrap();
+        assert_eq!((n.kind, n.rung), (MilestoneKind::MovedUp, 2), "a move beats a rung reached the same day");
+        assert_eq!(milestone_words(n), "Fixing a bug or failing test moved up to Directed");
+        assert_eq!(milestone_words(&ms[1]), "Fixing a bug or failing test reached Delegated");
+        assert!(milestone_to_note(&ms, NOW - 2 * DAY_MS, NOW).is_none(), "said once: nothing after the seen mark");
+        assert!(milestone_to_note(&ms[3..], 0, NOW).is_none(), "older than a week: only on the page");
     }
 
     #[test]

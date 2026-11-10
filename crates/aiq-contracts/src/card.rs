@@ -108,6 +108,11 @@ pub fn claude_code_system_message(card: &CardV1, color: bool) -> String {
     serde_json::json!({ "systemMessage": card_text(card, color, None) }).to_string()
 }
 
+/// A milestone note as Claude Code's `{"systemMessage": …}`: one line in the trend's cyan, never the tip's yellow.
+pub fn claude_code_note_message(note: &str, color: bool) -> String {
+    serde_json::json!({ "systemMessage": render_trend_line(note, color) }).to_string()
+}
+
 /// The four-line card, every line yellow and the label a badge when `color`.
 fn card_text(card: &CardV1, color: bool, tool_line: Option<&str>) -> String {
     let plain = render_card(card, tool_line);

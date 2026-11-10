@@ -167,6 +167,8 @@ pub struct Cache {
     /// One row per pack job over all its kinds (`coach::job_rows`): coaching when the kind is not known.
     pub job_rows: Vec<TypeRow>,
     pub habits: Vec<Habit>,
+    /// Every milestone over the whole history (Home's Milestones page reads the same rule), newest first.
+    pub milestones: Vec<coach::Milestone>,
     /// D10 self-check of word guesses (`type_guess.method = words`) against the later judgment.
     pub check: GuessCheck,
     /// The same self-check of labels (`method = label`), held to the same bar separately, so a weak word guess
@@ -208,6 +210,7 @@ impl Cache {
         let tasks: Vec<JudgedTask> = all.into_iter().map(|(t, _)| t).collect();
         let fl = flags(store)?;
         let habits = coach::habits(&tasks, &pack.moves, now.utc_ms, now.offset_min, p);
+        let milestones = coach::milestones(&tasks, now.utc_ms, p);
         let adopted = coach::adopted(&habits);
         let rows = coach::type_rows(&tasks, &pack.moves, &fl, &adopted, now.utc_ms, p);
         let job_rows = coach::job_rows(&tasks, &pack.moves, &fl, &adopted, now.utc_ms, p);
@@ -229,6 +232,7 @@ impl Cache {
             rows,
             job_rows,
             habits,
+            milestones,
             check,
             label_check,
             label_jobs,
