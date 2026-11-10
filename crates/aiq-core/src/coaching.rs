@@ -7,6 +7,7 @@ use aiq_contracts::pack::PackV1;
 use aiq_domain::check::{Reading, Scope, Verdict, verdicts};
 use aiq_domain::clock::Now;
 use aiq_domain::coach::{self, Feedback, Flag, GuessCheck, Habit, JudgedTask, Neighbour, TypeRow};
+use aiq_domain::label;
 use aiq_domain::text::features;
 use aiq_store::{GuidanceFlagRow, Store, StoreError, TipFeedbackRow};
 use std::collections::BTreeMap;
@@ -40,7 +41,8 @@ pub fn judged_tasks(store: &Store) -> Result<Vec<(JudgedTask, Option<String>)>, 
             j.coachable,
             &j.facts,
             parse_read(&j.read),
-        );
+        )
+        .with_job_confidence(j.job_confidence);
         out.push((t, text));
     }
     out.sort_by(|a, b| b.0.first_ms.cmp(&a.0.first_ms).then_with(|| a.0.task_id.cmp(&b.0.task_id)));
@@ -162,12 +164,17 @@ pub struct Cache {
     pub tasks: Vec<JudgedTask>,
     pub neighbours: Vec<Neighbour>,
     pub rows: Vec<TypeRow>,
+    /// One row per pack job over all its kinds (`coach::job_rows`): coaching when the kind is not known.
+    pub job_rows: Vec<TypeRow>,
     pub habits: Vec<Habit>,
     /// D10 self-check of word guesses (`type_guess.method = words`) against the later judgment.
     pub check: GuessCheck,
     /// The same self-check of labels (`method = label`), held to the same bar separately, so a weak word guess
     /// never turns labels off, nor the other way round.
     pub label_check: GuessCheck,
+    /// Per pack job: the job-confidence bar its own labels earned (`label::job_bar`), and whether labels of that
+    /// job may coach (`label::earned`).
+    pub label_jobs: BTreeMap<String, (f64, bool)>,
     pub feedback: Vec<Feedback>,
     /// Share of judged, typed tasks in the window whose type is `other` (the list's fit, design assume line).
     pub other_share: Option<f64>,
@@ -200,22 +207,14 @@ impl Cache {
             .collect();
         let tasks: Vec<JudgedTask> = all.into_iter().map(|(t, _)| t).collect();
         let fl = flags(store)?;
-        let rows = coach::type_rows(&tasks, &pack.moves, &fl, now.utc_ms, p);
         let habits = coach::habits(&tasks, &pack.moves, now.utc_ms, now.offset_min, p);
+        let adopted = coach::adopted(&habits);
+        let rows = coach::type_rows(&tasks, &pack.moves, &fl, &adopted, now.utc_ms, p);
+        let job_rows = coach::job_rows(&tasks, &pack.moves, &fl, &adopted, now.utc_ms, p);
         let guesses = store.type_guesses()?;
         let by_id: BTreeMap<&str, &JudgedTask> = tasks.iter().map(|t| (t.task_id.as_str(), t)).collect();
-        let check_of = |method: &str| {
-            coach::check_guesses(
-                guesses
-                    .iter()
-                    .filter(|g| g.method == method)
-                    .filter(|g| aiq_domain::label::counts_in_check(&g.method, &g.job, &g.task_type))
-                    .map(|g| (g.task_id.as_str(), g.job.as_str(), g.task_type.as_str())),
-                &by_id,
-                &pack.coach,
-            )
-        };
-        let (check, label_check) = (check_of("words"), check_of(aiq_domain::label::METHOD));
+        let (check, label_check) = self_checks(&guesses, &by_id, &pack.coach);
+        let label_jobs = label_jobs(store, &by_id, &pack.coach)?;
         let typed: Vec<&JudgedTask> =
             tasks.iter().filter(|t| t.first_ms >= since && !t.uncertain() && t.kind().is_some()).collect();
         let other = typed.iter().filter(|t| t.task_type.as_deref() == Some("other")).count();
@@ -228,12 +227,22 @@ impl Cache {
             tasks,
             neighbours,
             rows,
+            job_rows,
             habits,
             check,
             label_check,
+            label_jobs,
             feedback: feedback(store)?,
             pauses: verdicts(&readings(store)?).into_iter().filter(|v| v.paused).collect(),
         })
+    }
+
+    /// The job-confidence bar for labels of `job`, and whether that job's labels may coach.
+    pub fn label_job(&self, job: &str) -> (f64, bool) {
+        self.label_jobs
+            .get(job)
+            .copied()
+            .unwrap_or((aiq_domain::rung::COACH_THRESHOLD, !label::EARN_JOBS.contains(&job)))
     }
 
     pub fn stale(&self, store: &Store, now_ms: i64) -> bool {
@@ -268,6 +277,65 @@ impl Cache {
     pub fn labels_on(&self, mode: &str, pack: &PackV1) -> bool {
         on(mode, &self.label_check, pack)
     }
+}
+
+/// The two self-checks (D10), words and labels, over stored guesses: one definition for the core and AIQ home
+/// (DC-036). Labels coach by job, so a label is checked on its job only.
+pub fn self_checks(
+    guesses: &[aiq_store::TypeGuessRow],
+    by_id: &BTreeMap<&str, &JudgedTask>,
+    p: &aiq_contracts::pack::CoachParams,
+) -> (GuessCheck, GuessCheck) {
+    let check_of = |method: &str| {
+        coach::check_guesses(
+            guesses
+                .iter()
+                .filter(|g| g.method == method)
+                .map(|g| (g.task_id.as_str(), g.job.as_str(), g.task_type.as_str())),
+            by_id,
+            method == label::METHOD,
+            p,
+        )
+    };
+    (check_of("words"), check_of(label::METHOD))
+}
+
+/// Per pack job, from its own labels (the newest answered label of each task, newest `2 × guess_check_min`
+/// first) scored against the task's analysis: the bar it earned and whether it may coach. Every label counts here,
+/// sure or not, so a lower bar is measured before it is used.
+pub fn label_jobs(
+    store: &Store,
+    by_id: &BTreeMap<&str, &JudgedTask>,
+    p: &aiq_contracts::pack::CoachParams,
+) -> Result<BTreeMap<String, (f64, bool)>, StoreError> {
+    let mut labels = store.kind_labels_since(0)?;
+    labels.retain(|l| l.outcome == "ok");
+    labels.sort_by_key(|l| std::cmp::Reverse(l.utc_ms));
+    let mut seen = std::collections::BTreeSet::new();
+    let mut points: BTreeMap<String, Vec<label::Point>> = BTreeMap::new();
+    for l in labels {
+        let (Some(job), Some(c)) = (l.job.as_deref(), l.job_confidence) else { continue };
+        if !seen.insert(l.task_id.clone()) {
+            continue;
+        }
+        let Some(t) = by_id.get(l.task_id.as_str()) else { continue };
+        if !t.answer_key() || !aiq_domain::rung::PACK_JOBS.contains(&t.job.as_str()) {
+            continue;
+        }
+        let v = points.entry(job.to_owned()).or_default();
+        if v.len() < 2 * p.guess_check_min as usize {
+            v.push((c, t.job == job));
+        }
+    }
+    let (min, precision) = (p.guess_check_min, p.guess_precision);
+    Ok(aiq_domain::rung::PACK_JOBS
+        .iter()
+        .map(|job| {
+            let pts = points.get(*job).map(Vec::as_slice).unwrap_or(&[]);
+            let bar = label::job_bar(pts, min, precision);
+            (job.to_string(), (bar, label::earned(job, pts, bar, min, precision)))
+        })
+        .collect())
 }
 
 fn on(mode: &str, check: &GuessCheck, pack: &PackV1) -> bool {
@@ -334,7 +402,8 @@ pub fn record_flag(
     note: Option<&str>,
     now_ms: i64,
 ) -> Result<(), String> {
-    if task_type_label(job, task_type).is_none() {
+    let job_level = task_type == coach::ANY_KIND && aiq_domain::rung::PACK_JOBS.contains(&job);
+    if task_type_label(job, task_type).is_none() && !job_level {
         return Err(format!("{job}/{task_type} is not a task type"));
     }
     if !pack.moves.iter().any(|m| m.move_id == move_id) {
@@ -367,7 +436,6 @@ pub fn record_flag(
 
 /// Today's kind labels and their self-check, counted from stored rows (design kind-label).
 pub fn label_status(store: &Store, cache: &Cache, now: Now) -> Result<aiq_contracts::frames::LabelStatus, StoreError> {
-    use aiq_domain::label;
     let rows = store.kind_labels_since(now.local_midnight_utc_ms())?;
     let mut ms: Vec<u64> = rows.iter().map(|r| r.latency_ms.max(0) as u64).collect();
     ms.sort_unstable();
@@ -375,13 +443,19 @@ pub fn label_status(store: &Store, cache: &Cache, now: Now) -> Result<aiq_contra
     let confident = ok
         .iter()
         .filter(|r| {
-            label::accept(&label::Label {
-                job: r.job.clone().unwrap_or_default(),
-                job_confidence: r.job_confidence.unwrap_or(0.0),
-                task_type: r.task_type.clone().unwrap_or_default(),
-                task_type_confidence: r.task_type_confidence.unwrap_or(0.0),
-            })
-            .is_some()
+            let job = r.job.clone().unwrap_or_default();
+            let (bar, earned) = cache.label_job(&job);
+            earned
+                && label::accept(
+                    &label::Label {
+                        job,
+                        job_confidence: r.job_confidence.unwrap_or(0.0),
+                        task_type: r.task_type.clone().unwrap_or_default(),
+                        task_type_confidence: r.task_type_confidence.unwrap_or(0.0),
+                    },
+                    bar,
+                )
+                .is_some()
         })
         .count();
     Ok(aiq_contracts::frames::LabelStatus {

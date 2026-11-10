@@ -36,7 +36,7 @@ pub enum Step {
     LabelFailed,
     /// The label answered, not sure enough to coach from.
     LabelUnsure,
-    /// The label was sure, but of a job labels never coach from (`label::NOT_COACHED_JOBS`: questions).
+    /// The label was sure, but of a job whose labels have not earned tips yet (`label::EARN_JOBS`: questions).
     LabelNotCoached,
     /// The first prompt's label was not sure enough, so a later, fuller prompt of the same task was labelled
     /// (once per task). Followed by that label's own end; as the latest step, the second label never came back.
@@ -149,7 +149,7 @@ pub fn words(code: &str) -> &'static str {
         "label_asked" => "kind label never came back",
         "label_failed" => "kind label failed",
         "label_unsure" => "AIQ wasn't sure what kind of task it was",
-        "label_not_coached" => "kind label says it's a question; labels don't give tips for questions",
+        "label_not_coached" => "kind label says it's a question; question labels give tips once they prove right",
         "label_retry" => "kind label asked again from a later prompt, and it never came back",
         "label_late" => "kind label came after the next task started",
         "tips_off" => "next-step tips turned off",

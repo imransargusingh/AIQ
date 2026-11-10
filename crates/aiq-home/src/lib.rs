@@ -1500,18 +1500,7 @@ fn coaching(
         judged.iter().map(|t| (t.task_id.as_str(), t)).collect();
     let guesses = store.type_guesses().map_err(e)?;
     // The core's two checks (words and labels), not one over both: one definition of the number (DC-036).
-    let check_of = |method: &str| {
-        coach::check_guesses(
-            guesses
-                .iter()
-                .filter(|g| g.method == method)
-                .filter(|g| aiq_domain::label::counts_in_check(&g.method, &g.job, &g.task_type))
-                .map(|g| (g.task_id.as_str(), g.job.as_str(), g.task_type.as_str())),
-            &by_id,
-            p,
-        )
-    };
-    let (words, labels) = (check_of("words"), check_of(aiq_domain::label::METHOD));
+    let (words, labels) = aiq_core::coaching::self_checks(&guesses, &by_id, p);
     let st = &mut s.settings;
     st.guess_checked = words.checked + labels.checked;
     st.guess_right = words.right + labels.right;
@@ -1588,20 +1577,23 @@ fn judged_tasks<'a>(
         .iter()
         .filter_map(|t| {
             let j = judgments.get(&t.task_id)?;
-            Some(aiq_domain::coach::JudgedTask::new(
-                &t.task_id,
-                t.origin == "live",
-                &t.tool,
-                t.first_ms,
-                &j.job,
-                j.task_type.as_deref(),
-                &j.state,
-                j.current_rung,
-                j.potential_rung,
-                j.coachable,
-                &j.facts,
-                aiq_contracts::judge::parse_read(&j.read),
-            ))
+            Some(
+                aiq_domain::coach::JudgedTask::new(
+                    &t.task_id,
+                    t.origin == "live",
+                    &t.tool,
+                    t.first_ms,
+                    &j.job,
+                    j.task_type.as_deref(),
+                    &j.state,
+                    j.current_rung,
+                    j.potential_rung,
+                    j.coachable,
+                    &j.facts,
+                    aiq_contracts::judge::parse_read(&j.read),
+                )
+                .with_job_confidence(j.job_confidence),
+            )
         })
         .collect()
 }
@@ -1619,7 +1611,8 @@ fn coach_view(
 ) {
     use aiq_domain::coach;
     let p = &pack.coach;
-    let rows = coach::type_rows(judged, &pack.moves, flags, now.utc_ms, p);
+    let habits = coach::habits(judged, &pack.moves, now.utc_ms, now.offset_min, p);
+    let rows = coach::type_rows(judged, &pack.moves, flags, &coach::adopted(&habits), now.utc_ms, p);
     let sp = coach::split(judged, &rows, now.utc_ms - WINDOW_DAYS * DAY_MS, now.utc_ms + 1);
     c.split = SplitOut {
         tasks: sp.tasks,
@@ -1669,7 +1662,7 @@ fn coach_view(
     c.opportunities =
         coach::opportunities(&rows, feedback, flags, now.utc_ms, p, OPPORTUNITY_ROWS).into_iter().map(kind).collect();
     c.kinds = rows.iter().map(kind).collect();
-    c.habits = coach::habits(judged, &pack.moves, now.utc_ms, now.offset_min, p)
+    c.habits = habits
         .into_iter()
         .map(|h| HabitRow {
             job: h.job,

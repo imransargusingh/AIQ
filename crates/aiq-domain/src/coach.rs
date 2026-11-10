@@ -18,6 +18,10 @@ pub const DETECTOR: &str = "task_type";
 pub const DETECTOR_VERSION: u32 = 1;
 /// Store key of the next-rung tips setting: auto (on unless AIQ's self-check turned them off), on, off.
 pub const SETTING_NEXT_RUNG_TIPS: &str = "next_rung_tips";
+/// The analysis's job confidence at or above which it is the answer key for the self-checks: the coaching bar.
+/// Measured 2026-11-10 on the laptop: the analysis named no job on 13 of 36 labelled tasks, and was sure of job
+/// and kind on 11 of 23 of the rest, so "right" against an unsure analysis was a coin the check could not see.
+pub const ANSWER_KEY_MIN: f64 = 0.8;
 /// Rung of "agents finished": Delegated or higher (Q-A).
 pub const FINISHED_RUNG: u8 = 3;
 
@@ -33,10 +37,22 @@ pub fn validate_setting(key: &str, value: &str) -> Option<Result<String, String>
 }
 
 /// The task type's label for a card: "Writing tests" → "writing tests" (first letter only, so "PRD" stays).
+/// When the kind is not known (a job-level tip, `ANY_KIND`), the job's own words.
 pub fn card_label(job: &str, task_type: &str) -> String {
-    let l = task_type_label(job, task_type).unwrap_or("this kind of task");
+    let l = task_type_label(job, task_type).or_else(|| job_words(job)).unwrap_or("this kind of task");
     let mut c = l.chars();
     c.next().map(|f| f.to_lowercase().chain(c).collect()).unwrap_or_default()
+}
+
+/// A pack job in the words a card uses when the kind of task is not known.
+pub fn job_words(job: &str) -> Option<&'static str> {
+    match job {
+        "code_change" => Some("changing code"),
+        "write_doc" => Some("writing a doc"),
+        "ask_research" => Some("a question or research"),
+        "run_ship" => Some("running or shipping something"),
+        _ => None,
+    }
 }
 
 // ------------------------------------------------------------------ input
@@ -59,6 +75,9 @@ pub struct JudgedTask {
     pub coachable: bool,
     pub facts: Facts,
     pub corrections: Option<u32>,
+    /// The analysis's own confidence in its job (1.0 when not given). The self-checks use only sure analyses as
+    /// the answer key (`ANSWER_KEY_MIN`): an unsure analysis cannot say whether a guess was right.
+    pub job_confidence: f64,
 }
 
 impl JudgedTask {
@@ -91,7 +110,19 @@ impl JudgedTask {
             coachable,
             facts: rung::facts_from_json(facts_json, reprompts, job),
             corrections: read.corrections,
+            job_confidence: 1.0,
         }
+    }
+
+    /// The analysis's confidence in its job (`job_confidence`).
+    pub fn with_job_confidence(mut self, c: f64) -> Self {
+        self.job_confidence = c;
+        self
+    }
+
+    /// The analysis is sure enough of the job to be the answer key for a guess (`ANSWER_KEY_MIN`).
+    pub fn answer_key(&self) -> bool {
+        !self.uncertain() && self.job_confidence >= ANSWER_KEY_MIN
     }
 
     pub fn uncertain(&self) -> bool {
@@ -269,11 +300,23 @@ pub struct TypeRow {
     pub newest_ms: i64,
 }
 
+/// The (job, move) pairs whose habit is Adopted now: one definition of "already does this" for the rows and
+/// the live tip. Before, a row coached the move missing on most tasks over 30 days while the habit, over 14 days,
+/// was Adopted, so the live tip was dropped (laptop 2026-11-10: 2 of 2 decided tips dropped as habit_adopted).
+pub fn adopted(habits: &[Habit]) -> BTreeSet<(String, String)> {
+    habits.iter().filter(|h| h.state == HabitState::Adopted).map(|h| (h.job.clone(), h.move_id.clone())).collect()
+}
+
+/// The task type of a job-level row (`job_rows`): all of the job's kinds together.
+pub const ANY_KIND: &str = "any";
+
 /// One row per (job, task type) with judged tasks whose first prompt is in the window, most frequent first.
+/// A move whose habit is Adopted (`adopted`) is not coached; the row coaches its next move instead.
 pub fn type_rows(
     tasks: &[JudgedTask],
     moves: &[MoveDef],
     flags: &[Flag],
+    adopted: &BTreeSet<(String, String)>,
     now_ms: i64,
     p: &CoachParams,
 ) -> Vec<TypeRow> {
@@ -285,67 +328,112 @@ pub fn type_rows(
         }
     }
     let flagged = flagged_now(flags);
+    let is_flagged = |job: &str, ty: &str, m: &str| flagged.contains(&(job.to_owned(), ty.to_owned(), m.to_owned()));
     let mut rows: Vec<TypeRow> = groups
         .into_iter()
-        .map(|((job, ty), mut ts)| {
-            ts.sort_by(|a, b| b.first_ms.cmp(&a.first_ms).then_with(|| a.task_id.cmp(&b.task_id)));
-            let sure: Vec<&&JudgedTask> = ts.iter().filter(|t| !t.uncertain()).collect();
-            let today = typical_rung(sure.iter().map(|t| t.current));
-            let mut row = TypeRow {
-                job: job.to_owned(),
-                task_type: ty.to_owned(),
-                label: task_type_label(job, ty).unwrap_or("Other"),
-                tasks: ts.len() as u32,
-                uncertain: (ts.len() - sure.len()) as u32,
-                per_week: ts.len() as f64 * 7.0 / p.window_days as f64,
-                today,
-                potential: None,
-                state: RowState::NotSure,
-                move_id: None,
-                task_ids: ts.iter().map(|t| t.task_id.clone()).collect(),
-                newest_ms: ts.first().map_or(0, |t| t.first_ms),
-            };
-            let Some(today) = today else { return row };
-            if (ts.len() as u32) < p.recurring_min {
-                row.state = RowState::TooFew;
-                return row;
-            }
-            let at: Vec<&&&JudgedTask> = sure.iter().filter(|t| t.current == today).collect();
-            let n = at.len() as f64;
-            let share = |pred: &dyn Fn(&JudgedTask) -> bool| at.iter().filter(|t| pred(t)).count() as f64 / n;
-            if share(&|t| t.state == "blocked") > p.type_majority {
-                row.state = RowState::Blocked;
-                return row;
-            }
-            if share(&|t| t.state == "right_rung") > p.type_majority {
-                row.state = RowState::RightRung;
-                return row;
-            }
-            // The move coachable on the most tasks at today's rung (pack order breaks ties); it needs a majority.
-            let best = moves
-                .iter()
-                .filter(|m| m.step == today && job_matches(m, job))
-                .map(|m| (m, at.iter().filter(|t| moves_for(t, moves).iter().any(|x| x.move_id == m.move_id)).count()))
-                .fold(None::<(&MoveDef, usize)>, |acc, (m, c)| match acc {
-                    Some((_, bc)) if bc >= c => acc,
-                    _ => Some((m, c)),
-                });
-            if let Some((m, c)) = best
-                && c as f64 / n > p.type_majority
-            {
-                if flagged.contains(&(job.to_owned(), ty.to_owned(), m.move_id.clone())) {
-                    row.state = RowState::Flagged;
-                } else {
-                    row.state = RowState::Coach;
-                    row.potential = Some(today + 1);
-                }
-                row.move_id = Some(m.move_id.clone());
-            }
-            row
+        .map(|((job, ty), ts)| {
+            let label = task_type_label(job, ty).unwrap_or("Other");
+            rate(job, ty, label, ts, moves, &|m| is_flagged(job, ty, m), adopted, p)
         })
         .collect();
     rows.sort_by(|a, b| b.tasks.cmp(&a.tasks).then_with(|| a.label.cmp(b.label)).then_with(|| a.job.cmp(&b.job)));
     rows
+}
+
+/// One row per pack job over all of its kinds (task type `ANY_KIND`), for a live task whose job is known but whose
+/// kind is not (design kind-label, "Coach by job"). Every habit is defined per job, never per kind, so the job is
+/// enough to pick one. Measured 2026-11-10 on the laptop: a sure label's job matched the analysis 17 of 21 times,
+/// its job and kind 9 of 13. A move flagged "This doesn't fit" on any kind of the job is not coached here.
+pub fn job_rows(
+    tasks: &[JudgedTask],
+    moves: &[MoveDef],
+    flags: &[Flag],
+    adopted: &BTreeSet<(String, String)>,
+    now_ms: i64,
+    p: &CoachParams,
+) -> Vec<TypeRow> {
+    let since = now_ms - p.window_days as i64 * DAY_MS;
+    let flagged = flagged_now(flags);
+    rung::PACK_JOBS
+        .iter()
+        .filter_map(|job| {
+            let ts: Vec<&JudgedTask> = tasks.iter().filter(|t| t.first_ms >= since && t.job == *job).collect();
+            (!ts.is_empty()).then(|| {
+                let any_kind = |m: &str| flagged.iter().any(|(j, _, f)| j == job && f == m);
+                rate(job, ANY_KIND, "This kind of task", ts, moves, &any_kind, adopted, p)
+            })
+        })
+        .collect()
+}
+
+/// Rate one group of tasks (D3): its typical rung and the move coachable on most of them at that rung.
+#[allow(clippy::too_many_arguments)]
+fn rate(
+    job: &str,
+    ty: &str,
+    label: &'static str,
+    mut ts: Vec<&JudgedTask>,
+    moves: &[MoveDef],
+    flagged: &dyn Fn(&str) -> bool,
+    adopted: &BTreeSet<(String, String)>,
+    p: &CoachParams,
+) -> TypeRow {
+    ts.sort_by(|a, b| b.first_ms.cmp(&a.first_ms).then_with(|| a.task_id.cmp(&b.task_id)));
+    let sure: Vec<&&JudgedTask> = ts.iter().filter(|t| !t.uncertain()).collect();
+    let today = typical_rung(sure.iter().map(|t| t.current));
+    let mut row = TypeRow {
+        job: job.to_owned(),
+        task_type: ty.to_owned(),
+        label,
+        tasks: ts.len() as u32,
+        uncertain: (ts.len() - sure.len()) as u32,
+        per_week: ts.len() as f64 * 7.0 / p.window_days as f64,
+        today,
+        potential: None,
+        state: RowState::NotSure,
+        move_id: None,
+        task_ids: ts.iter().map(|t| t.task_id.clone()).collect(),
+        newest_ms: ts.first().map_or(0, |t| t.first_ms),
+    };
+    let Some(today) = today else { return row };
+    if (ts.len() as u32) < p.recurring_min {
+        row.state = RowState::TooFew;
+        return row;
+    }
+    let at: Vec<&&&JudgedTask> = sure.iter().filter(|t| t.current == today).collect();
+    let n = at.len() as f64;
+    let share = |pred: &dyn Fn(&JudgedTask) -> bool| at.iter().filter(|t| pred(t)).count() as f64 / n;
+    if share(&|t| t.state == "blocked") > p.type_majority {
+        row.state = RowState::Blocked;
+        return row;
+    }
+    if share(&|t| t.state == "right_rung") > p.type_majority {
+        row.state = RowState::RightRung;
+        return row;
+    }
+    // The move coachable on the most tasks at today's rung (pack order breaks ties); it needs a majority. A move
+    // the person has already adopted is skipped, so the next one is coached instead.
+    let best = moves
+        .iter()
+        .filter(|m| m.step == today && job_matches(m, job))
+        .filter(|m| !adopted.contains(&(job.to_owned(), m.move_id.clone())))
+        .map(|m| (m, at.iter().filter(|t| moves_for(t, moves).iter().any(|x| x.move_id == m.move_id)).count()))
+        .fold(None::<(&MoveDef, usize)>, |acc, (m, c)| match acc {
+            Some((_, bc)) if bc >= c => acc,
+            _ => Some((m, c)),
+        });
+    if let Some((m, c)) = best
+        && c as f64 / n > p.type_majority
+    {
+        if flagged(&m.move_id) {
+            row.state = RowState::Flagged;
+        } else {
+            row.state = RowState::Coach;
+            row.potential = Some(today + 1);
+        }
+        row.move_id = Some(m.move_id.clone());
+    }
+    row
 }
 
 /// Most common rung among these current rungs; ties go lower. None when there are none.
@@ -922,9 +1010,11 @@ impl GuessCheck {
 /// `2 × guess_check_min` checked guesses count (DC-036): an all-time count let old misses, and labels from an
 /// older prompt or model, hold tips forever (laptop 2026-11-08: from 6 of 10 it needed 10 right in a row, and
 /// the misses never left).
+/// `jobs_only`: a guess is right when it names the judged job (labels, which coach by job); else job and kind.
 pub fn check_guesses<'a>(
     guesses: impl IntoIterator<Item = (&'a str, &'a str, &'a str)>,
     judged: &BTreeMap<&str, &JudgedTask>,
+    jobs_only: bool,
     p: &CoachParams,
 ) -> GuessCheck {
     let mut seen = BTreeSet::new();
@@ -934,10 +1024,10 @@ pub fn check_guesses<'a>(
             continue;
         }
         let Some(j) = judged.get(task) else { continue };
-        if j.uncertain() || j.task_type.is_none() {
+        if !j.answer_key() || j.task_type.is_none() {
             continue;
         }
-        results.push(j.job == job && j.task_type.as_deref() == Some(ty));
+        results.push(j.job == job && (jobs_only || j.task_type.as_deref() == Some(ty)));
     }
     let newest = &results[results.len().saturating_sub(2 * p.guess_check_min as usize)..];
     GuessCheck { checked: newest.len() as u32, right: newest.iter().filter(|r| **r).count() as u32 }
@@ -1098,11 +1188,11 @@ mod tests {
         let m = moves();
         let p = params();
         let two = vec![delegated_person_checks("a", 1), delegated_person_checks("b", 2)];
-        let r = type_rows(&two, &m, &[], NOW, &p);
+        let r = type_rows(&two, &m, &[], &BTreeSet::new(), NOW, &p);
         assert_eq!((r[0].state, r[0].tasks), (RowState::TooFew, 2));
         let three =
             vec![delegated_person_checks("a", 1), delegated_person_checks("b", 2), delegated_person_checks("c", 3)];
-        let r = type_rows(&three, &m, &[], NOW, &p);
+        let r = type_rows(&three, &m, &[], &BTreeSet::new(), NOW, &p);
         assert_eq!(r[0].state, RowState::Coach);
         assert_eq!((r[0].today, r[0].potential), (Some(3), Some(4)));
         assert_eq!(r[0].move_id.as_deref(), Some("written_brief"), "every move ties: pack order");
@@ -1111,7 +1201,7 @@ mod tests {
         let no_move = task("x", 1, "tests", 3, "judged", false, "{}", Some(0));
         let no_move2 = task("y", 2, "tests", 3, "judged", false, "{}", Some(0));
         let half = vec![delegated_person_checks("a", 1), delegated_person_checks("b", 2), no_move, no_move2];
-        let r = type_rows(&half, &m, &[], NOW, &p);
+        let r = type_rows(&half, &m, &[], &BTreeSet::new(), NOW, &p);
         assert_eq!(r[0].state, RowState::NotSure, "2 of 4 is not more than half");
         // Today's rung ties go lower.
         let mixed = vec![
@@ -1120,10 +1210,76 @@ mod tests {
             delegated_person_checks("c", 3),
             task("d", 4, "tests", 2, "right_rung", false, "{}", Some(0)),
         ];
-        assert_eq!(type_rows(&mixed, &m, &[], NOW, &p)[0].today, Some(2));
+        assert_eq!(type_rows(&mixed, &m, &[], &BTreeSet::new(), NOW, &p)[0].today, Some(2));
         // Outside the window: no row.
         let old = vec![delegated_person_checks("a", 31)];
-        assert!(type_rows(&old, &m, &[], NOW, &p).is_empty());
+        assert!(type_rows(&old, &m, &[], &BTreeSet::new(), NOW, &p).is_empty());
+    }
+
+    #[test]
+    fn an_adopted_habit_is_not_coached_and_the_next_move_is() {
+        let (m, p) = (moves(), params());
+        let assisted = |id: &str, day: i64| {
+            task(id, day, "tests", 1, "judged", true, &facts(&[("F4", false), ("F6", false)], None), Some(0))
+        };
+        let ts: Vec<JudgedTask> = (0..3).map(|i| assisted(&format!("a{i}"), i + 1)).collect();
+        assert_eq!(type_rows(&ts, &m, &[], &BTreeSet::new(), NOW, &p)[0].move_id.as_deref(), Some("brief"));
+        let adopted = BTreeSet::from([("code_change".to_owned(), "brief".to_owned())]);
+        let r = type_rows(&ts, &m, &[], &adopted, NOW, &p);
+        assert_eq!(
+            (r[0].state, r[0].move_id.as_deref()),
+            (RowState::Coach, Some("check_code")),
+            "next move, not a drop"
+        );
+        let all = BTreeSet::from([
+            ("code_change".to_owned(), "brief".to_owned()),
+            ("code_change".to_owned(), "check_code".to_owned()),
+        ]);
+        assert_eq!(type_rows(&ts, &m, &[], &all, NOW, &p)[0].state, RowState::NotSure);
+        let h = |state| Habit {
+            job: "code_change".into(),
+            move_id: "brief".into(),
+            name: "n".into(),
+            state,
+            eligible: 3,
+            seen: 3,
+            moved_to: None,
+            moved_ms: None,
+            moved_back: false,
+        };
+        assert_eq!(super::adopted(&[h(HabitState::Adopted), h(HabitState::Tried)]).len(), 1);
+    }
+
+    #[test]
+    fn a_job_row_coaches_across_kinds_too_few_to_coach_alone() {
+        let (m, p) = (moves(), params());
+        let gap = facts(&[("F4", false), ("F6", true)], None);
+        let ts = vec![
+            task("a", 1, "tests", 1, "judged", true, &gap, Some(0)),
+            task("b", 2, "fix_bug", 1, "judged", true, &gap, Some(0)),
+            task("c", 3, "refactor", 1, "judged", true, &gap, Some(0)),
+        ];
+        let kinds = type_rows(&ts, &m, &[], &BTreeSet::new(), NOW, &p);
+        assert!(kinds.iter().all(|r| r.state == RowState::TooFew), "one task of each kind");
+        let jobs = job_rows(&ts, &m, &[], &BTreeSet::new(), NOW, &p);
+        assert_eq!(jobs.len(), 1, "only jobs with tasks");
+        let j = &jobs[0];
+        assert_eq!(
+            (j.job.as_str(), j.task_type.as_str(), j.state, j.move_id.as_deref()),
+            ("code_change", ANY_KIND, RowState::Coach, Some("brief"))
+        );
+        assert_eq!(card_label("code_change", ANY_KIND), "changing code");
+        assert_eq!(card_label("code_change", "fix_bug"), "fixing a bug or failing test");
+        // A flag on any kind of the job stops the job row's move.
+        let f = Flag {
+            job: "code_change".into(),
+            task_type: "tests".into(),
+            move_id: "brief".into(),
+            action: "flag".into(),
+            reason: Some("not_useful".into()),
+            utc_ms: 1,
+        };
+        assert_eq!(job_rows(&ts, &m, &[f], &BTreeSet::new(), NOW, &p)[0].state, RowState::Flagged);
     }
 
     #[test]
@@ -1139,7 +1295,7 @@ mod tests {
         let mut old = assisted("old", 31);
         old.task_id = "old".into();
         ts.push(old);
-        let rows = type_rows(&ts, &m, &[], NOW, &p);
+        let rows = type_rows(&ts, &m, &[], &BTreeSet::new(), NOW, &p);
         let r = reach(&ts, &rows, &m, NOW, &p);
         assert_eq!(r.len(), m.len(), "one per move, pack order");
         let brief = r.iter().find(|x| x.move_id == "brief").unwrap();
@@ -1165,10 +1321,10 @@ mod tests {
             reason: Some("evidence_wrong".into()),
             utc_ms: at,
         };
-        let r = type_rows(&ts, &m, &[flag("flag", 1)], NOW, &p);
+        let r = type_rows(&ts, &m, &[flag("flag", 1)], &BTreeSet::new(), NOW, &p);
         assert_eq!((r[0].state, r[0].potential), (RowState::Flagged, None));
         assert!(opportunities(&r, &[], &[], NOW, &p, 3).is_empty());
-        let r = type_rows(&ts, &m, &[flag("flag", 1), flag("undo", 2)], NOW, &p);
+        let r = type_rows(&ts, &m, &[flag("flag", 1), flag("undo", 2)], &BTreeSet::new(), NOW, &p);
         assert_eq!(r[0].state, RowState::Coach);
     }
 
@@ -1191,7 +1347,7 @@ mod tests {
             t.facts.reprompts = 0;
             ts.push(t);
         }
-        let rows = type_rows(&ts, &m, &[], NOW, &p);
+        let rows = type_rows(&ts, &m, &[], &BTreeSet::new(), NOW, &p);
         let o = opportunities(&rows, &[], &[], NOW, &p, 3);
         assert_eq!(o.iter().map(|r| r.task_type.as_str()).collect::<Vec<_>>(), vec!["fix_bug", "tests"]);
         let nh = |at: i64| Feedback { tip_id: tip_id("brief"), answer: "not_helpful".into(), utc_ms: at };
@@ -1213,7 +1369,7 @@ mod tests {
         let mut untyped = task("n", 1, "tests", 1, "judged", false, "{}", Some(0));
         untyped.task_type = None;
         ts.push(untyped);
-        let rows = type_rows(&ts, &m, &[], NOW, &p);
+        let rows = type_rows(&ts, &m, &[], &BTreeSet::new(), NOW, &p);
         let s = split(&ts, &rows, NOW - 30 * DAY_MS, NOW + 1);
         assert_eq!(s.uncertain, 1);
         assert_eq!(s.tasks, 7);
@@ -1240,7 +1396,7 @@ mod tests {
         ts[2].potential = 3;
         ts[3].potential = 1;
         ts[4].potential = 2;
-        let rows = type_rows(&ts, &m, &[], NOW, &p);
+        let rows = type_rows(&ts, &m, &[], &BTreeSet::new(), NOW, &p);
         let s = split(&ts, &rows, NOW - 30 * DAY_MS, NOW + 1);
         assert_eq!(s.up, 3, "uncertain and right-rung tasks don't count");
         assert_eq!(s.up_to, Some(2), "two of three reach Directed");
@@ -1340,15 +1496,18 @@ mod tests {
                     .enumerate()
                     .map(|(i, id)| (id.as_str(), "code_change", if i < right { "tests" } else { "fix_bug" })),
                 &map,
+                false,
                 &p,
             )
         };
         assert_eq!(g(8), GuessCheck { checked: 10, right: 8 });
         assert!(!g(8).auto_off(&p));
         assert!(g(7).auto_off(&p));
+        let jobs = check_guesses(ids.iter().map(|id| (id.as_str(), "code_change", "any")), &map, true, &p);
+        assert_eq!(jobs, GuessCheck { checked: 10, right: 10 }, "a job-level guess is checked on its job only");
         let nine: BTreeMap<&str, &JudgedTask> = map.iter().take(9).map(|(k, v)| (*k, *v)).collect();
         assert!(
-            !check_guesses(ids.iter().map(|id| (id.as_str(), "code_change", "fix_bug")), &nine, &p).auto_off(&p),
+            !check_guesses(ids.iter().map(|id| (id.as_str(), "code_change", "fix_bug")), &nine, false, &p).auto_off(&p),
             "9 checks is too few"
         );
     }
@@ -1365,6 +1524,7 @@ mod tests {
                 .enumerate()
                 .map(|(i, id)| (id.as_str(), "code_change", if i < 10 { "fix_bug" } else { "tests" })),
             &map,
+            false,
             &p,
         );
         assert_eq!(c, GuessCheck { checked: 20, right: 20 });
@@ -1376,6 +1536,7 @@ mod tests {
                 .skip(10)
                 .map(|(i, id)| (id.as_str(), "code_change", if i < 20 { "tests" } else { "fix_bug" })),
             &map,
+            false,
             &p,
         );
         assert_eq!(c, GuessCheck { checked: 20, right: 10 });

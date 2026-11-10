@@ -118,6 +118,49 @@ pub fn stem(w: &str) -> String {
     s
 }
 
+/// The person's own words in a prompt. A claude.ai Projects / Remote Control turn reaches Claude Code wrapped in a
+/// `<wake …>` envelope (thread ids, times, system notes) around the person's `<message from="human" …>`. Measured on
+/// the laptop 2026-11-10: all 7 Claude Code first prompts since 11-08 were such envelopes of ~470 characters, and the
+/// kind label read the XML and answered `other` at 0.3–0.5 on every one. This returns the triggering human message
+/// (else every human message, in order), XML entities decoded; any other prompt comes back unchanged.
+/// assume: the envelope keeps this shape (`<wake`, `<message … from="human" …>text</message>`). Confirm: the label
+/// of a new Projects task is no longer `other`. If false: the prompt is passed on whole, as before this.
+pub fn own_words(prompt: &str) -> std::borrow::Cow<'_, str> {
+    let t = prompt.trim_start();
+    if !t.starts_with("<wake") {
+        return prompt.into();
+    }
+    let mut trigger = None;
+    let mut all = Vec::new();
+    for part in t.split("<message ").skip(1) {
+        let Some((attrs, rest)) = part.split_once('>') else { continue };
+        if !attrs.split_whitespace().any(|a| a == "from=\"human\"") {
+            continue;
+        }
+        let Some((body, _)) = rest.split_once("</message>") else { continue };
+        let body = unescape(body.trim());
+        if attrs.split_whitespace().any(|a| a == "trigger=\"true\"") {
+            trigger.get_or_insert(body.clone());
+        }
+        all.push(body);
+    }
+    match trigger {
+        Some(b) => b.into(),
+        None if !all.is_empty() => all.join("\n").into(),
+        None => prompt.into(),
+    }
+}
+
+fn unescape(s: &str) -> String {
+    s.replace("&#34;", "\"")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&apos;", "'")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&amp;", "&")
+}
+
 /// |a ∩ b| / |a ∪ b|; two empty sets have similarity 0 (nothing to compare).
 pub fn jaccard(a: &BTreeSet<String>, b: &BTreeSet<String>) -> f64 {
     let union = a.union(b).count();
@@ -146,6 +189,25 @@ mod tests {
     fn features_mentions_paths_files_at_and_urls() {
         let f = features("look at src/main.rs, @db and README.md or https://x.io/a (e.g. this).", &params());
         assert_eq!(f.mentions, set(&["@db", "README.md", "https://x.io/a", "src/main.rs"]));
+    }
+
+    #[test]
+    fn own_words_takes_the_persons_message_out_of_a_projects_envelope() {
+        // Shaped like the laptop's first prompts (2026-11-10): attributes in the measured order, a system note.
+        let real = "<wake reason=\"mention\" current-time=\"2026-11-10T14:42:18Z\">\n  <project id=\"chan_x\" type=\"project\">\n    <thread ts=\"cmsg_a\">\n      <message trigger=\"true\" from=\"human\" trust=\"principal\" author=\"A\" author-id=\"user_1\" id=\"cmsg_b\" sent-at=\"2026-11-10T14:42:18Z\" mention=\"true\">do the measurement and share you findings. It&#39;s &#34;broken&#34; &amp; &lt;odd&gt;</message>\n    </thread>\n  </project>\n  <system-note>The person last wrote 0m ago.</system-note>\n</wake>";
+        assert_eq!(own_words(real), "do the measurement and share you findings. It's \"broken\" & <odd>");
+        let two = "<wake><message from=\"human\" id=\"cmsg_1\">first</message><message from=\"human\" trigger=\"true\" id=\"cmsg_2\">second</message></wake>";
+        assert_eq!(own_words(two), "second", "the triggering message wins");
+        let no_trigger = "<wake><message from=\"human\" id=\"cmsg_1\">one</message><message from=\"system\">x</message><message from=\"human\">two</message></wake>";
+        assert_eq!(own_words(no_trigger), "one\ntwo", "else every human message, in order");
+        let relay_only = "<wake><message from=\"system\" trust=\"principal\">thread created</message></wake>";
+        assert_eq!(own_words(relay_only), relay_only, "no human message: unchanged");
+        assert_eq!(
+            own_words("fix the <message from=\"human\">x</message> parser"),
+            "fix the <message from=\"human\">x</message> parser",
+            "a typed prompt about XML is not an envelope"
+        );
+        assert_eq!(own_words("fix the login test"), "fix the login test");
     }
 
     #[test]
