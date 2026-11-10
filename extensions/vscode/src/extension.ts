@@ -81,6 +81,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     }
     const r = await pollOnce(client, vscode.window.state.focused, waiting);
     show(r.state);
+    if (r.note) void vscode.window.showInformationMessage(r.note);
     if (r.card) {
       waiting = r.card;
       const card = r.card;

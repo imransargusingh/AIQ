@@ -56,7 +56,9 @@ often lately, and links to them. **Next steps** names the one habit that would m
 **Milestones.** A dated record of each step up a kind of task took. A step counts when 3 tasks of one kind
 reach a rung within 30 days, or when its typical rung moves up by more than chance, so one lucky task never
 counts. Milestones stay once earned. Home shows the latest one under the ladder map; before the first, the
-page shows the kinds closest to one.
+page shows the kinds closest to one. A new milestone is also said once, where you work, when a turn ends with
+no tip: a line in Claude Code, Copilot CLI's status line (until your next prompt), or a VS Code notification.
+Milestones from more than a week ago stay on the page only.
 
 ![Milestones: two kinds of task reached Delegated, writing tests moved up to Delegated](docs/images/readme/milestones.png)
 

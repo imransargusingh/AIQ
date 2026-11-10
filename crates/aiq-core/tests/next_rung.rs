@@ -751,7 +751,7 @@ fn a_hi_then_a_real_ask_labels_the_real_ask_once_and_the_tip_shows() {
     store_label(&h, &task, "s", "tests", 0.5);
     h.svc.on_kind_label(&task).unwrap();
     assert_eq!(last_step(&h, &task), "label_unsure");
-    assert!(h.cp_turn_end("s").is_none());
+    assert!(full(h.cp_turn_end("s")).is_none(), "no tip from an unsure label (the seed's milestone note may show)");
     // A short reply is not worth a label.
     h.prompt("copilot-cli", "s", "ok go ahead");
     assert_eq!(asked.lock().unwrap().len(), 1);
