@@ -1,4 +1,4 @@
-// The tour (design home-tour): nine steps over Home's views, shown on a fixed example snapshot so every view is
+// The tour (design home-tour): ten steps over Home's views, shown on a fixed example snapshot so every view is
 // full on a new install, whose own Home stays empty for days. Never starts by itself: Home offers it once after
 // setup, and Ctrl K, Settings and the getting-started list start it again. A spotlight on each view and a coach
 // mark beside it; the page under it can't be clicked, Esc ends it on any step, and the person's own data is back
@@ -61,6 +61,13 @@ export const STEPS: TourStep[] = [
     target: "section[aria-labelledby=dayhd]",
     title: "Your day",
     body: () => "One row per session, named by kind, with each task's rung. Long quiet gaps shrink so the work stands out.",
+  },
+  {
+    page: "milestones",
+    target: ["section.ms-hero", "section.ms-empty"],
+    title: "Milestones",
+    body: (s) =>
+      `Each step up a kind of task took, once ${s.coaching.milestone_tasks} tasks reach a rung within ${s.coaching.milestone_days} days. Milestones stay once earned.`,
   },
   {
     page: "tips",

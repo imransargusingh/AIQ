@@ -16,7 +16,7 @@ describe("project filter", () => {
     expect(s.home.tasks_in_window).toBe(p.tasks_in_window);
     expect(s.tasks).toHaveLength(p.tasks_in_window);
     expect(s.tasks.every((t) => t.folder === p.key)).toBe(true);
-    expect(s.coaching).toBe(p.coaching);
+    expect(s.coaching).toEqual({ ...p.coaching, milestones: snap.coaching.milestones, milestones_near: snap.coaching.milestones_near });
     expect(s.tips).toBe(snap.tips);
   });
   it("projects add up to every project", () => {

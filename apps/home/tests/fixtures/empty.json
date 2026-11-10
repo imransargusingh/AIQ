@@ -301,6 +301,10 @@
     "progress_min": 3,
     "habit_changes": [],
     "habit_change_min": 5,
+    "milestones": [],
+    "milestones_near": [],
+    "milestone_tasks": 3,
+    "milestone_days": 30,
     "shift_days": 14
   },
   "update": {

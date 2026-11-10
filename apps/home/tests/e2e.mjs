@@ -74,6 +74,7 @@ async function axe(page) {
 const pages = [
   ["home", "Home"],
   ["tasks", "Tasks"],
+  ["milestones", "Milestones"],
   ["guide", "Rung guide"],
   ["tips", "Habits and tips"],
   ["data", "Your data"],
@@ -1258,6 +1259,53 @@ await test("progress Home: kinds that moved up or down beyond chance, counts beh
   await none.context().close();
 });
 
+await test("Milestones: steps that held, newest first, the biggest step marked, the Home line, the empty state, no axe violations", async () => {
+  for (const theme of ["light", "dark", "contrast"]) {
+    const page = await open("tour", { theme: theme === "light" ? undefined : theme, hash: "#milestones" });
+    assert.equal(await page.locator("main h1").first().textContent(), "Milestones");
+    const t = await page.locator("main").innerText();
+    assert.match(t, /\d kinds? of task reached Delegated: handed to the agent as a whole outcome\./);
+    assert.match(t, /Before \d+ \w+, none had\./);
+    assert.match(t, /Writing tests moved up to Delegated\s*(New\s*)?Biggest step/);
+    assert.match(t, /3 tasks within 30 days went to the agent as a whole outcome, with done criteria\./);
+    assert.doesNotMatch(t, /badge|streak|score|judge/i, "informational, never a prize; analysis, never judging");
+    // One entry per kind for its highest rung: Directed folds into the Delegated entry's way here.
+    assert.equal(await page.getByText("Writing tests reached Directed", { exact: true }).count(), 0);
+    const v = await axe(page);
+    assert.deepEqual(v, [], v.join("; "));
+    assert.deepEqual(page.errors, []);
+    if (shots) await page.screenshot({ path: join(shots, `milestones-${theme}.png`), fullPage: true });
+    if (theme === "light") {
+      await page.getByRole("button", { name: "Writing tests moved up to Delegated" }).click();
+      await page.waitForSelector("main h1:text('Writing tests')");
+      assert.ok(page.url().endsWith("#kind/code_change/tests"));
+    }
+    await page.context().close();
+  }
+  // Home: one line under the ladder map, the latest milestone, a way to all of them.
+  const home = await open("tour");
+  const line = home.locator("p.ms-home");
+  assert.match(await line.innerText(), /^\d\s*Latest milestone: .+, \d+ \w+\.\s*See all \d+ milestones$/);
+  await line.getByRole("button").click();
+  await home.waitForSelector("main h1:text('Milestones')");
+  await home.context().close();
+  // Before the first: the closest ones with how far along, never an empty promise.
+  for (const theme of ["light", "dark"]) {
+    const near = await open("coaching", { theme: theme === "light" ? undefined : theme, hash: "#milestones", edit: (s) => (s.coaching.milestones = []) });
+    const nt = await near.locator("main").innerText();
+    assert.match(nt, /Your first milestone is close\./);
+    assert.match(nt, /A milestone comes when 3 tasks of one kind reach a higher rung within 30 days\. Here is where you stand\./);
+    assert.equal(await near.getByRole("list", { name: "Closest milestones" }).getByRole("img", { name: /of 3 tasks/ }).count(), 1);
+    assert.deepEqual(await axe(near), []);
+    if (shots) await near.screenshot({ path: join(shots, `milestones-near-${theme}.png`), fullPage: true });
+    await near.context().close();
+  }
+  const none = await open("full", { hash: "#milestones" });
+  assert.match(await none.locator("main").innerText(), /No milestones yet\./);
+  assert.equal(await none.locator("p.ms-home").count(), 0);
+  await none.context().close();
+});
+
 await test("kind of task: the pack's step, copy starter, analyze words as text, This doesn't fit with a reason, Undo", async () => {
   const page = await open("coaching", { hash: "#kind/code_change/tests" });
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin: base });
@@ -1733,8 +1781,8 @@ await test("projects: Your projects ranks folders on Tasks, the picker scopes Ho
   await solo.context().close();
 });
 
-// The tour (design home-tour): offered once after setup, nine steps on the example snapshot, Esc on any step.
-const TOUR = ["Right now", "How you work with agents", "Is each kind of task moving up?", "Automated, not counted", "Tasks, by kind", "Your day", "Habits", "Tips show where you work", "Settings"];
+// The tour (design home-tour): offered once after setup, ten steps on the example snapshot, Esc on any step.
+const TOUR = ["Right now", "How you work with agents", "Is each kind of task moving up?", "Automated, not counted", "Tasks, by kind", "Your day", "Milestones", "Habits", "Tips show where you work", "Settings"];
 const READS = new Set(["snapshot", "run_update", "task"]);
 
 await test("tour: offered once after setup; Not now means never again", async () => {
@@ -1767,7 +1815,7 @@ await test("tour: offered once after setup; Not now means never again", async ()
   await other.context().close();
 });
 
-await test("tour: nine steps on example data, every view found, own data back after", async () => {
+await test("tour: ten steps on example data, every view found, own data back after", async () => {
   const page = await open("empty");
   await page.getByRole("button", { name: "Take the tour" }).first().click();
   for (let i = 0; i < TOUR.length; i++) {
@@ -1780,6 +1828,7 @@ await test("tour: nine steps on example data, every view found, own data back af
     // The example data fills what each step names: a growing habit under the ladder map and on Habits, and a
     // script-driven folder with its Count this folder button.
     if (TOUR[i] === "Is each kind of task moving up?") assert.match(await page.locator(".hc-line").innerText(), /1 habit is growing/);
+    if (TOUR[i] === "Milestones") assert.match(await page.locator("main").innerText(), /Writing tests moved up to Delegated/);
     if (TOUR[i] === "Automated, not counted") assert.equal(await page.getByRole("button", { name: "Count nightly-report" }).count(), 1);
     if (TOUR[i] === "Habits") {
       assert.match(await page.locator(".hc-sum").innerText(), /1 growing/);

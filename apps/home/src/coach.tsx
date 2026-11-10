@@ -3,6 +3,7 @@
 // snapshot; nothing is computed here but percentages and labels.
 import { useState } from "react";
 import { RUNGS, jobName, plural, rungLabel } from "./format";
+import { homeLine } from "./milestones";
 import { kindsOn, ladder, mixHeadline, type Five, type LadderRow, type Shift } from "./mix";
 import type { Coaching, KindRow, KindState, TaskRow } from "./types";
 import { Chip, Rung } from "./ui";
@@ -310,6 +311,19 @@ export function HabitChangeLine({ c, go }: { c: Coaching; go: () => void }) {
         {parts.join(" · ")}: the steps that move a kind of task up.{" "}
         <button className="btnlink" onClick={go}>See them in Habits and tips</button>
       </span>
+    </p>
+  );
+}
+
+/** Under the ladder map: the latest milestone, or the closest one before the first (Milestones page). */
+export function MilestoneLine({ c, nowMs, short, go }: { c: Coaching; nowMs: number; short: (ms: number) => string; go: () => void }) {
+  const l = homeLine(c, nowMs, short);
+  if (!l) return null;
+  return (
+    <p className="ms-home">
+      <span className={`ms-rb rg-${l.rung}`} aria-hidden="true">{l.rung}</span>
+      <span className="t"><b>{l.lead}:</b> {l.text}</span>
+      <button className="btnlink" onClick={go}>{l.link}</button>
     </p>
   );
 }

@@ -503,6 +503,152 @@ pub fn progress(tasks: &[JudgedTask], now_ms: i64, p: &CoachParams) -> Vec<Progr
     out
 }
 
+// ------------------------------------------------------------------ milestones (the record of steps up)
+
+/// Tasks of one kind at a rung (or higher) within `MILESTONE_DAYS` before that rung counts as reached. One task
+/// at a higher rung is too thin to celebrate: measured on the laptop 2026-11-10, 26 "first task at a higher rung"
+/// events against 12 kinds that held one for 3 tasks in 30 days.
+pub const MILESTONE_TASKS: u32 = 3;
+pub const MILESTONE_DAYS: u32 = 30;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MilestoneKind {
+    /// `MILESTONE_TASKS` tasks of the kind at `rung` or higher within `MILESTONE_DAYS`.
+    Reached,
+    /// The kind's typical rung moved up by more than chance (the `progress` rule), on the day it first did.
+    MovedUp,
+}
+
+impl MilestoneKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            MilestoneKind::Reached => "reached",
+            MilestoneKind::MovedUp => "moved_up",
+        }
+    }
+}
+
+/// One step up a kind of task took. Milestones stay once earned: a quieter month never takes one away.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Milestone {
+    pub job: String,
+    pub task_type: String,
+    pub label: &'static str,
+    pub kind: MilestoneKind,
+    /// The rung reached (Reached) or the new typical rung (MovedUp), 2..=5.
+    pub rung: u8,
+    /// MovedUp: the typical rung of the 30 days before. Reached: None.
+    pub from_rung: Option<u8>,
+    /// Reached: the task that made `MILESTONE_TASKS`. MovedUp: the day the move first held.
+    pub earned_ms: i64,
+    /// The kind's first task at `rung` or higher.
+    pub first_ms: i64,
+}
+
+/// Every milestone in this task history, newest first (ties: higher rung, then label). Uncertain judgments and
+/// the judge's fallback kind "other" never count. MovedUp replays `progress` once a day from the first day both
+/// halves can hold tasks through today, and keeps the first day each (from, to) move held for a kind.
+// simplify: the replay is days x tasks (about 140 x 900 on the laptop, 2026-11-10); keep a per-day index if a
+// history of several years makes the snapshot slow.
+pub fn milestones(tasks: &[JudgedTask], now_ms: i64, p: &CoachParams) -> Vec<Milestone> {
+    let window = MILESTONE_DAYS as i64 * DAY_MS;
+    let mut kinds: BTreeMap<(&str, &str), Vec<(i64, u8)>> = BTreeMap::new();
+    for t in tasks.iter().filter(|t| !t.uncertain() && t.first_ms <= now_ms) {
+        if let Some(k) = t.kind().filter(|(_, ty)| *ty != "other") {
+            kinds.entry(k).or_default().push((t.first_ms, t.current));
+        }
+    }
+    let make = |job: &str, ty: &str, kind, rung, from_rung, earned_ms, first_ms| Milestone {
+        job: job.to_owned(),
+        task_type: ty.to_owned(),
+        label: task_type_label(job, ty).unwrap_or("Other"),
+        kind,
+        rung,
+        from_rung,
+        earned_ms,
+        first_ms,
+    };
+    let mut out = Vec::new();
+    for (&(job, ty), v) in kinds.iter_mut() {
+        v.sort();
+        for rung in 2..=5u8 {
+            let at: Vec<i64> = v.iter().filter(|(_, r)| *r >= rung).map(|(t, _)| *t).collect();
+            let n = MILESTONE_TASKS as usize;
+            if let Some(w) = at.windows(n).find(|w| w[n - 1] - w[0] < window) {
+                out.push(make(job, ty, MilestoneKind::Reached, rung, None, w[n - 1], at[0]));
+            }
+        }
+    }
+    if let Some(oldest) = kinds.values().flat_map(|v| v.first()).map(|(t, _)| *t).min() {
+        let mut seen: BTreeSet<(String, String, u8, u8)> = BTreeSet::new();
+        // The earlier half first holds a task the day after `oldest` + one half; today is always checked last.
+        let first_day = oldest + PROGRESS_DAYS as i64 * DAY_MS;
+        let days = (first_day..now_ms).step_by(DAY_MS as usize).chain([now_ms]);
+        for day in days.filter(|d| *d >= first_day) {
+            for r in progress(tasks, day, p).into_iter().filter(|r| r.trend == Trend::Up) {
+                let (Some(to), Some(from)) = (r.recent_rung, r.earlier_rung) else { continue };
+                if seen.insert((r.job.clone(), r.task_type.clone(), from, to)) {
+                    let first = kinds
+                        .get(&(r.job.as_str(), r.task_type.as_str()))
+                        .and_then(|v| v.iter().find(|(_, x)| *x >= to))
+                        .map_or(day, |(t, _)| *t);
+                    out.push(make(&r.job, &r.task_type, MilestoneKind::MovedUp, to, Some(from), day, first));
+                }
+            }
+        }
+    }
+    out.sort_by(|a, b| {
+        b.earned_ms.cmp(&a.earned_ms).then_with(|| b.rung.cmp(&a.rung)).then_with(|| a.label.cmp(b.label))
+    });
+    out
+}
+
+/// A kind of task partway to its next milestone: `have` of `MILESTONE_TASKS` tasks at `rung` or higher in the
+/// last `MILESTONE_DAYS`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct NearMilestone {
+    pub job: String,
+    pub task_type: String,
+    pub label: &'static str,
+    pub rung: u8,
+    pub have: u32,
+}
+
+/// The kinds closest to their next milestone: per kind, the rung above the highest it reached (Directed when it
+/// reached none), with at least one but fewer than `MILESTONE_TASKS` tasks there lately. Most tasks first, then
+/// higher rung, then label; at most `limit`.
+pub fn near_milestones(tasks: &[JudgedTask], reached: &[Milestone], now_ms: i64, limit: usize) -> Vec<NearMilestone> {
+    let since = now_ms - MILESTONE_DAYS as i64 * DAY_MS;
+    let mut top: BTreeMap<(&str, &str), u8> = BTreeMap::new();
+    for m in reached.iter().filter(|m| m.kind == MilestoneKind::Reached) {
+        let e = top.entry((m.job.as_str(), m.task_type.as_str())).or_insert(1);
+        *e = (*e).max(m.rung);
+    }
+    let mut recent: BTreeMap<(&str, &str), Vec<u8>> = BTreeMap::new();
+    for t in tasks.iter().filter(|t| !t.uncertain() && t.first_ms > since && t.first_ms <= now_ms) {
+        if let Some(k) = t.kind().filter(|(_, ty)| *ty != "other") {
+            recent.entry(k).or_default().push(t.current);
+        }
+    }
+    let mut out: Vec<NearMilestone> = recent
+        .into_iter()
+        .filter_map(|((job, ty), rs)| {
+            let rung = top.get(&(job, ty)).copied().unwrap_or(1) + 1;
+            let have = rs.iter().filter(|r| **r >= rung).count() as u32;
+            (rung <= 5 && (1..MILESTONE_TASKS).contains(&have)).then(|| NearMilestone {
+                job: job.to_owned(),
+                task_type: ty.to_owned(),
+                label: task_type_label(job, ty).unwrap_or("Other"),
+                rung,
+                have,
+            })
+        })
+        .collect();
+    out.sort_by(|a, b| b.have.cmp(&a.have).then_with(|| b.rung.cmp(&a.rung)).then_with(|| a.label.cmp(b.label)));
+    out.truncate(limit);
+    out
+}
+
 /// How far one move reaches on the person's judged tasks in the window (measured from stored facts, no model).
 /// A next-step tip fires in the moment only for a kind of task whose coached move this is (D3/D4), so
 /// `kinds` is what can fire; `tasks` counts every judged task where the move applies.
@@ -1593,6 +1739,111 @@ mod tests {
         let strict = CoachParams { recurring_min: 4, ..params() };
         assert_eq!(progress(&ts, NOW, &strict)[0].trend, Trend::TooFew, "the minimum is the tips' recurring_min");
         assert!(progress(&[], NOW, &params()).is_empty());
+    }
+
+    #[test]
+    fn a_rung_is_reached_with_three_tasks_at_it_within_30_days() {
+        let mut ts = vec![
+            at("a0", 80, "fix_bug", 1, "judged"),
+            // One Delegated task, then two more within 30 days of the second: reached on day 10.
+            at("d0", 70, "fix_bug", 3, "judged"),
+            at("d1", 35, "fix_bug", 3, "judged"),
+            at("d2", 20, "fix_bug", 3, "judged"),
+            at("d3", 10, "fix_bug", 3, "judged"),
+            // Directed is reached on the same tasks that count for Delegated (rung or higher).
+            at("u0", 12, "fix_bug", 5, "uncertain"),
+            // Two at Directed, one uncertain: not reached.
+            at("t0", 9, "tests", 2, "judged"),
+            at("t1", 8, "tests", 2, "judged"),
+            at("t2", 7, "tests", 2, "uncertain"),
+            // Three Delegated tasks spread wider than 30 days: not reached.
+            at("r0", 90, "refactor", 3, "judged"),
+            at("r1", 55, "refactor", 3, "judged"),
+            at("r2", 20, "refactor", 3, "judged"),
+            // The fallback kind never counts.
+            at("o0", 3, "other", 4, "judged"),
+            at("o1", 2, "other", 4, "judged"),
+            at("o2", 1, "other", 4, "judged"),
+        ];
+        let got: Vec<_> = milestones(&ts, NOW, &params())
+            .into_iter()
+            .map(|m| (m.task_type, m.kind.as_str(), m.rung, (NOW - m.earned_ms) / DAY_MS, (NOW - m.first_ms) / DAY_MS))
+            .collect();
+        assert_eq!(
+            got,
+            vec![("fix_bug".to_owned(), "reached", 3, 10, 70), ("fix_bug".to_owned(), "reached", 2, 10, 70),]
+        );
+        // A later quiet month never takes it away.
+        for i in 0..10 {
+            ts.push(at(&format!("q{i}"), 1 + i % 5, "fix_bug", 1, "judged"));
+        }
+        assert_eq!(milestones(&ts, NOW, &params()).iter().filter(|m| m.task_type == "fix_bug").count(), 2);
+        assert!(milestones(&[], NOW, &params()).is_empty());
+    }
+
+    #[test]
+    fn a_move_that_holds_today_on_a_short_history_is_a_milestone() {
+        // 45 days of history: the move shows on Home today, so the record has it too (earned today).
+        let mut ts = vec![];
+        for d in [36, 38, 40, 42, 44] {
+            ts.push(at(&format!("e{d}"), d, "tests", 2, "judged"));
+        }
+        for d in [1, 3, 5, 7, 9] {
+            ts.push(at(&format!("r{d}"), d, "tests", 3, "judged"));
+        }
+        assert_eq!(progress(&ts, NOW, &params())[0].trend, Trend::Up);
+        let m: Vec<_> =
+            milestones(&ts, NOW, &params()).into_iter().filter(|m| m.kind == MilestoneKind::MovedUp).collect();
+        assert_eq!(m.len(), 1, "{m:?}");
+        assert_eq!((m[0].from_rung, m[0].rung), (Some(2), 3));
+        assert!(m[0].earned_ms <= NOW && m[0].earned_ms > NOW - 9 * DAY_MS, "the first day it held: {:?}", m[0]);
+    }
+
+    #[test]
+    fn near_milestones_name_the_next_rung_each_kind_is_partway_to() {
+        let ts = vec![
+            // fix_bug reached Delegated long ago; 2 Orchestrated tasks lately -> 2 of 3 at Orchestrated.
+            at("f0", 90, "fix_bug", 3, "judged"),
+            at("f1", 85, "fix_bug", 3, "judged"),
+            at("f2", 80, "fix_bug", 3, "judged"),
+            at("f3", 5, "fix_bug", 4, "judged"),
+            at("f4", 4, "fix_bug", 4, "judged"),
+            // tests reached nothing; one Directed lately -> 1 of 3 at Directed.
+            at("t0", 3, "tests", 2, "judged"),
+            at("t1", 2, "tests", 1, "judged"),
+            // feature: Directed only before the last 30 days -> not near.
+            at("e0", 40, "feature", 2, "judged"),
+            at("e1", 3, "feature", 1, "judged"),
+            // refactor: uncertain doesn't count.
+            at("r0", 3, "refactor", 2, "uncertain"),
+        ];
+        let ms = milestones(&ts, NOW, &params());
+        let got: Vec<_> =
+            near_milestones(&ts, &ms, NOW, 3).into_iter().map(|n| (n.task_type, n.rung, n.have)).collect();
+        assert_eq!(got, vec![("fix_bug".to_owned(), 4, 2), ("tests".to_owned(), 2, 1)]);
+        assert_eq!(near_milestones(&ts, &ms, NOW, 1).len(), 1);
+    }
+
+    #[test]
+    fn a_typical_rung_move_is_kept_on_the_first_day_it_held() {
+        let mut ts = vec![];
+        // Assisted for 30 days, then Delegated for 30 days: the progress rule says up once both halves hold
+        // enough, and the milestone keeps that first day, not today.
+        for i in 0..6 {
+            ts.push(at(&format!("e{i}"), 2 * E + 20 - i * 4, "feature", 1, "judged"));
+            ts.push(at(&format!("r{i}"), E + 20 - i * 4, "feature", 3, "judged"));
+        }
+        let ms = milestones(&ts, NOW, &params());
+        let moved: Vec<_> = ms.iter().filter(|m| m.kind == MilestoneKind::MovedUp).collect();
+        assert_eq!(moved.len(), 1, "{ms:?}");
+        let m = moved[0];
+        assert_eq!((m.rung, m.from_rung, m.label), (3, Some(1), "Adding a feature"));
+        let days_ago = (NOW - m.earned_ms) / DAY_MS;
+        assert!(days_ago > 0 && days_ago < E + 20, "after the first Delegated feature, before today: {days_ago}");
+        let day_before = NOW - (days_ago + 1) * DAY_MS;
+        assert!(progress(&ts, day_before, &params()).iter().all(|r| r.trend != Trend::Up), "not held the day before");
+        assert_eq!(m.first_ms, NOW - (E + 20) * DAY_MS, "first Delegated feature");
+        assert!(progress(&ts, NOW, &params()).iter().all(|r| r.trend != Trend::Up), "no longer comparable today");
     }
 
     #[test]

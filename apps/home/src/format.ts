@@ -60,6 +60,9 @@ export function day(ms: number, offsetMin: number): string {
   return `${DAYS[d.getUTCDay()]} ${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`;
 }
 
+/** "3 Nov": the day without its weekday. */
+export const shortDay = (ms: number, offsetMin: number) => day(ms, offsetMin).replace(/^\w+ /, "");
+
 /** "Today 14:05", "Yesterday 09:12", "Sat 31 Oct 18:40". */
 export function when(ms: number, nowMs: number, offsetMin: number): string {
   const dayOf = (x: number) => Math.floor((x + offsetMin * 60_000) / DAY);

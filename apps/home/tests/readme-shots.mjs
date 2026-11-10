@@ -94,6 +94,8 @@ await shot(
   "[data-testid=right-now]",
 );
 await shot("progress", await open("progress"), "section[aria-labelledby=pg]");
+// The tour store is written as if the core were down; the README shows a running AIQ.
+await shot("milestones", await open("tour", { hash: "#milestones", edit: (s) => Object.assign(s.status, { core: true, core_state: "running" }) }));
 await shot("habits-and-tips", await open("coaching", { hash: "#tips", height: 1100 }));
 await shot("task", await open("full", { hash: "#task/019000000001-0000-7000-8000-000000000000", height: 1000 }));
 await shot("settings-tips", await open("full", { hash: "#settings", edit: (s) => (s.settings.daily_cap = 5) }), "section[aria-labelledby=st1]");

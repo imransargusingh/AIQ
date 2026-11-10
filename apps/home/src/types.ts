@@ -337,6 +337,34 @@ export interface Coaching {
   habit_change_min: number;
   /** The rung mix's change and the kind chart's split: last `shift_days` against the `shift_days` before. */
   shift_days: number;
+  /** Steps up each kind of task took over the whole history, newest first. Whole record: the same under a project. */
+  milestones: Milestone[];
+  /** Kinds partway to their next milestone, closest first. */
+  milestones_near: NearMilestone[];
+  /** A rung counts as reached with `milestone_tasks` tasks at it within `milestone_days`. */
+  milestone_tasks: number;
+  milestone_days: number;
+}
+
+export interface Milestone {
+  job: string;
+  task_type: string;
+  label: string;
+  /** reached: `milestone_tasks` tasks at `rung` or higher within `milestone_days`; moved_up: the typical rung rose by more than chance. */
+  kind: "reached" | "moved_up";
+  rung: number;
+  from_rung: number | null;
+  earned_ms: number;
+  /** The kind's first task at `rung` or higher. */
+  first_ms: number;
+}
+
+export interface NearMilestone {
+  job: string;
+  task_type: string;
+  label: string;
+  rung: number;
+  have: number;
 }
 
 export interface HabitChange {

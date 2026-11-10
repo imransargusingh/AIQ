@@ -10,6 +10,7 @@ import { Dialog, PAGES, Sk, UpdateChip, type Ctx, type Page } from "./ui";
 import { Home } from "./pages/Home";
 import { Tasks } from "./pages/Tasks";
 import { Tips } from "./pages/Tips";
+import { Milestones } from "./pages/Milestones";
 import { Data } from "./pages/Data";
 import { Settings } from "./pages/Settings";
 import { Task } from "./pages/Task";
@@ -444,6 +445,7 @@ export function App() {
           )}
           {one && page === "home" && <Home key="home" {...one} />}
           {one && page === "tasks" && <Tasks key={`tasks-${step?.view ?? ""}`} {...one} start={step?.view} />}
+          {ctx && page === "milestones" && <Milestones key="milestones" {...ctx} />}
           {ctx && page === "guide" && <Guide key="guide" {...ctx} />}
           {ctx && page === "tips" && <Tips key="tips" {...ctx} />}
           {ctx && page === "data" && <Data key="data" {...ctx} />}
