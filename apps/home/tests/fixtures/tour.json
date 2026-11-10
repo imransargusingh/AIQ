@@ -3447,6 +3447,79 @@
       }
     ],
     "habit_change_min": 5,
+    "milestones": [
+      {
+        "job": "code_change",
+        "task_type": "tests",
+        "label": "Writing tests",
+        "kind": "moved_up",
+        "rung": 3,
+        "from_rung": 2,
+        "earned_ms": 1793015460000,
+        "first_ms": 1792755360000
+      },
+      {
+        "job": "code_change",
+        "task_type": "tests",
+        "label": "Writing tests",
+        "kind": "reached",
+        "rung": 3,
+        "from_rung": null,
+        "earned_ms": 1792928280000,
+        "first_ms": 1792755360000
+      },
+      {
+        "job": "code_change",
+        "task_type": "refactor",
+        "label": "Refactoring or cleaning up",
+        "kind": "reached",
+        "rung": 2,
+        "from_rung": null,
+        "earned_ms": 1791860400000,
+        "first_ms": 1790335560000
+      },
+      {
+        "job": "code_change",
+        "task_type": "tests",
+        "label": "Writing tests",
+        "kind": "reached",
+        "rung": 2,
+        "from_rung": null,
+        "earned_ms": 1790078160000,
+        "first_ms": 1789732320000
+      },
+      {
+        "job": "write_doc",
+        "task_type": "spec",
+        "label": "Writing a spec or PRD",
+        "kind": "reached",
+        "rung": 3,
+        "from_rung": null,
+        "earned_ms": 1789991700000,
+        "first_ms": 1789645860000
+      },
+      {
+        "job": "write_doc",
+        "task_type": "spec",
+        "label": "Writing a spec or PRD",
+        "kind": "reached",
+        "rung": 2,
+        "from_rung": null,
+        "earned_ms": 1789991700000,
+        "first_ms": 1789645860000
+      }
+    ],
+    "milestones_near": [
+      {
+        "job": "code_change",
+        "task_type": "feature",
+        "label": "Adding a feature",
+        "rung": 2,
+        "have": 2
+      }
+    ],
+    "milestone_tasks": 3,
+    "milestone_days": 30,
     "shift_days": 14
   },
   "update": {
@@ -4021,6 +4094,10 @@
           }
         ],
         "habit_change_min": 5,
+        "milestones": [],
+        "milestones_near": [],
+        "milestone_tasks": 3,
+        "milestone_days": 30,
         "shift_days": 14
       }
     },
@@ -4266,6 +4343,10 @@
         "progress_min": 3,
         "habit_changes": [],
         "habit_change_min": 5,
+        "milestones": [],
+        "milestones_near": [],
+        "milestone_tasks": 3,
+        "milestone_days": 30,
         "shift_days": 14
       }
     }

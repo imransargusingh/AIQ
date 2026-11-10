@@ -7,11 +7,12 @@ import { ver, type UpdatePhase } from "./updateNow";
 import type { Theme } from "./theme";
 
 /** Nav pages, plus places outside the nav: one task's detail, one kind of task (from Home or Tasks), setup. */
-export type Page = "home" | "tasks" | "guide" | "tips" | "data" | "settings" | "task" | "kind" | "setup";
+export type Page = "home" | "tasks" | "milestones" | "guide" | "tips" | "data" | "settings" | "task" | "kind" | "setup";
 
 export const PAGES: { id: Exclude<Page, "task" | "kind" | "setup">; label: string; key: string }[] = [
   { id: "home", label: "Home", key: "H" },
   { id: "tasks", label: "Tasks", key: "T" },
+  { id: "milestones", label: "Milestones", key: "M" },
   { id: "guide", label: "Rung guide", key: "R" },
   { id: "tips", label: "Habits and tips", key: "B" },
   { id: "data", label: "Your data", key: "D" },

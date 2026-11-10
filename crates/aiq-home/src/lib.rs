@@ -29,6 +29,8 @@ pub const WINDOW_DAYS: i64 = 30;
 pub const SHIFT_DAYS: u32 = 14;
 /// Weekly columns on Home.
 pub const WEEKS: i64 = 4;
+/// Kinds the Milestones page names as close to their next milestone.
+pub const NEAR_MILESTONES: usize = 3;
 /// Tip history window (spec US-H5).
 pub const TIP_DAYS: i64 = 90;
 /// Your data lists at most this many newest events; the counts are always exact.
@@ -225,9 +227,40 @@ pub struct Coaching {
     pub habit_changes: Vec<HabitChangeRow>,
     /// Tasks where a habit fits, in each half, before AIQ says the habit changed.
     pub habit_change_min: u32,
+    /// Steps up each kind of task took over the whole history, newest first (the Milestones page). Whole
+    /// record only: a project's coaching leaves this empty.
+    pub milestones: Vec<MilestoneRow>,
+    /// Kinds partway to their next milestone, closest first (at most `NEAR_MILESTONES`).
+    pub milestones_near: Vec<NearMilestoneRow>,
+    /// Tasks at a rung within `milestone_days` before it counts as reached.
+    pub milestone_tasks: u32,
+    pub milestone_days: u32,
     /// The rung mix's "up N points" and the kind page's chart split: last `shift_days` against the
     /// `shift_days` before, read from `tasks` (the 30-day window), so shorter than `progress_days`.
     pub shift_days: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct NearMilestoneRow {
+    pub job: String,
+    pub task_type: String,
+    pub label: &'static str,
+    pub rung: u8,
+    /// Tasks at `rung` or higher in the last `milestone_days`, fewer than `milestone_tasks`.
+    pub have: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct MilestoneRow {
+    pub job: String,
+    pub task_type: String,
+    pub label: &'static str,
+    /// reached, moved_up
+    pub kind: &'static str,
+    pub rung: u8,
+    pub from_rung: Option<u8>,
+    pub earned_ms: i64,
+    pub first_ms: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -900,6 +933,8 @@ fn empty(paths: &Paths, pack: &PackV1, now: Now) -> Snapshot {
             progress_days: aiq_domain::coach::PROGRESS_DAYS,
             progress_min: pack.coach.recurring_min,
             habit_change_min: aiq_domain::coach::HABIT_CHANGE_MIN,
+            milestone_tasks: aiq_domain::coach::MILESTONE_TASKS,
+            milestone_days: aiq_domain::coach::MILESTONE_DAYS,
             shift_days: SHIFT_DAYS,
             rule: FINISHED_RULE,
             weeks: (0..WEEKS).map(|i| WeekSplit { start_ms: week0 + i * 7 * DAY_MS, tasks: 0, finished: 0 }).collect(),
@@ -995,9 +1030,9 @@ fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()>
     };
     let aside: BTreeSet<&str> = set_aside.iter().map(|(f, _, _)| f.as_str()).collect();
 
-    // Rung progress compares the last PROGRESS_DAYS with the PROGRESS_DAYS before, which reach past the window:
-    // those older tasks feed only progress and habit changes, never the rest of Home.
-    let wide_start = window_start.min(now.utc_ms - 2 * aiq_domain::coach::PROGRESS_DAYS as i64 * DAY_MS);
+    // Rung progress, habit changes and milestones reach past the window (milestones over the whole history):
+    // those older tasks feed only them, never the rest of Home.
+    let wide_start = 0;
     let (mut tasks, mut older): (Vec<TaskRow>, Vec<TaskRow>) =
         task_list(store, pack, wide_start, &aside)?.into_iter().partition(|t| t.first_ms >= window_start);
     s.home.set_aside = set_aside_rows(store, &set_aside, &tasks)?;
@@ -1431,6 +1466,26 @@ fn coaching(
     let judged = judged_tasks(&all, judgments);
     let judged_older = judged_tasks(&older.iter().collect::<Vec<_>>(), judgments);
     coach_view(pack, now, (&judged, &judged_older), judgments, &feedback, &flags, &mut s.coaching);
+    // Milestones are the person's whole record, so they are built once here, never per project.
+    let wide: Vec<coach::JudgedTask> = judged.iter().chain(&judged_older).cloned().collect();
+    let ms = coach::milestones(&wide, now.utc_ms, &pack.coach);
+    s.coaching.milestones_near = coach::near_milestones(&wide, &ms, now.utc_ms, NEAR_MILESTONES)
+        .into_iter()
+        .map(|n| NearMilestoneRow { job: n.job, task_type: n.task_type, label: n.label, rung: n.rung, have: n.have })
+        .collect();
+    s.coaching.milestones = ms
+        .into_iter()
+        .map(|m| MilestoneRow {
+            job: m.job,
+            task_type: m.task_type,
+            label: m.label,
+            kind: m.kind.as_str(),
+            rung: m.rung,
+            from_rung: m.from_rung,
+            earned_ms: m.earned_ms,
+            first_ms: m.first_ms,
+        })
+        .collect();
 
     // Projects (design project-filter): the same tally and coaching over each folder's tasks.
     let names = project_names(
@@ -1461,6 +1516,7 @@ fn coaching(
             c.progress_min = blank.progress_min;
             c.habit_change_min = blank.habit_change_min;
             c.shift_days = blank.shift_days;
+            (c.milestone_tasks, c.milestone_days) = (blank.milestone_tasks, blank.milestone_days);
             c.weeks = blank.weeks.iter().map(|w| WeekSplit { tasks: 0, finished: 0, ..*w }).collect();
             coach_view(pack, now, (&pj, &po), judgments, &feedback, &flags, &mut c);
             let (name, renamed) = names.get(key).cloned().unwrap_or_else(|| (NO_FOLDER.to_owned(), false));

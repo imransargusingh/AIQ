@@ -53,6 +53,13 @@ often lately, and links to them. **Next steps** names the one habit that would m
 
 ![The ladder map: writing tests moved up to Delegated, a spec task moved down, and next steps for each kind](docs/images/readme/progress.png)
 
+**Milestones.** A dated record of each step up a kind of task took. A step counts when 3 tasks of one kind
+reach a rung within 30 days, or when its typical rung moves up by more than chance, so one lucky task never
+counts. Milestones stay once earned. Home shows the latest one under the ladder map; before the first, the
+page shows the kinds closest to one.
+
+![Milestones: two kinds of task reached Delegated, writing tests moved up to Delegated](docs/images/readme/milestones.png)
+
 **Habits and tips.** Habits grouped by the rung they help you reach. A habit counts as adopted when you do it
 in more than half of the tasks where it fits, over 14 days.
 

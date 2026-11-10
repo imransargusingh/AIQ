@@ -3,9 +3,9 @@
 // on Tasks but never counted on a rung or in the split here. Until a task is judged it says so; nothing is
 // guessed. Model-written text renders as plain text only (TR-5).
 import { api } from "../api";
-import { HabitChangeLine, LadderMap, NextSteps, RungMix, judgedBy, moved, pct } from "../coach";
+import { HabitChangeLine, LadderMap, MilestoneLine, NextSteps, RungMix, judgedBy, moved, pct } from "../coach";
 import { DAY, rungCounts, shift } from "../mix";
-import { RUNGS, day, folderName, plural, rungLabel, sentence, shortPath, toolName, when } from "../format";
+import { RUNGS, day, folderName, plural, rungLabel, sentence, shortDay, shortPath, toolName, when } from "../format";
 import { AccuracyPaused, Banners, ProjectPicker, Rung, Title, UpdateLine, type Ctx } from "../ui";
 import type { SetAside } from "../types";
 import { RightNow } from "./RightNow";
@@ -261,6 +261,7 @@ export function Home(ctx: Ctx) {
           <>
             <LadderMap c={c} open={ctx.openKind} />
             <HabitChangeLine c={c} go={() => go("tips")} />
+            <MilestoneLine c={c} nowMs={snap.now_ms} short={(ms) => shortDay(ms, snap.offset_min)} go={() => go("milestones")} />
           </>
         )}
         <div className="head">

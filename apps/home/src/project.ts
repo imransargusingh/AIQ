@@ -22,7 +22,14 @@ export function scoped(s: Snapshot, key: string | null): Snapshot {
       weeks: p.weeks,
       by_tool: p.by_tool,
     },
-    coaching: p.coaching,
+    // Milestones are the person's whole record: a project filter never hides one.
+    coaching: {
+      ...p.coaching,
+      milestones: s.coaching.milestones,
+      milestones_near: s.coaching.milestones_near,
+      milestone_tasks: s.coaching.milestone_tasks,
+      milestone_days: s.coaching.milestone_days,
+    },
     tasks: s.tasks.filter((t) => projectOf(t) === p.key),
   };
 }

@@ -1803,6 +1803,49 @@
     "progress_min": 3,
     "habit_changes": [],
     "habit_change_min": 5,
+    "milestones": [
+      {
+        "job": "code_change",
+        "task_type": "tests",
+        "label": "Writing tests",
+        "kind": "reached",
+        "rung": 3,
+        "from_rung": null,
+        "earned_ms": 1793088000000,
+        "first_ms": 1792864800000
+      },
+      {
+        "job": "code_change",
+        "task_type": "tests",
+        "label": "Writing tests",
+        "kind": "reached",
+        "rung": 2,
+        "from_rung": null,
+        "earned_ms": 1793088000000,
+        "first_ms": 1792864800000
+      },
+      {
+        "job": "write_doc",
+        "task_type": "spec",
+        "label": "Writing a spec or PRD",
+        "kind": "reached",
+        "rung": 2,
+        "from_rung": null,
+        "earned_ms": 1792530000000,
+        "first_ms": 1792306800000
+      }
+    ],
+    "milestones_near": [
+      {
+        "job": "code_change",
+        "task_type": "refactor",
+        "label": "Refactoring or cleaning up",
+        "rung": 2,
+        "have": 2
+      }
+    ],
+    "milestone_tasks": 3,
+    "milestone_days": 30,
     "shift_days": 14
   },
   "update": {
@@ -2123,6 +2166,10 @@
         "progress_min": 3,
         "habit_changes": [],
         "habit_change_min": 5,
+        "milestones": [],
+        "milestones_near": [],
+        "milestone_tasks": 3,
+        "milestone_days": 30,
         "shift_days": 14
       }
     },
@@ -2372,6 +2419,10 @@
         "progress_min": 3,
         "habit_changes": [],
         "habit_change_min": 5,
+        "milestones": [],
+        "milestones_near": [],
+        "milestone_tasks": 3,
+        "milestone_days": 30,
         "shift_days": 14
       }
     }

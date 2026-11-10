@@ -416,6 +416,45 @@ fn progress_compares_each_kinds_typical_rung_over_two_30_day_halves() {
 }
 
 #[test]
+fn milestones_read_the_whole_history_and_stay_out_of_projects() {
+    let d = tempfile::tempdir().unwrap();
+    let p = Paths::at(d.path());
+    progress(&p);
+    // Three Delegated clean-ups 100 to 104 days ago: older than the progress halves, still a milestone.
+    let mut s = Seed::new(&p);
+    s.skip_ids(30_000);
+    for (i, days) in [104, 102, 100].iter().enumerate() {
+        let at = NOW - days * DAY;
+        let se = format!("old{i}");
+        let id = s.prompt("copilot-cli", &se, at, Some(AIQ), "tidy the cart module");
+        s.stop("copilot-cli", &se, at + 3 * MIN);
+        s.store.insert_judgment(&coach_row(&id, "code_change", "refactor", 3, "judged", 0)).unwrap();
+    }
+    drop(s);
+    let snap = snap(&p);
+    assert!(snap.status.error.is_none(), "{:?}", snap.status.error);
+    let c = &snap.coaching;
+    assert_eq!((c.milestone_tasks, c.milestone_days), (3, 30));
+    let got: Vec<_> = c
+        .milestones
+        .iter()
+        .map(|m| (m.task_type.as_str(), m.kind, m.rung, m.from_rung, (NOW - m.earned_ms) / DAY))
+        .collect();
+    assert!(got.contains(&("refactor", "reached", 3, None, 100)), "{got:?}");
+    assert!(got.contains(&("tests", "reached", 3, None, 5)), "{got:?}");
+    assert!(got.iter().any(|m| m.0 == "tests" && m.1 == "moved_up" && m.2 == 3 && m.3 == Some(2)), "{got:?}");
+    assert!(!got.iter().any(|m| m.0 == "feature" && m.2 == 3), "3 Delegated features spread over 33 days: {got:?}");
+    let mut sorted = c.milestones.iter().map(|m| m.earned_ms).collect::<Vec<_>>();
+    sorted.sort_by(|a, b| b.cmp(a));
+    assert_eq!(sorted, c.milestones.iter().map(|m| m.earned_ms).collect::<Vec<_>>(), "newest first");
+    // tests reached Delegated; its 5 recent tasks hold no Orchestrated one, so it is not near.
+    assert!(c.milestones_near.iter().all(|n| n.have >= 1 && n.have < 3 && n.rung >= 2), "{:?}", c.milestones_near);
+    assert!(!c.milestones_near.iter().any(|n| n.task_type == "tests"), "{:?}", c.milestones_near);
+    assert!(snap.projects.iter().all(|p| p.coaching.milestones.is_empty()), "whole record only");
+    assert!(snap.tasks.iter().all(|t| t.first_ms >= NOW - 30 * DAY), "old tasks never join the window");
+}
+
+#[test]
 fn projects_split_home_by_folder_and_add_up() {
     let d = tempfile::tempdir().unwrap();
     let p = Paths::at(d.path());
