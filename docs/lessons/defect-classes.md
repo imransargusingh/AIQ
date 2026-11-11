@@ -931,3 +931,34 @@ summary: >-
   scrubbed.
 - **Rule:** a failure that happens on someone else's machine is recorded with its cause, and the person can hand it
   over in one step, with nothing private in it.
+
+### DC-051 — A record writer that gives up quietly when another process holds its file
+- **Signature:** 2026-11-11, the laptop's 0.1.38 install. The check (04:52:50Z), the install (04:53:53Z) and later
+  checks (05:09:01Z, 05:25:01Z) wrote `update.json` but not one line to `upgrade-log.txt`. Measured on the laptop: a
+  Git Bash `tail -n 0 -F` on the log (our own watcher, started 04:51:35Z) held the file; an exclusive open failed
+  with "being used by another process". `upgrade.ps1`'s `Log` tried 5 times, 100 ms apart, then dropped the line
+  with no trace. `install.ps1` had the opposite fault: its `Add-Content` would have thrown and ended the install
+  after the exes were copied.
+- **Why it survives:** "never throws" was the control for DC-033's held log (0.1.15), and it was tested: the CI
+  step held the log and checked the run finished. Nothing checked that the line survived. The state file is
+  written another way (temp file, then rename), so the update looked fully recorded.
+- **Sweep:** every append-only record a script or AIQ writes. `upgrade.ps1` and `install.ps1` now share the rule.
+  The Rust logs (`aiq.log`, `label.log`, `judge.log`, `hook-errors.log`) open with Rust's default share mode and
+  are appended by AIQ only; a held file there makes the write fail into `tracing`, unmeasured (no report so far).
+- **Control (CI, release.yml):** with the log held, the `AIQ-UPDATE-NOT-NEWER` line must be in
+  `upgrade-log-held.txt` with "could not be written: <reason>"; the next run must bring it back into
+  `upgrade-log.txt` and remove the held file.
+- **Rule:** a record that can't be written goes somewhere with its reason, never nowhere.
+
+### DC-052 — File times copied from a zip, which keeps them without a time zone
+- **Signature:** 2026-11-11, the laptop (UTC-8): 0.1.38's files in `.aiq\bin` said modified 11:43–11:49Z, 8 h
+  in the future. Measured: the release zip stores DOS times 03:43–03:49 with no zone field (build runner in
+  UTC); `Expand-Archive` reads them as local time, and `Copy-Item` keeps them.
+- **Why it survives:** CI runs in UTC, where the two readings agree. Nothing compared an installed file's time.
+- **Sweep:** `upgrade.ps1 -Apply` and `install.ps1` copy exes, `upgrade.ps1`, `aiq.vsix` and
+  `aiq-statusline.exe`; each copy now sets the file's time to the install time. The `.old` copies keep the time
+  they were installed with. Nothing in AIQ reads `bin` file times (checked: no `LastWriteTime`/`modified()` on
+  them).
+- **Control (CI, release.yml):** after install and after `-Apply`, `aiq.exe`, `aiq-home.exe` and `upgrade.ps1`
+  must carry a time between the step's start and now. The zip was built minutes earlier, so a kept zip time fails.
+- **Rule:** an installer stamps what it installs; it never trusts a time an archive carried.

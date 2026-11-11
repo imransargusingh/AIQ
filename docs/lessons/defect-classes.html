@@ -556,4 +556,33 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <ul><li><strong>Control (tests):</strong> <code>a_sure_job_with_an_unsure_kind_still_gives_the_jobs_tip</code>,</li></ul>
 <p><code>an_adopted_habit_is_not_coached_and_the_next_move_is</code>, <code>a_job_row_coaches_across_kinds_too_few_to_coach_alone</code>, and <code>measured_labels_clear_the_bar_under_the_live_per_job_rule</code> (the real laptop labels).</p>
 <ul><li><strong>Rule:</strong> a gate holds only on the inputs its outcome depends on. One fact, such as &quot;already does this&quot;, has one</li></ul>
-<p>definition that every reader shares.</p></main></body></html>
+<p>definition that every reader shares.</p>
+<h3>DC-050 — A failure whose cause is written nowhere the person can hand over</h3>
+<ul><li><strong>Signature:</strong> 2026-11-10, the devbox install: 15 of 15 new Copilot CLI tasks ended at &quot;Kind label failed&quot;.</li></ul>
+<p><code>kind_label</code> stores only the outcome (<code>error</code>), and label.log wrote <code>label &lt;task&gt; copilot-cli error -/-</code> with no message. The tool&#x27;s own words were dropped right after the call. The machine is not reachable from here, so the cause could not be found without asking the person to run commands.</p>
+<ul><li><strong>Why it survives:</strong> judge.log kept the message for analysis calls, so the gap looked closed. The label path was</li></ul>
+<p>copied from the judge path without its log line. Tests checked the stored outcome, which was right.</p>
+<ul><li><strong>Sweep:</strong> every external call AIQ makes and where its failure text goes. Analysis calls go to judge.log (kept).</li></ul>
+<p>Label calls now write <code>why &lt;task&gt; &lt;message&gt;</code> to label.log. Update checks keep <code>check_error</code> in the updater state. Hook errors go to hook-errors.log. A person can now hand all of these over in one scrubbed file (design diagnostics-file).</p>
+<ul><li><strong>Control (tests):</strong> <code>a_failed_call_writes_the_tools_own_words_to_label_log_and_not_to_the_store</code> and</li></ul>
+<p><code>a_failed_label_carries_the_tools_words_scrubbed</code>. The second proves the message reaches the diagnostics file, scrubbed.</p>
+<ul><li><strong>Rule:</strong> a failure that happens on someone else&#x27;s machine is recorded with its cause, and the person can hand it</li></ul>
+<p>over in one step, with nothing private in it.</p>
+<h3>DC-051 — A record writer that gives up quietly when another process holds its file</h3>
+<ul><li><strong>Signature:</strong> 2026-11-11, the laptop&#x27;s 0.1.38 install. The check (04:52:50Z), the install (04:53:53Z) and later</li></ul>
+<p>checks (05:09:01Z, 05:25:01Z) wrote <code>update.json</code> but not one line to <code>upgrade-log.txt</code>. Measured on the laptop: a Git Bash <code>tail -n 0 -F</code> on the log (our own watcher, started 04:51:35Z) held the file; an exclusive open failed with &quot;being used by another process&quot;. <code>upgrade.ps1</code>&#x27;s <code>Log</code> tried 5 times, 100 ms apart, then dropped the line with no trace. <code>install.ps1</code> had the opposite fault: its <code>Add-Content</code> would have thrown and ended the install after the exes were copied.</p>
+<ul><li><strong>Why it survives:</strong> &quot;never throws&quot; was the control for DC-033&#x27;s held log (0.1.15), and it was tested: the CI</li></ul>
+<p>step held the log and checked the run finished. Nothing checked that the line survived. The state file is written another way (temp file, then rename), so the update looked fully recorded.</p>
+<ul><li><strong>Sweep:</strong> every append-only record a script or AIQ writes. <code>upgrade.ps1</code> and <code>install.ps1</code> now share the rule.</li></ul>
+<p>The Rust logs (<code>aiq.log</code>, <code>label.log</code>, <code>judge.log</code>, <code>hook-errors.log</code>) open with Rust&#x27;s default share mode and are appended by AIQ only; a held file there makes the write fail into <code>tracing</code>, unmeasured (no report so far).</p>
+<ul><li><strong>Control (CI, release.yml):</strong> with the log held, the <code>AIQ-UPDATE-NOT-NEWER</code> line must be in</li></ul>
+<p><code>upgrade-log-held.txt</code> with &quot;could not be written: &lt;reason&gt;&quot;; the next run must bring it back into <code>upgrade-log.txt</code> and remove the held file.</p>
+<ul><li><strong>Rule:</strong> a record that can&#x27;t be written goes somewhere with its reason, never nowhere.</li></ul>
+<h3>DC-052 — File times copied from a zip, which keeps them without a time zone</h3>
+<ul><li><strong>Signature:</strong> 2026-11-11, the laptop (UTC-8): 0.1.38&#x27;s files in <code>.aiq\bin</code> said modified 11:43–11:49Z, 8 h</li></ul>
+<p>in the future. Measured: the release zip stores DOS times 03:43–03:49 with no zone field (build runner in UTC); <code>Expand-Archive</code> reads them as local time, and <code>Copy-Item</code> keeps them.</p>
+<ul><li><strong>Why it survives:</strong> CI runs in UTC, where the two readings agree. Nothing compared an installed file&#x27;s time.</li><li><strong>Sweep:</strong> <code>upgrade.ps1 -Apply</code> and <code>install.ps1</code> copy exes, <code>upgrade.ps1</code>, <code>aiq.vsix</code> and</li></ul>
+<p><code>aiq-statusline.exe</code>; each copy now sets the file&#x27;s time to the install time. The <code>.old</code> copies keep the time they were installed with. Nothing in AIQ reads <code>bin</code> file times (checked: no <code>LastWriteTime</code>/<code>modified()</code> on them).</p>
+<ul><li><strong>Control (CI, release.yml):</strong> after install and after <code>-Apply</code>, <code>aiq.exe</code>, <code>aiq-home.exe</code> and <code>upgrade.ps1</code></li></ul>
+<p>must carry a time between the step&#x27;s start and now. The zip was built minutes earlier, so a kept zip time fails.</p>
+<ul><li><strong>Rule:</strong> an installer stamps what it installs; it never trusts a time an archive carried.</li></ul></main></body></html>
