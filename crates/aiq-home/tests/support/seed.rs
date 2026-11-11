@@ -650,6 +650,8 @@ pub fn tour(paths: &Paths) {
             )
             .unwrap();
     }
+    // The tip funnel's week, so Habits and tips' "Tips this week" isn't empty on the example (it was all zeros).
+    tip_paths(&mut s, NOW);
     open_task(paths);
 }
 

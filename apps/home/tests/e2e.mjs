@@ -1873,6 +1873,8 @@ await test("tour: ten steps on example data, every view found, own data back aft
     // The example data fills what each step names: a growing habit under the ladder map and on Habits, and a
     // script-driven folder with its Count this folder button.
     if (TOUR[i] === "Is each kind of task moving up?") assert.match(await page.locator(".hc-line").innerText(), /1 habit is growing/);
+    // The example fills Tips this week (it showed all zeros before): the step's card says why tasks had no tip.
+    if (TOUR[i] === "Tips show where you work") assert.match(await page.locator("section[aria-labelledby=tf]").innerText(), /Why tasks had no tip/);
     if (TOUR[i] === "Milestones") assert.match(await page.locator("main").innerText(), /Writing tests moved up to Delegated/);
     if (TOUR[i] === "Automated, not counted") assert.equal(await page.getByRole("button", { name: "Count nightly-report" }).count(), 1);
     if (TOUR[i] === "Habits") {

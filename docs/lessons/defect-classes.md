@@ -962,3 +962,19 @@ summary: >-
 - **Control (CI, release.yml):** after install and after `-Apply`, `aiq.exe`, `aiq-home.exe` and `upgrade.ps1`
   must carry a time between the step's start and now. The zip was built minutes earlier, so a kept zip time fails.
 - **Rule:** an installer stamps what it installs; it never trusts a time an archive carried.
+
+### DC-053 — A view gains a section and the tour's example data never fills it
+- **Signature:** 2026-11-11, audit of the Home tour against 0.1.39. Habits and tips gained "Tips this week" (#216,
+  #219), but the tour's example store (`seed::tour`) never seeded tip steps, so on the tour the card read "No new
+  tasks this week yet" with five zero bars right above a Tip history full of tips. The milestone note (#230) was
+  said nowhere in the tour, and the Milestones intro left out the typical-rung rule the core counts (`MovedUp`), the
+  very kind the tour's example shows.
+- **Why it survives:** DC-044's control checks what each step's words claim and that each spotlight finds its
+  element. A new section on a page the tour visits is neither: nothing asserted it carried data on the example.
+- **Sweep:** every empty list in the old `tour.json`: `tip_funnel` (this one), `aside` and `starting` (Right now's
+  idle and starting states, which the tour's open task replaces by design), `accuracy_paused` and `droughts`
+  (shown only when something is wrong). Steps 1, 7 and 9 also read on the rendered tour. Not covered: Rung guide and
+  Your data, which the tour does not visit.
+- **Control:** the tips step spotlights Tips this week, and the e2e asserts its "Why tasks had no tip" list on the
+  example, so the card can't go back to empty unnoticed.
+- **Rule:** a section added to a page the tour visits extends `seed::tour` in the same PR.

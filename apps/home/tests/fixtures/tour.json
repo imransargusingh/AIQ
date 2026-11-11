@@ -4709,10 +4709,17 @@
   "tip_funnel": {
     "today": {
       "days": 1,
-      "tasks": 0,
-      "kind_known": 0,
-      "tip_found": 0,
-      "no_tip": [],
+      "tasks": 2,
+      "kind_known": 1,
+      "tip_found": 1,
+      "no_tip": [
+        {
+          "code": "label_asked",
+          "words": "kind label never came back",
+          "count": 1,
+          "help": ""
+        }
+      ],
       "tips": 1,
       "held": [],
       "waiting": 0,
@@ -4730,14 +4737,56 @@
       "tip_shown": 0,
       "tip_opened": 0,
       "other_shown": 1,
-      "lost": []
+      "lost": [
+        {
+          "task_id": "t1",
+          "surface": "copilot-cli",
+          "first_ms": 1793533800000,
+          "code": "label_asked",
+          "words": "kind label never came back",
+          "kind_known": false,
+          "opening": "",
+          "detail": ""
+        }
+      ]
     },
     "week": {
       "days": 7,
-      "tasks": 0,
-      "kind_known": 0,
-      "tip_found": 0,
-      "no_tip": [],
+      "tasks": 11,
+      "kind_known": 6,
+      "tip_found": 2,
+      "no_tip": [
+        {
+          "code": "no_match",
+          "words": "kind of task not recognised",
+          "count": 4,
+          "help": "AIQ reads how a task starts. Opening with one sentence that names the job, like \"Fix the login crash when the token expires\", helps it find a tip."
+        },
+        {
+          "code": "label_held",
+          "words": "kind labels on hold: their accuracy check is under 8 in 10",
+          "count": 2,
+          "help": "AIQ holds these while it rechecks its own accuracy. Nothing to do on your side."
+        },
+        {
+          "code": "kind_right_rung",
+          "words": "you already work this kind at its right rung",
+          "count": 1,
+          "help": ""
+        },
+        {
+          "code": "kind_too_few",
+          "words": "too few tasks of this kind analyzed yet",
+          "count": 1,
+          "help": "Tips for a kind start once AIQ has analyzed a few tasks of it."
+        },
+        {
+          "code": "label_asked",
+          "words": "kind label never came back",
+          "count": 1,
+          "help": ""
+        }
+      ],
       "tips": 1,
       "held": [],
       "waiting": 0,
@@ -4755,8 +4804,120 @@
       "tip_shown": 0,
       "tip_opened": 0,
       "other_shown": 1,
-      "lost": []
+      "lost": [
+        {
+          "task_id": "t1",
+          "surface": "copilot-cli",
+          "first_ms": 1793533800000,
+          "code": "label_asked",
+          "words": "kind label never came back",
+          "kind_known": false,
+          "opening": "",
+          "detail": ""
+        },
+        {
+          "task_id": "y5",
+          "surface": "copilot-cli",
+          "first_ms": 1793460000000,
+          "code": "kind_too_few",
+          "words": "too few tasks of this kind analyzed yet",
+          "kind_known": true,
+          "opening": "",
+          "detail": ""
+        },
+        {
+          "task_id": "y4",
+          "surface": "copilot-cli",
+          "first_ms": 1793457600000,
+          "code": "label_held",
+          "words": "kind labels on hold: their accuracy check is under 8 in 10",
+          "kind_known": true,
+          "opening": "",
+          "detail": ""
+        },
+        {
+          "task_id": "y3",
+          "surface": "copilot-cli",
+          "first_ms": 1793455200000,
+          "code": "label_held",
+          "words": "kind labels on hold: their accuracy check is under 8 in 10",
+          "kind_known": true,
+          "opening": "",
+          "detail": ""
+        },
+        {
+          "task_id": "y2",
+          "surface": "copilot-cli",
+          "first_ms": 1793452800000,
+          "code": "no_match",
+          "words": "kind of task not recognised",
+          "kind_known": false,
+          "opening": "",
+          "detail": ""
+        },
+        {
+          "task_id": "y1",
+          "surface": "copilot-cli",
+          "first_ms": 1793450400000,
+          "code": "no_match",
+          "words": "kind of task not recognised",
+          "kind_known": false,
+          "opening": "",
+          "detail": ""
+        },
+        {
+          "task_id": "y0",
+          "surface": "copilot-cli",
+          "first_ms": 1793448000000,
+          "code": "no_match",
+          "words": "kind of task not recognised",
+          "kind_known": false,
+          "opening": "",
+          "detail": ""
+        },
+        {
+          "task_id": "d2c",
+          "surface": "copilot-cli",
+          "first_ms": 1793365200000,
+          "code": "kind_right_rung",
+          "words": "you already work this kind at its right rung",
+          "kind_known": true,
+          "opening": "",
+          "detail": ""
+        },
+        {
+          "task_id": "d2b",
+          "surface": "copilot-cli",
+          "first_ms": 1793363400000,
+          "code": "no_match",
+          "words": "kind of task not recognised",
+          "kind_known": false,
+          "opening": "",
+          "detail": ""
+        }
+      ]
     },
-    "droughts": []
+    "droughts": [
+      {
+        "day": "2026-10-31",
+        "tasks": 6,
+        "main_reason": {
+          "code": "no_match",
+          "words": "kind of task not recognised",
+          "count": 3,
+          "help": "AIQ reads how a task starts. Opening with one sentence that names the job, like \"Fix the login crash when the token expires\", helps it find a tip."
+        }
+      },
+      {
+        "day": "2026-10-30",
+        "tasks": 3,
+        "main_reason": {
+          "code": "decided",
+          "words": "other",
+          "count": 1,
+          "help": ""
+        }
+      }
+    ]
   }
 }
