@@ -20,7 +20,8 @@ export function Milestones(ctx: Ctx) {
         <Title>Milestones</Title>
         <p className="mute">
           Each step up one kind of task took. A step counts when {c.milestone_tasks} analyzed tasks of one kind reach a rung within{" "}
-          {c.milestone_days} days, so one lucky task never counts. Milestones stay once earned.
+          {c.milestone_days} days, or when its typical rung moves up by more than chance, so one lucky task never counts. Milestones stay once
+          earned.
         </p>
       </header>
       {r.top ? (

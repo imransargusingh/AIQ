@@ -67,7 +67,7 @@ export const STEPS: TourStep[] = [
     target: ["section.ms-hero", "section.ms-empty"],
     title: "Milestones",
     body: (s) =>
-      `Each step up a kind of task took, once ${s.coaching.milestone_tasks} tasks reach a rung within ${s.coaching.milestone_days} days. Milestones stay once earned.`,
+      `Each step up a kind of task took, once ${s.coaching.milestone_tasks} tasks reach a rung within ${s.coaching.milestone_days} days. A new one also shows where you work.`,
   },
   {
     page: "tips",
@@ -78,10 +78,11 @@ export const STEPS: TourStep[] = [
   },
   {
     page: "tips",
-    target: "section[aria-labelledby=th]",
+    // Tips this week (the tip funnel) answers "why no tip?"; the example data always fills it.
+    target: "section[aria-labelledby=tf]",
     title: "Tips show where you work",
     body: (s) =>
-      `Up to ${s.settings.daily_cap} a day, in Claude Code, Copilot CLI or VS Code after a turn ends. Never while you type. Settings sets how many.`,
+      `Up to ${s.settings.daily_cap} a day, after a turn ends, in Claude Code, Copilot CLI or VS Code. This card shows why a task got none.`,
     tip: "Give the agent the failing test and let it run it until it passes.",
   },
   {
