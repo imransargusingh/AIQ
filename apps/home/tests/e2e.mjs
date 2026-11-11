@@ -672,7 +672,7 @@ for (const theme of ["light", "dark", "contrast"]) {
 // Imran 2026-11-08: the card stays when nothing is open, so Home keeps its shape and the person can tell "nothing
 // in progress" from "AIQ hears nothing". Gone only when switched off.
 for (const theme of ["light", "dark", "contrast"]) {
-  await test(`Right now card, nothing open: stays, says so, names each connected tool's last activity, no axe violations (${theme})`, async () => {
+  await test(`Right now card, nothing open: stays, says so, names each connected tool's last turn, no axe violations (${theme})`, async () => {
     const page = await open("full", {
       theme: theme === "light" ? undefined : theme,
       edit: (s) => {
@@ -688,8 +688,8 @@ for (const theme of ["light", "dark", "contrast"]) {
     assert.equal(await card.getAttribute("data-state"), "idle");
     const t = await card.innerText();
     assert.match(t, /Right now · Nothing in progress/);
-    assert.match(t, /Copilot\s*last activity 12 min ago/);
-    assert.match(t, /Claude Code\s*last activity Yesterday/);
+    assert.match(t, /Copilot\s*your last turn 12 min ago/);
+    assert.match(t, /Claude Code\s*your last turn Yesterday/);
     assert.match(t, /VS Code\s*nothing yet/);
     assert.match(await page.getByTestId("right-now-hint").innerText(), /^Using VS Code with an agent right now\? AIQ has had nothing from it lately\./);
     assert.doesNotMatch(t, /Watching|Monitoring/);
@@ -706,8 +706,9 @@ for (const theme of ["light", "dark", "contrast"]) {
 
 // Imran 2026-11-08: Claude Code read "last activity Yesterday" while he typed to it all evening, because every turn
 // was set aside. Set-aside activity is activity: the card names it and says it isn't counted.
-await test("Right now card, nothing open: a tool whose newest activity was set aside says so, no axe violations", async () => {
+for (const theme of ["light", "dark", "contrast"]) await test(`Right now card, nothing open: a tool whose newest activity was set aside says so, no axe violations (${theme})`, async () => {
   const page = await open("full", {
+    theme: theme === "light" ? undefined : theme,
     edit: (s) => {
       s.starting = [];
       s.setup.tools = ["claude-code", "copilot"].map((tool) => ({ tool, hooked: true, present: true, install: "" }));
@@ -720,14 +721,15 @@ await test("Right now card, nothing open: a tool whose newest activity was set a
   });
   const card = page.getByTestId("right-now");
   const t = await card.innerText();
-  assert.match(t, /Claude Code\s*last activity 2 min ago · automated, not counted/);
-  assert.match(t, /Copilot\s*last activity 12 min ago\n/);
+  // Imran 2026-11-11: the automated time sits beside the person's own last turn, never in its place.
+  assert.match(t, /Claude Code\s*your last turn Yesterday \d\d:\d\d · Claude's own work 2 min ago/);
+  assert.match(t, /Copilot\s*your last turn 12 min ago\n/);
   assert.equal(await page.getByTestId("right-now-hint").count(), 0, "not called silent");
   const hint = page.getByTestId("right-now-aside");
-  assert.match(await hint.innerText(), /^Claude Code's newest activity is Claude's own work in a claude.ai project, so AIQ doesn't count it\. Turns you type yourself count\./);
+  assert.match(await hint.innerText(), /^Claude's own work in a claude\.ai project isn't counted\. Turns you type yourself count\./);
   assert.doesNotMatch(t, /Watching|Monitoring|judge/i);
   assert.deepEqual(await axe(page), []);
-  if (shots) await page.screenshot({ path: join(shots, "right-now-aside-light.png") });
+  if (shots) await card.screenshot({ path: join(shots, `right-now-aside-${theme}.png`) });
   await hint.getByRole("button", { name: "See what's not counted" }).click();
   assert.deepEqual(page.errors, []);
   await page.context().close();

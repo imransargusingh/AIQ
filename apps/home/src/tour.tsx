@@ -26,7 +26,7 @@ export const STEPS: TourStep[] = [
     page: "home",
     target: "[data-testid=right-now]",
     title: "Right now",
-    body: () => "Tasks open now, with how far agents are taking each. When nothing runs, it lists each connected tool and when it was last active.",
+    body: () => "Tasks open now and how far agents take each. When idle: your last turn per tool, and newer work the agent did alone.",
   },
   {
     page: "home",
