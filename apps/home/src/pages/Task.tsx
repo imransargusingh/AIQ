@@ -4,7 +4,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { clock, folderName, jobName, plural, stateLabel, toolName, when } from "../format";
-import type { TaskDetail } from "../types";
+import type { TaskAnalysis, TaskDetail } from "../types";
 import { Banners, Chip, Content, Rung, Sk, Title, preview, type Ctx } from "../ui";
 
 type State = { kind: "loading" } | { kind: "ok"; d: TaskDetail } | { kind: "gone" } | { kind: "error"; message: string };
@@ -137,14 +137,7 @@ export function Task(ctx: Ctx & { taskId: string }) {
           </p>
         </section>
       ) : (
-        <div className="empty">
-          <b>Not analyzed yet.</b>
-          <span className="mute">
-            {snap.settings.judge === "auto"
-              ? "AIQ analyzes finished tasks in the background, through your own Claude Code or Copilot CLI."
-              : "Analysis is off. Turn it on in Settings, under Analysis."}
-          </span>
-        </div>
+        <AnalysisState a={st.d.analysis} tool={t.tool} taskId={t.task_id} ctx={ctx} reload={() => setAttempt((n) => n + 1)} />
       )}
 
       <section className="group" aria-labelledby="tp">
@@ -163,4 +156,135 @@ export function Task(ctx: Ctx & { taskId: string }) {
       </section>
     </div>
   );
+}
+
+/** Tries before AIQ stops trying a task (Rust `aiq_home::TRIES`). */
+const TRIES = 3;
+
+/** Why a task has no analysis yet, in the words of its state (DC-055): waiting, trying again at a time, stopped
+ * trying, or blocked by the tool. Before, one "Not analyzed yet" covered all of them, and a machine whose every
+ * call failed looked the same as one that was busy. */
+function AnalysisState({ a, tool, taskId, ctx, reload }: { a: TaskAnalysis; tool: string; taskId: string; ctx: Ctx; reload: () => void }) {
+  const { snap, go, announce } = ctx;
+  const [trying, setTrying] = useState(false);
+  // Mid-sentence: "after today 09:00", not "after Today 09:00".
+  const at = (ms: number) => when(ms, snap.now_ms, snap.offset_min).replace(/^(Today|Yesterday|Tomorrow)/, (w) => w.toLowerCase());
+  const via = a.blocked ? toolName(a.blocked.tool) : toolName(tool === "vscode" ? "copilot-cli" : tool);
+  const tryNow = async (label: string) => {
+    setTrying(true);
+    const r = await api.analyzeTask(taskId);
+    setTrying(false);
+    announce(r.ok ? `${label}: done. The page shows the result.` : r.message);
+    if (r.ok) reload();
+  };
+  const tryButton = (label: string) => (
+    <button className="btn pri" onClick={() => tryNow(label)} disabled={trying} aria-busy={trying}>
+      {trying ? "Trying…" : label}
+    </button>
+  );
+  const reply = a.reply && (
+    <>
+      <span className="mute">{via} answered{a.state === "gave_up" ? " on the last try" : ""}:</span>
+      <code className="an-reply">{a.reply}</code>
+    </>
+  );
+  const tries = (
+    <span className="an-tries meta" aria-label={`${a.tries} of ${TRIES} tries`}>
+      {Array.from({ length: TRIES }, (_, i) => (
+        <i key={i} className={i < a.tries ? (a.state === "gave_up" ? "bad" : "warn") : undefined} aria-hidden="true" />
+      ))}
+      {a.state === "gave_up" ? `${plural(a.tries, "try", "tries")}` : `Try ${a.tries} of ${TRIES}`}
+      {a.last_try_ms != null && <> · last {at(a.last_try_ms)}</>}
+    </span>
+  );
+  switch (a.state) {
+    case "off":
+      return (
+        <div className="empty" data-testid="analysis-state">
+          <b>Not analyzed.</b>
+          <span className="mute">Analysis is off. Turn it on in Settings, under Analysis.</span>
+        </div>
+      );
+    case "paused":
+      return (
+        <div className="empty" data-testid="analysis-state">
+          <b>Not analyzed yet.</b>
+          <span className="mute">AIQ is paused, so it isn't analyzing. Resume to carry on.</span>
+        </div>
+      );
+    case "no_tool":
+      return (
+        <div className="empty" data-testid="analysis-state">
+          <b>Not analyzed.</b>
+          <span className="mute">AIQ analyzes tasks through Claude Code or Copilot CLI, and this task came from neither.</span>
+        </div>
+      );
+    case "blocked": {
+      const b = a.blocked!;
+      const act = async () => {
+        const r = b.why === "missing" ? await api.openHelp(b.tool) : await api.openSignIn(b.tool);
+        announce(r.ok ? (b.why === "missing" ? "Opened the install page." : "Opened a terminal. Type /login there; AIQ tries again by itself.") : r.message);
+      };
+      return (
+        <div className="empty an-bad" data-testid="analysis-state">
+          <b>{b.why === "missing" ? `AIQ can't find ${via} on this computer.` : `${via} isn't signed in for AIQ.`}</b>
+          <span className="mute">This task waits until it can be analyzed. Nothing is lost, and AIQ tries again by itself.</span>
+          <p className="an-act">
+            <button className="btn pri" onClick={act}>{b.why === "missing" ? `Get ${via}` : `Sign in to ${via}`}</button>
+          </p>
+        </div>
+      );
+    }
+    case "open":
+      return (
+        <div className="empty" data-testid="analysis-state">
+          <b>Not analyzed yet.</b>
+          <span className="mute">
+            AIQ analyzes a task once it has been quiet for 30 minutes{a.closes_ms != null && <>, so this one after {at(a.closes_ms)}</>}.
+          </span>
+        </div>
+      );
+    case "retrying":
+      return (
+        <div className="empty an-warn" data-testid="analysis-state">
+          <b>Analysis didn't work yet. AIQ tries again {a.next_try_ms != null ? at(a.next_try_ms) : "soon"}.</b>
+          {tries}
+          {reply}
+          <p className="an-act">{tryButton("Try now")}</p>
+        </div>
+      );
+    case "gave_up":
+      return (
+        <div className="empty an-bad" data-testid="analysis-state">
+          <b>AIQ couldn't analyze this task, so it stopped trying.</b>
+          {tries}
+          {reply}
+          <p className="an-act">
+            {tryButton("Try again")}
+            <button className="btn" onClick={() => go("data")}>Open Your data</button>
+            <span className="meta">A diagnostics file there shows every try.</span>
+          </p>
+        </div>
+      );
+    case "today_done":
+      return (
+        <div className="empty" data-testid="analysis-state">
+          <b>Waiting for tomorrow.</b>
+          <span className="mute">AIQ analyzed today's {plural(snap.settings.judge_daily_tasks, "task")}. This one waits until after midnight.</span>
+          <p className="an-act">
+            <button className="btn" onClick={() => go("settings")}>Change the limit</button>
+          </p>
+        </div>
+      );
+    default:
+      return (
+        <div className="empty" data-testid="analysis-state">
+          <b>Waiting to be analyzed.</b>
+          <span className="mute">
+            {a.ahead > 0 ? `${plural(a.ahead, "newer task")} go${a.ahead === 1 ? "es" : ""} first. ` : "It's next. "}
+            AIQ analyzes in the background, through your own {via}.
+          </span>
+        </div>
+      );
+  }
 }

@@ -462,6 +462,30 @@ async fn judge_preview() -> Result<Preview, String> {
     .await
 }
 
+/// The task page's "Try now": analyze this one task now (`aiq judge --task <id>`), whatever its retry wait says.
+/// Waits for the run (one or two calls, each at most 2 minutes) so the page can show the result. The id goes to
+/// AIQ's own binary as one argument, never through a shell.
+#[tauri::command]
+async fn analyze_task(task_id: String) -> Result<Outcome, String> {
+    blocking(move || {
+        let t = Instant::now();
+        let paths = Paths::from_env();
+        let r = if task_id.is_empty() || task_id.starts_with('-') || task_id.len() > 512 {
+            Err("Not a task id.".to_string())
+        } else {
+            match run_aiq(&["judge", "--task", &task_id]) {
+                Ok((true, out, _)) if out.contains("already analyzing") => Err(out.trim().to_string()),
+                Ok((true, _, _)) => Ok(()),
+                Ok((false, out, err)) => Err(if err.is_empty() { out.trim().to_string() } else { err }),
+                Err(m) => Err(m),
+            }
+        };
+        log(&paths, "analyze_task", t, if r.is_ok() { "ok" } else { "error" });
+        Outcome::from(r)
+    })
+    .await
+}
+
 /// The privacy page for alpha users (docs/privacy-and-terms.md on GitHub until it has its own address).
 const PRIVACY_URL: &str = "https://github.com/imransargusingh/AIQ/blob/main/docs/privacy-and-terms.md";
 
@@ -822,6 +846,7 @@ fn main() {
             open_privacy,
             open_sign_in,
             open_tool_help,
+            analyze_task,
             diagnostics,
             save_diagnostics,
             show_diagnostics

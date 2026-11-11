@@ -360,6 +360,8 @@ pub struct GuidanceFlagRow {
 #[derive(Debug, Clone, PartialEq)]
 pub struct CallOutcome {
     pub task_id: String,
+    /// 1 or 2: a try starts with run 1, so failed run-1 calls count tries.
+    pub run: i64,
     pub started_utc_ms: i64,
     pub outcome: String,
     pub cost_usd: Option<f64>,
@@ -1806,7 +1808,7 @@ impl Store {
         let mut st = self
             .conn
             .prepare(
-                "SELECT task_id, started_utc_ms, outcome, cost_usd FROM judge_call WHERE started_utc_ms >= ?1
+                "SELECT task_id, started_utc_ms, outcome, cost_usd, run FROM judge_call WHERE started_utc_ms >= ?1
                  ORDER BY started_utc_ms, rowid",
             )
             .map_err(err(codes::STORE_OPEN))?;
@@ -1817,6 +1819,7 @@ impl Store {
                     started_utc_ms: r.get(1)?,
                     outcome: r.get(2)?,
                     cost_usd: r.get(3)?,
+                    run: r.get(4)?,
                 })
             })
             .map_err(err(codes::STORE_OPEN))?;

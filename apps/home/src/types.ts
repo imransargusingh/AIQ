@@ -574,7 +574,24 @@ export interface ToolFound {
 export interface TaskDetail {
   task: TaskRow;
   prompts: TaskPromptText[];
+  /** Where this task's analysis stands (DC-055): read from the store and judge.log, never forecast. */
+  analysis: TaskAnalysis;
   read_ms: number;
+}
+
+export interface TaskAnalysis {
+  state: "analyzed" | "off" | "paused" | "no_tool" | "blocked" | "open" | "gave_up" | "retrying" | "today_done" | "queued";
+  /** open: when the task counts as finished. */
+  closes_ms: number | null;
+  /** retrying: when AIQ tries again. */
+  next_try_ms: number | null;
+  tries: number;
+  last_try_ms: number | null;
+  /** The tool's own words on the newest failed try; null when not recorded. */
+  reply: string | null;
+  /** queued: newer waiting tasks AIQ analyzes first. */
+  ahead: number;
+  blocked: { tool: "claude-code" | "copilot-cli"; why: "missing" | "not_signed_in" } | null;
 }
 
 export interface TaskPromptText {

@@ -12,7 +12,6 @@ use aiq_contracts::judge::{ActionSummary, Response, SCHEMA, extract_object, pars
 use aiq_core::paths::{Paths, bounded_append};
 use aiq_domain::clock::{DAY_MS, Now};
 use aiq_domain::rung::{self, Turn};
-use aiq_home::GIVE_UP;
 use aiq_home::TaskRow;
 use aiq_store::{CallOutcome, JudgmentRow, NewJudgeCall, Store};
 use serde_json::{Value, json};
@@ -24,9 +23,6 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// A call that runs longer is killed (spec: 60 s p95 per judgment; one slow call must not hold the run).
 pub const CALL_TIMEOUT: Duration = Duration::from_secs(120);
-/// Back-off after the Nth failed call of a task (D8); the task is given up after `GIVE_UP` failed calls (shared
-/// with Home, which counts given-up tasks out of "waiting").
-const BACKOFF_MS: [i64; 5] = [3_600_000, 6 * 3_600_000, DAY_MS, DAY_MS, DAY_MS];
 const LOG_MAX: u64 = 256 * 1024;
 const CLAUDE: &str = "claude-code";
 const COPILOT: &str = "copilot-cli";
@@ -108,6 +104,87 @@ pub(crate) fn find_exe(name: &str) -> Option<PathBuf> {
     None
 }
 
+/// Every file a bare `name` may run, in order: each PATH folder (`.exe`, `.cmd`, `.bat` on Windows), then `extra`
+/// folders. Duplicates are dropped.
+pub(crate) fn exe_candidates(name: &str, path: Option<std::ffi::OsString>, extra: &[PathBuf]) -> Vec<PathBuf> {
+    let exts: &[&str] = if cfg!(windows) { &[".exe", ".cmd", ".bat"] } else { &[""] };
+    let dirs: Vec<PathBuf> = path.map(|p| std::env::split_paths(&p).collect()).unwrap_or_default();
+    let mut out: Vec<PathBuf> = Vec::new();
+    for dir in dirs.iter().chain(extra) {
+        for e in exts {
+            let p = dir.join(format!("{name}{e}"));
+            if p.is_file() && !out.contains(&p) {
+                out.push(p);
+            }
+        }
+    }
+    out
+}
+
+/// Where Copilot CLI's installers put it when that folder isn't on PATH.
+// assume: npm's global folder and WinGet's Links folder are the usual Windows installs, ~/.local/bin and
+// /usr/local/bin elsewhere (not verified against a real install of each). If a real one lives elsewhere, the PATH
+// order is unchanged and the follow-up (learn the path from the Copilot process that fires AIQ's hooks) covers it.
+fn copilot_install_dirs() -> Vec<PathBuf> {
+    let env = |k: &str| std::env::var_os(k).map(PathBuf::from);
+    let mut d = Vec::new();
+    if let Some(a) = env("APPDATA") {
+        d.push(a.join("npm"));
+    }
+    if let Some(l) = env("LOCALAPPDATA") {
+        d.push(l.join("Microsoft").join("WinGet").join("Links"));
+    }
+    if let Some(h) = env("HOME").or_else(|| env("USERPROFILE")) {
+        d.push(h.join(".local").join("bin"));
+    }
+    d.push(PathBuf::from("/usr/local/bin"));
+    d
+}
+
+/// The first candidate that answers `--version` without saying it isn't installed. With one candidate, or when
+/// none answers, the first one, so its own words still reach the call (and Home says "not found").
+pub(crate) fn pick_working(cands: &[PathBuf], works: impl Fn(&Path) -> bool) -> Option<PathBuf> {
+    if cands.len() <= 1 {
+        return cands.first().cloned();
+    }
+    cands.iter().find(|c| works(c)).or(cands.first()).cloned()
+}
+
+fn answers_version(exe: &Path) -> bool {
+    let mut c = Command::new(exe);
+    c.arg("--version");
+    match run_child(c, "", Duration::from_secs(15)) {
+        Ok(r) => r.status == Some(0) && !says_not_found(&format!("{} {}", r.stdout, r.stderr)),
+        Err(_) => false,
+    }
+}
+
+/// Where AIQ keeps its Copilot CLI pick, in its data folder.
+pub(crate) const COPILOT_PICK: &str = "copilot-exe.txt";
+
+/// The Copilot CLI AIQ calls. A stand-in `copilot` earlier on PATH (one that only installs the real CLI from a
+/// terminal) answered every call "was not found" on a second install (DC-055), so AIQ checks each `copilot` it
+/// can find and keeps the first that works. The pick is kept for a day in `copilot-exe.txt`, so a label call
+/// doesn't pay for the check.
+pub(crate) fn find_copilot(paths: &Paths) -> Option<PathBuf> {
+    let cache = paths.data.join(COPILOT_PICK);
+    let fresh = std::fs::metadata(&cache)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.elapsed().ok())
+        .is_some_and(|age| age < Duration::from_secs(24 * 3600));
+    if fresh
+        && let Some(p) = std::fs::read_to_string(&cache).ok().map(|t| PathBuf::from(t.trim()))
+        && p.is_file()
+    {
+        return Some(p);
+    }
+    let cands = exe_candidates("copilot", std::env::var_os("PATH"), &copilot_install_dirs());
+    let pick = pick_working(&cands, answers_version)?;
+    let _ = std::fs::write(&cache, pick.display().to_string());
+    Some(pick)
+}
+
 struct Child {
     status: Option<i32>,
     stdout: String,
@@ -173,6 +250,14 @@ fn signed_out(text: &str) -> bool {
     ["not logged in", "please run /login", "to authenticate", "authentication", "invalid api key", "login required"]
         .iter()
         .any(|w| t.contains(w))
+}
+
+/// The tool answered that it isn't installed. A stand-in `copilot` on PATH (one that offers to install the real
+/// CLI when run in a terminal) exits at once with "GitHub Copilot CLI was not found"; measured on a second
+/// install, 2,100 of 2,100 calls, filed as a plain error, so Home never said the tool was missing (DC-055).
+fn says_not_found(text: &str) -> bool {
+    let t = text.to_ascii_lowercase();
+    t.contains("copilot cli was not found")
 }
 
 fn short(s: &str) -> String {
@@ -416,7 +501,15 @@ impl Provider for CopilotCli {
             Outcome::Timeout
         } else if run.status != Some(0) {
             let text = format!("{} {}", run.stderr, run.stdout);
-            if signed_out(&text) { Outcome::NotSignedIn(short(&text)) } else { Outcome::Error(short(&text)) }
+            if says_not_found(&text) {
+                // The kept pick no longer works: check every candidate again on the next call.
+                let _ = std::fs::remove_file(self.work.with_file_name(COPILOT_PICK));
+                Outcome::Missing
+            } else if signed_out(&text) {
+                Outcome::NotSignedIn(short(&text))
+            } else {
+                Outcome::Error(short(&text))
+            }
         } else {
             match copilot_answer(&run.stdout) {
                 Ok(text) => match extract_object(&text) {
@@ -515,25 +608,14 @@ pub fn queue<'a>(
     idle_gap_ms: i64,
     only: Option<&str>,
 ) -> Vec<&'a TaskRow> {
-    let mut fails: HashMap<&str, (usize, i64)> = HashMap::new();
-    for c in calls.iter().filter(|c| c.outcome != "ok") {
-        let after_judgment = judged.get(&c.task_id).is_none_or(|j| c.started_utc_ms > j.judged_utc_ms);
-        if after_judgment {
-            let e = fails.entry(c.task_id.as_str()).or_default();
-            e.0 += 1;
-            e.1 = e.1.max(c.started_utc_ms);
-        }
-    }
+    // Shared with the task page, so both say the same next try (DC-055).
+    let fails = aiq_home::retries(calls, |id| judged.get(id).map(|j| j.judged_utc_ms));
     let mut q: Vec<(u8, &TaskRow)> = tasks
         .iter()
         .filter(|t| t.last_ms + idle_gap_ms < now_ms)
         .filter(|t| provider_for(&t.tool).is_some_and(|p| only.is_none_or(|o| o == p)))
         .filter(|t| judged.get(&t.task_id).is_none_or(|j| !current_version(j)))
-        .filter(|t| match fails.get(t.task_id.as_str()) {
-            None => true,
-            Some((n, _)) if *n >= GIVE_UP => false,
-            Some((n, last)) => now_ms >= last + BACKOFF_MS[(n - 1).min(BACKOFF_MS.len() - 1)],
-        })
+        .filter(|t| fails.get(t.task_id.as_str()).is_none_or(|r| r.next_try_ms().is_some_and(|at| now_ms >= at)))
         .map(|t| {
             let rank = match judged.get(&t.task_id) {
                 Some(j) if j.job == "unclassified" => 0,
@@ -887,6 +969,9 @@ pub struct Run<'a> {
     pub max: Option<u32>,
     /// `--only claude-code|copilot-cli`: judge only tasks that go to this provider.
     pub only: Option<&'a str>,
+    /// `--task <id>` (the task page's "Try now"): this one task, now, whatever its back-off or give-up says. It
+    /// still has to be finished and not analyzed at the current versions, and it still uses today's budget.
+    pub task: Option<&'a str>,
 }
 
 /// One pass over the queue within today's budget.
@@ -897,7 +982,14 @@ pub fn run(r: &Run<'_>) -> Result<Report, String> {
     let tasks = aiq_home::tasks(r.store, &pack, 0)?;
     let judged = r.store.current_judgments().map_err(|e| e.to_string())?;
     let calls = r.store.judge_calls_since(r.now.utc_ms - 7 * DAY_MS).map_err(|e| e.to_string())?;
-    let q = queue(&tasks, &judged, &calls, r.now.utc_ms, gap, r.only);
+    let q: Vec<&TaskRow> = match r.task {
+        None => queue(&tasks, &judged, &calls, r.now.utc_ms, gap, r.only),
+        Some(id) => tasks
+            .iter()
+            .filter(|t| t.task_id == id && t.last_ms + gap < r.now.utc_ms && provider_for(&t.tool).is_some())
+            .filter(|t| judged.get(&t.task_id).is_none_or(|j| !current_version(j)))
+            .collect(),
+    };
     let used = tasks_today(&calls, r.now.local_midnight_utc_ms()) as u32;
     let mut rep = Report { budget_left: set.daily_tasks.saturating_sub(used), ..Default::default() };
     let mut allowed = rep.budget_left.min(r.max.unwrap_or(u32::MAX));
@@ -1138,7 +1230,7 @@ pub(crate) fn providers(paths: &Paths, set: &Settings) -> (ClaudeCli, CopilotCli
     (
         ClaudeCli { exe: find_exe("claude"), model: set.claude_model.clone(), scratch: std::env::temp_dir() },
         CopilotCli {
-            exe: find_exe("copilot"),
+            exe: find_copilot(paths),
             model: set.copilot_model.clone(),
             work: paths.data.join("judge-work"),
             keep_sessions: set.keep_copilot_sessions,
@@ -1282,7 +1374,7 @@ fn versions_cli(store: &Store, homes: &Homes) -> ExitCode {
         }
     }
     println!("  outdated, no prompt text left (never sent): {no_text}");
-    println!("  outdated, not queued (still open, or gave up after {GIVE_UP} failures): {held}");
+    println!("  outdated, not queued (still open, or gave up after {} failures): {held}", aiq_home::GIVE_UP);
     println!("  analyzed with no agent actions in the log: {no_actions}");
     ExitCode::SUCCESS
 }
@@ -1293,6 +1385,7 @@ pub fn cli(args: &[&str]) -> ExitCode {
     let dry = args.contains(&"--dry-run");
     let max = args.iter().position(|a| *a == "--max").and_then(|i| args.get(i + 1)).and_then(|v| v.parse().ok());
     let only = args.iter().position(|a| *a == "--only").and_then(|i| args.get(i + 1)).copied();
+    let task = args.iter().position(|a| *a == "--task").and_then(|i| args.get(i + 1)).copied();
     if only.is_some_and(|o| o != "claude-code" && o != "copilot-cli") {
         eprintln!("--only takes claude-code or copilot-cli.");
         return ExitCode::from(2);
@@ -1365,6 +1458,7 @@ pub fn cli(args: &[&str]) -> ExitCode {
         now: n,
         max,
         only,
+        task,
     });
     match rep {
         Ok(rep) => {
@@ -2506,6 +2600,7 @@ mod tests {
             now: Now { utc_ms: NOW, offset_min: 0 },
             max,
             only,
+            task: None,
         })
         .unwrap()
     }
@@ -2677,6 +2772,23 @@ mod tests {
         let c2 = Fake::ok(2);
         go(&e, &c2, &Fake::ok(2), None);
         assert_eq!(c2.calls(), 0);
+        // The task page's "Try now" (`--task`) takes one of them now, back-off or not, and only that one.
+        let id = e.store.judge_calls_since(0).unwrap().into_iter().find(|c| c.outcome == "error").unwrap().task_id;
+        let rep = run(&Run {
+            store: &e.store,
+            paths: &e.paths,
+            homes: &e.homes,
+            claude: &c2,
+            copilot: &Fake::ok(2),
+            copilot_second: None,
+            now: Now { utc_ms: NOW, offset_min: 0 },
+            max: None,
+            only: None,
+            task: Some(&id),
+        })
+        .unwrap();
+        assert_eq!((rep.judged, c2.calls()), (1, 2));
+        assert!(e.store.current_judgments().unwrap().contains_key(&id));
     }
 
     #[test]
@@ -2775,6 +2887,7 @@ mod tests {
         let tasks = vec![row("old", 1_000), row("new", 2_000), row("open", NOW - MIN), row("gone", 3_000)];
         let fail = |at: i64| CallOutcome {
             task_id: "gone".into(),
+            run: 1,
             started_utc_ms: at,
             outcome: "error".into(),
             cost_usd: None,
@@ -2788,6 +2901,64 @@ mod tests {
         assert!(!q.iter().any(|t| t.task_id == "gone"), "within the first hour's back-off");
         let q = queue(&tasks, &HashMap::new(), &one, NOW + 31 * MIN, 30 * MIN, None);
         assert!(q.iter().any(|t| t.task_id == "gone"));
+    }
+
+    /// DC-055: a try is two calls, and the first failed try waits 1 hour (the call count skipped to 6 hours). A
+    /// missing tool never counts against a task.
+    #[test]
+    fn a_failed_try_waits_one_hour_and_a_missing_tool_never_gives_a_task_up() {
+        let t = TaskRow {
+            task_id: "t".into(),
+            tool: "copilot-cli".into(),
+            folder: None,
+            first_ms: 1_000,
+            last_ms: 1_000,
+            prompts: 1,
+            origin: "live",
+            job: None,
+            rung: None,
+            judgment: None,
+            session: "s".into(),
+            members: vec![],
+        };
+        let call = |run: i64, at: i64, outcome: &str| CallOutcome {
+            task_id: "t".into(),
+            run,
+            started_utc_ms: at,
+            outcome: outcome.into(),
+            cost_usd: None,
+        };
+        let tasks = vec![t];
+        let try1 = vec![call(1, NOW, "error"), call(2, NOW + 1, "error")];
+        assert!(queue(&tasks, &HashMap::new(), &try1, NOW + 59 * MIN, 30 * MIN, None).is_empty());
+        assert_eq!(queue(&tasks, &HashMap::new(), &try1, NOW + 62 * MIN, 30 * MIN, None).len(), 1, "after 1 hour");
+        let missing: Vec<CallOutcome> = (0..10).map(|i| call(1, NOW + i, "missing")).collect();
+        assert_eq!(queue(&tasks, &HashMap::new(), &missing, NOW + MIN, 30 * MIN, None).len(), 1, "never given up");
+    }
+
+    #[test]
+    fn every_copilot_is_a_candidate_and_the_first_that_works_wins() {
+        let d = tempfile::tempdir().unwrap();
+        let (a, b, x) = (d.path().join("a"), d.path().join("b"), d.path().join("x"));
+        for dir in [&a, &b, &x] {
+            std::fs::create_dir_all(dir).unwrap();
+        }
+        let name = if cfg!(windows) { "copilot.cmd" } else { "copilot" };
+        std::fs::write(a.join(name), "").unwrap();
+        std::fs::write(x.join(name), "").unwrap();
+        let path = std::env::join_paths([&a, &b]).unwrap();
+        let c = exe_candidates("copilot", Some(path), &[x.clone(), a.clone()]);
+        assert_eq!(c, vec![a.join(name), x.join(name)], "PATH first, then install folders, no duplicates");
+        assert_eq!(pick_working(&c, |p| p.starts_with(&x)), Some(x.join(name)), "the stand-in on PATH is skipped");
+        assert_eq!(pick_working(&c, |_| false), Some(a.join(name)), "none works: the first, so its words show");
+        assert_eq!(pick_working(&c[..1], |_| panic!("one candidate is never checked")), Some(a.join(name)));
+        assert_eq!(pick_working(&[], |_| true), None);
+    }
+
+    #[test]
+    fn a_stand_in_copilot_that_says_not_found_is_missing() {
+        assert!(says_not_found("GitHub Copilot CLI was not found. Run copilot in a terminal to install it, or see x"));
+        assert!(!says_not_found("Error: model not available"));
     }
 
     #[test]
@@ -3127,6 +3298,7 @@ mod tests {
             now: Now { utc_ms: NOW, offset_min: 0 },
             max: None,
             only: None,
+            task: None,
         })
         .unwrap();
         assert_eq!(rep.judged, 4, "{rep:?}");

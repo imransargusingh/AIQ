@@ -995,3 +995,23 @@ summary: >-
 - **Control:** `set_aside_activity_is_noted_for_a_brief_decided_at_its_stop_and_after_midnight` fails on either
   hole, in debug and release.
 - **Rule:** a sentinel time is subtracted with `saturating_sub`; every branch that leaves an event out notes it.
+
+### DC-055 — A tool that can't run is filed as a task failure, and the task page can't say which
+- **Signature:** 2026-11-11, second install (devbox) on 0.1.39. A Copilot CLI task page said "Not analyzed yet" more
+  than 3 hours after the task ended. Its diagnostics file: 0 of 214 tasks ever analyzed in 14 days; 2,100 of 2,100
+  analysis calls and 60 of 60 label calls failed in about 0.1 s, each answered "GitHub Copilot CLI was not found. Run
+  copilot in a terminal to install it". The `copilot` first on that PATH is a stand-in, not the CLI that fires AIQ's
+  hooks. Three causes. (1) `find_exe` took the first `copilot` on PATH and never checked it ran. (2) The reply was
+  filed as a plain `error`, so Home never showed "Copilot CLI not found", and each task burnt its tries and was given
+  up (133 of them). (3) The back-off was indexed by failed calls, and a try makes two, so the first wait was 6 hours,
+  never the designed 1. The task page showed one sentence for queued, waiting out a retry, given up and blocked.
+- **Why it survives:** the laptop has one `copilot` on PATH, so every measured call ran the real CLI; the queue tests
+  built one failed call per try; no test asked what the task page says for a task that isn't analyzed.
+- **Sweep:** every `find_exe` caller (Claude Code `claude`: no stand-in seen, left as is; Copilot: now
+  `find_copilot`); every outcome the Copilot and Claude Code providers can return (only `missing` and
+  `not_signed_in` block a tool, and now neither counts against a task); every reader of the back-off and give-up rules
+  (the judge queue, Home's waiting count, the task page: now one `aiq_home::retries`).
+- **Control:** `a_failed_try_waits_one_hour_and_a_missing_tool_never_gives_a_task_up`,
+  `a_stand_in_copilot_that_says_not_found_is_missing`, `every_copilot_is_a_candidate_and_the_first_that_works_wins`,
+  `a_failed_first_try_waits_one_hour_and_the_page_says_when_and_why`, `a_missing_tool_blocks_without_counting_against_the_task`,
+  and the e2e "task detail: each analysis state says where the task stands" in three themes.
