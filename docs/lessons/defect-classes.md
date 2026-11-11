@@ -978,3 +978,20 @@ summary: >-
 - **Control:** the tips step spotlights Tips this week, and the e2e asserts its "Why tasks had no tip" list on the
   example, so the card can't go back to empty unnoticed.
 - **Rule:** a section added to a page the tour visits extends `seed::tour` in the same PR.
+
+### DC-054 — A throttled note never fires on a path or a day its tests never reach
+- **Signature:** 2026-11-11, laptop on 0.1.39. Home's Right now card said "Claude Code last activity Yesterday 21:28 ·
+  automated, not counted" at 14:22 PST, though this project's Remote Control sessions ran at 16:15Z and 22:22Z.
+  `setting_change` had no `aside.claude-code` row from 05:28Z to 22:24Z, and the 22:24Z row said 0 left out today.
+  Two causes. (1) `note_aside` resets `at` to `i64::MIN` on a new local day, then computes `now - at`: in the release
+  build that wraps negative, so the 5-minute throttle skipped every note after local midnight until the core
+  restarted. (2) A relayed brief whose record lands only by its Stop is dropped in `typed_gate`'s held loop with no
+  `note_aside` and no "event set aside" line, so the brief that starts each Remote Control session never moved the
+  time or the count.
+- **Why it survives:** the tests never crossed local midnight with a warm `aside_noted` (a debug build would have
+  panicked on the overflow), and the RC tests asserted counts, not the note, on the held-at-Stop path.
+- **Sweep:** every `i64::MIN` sentinel in non-test code (only `note_aside`); every place `typed_gate` decides a held
+  prompt (own → ingested; unknown outside Projects → ingested as own; everything else → now noted).
+- **Control:** `set_aside_activity_is_noted_for_a_brief_decided_at_its_stop_and_after_midnight` fails on either
+  hole, in debug and release.
+- **Rule:** a sentinel time is subtracted with `saturating_sub`; every branch that leaves an event out notes it.

@@ -1153,6 +1153,63 @@ fn a_persons_own_turns_in_a_remote_control_session_count_and_relayed_ones_do_not
     assert_eq!(h.prompts(), 3, "the relayed brief did not borrow the person's record");
 }
 
+// Laptop 2026-11-11 (DC-054): Home's card said "Claude Code last activity Yesterday 21:28 · automated" all day while
+// this project's Remote Control sessions ran. Two holes, each must move the noted time and today's count:
+// 1. A relayed brief whose record lands only by its Stop was dropped there without being noted.
+// 2. After local midnight the note was skipped (i64::MIN subtraction wrapped in release) until the core restarted.
+#[test]
+fn set_aside_activity_is_noted_for_a_brief_decided_at_its_stop_and_after_midnight() {
+    let d = tempfile::tempdir().unwrap();
+    let t = d.path().join("rc.jsonl");
+    let ts = |ms: i64| aiq_core::sysclock::format_rfc3339_ms(ms);
+    let head = "{\"type\":\"user\",\"isMeta\":true,\"turnOrigin\":\"system\",\"entrypoint\":\"claude-desktop\"}\n";
+    let relay = |ms: i64| {
+        format!(
+            "{{\"type\":\"user\",\"turnOrigin\":\"peer\",\"origin\":{{\"kind\":\"task-notification\",\"subkind\":\"projects-relay\"}},\"message\":{{\"content\":\"brief\"}},\"timestamp\":\"{}\"}}\n",
+            ts(ms)
+        )
+    };
+    let mut h = H::new();
+    let mut file = head.to_string();
+    std::fs::write(&t, &file).unwrap();
+    let path = t.to_string_lossy().into_owned();
+    let noted = |h: &mut H| {
+        aiq_core::service::parse_aside(&h.svc().store().setting("aside.claude-code").unwrap().unwrap_or_default())
+    };
+    // 1. The brief's prompt arrives before its record: held. Its record is written by the Stop: not the person's.
+    let mut e = h.prompt("rc1", "brief");
+    e.cwd = Some("C:\\Repos\\AIQ".into());
+    e.transcript = Some(path.clone());
+    h.svc().ingest(&e, None);
+    assert_eq!(noted(&mut h).0, None, "still waiting for its record");
+    file += &relay(aiq_core::sysclock::parse_rfc3339_ms(&e.ts).unwrap() + 500);
+    std::fs::write(&t, &file).unwrap();
+    h.clock.advance(30_000);
+    let mut s = e.clone();
+    s.event_id = format!("{}-s", e.event_id);
+    s.body = EventBody::Stop(StopPayload { stop_hook_active: false, prompt_id: None });
+    h.svc().ingest(&s, None);
+    assert_eq!((h.prompts(), h.stops()), (0, 0), "Claude's own turn is not counted");
+    let (ms, reason, day, n) = noted(&mut h);
+    assert_eq!(
+        (ms, reason.as_str(), day, n),
+        (Some(h.clock.now().utc_ms), "projects", Some(h.clock.now().local_day()), 1)
+    );
+
+    // 2. The next local day: a set-aside turn is noted at once, with the new day and a fresh count.
+    let before = h.clock.now().local_day();
+    h.clock.advance(24 * 60 * MIN);
+    let mut e = h.prompt("rc1", "next brief");
+    e.cwd = Some("C:\\Repos\\AIQ".into());
+    e.transcript = Some(path.clone());
+    file += &relay(aiq_core::sysclock::parse_rfc3339_ms(&e.ts).unwrap() - 40);
+    std::fs::write(&t, &file).unwrap();
+    h.svc().ingest(&e, None);
+    let (ms, reason, day, n) = noted(&mut h);
+    assert_eq!(day, Some(before + 1), "a new day is noted");
+    assert_eq!((ms, reason.as_str(), n), (Some(h.clock.now().utc_ms), "projects", 1));
+}
+
 // Per-turn rule in every Claude Code session (Imran 2026-11-09, "count only turns a person typed"): 829 transcripts on
 // the laptop held a scheduled run and 14 turns the desktop app started, in sessions with no Projects marker, and both
 // were counted as his work. Only `turnOrigin = "human"` counts; a record not written yet is re-read shortly.

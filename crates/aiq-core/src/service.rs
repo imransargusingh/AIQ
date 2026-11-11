@@ -1303,7 +1303,10 @@ impl<C: Clock> Service<C> {
             a.at = i64::MIN; // a new day is written at once
         }
         a.n += u32::from(prompt);
-        if a.reason == reason && now.utc_ms - a.at < ASIDE_EVERY_MS {
+        // Saturating: `at` is i64::MIN until the first write and after a new day. A plain subtraction wrapped in the
+        // release build, so after local midnight nothing was noted until the core restarted (laptop 2026-11-11:
+        // no row from 05:28Z to 22:24Z though turns were set aside at 16:16Z; the card said "Yesterday 21:28").
+        if a.reason == reason && now.utc_ms.saturating_sub(a.at) < ASIDE_EVERY_MS {
             return;
         }
         let value = format!("{} {reason} {day} {}", now.utc_ms, a.n);
@@ -1343,7 +1346,20 @@ impl<C: Clock> Service<C> {
                     self.ingest_inner(&e, None)?;
                 }
                 _ => {
+                    // Decided as not the person's at its Stop (a relayed brief's record often lands only then): left
+                    // out like any other, so the card's time and today's count move (laptop 2026-11-11 22:22Z: the
+                    // brief that started a Remote Control session was dropped here and the card kept yesterday's time).
                     self.rc_own.insert(key.clone(), false);
+                    let reason = if marker { "projects" } else { "not-typed" };
+                    info!(
+                        aiq.reason = reason,
+                        aiq.surface = e.surface.as_str(),
+                        aiq.kind = e.kind(),
+                        aiq.dir = e.cwd.as_deref().and_then(aiq_domain::automated::folder_tag).unwrap_or_default(),
+                        "event set aside"
+                    );
+                    self.counters.inc(codes::INGEST_AUTOMATED);
+                    self.note_aside(&e.surface, reason, true);
                 }
             }
         }
