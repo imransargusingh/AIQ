@@ -4,7 +4,7 @@ members = ["crates/aiq-contracts", "crates/aiq-domain", "crates/aiq-store", "cra
 exclude = ["prototypes"]
 
 [workspace.package]
-version = "0.1.38"
+version = "0.1.39"
 edition = "2024"
 rust-version = "1.89"
 license = "UNLICENSED"
