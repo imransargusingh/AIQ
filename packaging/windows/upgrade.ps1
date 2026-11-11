@@ -64,12 +64,31 @@ New-Item -ItemType Directory -Force $aiqHome | Out-Null
 # Never throws: a log line is a record of the work, so a failed write must not end the update. Something reading the
 # log at that moment (`aiq status`, a scanner, a test) can make the append fail ("Stream was not readable", release
 # build of 0.1.15 on main 9cfa689, 2026-11-07, right after a rollback), so it is tried 5 times, 100 ms apart.
+# AIQ-UPDATE-LOG-HELD: a line that still can't be written goes to upgrade-log-held.txt with the reason, and the next
+# line that can be written brings those lines back into upgrade-log.txt first. Before, it was dropped without a
+# trace: laptop, 2026-11-11, the 0.1.38 check and install (04:52:50Z, 04:53:53Z) and the 05:09:01Z check wrote
+# update.json but not one log line.
+$heldLog = Join-Path $aiqHome 'upgrade-log-held.txt'
 function Log([string]$m) {
     Write-Host $m
     $line = "{0:u} {1}" -f (Get-Date).ToUniversalTime(), $m
+    $why = ''
     foreach ($i in 1..5) {
-        try { Add-Content -Path $log -Value $line -ErrorAction Stop; return } catch { Start-Sleep -Milliseconds 100 }
+        try {
+            $held = @()
+            if (Test-Path $heldLog) { $held = @(Get-Content $heldLog -ErrorAction Stop) }
+            Add-Content -Path $log -Value ($held + $line) -ErrorAction Stop
+            if ($held.Count) { Remove-Item -Force $heldLog -ErrorAction SilentlyContinue }
+            return
+        } catch { $why = $_.Exception.Message; Start-Sleep -Milliseconds 100 }
     }
+    try { Add-Content -Path $heldLog -Value "$line (upgrade-log.txt could not be written: $why)" -ErrorAction Stop } catch { }
+}
+# The zip holds zone-less (DOS) file times in the build runner's zone, UTC, and Expand-Archive reads them as local
+# time, so a copy kept them hours off: laptop (UTC-8), 2026-11-11, 0.1.38's files said 11:43-11:49Z, 8 h ahead (the
+# zip says 03:43-03:49). A file copied into bin carries the time it was installed instead. Never throws.
+function Stamp-Now([string]$path) {
+    try { (Get-Item -LiteralPath $path).LastWriteTimeUtc = [DateTime]::UtcNow } catch { }
 }
 function Now-Utc { (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ') }
 function Stop-Aiq {
@@ -519,19 +538,20 @@ if ($Check -or $Apply) {
                 $to = Join-Path $bin $exe
                 if (Test-Path $to) { Copy-Item -Force $to "$to.old" }
                 Copy-Item -Force (Join-Path $work $exe) $to
+                Stamp-Now $to
             }
             # upgrade.ps1, and aiq.vsix (the VS Code extension): `aiq install --new` at the core's next start adds
             # it to VS Code if VS Code is a tool AIQ hasn't seen before; an extension already added stays as it is.
             foreach ($f in 'upgrade.ps1', 'aiq.vsix') {
                 $extra = Join-Path $work $f  # not $from: that holds the version being left
-                if (Test-Path $extra) { Copy-Item -Force $extra (Join-Path $bin $f) }
+                if (Test-Path $extra) { Copy-Item -Force $extra (Join-Path $bin $f); Stamp-Now (Join-Path $bin $f) }
             }
             # aiq-statusline.exe stays the same file across releases (U5n), so it is copied only when it differs, and a
             # copy that fails (Copilot running it this instant) keeps the one in place: never a reason to undo the update.
             $slFrom = Join-Path $work 'aiq-statusline.exe'
             $slTo = Join-Path $bin 'aiq-statusline.exe'
             if ((Test-Path $slFrom) -and (-not (Test-Path $slTo) -or (Get-FileHash $slFrom).Hash -ne (Get-FileHash $slTo).Hash)) {
-                try { Copy-Item -Force $slFrom $slTo; Log 'AIQ-UPDATE-STATUSLINE: copied a new aiq-statusline.exe.' }
+                try { Copy-Item -Force $slFrom $slTo; Stamp-Now $slTo; Log 'AIQ-UPDATE-STATUSLINE: copied a new aiq-statusline.exe.' }
                 catch { Log "AIQ-UPDATE-STATUSLINE: kept the aiq-statusline.exe in place ($($_.Exception.Message))." }
             }
             $now = Installed-Version

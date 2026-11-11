@@ -37,6 +37,22 @@ $home_ = Join-Path $env:USERPROFILE '.aiq'
 $bin = Join-Path $home_ 'bin'
 New-Item -ItemType Directory -Force -Path $bin | Out-Null
 
+# A line in upgrade-log.txt (same shape as upgrade.ps1's). Never throws: a held log must not end the install after the
+# exes were copied; the line goes to upgrade-log-held.txt, which upgrade.ps1's next line brings back (AIQ-UPDATE-LOG-HELD).
+function Log-Line([string]$m) {
+    $line = "{0:u} {1}" -f (Get-Date).ToUniversalTime(), $m
+    $why = ''
+    foreach ($i in 1..5) {
+        try { Add-Content -Path (Join-Path $home_ 'upgrade-log.txt') -Value $line -ErrorAction Stop; return } catch { $why = $_.Exception.Message; Start-Sleep -Milliseconds 100 }
+    }
+    try { Add-Content -Path (Join-Path $home_ 'upgrade-log-held.txt') -Value "$line (upgrade-log.txt could not be written: $why)" -ErrorAction Stop } catch { }
+}
+# The zip's file times are the build runner's UTC read as local time, hours off (laptop 2026-11-11: 8 h ahead), so a
+# copied file carries the time it was installed. Never throws.
+function Stamp-Now([string]$path) {
+    try { (Get-Item -LiteralPath $path).LastWriteTimeUtc = [DateTime]::UtcNow } catch { }
+}
+
 # 1. Copy the exes. A running core or AIQ home holds its exe open, so stop them first.
 Get-Process -Name 'aiq', 'aiq-home' -ErrorAction SilentlyContinue |
     Where-Object { $_.Path -and $_.Path.StartsWith($bin, [StringComparison]::OrdinalIgnoreCase) } |
@@ -45,11 +61,12 @@ foreach ($exe in 'aiq.exe', 'aiq-home.exe') {
     $to = Join-Path $bin $exe
     if (Test-Path $to) { Copy-Item -Force $to "$to.old" }
     Copy-Item -Force (Join-Path $src $exe) $to
+    Stamp-Now $to
     Write-Host "Copied: $to"
 }
 # The hook budget in `aiq status` counts from the last time the exes changed (same line shape as upgrade.ps1).
 $ver = try { ((& (Join-Path $bin 'aiq.exe') version) -replace '^aiq\s+', '').Trim() } catch { 'unknown' }
-Add-Content -Path (Join-Path $home_ 'upgrade-log.txt') -Value ("{0:u} Installed AIQ {1} (install.ps1)." -f (Get-Date).ToUniversalTime(), $ver)
+Log-Line "Installed AIQ $ver (install.ps1)."
 # An update downloaded before this install and waiting in .aiq\update is now this version or older: drop it, so
 # `aiq update` and AIQ home stop offering it and auto-update never swaps it in over the same or a newer build
 # (laptop, 2026-11-04: 0.1.2 staged by 0.1.1's check, then 0.1.2 installed with install.cmd). A newer one stays.
@@ -69,7 +86,7 @@ if ([version]::TryParse($ver, [ref]$installedV) -and (Test-Path $stateFile)) {
             $st | ConvertTo-Json | Set-Content -Encoding UTF8 $tmp
             Move-Item -Force $tmp $stateFile
             Remove-Item -Recurse -Force (Join-Path $home_ 'update') -ErrorAction SilentlyContinue
-            Add-Content -Path (Join-Path $home_ 'upgrade-log.txt') -Value ("{0:u} AIQ-INSTALL-CLEARED-WAITING: dropped the waiting {1}; AIQ {2} is installed." -f (Get-Date).ToUniversalTime(), $tag, $ver)
+            Log-Line "AIQ-INSTALL-CLEARED-WAITING: dropped the waiting $tag; AIQ $ver is installed."
             Write-Host "Removed: the waiting update $tag (AIQ $ver is now installed)."
         }
     } catch {
@@ -80,6 +97,7 @@ foreach ($f in 'upgrade.ps1', 'aiq.vsix') {
     $from = Join-Path $src $f
     if (Test-Path $from) {
         Copy-Item -Force $from (Join-Path $bin $f)
+        Stamp-Now (Join-Path $bin $f)
         Write-Host "Copied: $(Join-Path $bin $f)"
     }
 }
@@ -89,7 +107,7 @@ foreach ($f in 'upgrade.ps1', 'aiq.vsix') {
 $slFrom = Join-Path $src 'aiq-statusline.exe'
 $slTo = Join-Path $bin 'aiq-statusline.exe'
 if ((Test-Path $slFrom) -and (-not (Test-Path $slTo) -or (Get-FileHash $slFrom).Hash -ne (Get-FileHash $slTo).Hash)) {
-    try { Copy-Item -Force $slFrom $slTo; Write-Host "Copied: $slTo" } catch { Write-Host "Kept $slTo ($($_.Exception.Message))." }
+    try { Copy-Item -Force $slFrom $slTo; Stamp-Now $slTo; Write-Host "Copied: $slTo" } catch { Write-Host "Kept $slTo ($($_.Exception.Message))." }
 }
 # Copies keep the zip's "downloaded from the internet" mark. Running install.cmd was the person's yes, so take
 # the mark off the installed files: otherwise Windows can stop every later launch of AIQ home (Start menu,

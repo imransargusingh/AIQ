@@ -119,6 +119,7 @@ jobs:
         shell: pwsh
         run: |
           $v = '${{ steps.version.outputs.version }}'
+          $t0 = (Get-Date).ToUniversalTime().AddSeconds(-2)
           $un = Join-Path $env:RUNNER_TEMP 'unzipped'
           Expand-Archive "dist/aiq-$v-windows-x64.zip" $un
           New-Item -ItemType Directory -Force (Join-Path $env:USERPROFILE '.copilot') | Out-Null
@@ -135,6 +136,8 @@ jobs:
           foreach ($f in 'aiq.exe', 'aiq-home.exe', 'aiq.vsix') { if (-not (Test-Path (Join-Path $bin $f))) { Write-Error "missing $f"; exit 1 } }
           if (-not ([Environment]::GetEnvironmentVariable('Path', 'User') -split ';' -contains $bin)) { Write-Error 'user PATH not set'; exit 1 }
           if (-not (Select-String -Quiet -Path (Join-Path $env:USERPROFILE '.aiq\upgrade-log.txt') -Pattern 'Z Installed AIQ ')) { Write-Error 'install wrote no upgrade-log line'; exit 1 }
+          # Installed files carry the install time, not the zip's (zone-less times, read as local: 8 h ahead on the laptop, 2026-11-11).
+          foreach ($f in 'aiq.exe', 'aiq-home.exe', 'upgrade.ps1') { $t = (Get-Item (Join-Path $bin $f)).LastWriteTimeUtc; if ($t -lt $t0 -or $t -gt (Get-Date).ToUniversalTime().AddMinutes(1)) { Write-Error "$f modified time $($t.ToString('u')), want the install time (from $($t0.ToString('u')))"; exit 1 } }
           foreach ($f in 'aiq.exe', 'aiq-home.exe', 'aiq-statusline.exe', 'upgrade.ps1', 'aiq.vsix') { if (Get-Item (Join-Path $bin $f) -Stream Zone.Identifier -ErrorAction SilentlyContinue) { Write-Error "$f still marked as downloaded"; exit 1 } }
           # Copilot's status-line program (U5n): installed, says its own version, and for an unknown session prints nothing and exits 0.
           $sl = Join-Path $bin 'aiq-statusline.exe'
@@ -278,8 +281,10 @@ jobs:
           # the core is started on a later try and AIQ home opens again (-Relaunch).
           Start-Process -WindowStyle Hidden -FilePath $exe -ArgumentList 'core'
           Start-Sleep -Seconds 2
+          $applyAt = (Get-Date).ToUniversalTime().AddSeconds(-2)
           powershell -ExecutionPolicy Bypass -File $up -Apply -Relaunch -FailLaunches 2
           if ($LASTEXITCODE -ne 0) { Fail "apply when idle: exit $LASTEXITCODE" }
+          foreach ($f in 'aiq.exe', 'aiq-home.exe', 'upgrade.ps1') { $t = (Get-Item (Join-Path $aiq "bin\$f")).LastWriteTimeUtc; if ($t -lt $applyAt -or $t -gt (Get-Date).ToUniversalTime().AddMinutes(1)) { Fail "$f modified time $($t.ToString('u')), want the install time (from $($applyAt.ToString('u')))" } }
           $ulog = Join-Path $aiq 'upgrade-log.txt'
           Select-String -Path $ulog -Pattern 'AIQ-UPDATE-(CORE|HOME)' | Select-Object -Last 4 | ForEach-Object { $_.Line }
           if (-not (Select-String -Quiet -Path $ulog -Pattern 'AIQ-UPDATE-CORE: started the AIQ core again.*\(refused first')) { Fail 'core not started again after two refusals' }
@@ -412,6 +417,10 @@ jobs:
           try { powershell -ExecutionPolicy Bypass -File $up -Apply; $heldExit = $LASTEXITCODE } finally { $held.Dispose() }
           if ($heldExit -ne 0) { Fail "apply with the log held: exit $heldExit, want 0" }
           if ((St).state -ne 'current' -or (Test-Path $stage)) { Fail "apply with the log held did not finish: $((St) | ConvertTo-Json -Compress)" }
+          # AIQ-UPDATE-LOG-HELD: the lines it could not write wait in upgrade-log-held.txt with the reason (laptop 2026-11-11:
+          # a `tail -F` held the log and the 0.1.38 install left no line), and the next run's first line brings them back.
+          $heldLog = Join-Path $aiq 'upgrade-log-held.txt'
+          if (-not (Select-String -Quiet -Path $heldLog -Pattern 'AIQ-UPDATE-NOT-NEWER.*\(upgrade-log\.txt could not be written: ')) { Fail 'the line written while the log was held is not in upgrade-log-held.txt' }
           # Explorer refused or absent: after two rounds AIQ home's --start-core starts the core (laptop 2026-11-07
           # 18:21:05Z: it did when upgrade.ps1's own start was refused).
           New-Item -ItemType Directory -Force $stage | Out-Null
@@ -422,6 +431,8 @@ jobs:
           powershell -ExecutionPolicy Bypass -File $up -Apply -FailLaunches 99 -FailExplorer
           if ($LASTEXITCODE -ne 0) { Fail "apply with direct core starts refused: exit $LASTEXITCODE" }
           if (-not (Select-String -Quiet -Path $ulog -Pattern 'AIQ-UPDATE-CORE: started the AIQ core again through AIQ home')) { Fail 'core not started through AIQ home' }
+          if (Test-Path $heldLog) { Fail 'upgrade-log-held.txt left after the log could be written again' }
+          if (-not (Select-String -Quiet -Path $ulog -Pattern 'AIQ-UPDATE-NOT-NEWER.*\(upgrade-log\.txt could not be written: ')) { Fail 'the held line did not come back into upgrade-log.txt' }
           $cores = @(Get-CimInstance Win32_Process -Filter "Name='aiq.exe'" | Where-Object { $_.ExecutablePath -eq $exe -and $_.CommandLine -match '\score\s*$' })
           if ($cores.Count -ne 1) { Fail "want one AIQ core after the start through AIQ home, found $($cores.Count)" }
           Get-Content (Join-Path $aiq 'upgrade-log.txt') -Tail 8
