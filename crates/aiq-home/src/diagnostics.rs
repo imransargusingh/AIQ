@@ -2,7 +2,7 @@
 //! [`DAYS`] days, in one JSON file the person can read and choose to share. AIQ sends it nowhere.
 //!
 //! What it never holds, whatever the person chooses: the analysis's own sentences about a task (evidence, gap,
-//! placement, what was read), tip wording, team tip text, folder and file names (each folder is a letter that
+//! placement, what was read), team tip text, folder and file names (each folder is a letter that
 //! changes with every file), the person's user, account, email and computer names, and any web address but the
 //! project's public repository. Prompts go in only when the person ticks "Include my prompts", already stripped of
 //! secrets when stored and scrubbed again here. Every free-text line passes through [`aiq_domain::scrub`].
@@ -52,7 +52,7 @@ pub const LEFT_OUT: &[&str] = &[
     "what the analysis wrote about a task (its evidence, gap and placement sentences)",
     "file and folder names (each folder is a letter, new in every file)",
     "your user name, account, email and computer name",
-    "tip wording and team tip text (tip ids only)",
+    "team tip text (a team tip shows as its tip id only)",
     "web addresses other than github.com/imransargusingh",
 ];
 
@@ -382,7 +382,7 @@ fn from_store(
         }));
     }
     let judged = store.current_judgments().map_err(|e| e.to_string())?;
-    let tips = tips_of(store, since)?;
+    let tips = tips_of(store, since, scrub)?;
 
     // One entry per task in the window, plus any task with a tip path or label that the task list leaves out.
     let mut out: Vec<Value> = Vec::new();
@@ -479,14 +479,16 @@ fn analysis(j: &aiq_store::JudgmentRow) -> Value {
     })
 }
 
-/// Each tip decided for a task: the decision, its reason code, the tip id, and whether it was shown, opened and
-/// answered. Never the tip's wording.
-fn tips_of(store: &Store, since: i64) -> Result<HashMap<String, Vec<Value>>, String> {
+/// Each tip decided for a task: what matched (detector, opportunity, score), the decision and its reason code, the
+/// tip as the card held it (pack wording with the person's count or kind filled in; it never quotes a prompt), and
+/// whether it was shown, opened and answered. A team tip's "Tool to try" line is added only when a card is drawn and
+/// is never stored, so it can't be here.
+fn tips_of(store: &Store, since: i64, scrub: &Scrub) -> Result<HashMap<String, Vec<Value>>, String> {
     let c = store.raw();
     let mut out: HashMap<String, Vec<Value>> = HashMap::new();
     let mut st = q(c.prepare(
-        "SELECT s.task_id, d.card_id, d.outcome, d.reason_code, d.rule_id, json_extract(d.card_json, '$.tip_id'),
-                d.utc_ms, (SELECT delivered_utc_ms FROM card_delivery v WHERE v.card_id = d.card_id),
+        "SELECT s.task_id, d.card_id, d.outcome, d.reason_code, d.rule_id, d.card_json,
+                s.detector_id, s.opportunity_id, s.score, d.pack_version, d.utc_ms, (SELECT delivered_utc_ms FROM card_delivery v WHERE v.card_id = d.card_id),
                 EXISTS (SELECT 1 FROM card_open o WHERE o.card_id = d.card_id)
          FROM card_decision d JOIN signal s ON s.signal_id = d.signal_id
          WHERE d.utc_ms >= ?1 ORDER BY d.utc_ms, d.rowid",
@@ -498,10 +500,11 @@ fn tips_of(store: &Store, since: i64) -> Result<HashMap<String, Vec<Value>>, Str
             r.get::<_, String>(2)?,
             r.get::<_, String>(3)?,
             r.get::<_, String>(4)?,
-            r.get::<_, Option<String>>(5)?,
-            r.get::<_, i64>(6)?,
-            r.get::<_, Option<i64>>(7)?,
-            r.get::<_, bool>(8)?,
+            r.get::<_, String>(5)?,
+            (r.get::<_, String>(6)?, r.get::<_, String>(7)?, r.get::<_, f64>(8)?, r.get::<_, String>(9)?),
+            r.get::<_, i64>(10)?,
+            r.get::<_, Option<i64>>(11)?,
+            r.get::<_, bool>(12)?,
         ))
     }))?;
     let answers: HashMap<String, String> = if store.has_table("tip_feedback").map_err(|e| e.to_string())? {
@@ -515,9 +518,15 @@ fn tips_of(store: &Store, since: i64) -> Result<HashMap<String, Vec<Value>>, Str
         HashMap::new()
     };
     for r in rows {
-        let (task, card, outcome, reason, rule, tip, at, shown, opened) = q(r)?;
+        let (task, card, outcome, reason, rule, card_json, (detector, opportunity, score, pack), at, shown, opened) =
+            q(r)?;
+        let c: Value = serde_json::from_str(&card_json).unwrap_or_default();
+        let words = |k: &str| c.get(k).and_then(Value::as_str).map(|t| scrub.line(t, LINE_MAX));
         out.entry(task).or_default().push(json!({
-            "decision": outcome, "reason": reason, "rule": rule, "tip": tip, "at": iso(at),
+            "matched": { "detector": detector, "opportunity": opportunity, "score": round(score) },
+            "decision": outcome, "reason": reason, "rule": rule, "pack": pack, "at": iso(at),
+            "tip": c.get("tip_id"),
+            "noticed": words("noticed"), "why": words("why"), "try_this": words("try_this"), "starter": words("starter"),
             "shown": shown.map(iso), "opened": opened, "answer": answers.get(&card),
         }));
     }

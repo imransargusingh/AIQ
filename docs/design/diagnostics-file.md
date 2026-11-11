@@ -41,14 +41,17 @@ There is one choice, **Include my prompts**, and it is off by default. Nothing i
 | `label_calls` | label calls grouped by tool, outcome and the tool's own message |
 | `analysis_calls` | analysis calls grouped by tool, outcome and stable code |
 | `tip_path_ends` | how many tasks ended at each tip-path step |
-| `tasks` | per task: id, tool, origin, start, folder letter, prompt count, word guesses, labels (outcome, model, job and kind with confidences, ms, message), analysis numbers (job, kind, rung, confidences, state, fact values, versions), analysis calls, tip path, tips (decision, reason code, tip id, shown, opened, answer); `prompt_text` only when chosen |
+| `tasks` | per task: id, tool, origin, start, folder letter, prompt count, word guesses, labels (outcome, model, job and kind with confidences, ms, message), analysis numbers (job, kind, rung, confidences, state, fact values, versions), analysis calls, tip path, tips (what matched: detector, opportunity and score; decision, reason code, pack version, tip id and its wording as the card held it; shown, opened, answer); `prompt_text` only when chosen |
 | `set_aside` | set-aside sessions: tool, folder letter, reason, time |
 | `logs` | last 200 lines of label.log, judge.log and hook-errors.log, and aiq.log's warnings and errors, scrubbed |
 
 ## Never in the file
 
 The agent's replies. The analysis's sentences (evidence, gap, placement, blockers, what was read): the model wrote
-them about the person's work, so they can name it. Tip wording and team tip text (tip ids only). Folder and file
+them about the person's work, so they can name it. Team tip text (team tips show as tip ids only; their "Tool to
+try" line is added when a card is drawn and never stored). Built-in tip wording is in: it is pack text with the
+person's count or kind filled in, never a quote from a prompt, and it is what's needed to judge whether the right tip
+showed (Imran, 2026-11-11). Folder and file
 names: each folder becomes a letter, new in every file. User, account, email and computer names. Any web address
 except `https://github.com/imransargusingh/`, and the team tips address in every form (URL, host, path).
 
@@ -81,7 +84,7 @@ page, because a broken capture is exactly when the file helps.
 ## Tests
 
 - `crates/aiq-domain/src/scrub.rs`: each scrub rule, plus lines that must stay unchanged.
-- `crates/aiq-home/tests/diagnostics.rs`: without prompts, no seeded prompt, analysis sentence, tip wording, folder,
+- `crates/aiq-home/tests/diagnostics.rs`: without prompts, no seeded prompt, analysis sentence, folder,
   project name or personal name reaches the file. With prompts, the prompts are in and the rest stays out. Also
   folder letters, a failed label's scrubbed message, a missing store, and that saving never overwrites.
 - `crates/aiq/src/label.rs`: a failed label writes its `why` line, and a label that worked writes none.

@@ -267,7 +267,7 @@ function DiagnosticsDialog({ onClose, onSaved }: { onClose: () => void; onSaved:
             <ul>
               <li>AIQ and tool versions, settings</li>
               <li>Each task's kind, rung and confidence</li>
-              <li>Why each tip showed or didn't</li>
+              <li>Each tip shown, and why it showed or didn't</li>
               <li>Label and analysis call errors</li>
               <li>AIQ's own log warnings</li>
               {prompts && <li>Your prompts, secrets removed</li>}
@@ -281,7 +281,7 @@ function DiagnosticsDialog({ onClose, onSaved }: { onClose: () => void; onSaved:
               <li>File and folder names</li>
               <li>Your name, account, computer name</li>
               <li>What the analysis wrote about a task</li>
-              <li>Tip and team tip wording</li>
+              <li>Team tip text</li>
             </ul>
           </div>
         </div>

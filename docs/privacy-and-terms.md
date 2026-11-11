@@ -155,7 +155,7 @@ suggests a next step. To do that, it asks an AI model to read the task.
   **diagnostics file** (AIQ home, **Your data** > **Save a diagnostics file…**, or
   `aiq export --diagnostics`): how AIQ ran over the last 14 days. It holds no prompt text unless you
   tick **Include my prompts** (or add `--prompts`), and never the agent's replies, the analysis's own
-  sentences, tip wording, folder or file names (each folder is a letter), your user, account, email or
+  sentences, team tip text, folder or file names (each folder is a letter), your user, account, email or
   computer name, or web addresses other than this project's GitHub page. Log lines and tool messages in
   it are scrubbed of secrets, paths and those names. You can read the whole file before it is saved.
 

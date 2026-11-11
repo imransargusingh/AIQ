@@ -1,5 +1,5 @@
 //! The diagnostics file over a seeded store (design diagnostics-file, Test plan). The load-bearing promise: without
-//! "Include my prompts" no prompt text, analysis sentence, tip wording, folder name or personal name reaches the file.
+//! "Include my prompts" no prompt text, analysis sentence, folder name or personal name reaches the file.
 #[path = "support/seed.rs"]
 mod seed;
 
@@ -67,9 +67,6 @@ const NEVER: &[&str] = &[
     "You gave the agent the goal",
     "Hand the agent the whole change",
     "You handed the agent the whole plan",
-    // tip wording
-    "This request went round 3 times",
-    "Say what is wrong with the last answer",
     // folder names and project names
     "repos\\\\aiq",
     "foresight",
@@ -125,7 +122,11 @@ fn tasks_carry_kind_analysis_numbers_tip_path_and_folder_letters() {
     let judged = tasks.iter().find(|t| t["analysis"]["job"] == "code_change").expect("judged task");
     assert_eq!(judged["analysis"]["rung"], 2);
     assert!(judged["analysis"].get("evidence").is_none() && judged["analysis"].get("gap").is_none());
-    assert!(judged["tips"].as_array().is_some_and(|t| t.iter().all(|x| x.get("noticed").is_none())));
+    // Each tip as the person saw it, with what matched, so "was this the right tip?" can be answered from the file.
+    let tip = &judged["tips"][0];
+    assert_eq!(tip["noticed"], "This request went round 3 times. The agent may need one new detail.");
+    assert_eq!(tip["try_this"], "Say what is wrong with the last answer and add the one fact it lacked.");
+    assert!(tip["matched"]["detector"].is_string() && tip["matched"]["score"].is_number(), "{tip}");
     // Folders are letters only.
     for t in tasks {
         let f = &t["folder"];
