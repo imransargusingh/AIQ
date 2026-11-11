@@ -790,6 +790,9 @@ fn e2e_claude_code_says_a_new_milestone_once() {
     e.prompt("s1", "and the lexer", "s1-p1");
     e.wait_prompts(5);
     assert!(e.stop("s1", "s1-p1").stdout.is_empty(), "said once");
+    // `aiq progress` lists it too, the same record as the Milestones page.
+    let p = String::from_utf8(e.run(&["progress"], b"").stdout).unwrap();
+    assert!(p.contains(" Writing tests reached Delegated (3): 3 tasks within 30 days  New\n"), "{p}");
 }
 
 fn delegated_tests(task_id: &str) -> aiq_store::JudgmentRow {
