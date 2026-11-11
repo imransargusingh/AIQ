@@ -914,3 +914,20 @@ summary: >-
 - **Rule:** a gate holds only on the inputs its outcome depends on. One fact, such as "already does this", has one
   definition that every reader shares.
 
+
+### DC-050 — A failure whose cause is written nowhere the person can hand over
+- **Signature:** 2026-11-10, the devbox install: 15 of 15 new Copilot CLI tasks ended at "Kind label failed".
+  `kind_label` stores only the outcome (`error`), and label.log wrote `label <task> copilot-cli error -/-` with no
+  message. The tool's own words were dropped right after the call. The machine is not reachable from here, so the
+  cause could not be found without asking the person to run commands.
+- **Why it survives:** judge.log kept the message for analysis calls, so the gap looked closed. The label path was
+  copied from the judge path without its log line. Tests checked the stored outcome, which was right.
+- **Sweep:** every external call AIQ makes and where its failure text goes. Analysis calls go to judge.log (kept).
+  Label calls now write `why <task> <message>` to label.log. Update checks keep `check_error` in the updater
+  state. Hook errors go to hook-errors.log. A person can now hand all of these over in one scrubbed file
+  (design diagnostics-file).
+- **Control (tests):** `a_failed_call_writes_the_tools_own_words_to_label_log_and_not_to_the_store` and
+  `a_failed_label_carries_the_tools_words_scrubbed`. The second proves the message reaches the diagnostics file,
+  scrubbed.
+- **Rule:** a failure that happens on someone else's machine is recorded with its cause, and the person can hand it
+  over in one step, with nothing private in it.

@@ -1,9 +1,9 @@
 // Your data (spec US-H6): everything captured, newest first; Pause; delete one prompt's text (design
 // aiq-home-deferred-pages E1–E4); Delete everything (typed `forget`). Older-than waits for a later phase.
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { bytes, clock, plural, toolName, when } from "../format";
-import type { Item } from "../types";
+import type { Diagnostics, Item } from "../types";
 import { Banners, Content, Dialog, Title, preview, type Ctx } from "../ui";
 
 export function Data(ctx: Ctx) {
@@ -16,6 +16,8 @@ export function Data(ctx: Ctx) {
   const [one, setOne] = useState<Item | null>(null);
   const [oneErr, setOneErr] = useState<string | null>(null);
   const table = useRef<HTMLTableElement>(null);
+  const [diag, setDiag] = useState(false);
+  const [saved, setSaved] = useState<{ name: string; folder: string } | null>(null);
 
   const closeOne = () => {
     setOne(null);
@@ -54,6 +56,30 @@ export function Data(ctx: Ctx) {
     </button>
   );
 
+  const diagBtn = (
+    <button className="btn" onClick={() => setDiag(true)}>
+      Save a diagnostics file…
+    </button>
+  );
+  const savedLine = saved && (
+    <p className="savedline" role="status">
+      Saved <b>{saved.name}</b> in {saved.folder}. AIQ sent it nowhere.{" "}
+      <button className="btnlink" onClick={() => api.showDiagnostics()}>
+        Show in folder
+      </button>
+    </p>
+  );
+  const diagDialog = diag && (
+    <DiagnosticsDialog
+      onClose={() => setDiag(false)}
+      onSaved={(name, folder) => {
+        setDiag(false);
+        setSaved({ name, folder });
+        announce(`Saved ${name} in ${folder}. AIQ sent it nowhere.`);
+      }}
+    />
+  );
+
   if (d.events === 0 && d.imported_sessions === 0) {
     return (
       <div className="page">
@@ -65,9 +91,14 @@ export function Data(ctx: Ctx) {
             {deletedAt ? `Deleted at ${clock(deletedAt, snap.offset_min)}. ` : ""}
             {snap.status.paused ? "AIQ is paused, so it saves nothing new." : "New work will show here as you go."}
           </span>
-          {pauseBtn}
+          <div className="row">
+            {pauseBtn}
+            {diagBtn}
+          </div>
         </div>
+        {savedLine}
         <p className="meta">Stored in {d.location}</p>
+        {diagDialog}
       </div>
     );
   }
@@ -89,9 +120,11 @@ export function Data(ctx: Ctx) {
         </p>
         <div className="row">
           {pauseBtn}
+          {diagBtn}
           <button className="btn danger" onClick={() => setConfirm(true)}>Delete everything…</button>
         </div>
       </div>
+      {savedLine}
       {d.items.length > 0 && (
         <div className="tablewrap">
           <table aria-label="Captured events, newest first" ref={table} tabIndex={-1}>
@@ -159,6 +192,8 @@ export function Data(ctx: Ctx) {
         </Dialog>
       )}
 
+      {diagDialog}
+
       {confirm && (
         <Dialog label="Delete everything AIQ stored?" onClose={close}>
           <div className="dialog">
@@ -189,5 +224,100 @@ export function Data(ctx: Ctx) {
         </Dialog>
       )}
     </div>
+  );
+}
+
+/** Your data's "Save a diagnostics file" (design diagnostics-file): what is in the file and what is left out, one
+ * "Include my prompts" choice (off), the file itself to read, and Save to Downloads. AIQ sends it nowhere. */
+function DiagnosticsDialog({ onClose, onSaved }: { onClose: () => void; onSaved: (name: string, folder: string) => void }) {
+  const [prompts, setPrompts] = useState(false);
+  const [file, setFile] = useState<Diagnostics | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    setFile(null);
+    setErr(null);
+    api.diagnostics(prompts).then(
+      (f) => live && setFile(f),
+      (e: unknown) => live && setErr(`Couldn't make the file. (${e instanceof Error ? e.message : String(e)})`),
+    );
+    return () => {
+      live = false;
+    };
+  }, [prompts]);
+
+  const save = async () => {
+    setBusy(true);
+    const r = await api.saveDiagnostics(prompts);
+    setBusy(false);
+    if (r.ok) onSaved(r.name, r.folder);
+    else setErr(r.message ?? "Couldn't save the file.");
+  };
+
+  return (
+    <Dialog label="Save a diagnostics file" onClose={onClose}>
+      <div className="dialog diag">
+        <h2>Save a diagnostics file</h2>
+        <p>How AIQ ran on this computer over the last 14 days, so a problem can be found.</p>
+        <div className="diagcols">
+          <div>
+            <h3 className="meta">In the file</h3>
+            <ul>
+              <li>AIQ and tool versions, settings</li>
+              <li>Each task's kind, rung and confidence</li>
+              <li>Each tip shown, and why it showed or didn't</li>
+              <li>Label and analysis call errors</li>
+              <li>AIQ's own log warnings</li>
+              {prompts && <li>Your prompts, secrets removed</li>}
+            </ul>
+          </div>
+          <div>
+            <h3 className="meta">Left out</h3>
+            <ul>
+              {!prompts && <li>Your prompts</li>}
+              <li>The agent's replies</li>
+              <li>File and folder names</li>
+              <li>Your name, account, computer name</li>
+              <li>What the analysis wrote about a task</li>
+              <li>Team tip text</li>
+            </ul>
+          </div>
+        </div>
+        <label className="row check">
+          <input type="checkbox" checked={prompts} onChange={(e) => setPrompts(e.target.checked)} /> Include my prompts
+        </label>
+        {prompts && <p className="meta warnline">Prompts can name projects, people or customers. Read them below before you share.</p>}
+        {file ? (
+          <details>
+            <summary>
+              See the file{" "}
+              <span className="mute">
+                ({plural(file.tasks, "task")}
+                {prompts && <>, {plural(file.prompts, "prompt")}</>}, {bytes(file.bytes)})
+              </span>
+            </summary>
+            <pre className="preview" tabIndex={0} aria-label="The diagnostics file">
+              {file.text}
+            </pre>
+          </details>
+        ) : (
+          !err && <p className="meta" role="status">Reading…</p>
+        )}
+        {err && (
+          <p className="errtext" role="alert">
+            {err}
+          </p>
+        )}
+        <p className="meta">AIQ sends this file nowhere. Sharing it is up to you.</p>
+        <div className="row" style={{ justifyContent: "flex-end" }}>
+          <button className="btn" onClick={onClose}>Cancel</button>
+          <button className="btn pri" data-autofocus disabled={!file || busy} onClick={save}>
+            Save to Downloads
+          </button>
+        </div>
+      </div>
+    </Dialog>
   );
 }

@@ -1,6 +1,6 @@
 // The bridge to the Tauri shell (apps/home/src-tauri). Eighteen commands; nothing else leaves the page.
 // Outside Tauri (the UI tests) a fixture stands in, set on window by the test before the page loads.
-import type { Outcome, Snapshot, TaskDetail, ToolFound } from "./types";
+import type { Diagnostics, Outcome, SavedFile, Snapshot, TaskDetail, ToolFound } from "./types";
 
 export type SettingKey = "daily_cap" | "copilot_tip_stays" | "copilot_tip_in_chat" | "tip_popup" | "tip_highlight" | "live_trend" | "next_rung_tips" | "judge" | "judge_daily_tasks" | "copilot_mid_turn" | "agent_actions" | "update" | `keep_on.${string}` | `project_name.${string}`;
 /** The reasons the core accepts (crates/aiq-core/src/coaching.rs FLAG_REASONS). */
@@ -164,6 +164,27 @@ function fixture<T>(cmd: string, args: Record<string, unknown>): Promise<T> {
     case "open_privacy":
       out = { ok: true };
       break;
+    case "diagnostics": {
+      if (f.fail?.includes(cmd)) return Promise.reject(new Error("AIQ-STORE-OPEN: the store is locked"));
+      const prompts = Boolean(args.prompts);
+      const tasks = s.tasks.slice(0, 2).map((t) => ({
+        task: t.task_id, tool: t.tool, folder: "A", prompts: t.prompts,
+        ...(prompts ? { prompt_text: ["fix the flaky retry test in <path>"] } : {}),
+        labels: [{ tool: t.tool, outcome: "error", model: "gpt-6.1-sol", ms: 1790, message: "error: unknown option '--x'" }],
+        tip_path: [{ step: "label_asked" }, { step: "label_failed" }],
+      }));
+      const text = JSON.stringify({ about: { format: "aiq.diagnostics.v1", days: 14, prompts }, aiq: { version: s.update.running }, tasks }, null, 2) + "\n";
+      out = { text, tasks: s.tasks.length, prompts: prompts ? tasks.length : 0, bytes: text.length, name: "aiq-diagnostics-2026-11-10-1640.json" };
+      break;
+    }
+    case "save_diagnostics":
+      out = f.fail?.includes(cmd)
+        ? { ok: false, name: "", folder: "C:\\Users\\you\\Downloads", message: "Couldn't save the file in C:\\Users\\you\\Downloads. Nothing was saved. (Access is denied.)" }
+        : { ok: true, name: "aiq-diagnostics-2026-11-10-1640.json", folder: "C:\\Users\\you\\Downloads", message: null };
+      break;
+    case "show_diagnostics":
+      out = { ok: true };
+      break;
     case "open_sign_in":
     case "open_tool_help":
       out = f.fail?.includes(cmd) ? { ok: false, message: "Couldn't open it. Open a terminal and run copilot, then /login." } : { ok: true };
@@ -208,6 +229,12 @@ export const api = {
   includeFolder: (folder: string) => invoke<Outcome>("include_folder", { folder }),
   /** What judging would send for the next task (`aiq judge --dry-run`). Nothing is sent. */
   judgePreview: () => invoke<{ ok: boolean; text: string }>("judge_preview"),
+  /** The diagnostics file as it would be saved, for the dialog's preview. Nothing is saved or sent. */
+  diagnostics: (prompts: boolean) => invoke<Diagnostics>("diagnostics", { prompts }),
+  /** Save the file the dialog showed into Downloads. AIQ sends it nowhere. */
+  saveDiagnostics: (prompts: boolean) => invoke<SavedFile>("save_diagnostics", { prompts }),
+  /** Open the folder of the file just saved, with it selected (the shell knows which; no path is passed). */
+  showDiagnostics: () => invoke<Outcome>("show_diagnostics"),
   /** Open the privacy page in the default browser (a fixed address). */
   openPrivacy: () => invoke<Outcome>("open_privacy"),
   /** Open the tool in a new terminal so the person can sign in (fixed command per tool). */

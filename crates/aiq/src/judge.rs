@@ -56,7 +56,7 @@ impl Outcome {
     }
 
     /// Why a call failed, for judge.log (local, owner-only, bounded); never stored in the database.
-    fn detail(&self) -> &str {
+    pub(crate) fn detail(&self) -> &str {
         match self {
             Outcome::Schema(d) | Outcome::Error(d) | Outcome::NotSignedIn(d) => d,
             _ => "",

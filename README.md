@@ -70,6 +70,12 @@ in more than half of the tasks where it fits, over 14 days.
 **Tasks.** Every task, its rung, why, and the next step, with your prompts kept only on this computer. You can
 delete any prompt in **Your data**.
 
+**Diagnostics file.** If something looks wrong, **Your data** > **Save a diagnostics file…** saves one file
+to Downloads: how AIQ ran over the last 14 days (versions, each task's kind and rung, why each tip showed or
+didn't, label and analysis errors, AIQ's log warnings). It holds no prompt text unless you tick **Include my
+prompts**, and never folder names, your name or the analysis's own sentences. You read it before saving, and
+AIQ sends it nowhere: sharing it is up to you.
+
 ![One task: rung Directed, what went well, and the next step to Delegated](docs/images/readme/task.png)
 
 **Settings.** Tips a day across all your tools (5, 15, 30 or your own number; default 5), where tips show and
@@ -140,6 +146,7 @@ aiq config set daily-cap 5  # most tips a day, all tools together (0-50)
 aiq include <folder>        # count a folder again that AIQ marked automated, not counted
 aiq import --dry-run        # count your past Claude Code / Copilot CLI sessions; aiq import adds them
 aiq export [<folder>]       # copy everything AIQ stored to plain JSON files
+aiq export --diagnostics    # one file on how AIQ ran these 14 days, to share if you choose (--prompts adds them)
 aiq forget --imported       # delete only what aiq import added
 aiq forget --all            # delete everything AIQ stored on this machine
 aiq install | aiq uninstall --all

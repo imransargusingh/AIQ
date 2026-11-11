@@ -39,6 +39,9 @@ const ABOUT: &[(&str, &str)] = &[
 
 pub fn cli(rest: &[&str]) -> ExitCode {
     let paths = Paths::from_env();
+    if rest.contains(&"--diagnostics") {
+        return diagnostics_cli(&paths, rest);
+    }
     let (dir, default_place) = match rest.iter().find(|a| !a.starts_with('-')) {
         Some(d) => (PathBuf::from(d), false),
         None => (paths.data.join("exports").join(chrono::Utc::now().format("%Y%m%d-%H%M%S").to_string()), true),
@@ -56,6 +59,46 @@ pub fn cli(rest: &[&str]) -> ExitCode {
         }
         Err(e) => {
             println!("Couldn't export to {}. Nothing was exported. ({e})", dir.display());
+            ExitCode::from(1)
+        }
+    }
+}
+
+/// `aiq export --diagnostics [--prompts] [<folder>]`: the diagnostics file (design diagnostics-file), the same
+/// file AIQ home's "Save a diagnostics file" makes. AIQ sends it nowhere.
+fn diagnostics_cli(paths: &Paths, rest: &[&str]) -> ExitCode {
+    use aiq_domain::PackSource;
+    let prompts = rest.contains(&"--prompts");
+    let dir = rest.iter().find(|a| !a.starts_with('-')).map_or_else(aiq_home::diagnostics::downloads, PathBuf::from);
+    let pack = match aiq_core::pack::BundledPack.load() {
+        Ok(p) => p,
+        Err(e) => {
+            println!("Couldn't make the diagnostics file. Nothing was saved. ({e})");
+            return ExitCode::from(1);
+        }
+    };
+    let offset = chrono::Local::now().offset().local_minus_utc() / 60;
+    let now = aiq_domain::clock::Now { utc_ms: chrono::Utc::now().timestamp_millis(), offset_min: offset };
+    let core = aiq_home::core_answers(paths, std::time::Duration::from_millis(500));
+    let scrub = aiq_home::diagnostics::scrub_from_env();
+    let made =
+        aiq_home::diagnostics::build(paths, &pack, now, aiq_home::diagnostics::Options { prompts }, &scrub, Some(core))
+            .and_then(|d| {
+                aiq_home::diagnostics::save(&dir, &d.name, &d.text).map(|p| (d, p)).map_err(|e| e.to_string())
+            });
+    match made {
+        Ok((d, p)) => {
+            println!("Saved {}. {} tasks, {} KB.", p.display(), d.tasks, d.bytes.div_ceil(1024));
+            if prompts {
+                println!("It holds {} of your prompts. Read it before you share it.", d.prompts);
+            } else {
+                println!("It holds no prompt text. Read it before you share it.");
+            }
+            println!("AIQ sent it nowhere.");
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            println!("Couldn't save the diagnostics file in {}. Nothing was saved. ({e})", dir.display());
             ExitCode::from(1)
         }
     }

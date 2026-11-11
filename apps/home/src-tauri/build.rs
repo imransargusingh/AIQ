@@ -1,5 +1,5 @@
 fn main() {
-    // Only these twenty app commands exist; the capability file allows exactly these (design: STRIDE, E).
+    // Only these twenty-three app commands exist; the capability file allows exactly these (design: STRIDE, E).
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(tauri_build::AppManifest::new().commands(&[
         "snapshot",
         "pause",
@@ -21,6 +21,9 @@ fn main() {
         "open_privacy",
         "open_sign_in",
         "open_tool_help",
+        "diagnostics",
+        "save_diagnostics",
+        "show_diagnostics",
     ])))
     .expect("tauri build");
 }

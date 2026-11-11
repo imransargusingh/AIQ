@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Diagnostics File</title><style>
+:root { color-scheme: light dark; --bg:#f7f5ef; --panel:#fff; --text:#20201d;
+  --muted:#66645f; --line:#d9d5ca; --accent:#3157a4; --code:#f0eee7; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#171816; --panel:#20221f; --text:#f2f1eb; --muted:#b8b6ae;
+    --line:#3d403a; --accent:#8fb0ff; --code:#292c27; }
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text);
+  font:16px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif; }
+main { width:min(920px,calc(100% - 32px)); margin:32px auto; padding:40px;
+  background:var(--panel); border:1px solid var(--line); border-radius:12px; }
+h1,h2,h3,h4,h5,h6 { line-height:1.2; margin:1.5em 0 .55em; }
+h1 { margin-top:0; font-size:2.2rem; } h2 { border-bottom:1px solid var(--line); padding-bottom:.3em; }
+a { color:var(--accent); } code { background:var(--code); padding:.12em .35em; border-radius:4px; }
+pre { overflow:auto; padding:16px; background:var(--code); border-radius:8px; }
+pre code { padding:0; } blockquote { margin:1em 0; padding:.2em 1em; color:var(--muted);
+  border-left:4px solid var(--line); }
+table { width:100%; border-collapse:collapse; margin:1em 0; display:block; overflow:auto; }
+th,td { padding:.55em .75em; border:1px solid var(--line); text-align:left; vertical-align:top; }
+th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); }
+.source { color:var(--muted); font-size:.9rem; margin-bottom:2rem; }
+@media (max-width:640px) { main { width:100%; margin:0; padding:24px 18px; border:0; border-radius:0; } }
+</style></head><body><main><div class="source">Rendered from diagnostics-file.md</div><h1>The diagnostics file</h1>
+<p><strong>Why.</strong> A problem on someone else&#x27;s computer can&#x27;t be measured from here. A devbox install showed 15 of 15 new Copilot CLI tasks ending at &quot;Kind label failed&quot;, but Claude can&#x27;t reach that machine, and the person shouldn&#x27;t have to copy files or run commands. <code>aiq export</code> copies everything, prompts included, so it is a private copy and not meant for sharing. <code>aiq status --report</code> is text for a person to read, not per-task data.</p>
+<p><strong>Decision (Imran, 2026-11-10).</strong> A <strong>Save a diagnostics file…</strong> button on Your data, and <code>aiq export --diagnostics</code>. There is one choice, <strong>Include my prompts</strong>, and it is off by default. Nothing is uploaded.</p>
+<h2>What the file holds</h2>
+<p><code>aiq.diagnostics.v1</code>, pretty-printed JSON, last 14 days (<code>DAYS</code>):</p>
+<table><thead><tr><th>Section</th><th>Holds</th></tr></thead><tbody><tr><td><code>about</code></td><td>format, time made, window, whether prompts are in, what is left out</td></tr><tr><td><code>machine</code></td><td>OS family, CPU architecture, UTC offset</td></tr><tr><td><code>aiq</code></td><td>version, whether the core answered, paused, setup done, updater state, AIQ&#x27;s folder (scrubbed)</td></tr><tr><td><code>tools</code></td><td>each tool: present, connected</td></tr><tr><td><code>settings</code></td><td>every current setting; project names only as a count (their keys are folder paths)</td></tr><tr><td><code>counts</code></td><td>schema version, events, tasks, set-aside sessions, store size</td></tr><tr><td><code>label_calls</code></td><td>label calls grouped by tool, outcome and the tool&#x27;s own message</td></tr><tr><td><code>analysis_calls</code></td><td>analysis calls grouped by tool, outcome and stable code</td></tr><tr><td><code>tip_path_ends</code></td><td>how many tasks ended at each tip-path step</td></tr><tr><td><code>tasks</code></td><td>per task: id, tool, origin, start, folder letter, prompt count, word guesses, labels (outcome, model, job and kind with confidences, ms, message), analysis numbers (job, kind, rung, confidences, state, fact values, versions), analysis calls, tip path, tips (what matched: detector, opportunity and score; decision, reason code, pack version, tip id and its wording as the card held it; shown, opened, answer); <code>prompt_text</code> only when chosen</td></tr><tr><td><code>set_aside</code></td><td>set-aside sessions: tool, folder letter, reason, time</td></tr><tr><td><code>logs</code></td><td>last 200 lines of label.log, judge.log and hook-errors.log, and aiq.log&#x27;s warnings and errors, scrubbed</td></tr></tbody></table>
+<h2>Never in the file</h2>
+<p>The agent&#x27;s replies. The analysis&#x27;s sentences (evidence, gap, placement, blockers, what was read): the model wrote them about the person&#x27;s work, so they can name it. Team tip text (team tips show as tip ids only; their &quot;Tool to try&quot; line is added when a card is drawn and never stored). Built-in tip wording is in: it is pack text with the person&#x27;s count or kind filled in, never a quote from a prompt, and it is what&#x27;s needed to judge whether the right tip showed (Imran, 2026-11-11). Folder and file names: each folder becomes a letter, new in every file. User, account, email and computer names. Any web address except <code>https://github.com/imransargusingh/</code>, and the team tips address in every form (URL, host, path).</p>
+<h2>Scrubbing (<code>aiq_domain::scrub</code>)</h2>
+<p>This runs on every free-text line: log lines, tool messages, setting values, and prompts when they are chosen. The order is: secrets (<code>secrets::redact</code>), then the team tips address, then the profile folder in every spelling (→ <code>%USERPROFILE%</code>), then web addresses (→ <code>&lt;url&gt;</code>), then emails (→ <code>&lt;email&gt;</code>), then other absolute paths (→ <code>&lt;path&gt;</code>), then the computer name and the user name as whole words. Lines are cut to 300 characters and prompts to 4,000.</p>
+<p>Residual risk: a tool&#x27;s error message can echo part of a model answer, and a prompt (when chosen) can name a project, a person or a customer. The cap, the scrub and the preview are the mitigation. The dialog shows the whole file before saving, and a warning appears when prompts are ticked.</p>
+<h2>The label call&#x27;s own words</h2>
+<p><code>kind_label</code> stores only the outcome. The tool&#x27;s message now goes to label.log as <code>why &lt;task&gt; &lt;message&gt;</code>. That log is local, owner-only and bounded, like judge.log, and the message is never stored in the database. The file joins it to each failed label, so &quot;15 × error&quot; comes with the reason.</p>
+<h2>Home</h2>
+<p>The dialog has two lists (&quot;In the file&quot; and &quot;Left out&quot;), the checkbox, &quot;See the file&quot; with the full text, and Save to Downloads. Save writes exactly the text the dialog showed, and never overwrites an existing file (<code>-2</code>, <code>-3</code> are added). After saving, a line reads &quot;Saved &lt;name&gt; in &lt;folder&gt;. AIQ sent it nowhere.&quot; with <strong>Show in folder</strong>. The window never passes a path: the shell remembers the file it saved. The button also shows on an empty Your data page, because a broken capture is exactly when the file helps.</p>
+<h2>Tests</h2>
+<ul><li><code>crates/aiq-domain/src/scrub.rs</code>: each scrub rule, plus lines that must stay unchanged.</li><li><code>crates/aiq-home/tests/diagnostics.rs</code>: without prompts, no seeded prompt, analysis sentence, folder,</li></ul>
+<p>project name or personal name reaches the file. With prompts, the prompts are in and the rest stays out. Also folder letters, a failed label&#x27;s scrubbed message, a missing store, and that saving never overwrites.</p>
+<ul><li><code>crates/aiq/src/label.rs</code>: a failed label writes its <code>why</code> line, and a label that worked writes none.</li><li><code>apps/home/tests/e2e.mjs</code>: off by default, the preview holds prompts only when ticked, the saved line, Show in</li></ul>
+<p>folder, a failed save, the button on an empty store, and no axe violations in light and dark.</p></main></body></html>

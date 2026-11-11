@@ -583,3 +583,21 @@ export interface TaskPromptText {
   text: string | null;
   deleted: boolean;
 }
+
+/** The diagnostics file as the dialog previews it (crates/aiq-home/src/diagnostics.rs `Diagnostics`). */
+export interface Diagnostics {
+  text: string;
+  tasks: number;
+  /** Prompts written into the file: 0 unless the person ticked "Include my prompts". */
+  prompts: number;
+  bytes: number;
+  name: string;
+}
+
+/** What "Save to Downloads" did (apps/home/src-tauri `Saved`). */
+export interface SavedFile {
+  ok: boolean;
+  name: string;
+  folder: string;
+  message: string | null;
+}

@@ -18,6 +18,8 @@ Useful commands (in a new terminal):
   aiq pause | aiq resume  stop or restart AIQ
   aiq export              copy everything AIQ stored to plain files you can read
   aiq status --report     a help file with no prompt text or folder names, to send if you choose
+  aiq export --diagnostics  how AIQ ran these 14 days, in one file in Downloads, to send if you choose
+                          (no prompt text unless you add --prompts; also in AIQ home, Your data)
   aiq uninstall --all     disconnect AIQ from every tool (your data stays)
 
 Updates: AIQ updates itself. Once a day it asks GitHub whether a newer release is out, checks the
