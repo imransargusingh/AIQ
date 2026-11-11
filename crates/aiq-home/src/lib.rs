@@ -19,6 +19,7 @@ use std::collections::BTreeSet;
 use std::time::Instant;
 
 mod detail;
+pub mod diagnostics;
 mod twins;
 pub use detail::{TaskDetail, TaskPromptText, task_detail};
 

@@ -149,9 +149,15 @@ suggests a next step. To do that, it asks an AI model to read the task.
 
 - **No telemetry.** AIQ sends no usage statistics, crash reports or analytics to anyone.
 - AIQ home makes no network calls.
-- Two files are made only when you ask, and stay on your computer until you choose to send them:
-  `aiq export` (all your data, prompts included) and `aiq status --report` (a help file with counts,
-  timings and error codes; no prompt text, and folders shown as `folder-1`, `folder-2`).
+- Three files are made only when you ask, and stay on your computer until you choose to send them:
+  `aiq export` (all your data, prompts included), `aiq status --report` (a help file with counts,
+  timings and error codes; no prompt text, and folders shown as `folder-1`, `folder-2`), and the
+  **diagnostics file** (AIQ home, **Your data** > **Save a diagnostics file…**, or
+  `aiq export --diagnostics`): how AIQ ran over the last 14 days. It holds no prompt text unless you
+  tick **Include my prompts** (or add `--prompts`), and never the agent's replies, the analysis's own
+  sentences, tip wording, folder or file names (each folder is a letter), your user, account, email or
+  computer name, or web addresses other than this project's GitHub page. Log lines and tool messages in
+  it are scrubbed of secrets, paths and those names. You can read the whole file before it is saved.
 
 ## Who can see your data
 
@@ -170,6 +176,7 @@ suggests a next step. To do that, it asks an AI model to read the task.
 | Stop AIQ for a while | `aiq pause`, then `aiq resume` (also in AIQ home) |
 | See what AIQ has | AIQ home, **Your data**; `aiq show <card-id>` for one tip |
 | Get a copy of everything | `aiq export` |
+| Share how AIQ ran, to get help | AIQ home, **Your data** > **Save a diagnostics file…**; `aiq export --diagnostics` |
 | Delete one prompt | AIQ home, **Your data** |
 | Delete only imported history | `aiq forget --imported` |
 | Delete everything | `aiq forget --all` |

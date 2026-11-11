@@ -402,6 +402,51 @@ await test("Delete everything: focus on Cancel, trapped, typed forget, empty sta
   await page.context().close();
 });
 
+await test("Save a diagnostics file: no prompts unless ticked, the file is readable first, saved line, no axe violations", async () => {
+  for (const theme of ["light", "dark"]) {
+    const page = await open("full", { hash: "#data", theme });
+    const opener = page.getByRole("button", { name: "Save a diagnostics file…" });
+    await opener.click();
+    const dlg = page.locator("dialog[open]");
+    await dlg.getByText("See the file").waitFor();
+    // Off by default: the file is asked for without prompts, and "Your prompts" is listed as left out.
+    const box = dlg.getByRole("checkbox", { name: "Include my prompts" });
+    assert.equal(await box.isChecked(), false);
+    assert.ok(await dlg.getByText("Your prompts", { exact: true }).isVisible());
+    await dlg.getByText("See the file").click();
+    assert.ok((await dlg.locator("pre.preview").innerText()).includes('"prompts": false'));
+    assert.equal(await dlg.locator(".warnline").count(), 0);
+    assert.deepEqual(await axe(page), [], theme);
+    // Ticked: asked again with prompts, the warning shows, and the preview holds them before anything is saved.
+    await box.check();
+    await dlg.locator(".warnline").waitFor();
+    await dlg.getByText("See the file").click();
+    await page.waitForFunction(() => document.querySelector("dialog[open] pre.preview")?.textContent?.includes('"prompt_text"'));
+    assert.ok(await dlg.getByText("Your prompts, secrets removed").isVisible());
+    assert.deepEqual(await axe(page), [], theme);
+    await dlg.getByRole("button", { name: "Save to Downloads" }).click();
+    await page.locator(".savedline").waitFor();
+    assert.match(await page.locator(".savedline").innerText(), /Saved aiq-diagnostics-.*\.json in C:\\Users\\you\\Downloads\. AIQ sent it nowhere\./);
+    await page.getByRole("button", { name: "Show in folder" }).click();
+    const calls = await page.evaluate(() => window.__AIQ_FIXTURE__.calls.filter((c) => c.cmd.includes("diagnostics")).map((c) => [c.cmd, c.args.prompts ?? null]));
+    assert.deepEqual(calls, [["diagnostics", false], ["diagnostics", true], ["save_diagnostics", true], ["show_diagnostics", null]]);
+    assert.deepEqual(await axe(page), [], theme);
+    assert.deepEqual(page.errors, []);
+    await page.context().close();
+  }
+  // A failed save says so in the dialog and keeps it open; the empty page still offers the file.
+  const failed = await open("full", { hash: "#data", fail: ["save_diagnostics"] });
+  await failed.getByRole("button", { name: "Save a diagnostics file…" }).click();
+  await failed.locator("dialog[open]").getByText("See the file").waitFor();
+  await failed.getByRole("button", { name: "Save to Downloads" }).click();
+  await failed.locator("dialog[open] [role=alert]").waitFor();
+  assert.match(await failed.locator("dialog[open] [role=alert]").innerText(), /Nothing was saved/);
+  await failed.context().close();
+  const empty = await open("empty", { hash: "#data" });
+  assert.ok(await empty.getByRole("button", { name: "Save a diagnostics file…" }).isVisible());
+  await empty.context().close();
+});
+
 await test("Settings change through the core; tips a day", async () => {
   const page = await open("full", { hash: "#settings" });
   // 5, 15, 30 and Custom (Imran 2026-11-07). The fixture's 3 isn't a button, so Custom is pressed and shows it.

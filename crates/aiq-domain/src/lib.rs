@@ -10,6 +10,7 @@ pub mod job;
 pub mod label;
 pub mod reprompt;
 pub mod rung;
+pub mod scrub;
 pub mod secrets;
 pub mod text;
 pub mod tipline;

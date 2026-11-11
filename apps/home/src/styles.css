@@ -612,3 +612,13 @@ button.tf-more:hover{filter:brightness(1.15)}
 .ms-home span.t{flex:1}
 @media (max-width:760px){.ms-hero,.ms-empty{grid-template-columns:1fr}}
 @media (forced-colors:active){.ms-climb i,.ms-path i,.ms-pips i,.ms-rb{border:1px solid CanvasText;forced-color-adjust:none}.ms-climb i.on,.ms-pips i.rg-1,.ms-pips i.rg-2,.ms-pips i.rg-3,.ms-pips i.rg-4,.ms-pips i.rg-5{background:CanvasText}}
+
+/* Your data: Save a diagnostics file (design diagnostics-file). */
+.dialog.diag{max-width:640px}
+.diagcols{display:grid;grid-template-columns:1fr 1fr;gap:var(--s5)}
+.diagcols h3{margin:0 0 var(--s2);font-weight:600}
+.diagcols ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:var(--s1)}
+.row.check{gap:var(--s3);cursor:pointer}
+.warnline{color:var(--warning)}
+.savedline{background:var(--surface);border:1px solid var(--hairline);border-radius:var(--r-sm);padding:var(--s3) var(--s4)}
+@media (max-width:560px){.diagcols{grid-template-columns:1fr}}

@@ -98,6 +98,9 @@ Usage:
                                       Measure kind labels against AIQ's analysis on your analyzed tasks (stores nothing)
   aiq export [<folder>]               Copy everything AIQ stored to plain JSON files you can read
                                       (default: a new folder under AIQ's own folder)
+  aiq export --diagnostics [--prompts] [<folder>]
+                                      One file on how AIQ ran these 14 days, to read and share if you
+                                      choose (default: Downloads). No prompt text unless --prompts
   aiq forget --imported [--yes]       Delete only what aiq import added
   aiq forget --all [--yes]            Delete everything AIQ stored on this machine
   aiq update [--now]                  What AIQ's updater last did; --now checks for a newer release now

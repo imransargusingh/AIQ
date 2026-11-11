@@ -1,5 +1,5 @@
 //! AIQ home desktop shell (designs `docs/design/aiq-home-app.md`, `aiq-home-deferred-pages.md`, `auto-update.md`).
-//! Sixteen commands, each a thin call (the list is checked against build.rs and the capability file by a test):
+//! Its commands, each a thin call (the list is checked against build.rs and the capability file by a test):
 //! reads go to the `aiq-home` read model (read-only store), changes go through `aiq_core::control` to the
 //! core, the only writer. Each command's time and outcome is logged locally to `<data>/home.log`.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
@@ -664,6 +664,113 @@ async fn open_tool_help(tool: String) -> Result<Outcome, String> {
     .await
 }
 
+/// The diagnostics file the dialog last showed, so "Save to Downloads" writes exactly what the person read, and
+/// the file it last saved, so "Show in folder" can only ever open that one (the window never passes a path).
+static DIAG_SHOWN: std::sync::Mutex<Option<(bool, aiq_home::diagnostics::Diagnostics)>> = std::sync::Mutex::new(None);
+static DIAG_SAVED: std::sync::Mutex<Option<std::path::PathBuf>> = std::sync::Mutex::new(None);
+
+fn diag_build(paths: &Paths, prompts: bool) -> Result<aiq_home::diagnostics::Diagnostics, String> {
+    let pack = BundledPack.load().expect("bundled pack is validated at build time by aiq-core's tests");
+    let core = aiq_home::core_answers(paths, Duration::from_millis(500));
+    aiq_home::diagnostics::build(
+        paths,
+        &pack,
+        aiq_core::sysclock::SystemClock.now(),
+        aiq_home::diagnostics::Options { prompts },
+        &aiq_home::diagnostics::scrub_from_env(),
+        Some(core),
+    )
+}
+
+/// Your data's "Save a diagnostics file": the file as it would be saved, for the dialog's preview. Nothing is saved
+/// or sent.
+#[tauri::command]
+async fn diagnostics(prompts: bool) -> Result<aiq_home::diagnostics::Diagnostics, String> {
+    blocking(move || {
+        let t = Instant::now();
+        let paths = Paths::from_env();
+        let r = diag_build(&paths, prompts);
+        log(&paths, "diagnostics", t, &match &r {
+            Ok(d) => format!("ok prompts={prompts} tasks={} bytes={}", d.tasks, d.bytes),
+            Err(e) => format!("error {e}"),
+        });
+        if let Ok(d) = &r {
+            *DIAG_SHOWN.lock().unwrap_or_else(|e| e.into_inner()) = Some((prompts, d.clone()));
+        }
+        r
+    })
+    .await?
+}
+
+#[derive(Debug, Serialize)]
+struct Saved {
+    ok: bool,
+    /// The file's name, as the "Saved … in Downloads" line shows it.
+    name: String,
+    /// The folder it was saved in, as the person would read it.
+    folder: String,
+    message: Option<String>,
+}
+
+/// Save the file the dialog showed (built again only if it showed none with this choice) into Downloads. AIQ sends
+/// it nowhere.
+#[tauri::command]
+async fn save_diagnostics(prompts: bool) -> Result<Saved, String> {
+    blocking(move || {
+        let t = Instant::now();
+        let paths = Paths::from_env();
+        let shown = DIAG_SHOWN.lock().unwrap_or_else(|e| e.into_inner()).take().filter(|(p, _)| *p == prompts);
+        let d = match shown {
+            Some((_, d)) => Ok(d),
+            None => diag_build(&paths, prompts),
+        };
+        let dir = aiq_home::diagnostics::downloads();
+        let r = d.and_then(|d| aiq_home::diagnostics::save(&dir, &d.name, &d.text).map_err(|e| e.to_string()));
+        log(&paths, "save_diagnostics", t, if r.is_ok() { "ok" } else { "error" });
+        match r {
+            Ok(p) => {
+                let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                *DIAG_SAVED.lock().unwrap_or_else(|e| e.into_inner()) = Some(p);
+                Saved { ok: true, name, folder: dir.display().to_string(), message: None }
+            }
+            Err(e) => Saved {
+                ok: false,
+                name: String::new(),
+                folder: dir.display().to_string(),
+                message: Some(format!("Couldn't save the file in {}. Nothing was saved. ({e})", dir.display())),
+            },
+        }
+    })
+    .await
+}
+
+/// Open the folder of the file just saved, with the file selected. Only that file: the window passes no path.
+#[tauri::command]
+async fn show_diagnostics() -> Result<Outcome, String> {
+    blocking(|| {
+        let t = Instant::now();
+        let paths = Paths::from_env();
+        let saved = DIAG_SAVED.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let r = match saved {
+            None => Err("No diagnostics file was saved in this window yet.".to_owned()),
+            Some(p) => show_file(&p),
+        };
+        log(&paths, "show_diagnostics", t, if r.is_ok() { "ok" } else { "error" });
+        Outcome::from(r)
+    })
+    .await
+}
+
+fn show_file(p: &std::path::Path) -> Result<(), String> {
+    #[cfg(windows)]
+    let r = std::process::Command::new("explorer").arg(format!("/select,{}", p.display())).spawn();
+    #[cfg(target_os = "macos")]
+    let r = std::process::Command::new("open").arg("-R").arg(p).spawn();
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let r = std::process::Command::new("xdg-open").arg(p.parent().unwrap_or(p)).spawn();
+    r.map(|_| ()).map_err(|e| format!("Could not open the folder ({e}). The file is at {}", p.display()))
+}
+
 fn open_url(url: &str) -> Result<(), String> {
     #[cfg(windows)]
     let r = std::process::Command::new("explorer").arg(url).spawn();
@@ -714,7 +821,10 @@ fn main() {
             judge_preview,
             open_privacy,
             open_sign_in,
-            open_tool_help
+            open_tool_help,
+            diagnostics,
+            save_diagnostics,
+            show_diagnostics
         ])
         .run(tauri::generate_context!())
         .expect("AIQ home could not start its window");

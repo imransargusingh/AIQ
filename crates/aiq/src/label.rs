@@ -146,6 +146,12 @@ pub fn label_task(
         utc_ms: started + res.latency_ms,
     };
     store.insert_kind_label(&row)?;
+    // The tool's own words, kept beside the outcome so the cause of a failed label is readable (the diagnostics
+    // file carries this line, scrubbed). Local, owner-only and bounded like judge.log; never stored in the database.
+    let why = res.outcome.detail().trim();
+    if outcome != "ok" && !why.is_empty() {
+        let _ = bounded_append(&paths.data.join("label.log"), &format!("why {} {}", row.task_id, why), LOG_MAX);
+    }
     Ok(Ok(row))
 }
 
@@ -769,6 +775,21 @@ mod tests {
             Err(Skip::AlreadyLabelled),
             "a task is labelled once"
         );
+    }
+
+    #[test]
+    fn a_failed_call_writes_the_tools_own_words_to_label_log_and_not_to_the_store() {
+        let (_d, paths, store) = setup();
+        let f = Fake { answer: Outcome::Error("error: unknown option '--x'".into()), sent: RefCell::new(vec![]) };
+        let row = label_task(&store, &paths, &f, &f, &req("t1"), n()).unwrap().unwrap();
+        assert_eq!(row.outcome, "error");
+        let log = std::fs::read_to_string(paths.data.join("label.log")).unwrap();
+        assert!(log.lines().any(|l| l == "why t1 error: unknown option '--x'"), "{log}");
+        // A call that worked writes no "why" line.
+        let ok = Fake::ok(answer());
+        label_task(&store, &paths, &ok, &ok, &req("t2"), n()).unwrap().unwrap();
+        let log = std::fs::read_to_string(paths.data.join("label.log")).unwrap();
+        assert!(!log.contains("why t2"), "{log}");
     }
 
     #[test]
