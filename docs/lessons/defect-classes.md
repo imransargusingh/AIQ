@@ -1031,3 +1031,16 @@ summary: >-
   diagnostics file's `copilot` block (hook_saw, on_path, log_home, session folders), which makes the next miss
   visible from one file.
 - **Rule:** when the tool runs our code, ask that run where the tool is; search only as a fallback.
+
+### DC-057 — A stored answer shown on one page and left off the page that explains it
+- **Signature:** 2026-11-12, laptop. A task opened with "diagnose this error…" showed "Job: Ask or research" and no
+  kind on its task page, so it read as unclassified and looked like a missing kind. The store had the kind twice:
+  the label said Finding the cause of a problem at 0.99 and both analysis runs said it at 0.92 and 0.91. The Tasks
+  list showed it ("Ask or research · Finding the cause of a problem"); the task page never rendered
+  `task_type_label`.
+- **Why it survives:** the task page was built before kinds existed, and the e2e fixture's task had no kind, so no
+  test asked what the page shows when one is named.
+- **Sweep:** every Home reader of `task_type_label`: Tasks list (shown), day view and rung mix (shown or "No kind
+  yet"), task page (was missing, now a "Kind:" chip). Kind pages are keyed by kind, so they cannot miss it.
+- **Control:** e2e "task detail: the kind shows beside the job when the analysis named one" (and no chip when none).
+- **Rule:** when a field is added to a judgment, list every page that shows the judgment and check each one.

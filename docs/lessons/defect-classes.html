@@ -624,4 +624,12 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <p>first), session logs (<code>copilot_seen::log_home</code> for the core), imported history (<code>import::tool_home</code>: unchanged, <code>COPILOT_HOME</code> or <code>~/.copilot</code>; the diagnostics file now shows whether that home has session folders).</p>
 <ul><li><strong>Control:</strong> <code>a_copilot_cli_hook_records_the_program_and_home_that_run_it</code>, <code>copilot_seen</code> unit tests, and the</li></ul>
 <p>diagnostics file&#x27;s <code>copilot</code> block (hook_saw, on_path, log_home, session folders), which makes the next miss visible from one file.</p>
-<ul><li><strong>Rule:</strong> when the tool runs our code, ask that run where the tool is; search only as a fallback.</li></ul></main></body></html>
+<ul><li><strong>Rule:</strong> when the tool runs our code, ask that run where the tool is; search only as a fallback.</li></ul>
+<h3>DC-057 — A stored answer shown on one page and left off the page that explains it</h3>
+<ul><li><strong>Signature:</strong> 2026-11-12, laptop. A task opened with &quot;diagnose this error…&quot; showed &quot;Job: Ask or research&quot; and no</li></ul>
+<p>kind on its task page, so it read as unclassified and looked like a missing kind. The store had the kind twice: the label said Finding the cause of a problem at 0.99 and both analysis runs said it at 0.92 and 0.91. The Tasks list showed it (&quot;Ask or research · Finding the cause of a problem&quot;); the task page never rendered <code>task_type_label</code>.</p>
+<ul><li><strong>Why it survives:</strong> the task page was built before kinds existed, and the e2e fixture&#x27;s task had no kind, so no</li></ul>
+<p>test asked what the page shows when one is named.</p>
+<ul><li><strong>Sweep:</strong> every Home reader of <code>task_type_label</code>: Tasks list (shown), day view and rung mix (shown or &quot;No kind</li></ul>
+<p>yet&quot;), task page (was missing, now a &quot;Kind:&quot; chip). Kind pages are keyed by kind, so they cannot miss it.</p>
+<ul><li><strong>Control:</strong> e2e &quot;task detail: the kind shows beside the job when the analysis named one&quot; (and no chip when none).</li><li><strong>Rule:</strong> when a field is added to a judgment, list every page that shows the judgment and check each one.</li></ul></main></body></html>

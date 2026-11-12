@@ -969,6 +969,24 @@ await test("task detail: Enter on a Tasks row opens it; prompts in order; judgme
   await page.context().close();
 });
 
+// Laptop 2026-11-12: a task analyzed as "Finding the cause of a problem" (label 0.99, analysis 0.91) showed only its
+// job here, so it read as unclassified. The kind shows beside the job when the analysis named one, and not otherwise.
+await test("task detail: the kind shows beside the job when the analysis named one", async () => {
+  const hash = "#task/019000000001-0000-7000-8000-000000000000";
+  const page = await open("full", {
+    hash,
+    editTask: (t) => Object.assign(t.task.judgment, { job: "ask_research", task_type: "troubleshoot", task_type_label: "Finding the cause of a problem" }),
+  });
+  await page.waitForSelector("ol.prompts");
+  assert.match(await page.locator("main").innerText(), /Job: Ask or research\s+Kind: Finding the cause of a problem/);
+  assert.deepEqual(page.errors, []);
+  await page.context().close();
+  const none = await open("full", { hash });
+  await none.waitForSelector("ol.prompts");
+  assert.doesNotMatch(await none.locator("main").innerText(), /Kind:/, "no kind named: no chip");
+  await none.context().close();
+});
+
 for (const theme of ["light", "dark", "contrast"]) {
   await test(`task detail has no axe violations (${theme})`, async () => {
     const page = await open("full", { theme: theme === "light" ? undefined : theme, hash: "#task/019000000001-0000-7000-8000-000000000000" });
