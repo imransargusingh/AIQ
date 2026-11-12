@@ -1061,3 +1061,25 @@ summary: >-
   short, pasted and 5-second prompts kept).
 - **Rule:** a turn counts as typed only on evidence a person could have typed it; time since the turn end is
   evidence when the tool gives no record.
+
+### DC-059 — A copy of an event reaches the rules before the store drops it
+- **Signature:** 2026-11-12, Windows CI on PR #248 (job 130972821379),
+  `e2e_reword_three_times_one_card_second_run_held`: 7 of 8 prompts stored after 5 s, `AIQ-HOOK-SPOOLED 2`,
+  prompt send p95 51.9 ms against a 20 ms budget. Passed on re-run. Same test and symptom as DC-048 on 11-09.
+- **Cause:** a prompt hook whose send runs out spools the frame (DC-034 allows this: "ingest dedupes by event id"),
+  but its send thread can still finish writing, so the core gets the event by socket and by spool. The store keeps
+  one row, but only at `record`, after rule RC per turn (DC-043) had matched the copy against the transcript. The
+  copy's own record was taken, so it took the next prompt's record (or waited and took it later). That prompt then
+  found no record and waited 10 s (`TURN_WAIT_MS`), past the test's 5 s. On a real machine the prompt is late and
+  held only in memory, and inside a Projects session a stolen record can decide the wrong person's turn.
+  Reproduced in `a_prompt_delivered_twice_never_takes_the_next_prompts_transcript_record` (red: 2 of 3 stored).
+- **Why it survives:** dedupe lived in one place, the store insert, and every rule added before it (RC per turn,
+  rescue, held prompts) assumed it saw each event once. The spool tests replay duplicates, but with no transcript.
+- **Measured:** 2 of 535 Windows test jobs since 11-02 lost a prompt this way (11-09, 11-12); 1 of 53 since the
+  DC-048 fix (#222). The 11-09 case may have been this class rather than DC-048 (no core log was kept to tell).
+- **Sweep:** every caller of `ingest_inner`: spool drain, socket ingest, `take_card`, held re-reads (`recheck_held`,
+  `typed_gate`, RC release) and Copilot mid-turn messages. Held events leave `rc_held` before they are ingested
+  again, so the check skips only true copies. Not covered: a copy of a first prompt the automation guard holds
+  (`held`, not stored yet) still reaches the guard a second time; not measured, left as a next step.
+- **Control:** `ingest_inner` drops an event already stored or already waiting, before any rule; the core test above.
+- **Rule:** dedupe at the door, before any rule that keeps state, not only where the row is written.

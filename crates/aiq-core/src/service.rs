@@ -534,6 +534,13 @@ impl<C: Clock> Service<C> {
             self.counters.inc(codes::INGEST_SHAPE);
             return Ok(());
         }
+        // A copy of an event the core already has: stored, or waiting for its transcript record. A prompt hook whose
+        // send ran out spools the frame, and its send can still land, so the same event arrives twice. The copy must
+        // not reach the rules: matched against the transcript, it took the next prompt's record, and that prompt
+        // waited 10 s (DC-059). Held events are taken out of `rc_held` before they are ingested again.
+        if self.rc_held.values().flatten().any(|h| h.event_id == ev.event_id) || self.store.has_event(&ev.event_id)? {
+            return Ok(());
+        }
         match self.automated(ev)? {
             Gate::Skip(reason) => {
                 if reason != "rc-pending" {
