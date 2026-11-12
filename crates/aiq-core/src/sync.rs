@@ -299,6 +299,10 @@ pub fn pass(store: &mut Store, paths: &Paths, remote: &[PathBuf], now_ms: i64) -
         .unwrap_or_default()
     };
     if !on {
+        // Never sent anything: keep no queue until sync turns on (it is rebuilt then).
+        if let Err(e) = store.sync_drop_queue_if_never_sent() {
+            st.errors.push(e.code.to_owned());
+        }
         // Say "paused" where this computer was syncing, so the others show it rather than waiting quietly.
         if mine.exists() {
             let _ = write_whole(&mine.join(SELF_FILE), &me_json(false));
@@ -311,6 +315,10 @@ pub fn pass(store: &mut Store, paths: &Paths, remote: &[PathBuf], now_ms: i64) -
         st.peers = known_peers(store, &local, &remote_sync, &me);
         write_status(paths, &st);
         return st;
+    }
+    // The first time on: queue everything recorded here (the queue is kept empty until then).
+    if let Err(e) = store.sync_queue_all_if_never_sent() {
+        st.errors.push(e.code.to_owned());
     }
     // Cut every new file.
     loop {

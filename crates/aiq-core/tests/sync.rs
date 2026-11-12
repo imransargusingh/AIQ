@@ -197,3 +197,22 @@ fn the_offer_names_the_other_computer_not_its_windows_user_folder() {
     assert_eq!(st.offer.map(|o| o.name), Some(lap_name.clone()));
     assert_eq!(st.via, Some(lap_name));
 }
+
+#[test]
+fn a_devbox_that_waits_before_choosing_still_sends_what_it_recorded_while_waiting() {
+    // The queue is kept empty while sync is unset (outbox cleanup, 2026-11-12); choosing Keep in sync later must still
+    // send every row recorded before.
+    let mut laptop = computer();
+    let mut devbox = computer();
+    let lap_home = laptop.paths.data.clone();
+    prompt(&mut devbox, "dev-1", "one", 10);
+    pass(&mut devbox.store, &devbox.paths, std::slice::from_ref(&lap_home), 20);
+    prompt(&mut devbox, "dev-2", "two", 30);
+    pass(&mut devbox.store, &devbox.paths, std::slice::from_ref(&lap_home), 40);
+    let queued: i64 = devbox.store.raw().query_row("SELECT count(*) FROM sync_outbox", [], |r| r.get(0)).unwrap();
+    assert_eq!(queued, 0, "nothing queued before the person chooses");
+    devbox.store.set_setting(SETTING_SYNC, "on", 50).unwrap();
+    pass(&mut devbox.store, &devbox.paths, std::slice::from_ref(&lap_home), 60);
+    pass(&mut laptop.store, &laptop.paths, &[], 70);
+    assert_eq!(events(&laptop), ["dev-1", "dev-2"]);
+}

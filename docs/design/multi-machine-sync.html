@@ -32,7 +32,7 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <ul><li><strong>Identity.</strong> Each store gets a random computer id at schema v12 (<code>sync_self</code>). A fresh store after &quot;Delete</li></ul>
 <p>everything&quot; is a new computer, so change numbers are never reused.</p>
 <ul><li><strong>Change files.</strong> Insert triggers queue every row this computer records (<code>sync_outbox</code>, AUTOINCREMENT). A pass</li></ul>
-<p>cuts the queue into numbered JSON-lines files (<code>&lt;aiq home&gt;/sync/&lt;id&gt;/00000001.jsonl</code>, at most 5,000 lines) and marks a file sent only after it is written whole (temp file, then rename).</p>
+<p>cuts the queue into numbered JSON-lines files (<code>&lt;aiq home&gt;/sync/&lt;id&gt;/00000001.jsonl</code>, at most 5,000 lines) and marks a file sent only after it is written whole (temp file, then rename). A queued row leaves the queue once it is in a written file. While sync has never been on, no queue is kept; turning sync on the first time queues every row recorded here, so nothing is missed.</p>
 <ul><li><strong>The meeting point is the laptop&#x27;s AIQ home.</strong> The computer inside the Remote Desktop session (the Devbox) copies</li></ul>
 <p>its files into the laptop&#x27;s <code>sync/&lt;devbox id&gt;/</code> and applies the laptop&#x27;s files from <code>sync/&lt;laptop id&gt;/</code>. The laptop only reads its own folder. It needs no network, port or relay.</p>
 <ul><li><strong>Apply exactly once, in order.</strong> <code>sync_applied (peer, seq)</code> in the same transaction as the rows. A missing</li></ul>

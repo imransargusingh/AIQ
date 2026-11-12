@@ -43,6 +43,8 @@ Imran ruled out running a relay server. So slice 1 moves files over the Remote D
 - **Change files.** Insert triggers queue every row this computer records (`sync_outbox`, AUTOINCREMENT). A pass
   cuts the queue into numbered JSON-lines files (`<aiq home>/sync/<id>/00000001.jsonl`, at most 5,000 lines) and
   marks a file sent only after it is written whole (temp file, then rename).
+  A queued row leaves the queue once it is in a written file. While sync has never been on, no queue is kept;
+  turning sync on the first time queues every row recorded here, so nothing is missed.
 - **The meeting point is the laptop's AIQ home.** The computer inside the Remote Desktop session (the Devbox) copies
   its files into the laptop's `sync/<devbox id>/` and applies the laptop's files from `sync/<laptop id>/`. The
   laptop only reads its own folder. It needs no network, port or relay.

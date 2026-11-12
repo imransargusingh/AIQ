@@ -303,3 +303,32 @@ fn a_store_from_before_sync_sends_everything_it_already_had_once() {
     assert_eq!(tables, ["surface_session", "event", "content", "tip_feedback"]);
     assert!(cut(&mut a).is_none());
 }
+
+#[test]
+fn a_computer_that_never_syncs_keeps_no_queue_and_turning_sync_on_still_sends_everything() {
+    // 2026-11-12, the laptop on 0.1.46: sync_outbox held 17,206 rows (about 20 bytes each) with sync never turned on,
+    // and rows already in a sent file were never removed either.
+    let (_d, mut a) = open();
+    let (_e, mut b) = open();
+    a.insert_event(&ev("e1", "s1", Some("first"), 1), 1).unwrap();
+    a.sync_drop_queue_if_never_sent().unwrap();
+    assert_eq!(count(&a, "SELECT count(*) FROM sync_outbox"), 0, "no queue while sync was never on");
+    a.insert_event(&ev("e2", "s1", Some("second"), 2), 2).unwrap();
+    a.sync_drop_queue_if_never_sent().unwrap();
+    // Sync turns on: everything recorded here is queued again and sent.
+    a.sync_queue_all_if_never_sent().unwrap();
+    let seg = cut(&mut a).unwrap();
+    assert!(matches!(b.sync_apply(&seg, 3).unwrap(), Applied::Done { .. }));
+    assert_eq!(count(&b, "SELECT count(*) FROM event"), 2);
+    assert_eq!(count(&a, "SELECT count(*) FROM sync_outbox"), 0, "rows in a written file leave the queue");
+    // Once a file was sent the queue is never dropped or rebuilt again, and new rows still go.
+    a.sync_drop_queue_if_never_sent().unwrap();
+    a.insert_event(&ev("e3", "s1", Some("third"), 4), 4).unwrap();
+    a.sync_queue_all_if_never_sent().unwrap();
+    assert_eq!(count(&a, "SELECT count(*) FROM sync_outbox"), 2, "the new prompt and its text only");
+    let seg = cut(&mut a).unwrap();
+    assert_eq!(seg.seq, 2);
+    assert!(matches!(b.sync_apply(&seg, 5).unwrap(), Applied::Done { .. }));
+    assert_eq!(count(&b, "SELECT count(*) FROM event"), 3);
+    assert_eq!(count(&a, "SELECT count(*) FROM sync_outbox"), 0);
+}
