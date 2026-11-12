@@ -585,7 +585,12 @@ pub fn provider_for(tool: &str) -> Option<&'static str> {
 fn current_version(j: &JudgmentRow) -> bool {
     let rubric = j.rubric_version == rung::RUBRIC_VERSION
         || (rung::RUBRIC_VERSIONS_KEPT.contains(&j.rubric_version.as_str())
-            && !rung::rubric_changes(&j.facts, aiq_contracts::judge::parse_read(&j.read).reprompts));
+            && !rung::rubric_changes(
+                &j.rubric_version,
+                &j.facts,
+                aiq_contracts::judge::parse_read(&j.read).reprompts,
+                &j.placement,
+            ));
     let fact_set = j.fact_set_version == rung::FACT_SET_VERSION
         || (rung::FACT_SET_VERSIONS_KEPT.contains(&j.fact_set_version.as_str())
             && !rung::fact_set_may_change(&j.facts));

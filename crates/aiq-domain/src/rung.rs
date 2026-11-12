@@ -25,17 +25,38 @@ pub fn fact_set_may_change(facts_json: &str) -> bool {
         || LOG_FACT_IDS.iter().any(|id| stored.get(*id).is_some_and(|f| f.log && f.value == Some(false)))
 }
 /// r2: a hedged yes on F6 counts when the person came back after the output (`F6_HEDGED_THRESHOLD`).
-pub const RUBRIC_VERSION: &str = "r2";
-/// Judgments of these rubric versions stay current unless `rubric_changes`: r1 differs from r2 only where F6
-/// was unknown, undisputed, at `F6_HEDGED_THRESHOLD` or more, after a re-prompt.
-pub const RUBRIC_VERSIONS_KEPT: [&str; 1] = ["r1"];
+/// r3: a fact AIQ couldn't tell lowers the rung once, never again at the next rung down (`place`). Imran
+/// 2026-11-12: a task the model placed at Delegated fell to Assisted only because AIQ couldn't tell whether the
+/// output was checked, the one fact both Delegated and Directed need (9 of 1,033 current judgments, all 3 -> 1).
+pub const RUBRIC_VERSION: &str = "r3";
+/// Judgments of these rubric versions stay current unless `rubric_changes`.
+pub const RUBRIC_VERSIONS_KEPT: [&str; 2] = ["r1", "r2"];
 
-/// Whether an r1 judgment's stored facts and read record could place differently under r2. The stored F6 has
-/// no value when unknown, so a hedged no is judged again too (it lands where it was).
-pub fn rubric_changes(facts_json: &str, reprompts: Option<u32>) -> bool {
-    let f6 = aiq_contracts::judge::parse_stored_facts(facts_json).remove("F6");
-    reprompts != Some(0)
-        && f6.is_some_and(|f| f.value.is_none() && !f.disputed && !f.log && f.confidence >= F6_HEDGED_THRESHOLD)
+/// Whether a kept judgment could place differently under the current rubric. r1 differs from r2 only where F6
+/// was unknown, undisputed, at `F6_HEDGED_THRESHOLD` or more, after a re-prompt (the stored F6 has no value when
+/// unknown, so a hedged no is judged again too: it lands where it was). r1 and r2 differ from r3 only where the
+/// placement notes say AIQ couldn't tell the same fact at two rungs.
+pub fn rubric_changes(version: &str, facts_json: &str, reprompts: Option<u32>, placement_json: &str) -> bool {
+    let r1_to_r2 = || {
+        let f6 = aiq_contracts::judge::parse_stored_facts(facts_json).remove("F6");
+        reprompts != Some(0)
+            && f6.is_some_and(|f| f.value.is_none() && !f.disputed && !f.log && f.confidence >= F6_HEDGED_THRESHOLD)
+    };
+    (version == "r1" && r1_to_r2()) || unknown_twice(placement_json)
+}
+
+/// The placement notes name one fact AIQ couldn't tell at two rungs (`place` before r3).
+fn unknown_twice(placement_json: &str) -> bool {
+    // The notes are plain sentences in a JSON array; the fact words hold no quote or escape, so the raw text reads.
+    let mut seen: Vec<&str> = Vec::new();
+    for part in placement_json.split(": AIQ couldn't tell whether ").skip(1) {
+        let fact = part.split('"').next().unwrap_or(part);
+        if seen.contains(&fact) {
+            return true;
+        }
+        seen.push(fact);
+    }
+    false
 }
 /// j2: the answer names a task type (design coaching-from-rungs D1); j1 judgments are re-judged lazily.
 /// j3 added the Ask or research pack; j4 records each run's job pick (design no-job-tasks); j5 added the Run
@@ -1251,14 +1272,19 @@ pub fn place(runs: &[Response], log: &LogFacts, same_job_recent: u32) -> (Facts,
             rung_name(fl)
         ));
     }
+    // r3: a fact AIQ couldn't tell lowers the rung once. The rung below that needs the same fact is not lowered
+    // for it again (the task is Uncertain already); a fact that is confidently missing still lowers each rung.
+    let mut untold: Option<&'static str> = None;
     while r > 1 {
         match gate(&facts, r) {
             Gate::Holds => break,
+            Gate::Unknown(id) if untold == Some(id) => break,
             Gate::Fails(id) => {
                 notes.push(format!("Not {}: AIQ couldn't see that {}.", rung_name(r), fact_words(id)));
             }
             Gate::Unknown(id) => {
                 uncertain = true;
+                untold = Some(id);
                 notes.push(format!("Not {}: AIQ couldn't tell whether {}.", rung_name(r), fact_words(id)));
             }
         }
@@ -1406,6 +1432,40 @@ mod tests {
             &["implement docs/specs/upload.md"],
             acts(&[("Edit", 4), ("Task", 1), ("Bash", 2)], &["cargo test"], &["docs/specs/upload.md"], 1),
         ))
+    }
+
+    // r3, Imran 2026-11-12: the model placed a task at Delegated, the agent edited files, and AIQ couldn't tell
+    // whether the output was checked. Before r3 the same unknown fact also failed Directed: 3 -> 1.
+    #[test]
+    fn a_fact_aiq_could_not_tell_lowers_the_rung_once() {
+        let mut r = run(3);
+        r.f6_output_checked = yes(0.4);
+        let (_, p) = place(&[r.clone(), r.clone()], &agent_edit_log(), 0);
+        assert_eq!((p.model_rung, p.current, p.uncertain), (3, 2, true), "{:?}", p.notes);
+        assert_eq!(p.notes, vec!["Not Delegated: AIQ couldn't tell whether the output was checked before use."]);
+        // A fact that is confidently missing still lowers each rung that needs it.
+        let mut n = run(3);
+        n.f6_output_checked = no(0.9);
+        let (_, p) = place(&[n.clone(), n], &agent_edit_log(), 0);
+        assert_eq!(p.current, 1, "{:?}", p.notes);
+        // A different unknown fact at the next rung still lowers it.
+        let mut d = run(3);
+        d.f6_output_checked = yes(0.4);
+        d.f4_goal_context_constraints = yes(0.3);
+        let (_, p) = place(&[d.clone(), d], &agent_edit_log(), 0);
+        assert_eq!(p.current, 1, "Directed is lowered for F4, a fact not yet counted: {:?}", p.notes);
+    }
+
+    #[test]
+    fn kept_judgments_with_one_fact_untold_at_two_rungs_are_judged_again() {
+        let twice = r#"["Not Delegated: AIQ couldn't tell whether the output was checked before use.","Not Directed: AIQ couldn't tell whether the output was checked before use."]"#;
+        let once = r#"["Not Delegated: AIQ couldn't tell whether an agent made the edits.","Not Directed: AIQ couldn't tell whether the output was checked before use."]"#;
+        assert!(rubric_changes("r2", "{}", Some(1), twice));
+        assert!(!rubric_changes("r2", "{}", Some(1), once), "two different facts: r3 places it the same");
+        assert!(!rubric_changes("r2", "{}", Some(1), "[]"));
+        let hedged = r#"{"F6":{"value":null,"confidence":0.55,"source":"model","disputed":false}}"#;
+        assert!(rubric_changes("r1", hedged, Some(1), "[]"), "r1 -> r2 still applies to r1");
+        assert!(!rubric_changes("r2", hedged, Some(1), "[]"), "an r2 judgment already used the hedged rule");
     }
 
     #[test]

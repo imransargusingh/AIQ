@@ -1138,3 +1138,16 @@ summary: >-
   `tool_written_openings_are_not_typed`, `a_brief_naming_another_session_lists_that_id_once` (domain).
 - **Rule:** a prompt that names another live session, or opens with a mark only the tool writes, was not typed. Apply
   each automated rule on both sides: at ingest, and when reading rows stored before the rule.
+### DC-063 — One fact AIQ couldn't tell lowers a task two rungs
+- **Signature:** 2026-11-12, Imran's laptop and Devbox. Nine current judgments (of 1,033) had the model at Delegated
+  and the agent's edits in the log, but showed Assisted. Their notes read "Not Delegated: AIQ couldn't tell whether
+  the output was checked" and then the same words for Directed.
+- **Why it survives:** each rung's guardrail was tested on its own. Delegated and Directed both need F6, and the
+  lowering loop re-tested the same unknown fact at every rung, so a fact that was only *unknown* cost as much as one
+  that was confidently missing at two rungs.
+- **Sweep:** `place` is the only loop that lowers by guardrail; `missing` lists needs for coaching and does not
+  lower. Kept judgments whose notes show one fact untold at two rungs are judged again (`rubric_changes`, r3).
+- **Control (tests):** `a_fact_aiq_could_not_tell_lowers_the_rung_once`,
+  `kept_judgments_with_one_fact_untold_at_two_rungs_are_judged_again`; the replay gate shows no golden-set move.
+- **Rule:** an unknown fact lowers the rung once and marks the task Uncertain; only a confident "no" lowers each
+  rung that needs it.
