@@ -4,7 +4,7 @@
   "versions": {
     "judge": "j6",
     "fact_set": "fs3",
-    "rubric": "r2",
+    "rubric": "r3",
     "golden": "g1"
   },
   "provider": "claude-code",
