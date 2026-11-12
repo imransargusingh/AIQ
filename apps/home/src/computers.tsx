@@ -23,6 +23,22 @@ export function ComputerTag({ snap, task }: { snap: Snapshot; task: TaskRow }) {
   );
 }
 
+/** Tasks' Computer filter: All computers, this one, then each other computer. No options until another computer's
+ *  task is here, so a person with one computer never sees it. */
+export function computerFilter(snap: Snapshot): { options: { value: string; label: string }[]; keep: (v: string, t: TaskRow) => boolean } {
+  const keep = (v: string, t: TaskRow) => v === "all" || (v === "here" ? !t.computer : t.computer === v);
+  if (!snap.tasks.some((t) => t.computer)) return { options: [], keep };
+  const others = [...new Set(snap.tasks.map((t) => t.computer).filter((c): c is string => !!c))];
+  return {
+    options: [
+      { value: "all", label: "All computers" },
+      { value: "here", label: `${snap.sync?.name || "This computer"} (this one)` },
+      ...others.map((id) => ({ value: id, label: snap.sync?.peers.find((p) => p.id === id)?.name || "Other computer" })),
+    ],
+    keep,
+  };
+}
+
 function peerLine(p: SyncPeer, now: number, off: number): { text: string; tone: "ok" | "wait" | "mute" } {
   const last = p.last_ms != null ? ago(p.last_ms, now, off) : null;
   switch (p.state) {

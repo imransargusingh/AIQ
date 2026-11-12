@@ -10,7 +10,7 @@ import { Banners, Chip, ProjectPicker, Rung, Title, type Ctx } from "../ui";
 import { projectName, projectOf } from "../project";
 import type { KindRow, ProgressRow } from "../types";
 import { DayView } from "./DayView";
-import { ComputerTag } from "../computers";
+import { ComputerTag, computerFilter } from "../computers";
 import { Projects } from "./Projects";
 
 const COLS: { key: SortKey; label: string; right?: boolean }[] = [
@@ -24,6 +24,8 @@ export function Tasks({ start, ...ctx }: Ctx & { start?: View }) {
   const { snap } = ctx;
   const [sort, setSort] = useState<{ key: SortKey; dir: Dir }>({ key: "when", dir: -1 });
   const [job, setJob] = useState("All");
+  const [pc, setPc] = useState("all");
+  const computers = useMemo(() => computerFilter(snap), [snap]);
   const [sel, setSel] = useState(0);
   const hasKinds = snap.coaching.kinds.length > 0;
   const [picked, setView] = useState<View | null>(start ?? null);
@@ -32,8 +34,8 @@ export function Tasks({ start, ...ctx }: Ctx & { start?: View }) {
   const body = useRef<HTMLTableSectionElement>(null);
   const { options, dropdown } = jobOptions(snap.tasks);
   const rows = useMemo(
-    () => sortTasks(snap.tasks.filter((t) => job === "All" || jobOf(t) === job), sort.key, sort.dir),
-    [snap.tasks, job, sort],
+    () => sortTasks(snap.tasks.filter((t) => (job === "All" || jobOf(t) === job) && computers.keep(pc, t)), sort.key, sort.dir),
+    [snap.tasks, job, sort, pc, computers],
   );
 
   const onKey = (e: KeyboardEvent) => {
@@ -71,6 +73,16 @@ export function Tasks({ start, ...ctx }: Ctx & { start?: View }) {
               <button aria-pressed={view === "list"} onClick={() => setView("list")}>All tasks</button>
               <button aria-pressed={view === "day"} onClick={() => setView("day")}>Day</button>
             </div>
+            {computers.options.length > 0 && view !== "kinds" && (
+              <>
+                <span className="meta" id="pclbl">Computer</span>
+                <select className="input" aria-labelledby="pclbl" value={pc} onChange={(e) => setPc(e.target.value)}>
+                  {computers.options.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </>
+            )}
             <span className="meta" id="joblbl">Job</span>
             {dropdown ? (
               <select className="input" aria-labelledby="joblbl" value={job} onChange={(e) => setJob(e.target.value)}>
@@ -91,7 +103,7 @@ export function Tasks({ start, ...ctx }: Ctx & { start?: View }) {
       {snap.tasks.length > 0 && view === "kinds" ? (
         <Kinds {...ctx} rows={snap.coaching.kinds.filter((k) => job === "All" || jobName(k.job) === job)} />
       ) : snap.tasks.length > 0 && view === "day" ? (
-        <DayView {...ctx} snap={{ ...snap, tasks: snap.tasks.filter((t) => job === "All" || jobOf(t) === job) }} />
+        <DayView {...ctx} snap={{ ...snap, tasks: snap.tasks.filter((t) => (job === "All" || jobOf(t) === job) && computers.keep(pc, t)) }} />
       ) : snap.tasks.length === 0 ? (
         <div className="empty">
           <b>No tasks yet.</b>

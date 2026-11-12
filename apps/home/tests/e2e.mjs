@@ -380,6 +380,47 @@ await test("Your computers: Settings lists each computer with how it stands, one
   await page.context().close();
 });
 
+await test("Your computers: Tasks filters by computer, and a task's page names the computer it ran on", async () => {
+  const peer = { id: "b2", name: "LAPTOP-9", version: "0.1.44", detail: null, rows: 812, state: "ok" };
+  const page = await open("full", {
+    hash: "#tasks",
+    edit: (s) => {
+      synced(s, { setting: "on", peers: [{ ...peer, last_ms: s.now_ms }] });
+      // The task the task-page fixture opens, and one other.
+      const id = "019000000001-0000-7000-8000-000000000000";
+      s.tasks.find((t) => t.task_id === id).computer = "b2";
+      s.tasks.find((t) => t.task_id !== id).computer = "b2";
+    },
+    editTask: (t) => (t.task.computer = "b2"),
+  });
+  const all = await page.evaluate(() => window.__AIQ_FIXTURE__.snapshot.tasks.length);
+  const rows = page.locator("table[aria-label=Tasks] tbody tr");
+  if ((await rows.count()) === 0) await page.getByRole("button", { name: "All tasks" }).click();
+  const pick = page.getByRole("combobox", { name: "Computer" });
+  assert.deepEqual(await pick.locator("option").allInnerTexts(), ["All computers", "DEVBOX-07 (this one)", "LAPTOP-9"]);
+  assert.equal(await rows.count(), all);
+  await pick.selectOption({ label: "LAPTOP-9" });
+  assert.equal(await rows.count(), 2);
+  assert.equal(await page.locator("table[aria-label=Tasks] .chip", { hasText: "LAPTOP-9" }).count(), 2);
+  await pick.selectOption({ label: "DEVBOX-07 (this one)" });
+  assert.equal(await rows.count(), all - 2);
+  assert.equal(await page.locator("table[aria-label=Tasks] .chip", { hasText: "LAPTOP-9" }).count(), 0);
+  assert.deepEqual(await axe(page), []);
+  await pick.selectOption({ label: "LAPTOP-9" });
+  await page.locator(`table[aria-label=Tasks] tbody tr:has(a[href="#task/019000000001-0000-7000-8000-000000000000"])`).click();
+  await page.waitForFunction(() => location.hash.startsWith("#task/"));
+  await page.waitForSelector("main header .chip");
+  assert.ok((await page.locator("main header").innerText()).includes("LAPTOP-9"));
+  assert.deepEqual(page.errors, []);
+  await page.context().close();
+});
+
+await test("Your computers: one computer only, Tasks shows no Computer filter", async () => {
+  const page = await open("full", { hash: "#tasks" });
+  assert.equal(await page.getByRole("combobox", { name: "Computer" }).count(), 0);
+  await page.context().close();
+});
+
 await test("Your computers: paused there, newer AIQ there, and out of reach each say so in plain words", async () => {
   const base = { version: "0.1.44", detail: null, rows: 3 };
   const page = await open("full", {

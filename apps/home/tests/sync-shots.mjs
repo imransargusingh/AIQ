@@ -21,6 +21,7 @@ const browser = await chromium.launch();
 const fixture = (name) => JSON.parse(readFileSync(join(here, "fixtures", `${name}.json`), "utf8"));
 const sync = (s, over) => (s.sync = { id: "a1", name: "DEVBOX-07", setting: "unset", offer: null, via: null, peers: [], pending: 0, utc_ms: s.now_ms, errors: [], ...over });
 
+const TASK = "019000000001-0000-7000-8000-000000000000";
 const shots = [
   ["offer-fresh-devbox", "empty", "", (s) => sync(s, { offer: { name: "LAPTOP-9" }, via: "LAPTOP-9" })],
   ["offer-home", "full", "", (s) => sync(s, { offer: { name: "LAPTOP-9" }, via: "LAPTOP-9" })],
@@ -28,19 +29,25 @@ const shots = [
   ["settings-paused", "full", "#settings", (s) => sync(s, { setting: "on", peers: [{ id: "b2", name: "LAPTOP-9", version: "0.1.44", state: "paused", detail: null, last_ms: s.now_ms - 3_600_000, rows: 812 }] })],
   ["settings-away", "full", "#settings", (s) => sync(s, { setting: "on", peers: [{ id: "b2", name: "LAPTOP-9", version: "0.1.44", state: "away", detail: null, last_ms: s.now_ms - 3 * 3_600_000, rows: 812 }] })],
   ["tasks-tag", "full", "#tasks", (s) => { sync(s, { setting: "on", peers: [{ id: "b2", name: "LAPTOP-9", version: "0.1.44", state: "ok", detail: null, last_ms: s.now_ms, rows: 812 }] }); s.tasks[0].computer = "b2"; s.tasks[2].computer = "b2"; }],
+  ["tasks-filter", "full", "#tasks", (s) => { sync(s, { setting: "on", peers: [{ id: "b2", name: "LAPTOP-9", version: "0.1.44", state: "ok", detail: null, last_ms: s.now_ms, rows: 812 }] }); s.tasks[0].computer = "b2"; s.tasks[2].computer = "b2"; },
+    async (page) => { if (await page.getByRole("button", { name: "All tasks" }).count()) await page.getByRole("button", { name: "All tasks" }).click(); await page.getByRole("combobox", { name: "Computer" }).selectOption({ label: "LAPTOP-9" }); }],
+  ["task-page-tag", "full", `#task/${TASK}`, (s) => { sync(s, { setting: "on", peers: [{ id: "b2", name: "LAPTOP-9", version: "0.1.44", state: "ok", detail: null, last_ms: s.now_ms, rows: 812 }] }); s.tasks.find((t) => t.task_id === TASK).computer = "b2"; }],
 ];
 for (const theme of ["light", "dark"]) {
-  for (const [name, fx, hash, edit] of shots) {
+  for (const [name, fx, hash, edit, after] of shots) {
     const ctx = await browser.newContext({ viewport: { width: 1180, height: 760 }, deviceScaleFactor: 2 });
     const page = await ctx.newPage();
     const s = fixture(fx);
     s.setup.tour_seen = true;
     edit(s);
-    await page.addInitScript(([snap, task]) => (window.__AIQ_FIXTURE__ = { snapshot: snap, task, calls: [] }), [s, fixture("task")]);
+    const task = fixture("task");
+    if (name === "task-page-tag") task.task.computer = "b2";
+    await page.addInitScript(([snap, t]) => (window.__AIQ_FIXTURE__ = { snapshot: snap, task: t, calls: [] }), [s, task]);
     await page.goto(base + hash);
     await page.evaluate((t) => (document.documentElement.dataset.theme = t), theme);
     await page.waitForSelector("main h1");
     if (hash === "#settings") await page.getByRole("heading", { name: "Your computers" }).scrollIntoViewIfNeeded();
+    if (after) await after(page);
     await page.waitForTimeout(250);
     await page.screenshot({ path: join(out, `${name}-${theme}.png`) });
     await ctx.close();

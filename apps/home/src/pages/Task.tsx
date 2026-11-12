@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import { clock, folderName, jobName, plural, stateLabel, toolName, when } from "../format";
 import { TaskTipsCard } from "../taskTips";
+import { ComputerTag, computerOf } from "../computers";
 import type { TaskAnalysis, TaskDetail } from "../types";
 import { Banners, Chip, Content, Rung, Sk, Title, preview, type Ctx } from "../ui";
 
@@ -104,6 +105,7 @@ export function Task(ctx: Ctx & { taskId: string }) {
           {" · "}
           <span title={t.folder ?? undefined}>{t.folder ? folderName(t.folder) : "Folder unknown"}</span>
           {t.origin === "imported" && <> · <Chip>Imported</Chip></>}
+          {computerOf(snap, t) && <> · <ComputerTag snap={snap} task={t} /></>}
         </p>
       </header>
 
