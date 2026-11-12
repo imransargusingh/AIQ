@@ -1,6 +1,7 @@
 //! Task detail (design aiq-home-deferred-pages E8, E9): one task as the Tasks page lists it, plus the text
 //! of its prompts in order. The task comes from the same read as the snapshot, so the two always agree.
-use crate::{Analysis, Blocked, Retry, Snapshot, TaskRow, analysis_provider, retries, snapshot};
+use crate::{Analysis, Blocked, Retry, Snapshot, TaskRow, TipRow, analysis_provider, retries, snapshot};
+use aiq_contracts::card::CardV1;
 use aiq_contracts::pack::PackV1;
 use aiq_core::paths::Paths;
 use aiq_domain::clock::Now;
@@ -15,6 +16,8 @@ pub struct TaskDetail {
     /// Where this task's analysis stands, so the page says "waiting", "trying again at" or "stopped trying"
     /// instead of one "Not analyzed yet" for all of them (DC-055).
     pub analysis: TaskAnalysis,
+    /// The tip AIQ showed for this task, or the one it held back, or why there was none (design task-tips).
+    pub tips: TaskTips,
     /// Measured: how long this read took.
     pub read_ms: u64,
 }
@@ -27,6 +30,87 @@ pub struct TaskPromptText {
     pub text: Option<String>,
     /// A live prompt whose text was captured and later deleted.
     pub deleted: bool,
+}
+
+/// The tips for one task, read from the same rows as Tip history and the tip funnel. Every field is stored; nothing
+/// is forecast. A team tip's "Tool to try" line is never here: the page reads it from the team file by `tip_id`.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct TaskTips {
+    /// Tips shown for this task, newest first (Tip history's rows for it, so the two pages always agree).
+    pub shown: Vec<TipRow>,
+    /// The newest tip AIQ decided for this task but never showed. None when every decided tip was shown.
+    pub held: Option<HeldTip>,
+    /// The tip funnel's last step for this task (a `funnel::Step` code). None when AIQ didn't record one: tasks
+    /// before the funnel (2026-11-08), imported tasks, and tasks whose path is still running.
+    pub step: Option<String>,
+    /// The step in plain words, and what helps (empty when nothing does). Empty when `step` is None.
+    pub step_words: String,
+    pub step_help: String,
+}
+
+/// A decided tip that was not shown, and why (the newest decision's reason code in plain words).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct HeldTip {
+    pub card_id: String,
+    pub decided_ms: i64,
+    pub noticed: String,
+    pub try_this: String,
+    pub tip_id: String,
+    /// show_ready (ready, not shown yet) · hold · drop
+    pub outcome: String,
+    pub reason: String,
+    pub reason_words: String,
+    pub reason_help: String,
+}
+
+/// Read the task's tips. Shown tips come from the snapshot's Tip history; the rest from the store.
+fn task_tips(c: &rusqlite::Connection, tips: &[TipRow], task_id: &str) -> TaskTips {
+    let shown: Vec<TipRow> = tips.iter().filter(|t| t.task_id.as_deref() == Some(task_id)).cloned().collect();
+    let held = c
+        .query_row(
+            "SELECT d.card_id, d.utc_ms, d.card_json, d.outcome, d.reason_code
+             FROM card_decision d JOIN signal s ON s.signal_id = d.signal_id
+             WHERE s.task_id = ?1
+               AND d.rowid = (SELECT max(x.rowid) FROM card_decision x WHERE x.card_id = d.card_id)
+               AND NOT EXISTS (SELECT 1 FROM card_delivery v WHERE v.card_id = d.card_id)
+             ORDER BY d.utc_ms DESC, d.rowid DESC LIMIT 1",
+            [task_id],
+            |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, i64>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, String>(3)?,
+                    r.get::<_, String>(4)?,
+                ))
+            },
+        )
+        .optional()
+        .ok()
+        .flatten()
+        .map(|(card_id, decided_ms, json, outcome, reason)| {
+            let card = serde_json::from_str::<CardV1>(&json).ok();
+            let (noticed, try_this, tip_id) = card.map_or_else(Default::default, |c| (c.noticed, c.try_this, c.tip_id));
+            let reason_words = if outcome == "show_ready" {
+                "ready, not shown yet".to_owned()
+            } else {
+                aiq_domain::funnel::words(&reason).to_owned()
+            };
+            let reason_help = aiq_domain::funnel::help(&reason).to_owned();
+            HeldTip { card_id, decided_ms, noticed, try_this, tip_id, outcome, reason, reason_words, reason_help }
+        });
+    // tip_path arrived in schema v11; an older store has no table, so no step.
+    let step = c
+        .query_row("SELECT step FROM tip_path WHERE task_id = ?1 ORDER BY rowid DESC LIMIT 1", [task_id], |r| {
+            r.get::<_, String>(0)
+        })
+        .optional()
+        .ok()
+        .flatten();
+    let (step_words, step_help) = step.as_deref().map_or_else(Default::default, |st| {
+        (aiq_domain::funnel::words(st).to_owned(), aiq_domain::funnel::help(st).to_owned())
+    });
+    TaskTips { shown, held, step, step_words, step_help }
 }
 
 /// Where one task's analysis stands. Every field is read from the store or judge.log; nothing is forecast.
@@ -138,8 +222,9 @@ pub fn task_detail(paths: &Paths, pack: &PackV1, now: Now, task_id: &str) -> Opt
         let idle = pack.idle_gap_min as i64 * 60_000;
         task_analysis(t, &s.tasks, &calls, &s.home.analysis, now.utc_ms, idle, judge_log_reply(&log, task_id))
     };
-    let task = s.tasks.into_iter().find(|t| t.task_id == task_id)?;
     let c = store.raw();
+    let tips = task_tips(c, &s.tips, task_id);
+    let task = s.tasks.into_iter().find(|t| t.task_id == task_id)?;
     let mut prompts = Vec::with_capacity(task.members.len());
     for (id, _) in &task.members {
         let p = match parse_import_id(id) {
@@ -176,7 +261,7 @@ pub fn task_detail(paths: &Paths, pack: &PackV1, now: Now, task_id: &str) -> Opt
             prompts.push(p);
         }
     }
-    Some(TaskDetail { task, prompts, analysis, read_ms: started.elapsed().as_millis() as u64 })
+    Some(TaskDetail { task, prompts, analysis, tips, read_ms: started.elapsed().as_millis() as u64 })
 }
 
 /// `import:{tool}:{source session id}:{seq}`, as the snapshot names imported prompts. Session ids may hold `:`.

@@ -153,7 +153,7 @@ fn files_from_a_newer_aiq_wait_for_the_update_and_a_cut_short_file_is_retried() 
 
 #[test]
 fn once_the_core_deletes_everything_the_sync_thread_never_opens_the_store_again() {
-    // DC-059: the sync thread used to keep its store connection open, so on Windows `forget --all` could not delete
+    // DC-060: the sync thread used to keep its store connection open, so on Windows `forget --all` could not delete
     // the store. It now opens the store only for a check or a pass, and after `stop` it never opens it again.
     let dir = TempDir::new().unwrap();
     let paths = Paths::at(dir.path());

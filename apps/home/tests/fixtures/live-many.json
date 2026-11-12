@@ -786,7 +786,9 @@
       "try_this": "Say what is wrong with the last answer and add the one fact it lacked.",
       "opened": false,
       "tip_id": "reprompt.restate",
-      "after": null
+      "after": null,
+      "task_id": "3 prompts",
+      "answer": null
     },
     {
       "card_id": "019000000034-0000-7000-8000-000000000000",
@@ -800,7 +802,9 @@
       "after": {
         "seen": 3,
         "checked": 3
-      }
+      },
+      "task_id": "k0",
+      "answer": null
     },
     {
       "card_id": "019000000037-0000-7000-8000-000000000000",
@@ -814,7 +818,9 @@
       "after": {
         "seen": 0,
         "checked": 3
-      }
+      },
+      "task_id": "k0",
+      "answer": null
     }
   ],
   "data": {

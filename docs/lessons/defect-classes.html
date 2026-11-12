@@ -643,4 +643,16 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <ul><li><strong>Control:</strong> <code>a_long_prompt_just_after_a_turn_end_was_sent_by_a_hook</code> (domain bounds) and</li></ul>
 <p><code>a_long_prompt_a_turn_end_hook_sends_is_left_out_with_its_stop</code> (core: the hook prompt and its Stop left out; short, pasted and 5-second prompts kept).</p>
 <ul><li><strong>Rule:</strong> a turn counts as typed only on evidence a person could have typed it; time since the turn end is</li></ul>
-<p>evidence when the tool gives no record.</p></main></body></html>
+<p>evidence when the tool gives no record.</p>
+<h3>DC-059 — A copy of an event reaches the rules before the store drops it</h3>
+<ul><li><strong>Signature:</strong> 2026-11-12, Windows CI on PR #248 (job 130972821379),</li></ul>
+<p><code>e2e_reword_three_times_one_card_second_run_held</code>: 7 of 8 prompts stored after 5 s, <code>AIQ-HOOK-SPOOLED 2</code>, prompt send p95 51.9 ms against a 20 ms budget. Passed on re-run. Same test and symptom as DC-048 on 11-09.</p>
+<ul><li><strong>Cause:</strong> a prompt hook whose send runs out spools the frame (DC-034 allows this: &quot;ingest dedupes by event id&quot;),</li></ul>
+<p>but its send thread can still finish writing, so the core gets the event by socket and by spool. The store keeps one row, but only at <code>record</code>, after rule RC per turn (DC-043) had matched the copy against the transcript. The copy&#x27;s own record was taken, so it took the next prompt&#x27;s record (or waited and took it later). That prompt then found no record and waited 10 s (<code>TURN_WAIT_MS</code>), past the test&#x27;s 5 s. On a real machine the prompt is late and held only in memory, and inside a Projects session a stolen record can decide the wrong person&#x27;s turn. Reproduced in <code>a_prompt_delivered_twice_never_takes_the_next_prompts_transcript_record</code> (red: 2 of 3 stored).</p>
+<ul><li><strong>Why it survives:</strong> dedupe lived in one place, the store insert, and every rule added before it (RC per turn,</li></ul>
+<p>rescue, held prompts) assumed it saw each event once. The spool tests replay duplicates, but with no transcript.</p>
+<ul><li><strong>Measured:</strong> 2 of 535 Windows test jobs since 11-02 lost a prompt this way (11-09, 11-12); 1 of 53 since the</li></ul>
+<p>DC-048 fix (#222). The 11-09 case may have been this class rather than DC-048 (no core log was kept to tell).</p>
+<ul><li><strong>Sweep:</strong> every caller of <code>ingest_inner</code>: spool drain, socket ingest, <code>take_card</code>, held re-reads (<code>recheck_held</code>,</li></ul>
+<p><code>typed_gate</code>, RC release) and Copilot mid-turn messages. Held events leave <code>rc_held</code> before they are ingested again, so the check skips only true copies. Not covered: a copy of a first prompt the automation guard holds (<code>held</code>, not stored yet) still reaches the guard a second time; not measured, left as a next step.</p>
+<ul><li><strong>Control:</strong> <code>ingest_inner</code> drops an event already stored or already waiting, before any rule; the core test above.</li><li><strong>Rule:</strong> dedupe at the door, before any rule that keeps state, not only where the row is written.</li></ul></main></body></html>

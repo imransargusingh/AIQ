@@ -72,5 +72,26 @@
     "ahead": 0,
     "blocked": null
   },
+  "tips": {
+    "shown": [
+      {
+        "card_id": "019000000006-0000-7000-8000-000000000000",
+        "tool": "claude-code",
+        "delivered_ms": 1793362320000,
+        "noticed": "This request went round 3 times. The agent may need one new detail.",
+        "why": "Rewording often means the agent is missing context, not words.",
+        "try_this": "Say what is wrong with the last answer and add the one fact it lacked.",
+        "opened": true,
+        "tip_id": "reprompt.restate",
+        "after": null,
+        "task_id": "019000000001-0000-7000-8000-000000000000",
+        "answer": null
+      }
+    ],
+    "held": null,
+    "step": null,
+    "step_words": "",
+    "step_help": ""
+  },
   "read_ms": 9
 }

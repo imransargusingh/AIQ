@@ -68,7 +68,8 @@ in more than half of the tasks where it fits, over 14 days.
 ![Habits and tips: Directed, Delegated and Orchestrated habits, each with how often it was seen](docs/images/readme/habits-and-tips.png)
 
 **Tasks.** Every task, its rung, why, and the next step, with your prompts kept only on your own computers. You can
-delete any prompt in **Your data**.
+delete any prompt in **Your data**. A task's page also shows the tip AIQ showed for it, where and when, and your
+answer; or the tip it held back and why; or why the task got no tip. **Tip history** opens each tip's task.
 
 **Diagnostics file.** If something looks wrong, **Your data** > **Save a diagnostics file…** saves one file
 to Downloads: how AIQ ran over the last 14 days (versions, each task's kind and rung, why each tip showed or
