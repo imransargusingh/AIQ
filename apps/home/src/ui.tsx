@@ -105,7 +105,10 @@ function AnalysisBlocked({ snap, announce }: Pick<Ctx, "snap" | "announce">) {
       <div className="grow">
         <b>{out ? `${TOOL_NAME[b.tool]} is signed out, so AIQ can't analyze your tasks.` : `AIQ can't find ${TOOL_NAME[b.tool]}, so it can't analyze your tasks.`}</b>{" "}
         Since {sinceWords(b.since_ms, snap.now_ms, snap.offset_min)}.{" "}
-        {plural(a.waiting, "task")} wait. {out ? "Sign in once and AIQ catches up by itself." : "Install it and AIQ catches up by itself."}
+        {plural(a.waiting, "task")} wait.{" "}
+        {out
+          ? "A window that is already open can keep working; AIQ needs a fresh sign-in. Sign in once and AIQ catches up by itself."
+          : "Install it and AIQ catches up by itself."}
       </div>
       <button className="btn pri" onClick={act}>{out ? `Sign in to ${SIGN_IN_NAME[b.tool]}` : `Get ${TOOL_NAME[b.tool]}`}</button>
     </div>

@@ -205,7 +205,7 @@ await test("an expired sign-in shows on every page of a settled install, with si
   };
   const page = await open("progress", { edit: stuck({ tool: "claude-code", why: "not_signed_in" }) });
   const banner = page.getByTestId("analysis-blocked");
-  assert.match(await banner.innerText(), /^Claude Code is signed out, so AIQ can't analyze your tasks\. Since \d\d:\d\d (today|yesterday)\. 14 tasks wait\. Sign in once and AIQ catches up by itself\./);
+  assert.match(await banner.innerText(), /^Claude Code is signed out, so AIQ can't analyze your tasks\. Since \d\d:\d\d (today|yesterday)\. 14 tasks wait\. A window that is already open can keep working; AIQ needs a fresh sign-in\. Sign in once and AIQ catches up by itself\./);
   assert.doesNotMatch(await page.locator("section.mainrung").innerText(), /can't run/, "said once, in the banner");
   assert.doesNotMatch(await banner.innerText(), /judg/i, "users read analyze");
   await page.getByRole("button", { name: "Sign in to Claude Code" }).click();
