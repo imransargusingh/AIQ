@@ -256,7 +256,14 @@ pub fn task_detail(paths: &Paths, pack: &PackV1, now: Now, task_id: &str) -> Opt
                 .ok()
                 .flatten(),
         };
-        // A row deleted between the two reads (delete everything) is left out, never invented.
+        // A row deleted between the two reads (delete everything) is left out, never invented. An envelope stored
+        // before rule WRAP shows the person's own words.
+        let p = p.map(|mut p| {
+            if let Some(w) = p.text.as_deref().and_then(aiq_domain::automated::person_words) {
+                p.text = Some(w.into_owned());
+            }
+            p
+        });
         if let Some(p) = p {
             prompts.push(p);
         }

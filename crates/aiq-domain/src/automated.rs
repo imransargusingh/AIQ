@@ -143,6 +143,26 @@ pub fn written_by_tool(prompt: &str) -> bool {
     TOOL_OPENINGS.iter().any(|o| head.starts_with(o))
 }
 
+/// Rule WRAP: openings of a message envelope that tooling around an agent writes as the prompt (a project message
+/// delivered to a Claude Code session, a relay between Claude sessions, a task notification, a scheduled task).
+/// Measured 2026-11-12 over the laptop store: 38 Claude Code prompts opened with one of these. 25 `<wake …>` carried
+/// the person's own message (`<message … from="human">`); the other 13 carried none.
+pub const ENVELOPE_OPENINGS: [&str; 6] =
+    ["<wake ", "<relay ", "<coordinator-relay", "<task-notification", "<scheduled-task", "<project_claude_message"];
+
+/// What a prompt says the person typed: the prompt itself; for a `<wake …>` envelope, the person's own message in it
+/// (`text::own_words`, the one definition); None for an envelope with no message from a person (not typed).
+pub fn person_words(prompt: &str) -> Option<std::borrow::Cow<'_, str>> {
+    let t = prompt.trim_start();
+    if !ENVELOPE_OPENINGS.iter().any(|o| t.starts_with(o)) {
+        return Some(std::borrow::Cow::Borrowed(prompt));
+    }
+    match crate::text::own_words(prompt) {
+        w @ std::borrow::Cow::Owned(_) => Some(w),
+        std::borrow::Cow::Borrowed(_) => None,
+    }
+}
+
 /// Rule AGENT: the session ids a first prompt names, other than its own. A sub-agent's brief names the session that
 /// started it ("Parent session a1b2c3d4-… owns integration", or a work folder under that session's state folder).
 /// Measured 2026-11-12, every live session's first prompt in the laptop store (Devbox rows synced in): of 118 Devbox
@@ -349,6 +369,25 @@ mod tests {
         assert!(!written_by_tool("keep going"));
         assert!(!written_by_tool("why did the scheduled prompt #3 fail?"), "only the opening counts");
         assert!(!written_by_tool("what does <system_notification> mean here?"));
+    }
+
+    #[test]
+    fn an_envelope_counts_only_the_persons_own_words() {
+        let wake = "<wake reason=\"mention\" current-time=\"2026-11-12T14:32:26Z\">\n  <project id=\"p\">\n    <thread ts=\"t\">\n      <message trigger=\"true\" from=\"human\" trust=\"principal\" id=\"m1\">why does it say &#34;Sign in&#34;?</message>\n    </thread>\n  </project>\n</wake>";
+        assert_eq!(person_words(wake).as_deref(), Some("why does it say \"Sign in\"?"));
+        let system = "<wake reason=\"spawn\"><message trigger=\"true\" from=\"system\">You are a thread session.</message></wake>";
+        assert_eq!(person_words(system), None, "a message from the system is not typed");
+        assert_eq!(person_words("<relay from=\"coordinator\"><note>Do the thing.</note></relay>"), None);
+        assert_eq!(person_words("<task-notification> <task-id>b5</task-id></task-notification>"), None);
+        assert_eq!(person_words("<scheduled-task name=\"x\">run it</scheduled-task>"), None);
+        let two = "<wake reason=\"mention\"><message from=\"human\">one</message><message from=\"human\">two</message></wake>";
+        assert_eq!(person_words(two).as_deref(), Some("one\ntwo"));
+        assert_eq!(person_words("fix the <b> tag in index.html").as_deref(), Some("fix the <b> tag in index.html"));
+        assert_eq!(
+            person_words("<div> is wrapping wrong").as_deref(),
+            Some("<div> is wrapping wrong"),
+            "not an envelope"
+        );
     }
 
     #[test]
