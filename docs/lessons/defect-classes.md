@@ -1100,3 +1100,23 @@ summary: >-
   test proves a stopped sync thread can't create the store again after the delete.
 - **Rule:** a background thread opens the store only for one unit of work. Deleting everything first stops every
   thread that can open the store.
+
+### DC-061 — One step that fails on a real drive link hides everything that comes after it
+- **Signature:** 2026-11-12, Imran's laptop and Devbox on 0.1.46, the first real sync. The Devbox copied
+  `00000001.jsonl` (07:47:22Z) and `00000002.jsonl` (07:49:24Z) into the laptop's `.aiq\sync\<devbox id>\`. Then
+  `00000003.part` (873 bytes, whole: 3 lines, header `rows:2`) was rewritten every minute and never renamed. The
+  Devbox wrote its `computer.json` only after every file had copied, so the laptop never saw the Devbox: no peer,
+  no switch, setting still `unset`. The OS error was not recorded anywhere; only the code `AIQ-SYNC-WRITE` was.
+- **Why it survives:** the tests used two local temp folders, where a rename never fails. The pass chained the
+  entry after the copy (`mirror(..).is_err() || write_whole(computer.json)`), so a failed copy also skipped the
+  entry. And the log kept the code without the error text, so the cause could only be inferred.
+- **Sweep:** every write `sync.rs` makes across the link: change files, `computer.json` (both now go through one
+  `write_whole` that retries the rename and then writes in place), and the status file (local). The reader already
+  rejects a file whose line count doesn't match its header, so writing in place is safe. The cause of the refused
+  rename (a scanner holding the fresh file is the leading guess) is still **not measured**. The new
+  `sync rename refused` warning in `aiq.log` records the OS error text the next time it happens.
+- **Control (tests):** `a_file_that_will_not_copy_to_the_laptop_still_lets_the_laptop_see_the_devbox` (red before
+  the fix), `a_rename_the_drive_refuses_still_leaves_the_whole_file_and_no_part`, and
+  `a_rename_that_works_on_a_later_try_is_used`.
+- **Rule:** across a link we don't control, write the "I'm here" record first and keep it separate from the
+  copies. Log the OS error text for every failed write, not just the code.
