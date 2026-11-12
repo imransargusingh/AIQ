@@ -21,7 +21,9 @@ use std::time::Instant;
 mod detail;
 pub mod diagnostics;
 mod twins;
-pub use detail::{TRIES, TaskAnalysis, TaskDetail, TaskPromptText, judge_log_reply, task_analysis, task_detail};
+pub use detail::{
+    HeldTip, TRIES, TaskAnalysis, TaskDetail, TaskPromptText, TaskTips, judge_log_reply, task_analysis, task_detail,
+};
 
 pub const SCHEMA: &str = "aiq.home.v1";
 /// Home's window (spec Q3).
@@ -707,6 +709,10 @@ pub struct TipRow {
     pub tip_id: String,
     /// A next-step tip's habit in the tasks after it (UI review item 6); None for tips with no habit behind them.
     pub after: Option<TipAfter>,
+    /// The task the tip came from (the signal's task: its first prompt's event id). None when not recorded.
+    pub task_id: Option<String>,
+    /// The person's newest answer to this tip: helpful · not_helpful · snooze · off. None when not answered.
+    pub answer: Option<String>,
 }
 
 /// Of the first `checked` judged tasks after a tip where its habit fits (at most `coach::AFTER_TIP_TASKS`),
@@ -1136,10 +1142,19 @@ fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()>
     {
         let has_open = store.has_table("card_open").map_err(|e| e.to_string())?;
         let opened = if has_open { "EXISTS (SELECT 1 FROM card_open o WHERE o.card_id = d.card_id)" } else { "0" };
+        let answer = if store.has_table("tip_feedback").map_err(|e| e.to_string())? {
+            "(SELECT f.answer FROM tip_feedback f WHERE f.card_id = d.card_id
+               AND f.answer IN ('helpful', 'not_helpful', 'snooze', 'off') ORDER BY f.feedback_id DESC LIMIT 1)"
+        } else {
+            "NULL"
+        };
         let sql = format!(
             "SELECT d.card_id, d.surface, d.delivered_utc_ms,
                     (SELECT x.card_json FROM card_decision x WHERE x.card_id = d.card_id ORDER BY x.rowid DESC LIMIT 1),
-                    {opened}
+                    {opened},
+                    (SELECT s.task_id FROM card_decision x JOIN signal s ON s.signal_id = x.signal_id
+                      WHERE x.card_id = d.card_id ORDER BY x.rowid DESC LIMIT 1),
+                    {answer}
              FROM card_delivery d WHERE d.delivered_utc_ms >= ?1 ORDER BY d.delivered_utc_ms DESC, d.card_id"
         );
         let mut st = q(c.prepare(&sql))?;
@@ -1150,10 +1165,12 @@ fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()>
                 r.get::<_, i64>(2)?,
                 r.get::<_, Option<String>>(3)?,
                 r.get::<_, bool>(4)?,
+                r.get::<_, Option<String>>(5)?,
+                r.get::<_, Option<String>>(6)?,
             ))
         }))?;
         for r in it {
-            let (card_id, tool, at, json, opened) = q(r)?;
+            let (card_id, tool, at, json, opened, task_id, answer) = q(r)?;
             let card = json.and_then(|j| serde_json::from_str::<CardV1>(&j).ok());
             let (noticed, why, try_this, tip_id) = match card {
                 Some(c) => (c.noticed, c.why, c.try_this, c.tip_id),
@@ -1167,7 +1184,19 @@ fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()>
                         aiq_domain::coach::after_tip(&judged_all, m, at, aiq_domain::coach::AFTER_TIP_TASKS);
                     TipAfter { seen, checked }
                 });
-            s.tips.push(TipRow { card_id, tool, delivered_ms: at, noticed, why, try_this, opened, tip_id, after });
+            s.tips.push(TipRow {
+                card_id,
+                tool,
+                delivered_ms: at,
+                noticed,
+                why,
+                try_this,
+                opened,
+                tip_id,
+                after,
+                task_id,
+                answer,
+            });
         }
     }
 
