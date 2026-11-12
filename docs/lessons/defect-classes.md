@@ -1120,3 +1120,21 @@ summary: >-
   `a_rename_that_works_on_a_later_try_is_used`.
 - **Rule:** across a link we don't control, write the "I'm here" record first and keep it separate from the
   copies. Log the OS error text for every failed write, not just the code.
+
+### DC-062 — Prompts an agent or the tool wrote are counted as the person's tasks
+- **Signature:** 2026-11-12, Imran's Devbox (Copilot CLI, multi-agent fleet runs), read on the laptop after sync.
+  138 Devbox tasks, 105 on Assisted. 104 sessions' first prompts were sub-agent briefs the parent agent wrote; each
+  named the parent's session id. 11 more tasks opened with `<system_notification> Agent … has finished` or
+  `[Scheduled prompt #N]`. AIQ counted all of them as typed. The analysis saw a one-prompt task with no recorded
+  agent actions (a sub-agent has no session log of its own: 95 of 95 such sessions `no_log`) and placed it low.
+- **Why it survives:** the automated rules look at folders, bursts, templates and turn-end timing. A sub-agent's brief
+  is long, varied, in the person's own folder, and arrives minutes after the parent's prompt, so none of them fired.
+- **Sweep:** ingest (`service::automated`, now rules TOOL and AGENT before rule FAST, all surfaces) and every reader
+  of live prompts that builds tasks (`aiq_home::task_list`, which also feeds the analysis queue through `own_tasks`).
+  Imported sessions keep the import's own rule. Not covered: a tool's hook text such as `tacit:` (35 rows), which
+  rule FAST only catches inside 5 s.
+- **Control (tests):** `a_sub_agents_brief_and_tool_written_prompts_are_not_counted` (core),
+  `sub_agent_briefs_and_tool_written_prompts_are_not_tasks` (Home, rows already stored or synced),
+  `tool_written_openings_are_not_typed`, `a_brief_naming_another_session_lists_that_id_once` (domain).
+- **Rule:** a prompt that names another live session, or opens with a mark only the tool writes, was not typed. Apply
+  each automated rule on both sides: at ingest, and when reading rows stored before the rule.

@@ -65,6 +65,8 @@ describe("Right now with nothing open (Imran 2026-11-08)", () => {
     expect(asideText(q.aside)).toBe("Claude's own work in a claude.ai project isn't counted. Turns you type yourself count.");
     expect(asideText([{ name: "Copilot", aside: "burst" }])).toBe("Work in Copilot that an app or script runs isn't counted. Turns you type yourself count.");
     expect([ownWorkLabel("projects"), ownWorkLabel("not-typed"), ownWorkLabel("burst")]).toEqual(["Claude's own work", "started by an app", "automated"]);
+    expect(ownWorkLabel("agent")).toBe("your agent's sub-agents");
+    expect(asideText([{ name: "Copilot", aside: "agent" }])).toBe("Sub-agents your agent started in Copilot aren't counted. Turns you type yourself count.");
   });
   it("keeps a tool with only automated work apart from one never heard (Imran 2026-11-11)", () => {
     const tools = [{ tool: "claude-code" as const, hooked: true, present: true, install: "" }];

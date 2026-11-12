@@ -1387,6 +1387,32 @@ impl Store {
             .map_err(err(codes::STORE_OPEN))
     }
 
+    /// Whether this tool has a session with this id, letter case ignored (a prompt may name an id in capitals).
+    pub fn session_known_any_case(&self, surface: &str, session: &str) -> Result<bool> {
+        self.conn
+            .query_row(
+                "SELECT EXISTS (SELECT 1 FROM surface_session WHERE surface = ?1 AND lower(surface_session_id) = lower(?2))",
+                params![surface, session],
+                |r| r.get(0),
+            )
+            .map_err(err(codes::STORE_OPEN))
+    }
+
+    /// The rule that set this live session aside at its first prompt, if one did. None before v10.
+    pub fn set_aside_reason(&self, surface: &str, session: &str) -> Result<Option<String>> {
+        if !self.has_table("set_aside_session")? {
+            return Ok(None);
+        }
+        self.conn
+            .query_row(
+                "SELECT reason FROM set_aside_session WHERE surface = ?1 AND surface_session_id = ?2",
+                params![surface, session],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(err(codes::STORE_OPEN))
+    }
+
     pub fn insert_open(&self, card_id: &str, surface: &str, now_ms: i64) -> Result<()> {
         self.conn
             .execute(

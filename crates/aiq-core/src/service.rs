@@ -9,7 +9,9 @@ use aiq_contracts::codes;
 use aiq_contracts::event::{EventBody, EventV1, MAX_SESSION_ID};
 use aiq_contracts::frames::{CoachStatus, EvidencePrompt, LeanedOn, ShowReply, StatusReply};
 use aiq_contracts::pack::PackV1;
-use aiq_domain::automated::{Guard, Verdict, folder_key, is_aiq_check_folder, sent_by_turn_end_hook};
+use aiq_domain::automated::{
+    Guard, Verdict, folder_key, is_aiq_check_folder, named_sessions, sent_by_turn_end_hook, written_by_tool,
+};
 use aiq_domain::card::{compose, compose_move};
 use aiq_domain::clock::{Clock, deliveries_counted_today};
 use aiq_domain::coach::{self, HabitState, TipPref};
@@ -116,6 +118,8 @@ pub struct Service<C: Clock> {
     last_stop: std::collections::HashMap<(String, String), i64>,
     /// Rule FAST: sessions whose current turn a turn-end hook started, so its Stop is left out with it. Bounded.
     fast_turn: std::collections::HashSet<(String, String)>,
+    /// Sessions another session's agent started (rule AGENT): every event is left out.
+    agent_sessions: std::collections::HashSet<(String, String)>,
     /// Per surface, when `note_aside` last wrote and for which rule.
     aside_noted: std::collections::HashMap<String, AsideNoted>,
     /// Held prompts whose record never showed outside a Projects session: counted as the person's (`typed_gate`).
@@ -383,6 +387,7 @@ impl<C: Clock> Service<C> {
             rc_own: Default::default(),
             last_stop: Default::default(),
             fast_turn: Default::default(),
+            agent_sessions: Default::default(),
             aside_noted: Default::default(),
             rc_force_own: Default::default(),
             rc_matched: Default::default(),
@@ -1577,6 +1582,47 @@ impl<C: Clock> Service<C> {
         }
     }
 
+    /// Rule AGENT (`automated::named_sessions`): a session whose first prompt names another session AIQ has on the same
+    /// tool was started by that session's agent (a sub-agent's brief), so none of its events count. Kept in memory and
+    /// as a `set_aside_session` row, so a later prompt in it is still left out after the core restarts. A session that
+    /// is already recorded is never set aside by this rule.
+    fn agent_gate(&mut self, ev: &EventV1) -> Result<Option<Gate>, StoreError> {
+        let key = (ev.surface.clone(), ev.surface_session_id.clone());
+        if self.agent_sessions.contains(&key) {
+            return Ok(Some(Gate::Skip("agent")));
+        }
+        if self.store.session_known(&ev.surface, &ev.surface_session_id)? {
+            return Ok(None);
+        }
+        let remembered = self.store.set_aside_reason(&ev.surface, &ev.surface_session_id)?.as_deref() == Some("agent");
+        if !remembered {
+            let EventBody::Prompt(p) = &ev.body else { return Ok(None) };
+            let names = p.text.as_deref().map(|t| named_sessions(t, &ev.surface_session_id)).unwrap_or_default();
+            let mut started_by_agent = false;
+            for id in &names {
+                if self.store.session_known_any_case(&ev.surface, id)? {
+                    started_by_agent = true;
+                    break;
+                }
+            }
+            if !started_by_agent {
+                return Ok(None);
+            }
+            let folder = ev.cwd.as_deref().map(folder_key).unwrap_or_default();
+            let now = self.clock.now().utc_ms;
+            if let Err(e) =
+                self.store.insert_set_aside_session(&ev.surface, &ev.surface_session_id, &folder, "agent", now)
+            {
+                warn!(error.code = e.code, "set-aside session not noted");
+            }
+        }
+        if self.agent_sessions.len() >= 4096 {
+            self.agent_sessions.clear();
+        }
+        self.agent_sessions.insert(key);
+        Ok(Some(Gate::Skip("agent")))
+    }
+
     /// The automated-session rule, live side. A skip names its rule (`projects`, `aiq-check`, `session`,
     /// `folder`, `template`, `burst`) for the log.
     fn automated(&mut self, ev: &EventV1) -> Result<Gate, StoreError> {
@@ -1592,6 +1638,15 @@ impl<C: Clock> Service<C> {
             && !self.rc_included(ev)?
             && let Some(gate) = self.typed_gate(ev, marker)?
         {
+            return Ok(gate);
+        }
+        // Rule TOOL: a prompt the tool wrote (a background agent's notification, a scheduled run).
+        if let EventBody::Prompt(p) = &ev.body
+            && p.text.as_deref().is_some_and(written_by_tool)
+        {
+            return Ok(Gate::Skip("not-typed"));
+        }
+        if let Some(gate) = self.agent_gate(ev)? {
             return Ok(gate);
         }
         // Rule FAST: a turn-end hook's prompt (`automated::sent_by_turn_end_hook`). Claude Code's own record says who

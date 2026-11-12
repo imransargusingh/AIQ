@@ -805,3 +805,45 @@ fn task_detail_shows_the_tasks_tips() {
     assert_eq!(det.tips.step_words, "AIQ wasn't sure what kind of task it was");
     assert!(det.tips.step_help.starts_with("AIQ reads how a task starts."));
 }
+
+// Devbox 2026-11-12: rows stored (or synced from a computer) before the core's TOOL and AGENT rules. A sub-agent's brief
+// names its parent's session id, and the tool writes notifications and scheduled prompts: none is the person's task.
+#[test]
+fn sub_agent_briefs_and_tool_written_prompts_are_not_tasks() {
+    let d = tempfile::tempdir().unwrap();
+    let p = Paths::at(d.path());
+    let mut s = Seed::new(&p);
+    let parent = "a1b2c3d4-4040-446f-ab83-9bed2f4ecfb0";
+    let t0 = NOW - 10 * 3_600_000;
+    let min = 60_000;
+    s.prompt("copilot-cli", parent, t0, Some("c:\\repos\\work"), "You are now in fleet mode. Finish the plan.");
+    let brief = format!("Implement one bounded slice. Parent session {} owns integration.", parent.to_uppercase());
+    s.prompt("copilot-cli", "9b2d1e40-1111-4222-8333-944455556666", t0 + min, Some("c:\\repos\\work"), &brief);
+    s.prompt(
+        "copilot-cli",
+        "9b2d1e40-1111-4222-8333-944455556666",
+        t0 + 2 * min,
+        Some("c:\\repos\\work"),
+        "And the test.",
+    );
+    let late = t0 + 3 * 3_600_000;
+    s.prompt("copilot-cli", parent, late, None, "<system_notification> Agent \"slice\" has finished.");
+    s.prompt("copilot-cli", parent, late + min, None, "keep going");
+    s.prompt("copilot-cli", parent, late + 5 * 3_600_000, None, "[Scheduled prompt #1] Continue the plan.");
+    s.prompt(
+        "copilot-cli",
+        "5d6e7f80-1111-4222-8333-944455556666",
+        late,
+        None,
+        "why did 0000aaaa-1111-4222-8333-944455556666 stall?",
+    );
+    drop(s);
+    let snap = snap(&p);
+    let mut got: Vec<(&str, u32)> = snap.tasks.iter().map(|t| (t.session.as_str(), t.prompts)).collect();
+    got.sort();
+    assert_eq!(
+        got,
+        vec![("5d6e7f80-1111-4222-8333-944455556666", 1), (parent, 1), (parent, 1)],
+        "the fleet prompt and 'keep going' are the person's; an unknown id names no parent"
+    );
+}
