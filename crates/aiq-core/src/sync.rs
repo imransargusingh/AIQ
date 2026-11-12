@@ -8,7 +8,7 @@
 //!
 //! The setting `sync` is `on` or `off`; unset = never decided. The laptop turns on by itself the first time a
 //! computer the person connected from joins (its folder appears) — the person chose "Keep in sync" there.
-use crate::paths::{Paths, write_user_only};
+use crate::paths::Paths;
 use aiq_store::Store;
 use aiq_store::sync::{Applied, Segment};
 use serde::{Deserialize, Serialize};
@@ -126,14 +126,54 @@ fn seg_name(seq: i64) -> String {
     format!("{seq:08}.jsonl")
 }
 
-/// Write a whole file or nothing: a temp file beside it, then a rename, so a reader never sees half a file.
+/// Write a whole file: a temp file beside it, then one rename, so a reader normally never sees half a file.
 fn write_whole(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    write_whole_with(path, bytes, |a, b| std::fs::rename(a, b))
+}
+
+/// Tries a rename this many times, waiting a little longer each time, before writing in place.
+const RENAME_TRIES: u32 = 5;
+
+fn write_whole_with(
+    path: &Path,
+    bytes: &[u8],
+    rename: impl Fn(&Path, &Path) -> std::io::Result<()>,
+) -> std::io::Result<()> {
+    use std::io::Write;
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
     let tmp = path.with_extension("part");
-    write_user_only(&tmp, bytes)?;
-    std::fs::rename(&tmp, path)
+    {
+        let mut o = std::fs::OpenOptions::new();
+        o.create(true).write(true).truncate(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            o.mode(0o600);
+        }
+        let mut f = o.open(&tmp)?;
+        f.write_all(bytes)?;
+        f.sync_all()?;
+    }
+    // Over Remote Desktop's drive link a fresh file can refuse a rename for a while (2026-11-12: a Devbox's
+    // third file stayed `.part` on the laptop pass after pass). Try again briefly, then write the file in place:
+    // readers check each change file's line count against its header, so a half-written one is tried again next
+    // pass and never applied, and a half-written `computer.json` does not parse.
+    let mut last = None;
+    for i in 0..RENAME_TRIES {
+        match rename(&tmp, path) {
+            Ok(()) => return Ok(()),
+            Err(e) => last = Some(e),
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100 * u64::from(i + 1)));
+    }
+    if let Some(e) = last {
+        tracing::warn!(error.code = aiq_contracts::codes::SYNC_WRITE, error = %e, "sync rename refused; writing in place");
+    }
+    std::fs::write(path, bytes)?;
+    let _ = std::fs::remove_file(&tmp);
+    Ok(())
 }
 
 fn read_computer(dir: &Path) -> Option<Computer> {
@@ -289,8 +329,11 @@ pub fn pass(store: &mut Store, paths: &Paths, remote: &[PathBuf], now_ms: i64) -
         st.errors.push(aiq_contracts::codes::SYNC_WRITE.into());
     }
     for r in &remote_sync {
+        // This computer's entry goes first, so the other computer sees it even while a file won't copy.
         let to = r.join(&me);
-        if mirror(&mine, &to).is_err() || write_whole(&to.join(SELF_FILE), &me_json(true)).is_err() {
+        let copied = write_whole(&to.join(SELF_FILE), &me_json(true)).and_then(|()| mirror(&mine, &to));
+        if let Err(e) = copied {
+            tracing::warn!(error.code = aiq_contracts::codes::SYNC_WRITE, error = %e, "sync could not copy to another computer");
             st.errors.push(aiq_contracts::codes::SYNC_WRITE.into());
         }
     }
@@ -427,5 +470,33 @@ pub fn run(paths: Paths) {
             }
         }
         std::thread::sleep(NOTICE);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_rename_the_drive_refuses_still_leaves_the_whole_file_and_no_part() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("sync").join("a").join("00000001.jsonl");
+        let refused = |_: &Path, _: &Path| Err(std::io::Error::other("refused"));
+        write_whole_with(&p, b"line 1\nline 2\n", refused).unwrap();
+        assert_eq!(std::fs::read(&p).unwrap(), b"line 1\nline 2\n");
+        assert!(!p.with_extension("part").exists());
+    }
+
+    #[test]
+    fn a_rename_that_works_on_a_later_try_is_used() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("computer.json");
+        let tries = std::cell::Cell::new(0);
+        let flaky = |a: &Path, b: &Path| {
+            tries.set(tries.get() + 1);
+            if tries.get() < 3 { Err(std::io::Error::other("busy")) } else { std::fs::rename(a, b) }
+        };
+        write_whole_with(&p, b"{}", flaky).unwrap();
+        assert_eq!((tries.get(), std::fs::read(&p).unwrap()), (3, b"{}".to_vec()));
     }
 }

@@ -161,3 +161,25 @@ fn once_the_core_deletes_everything_the_sync_thread_never_opens_the_store_again(
     aiq_core::sync::run(paths.clone());
     assert!(!paths.db().exists(), "a stopped sync thread must not create the store again");
 }
+
+#[test]
+fn a_file_that_will_not_copy_to_the_laptop_still_lets_the_laptop_see_the_devbox() {
+    // 2026-11-12, Imran's laptop and Devbox: the Devbox copied two files, then its third stayed a `.part` on the
+    // laptop pass after pass, and the laptop never saw the Devbox because the Devbox wrote its own entry only after
+    // every file had copied. A file that won't copy must not hide the computer.
+    let laptop = computer();
+    let mut devbox = computer();
+    prompt(&mut devbox, "dev-1", "fix the failing export test", 10);
+    let lap_home = laptop.paths.data.clone();
+    let dev_id = devbox.store.device_id().unwrap();
+    // Block the first file's copy: its temp name on the laptop is a folder with something in it.
+    let blocked = lap_home.join("sync").join(&dev_id).join("00000001.part");
+    std::fs::create_dir_all(blocked.join("x")).unwrap();
+    devbox.store.set_setting(SETTING_SYNC, "on", 20).unwrap();
+    let st = pass(&mut devbox.store, &devbox.paths, std::slice::from_ref(&lap_home), 30);
+    assert!(st.errors.iter().any(|e| e == "AIQ-SYNC-WRITE"), "{:?}", st.errors);
+    assert!(
+        lap_home.join("sync").join(&dev_id).join("computer.json").exists(),
+        "the laptop can see the Devbox even while a file won't copy"
+    );
+}
