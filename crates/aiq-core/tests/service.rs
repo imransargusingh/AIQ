@@ -1937,3 +1937,53 @@ fn a_long_prompt_a_turn_end_hook_sends_is_left_out_with_its_stop() {
     at(&mut h, 5_000, p(&hook)); // 5 s after: may be typed, counts
     assert_eq!((h.prompts(), h.stops()), (4, 3));
 }
+
+// DC-059: a prompt hook whose 20 ms send ran out spools the frame, but its send thread can still finish writing it
+// before the process exits, so the core gets the same event twice (by socket and by spool). The store keeps it once,
+// but the copy was matched against the transcript first and took the next prompt's record, so that prompt waited 10 s
+// for a record that was already taken (Windows CI 2026-11-12, PR #248: 7 of 8 prompts, `AIQ-HOOK-SPOOLED 2`).
+#[test]
+fn a_prompt_delivered_twice_never_takes_the_next_prompts_transcript_record() {
+    // Next record not written yet when the copy arrives (the copy waits), and already written (it would take it now).
+    for next_written_first in [false, true] {
+        let d = tempfile::tempdir().unwrap();
+        let t = d.path().join("cli.jsonl");
+        let mut h = H::new();
+        let record = |h: &mut H, t: &std::path::Path| {
+            let ts = format_rfc3339_ms(h.clock.now().utc_ms);
+            let line = format!(
+                "{{\"type\":\"user\",\"turnOrigin\":\"human\",\"entrypoint\":\"cli\",\"timestamp\":\"{ts}\"}}\n"
+            );
+            let mut f = std::fs::OpenOptions::new().create(true).append(true).open(t).unwrap();
+            std::io::Write::write_all(&mut f, line.as_bytes()).unwrap();
+        };
+        // Typed a moment apart, as in the end-to-end test: its record, then the hook's event.
+        let prompt = |h: &mut H, t: &std::path::Path, text: &str| {
+            h.clock.advance(300);
+            record(h, t);
+            let id = h.id();
+            let body = EventBody::Prompt(PromptPayload {
+                text: Some(text.into()),
+                chars: text.len() as u64,
+                prompt_id: Some(format!("p-{id}")),
+                truncated: false,
+            });
+            let mut e = ev(&id, "s1", h.clock.now().utc_ms, body);
+            e.transcript = Some(t.to_string_lossy().into_owned());
+            e
+        };
+        let first = prompt(&mut h, &t, BASE);
+        h.svc().ingest(&first, None);
+        let second = prompt(&mut h, &t, R1);
+        h.svc().ingest(&second, None); // from the spool
+        if !next_written_first {
+            h.svc().ingest(&second, None); // the same frame by the socket
+        }
+        let third = prompt(&mut h, &t, R2);
+        if next_written_first {
+            h.svc().ingest(&second, None); // the copy arrives after the next record is written
+        }
+        h.svc().ingest(&third, None);
+        assert_eq!(h.prompts(), 3, "every prompt stored at once (next written first: {next_written_first})");
+    }
+}
