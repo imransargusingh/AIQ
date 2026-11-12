@@ -87,7 +87,8 @@ home there and press **Keep in sync**: your work from both computers shows in on
 code to type and nothing to set up on the laptop. Your data goes straight between your two computers, through
 the Remote Desktop connection you already have, and is stored nowhere else. Each computer analyzes its own
 tasks, and tips a day and quiet times count across both. **Settings > Your computers** shows each computer and
-when it was last in sync, and one switch turns sync off (each computer keeps what it has).
+when it was last in sync, and one switch turns sync off (each computer keeps what it has). In **Tasks**, a task
+from the other computer carries that computer's name, and the **Computer** filter shows one computer's tasks.
 
 ![Settings: tips a day, the open-task estimate switch, and next-step tip options](docs/images/readme/settings-tips.png)
 

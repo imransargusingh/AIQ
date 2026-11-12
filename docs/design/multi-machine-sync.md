@@ -85,7 +85,9 @@ Imran ruled out running a relay server. So slice 1 moves files over the Remote D
 - **Settings > Your computers:** this computer, each other computer with "In sync · 1 min ago", "Sync is off on
   …", "runs a newer AIQ", or "catches up next time you connect", and one **Keep in sync** switch. Off = each keeps
   what it has, and the other side shows "Sync is off on …".
-- Tasks from the other computer carry its name as a tag.
+- Tasks from the other computer carry its name as a tag, in the Tasks list and on the task's page. Tasks (All tasks
+  and Day) has a Computer filter: All computers, this one, or each other computer. It shows only once another
+  computer's task is here.
 
 ## Instrumentation
 
@@ -95,9 +97,13 @@ setting, computers in reach, peers, rows waiting to be sent, error codes (`AIQ-S
 
 ## Not in slice 1
 
-- Computers on the same network without Remote Desktop (direct pairing with a code).
+- Sync without Remote Desktop. Parked by Imran (2026-11-12) until the Remote Desktop path has been used for a while.
+  Options weighed, ranked: (1) encrypted change files in the person's own OneDrive folder, which works for a laptop
+  and a Devbox (about two PRs; ciphertext only on OneDrive; not yet checked that the Devbox has the same OneDrive);
+  (2) direct pairing with a code on the same network (about three PRs; may raise a firewall prompt; doesn't reach a
+  Devbox, whose private address the VPN doesn't route, as measured in the 2026-11-12 spike).
 - Preferences that follow you (tips a day, tips turned off).
 - "Delete its tasks here" when removing a computer, and "Delete everything on all my computers".
-- An All computers / this computer filter on Home (tasks carry the tag already).
+- A split by computer on Home, Progress or Tips (Tasks has the filter).
 - Old change files are kept (≤ ~0.2 MB a day); pruning comes with direct pairing.
 - Encryption at rest of the store (a lost computer keeps its copy).
