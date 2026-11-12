@@ -136,6 +136,36 @@ impl Store {
             .map_err(err(codes::STORE_OPEN))
     }
 
+    /// Sync is not on and this computer has never sent a file: drop the queue. A computer that never syncs keeps no
+    /// row per fact; the queue is rebuilt from the tables when sync first turns on (`sync_queue_all_if_never_sent`).
+    pub fn sync_drop_queue_if_never_sent(&mut self) -> Result<()> {
+        self.conn
+            .execute("DELETE FROM sync_outbox WHERE NOT EXISTS (SELECT 1 FROM sync_export)", [])
+            .map(|_| ())
+            .map_err(err(codes::STORE_WRITE))
+    }
+
+    /// Sync is on and this computer has never sent a file: queue every row recorded here, parents first, in one
+    /// transaction, so the first files carry everything (the queue may have been dropped while sync was off).
+    pub fn sync_queue_all_if_never_sent(&mut self) -> Result<()> {
+        let tx = self.conn.transaction().map_err(err(codes::STORE_WRITE))?;
+        let sent: bool = tx
+            .query_row("SELECT EXISTS (SELECT 1 FROM sync_export)", [], |r| r.get(0))
+            .map_err(err(codes::STORE_OPEN))?;
+        if sent {
+            return Ok(());
+        }
+        tx.execute("DELETE FROM sync_outbox", []).map_err(err(codes::STORE_WRITE))?;
+        for (t, _) in SYNCED {
+            tx.execute(
+                &format!("INSERT INTO sync_outbox (tbl, row_id) SELECT '{t}', rowid FROM {t} WHERE computer IS NULL ORDER BY rowid"),
+                [],
+            )
+            .map_err(err(codes::STORE_WRITE))?;
+        }
+        tx.commit().map_err(err(codes::STORE_WRITE))
+    }
+
     /// Rows and deletes recorded here and not yet in a change file.
     pub fn sync_pending(&self) -> Result<u64> {
         self.conn
@@ -223,6 +253,8 @@ impl Store {
             params![seg.seq, new_row, new_del, seg.lines.len() as i64, now_ms],
         )
         .map_err(err(codes::STORE_WRITE))?;
+        // A row in a written file is never cut again (old files are kept), so its queue entry goes.
+        tx.execute("DELETE FROM sync_outbox WHERE n <= ?1", [new_row]).map_err(err(codes::STORE_WRITE))?;
         tx.commit().map_err(err(codes::STORE_WRITE))?;
         Ok(Some(seg))
     }
