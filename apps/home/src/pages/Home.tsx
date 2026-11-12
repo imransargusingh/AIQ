@@ -74,7 +74,7 @@ export function Home(ctx: Ctx) {
             <span className="meta">{h.analysis.state === "off" ? "Analysis is off" : "Not analyzed yet"}</span>
           )}
           <span className="meta">
-            {(ctx.project === null && analysisLine(h.analysis)) ||
+            {(ctx.project === null && h.analysis.state !== "blocked" && analysisLine(h.analysis)) ||
               (h.judged > 0 ? `${plural(h.judged, "task")} analyzed in ${h.window_days} days` : "No task analyzed yet")}
           </span>
           {mc && <span className="meta means">{RUNGS[mc - 1].means}</span>}

@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api } from "./api";
 import type { Snapshot } from "./types";
-import { RUNGS, rungLabel } from "./format";
+import { RUNGS, rungLabel, plural, when } from "./format";
 import { ver, type UpdatePhase } from "./updateNow";
 import type { Theme } from "./theme";
 
@@ -82,11 +82,42 @@ export function Title({ children, sr = false }: { children: ReactNode; sr?: bool
   );
 }
 
-/** Error, core down, paused: shown at the top of every page. */
-export function Banners({ snap, togglePause, refresh }: Pick<Ctx, "snap" | "togglePause" | "refresh">) {
+const TOOL_NAME = { "copilot-cli": "Copilot CLI", "claude-code": "Claude Code" } as const;
+const SIGN_IN_NAME = { "copilot-cli": "Copilot", "claude-code": "Claude Code" } as const;
+
+/** "14:05 today", "09:12 yesterday", "Sat 31 Oct 18:40". */
+function sinceWords(ms: number, nowMs: number, offsetMin: number): string {
+  return when(ms, nowMs, offsetMin).replace(/^(Today|Yesterday) (.*)$/, (_, d: string, t: string) => `${t} ${d.toLowerCase()}`);
+}
+
+/** Analysis can't run because the tool it goes through is signed out or missing: on every page, until it runs again. */
+function AnalysisBlocked({ snap, announce }: Pick<Ctx, "snap" | "announce">) {
+  const a = snap.home.analysis;
+  const b = a.blocked;
+  if (a.state !== "blocked" || !b) return null;
+  const out = b.why === "not_signed_in";
+  const act = async () => {
+    const r = out ? await api.openSignIn(b.tool) : await api.openHelp(b.tool);
+    announce(r.ok ? (out ? `Opened ${SIGN_IN_NAME[b.tool]}. Type /login there; AIQ picks up by itself.` : "Opened the install page.") : r.message);
+  };
+  return (
+    <div className="banner" role="alert" data-testid="analysis-blocked">
+      <div className="grow">
+        <b>{out ? `${TOOL_NAME[b.tool]} is signed out, so AIQ can't analyze your tasks.` : `AIQ can't find ${TOOL_NAME[b.tool]}, so it can't analyze your tasks.`}</b>{" "}
+        Since {sinceWords(b.since_ms, snap.now_ms, snap.offset_min)}.{" "}
+        {plural(a.waiting, "task")} wait. {out ? "Sign in once and AIQ catches up by itself." : "Install it and AIQ catches up by itself."}
+      </div>
+      <button className="btn pri" onClick={act}>{out ? `Sign in to ${SIGN_IN_NAME[b.tool]}` : `Get ${TOOL_NAME[b.tool]}`}</button>
+    </div>
+  );
+}
+
+/** Analysis stuck, error, core down, paused: shown at the top of every page. */
+export function Banners({ snap, togglePause, refresh, announce }: Pick<Ctx, "snap" | "togglePause" | "refresh" | "announce">) {
   const s = snap.status;
   return (
     <>
+      {!s.paused && <AnalysisBlocked snap={snap} announce={announce} />}
       {s.error && (
         <div className="banner bad" role="alert">
           <div className="grow">

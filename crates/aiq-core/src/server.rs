@@ -564,6 +564,11 @@ pub fn tip_line_reply(out: Option<TipLineOut>, plain: bool, tool: Option<&str>) 
             let (line, line_plain) = lines(&|color| render_trend_line(&m, color));
             TipLineReply { milestone: Some(m), plain, line, line_plain, ..Default::default() }
         }
+        // Not a tip: the trend's cyan, so it reads as AIQ's own state, never as coaching.
+        Some(TipLineOut::Notice(n)) => {
+            let (line, line_plain) = lines(&|color| render_trend_line(&n, color));
+            TipLineReply { notice: Some(n), plain, line, line_plain, ..Default::default() }
+        }
         None => TipLineReply::default(),
     }
 }

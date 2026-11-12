@@ -180,17 +180,59 @@ await test("first-run analysis: says what AIQ is doing, that nothing is needed, 
   t = await later.locator("main").innerText();
   assert.match(t, /Today's analysis is done[\s\S]*AIQ does the next 50 tomorrow\./);
   await later.context().close();
-  // Copilot CLI signed out: the reason and one button, which opens the sign-in.
-  const blocked = await open("full", { edit: fresh({ state: "blocked", blocked: { tool: "copilot-cli", why: "not_signed_in" } }) });
+  // Copilot CLI signed out: the banner gives the reason and the one button, which opens the sign-in; the card says what waits.
+  const blocked = await open("full", { edit: fresh({ state: "blocked", blocked: { tool: "copilot-cli", why: "not_signed_in", since_ms: 0 } }) });
   t = await blocked.locator("main").innerText();
-  assert.match(t, /Analysis can't run\s+Copilot CLI isn't signed in, and AIQ analyzes your tasks through it\. 221 tasks wait\./);
-  assert.match(t, /Analysis can't run: Copilot CLI not signed in/);
+  assert.match(await blocked.getByTestId("analysis-blocked").innerText(), /Copilot CLI is signed out, so AIQ can't analyze your tasks\./);
+  assert.match(t, /Analysis can't run\s+221 tasks wait\. AIQ catches up by itself once Copilot CLI works again\./);
+  assert.equal(await blocked.getByRole("button", { name: "Sign in to Copilot" }).count(), 1, "one action, in the banner");
   await blocked.getByRole("button", { name: "Sign in to Copilot" }).click();
   await blocked.waitForFunction(() => window.__AIQ_FIXTURE__.calls.some((c) => c.cmd === "open_sign_in" && c.args.tool === "copilot-cli"));
   assert.deepEqual(await axe(blocked), []);
   if (shots) await blocked.screenshot({ path: join(shots, "home-analysis-blocked.png") });
   assert.deepEqual(blocked.errors, []);
   await blocked.context().close();
+});
+
+await test("an expired sign-in shows on every page of a settled install, with since when and the one button", async () => {
+  // 2026-11-12: the laptop's Claude Code sign-in expired and analysis stopped for 7 hours. Past the first 10 analyzed
+  // tasks Home said so only in one grey line under the rung, so nobody saw it.
+  const H = 3_600_000;
+  const stuck = (b, extra = {}) => (s) => {
+    s.settings.judge = "auto";
+    Object.assign(s.status, { paused: false }, extra);
+    Object.assign(s.home.analysis, { state: "blocked", waiting: 14, blocked: { since_ms: s.now_ms - 2 * H, ...b } });
+  };
+  const page = await open("progress", { edit: stuck({ tool: "claude-code", why: "not_signed_in" }) });
+  const banner = page.getByTestId("analysis-blocked");
+  assert.match(await banner.innerText(), /^Claude Code is signed out, so AIQ can't analyze your tasks\. Since \d\d:\d\d (today|yesterday)\. 14 tasks wait\. Sign in once and AIQ catches up by itself\./);
+  assert.doesNotMatch(await page.locator("section.mainrung").innerText(), /can't run/, "said once, in the banner");
+  assert.doesNotMatch(await banner.innerText(), /judg/i, "users read analyze");
+  await page.getByRole("button", { name: "Sign in to Claude Code" }).click();
+  await page.waitForFunction(() => window.__AIQ_FIXTURE__.calls.some((c) => c.cmd === "open_sign_in" && c.args.tool === "claude-code"));
+  assert.deepEqual(await axe(page), []);
+  if (shots) await page.screenshot({ path: join(shots, "home-signed-out-banner.png") });
+  for (const hash of ["#tasks", "#settings", "#tips"]) {
+    await page.evaluate((h) => (location.hash = h), hash);
+    await page.waitForTimeout(150);
+    assert.equal(await page.getByTestId("analysis-blocked").count(), 1, `banner on ${hash}`);
+  }
+  assert.deepEqual(page.errors, []);
+  await page.context().close();
+  // Not found: the install page instead of a sign-in.
+  const gone = await open("progress", { edit: stuck({ tool: "copilot-cli", why: "missing" }) });
+  assert.match(await gone.getByTestId("analysis-blocked").innerText(), /AIQ can't find Copilot CLI, so it can't analyze your tasks\./);
+  await gone.getByRole("button", { name: "Get Copilot CLI" }).click();
+  await gone.waitForFunction(() => window.__AIQ_FIXTURE__.calls.some((c) => c.cmd === "open_tool_help" && c.args.tool === "copilot-cli"));
+  await gone.context().close();
+  // Paused: the paused banner says why nothing runs; no second banner.
+  const paused = await open("progress", { edit: stuck({ tool: "claude-code", why: "not_signed_in" }, { paused: true }) });
+  assert.equal(await paused.getByTestId("analysis-blocked").count(), 0);
+  await paused.context().close();
+  // Working again: no banner.
+  const ok = await open("progress", { edit: (s) => Object.assign(s.home.analysis, { state: "working", blocked: null }) });
+  assert.equal(await ok.getByTestId("analysis-blocked").count(), 0);
+  await ok.context().close();
 });
 
 await test("every rung name says what it means on hover: Home ladder, Tasks column, task detail", async () => {
@@ -1129,7 +1171,7 @@ const ANALYSIS_STATES = [
   ["retrying", { next_try_ms: 1793527200000, tries: 1, last_try_ms: 1793520000000, reply: "GitHub Copilot CLI was not found." }, /tries again .*Try 1 of 3.*answered: GitHub Copilot CLI was not found\./],
   ["gave_up", { tries: 3, last_try_ms: 1793520000000, reply: "timed out" }, /stopped trying.*3 tries.*answered on the last try: timed out/],
   ["today_done", {}, /Waiting for tomorrow\./],
-  ["blocked", { blocked: { tool: "copilot-cli", why: "missing" } }, /AIQ can't find Copilot CLI on this computer\./],
+  ["blocked", { blocked: { tool: "copilot-cli", why: "missing", since_ms: 0 } }, /AIQ can't find Copilot CLI on this computer\./],
 ];
 for (const theme of ["light", "dark", "contrast"]) {
   await test(`task detail: each analysis state says where the task stands, no axe violations (${theme})`, async () => {

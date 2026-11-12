@@ -1,14 +1,13 @@
 // First-run analysis state (design first-run-analysis): what AIQ is doing with the person's finished tasks, how
-// far it got, and that there is nothing to do. A reason and one action show only when analysis really can't run.
+// far it got, and that there is nothing to do. When analysis can't run, the banner on every page (ui.tsx) gives the
+// reason and the one action; this card only says what waits.
 // Every number is measured from the snapshot; only the finish day is a forecast, from the daily share. The
 // tasks counted are Home's 30-day window, so "of N" matches the weekly chart.
-import { api } from "../api";
 import { RUNGS, day, plural } from "../format";
 import type { Analysis, Snapshot } from "../types";
 import type { Ctx } from "../ui";
 
 const TOOL = { "copilot-cli": "Copilot CLI", "claude-code": "Claude Code" } as const;
-const SIGN_IN = { "copilot-cli": "Copilot", "claude-code": "Claude Code" } as const;
 
 /** "Mon 9 Nov", or "tomorrow" when that is the day. */
 function by(ms: number, snap: Snapshot): string {
@@ -58,7 +57,7 @@ function SoFar({ rungs }: { rungs: number[] }) {
 }
 
 /** The body of "Tasks agents finished" until Home has its first numbers. */
-export function AnalysisCard({ snap, go, announce, project }: Pick<Ctx, "snap" | "go" | "announce" | "project">) {
+export function AnalysisCard({ snap, go, project }: Pick<Ctx, "snap" | "go" | "project">) {
   const a = snap.home.analysis;
   const total = a.analyzed + a.waiting;
   const sp = snap.coaching.split;
@@ -71,28 +70,16 @@ export function AnalysisCard({ snap, go, announce, project }: Pick<Ctx, "snap" |
         <p><button className="btn" onClick={() => go("settings")}>Turn on in Settings</button></p>
       </>
     );
-  if (a.state === "blocked" && a.blocked) {
-    const b = a.blocked;
-    const act = async () => {
-      const r = b.why === "missing" ? await api.openHelp(b.tool) : await api.openSignIn(b.tool);
-      announce(r.ok ? (b.why === "missing" ? "Opened the install page." : `Opened ${SIGN_IN[b.tool]}. Type /login there; AIQ tries again by itself.`) : r.message);
-    };
+  // The reason and the one button are in the banner at the top of every page; the card only says what waits.
+  if (a.state === "blocked" && a.blocked)
     return (
       <>
         <div className="hl"><span style={{ font: "var(--t-title)" }}>Analysis can't run</span></div>
         <p data-testid="analysis-why">
-          {b.why === "missing"
-            ? `AIQ can't find ${TOOL[b.tool]} on this computer, and it analyzes your tasks through it.`
-            : `${TOOL[b.tool]} isn't signed in, and AIQ analyzes your tasks through it.`}{" "}
-          {plural(a.waiting, "task")} wait.
-        </p>
-        <p className="an-act">
-          <button className="btn pri" onClick={act}>{b.why === "missing" ? `Get ${TOOL[b.tool]}` : `Sign in to ${SIGN_IN[b.tool]}`}</button>
-          <span className="meta">AIQ tries again by itself every 10 minutes.</span>
+          {plural(a.waiting, "task")} wait. AIQ catches up by itself once {TOOL[a.blocked.tool]} works again.
         </p>
       </>
     );
-  }
   const heads: Record<Analysis["state"], string> = {
     off: "Analysis is off",
     blocked: "Analysis can't run",

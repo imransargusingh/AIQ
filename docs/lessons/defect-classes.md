@@ -1151,3 +1151,21 @@ summary: >-
   `kept_judgments_with_one_fact_untold_at_two_rungs_are_judged_again`; the replay gate shows no golden-set move.
 - **Rule:** an unknown fact lowers the rung once and marks the task Uncertain; only a confident "no" lowers each
   rung that needs it.
+### DC-064 — Analysis stops and the only sign is a grey line nobody reads
+- **Signature:** 2026-11-12, Imran's laptop. The Claude Code sign-in expired at 15:10Z. From then on, 47 analysis
+  calls failed `not_signed_in` (AIQ-JUDGE-SIGNIN). Nobody noticed for about 7 hours, until a release check read
+  judge.log. Home had 848 tasks, so the first-run "Analysis can't run" card (#140) was not shown. The only signal was
+  one grey line under the rung. Nothing appeared on other pages, on the Copilot CLI status line or in VS Code.
+- **Why it survives:** the blocked state was designed and tested for the first run only. Its card sits in a slot that
+  a settled install fills with numbers, and no test opened a settled Home with a stuck tool. Synced `judge_call` rows
+  from another computer also fed "is this tool working here", so one computer's failure could show on, or hide from,
+  another.
+- **Sweep:** every reader of a tool's newest call (`newest_judge_call_per_provider`, new `tools_down`) is now limited to
+  this computer's rows. Home's banner (`Banners`, every page) and the status line (`Service::quiet_line`) both read
+  the same store query. Not covered: Claude Code's own conversation (signed out, Claude Code says so itself) and
+  VS Code notifications. Seen, not fixed here: `judge_calls_since` (Home's "today" count) also counts synced rows.
+- **Control (tests):** `a_tool_is_down_from_the_first_of_its_unbroken_signed_out_calls_and_up_after_one_good_call`
+  (store), `copilot_status_line_says_analysis_is_stuck_until_the_tool_is_signed_in_again` (core), e2e "an expired
+  sign-in shows on every page of a settled install, with since when and the one button".
+- **Rule:** a state that stops analysis or tips must show on every page and where the person works, with since when
+  and the one thing to do. It must also be tested on a settled install, not only a fresh one.
