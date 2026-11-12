@@ -4,6 +4,7 @@ pub mod autostart;
 pub mod coaching;
 pub mod control;
 pub mod copilot_log;
+pub mod copilot_seen;
 pub mod counters;
 pub mod funnel;
 pub mod ipc;

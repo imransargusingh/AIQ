@@ -245,7 +245,7 @@ await test("Getting started ticks itself from the snapshot (item 7)", async () =
   await page.context().close();
   const full = await open("full");
   const card = full.locator("section[aria-labelledby=gs]");
-  assert.match(await card.innerText(), /Getting started\s+2 of 4 done[\s\S]*Prompts arriving[\s\S]*11 prompts and 7 tasks so far in Copilot CLI, Claude Code, VS Code[\s\S]*Analysis is off[\s\S]*2 of 10 analyzed tasks/);
+  assert.match(await card.innerText(), /Getting started\s+2 of 4 done[\s\S]*Prompts arriving[\s\S]*11 prompts and 7 tasks so far, from Copilot CLI, Claude Code and VS Code\. Last one [\s\S]*Analysis is off[\s\S]*2 of 10 analyzed tasks/);
   assert.deepEqual(await axe(full), []);
   assert.deepEqual(full.errors, []);
   await full.context().close();

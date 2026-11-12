@@ -142,7 +142,7 @@ pub fn run_with(paths: &Paths, labeller: Option<crate::service::LabelRequester>)
         let store = Store::open(&paths.db()).map_err(|e| CoreError { code: e.code, detail: e.detail })?;
         let mut svc = Service::new(store, pack, SystemClock, counters.clone())
             .map_err(|e| CoreError { code: e.code, detail: e.detail })?;
-        svc.set_copilot_home(crate::tools::copilot_home());
+        svc.set_copilot_home(crate::copilot_seen::log_home(paths));
         Ok::<_, CoreError>(svc)
     })();
     let mut svc = match started {
