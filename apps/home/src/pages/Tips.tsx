@@ -250,6 +250,8 @@ export function Tips(ctx: Ctx) {
                   const t = g[0];
                   const tools = [...new Set(g.map((x) => toolName(x.tool)))];
                   const isOff = t.tip_id !== "" && off.has(t.tip_id);
+                  // The newest showing's task, when it is still in the Tasks list (its page opens only then).
+                  const task = t.task_id && snap.tasks.some((x) => x.task_id === t.task_id) ? t.task_id : null;
                   const rung = t.tip_id.startsWith("next_rung.") ? reaches(snap.guide, t.tip_id.slice("next_rung.".length)) : null;
                   return (
                     <tr key={t.card_id}>
@@ -269,7 +271,17 @@ export function Tips(ctx: Ctx) {
                           </span>
                           <span className="mute">Try this: {t.try_this}</span>
                           <TeamToolLine t={teamTool(snap, t.tip_id)} />
-                          <span className="meta">{g.some((x) => x.opened) ? "You opened it" : "Not opened"}</span>
+                          <span className="meta">
+                            {g.some((x) => x.opened) ? "You opened it" : "Not opened"}
+                            {task && (
+                              <>
+                                {" · "}
+                                <button className="btnlink" onClick={() => ctx.openTask(task)}>
+                                  Open its task
+                                </button>
+                              </>
+                            )}
+                          </span>
                         </div>
                       </td>
                       <td style={{ whiteSpace: "nowrap" }}>{tools.join(", ")}</td>

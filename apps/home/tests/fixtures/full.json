@@ -303,7 +303,9 @@
       "try_this": "Say what is wrong with the last answer and add the one fact it lacked.",
       "opened": false,
       "tip_id": "reprompt.restate",
-      "after": null
+      "after": null,
+      "task_id": "019000000018-0000-7000-8000-000000000000",
+      "answer": null
     },
     {
       "card_id": "019000000006-0000-7000-8000-000000000000",
@@ -314,7 +316,9 @@
       "try_this": "Say what is wrong with the last answer and add the one fact it lacked.",
       "opened": true,
       "tip_id": "reprompt.restate",
-      "after": null
+      "after": null,
+      "task_id": "019000000001-0000-7000-8000-000000000000",
+      "answer": null
     }
   ],
   "data": {

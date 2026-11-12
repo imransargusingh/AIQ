@@ -90,7 +90,7 @@ await test("contract: fixtures are aiq.home.v1 snapshots from the Rust read mode
     assert.equal(s.setup.done, f !== "first-run", f);
   }
   const t = JSON.parse(readFileSync(join(fixtures, "task.json"), "utf8"));
-  for (const k of ["task", "prompts", "analysis", "read_ms"]) assert.ok(k in t, `task: ${k}`);
+  for (const k of ["task", "prompts", "analysis", "tips", "read_ms"]) assert.ok(k in t, `task: ${k}`);
 });
 
 for (const theme of ["light", "dark", "contrast"]) {
@@ -2118,6 +2118,65 @@ await test("tip funnel: nothing shows with no task on the tip path", async () =>
   const page = await open("full", { hash: "#tips", edit: (s) => { s.tip_funnel.week = { ...s.tip_funnel.today, tasks: 0, tips: 0 }; s.tip_funnel.droughts = []; } });
   assert.equal(await page.locator("section[aria-labelledby=tf]").count(), 0);
   await page.context().close();
+});
+
+// Design task-tips (Imran 2026-11-12): the task page says which tip showed for the task, the one held back, or why none.
+for (const theme of ["light", "dark", "contrast"]) {
+  await test(`task page: tip for this task, held tip and no tip (${theme})`, async () => {
+    const th = theme === "light" ? undefined : theme;
+    const id = JSON.parse(readFileSync(join(fixtures, "task.json"), "utf8")).task.task_id;
+    const shown = await open("full", { theme: th, hash: `#task/${id}`, editTask: (t) => (t.tips.shown[0].answer = "helpful") });
+    const card = shown.locator("section[aria-labelledby=tt]");
+    await card.waitFor();
+    assert.match(
+      (await card.innerText()).replace(/\s+/g, " "),
+      /^Tip for this task Shown in Claude Code · .+ This request went round 3 times\. .*Try this: Say what is wrong with the last answer and add the one fact it lacked\. You opened it You said: Helpful$/,
+    );
+    assert.deepEqual(await axe(shown), []);
+    assert.deepEqual(shown.errors, []);
+    await shown.context().close();
+
+    const held = await open("full", {
+      theme: th,
+      hash: `#task/${id}`,
+      editTask: (t) => {
+        t.tips.shown = [];
+        t.tips.held = { card_id: "h", decided_ms: 0, noticed: "this looks like a kind of task you repeat.", try_this: "Check the diff.", tip_id: "next_rung.check_code", outcome: "hold", reason: "daily_cap", reason_words: "daily tip limit reached", reason_help: "You can change Tips a day in Settings." };
+      },
+    });
+    const hc = held.locator("section[aria-labelledby=tt]");
+    await hc.waitFor();
+    assert.match((await hc.innerText()).replace(/\s+/g, " "), /Ready, not shown This looks like .* Not shown: daily tip limit reached\. You can change Tips a day in Settings\.$/);
+    assert.deepEqual(await axe(held), []);
+    await held.context().close();
+
+    const none = await open("full", {
+      theme: th,
+      hash: `#task/${id}`,
+      editTask: (t) => Object.assign(t.tips, { shown: [], held: null, step: "no_match", step_words: "kind of task not recognised", step_help: "AIQ reads how a task starts." }),
+    });
+    const nc = none.locator("section[aria-labelledby=tt]");
+    await nc.waitFor();
+    assert.equal((await nc.innerText()).replace(/\s+/g, " ").trim(), "Tip for this task No tip: Kind of task not recognised. AIQ reads how a task starts.");
+    assert.deepEqual(await axe(none), []);
+    await none.context().close();
+  });
+}
+
+await test("tip history: a row opens the task the tip came from", async () => {
+  // The fixture serves task.json's page only, so the row's newest showing points there.
+  const id = JSON.parse(readFileSync(join(fixtures, "task.json"), "utf8")).task.task_id;
+  const page = await open("full", { hash: "#tips", edit: (s) => (s.tips[0].task_id = id) });
+  const row = page.locator("table[aria-label='Tip history'] tbody tr").first();
+  await row.getByRole("button", { name: "Open its task" }).click();
+  await page.waitForSelector("section[aria-labelledby=tt]");
+  assert.match(await page.locator("main").innerText(), /Tip for this task/);
+  assert.deepEqual(page.errors, []);
+  await page.context().close();
+  // A tip whose task left the Tasks list offers no link (its page would not open).
+  const gone = await open("full", { hash: "#tips", edit: (s) => s.tips.forEach((t) => (t.task_id = "not-in-the-list")) });
+  assert.equal(await gone.getByRole("button", { name: "Open its task" }).count(), 0);
+  await gone.context().close();
 });
 
 await browser.close();

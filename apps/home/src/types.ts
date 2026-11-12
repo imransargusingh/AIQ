@@ -478,6 +478,10 @@ export interface TipRow {
   tip_id: string;
   /** A next-step tip's habit in the first judged tasks after it where it fits; null for tips with no habit. */
   after: { seen: number; checked: number } | null;
+  /** The task the tip came from (its page); null when not recorded. */
+  task_id: string | null;
+  /** The person's newest answer to the tip; null when not answered. */
+  answer: "helpful" | "not_helpful" | "snooze" | "off" | null;
 }
 
 export interface Data {
@@ -576,7 +580,32 @@ export interface TaskDetail {
   prompts: TaskPromptText[];
   /** Where this task's analysis stands (DC-055): read from the store and judge.log, never forecast. */
   analysis: TaskAnalysis;
+  /** The tip shown for this task, the one AIQ held back, or why there was none (design task-tips). */
+  tips: TaskTips;
   read_ms: number;
+}
+
+export interface TaskTips {
+  /** Tip history's rows for this task, newest first. */
+  shown: TipRow[];
+  /** The newest tip decided for this task and never shown; null when none. */
+  held: HeldTip | null;
+  /** The tip funnel's last step for this task; null when not recorded (before 8 Nov, imported, still running). */
+  step: string | null;
+  step_words: string;
+  step_help: string;
+}
+
+export interface HeldTip {
+  card_id: string;
+  decided_ms: number;
+  noticed: string;
+  try_this: string;
+  tip_id: string;
+  outcome: "show_ready" | "hold" | "drop";
+  reason: string;
+  reason_words: string;
+  reason_help: string;
 }
 
 export interface TaskAnalysis {

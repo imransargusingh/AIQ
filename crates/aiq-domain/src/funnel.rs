@@ -184,6 +184,7 @@ pub fn help(code: &str) -> &'static str {
         }
         "kind_too_few" | "kind_new" => "Tips for a kind start once AIQ has analyzed a few tasks of it.",
         "tips_off" => "Next-step tips can be turned on in Settings.",
+        "daily_cap" => "You can change Tips a day in Settings.",
         _ => "",
     }
 }

@@ -4,6 +4,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { clock, folderName, jobName, plural, stateLabel, toolName, when } from "../format";
+import { TaskTipsCard } from "../taskTips";
 import type { TaskAnalysis, TaskDetail } from "../types";
 import { Banners, Chip, Content, Rung, Sk, Title, preview, type Ctx } from "../ui";
 
@@ -139,6 +140,8 @@ export function Task(ctx: Ctx & { taskId: string }) {
       ) : (
         <AnalysisState a={st.d.analysis} tool={t.tool} taskId={t.task_id} ctx={ctx} reload={() => setAttempt((n) => n + 1)} />
       )}
+
+      <TaskTipsCard tips={st.d.tips} task={t} analysis={st.d.analysis} snap={snap} />
 
       <section className="group" aria-labelledby="tp">
         <h2 id="tp">Your prompts in this task</h2>

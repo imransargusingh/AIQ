@@ -695,3 +695,113 @@ fn set_aside_activity_reaches_the_card() {
     );
     assert_eq!(snap.aside[0].counted_today, want, "today's counted prompts come from the events");
 }
+
+/// Design task-tips: the task page shows the tip shown for the task (the same row as Tip history, with the person's
+/// answer), the tip AIQ held back and why, and the funnel's no-tip reason.
+#[test]
+fn task_detail_shows_the_tasks_tips() {
+    let d = tempfile::tempdir().unwrap();
+    let p = Paths::at(d.path());
+    standard(&p, false);
+    let pack = BundledPack.load().unwrap();
+    let s = snap(&p);
+    let cp2 = s.tasks.iter().find(|t| t.first_ms == NOW - 30 * MIN).unwrap().task_id.clone();
+    // A task with no tip shown (the deleted-text task), for the held tip.
+    let cc1 = s.tasks.iter().find(|t| t.first_ms == NOW - 20 * DAY).unwrap().task_id.clone();
+    assert!(!s.tips.iter().any(|t| t.task_id.as_deref() == Some(cc1.as_str())));
+
+    // Shown: Tip history names the task, and the task page carries that same row.
+    let row = s.tips.iter().find(|t| t.task_id.as_deref() == Some(cp2.as_str())).expect("Tip history links the task");
+    assert_eq!(row.answer, None);
+    let det = aiq_home::task_detail(&p, &pack, now(), &cp2).unwrap();
+    assert_eq!(det.tips.shown, vec![row.clone()]);
+    assert_eq!(det.tips.held, None);
+
+    // The answer: the newest of helpful / not helpful / snooze / off; a no_answer never overwrites it.
+    let store = aiq_store::Store::open(&p.db()).unwrap();
+    for (answer, at) in [("not_helpful", NOW - 15 * MIN), ("helpful", NOW - 10 * MIN), ("no_answer", NOW - 5 * MIN)] {
+        store
+            .insert_tip_feedback(&aiq_store::TipFeedbackRow {
+                card_id: Some(row.card_id.clone()),
+                tip_id: "reprompt.restate".into(),
+                answer: answer.into(),
+                surface: "cli".into(),
+                utc_ms: at,
+            })
+            .unwrap();
+    }
+    let det = aiq_home::task_detail(&p, &pack, now(), &cp2).unwrap();
+    assert_eq!(det.tips.shown[0].answer.as_deref(), Some("helpful"));
+
+    // Held: decided for cc1, never delivered; the newest decision's reason, in words, with what helps.
+    store
+        .insert_signal(
+            &aiq_store::NewSignal {
+                signal_id: "sig-held",
+                task_id: &cc1,
+                surface: "claude-code",
+                session: "cc1",
+                detector_id: "next_rung",
+                detector_version: 1,
+                pack_version: "bundled-4",
+                opportunity_id: "next_rung",
+                reprompt_count: 0,
+                score: 1.0,
+                evidence: std::slice::from_ref(&cc1),
+            },
+            NOW - 2 * DAY,
+        )
+        .unwrap();
+    let card = serde_json::json!({
+        "schema": "aiq.card.v1", "card_id": "card-held", "opportunity_id": "next_rung", "tip_id": "next_rung.check_code",
+        "noticed": "This looks like a kind of task you repeat.", "why": "One step would let the agent take more of it.",
+        "try_this": "Check the diff or run the tests before using the result.",
+        "evidence_ref": "aiq show card-held", "pack_version": "bundled-4"
+    })
+    .to_string();
+    for (id, outcome, reason, at) in
+        [("dec-1", "show_ready", "ok", NOW - 2 * DAY), ("dec-2", "hold", "daily_cap", NOW - 2 * DAY + MIN)]
+    {
+        store
+            .insert_decision(
+                &aiq_store::NewDecision {
+                    decision_id: id,
+                    card_id: "card-held",
+                    signal_id: "sig-held",
+                    surface: "claude-code",
+                    session: "cc1",
+                    outcome,
+                    reason_code: reason,
+                    rule_id: "in_moment.v1",
+                    pack_version: "bundled-4",
+                    card_json: &card,
+                },
+                at,
+            )
+            .unwrap();
+    }
+    store.insert_tip_step(&cc1, "claude-code", "decided", Now { utc_ms: NOW - 2 * DAY, offset_min: 0 }).unwrap();
+    let det = aiq_home::task_detail(&p, &pack, now(), &cc1).unwrap();
+    assert!(det.tips.shown.is_empty());
+    let h = det.tips.held.expect("held tip");
+    assert_eq!((h.card_id.as_str(), h.outcome.as_str(), h.reason.as_str()), ("card-held", "hold", "daily_cap"));
+    assert_eq!(h.reason_words, "daily tip limit reached");
+    assert_eq!(h.reason_help, "You can change Tips a day in Settings.");
+    assert_eq!(h.tip_id, "next_rung.check_code");
+    assert_eq!(det.tips.step.as_deref(), Some("decided"));
+
+    // No tip: the funnel's last step for the task, in words and with what helps.
+    let vs = s.tasks.iter().find(|t| t.tool == "vscode").unwrap().task_id.clone();
+    let det = aiq_home::task_detail(&p, &pack, now(), &vs).unwrap();
+    assert_eq!(
+        (det.tips.shown.len(), det.tips.held.is_none(), det.tips.step.is_none()),
+        (0, true, true),
+        "not recorded"
+    );
+    store.insert_tip_step(&vs, "vscode", "label_asked", Now { utc_ms: NOW - 16 * DAY, offset_min: 0 }).unwrap();
+    store.insert_tip_step(&vs, "vscode", "label_unsure", Now { utc_ms: NOW - 16 * DAY + MIN, offset_min: 0 }).unwrap();
+    let det = aiq_home::task_detail(&p, &pack, now(), &vs).unwrap();
+    assert_eq!(det.tips.step.as_deref(), Some("label_unsure"), "the newest step wins");
+    assert_eq!(det.tips.step_words, "AIQ wasn't sure what kind of task it was");
+    assert!(det.tips.step_help.starts_with("AIQ reads how a task starts."));
+}
