@@ -180,6 +180,7 @@ pub fn build(
     // a call has picked one.
     let pick = std::fs::read_to_string(paths.data.join("copilot-exe.txt")).ok();
     root.insert("copilot_exe".into(), pick.map_or(Value::Null, |p| scrub.line(p.trim(), LINE_MAX).into()));
+    root.insert("copilot".into(), copilot_facts(paths, scrub));
 
     let db = paths.db();
     let (mut tasks_n, mut prompts_n) = (0, 0);
@@ -596,4 +597,54 @@ fn civil(ms: i64) -> (i64, u32, u32, u32, u32, u32) {
     let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
     let y = yoe + era * 400 + i64::from(m <= 2);
     (y, m, d, (rem / 3600) as u32, (rem % 3600 / 60) as u32, (rem % 60) as u32)
+}
+
+/// Where AIQ looks for Copilot CLI and its logs (DC-056), paths scrubbed, nothing run: what the Copilot hook saw
+/// of the Copilot running it, every `copilot` on this process's PATH, the home AIQ reads session logs from, and
+/// that home's session folders (a count and the newest one's file names, never their content).
+fn copilot_facts(paths: &Paths, scrub: &Scrub) -> Value {
+    let p = |x: &std::path::Path| Value::from(scrub.line(&x.display().to_string(), LINE_MAX));
+    let seen = aiq_core::copilot_seen::read(paths);
+    let exts: &[&str] = if cfg!(windows) { &[".exe", ".cmd", ".bat"] } else { &[""] };
+    let on_path: Vec<Value> = std::env::var_os("PATH")
+        .map(|v| std::env::split_paths(&v).collect::<Vec<_>>())
+        .unwrap_or_default()
+        .iter()
+        .flat_map(|d| exts.iter().map(move |e| d.join(format!("copilot{e}"))))
+        .filter(|f| f.is_file())
+        .map(|f| p(&f))
+        .collect();
+    let home = aiq_core::copilot_seen::log_home(paths);
+    let state = home.join("session-state");
+    let mut dirs: Vec<(std::time::SystemTime, std::path::PathBuf)> = std::fs::read_dir(&state)
+        .map(|r| {
+            r.flatten()
+                .filter(|e| e.path().is_dir())
+                .map(|e| (e.metadata().and_then(|m| m.modified()).unwrap_or(std::time::UNIX_EPOCH), e.path()))
+                .collect()
+        })
+        .unwrap_or_default();
+    dirs.sort();
+    let newest_files: Vec<Value> = dirs
+        .last()
+        .and_then(|(_, d)| std::fs::read_dir(d).ok())
+        .map(|r| {
+            let mut n: Vec<String> = r.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+            n.sort();
+            n.into_iter().take(20).map(|f| Value::from(scrub.line(&f, 80))).collect()
+        })
+        .unwrap_or_default();
+    json!({
+        "hook_saw": seen.as_ref().map(|s| json!({
+            "exe": s.exe.as_deref().map(|e| p(std::path::Path::new(e))),
+            "hook_dir": s.hook_dir.as_deref().map(|e| p(std::path::Path::new(e))),
+            "home_env": s.home_env.as_deref().map(|e| p(std::path::Path::new(e))),
+            "callable": s.copilot_exe().is_some(),
+            "at": iso(s.at_ms),
+        })),
+        "on_path": on_path,
+        "log_home": p(&home),
+        "session_folders": dirs.len(),
+        "newest_session_files": newest_files,
+    })
 }

@@ -59,10 +59,56 @@ pub fn run(host: &str, event: &str) -> ExitCode {
         inner_outcome(&paths, host, event, start, &mut marks)
     }))
     .unwrap_or("panic");
+    if host == "copilot" {
+        // After the event is sent, so capture never waits on it. Copilot CLI only (VS Code's agent host sets no
+        // loader pid): which Copilot runs AIQ's hooks, so analysis calls the same one (DC-056).
+        let _ = std::panic::catch_unwind(|| record_copilot_seen(&paths, |k| std::env::var(k).ok()));
+    }
     let total = start.elapsed().as_micros();
     let at = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
     append_timing(&paths, &timing_line(event, total, outcome, &marks, at));
     ExitCode::SUCCESS
+}
+
+/// Keep what this hook sees of the Copilot CLI that runs it (`aiq_core::copilot_seen`). Nothing when the loader
+/// pid is absent (VS Code agent mode, or another host).
+fn record_copilot_seen(paths: &Paths, env: impl Fn(&str) -> Option<String>) {
+    let Some(pid) = env("COPILOT_LOADER_PID").and_then(|p| p.trim().parse::<u32>().ok()) else { return };
+    let at_ms = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);
+    let seen = aiq_core::copilot_seen::Seen {
+        exe: process_exe(pid).map(|p| p.display().to_string()),
+        hook_dir: env("COPILOT_HOOK_DIR").filter(|v| !v.is_empty()),
+        home_env: env("COPILOT_HOME").filter(|v| !v.is_empty()),
+        at_ms,
+    };
+    let _ = aiq_core::copilot_seen::record(paths, &seen);
+}
+
+/// The full path of a running process's program. None when it can't be read.
+#[cfg(windows)]
+fn process_exe(pid: u32) -> Option<std::path::PathBuf> {
+    use std::os::windows::ffi::OsStringExt;
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::System::Threading::{
+        OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
+    };
+    // SAFETY: a handle opened here is closed before return; the buffer outlives the call and its length is passed.
+    unsafe {
+        let h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if h.is_null() {
+            return None;
+        }
+        let mut buf = vec![0u16; 1024];
+        let mut len = buf.len() as u32;
+        let ok = QueryFullProcessImageNameW(h, PROCESS_NAME_WIN32, buf.as_mut_ptr(), &mut len);
+        CloseHandle(h);
+        (ok != 0).then(|| std::ffi::OsString::from_wide(&buf[..len as usize]).into())
+    }
+}
+
+#[cfg(not(windows))]
+fn process_exe(pid: u32) -> Option<std::path::PathBuf> {
+    std::fs::read_link(format!("/proc/{pid}/exe")).ok()
 }
 
 /// The only writer of the timing log (the hooks and the status-line command), so no caller can pass its own cap.
@@ -519,6 +565,29 @@ mod tests {
         let v = json!({"sessionId":"c1","timestamp":1,"stopReason":"end_turn","transcriptPath":"/t"});
         let e = to_copilot_event(&v, "agentStop", COPILOT_CLI_SURFACE).unwrap();
         assert_eq!(e.body, EventBody::Stop(StopPayload { stop_hook_active: false, prompt_id: None }));
+    }
+
+    #[test]
+    fn a_copilot_cli_hook_records_the_program_and_home_that_run_it() {
+        let d = tempfile::tempdir().unwrap();
+        let paths = Paths::at(d.path());
+        std::fs::create_dir_all(&paths.data).unwrap();
+        let me = std::process::id().to_string();
+        let env = |k: &str| match k {
+            "COPILOT_LOADER_PID" => Some(me.clone()),
+            "COPILOT_HOOK_DIR" => Some("/h/.copilot/hooks".to_string()),
+            _ => None,
+        };
+        record_copilot_seen(&paths, env);
+        let s = aiq_core::copilot_seen::read(&paths).unwrap();
+        assert_eq!(s.exe.clone().map(std::path::PathBuf::from), std::env::current_exe().ok(), "this process's program");
+        assert_eq!(s.home(), Some(std::path::PathBuf::from("/h/.copilot")));
+        // VS Code agent mode sets no loader pid: nothing recorded.
+        let d2 = tempfile::tempdir().unwrap();
+        let p2 = Paths::at(d2.path());
+        std::fs::create_dir_all(&p2.data).unwrap();
+        record_copilot_seen(&p2, |_| None);
+        assert!(aiq_core::copilot_seen::read(&p2).is_none());
     }
 
     #[test]

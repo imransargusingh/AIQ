@@ -34,7 +34,7 @@ function steps({ snap, go }: Pick<Ctx, "snap" | "go">): Step[] {
       done: seen,
       title: seen ? "Prompts arriving" : "No prompt yet",
       detail: seen
-        ? `${plural(snap.data.prompts, "prompt")} and ${plural(h.tasks_in_window, "task")} so far${tools_seen.length ? ` in ${tools_seen.join(", ")}` : ""}${snap.status.last_event_ms ? `, the last ${when(snap.status.last_event_ms, snap.now_ms, snap.offset_min)}` : ""}.`
+        ? `${plural(snap.data.prompts, "prompt")} and ${plural(h.tasks_in_window, "task")} so far${tools_seen.length ? `, from ${listed(tools_seen)}` : ""}.${snap.status.last_event_ms ? ` Last one ${when(snap.status.last_event_ms, snap.now_ms, snap.offset_min).replace(/^(Today|Yesterday)/, (w) => w.toLowerCase())}.` : ""}`
         : "Your next prompt in a connected tool shows here.",
     },
     analysisStep(snap, go),
@@ -125,4 +125,9 @@ export function GettingStartedCard(ctx: Pick<Ctx, "snap" | "go">) {
       <List items={items} />
     </section>
   );
+}
+
+/** "A", "A and B", "A, B and C". */
+function listed(xs: string[]): string {
+  return xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`;
 }

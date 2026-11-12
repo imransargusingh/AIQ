@@ -164,7 +164,8 @@ pub(crate) const COPILOT_PICK: &str = "copilot-exe.txt";
 
 /// The Copilot CLI AIQ calls. A stand-in `copilot` earlier on PATH (one that only installs the real CLI from a
 /// terminal) answered every call "was not found" on a second install (DC-055), so AIQ checks each `copilot` it
-/// can find and keeps the first that works. The pick is kept for a day in `copilot-exe.txt`, so a label call
+/// can find and keeps the first that works: first the program that runs AIQ's Copilot hooks (DC-056), then PATH,
+/// then the install folders. The pick is kept for a day in `copilot-exe.txt`, so a label call
 /// doesn't pay for the check.
 pub(crate) fn find_copilot(paths: &Paths) -> Option<PathBuf> {
     let cache = paths.data.join(COPILOT_PICK);
@@ -173,13 +174,26 @@ pub(crate) fn find_copilot(paths: &Paths) -> Option<PathBuf> {
         .ok()
         .and_then(|t| t.elapsed().ok())
         .is_some_and(|age| age < Duration::from_secs(24 * 3600));
+    let seen_newer = std::fs::metadata(paths.data.join(aiq_core::copilot_seen::FILE))
+        .and_then(|m| m.modified())
+        .ok()
+        .zip(std::fs::metadata(&cache).and_then(|m| m.modified()).ok())
+        .is_some_and(|(seen, kept)| seen > kept);
     if fresh
+        && !seen_newer
         && let Some(p) = std::fs::read_to_string(&cache).ok().map(|t| PathBuf::from(t.trim()))
         && p.is_file()
     {
         return Some(p);
     }
-    let cands = exe_candidates("copilot", std::env::var_os("PATH"), &copilot_install_dirs());
+    // The Copilot that runs AIQ's hooks comes first: it is the one that works for the person (DC-056).
+    let seen = aiq_core::copilot_seen::read(paths).and_then(|s| s.copilot_exe());
+    let mut cands: Vec<PathBuf> = seen.into_iter().collect();
+    for c in exe_candidates("copilot", std::env::var_os("PATH"), &copilot_install_dirs()) {
+        if !cands.contains(&c) {
+            cands.push(c);
+        }
+    }
     let pick = pick_working(&cands, answers_version)?;
     let _ = std::fs::write(&cache, pick.display().to_string());
     Some(pick)

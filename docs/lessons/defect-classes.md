@@ -1015,3 +1015,19 @@ summary: >-
   `a_stand_in_copilot_that_says_not_found_is_missing`, `every_copilot_is_a_candidate_and_the_first_that_works_wins`,
   `a_failed_first_try_waits_one_hour_and_the_page_says_when_and_why`, `a_missing_tool_blocks_without_counting_against_the_task`,
   and the e2e "task detail: each analysis state says where the task stands" in three themes.
+
+### DC-056 — Locating a tool by guessing where it lives, when the tool itself tells us
+- **Signature:** 2026-11-12, devbox on 0.1.42 (with DC-055's fix). Home said "Analysis can't run: Copilot CLI not
+  found" while Copilot CLI ran AIQ's hooks there all day; Copilot turns also showed "AIQ found no log for it". The
+  DC-055 fix searched PATH plus guessed install folders (npm, WinGet) for a `copilot` that answers `--version`; the
+  real one was in none of them. Every Copilot CLI hook already runs with `COPILOT_LOADER_PID` and `COPILOT_HOOK_DIR`
+  set (laptop probe 2026-11-01), naming the exact program and home that work for the person.
+- **Why it survives:** the laptop's only `copilot` is first on PATH, so any search order finds it; the DC-055 fix
+  was written from the diagnostics file, which recorded the failure but not where the working Copilot was.
+- **Sweep:** every place AIQ locates Copilot: analysis and label calls (`find_copilot`: now the hook's program
+  first), session logs (`copilot_seen::log_home` for the core), imported history (`import::tool_home`: unchanged,
+  `COPILOT_HOME` or `~/.copilot`; the diagnostics file now shows whether that home has session folders).
+- **Control:** `a_copilot_cli_hook_records_the_program_and_home_that_run_it`, `copilot_seen` unit tests, and the
+  diagnostics file's `copilot` block (hook_saw, on_path, log_home, session folders), which makes the next miss
+  visible from one file.
+- **Rule:** when the tool runs our code, ask that run where the tool is; search only as a fallback.
