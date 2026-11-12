@@ -9,10 +9,12 @@ use aiq_contracts::judge::{ActionSummary, Fact, Response};
 /// fs2: F3 also counts linters (lychee, markdownlint, shellcheck, ...) and the team's own check scripts
 /// (`scripts/verify_*.py`, `./run_tests.sh`, a script given a test by name).
 /// fs3: a turn whose actions AIQ did not record makes a log fact unknown ("not recorded"), never "no" (DC-020).
-pub const FACT_SET_VERSION: &str = "fs3";
-/// Judgments of these fact sets stay current unless `fact_set_may_change`: fs2 only widens the agent's checks
-/// (F3 `nobody` or `person` can change) and fs3 only turns a log fact's "no" into unknown.
-pub const FACT_SET_VERSIONS_KEPT: [&str; 2] = ["fs1", "fs2"];
+/// fs4: F3 reads a quoted program path (`& 'C:\\…\\python.exe' -m unittest`) and interpreter flags before `-m`
+/// (Imran 2026-11-12: 1,888 of 5,050 Copilot commands on his laptop started with a quoted program, read as none).
+pub const FACT_SET_VERSION: &str = "fs4";
+/// Judgments of these fact sets stay current unless `fact_set_may_change`: fs2 and fs4 only widen the agent's
+/// checks (F3 `nobody` or `person` can change, and F8 with it) and fs3 only turns a log fact's "no" into unknown.
+pub const FACT_SET_VERSIONS_KEPT: [&str; 3] = ["fs1", "fs2", "fs3"];
 /// The log facts as stored on a judgment (`Merged::log`, plus F3's checker).
 const LOG_FACT_IDS: [&str; 4] = ["F1", "F8", "F14", "F15"];
 
@@ -351,18 +353,39 @@ pub fn check_rule(cmd: &str) -> Option<&'static str> {
     })
 }
 
+/// Quoted strings are dropped, except a quoted program path (`& 'C:\Program Files\Python\python.exe' -m
+/// pytest`, `"$VENV/bin/pytest"`), which is kept as one token with its spaces taken out. Measured 2026-11-12 over
+/// 5,050 Copilot CLI shell commands on Imran's laptop: 1,888 segments started with a quoted program, and every
+/// one of them was read as no program at all (163 were `python.exe -B -m unittest`).
 fn strip_quoted(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut quote: Option<char> = None;
+    let mut inner = String::new();
     for ch in s.chars() {
         match quote {
-            Some(q) if ch == q => quote = None,
-            Some(_) => {}
+            Some(q) if ch == q => {
+                quote = None;
+                if is_program_path(&inner) {
+                    out.extend(inner.chars().filter(|c| !c.is_whitespace()));
+                }
+                inner.clear();
+            }
+            Some(_) => inner.push(ch),
             None if ch == '"' || ch == '\'' => quote = Some(ch),
             None => out.push(ch),
         }
     }
     out
+}
+
+/// A quoted string that names a program or script file: a path ending in a program or script extension, or in a
+/// known check program or interpreter (`$VENV/bin/pytest`).
+fn is_program_path(s: &str) -> bool {
+    let t = s.trim();
+    let named = [".exe", ".cmd", ".bat", ".py", ".ps1", ".sh"].iter().any(|e| t.ends_with(e))
+        || CHECK_PROGRAMS.contains(&program(t))
+        || INTERPRETERS.contains(&program(t));
+    (t.contains('/') || t.contains('\\')) && named && !t.contains('\n')
 }
 
 fn program(tok: &str) -> &str {
@@ -400,6 +423,23 @@ fn words(name: &str) -> impl Iterator<Item = &str> {
     stem.split(['_', '-', '.']).filter(|w| !w.is_empty())
 }
 
+/// For `python [flags] -m <module>` at `i`, the index of the module; None for anything else.
+fn python_module_at(toks: &[&str], i: usize) -> Option<usize> {
+    if !matches!(program(toks.get(i)?), "python" | "python3" | "py") {
+        return None;
+    }
+    let mut j = i + 1;
+    while let Some(t) = toks.get(j) {
+        match *t {
+            "-m" => return Some(j + 1),
+            "-c" | "-" => return None,
+            t if t.starts_with('-') => j += 1,
+            _ => return None,
+        }
+    }
+    None
+}
+
 fn segment_check_rule(toks: &[&str]) -> Option<&'static str> {
     let mut i = 0;
     // Skip env assignments (`CI=1`) and wrappers (`npx`, `python -m`, `uv run`, `poetry run`).
@@ -407,9 +447,9 @@ fn segment_check_rule(toks: &[&str]) -> Option<&'static str> {
         let p = program(toks[i]);
         if toks[i].contains('=') && !toks[i].starts_with('-') || WRAPPERS.contains(&p) {
             i += 1;
-        } else if (matches!(p, "python" | "python3" | "py") && toks.get(i + 1) == Some(&"-m"))
-            || (matches!(p, "uv" | "poetry" | "pipenv" | "hatch") && toks.get(i + 1) == Some(&"run"))
-        {
+        } else if let Some(m) = python_module_at(toks, i) {
+            i = m; // `python -B -m unittest`: interpreter flags before `-m` are skipped too
+        } else if matches!(p, "uv" | "poetry" | "pipenv" | "hatch") && toks.get(i + 1) == Some(&"run") {
             i += 2;
         } else {
             break;
@@ -2121,6 +2161,12 @@ mod tests {
             "pwsh -File scripts/Test-Install.ps1",
             "shellcheck install.sh",
             "pre-commit install && pre-commit run --all-files",
+            // Laptop 2026-11-12: PowerShell's call operator with a quoted interpreter path, and flags before `-m`.
+            "$ErrorActionPreference='Stop'; Set-Location 'C:\\work\\app'; & 'C:\\work\\.venv\\Scripts\\python.exe' -B -m unittest -q test_a",
+            "& \"C:\\Program Files\\Python312\\python.exe\" -m pytest -q",
+            "\"$VENV/bin/pytest\" tests",
+            "& 'C:\\work\\scripts\\Test-Migration.ps1'",
+            "powershell.exe -NoProfile -File 'C:\\work\\scripts\\Test-Guard.ps1'",
         ] {
             assert!(is_check(yes), "{yes}");
         }
@@ -2139,6 +2185,10 @@ mod tests {
             "gh pr create --fill",
             "pre-commit install",
             "git log --since='7 days ago' --pretty=%s",
+            "& 'C:\\work\\.venv\\Scripts\\python.exe' -B - <<< 'print(1)'",
+            "& 'C:\\work\\.venv\\Scripts\\python.exe' -B -c 'import unittest'",
+            "& 'C:\\work\\.venv\\Scripts\\python.exe' -B 'C:\\work\\tools\\export.py'",
+            "echo 'C:\\tools\\pytest.exe'",
         ] {
             assert!(!is_check(no), "{no}");
         }

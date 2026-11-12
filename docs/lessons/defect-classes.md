@@ -1151,7 +1151,23 @@ summary: >-
   `kept_judgments_with_one_fact_untold_at_two_rungs_are_judged_again`; the replay gate shows no golden-set move.
 - **Rule:** an unknown fact lowers the rung once and marks the task Uncertain; only a confident "no" lowers each
   rung that needs it.
-### DC-064 — Analysis stops and the only sign is a grey line nobody reads
+
+### DC-064 — A quoted program path hides the check it runs
+- **Signature:** 2026-11-12, Imran's laptop, 76 recent Copilot CLI session logs. 1,888 of 5,050 shell commands had
+  a segment that started with a quoted program (`& 'C:\…\.venv\Scripts\python.exe' -B -m unittest -q …`, the
+  usual PowerShell form). The check reader dropped every quoted string, so it saw no program and F3 read
+  "nobody" on runs where the agent ran its tests (163 `-m unittest` runs alone). `python -B -m` also missed, because
+  only `python -m` was skipped as a wrapper.
+- **Why it survives:** every test case named its program bare (`pytest`, `C:\tools\pytest.exe`). Quotes were dropped
+  on purpose, so `echo 'run cargo test'` is not a check, and nothing tested a quoted program in command position.
+- **Sweep:** `strip_quoted` is the only place quotes are handled for checks; `script_run` already reads an
+  interpreter's script argument; `npm`/build-tool paths read the program token, which a quoted path now fills.
+- **Control (tests):** new yes and no cases in `checks_are_read_as_command_lines_not_substrings` (quoted interpreter
+  with `-B -m unittest`, quoted path with spaces, `"$VENV/bin/pytest"`, quoted `Test-*.ps1`; still no for
+  `python -`, `python -c`, a quoted data script, `echo '<path>'`). Fact set fs4; the replay gate shows no golden move.
+- **Rule:** test the command reader against the shell forms the person's own OS uses (PowerShell call operator,
+  quoted paths with spaces), not only bare program names.
+### DC-065 — Analysis stops and the only sign is a grey line nobody reads
 - **Signature:** 2026-11-12, Imran's laptop. The Claude Code sign-in expired at 15:10Z. From then on, 47 analysis
   calls failed `not_signed_in` (AIQ-JUDGE-SIGNIN). Nobody noticed for about 7 hours, until a release check read
   judge.log. Home had 848 tasks, so the first-run "Analysis can't run" card (#140) was not shown. The only signal was
