@@ -61,5 +61,15 @@
       "deleted": false
     }
   ],
+  "analysis": {
+    "state": "analyzed",
+    "closes_ms": null,
+    "next_try_ms": null,
+    "tries": 0,
+    "last_try_ms": null,
+    "reply": null,
+    "ahead": 0,
+    "blocked": null
+  },
   "read_ms": 9
 }

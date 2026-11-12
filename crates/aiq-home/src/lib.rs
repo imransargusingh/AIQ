@@ -21,7 +21,7 @@ use std::time::Instant;
 mod detail;
 pub mod diagnostics;
 mod twins;
-pub use detail::{TaskDetail, TaskPromptText, task_detail};
+pub use detail::{TRIES, TaskAnalysis, TaskDetail, TaskPromptText, judge_log_reply, task_analysis, task_detail};
 
 pub const SCHEMA: &str = "aiq.home.v1";
 /// Home's window (spec Q3).
@@ -448,6 +448,62 @@ pub struct Blocked {
 
 /// Failed calls after which the judge gives a task up (the judge's queue reads this too).
 pub const GIVE_UP: usize = 6;
+/// Back-off after a task's Nth failed try (D8). A try is one attempt at a task, one or two calls. Until 0.1.40
+/// the judge indexed this by failed calls, and a try makes two, so the first wait was 6 hours, never 1 (DC-055).
+pub const BACKOFF_MS: [i64; 5] = [3_600_000, 6 * 3_600_000, DAY_MS, DAY_MS, DAY_MS];
+
+/// A failure that says the tool can't run at all (not found, signed out). It blocks the tool, so it never counts
+/// against a task: the task waits for the tool and is never given up for it (DC-055).
+pub fn tool_down(outcome: &str) -> bool {
+    outcome == "missing" || outcome == "not_signed_in"
+}
+
+/// A task's failed analysis calls since its last analysis: what the queue and the task page both read, so the
+/// two always agree on when the next try is.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Retry {
+    /// Failed calls that count against the task.
+    pub calls: usize,
+    /// Failed tries (failed run-1 calls).
+    pub tries: usize,
+    /// When the newest counted failure started.
+    pub last_ms: i64,
+}
+
+impl Retry {
+    pub fn given_up(&self) -> bool {
+        self.calls >= GIVE_UP
+    }
+    /// When the task may be tried again: None once given up, `last_ms` + the back-off for its tries otherwise.
+    pub fn next_try_ms(&self) -> Option<i64> {
+        if self.given_up() {
+            return None;
+        }
+        if self.calls == 0 {
+            return Some(0); // never failed: due now (no i64::MIN sentinel, DC-054)
+        }
+        Some(self.last_ms + BACKOFF_MS[self.tries.max(1).min(BACKOFF_MS.len()) - 1])
+    }
+}
+
+/// Per task, the failures that count against it. `judged_ms` gives a task's last analysis time; failures before
+/// it are history and don't count.
+pub fn retries(
+    calls: &[aiq_store::CallOutcome],
+    judged_ms: impl Fn(&str) -> Option<i64>,
+) -> std::collections::HashMap<&str, Retry> {
+    let mut out: std::collections::HashMap<&str, Retry> = std::collections::HashMap::new();
+    for c in calls.iter().filter(|c| c.outcome != "ok" && !tool_down(&c.outcome)) {
+        if judged_ms(&c.task_id).is_some_and(|j| c.started_utc_ms <= j) {
+            continue;
+        }
+        let r = out.entry(c.task_id.as_str()).or_default();
+        r.calls += 1;
+        r.tries += usize::from(c.run == 1);
+        r.last_ms = r.last_ms.max(c.started_utc_ms);
+    }
+    out
+}
 /// How long after the last call Home may start a run itself (the core's kicker runs every 10 minutes).
 pub const START_AFTER_MS: i64 = 10 * 60_000;
 
@@ -474,15 +530,12 @@ pub fn analysis_state(
     now: Now,
     idle_gap_ms: i64,
 ) -> Analysis {
-    let mut fails: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
-    for c in calls.iter().filter(|c| c.outcome != "ok") {
-        *fails.entry(c.task_id.as_str()).or_default() += 1;
-    }
+    let fails = retries(calls, |_| None);
     let pending: Vec<&TaskRow> = tasks
         .iter()
         .filter(|t| t.judgment.is_none() && t.last_ms + idle_gap_ms < now.utc_ms)
         .filter(|t| analysis_provider(&t.tool).is_some())
-        .filter(|t| fails.get(t.task_id.as_str()).is_none_or(|n| *n < GIVE_UP))
+        .filter(|t| fails.get(t.task_id.as_str()).is_none_or(|r| !r.given_up()))
         .collect();
     let waiting = pending.len() as u32;
     let analyzed = tasks.iter().filter(|t| t.judgment.is_some()).count() as u32;
@@ -1881,7 +1934,13 @@ mod analysis_tests {
     }
 
     fn call(task: &str, outcome: &str, at: i64) -> aiq_store::CallOutcome {
-        aiq_store::CallOutcome { task_id: task.into(), started_utc_ms: at, outcome: outcome.into(), cost_usd: None }
+        aiq_store::CallOutcome {
+            task_id: task.into(),
+            run: 1,
+            started_utc_ms: at,
+            outcome: outcome.into(),
+            cost_usd: None,
+        }
     }
 
     fn state(
@@ -1945,6 +2004,91 @@ mod analysis_tests {
         let tasks = vec![task("a", "copilot-cli", NOW - DAY_MS, false), task("b", "copilot-cli", NOW - DAY_MS, false)];
         let calls: Vec<_> = (0..GIVE_UP as i64).map(|i| call("a", "timeout", NOW - DAY_MS + i)).collect();
         assert_eq!(state(&tasks, &calls, &[("copilot-cli", "ok", NOW - DAY_MS)], 1).waiting, 1);
+    }
+
+    fn calls_of(task: &str, outcome: &str, tries: &[i64]) -> Vec<aiq_store::CallOutcome> {
+        tries
+            .iter()
+            .flat_map(|at| {
+                [1, 2].map(|run| aiq_store::CallOutcome {
+                    task_id: task.into(),
+                    run,
+                    started_utc_ms: *at + run,
+                    outcome: outcome.into(),
+                    cost_usd: None,
+                })
+            })
+            .collect()
+    }
+
+    fn page(t: &TaskRow, tasks: &[TaskRow], calls: &[aiq_store::CallOutcome], now: i64) -> TaskAnalysis {
+        let home = state(tasks, calls, &[], 1);
+        task_analysis(t, tasks, calls, &home, now, GAP, Some("the tool's words".into()))
+    }
+
+    /// DC-055: a task whose first try failed waits 1 hour, not 6, and the page says so with the tool's words.
+    #[test]
+    fn a_failed_first_try_waits_one_hour_and_the_page_says_when_and_why() {
+        let t = task("a", "copilot-cli", NOW - 2 * 3_600_000, false);
+        let tasks = vec![t.clone()];
+        let calls = calls_of("a", "error", &[NOW - 30 * 60_000]);
+        let a = page(&t, &tasks, &calls, NOW);
+        assert_eq!((a.state, a.tries), ("retrying", 1));
+        assert_eq!(a.next_try_ms, Some(NOW - 30 * 60_000 + 2 + 3_600_000), "1 hour after the try, not 6");
+        assert_eq!(a.reply.as_deref(), Some("the tool's words"));
+        let later = page(&t, &tasks, &calls, NOW + 31 * 60_000);
+        assert_eq!((later.state, later.next_try_ms), ("queued", None), "due again: back in the queue");
+        let second = calls_of("a", "error", &[NOW - 3 * 3_600_000, NOW - 60_000]);
+        assert_eq!(page(&t, &tasks, &second, NOW).next_try_ms, Some(NOW - 60_000 + 2 + 6 * 3_600_000));
+    }
+
+    #[test]
+    fn three_failed_tries_stop_and_the_page_says_so() {
+        let t = task("a", "copilot-cli", NOW - 3 * DAY_MS, false);
+        let calls = calls_of("a", "error", &[NOW - 2 * DAY_MS, NOW - DAY_MS, NOW - 60_000]);
+        let a = page(&t, std::slice::from_ref(&t), &calls, NOW);
+        assert_eq!((a.state, a.tries, a.next_try_ms), ("gave_up", TRIES, None));
+    }
+
+    /// A missing or signed-out tool blocks the tool; its tasks are never given up for it.
+    #[test]
+    fn a_missing_tool_blocks_without_counting_against_the_task() {
+        let t = task("a", "copilot-cli", NOW - DAY_MS, false);
+        let calls = calls_of("a", "missing", &[NOW - 3 * 3_600_000, NOW - 2 * 3_600_000, NOW - 3_600_000]);
+        let tasks = vec![t.clone()];
+        let home = state(&tasks, &calls, &[("copilot-cli", "missing", NOW - 3_600_000)], 1);
+        assert_eq!((home.state, home.waiting), ("blocked", 1), "still waiting, not given up");
+        let a = task_analysis(&t, &tasks, &calls, &home, NOW, GAP, Some("x".into()));
+        assert_eq!((a.state, a.tries, a.reply.as_deref()), ("blocked", 0, None));
+        assert_eq!(a.blocked, Some(Blocked { tool: "copilot-cli".into(), why: "missing".into() }));
+    }
+
+    #[test]
+    fn an_open_task_says_when_it_counts_as_finished_and_a_queued_one_counts_newer_waiting_tasks() {
+        let open = task("open", "copilot-cli", NOW - 60_000, false);
+        let a = page(&open, std::slice::from_ref(&open), &[], NOW);
+        assert_eq!((a.state, a.closes_ms), ("open", Some(NOW - 60_000 + GAP)));
+        let old = task("old", "copilot-cli", NOW - 3 * DAY_MS, false);
+        let tasks = vec![
+            old.clone(),
+            task("newer", "copilot-cli", NOW - DAY_MS, false),
+            task("newer-done", "copilot-cli", NOW - DAY_MS, true),
+            task("newer-waiting-out-a-retry", "copilot-cli", NOW - DAY_MS, false),
+            open,
+        ];
+        let calls = calls_of("newer-waiting-out-a-retry", "timeout", &[NOW - 60_000]);
+        let q = page(&old, &tasks, &calls, NOW);
+        assert_eq!((q.state, q.ahead), ("queued", 1));
+    }
+
+    #[test]
+    fn the_tools_words_come_from_the_newest_failed_line_of_judge_log() {
+        let log = "failed t1 copilot-cli [\"error old words\"]\nanalyzed t2 copilot-cli rung=2\n\
+                   failed t1 copilot-cli [\"error GitHub Copilot CLI was not found.\", \"timeout \"]\n\
+                   failed t1 copilot-cli [\"timeout \", \"error newest words\"]\n";
+        assert_eq!(judge_log_reply(log, "t1").as_deref(), Some("newest words"));
+        assert_eq!(judge_log_reply(log, "t2"), None);
+        assert_eq!(judge_log_reply("failed t3 copilot-cli [\"timeout \"]", "t3"), None, "no words: not recorded");
     }
 
     #[test]

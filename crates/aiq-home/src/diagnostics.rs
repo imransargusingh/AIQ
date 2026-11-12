@@ -176,6 +176,10 @@ pub fn build(
                 .collect(),
         ),
     );
+    // Which Copilot CLI analysis and label calls run (the judge's pick, DC-055), user folder scrubbed. Null until
+    // a call has picked one.
+    let pick = std::fs::read_to_string(paths.data.join("copilot-exe.txt")).ok();
+    root.insert("copilot_exe".into(), pick.map_or(Value::Null, |p| scrub.line(p.trim(), LINE_MAX).into()));
 
     let db = paths.db();
     let (mut tasks_n, mut prompts_n) = (0, 0);

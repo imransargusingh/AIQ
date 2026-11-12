@@ -38,7 +38,7 @@ async function test(name, fn) {
   }
 }
 
-async function open(fixture, { theme, hash = "", width = 1280, height = 800, forced = false, edit, fail = [], clock = false } = {}) {
+async function open(fixture, { theme, hash = "", width = 1280, height = 800, forced = false, edit, editTask, fail = [], clock = false } = {}) {
   const ctx = await browser.newContext({ viewport: { width, height }, forcedColors: forced ? "active" : "none" });
   const page = await ctx.newPage();
   const errors = [];
@@ -47,6 +47,7 @@ async function open(fixture, { theme, hash = "", width = 1280, height = 800, for
   const snapshot = JSON.parse(readFileSync(join(fixtures, `${fixture}.json`), "utf8"));
   const task = JSON.parse(readFileSync(join(fixtures, "task.json"), "utf8"));
   if (edit) edit(snapshot);
+  if (editTask) editTask(task);
   await page.addInitScript(([s, t, f]) => {
     window.__AIQ_FIXTURE__ = { snapshot: s, task: t, calls: [], fail: f };
   }, [snapshot, task, fail]);
@@ -89,7 +90,7 @@ await test("contract: fixtures are aiq.home.v1 snapshots from the Rust read mode
     assert.equal(s.setup.done, f !== "first-run", f);
   }
   const t = JSON.parse(readFileSync(join(fixtures, "task.json"), "utf8"));
-  for (const k of ["task", "prompts", "read_ms"]) assert.ok(k in t, `task: ${k}`);
+  for (const k of ["task", "prompts", "analysis", "read_ms"]) assert.ok(k in t, `task: ${k}`);
 });
 
 for (const theme of ["light", "dark", "contrast"]) {
@@ -975,6 +976,50 @@ for (const theme of ["light", "dark", "contrast"]) {
     await page.context().close();
   });
 }
+
+// DC-055: an unanalyzed task says which state it is in, never one "Not analyzed yet" for all of them. A second
+// install failed 2,100 of 2,100 calls while every task page there read the same as a busy queue.
+const TASK_HASH = "#task/019000000001-0000-7000-8000-000000000000";
+const unanalyzed = (analysis) => (t) => {
+  t.task.judgment = null;
+  t.task.tool = "copilot-cli";
+  t.analysis = { closes_ms: null, next_try_ms: null, tries: 0, last_try_ms: null, reply: null, ahead: 0, blocked: null, ...analysis };
+};
+const ANALYSIS_STATES = [
+  ["open", { closes_ms: 1793523600000 }, /quiet for 30 minutes, so this one after/],
+  ["queued", { ahead: 12 }, /Waiting to be analyzed\. 12 newer tasks go first\./],
+  ["retrying", { next_try_ms: 1793527200000, tries: 1, last_try_ms: 1793520000000, reply: "GitHub Copilot CLI was not found." }, /tries again .*Try 1 of 3.*answered: GitHub Copilot CLI was not found\./],
+  ["gave_up", { tries: 3, last_try_ms: 1793520000000, reply: "timed out" }, /stopped trying.*3 tries.*answered on the last try: timed out/],
+  ["today_done", {}, /Waiting for tomorrow\./],
+  ["blocked", { blocked: { tool: "copilot-cli", why: "missing" } }, /AIQ can't find Copilot CLI on this computer\./],
+];
+for (const theme of ["light", "dark", "contrast"]) {
+  await test(`task detail: each analysis state says where the task stands, no axe violations (${theme})`, async () => {
+    for (const [state, rest, words] of ANALYSIS_STATES) {
+      const page = await open("full", { theme: theme === "light" ? undefined : theme, hash: TASK_HASH, editTask: unanalyzed({ state, ...rest }) });
+      const box = page.getByTestId("analysis-state");
+      await box.waitFor();
+      assert.match((await box.innerText()).replace(/\s+/g, " "), words, state);
+      assert.deepEqual(await axe(page), [], state);
+      assert.deepEqual(page.errors, [], state);
+      if (shots) await box.screenshot({ path: join(shots, `task-analysis-${state}-${theme}.png`) });
+      await page.context().close();
+    }
+  });
+}
+
+await test("task detail: Try now analyzes the task and reloads it; a busy run says so", async () => {
+  const page = await open("full", { hash: TASK_HASH, editTask: unanalyzed({ state: "retrying", next_try_ms: 1793527200000, tries: 1, last_try_ms: 1793520000000 }) });
+  await page.getByRole("button", { name: "Try now" }).click();
+  await page.waitForFunction(() => window.__AIQ_FIXTURE__.calls.some((c) => c.cmd === "analyze_task"));
+  const call = await page.evaluate(() => window.__AIQ_FIXTURE__.calls.find((c) => c.cmd === "analyze_task"));
+  assert.deepEqual(call.args, { taskId: "019000000001-0000-7000-8000-000000000000" });
+  await page.context().close();
+  const busy = await open("full", { hash: TASK_HASH, fail: ["analyze_task"], editTask: unanalyzed({ state: "gave_up", tries: 3, last_try_ms: 1793520000000 }) });
+  await busy.getByRole("button", { name: "Try again" }).click();
+  await busy.waitForSelector("text=already analyzing in the background", { state: "attached" });
+  await busy.context().close();
+});
 
 await test("task detail: a task no longer listed says so, with a way back", async () => {
   const page = await open("full", { hash: "#task/nope" });
