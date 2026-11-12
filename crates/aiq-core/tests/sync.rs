@@ -183,3 +183,17 @@ fn a_file_that_will_not_copy_to_the_laptop_still_lets_the_laptop_see_the_devbox(
         "the laptop can see the Devbox even while a file won't copy"
     );
 }
+
+#[test]
+fn the_offer_names_the_other_computer_not_its_windows_user_folder() {
+    // 2026-11-12, Imran: how does the second computer learn the first one's name? Before anyone chooses, the laptop
+    // has no folder under sync/, so the offer used the user folder's name ("imrans"). The laptop's AIQ writes its
+    // own name in its status file on every pass; the offer reads it there.
+    let mut laptop = computer();
+    let mut devbox = computer();
+    pass(&mut laptop.store, &laptop.paths, &[], 1);
+    let lap_name = read_status(&laptop.paths).unwrap().name;
+    let st = pass(&mut devbox.store, &devbox.paths, std::slice::from_ref(&laptop.paths.data), 2);
+    assert_eq!(st.offer.map(|o| o.name), Some(lap_name.clone()));
+    assert_eq!(st.via, Some(lap_name));
+}

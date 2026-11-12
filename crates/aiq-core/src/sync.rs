@@ -273,9 +273,12 @@ pub fn pass(store: &mut Store, paths: &Paths, remote: &[PathBuf], now_ms: i64) -
     st.setting = if setting.is_empty() { "unset".into() } else { setting.clone() };
     let remote_sync: Vec<PathBuf> = remote.iter().map(|h| h.join("sync")).collect();
     if let Some(h) = remote.first() {
-        let name = peer_dirs(&remote_sync[0], &me)
-            .first()
-            .map(|(_, c)| c.name.clone())
+        // The other computer's own name, from the status file its AIQ writes on every pass (even before anyone
+        // chooses), so the offer says "AIQ on LAPTOP-9", not the Windows user folder's name.
+        let name = read_status_at(h)
+            .map(|s| s.name)
+            .filter(|n| !n.trim().is_empty())
+            .or_else(|| peer_dirs(&remote_sync[0], &me).first().map(|(_, c)| c.name.clone()))
             .or_else(|| h.parent().and_then(Path::file_name).map(|n| n.to_string_lossy().into_owned()))
             .unwrap_or_default();
         st.via = Some(name.clone());
