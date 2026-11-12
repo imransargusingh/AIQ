@@ -22,7 +22,7 @@ summary: >-
 
 # AIQ privacy and terms
 
-**Private alpha, version 0.1.0. Last changed 2026-11-02.**
+**Private alpha, version 0.1.0. Last changed 2026-11-12.**
 
 AIQ is a coach for how you work with AI agents such as GitHub Copilot and Claude Code. It runs on your
 own Windows computer. This page says, in plain words, what it keeps, what it sends, and what you can
@@ -31,7 +31,8 @@ do about it. Anything marked **Planned** is not in this version.
 ## The short version
 
 - **Only you see your data.** AIQ has no server, no account and no manager or team view.
-- **Your prompts stay on your computer.** AIQ keeps them in a folder only your Windows account can read.
+- **Your prompts stay on your own computers.** AIQ keeps them in a folder only your Windows account can read.
+  If you choose **Keep in sync**, they also go to your other computer, and only there.
 - **Two things go out, both through tools you already use:**
   1. While analysis is on (installing AIQ turns it on; one switch turns it off), AIQ asks **your own**
      Copilot or Claude Code to analyze your finished tasks.
@@ -159,6 +160,19 @@ suggests a next step. To do that, it asks an AI model to read the task.
   computer name, or web addresses other than this project's GitHub page. Log lines and tool messages in
   it are scrubbed of secrets, paths and those names. You can read the whole file before it is saved.
 
+### Sync between your computers (only if you choose it)
+
+- **Off until you choose.** On a computer you reach with Remote Desktop (a Devbox, say), AIQ home offers
+  **Keep in sync** when it sees AIQ on the computer you connected from. Nothing moves until you press it.
+- **What moves:** everything AIQ keeps, including your prompts, goes to your other computer, so each shows
+  your whole history. Your settings, connected tools, folder rules and accuracy checks stay per computer.
+- **How it moves:** as files AIQ copies through your Remote Desktop connection's own drive link into AIQ's
+  folder on the other computer. No server, relay or cloud folder is involved, and no network port is opened.
+- **Deletes follow:** deleting a prompt, or your imported history, on one computer deletes it on the other
+  when they next sync. `aiq forget --all` deletes this computer's copy only.
+- **Turn it off:** **Settings > Your computers**. Each computer keeps what it already has.
+- A computer you paired keeps its copy if it is lost; the store is not encrypted yet (see above).
+
 ## Who can see your data
 
 - **You.** No one else: not your manager, your team, your company or the people who make AIQ. There is
@@ -179,7 +193,8 @@ suggests a next step. To do that, it asks an AI model to read the task.
 | Share how AIQ ran, to get help | AIQ home, **Your data** > **Save a diagnostics file…**; `aiq export --diagnostics` |
 | Delete one prompt | AIQ home, **Your data** |
 | Delete only imported history | `aiq forget --imported` |
-| Delete everything | `aiq forget --all` |
+| Delete everything | `aiq forget --all` (this computer; a synced computer keeps its copy) |
+| Stop syncing with your other computer | AIQ home **Settings > Your computers** |
 | Stop analyzing | AIQ home **Settings > Analysis**, or `aiq config set analysis off` |
 | Analyze fewer tasks a day | `aiq config set analysis-daily-tasks <n>` |
 | Stop quick kind labels | `aiq config set kind-label off` (analysis off stops them too) |

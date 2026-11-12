@@ -312,7 +312,7 @@ impl Seed {
         self.store
             .raw()
             .execute(
-                "INSERT INTO import_session VALUES (?1, ?2, 0, 'run1', ?3, ?4, ?5, NULL, NULL, ?6, '')",
+                "INSERT INTO import_session (tool, source_session_id, source_mtime_ms, run_id, folder, started_utc_ms, human_turns, non_interactive, template_key, outcome, why) VALUES (?1, ?2, 0, 'run1', ?3, ?4, ?5, NULL, NULL, ?6, '')",
                 rusqlite::params![tool, sid, folder, prompts.first().map(|p| p.0), prompts.len() as i64, outcome],
             )
             .unwrap();
@@ -320,14 +320,14 @@ impl Seed {
             self.store
                 .raw()
                 .execute(
-                    "INSERT INTO import_event VALUES (?1, ?2, ?3, 'prompt', ?4, ?5, NULL)",
+                    "INSERT INTO import_event (tool, source_session_id, seq, kind, ts_utc_ms, text, actions) VALUES (?1, ?2, ?3, 'prompt', ?4, ?5, NULL)",
                     rusqlite::params![tool, sid, (i * 2) as i64, at, text],
                 )
                 .unwrap();
             self.store
                 .raw()
                 .execute(
-                    "INSERT INTO import_event VALUES (?1, ?2, ?3, 'stop', ?4, NULL, '[]')",
+                    "INSERT INTO import_event (tool, source_session_id, seq, kind, ts_utc_ms, text, actions) VALUES (?1, ?2, ?3, 'stop', ?4, NULL, '[]')",
                     rusqlite::params![tool, sid, (i * 2 + 1) as i64, at + MIN],
                 )
                 .unwrap();

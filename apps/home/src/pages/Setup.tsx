@@ -131,7 +131,7 @@ export function Setup(ctx: Ctx & { rerun: boolean; finish: (s: Snapshot) => void
             <div className="group">
               <div className="kv">
                 <b>Only you see it</b>
-                <span className="mute">No manager or team view exists. AIQ has no server, and your prompts are kept on this computer.</span>
+                <span className="mute">No manager or team view exists. AIQ has no server, and your prompts are kept on your own computers.</span>
               </div>
               <div className="kv">
                 <b>About the task, not you</b>
@@ -301,7 +301,7 @@ export function Setup(ctx: Ctx & { rerun: boolean; finish: (s: Snapshot) => void
           <>
             <header className="group">
               <Title>One thing to know before you start</Title>
-              <p className="mute">Your history lives only on this computer. AIQ keeps no copy and has no backup in this version.</p>
+              <p className="mute">Your history lives only on your own computers. AIQ keeps no copy and has no backup in this version.</p>
             </header>
             <p>If you lose this computer or reinstall Windows, your AIQ history is gone. Your tools and your work aren't affected.</p>
             <label className="opt" style={{ maxWidth: 300 }}>

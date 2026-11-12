@@ -2177,6 +2177,10 @@ impl<C: Clock> Service<C> {
                 }
             },
             crate::update::SETTING_UPDATE => crate::update::validate_mode(value)?,
+            crate::sync::SETTING_SYNC => match value {
+                "on" | "off" => value.to_owned(),
+                _ => return Err("sync must be on or off".into()),
+            },
             SETTING_DAILY_CAP => match value.parse::<u32>() {
                 Ok(n) if n <= MAX_DAILY_CAP => n.to_string(),
                 _ => return Err(format!("daily-cap must be a whole number from 0 to {MAX_DAILY_CAP}")),

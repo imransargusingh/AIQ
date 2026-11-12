@@ -28,6 +28,35 @@ export interface Snapshot {
   tip_funnel: TipFunnels;
   /** The team tips file (aiq.team-tips.v1), read in place; absent when no folder is set. */
   team_tips?: TeamTips;
+  /** Sync between the person's computers (aiq-core `sync::Status`); absent until the core first looked. */
+  sync?: Sync;
+}
+
+/** Mirrors aiq-core `sync::Status`: this computer, the choice, and the other computers as of the core's last pass. */
+export interface Sync {
+  id: string;
+  name: string;
+  /** on, off, or unset (never decided). */
+  setting: "on" | "off" | "unset";
+  /** Another computer's AIQ is reachable through Remote Desktop and the person hasn't chosen yet. */
+  offer: { name: string } | null;
+  /** The computer reached through Remote Desktop right now, when one is. */
+  via: string | null;
+  peers: SyncPeer[];
+  pending: number;
+  utc_ms: number;
+  errors: string[];
+}
+
+export interface SyncPeer {
+  id: string;
+  name: string;
+  version: string;
+  /** ok, paused (off there), update (needs a newer AIQ here), waiting, error, away (out of reach now). */
+  state: "ok" | "paused" | "update" | "waiting" | "error" | "away";
+  detail: string | null;
+  last_ms: number | null;
+  rows: number;
 }
 
 /** Mirrors aiq-home `TeamTips`: one "Tool to try" per habit, from the person's team tips file. */
@@ -283,6 +312,8 @@ export interface TaskRow {
   job: string | null;
   rung: number | null;
   judgment: TaskJudgment | null;
+  /** Another of the person's computers this task ran on (sync id); null = this computer. */
+  computer?: string | null;
 }
 
 /** One task's current judgment. Model-written text (evidence, gap, blockers) is plain text: render as text only. */

@@ -2,7 +2,7 @@
 
 A private coach for how you work with AI agents. AIQ learns from how you work in Claude Code, GitHub
 Copilot CLI and VS Code, on your own computer. It shows where each kind of task sits on a five-rung ladder,
-which habits would move it up, and, at a natural pause, one short tip. Your prompts stay on your computer.
+which habits would move it up, and, at a natural pause, one short tip. Your prompts stay on your own computers.
 What does go out (analysis calls through your own Copilot or Claude Code, and a daily update check) is in
 [AIQ privacy and terms](docs/privacy-and-terms.md).
 
@@ -67,7 +67,7 @@ in more than half of the tasks where it fits, over 14 days.
 
 ![Habits and tips: Directed, Delegated and Orchestrated habits, each with how often it was seen](docs/images/readme/habits-and-tips.png)
 
-**Tasks.** Every task, its rung, why, and the next step, with your prompts kept only on this computer. You can
+**Tasks.** Every task, its rung, why, and the next step, with your prompts kept only on your own computers. You can
 delete any prompt in **Your data**. A task's page also shows the tip AIQ showed for it, where and when, and your
 answer; or the tip it held back and why; or why the task got no tip. **Tip history** opens each tip's task.
 
@@ -81,6 +81,13 @@ AIQ sends it nowhere: sharing it is up to you.
 
 **Settings.** Tips a day across all your tools (5, 15, 30 or your own number; default 5), where tips show and
 how long they stay, which next-step tips AIQ may show, background analysis, updates and connected tools.
+
+**More than one computer.** Use AIQ on a Devbox or another computer you reach with Remote Desktop? Open AIQ
+home there and press **Keep in sync**: your work from both computers shows in one place on each. There is no
+code to type and nothing to set up on the laptop. Your data goes straight between your two computers, through
+the Remote Desktop connection you already have, and is stored nowhere else. Each computer analyzes its own
+tasks, and tips a day and quiet times count across both. **Settings > Your computers** shows each computer and
+when it was last in sync, and one switch turns sync off (each computer keeps what it has).
 
 ![Settings: tips a day, the open-task estimate switch, and next-step tip options](docs/images/readme/settings-tips.png)
 
@@ -149,7 +156,7 @@ aiq import --dry-run        # count your past Claude Code / Copilot CLI sessions
 aiq export [<folder>]       # copy everything AIQ stored to plain JSON files
 aiq export --diagnostics    # one file on how AIQ ran these 14 days, to share if you choose (--prompts adds them)
 aiq forget --imported       # delete only what aiq import added
-aiq forget --all            # delete everything AIQ stored on this machine
+aiq forget --all            # delete everything AIQ stored on this computer (synced computers keep their copy)
 aiq install | aiq uninstall --all
 aiq help                    # every command
 ```

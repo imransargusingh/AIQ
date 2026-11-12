@@ -185,6 +185,11 @@ pub fn run_with(paths: &Paths, labeller: Option<crate::service::LabelRequester>)
         }
     });
 
+    // Sync between the person's computers (design multi-machine-sync): its own thread and store connection, a pass a
+    // minute. Does nothing until the person chooses "Keep in sync" (or another of their computers joins this one).
+    let sync_paths = paths.clone();
+    std::thread::spawn(move || crate::sync::run(sync_paths));
+
     let (tx, rx) = mpsc::sync_channel::<Cmd>(CHANNEL_CAPACITY);
     let writer_paths = paths.clone();
     let writer_counters = counters.clone();
@@ -508,6 +513,7 @@ fn handle(
         Dispatch::Forget => {
             let (rtx, rrx) = mpsc::channel();
             let stopped = tx.send(Cmd::Shutdown { reply: rtx }).is_ok() && rrx.recv_timeout(CLI_TIMEOUT).is_ok();
+            crate::sync::stop();
             let r =
                 if stopped { forget_files(paths).map_err(|e| e.to_string()) } else { Err("core did not stop".into()) };
             let _ = stream.write_all(to_line(&OkReply { ok: r.is_ok(), message: r.err() }).as_bytes());

@@ -108,7 +108,7 @@ export function Data(ctx: Ctx) {
       <Banners {...ctx} />
       <header className="group">
         <Title>Your data</Title>
-        <p className="mute">Everything AIQ has saved, only on this computer, in a file only your account can read. It stays until you delete it.</p>
+        <p className="mute">Everything AIQ has saved, only on your own computers, in a file only your account can read. It stays until you delete it.</p>
       </header>
       <div className="head">
         <p>
