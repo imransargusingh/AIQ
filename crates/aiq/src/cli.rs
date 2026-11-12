@@ -127,6 +127,7 @@ fn left_out_lines(aside: &[aiq_contracts::frames::AsideNow]) -> String {
         let why = match a.reason.as_str() {
             "projects" => "Claude's own work in a claude.ai project",
             "not-typed" => "scheduled or started by an app, not typed",
+            "agent" => "sub-agents your agent started, not typed",
             _ => "an app or script seems to run them",
         };
         out += &format!(

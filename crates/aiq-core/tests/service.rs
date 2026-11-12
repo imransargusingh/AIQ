@@ -1987,3 +1987,41 @@ fn a_prompt_delivered_twice_never_takes_the_next_prompts_transcript_record() {
         assert_eq!(h.prompts(), 3, "every prompt stored at once (next written first: {next_written_first})");
     }
 }
+
+// Devbox 2026-11-12: 104 of 138 tasks were sub-agent briefs a `/fleet` parent session wrote (each names the parent's
+// session id), and 11 more opened with a notification or a scheduled prompt the tool wrote. None was typed.
+#[test]
+fn a_sub_agents_brief_and_tool_written_prompts_are_not_counted() {
+    let mut h = H::new();
+    let parent = "a1b2c3d4-4040-446f-ab83-9bed2f4ecfb0";
+    let child = "9b2d1e40-1111-4222-8333-944455556666";
+    let other = "5d6e7f80-1111-4222-8333-944455556666";
+    h.cp_in("C:\\Repos\\Work", parent, "You are now in fleet mode. Dispatch sub-agents to finish the plan.", MIN);
+    assert_eq!(h.prompts(), 1, "the person's own session counts");
+    h.cp_in(
+        "C:\\Repos\\Work",
+        child,
+        &format!("Implement one bounded slice. Parent session {parent} owns integration."),
+        MIN,
+    );
+    h.cp_in("C:\\Repos\\Work", child, "Also add the regression test.", MIN);
+    h.cp_stop(child);
+    assert_eq!((h.prompts(), h.stops()), (1, 0), "a sub-agent's session counts nothing, later prompts included");
+    h.restart();
+    h.cp_in("C:\\Repos\\Work", child, "One more follow-up from the parent.", MIN);
+    assert_eq!(h.prompts(), 1, "still left out after the core restarts");
+    h.cp_in(
+        "C:\\Repos\\Work",
+        parent,
+        "<system_notification> Agent \"slice\" has finished processing and is now idle.",
+        MIN,
+    );
+    h.cp_in("C:\\Repos\\Work", parent, "[Scheduled prompt #2] Continue the plan in this session.", MIN);
+    assert_eq!(h.prompts(), 1, "notifications and scheduled prompts are not typed");
+    h.cp_in("C:\\Repos\\Work", parent, "keep going", MIN);
+    assert_eq!(h.prompts(), 2, "the person's next typed prompt counts");
+    h.cp_in("C:\\Repos\\Work", other, "why did session 0000aaaa-1111-4222-8333-944455556666 stall?", MIN);
+    assert_eq!(h.prompts(), 3, "an id AIQ has never seen is not a parent");
+    let reason = h.svc().store().set_aside_reason("copilot-cli", child).unwrap();
+    assert_eq!(reason.as_deref(), Some("agent"));
+}

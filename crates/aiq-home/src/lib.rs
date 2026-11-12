@@ -1442,6 +1442,7 @@ fn task_list(store: &Store, pack: &PackV1, window_start: i64, aside: &BTreeSet<&
             rows.push(q(row)?);
         }
     }
+    not_typed_out(store, &mut rows)?;
     // Imported prompts (`aiq import`, schema v4). A store from before v4 has no import tables.
     let mut imp: Vec<ImportRow> = Vec::new();
     if store.has_table("import_session").map_err(|e| e.to_string())?
@@ -1556,6 +1557,38 @@ fn task_list(store: &Store, pack: &PackV1, window_start: i64, aside: &BTreeSet<&
     tasks.sort_by(|a, b| b.first_ms.cmp(&a.first_ms).then_with(|| a.task_id.cmp(&b.task_id)));
 
     Ok(tasks)
+}
+
+/// Leaves out live prompts no person typed, with the core's ingest rules (`aiq_domain::automated`), so rows stored
+/// before those rules, or synced from a computer running an older AIQ, are not the person's tasks either: a prompt
+/// the tool wrote (rule TOOL), and every prompt of a session whose first prompt names another session AIQ has on the
+/// same tool (rule AGENT: a sub-agent's brief). Measured 2026-11-12: 104 of 138 Devbox tasks were sub-agent briefs
+/// and 11 more opened with a notification or a scheduled prompt.
+fn not_typed_out(store: &Store, rows: &mut Vec<LiveRow>) -> R<()> {
+    use aiq_domain::automated::{named_sessions, written_by_tool};
+    let mut known: BTreeSet<(String, String)> = BTreeSet::new();
+    {
+        let mut st = q(store.raw().prepare("SELECT surface, lower(surface_session_id) FROM surface_session"))?;
+        for r in q(st.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))))? {
+            known.insert(q(r)?);
+        }
+    }
+    // Rows come in time order, so the first one seen per session is its first prompt in range.
+    let mut first: BTreeSet<(String, String)> = BTreeSet::new();
+    let mut agent: BTreeSet<(String, String)> = BTreeSet::new();
+    for (_, surface, session, _, _, text, _) in rows.iter() {
+        if !first.insert((surface.clone(), session.clone())) {
+            continue;
+        }
+        let names = text.as_deref().map(|t| named_sessions(t, session)).unwrap_or_default();
+        if names.into_iter().any(|id| known.contains(&(surface.clone(), id))) {
+            agent.insert((surface.clone(), session.clone()));
+        }
+    }
+    rows.retain(|(_, surface, session, _, _, text, _)| {
+        !text.as_deref().is_some_and(written_by_tool) && !agent.contains(&(surface.clone(), session.clone()))
+    });
+    Ok(())
 }
 
 fn row(t: TaskSpan, folder: Option<String>, origin: &'static str, computer: Option<String>) -> TaskRow {

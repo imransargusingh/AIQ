@@ -129,6 +129,51 @@ pub fn sent_by_turn_end_hook(gap_ms: Option<i64>, chars: usize, pasted: bool) ->
     !pasted && chars >= FAST_MIN_CHARS && gap_ms.is_some_and(|g| (0..FAST_AFTER_STOP_MS).contains(&g))
 }
 
+/// Rule TOOL: openings the tool itself writes into a session as a prompt. Copilot CLI sends a background agent's or
+/// shell's end as `<system_notification> Agent "…" has finished…` and a scheduled run as `[Scheduled prompt #N] …`.
+/// Measured 2026-11-12 over the laptop store with the Devbox's synced rows: 31 notifications and 26 scheduled prompts,
+/// none typed (each followed a background run or a schedule the person had set).
+/// assume: nobody types a prompt that opens with these exact marks. If false: that prompt is left out as "not typed"
+/// (Home's left-out line shows the count).
+pub const TOOL_OPENINGS: [&str; 2] = ["<system_notification>", "[scheduled prompt #"];
+
+/// Rule TOOL for one prompt: it opens with one of `TOOL_OPENINGS` (case and leading space ignored).
+pub fn written_by_tool(prompt: &str) -> bool {
+    let head: String = prompt.trim_start().chars().take(24).collect::<String>().to_lowercase();
+    TOOL_OPENINGS.iter().any(|o| head.starts_with(o))
+}
+
+/// Rule AGENT: the session ids a first prompt names, other than its own. A sub-agent's brief names the session that
+/// started it ("Parent session a1b2c3d4-… owns integration", or a work folder under that session's state folder).
+/// Measured 2026-11-12, every live session's first prompt in the laptop store (Devbox rows synced in): of 118 Devbox
+/// Copilot CLI sessions, all 104 sub-agent briefs named a session AIQ already had on the same tool, and none of the
+/// 14 the person started did; on the laptop the 2 that did were Copilot's own autopilot checks ("Independently verify
+/// whether this autopilot objective has been fully satisfied"), also not typed. The caller keeps only ids it knows.
+/// assume: a person rarely opens a new session by pasting another session's id. If false: that session is left out
+/// as an agent's (Home's left-out line shows the count).
+pub fn named_sessions(prompt: &str, own: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let b = prompt.as_bytes();
+    let mut i = 0;
+    while i + 36 <= b.len() {
+        let boundary = i == 0 || !b[i - 1].is_ascii_hexdigit();
+        let cand = &prompt.get(i..i + 36);
+        let after_ok = b.get(i + 36).is_none_or(|c| !c.is_ascii_hexdigit() && *c != b'-');
+        if let (true, Some(c), true) = (boundary, cand, after_ok)
+            && is_guid(c)
+        {
+            let id = c.to_ascii_lowercase();
+            if !id.eq_ignore_ascii_case(own) && !out.contains(&id) {
+                out.push(id);
+            }
+            i += 36;
+            continue;
+        }
+        i += 1;
+    }
+    out
+}
+
 /// The import spec's template normalization: URLs, GUIDs, paths, quoted strings and digit runs replaced,
 /// whitespace collapsed, lowercase, first 200 chars. None for an empty prompt (empty prompts never group).
 pub fn template_of(prompt: &str, max_chars: usize) -> Option<String> {
@@ -294,6 +339,32 @@ mod tests {
         assert!(!sent_by_turn_end_hook(Some(1_000), 1_285, true), "pasted: a person may paste the moment a turn ends");
         assert!(!sent_by_turn_end_hook(None, 394, false), "no turn end yet: a first prompt");
         assert!(!sent_by_turn_end_hook(Some(-10), 394, false), "a prompt stamped before the turn end");
+    }
+
+    #[test]
+    fn tool_written_openings_are_not_typed() {
+        assert!(written_by_tool("<system_notification> Agent \"x\" has finished processing and is now idle."));
+        assert!(written_by_tool("  [Scheduled prompt #3] Continue the implementation"));
+        assert!(written_by_tool("[scheduled prompt #1] continue"));
+        assert!(!written_by_tool("keep going"));
+        assert!(!written_by_tool("why did the scheduled prompt #3 fail?"), "only the opening counts");
+        assert!(!written_by_tool("what does <system_notification> mean here?"));
+    }
+
+    #[test]
+    fn a_brief_naming_another_session_lists_that_id_once() {
+        let own = "11111111-2222-3333-4444-555555555555";
+        let parent = "a1b2c3d4-4040-446f-ab83-9bed2f4ecfb0";
+        let brief = format!(
+            "Implement one bounded slice in C:\\Users\\me\\.copilot\\session-state\\{parent}\\files\\x. Parent session {} owns integration. You are {own}.",
+            parent.to_uppercase()
+        );
+        assert_eq!(named_sessions(&brief, own), vec![parent.to_owned()]);
+        assert!(named_sessions("keep going", own).is_empty());
+        assert!(named_sessions(&format!("my session {own}"), own).is_empty(), "its own id is not another session");
+        assert!(named_sessions("hash 0a1b2c3d4-4040-446f-ab83-9bed2f4ecfb0", own).is_empty(), "longer hex run");
+        assert!(named_sessions("a1b2c3d4-4040-446f-ab83-9bed2f4ecfb0-77", own).is_empty(), "longer dashed run");
+        assert!(named_sessions("c0474ae7-4040-446f-ab83-9bed2f4ecfbz", own).is_empty(), "not hex");
     }
 
     #[test]

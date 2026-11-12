@@ -275,12 +275,20 @@ export function asideText(tools: { name: string; aside: string | null }[]): stri
     ? "Claude's own work in a claude.ai project isn't counted. Turns you type yourself count."
     : all("not-typed")
       ? `Work in ${names} that an app scheduled or started isn't counted. Turns you type yourself count.`
+      : all("agent")
+        ? `Sub-agents your agent started in ${names} aren't counted. Turns you type yourself count.`
       : `Work in ${names} that an app or script runs isn't counted. Turns you type yourself count.`;
 }
 
 /** What the card calls a tool's newest activity left out as automated, by rule. */
 export function ownWorkLabel(reason: string): string {
-  return reason === "projects" ? "Claude's own work" : reason === "not-typed" ? "started by an app" : "automated";
+  return reason === "projects"
+    ? "Claude's own work"
+    : reason === "not-typed"
+      ? "started by an app"
+      : reason === "agent"
+        ? "your agent's sub-agents"
+        : "automated";
 }
 
 /** Same bar as crates/aiq-contracts `AsideNow::mostly_left_out` (10 prompts, 90%; Imran 2026-11-09). */
@@ -290,6 +298,7 @@ const NAME: Record<string, string> = { "claude-code": "Claude Code", "copilot-cl
 const LEFT_WHY: Record<string, string> = {
   projects: "Claude's own work in a claude.ai project",
   "not-typed": "scheduled or started by an app, not typed",
+  agent: "sub-agents your agent started, not typed",
 };
 
 /** Tools most of whose prompts today were left out as automated, in plain words. */
