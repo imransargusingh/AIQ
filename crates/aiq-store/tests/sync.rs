@@ -332,3 +332,18 @@ fn a_computer_that_never_syncs_keeps_no_queue_and_turning_sync_on_still_sends_ev
     assert_eq!(count(&b, "SELECT count(*) FROM event"), 3);
     assert_eq!(count(&a, "SELECT count(*) FROM sync_outbox"), 0);
 }
+
+#[test]
+fn rows_sent_before_the_cleanup_leave_the_queue_even_when_nothing_new_is_cut() {
+    // 2026-11-12, the laptop on 0.1.48: 17,223 queue rows, all already in written files (upto_row 17223), stayed
+    // through 5 passes because the cleanup ran only after a new file was cut.
+    let (_d, mut a) = open();
+    a.insert_event(&ev("e1", "s1", Some("first"), 1), 1).unwrap();
+    a.sync_queue_all_if_never_sent().unwrap();
+    cut(&mut a).unwrap();
+    // As an older AIQ left it: the sent rows still queued.
+    a.raw().execute("INSERT INTO sync_outbox (n, tbl, row_id) SELECT 1, 'event', 1 WHERE NOT EXISTS (SELECT 1 FROM sync_outbox WHERE n = 1)", []).unwrap();
+    assert_eq!(count(&a, "SELECT count(*) FROM sync_outbox"), 1);
+    assert!(cut(&mut a).is_none(), "nothing new to send");
+    assert_eq!(count(&a, "SELECT count(*) FROM sync_outbox"), 0, "sent rows leave even when no file is cut");
+}

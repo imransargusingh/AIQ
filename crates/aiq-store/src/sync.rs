@@ -244,6 +244,9 @@ impl Store {
             }
         }
         if new_row == upto_row && new_del == upto_del {
+            // Nothing new; still clear rows already in written files (an older AIQ kept them, 2026-11-12).
+            tx.execute("DELETE FROM sync_outbox WHERE n <= ?1", [upto_row]).map_err(err(codes::STORE_WRITE))?;
+            tx.commit().map_err(err(codes::STORE_WRITE))?;
             return Ok(None);
         }
         let seg = Segment { device, seq: last_seq + 1, schema, lines };
