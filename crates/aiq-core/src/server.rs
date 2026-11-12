@@ -185,6 +185,11 @@ pub fn run_with(paths: &Paths, labeller: Option<crate::service::LabelRequester>)
         }
     });
 
+    // Sync between the person's computers (design multi-machine-sync): its own thread and store connection, a pass a
+    // minute. Does nothing until the person chooses "Keep in sync" (or another of their computers joins this one).
+    let sync_paths = paths.clone();
+    std::thread::spawn(move || crate::sync::run(sync_paths));
+
     let (tx, rx) = mpsc::sync_channel::<Cmd>(CHANNEL_CAPACITY);
     let writer_paths = paths.clone();
     let writer_counters = counters.clone();

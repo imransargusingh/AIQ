@@ -233,9 +233,10 @@ mod tests {
         let s = aiq_store::Store::open(&p.db()).unwrap();
         s.raw()
             .execute_batch(
-                "INSERT INTO surface_session VALUES ('claude-code', 's', 0);
-                 INSERT INTO event VALUES ('e1', 'claude-code', 's', 'prompt', 1, 1, 'p1', NULL, 't', 5, '{\"has_text\":1}');
-                 INSERT INTO content VALUES ('e1', 'hello');",
+                "INSERT INTO surface_session (surface, surface_session_id, first_seen_utc_ms) VALUES ('claude-code', 's', 0);
+                 INSERT INTO event (event_id, surface, surface_session_id, kind, ts_utc_ms, received_utc_ms, prompt_id, trace_id,
+                   collector_version, prompt_chars, payload_meta) VALUES ('e1', 'claude-code', 's', 'prompt', 1, 1, 'p1', NULL, 't', 5, '{\"has_text\":1}');
+                 INSERT INTO content (event_id, text) VALUES ('e1', 'hello');",
             )
             .unwrap();
         drop(s);

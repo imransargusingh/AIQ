@@ -11,6 +11,7 @@ import { ver } from "../updateNow";
 import { THEMES } from "../theme";
 import { teamTipsText } from "../team";
 import { TIP_RULES, TipsCap } from "../tipsCap";
+import { YourComputers } from "../computers";
 
 const STAYS: { v: S["copilot_tip_stays"]; label: string; note?: string }[] = [
   { v: "next-prompt", label: "Until your next prompt", note: "Default" },
@@ -31,6 +32,7 @@ const TREND = { label: "Show where an open task is heading", note: "On Home whil
 const SECTIONS = [
   ["st1", "Tips"],
   ["st7", "What AIQ keeps"],
+  ["st10", "Your computers"],
   ["st3", "Analysis"],
   ["st6", "Updates"],
   ["st8", "Theme"],
@@ -364,7 +366,7 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
         </div>
         <span className="meta">
           Copilot doesn't tell AIQ about these, so AIQ reads them from Copilot's own history file on this computer when the agent
-          stops. Nothing leaves your computer.
+          stops. Nothing leaves your computers.
         </span>
         <div className="row" style={{ justifyContent: "space-between" }}>
           <span id="actions">What the agent did in each turn</span>
@@ -383,9 +385,11 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
         </div>
         <span className="meta">
           Counts only: tool calls, commands, files and helper agents, read from the tool's own history file when the agent
-          stops. No command text or file names. Nothing leaves your computer.
+          stops. No command text or file names. Nothing leaves your computers.
         </span>
       </section>
+
+      <YourComputers snap={snap} down={down} change={change} />
 
       <section className="card" aria-labelledby="st3">
         <div className="head">

@@ -629,3 +629,10 @@ button.tf-more:hover{filter:brightness(1.15)}
 .warnline{color:var(--warning)}
 .savedline{background:var(--surface);border:1px solid var(--hairline);border-radius:var(--r-sm);padding:var(--s3) var(--s4)}
 @media (max-width:560px){.diagcols{grid-template-columns:1fr}}
+
+/* Your computers (design multi-machine-sync): the list in Settings and the status tone of each other computer. */
+.pcs{list-style:none;margin:0;padding:0;border:1px solid var(--hairline);border-radius:var(--r-md)}
+.pcs li{padding:var(--s3) var(--s4);border-top:1px solid var(--hairline)}
+.pcs li:first-child{border-top:0}
+.sync-ok{color:var(--success)}
+.sync-wait{color:var(--warning)}

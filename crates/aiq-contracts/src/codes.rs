@@ -44,6 +44,13 @@ pub const HOME_STORE_READ: &str = "AIQ-HOME-STORE-READ";
 pub const HOME_CORE_START: &str = "AIQ-HOME-CORE-START";
 /// `aiq export` could not write its folder (not writable, disk full); the partial folder is removed.
 pub const EXPORT_WRITE: &str = "AIQ-EXPORT-WRITE";
+/// A sync change file could not be written to the person's own sync folder (folder gone, disk full); nothing is
+/// marked sent, so the same file is cut again next time.
+pub const SYNC_WRITE: &str = "AIQ-SYNC-WRITE";
+/// A change file from another of the person's computers could not be applied; none of it was, and it is tried again.
+pub const SYNC_APPLY: &str = "AIQ-SYNC-APPLY";
+/// The other computer's sync folder could not be read (Remote Desktop drive gone mid-read).
+pub const SYNC_READ: &str = "AIQ-SYNC-READ";
 
 /// Rung judge (design docs/design/rung-judge.md, Failure-mode analysis).
 /// AIQ guessed the kind of task right fewer than 8 in 10 times and turned next-rung tips off (coaching D10).
@@ -91,6 +98,9 @@ pub const ALL: &[&str] = &[
     HOME_STORE_READ,
     HOME_CORE_START,
     EXPORT_WRITE,
+    SYNC_WRITE,
+    SYNC_APPLY,
+    SYNC_READ,
     JUDGE_MISSING,
     JUDGE_SIGNIN,
     JUDGE_SCHEMA,

@@ -150,6 +150,7 @@ fn allowed_setting(key: &str) -> bool {
             | "agent_actions"
             | "live_trend"
             | "update"
+            | "sync"
     ) || key.starts_with("keep_on.")
         || key.starts_with(aiq_home::PROJECT_NAME)
 }

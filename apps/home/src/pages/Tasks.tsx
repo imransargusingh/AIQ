@@ -10,6 +10,7 @@ import { Banners, Chip, ProjectPicker, Rung, Title, type Ctx } from "../ui";
 import { projectName, projectOf } from "../project";
 import type { KindRow, ProgressRow } from "../types";
 import { DayView } from "./DayView";
+import { ComputerTag } from "../computers";
 import { Projects } from "./Projects";
 
 const COLS: { key: SortKey; label: string; right?: boolean }[] = [
@@ -133,7 +134,7 @@ export function Tasks({ start, ...ctx }: Ctx & { start?: View }) {
                     </a>
                   </td>
                   <td>
-                    {toolName(t.tool)} {t.origin === "imported" && <Chip>Imported</Chip>}
+                    {toolName(t.tool)} {t.origin === "imported" && <Chip>Imported</Chip>} <ComputerTag snap={snap} task={t} />
                   </td>
                   <td className="r num">{t.prompts}</td>
                   <td title={t.folder ?? "Unknown for tasks before this version"}>{projectName(snap, projectOf(t))}</td>

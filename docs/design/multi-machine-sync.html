@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Multi Machine Sync</title><style>
+:root { color-scheme: light dark; --bg:#f7f5ef; --panel:#fff; --text:#20201d;
+  --muted:#66645f; --line:#d9d5ca; --accent:#3157a4; --code:#f0eee7; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#171816; --panel:#20221f; --text:#f2f1eb; --muted:#b8b6ae;
+    --line:#3d403a; --accent:#8fb0ff; --code:#292c27; }
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text);
+  font:16px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif; }
+main { width:min(920px,calc(100% - 32px)); margin:32px auto; padding:40px;
+  background:var(--panel); border:1px solid var(--line); border-radius:12px; }
+h1,h2,h3,h4,h5,h6 { line-height:1.2; margin:1.5em 0 .55em; }
+h1 { margin-top:0; font-size:2.2rem; } h2 { border-bottom:1px solid var(--line); padding-bottom:.3em; }
+a { color:var(--accent); } code { background:var(--code); padding:.12em .35em; border-radius:4px; }
+pre { overflow:auto; padding:16px; background:var(--code); border-radius:8px; }
+pre code { padding:0; } blockquote { margin:1em 0; padding:.2em 1em; color:var(--muted);
+  border-left:4px solid var(--line); }
+table { width:100%; border-collapse:collapse; margin:1em 0; display:block; overflow:auto; }
+th,td { padding:.55em .75em; border:1px solid var(--line); text-align:left; vertical-align:top; }
+th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); }
+.source { color:var(--muted); font-size:.9rem; margin-bottom:2rem; }
+@media (max-width:640px) { main { width:100%; margin:0; padding:24px 18px; border:0; border-radius:0; } }
+</style></head><body><main><div class="source">Rendered from multi-machine-sync.md</div><h1>Keep your computers in sync</h1>
+<h2>Why</h2>
+<p>Imran (2026-11-12): &quot;many users use multiple machines. As a result, AIQ reporting based on a single machine&#x27;s data tells an incomplete/misleading story.&quot; Requirements: the person stays in control, the data is never stored on a device they don&#x27;t control, and turning it on and off is surprisingly easy.</p>
+<h2>What was measured before building (2026-11-12, Imran&#x27;s laptop and Devbox)</h2>
+<table><thead><tr><th>Check</th><th>Result</th></tr></thead><tbody><tr><td>Laptop store</td><td>18.2 MB + 4.1 MB WAL after 11 days; most is one-time imported history. Live growth ≤ ~0.2 MB a day.</td></tr><tr><td>Direct computer-to-computer QUIC (iroh 1.4.1, relay off, no lookup service), both directions</td><td>Failed. The laptop is behind home Wi-Fi; the Devbox has a private cloud address the VPN does not route.</td></tr><tr><td>Devbox reads the laptop&#x27;s drive over Remote Desktop (<code>\\tsclient\c</code>)</td><td>Works.</td></tr><tr><td>Devbox writes 20.9 MB to the laptop over it</td><td>3.46 s, byte-identical (SHA-256 checked).</td></tr></tbody></table>
+<p>Imran ruled out running a relay server. So slice 1 moves files over the Remote Desktop link the person already has.</p>
+<h2>How it works</h2>
+<ul><li><strong>Identity.</strong> Each store gets a random computer id at schema v12 (<code>sync_self</code>). A fresh store after &quot;Delete</li></ul>
+<p>everything&quot; is a new computer, so change numbers are never reused.</p>
+<ul><li><strong>Change files.</strong> Insert triggers queue every row this computer records (<code>sync_outbox</code>, AUTOINCREMENT). A pass</li></ul>
+<p>cuts the queue into numbered JSON-lines files (<code>&lt;aiq home&gt;/sync/&lt;id&gt;/00000001.jsonl</code>, at most 5,000 lines) and marks a file sent only after it is written whole (temp file, then rename).</p>
+<ul><li><strong>The meeting point is the laptop&#x27;s AIQ home.</strong> The computer inside the Remote Desktop session (the Devbox) copies</li></ul>
+<p>its files into the laptop&#x27;s <code>sync/&lt;devbox id&gt;/</code> and applies the laptop&#x27;s files from <code>sync/&lt;laptop id&gt;/</code>. The laptop only reads its own folder. It needs no network, port or relay.</p>
+<ul><li><strong>Apply exactly once, in order.</strong> <code>sync_applied (peer, seq)</code> in the same transaction as the rows. A missing</li></ul>
+<p>earlier file waits; a file cut short or unreadable is an error and is tried again; a file from a newer store format is held until this computer updates. Nothing is dropped or guessed.</p>
+<ul><li><strong>Merge = add what you don&#x27;t have.</strong> Rows keep their keys (<code>INSERT OR IGNORE</code>) and arrive with <code>computer</code> set to</li></ul>
+<p>where they came from. Rows that arrived are never sent on. AUTOINCREMENT ids (<code>card_open</code>, <code>tip_feedback</code>, <code>guidance_flag</code>) are renumbered locally. An imported session that grew and was re-imported replaces the older copy.</p>
+<ul><li><strong>Deletes follow.</strong> &quot;Delete a prompt&quot; and &quot;forget imported history&quot; write <code>sync_delete</code>; the other computer</li></ul>
+<p>repeats them. <code>aiq forget --all</code> is this computer only (it says so).</p>
+<h2>What merges, what stays</h2>
+<table><thead><tr><th>Merges</th><th>Stays on each computer</th></tr></thead><tbody><tr><td>Sessions, prompts, prompt text, turn actions, set-aside sessions, imported history</td><td>Settings, connected tools, folder rules (paths are local), update state, logs</td></tr><tr><td>Analyses, analysis calls, kind labels, type guesses</td><td><code>import_run</code>, accuracy-check runs and checks</td></tr><tr><td>Signals, tip decisions and deliveries, tip opens, tip answers, &quot;This doesn&#x27;t fit&quot; flags, tip paths</td><td></td></tr></tbody></table>
+<h2>Rules that keep each computer honest</h2>
+<ul><li><strong>Tasks never join prompts from two computers.</strong> Tasks are split per computer, so each computer&#x27;s task ids are</li></ul>
+<p>exactly what that computer computes, and analyses keyed on them agree.</p>
+<ul><li><strong>Only the computer that saw a task analyzes it</strong> (<code>aiq_home::own_tasks</code>, the judge queue, Home&#x27;s &quot;waiting&quot;</li></ul>
+<p>count). Nothing is analyzed or paid for twice.</p>
+<ul><li><strong>Tips:</strong> another computer&#x27;s ready tips are never offered, delivered or handed back here; detectors never rerun</li></ul>
+<p>on its prompts. Its deliveries do count toward tips a day, the quiet period and the 72-hour same-tip rule.</p>
+<ul><li><strong>Right now</strong> and <code>aiq show</code> with no id stay this computer&#x27;s own.</li></ul>
+<h2>The experience</h2>
+<ul><li>The Devbox, inside a Remote Desktop session, sees <code>\\tsclient\c\Users\*\.aiq\aiq.db</code> and Home shows one card:</li></ul>
+<p>&quot;AIQ on LAPTOP is here too&quot; with <strong>Keep in sync</strong> and <strong>Not now</strong>. No code. Nothing is written anywhere before the person chooses.</p>
+<ul><li>The laptop turns sync on by itself the first time the Devbox&#x27;s folder appears (the person chose on the Devbox).</li><li><strong>Settings &gt; Your computers:</strong> this computer, each other computer with &quot;In sync · 1 min ago&quot;, &quot;Sync is off on</li></ul>
+<p>…&quot;, &quot;runs a newer AIQ&quot;, or &quot;catches up next time you connect&quot;, and one <strong>Keep in sync</strong> switch. Off = each keeps what it has, and the other side shows &quot;Sync is off on …&quot;.</p>
+<ul><li>Tasks from the other computer carry its name as a tag.</li></ul>
+<h2>Instrumentation</h2>
+<p>Every pass writes <code>sync-status.json</code> (Home reads it) and, while sync is on or offered, one <code>sync.pass</code> log line: setting, computers in reach, peers, rows waiting to be sent, error codes (<code>AIQ-SYNC-WRITE</code>, <code>AIQ-SYNC-APPLY</code>, <code>AIQ-SYNC-READ</code>), and the pass time. No file content is logged.</p>
+<h2>Not in slice 1</h2>
+<ul><li>Computers on the same network without Remote Desktop (direct pairing with a code).</li><li>Preferences that follow you (tips a day, tips turned off).</li><li>&quot;Delete its tasks here&quot; when removing a computer, and &quot;Delete everything on all my computers&quot;.</li><li>An All computers / this computer filter on Home (tasks carry the tag already).</li><li>Old change files are kept (≤ ~0.2 MB a day); pruning comes with direct pairing.</li><li>Encryption at rest of the store (a lost computer keeps its copy).</li></ul></main></body></html>

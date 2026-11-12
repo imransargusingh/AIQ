@@ -12,6 +12,7 @@ import { RightNow } from "./RightNow";
 import { DroughtNote } from "../funnel";
 import { GettingStartedCard, GettingStartedPage } from "./GettingStarted";
 import { AnalysisCard, analysisLine } from "./Analysis";
+import { SyncOffer } from "../computers";
 
 export function Home(ctx: Ctx) {
   const { snap, go, announce, refresh } = ctx;
@@ -27,6 +28,7 @@ export function Home(ctx: Ctx) {
       <div className="page">
         <Banners {...ctx} />
         <UpdateLine {...ctx} />
+        <SyncOffer snap={snap} refresh={refresh} announce={announce} />
         <GettingStartedPage snap={snap} go={go} startTour={ctx.startTour} />
       </div>
     );
@@ -49,6 +51,7 @@ export function Home(ctx: Ctx) {
       <UpdateLine {...ctx} />
       <AccuracyPaused {...ctx} />
       <DroughtNote snap={snap} go={go} />
+      <SyncOffer snap={snap} refresh={refresh} announce={announce} />
       <Title sr>Home</Title>
       <ProjectPicker {...ctx} />
       <RightNow {...ctx} />

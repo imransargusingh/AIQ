@@ -2,7 +2,7 @@
 // Outside Tauri (the UI tests) a fixture stands in, set on window by the test before the page loads.
 import type { Diagnostics, Outcome, SavedFile, Snapshot, TaskDetail, ToolFound } from "./types";
 
-export type SettingKey = "daily_cap" | "copilot_tip_stays" | "copilot_tip_in_chat" | "tip_popup" | "tip_highlight" | "live_trend" | "next_rung_tips" | "judge" | "judge_daily_tasks" | "copilot_mid_turn" | "agent_actions" | "update" | `keep_on.${string}` | `project_name.${string}`;
+export type SettingKey = "daily_cap" | "copilot_tip_stays" | "copilot_tip_in_chat" | "tip_popup" | "tip_highlight" | "live_trend" | "next_rung_tips" | "judge" | "judge_daily_tasks" | "copilot_mid_turn" | "agent_actions" | "update" | "sync" | `keep_on.${string}` | `project_name.${string}`;
 /** The reasons the core accepts (crates/aiq-core/src/coaching.rs FLAG_REASONS). */
 export type FlagReason = "evidence_wrong" | "not_useful" | "blocked" | "other";
 
@@ -49,6 +49,7 @@ function fixture<T>(cmd: string, args: Record<string, unknown>): Promise<T> {
         if (args.key === "copilot_mid_turn") s.settings.copilot_mid_turn = args.value as Snapshot["settings"]["copilot_mid_turn"];
         if (args.key === "agent_actions") s.settings.agent_actions = args.value as Snapshot["settings"]["agent_actions"];
         if (args.key === "update") s.update.mode = args.value as Snapshot["update"]["mode"];
+        if (args.key === "sync" && s.sync) [s.sync.setting, s.sync.offer] = [args.value as "on" | "off", null];
         if (args.key === "copilot_tip_stays") s.settings.copilot_tip_stays = args.value as Snapshot["settings"]["copilot_tip_stays"];
         if (args.key === "copilot_tip_in_chat" || args.key === "tip_popup" || args.key === "tip_highlight" || args.key === "live_trend") s.settings[args.key] = args.value === "on";
         const keep = String(args.key).startsWith("keep_on.") ? s.settings.accuracy_paused.find((p) => `keep_on.${p.scope}` === args.key) : undefined;

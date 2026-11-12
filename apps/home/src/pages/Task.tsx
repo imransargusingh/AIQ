@@ -152,7 +152,7 @@ export function Task(ctx: Ctx & { taskId: string }) {
           ))}
         </ol>
         <p className="meta">
-          Stored only on this computer. {t.origin === "live" ? "Delete a prompt in Your data." : "Imported from your tool's own history."} Read in {st.d.read_ms} ms.
+          Stored only on your own computers. {t.origin === "live" ? "Delete a prompt in Your data." : "Imported from your tool's own history."} Read in {st.d.read_ms} ms.
         </p>
       </section>
     </div>

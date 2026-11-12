@@ -304,7 +304,7 @@ await test("Settings: a switch for Copilot messages sent while the agent works, 
   const page = await open("full", { hash: "#settings" });
   const sw = page.getByRole("switch", { name: "Copilot messages you send while the agent is still working" });
   assert.equal(await sw.getAttribute("aria-checked"), "true");
-  assert.ok((await page.locator("main").innerText()).includes("Nothing leaves your computer."));
+  assert.ok((await page.locator("main").innerText()).includes("Nothing leaves your computers."));
   await sw.click();
   await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent?.startsWith("AIQ no longer keeps"));
   assert.equal(await sw.getAttribute("aria-checked"), "false");
@@ -322,6 +322,83 @@ await test("Settings: a switch for what the agent did in each turn, on by defaul
   assert.equal(await sw.getAttribute("aria-checked"), "false");
   const calls = await page.evaluate(() => window.__AIQ_FIXTURE__.calls);
   assert.ok(calls.some((c) => c.cmd === "set_setting" && c.args?.key === "agent_actions" && c.args?.value === "off"), JSON.stringify(calls));
+  assert.deepEqual(await axe(page), []);
+  await page.context().close();
+});
+
+/** Sync as the core's last pass left it (aiq-core `sync::Status`). */
+function synced(s, over = {}) {
+  s.sync = { id: "a1", name: "DEVBOX-07", setting: "unset", offer: null, via: null, peers: [], pending: 0, utc_ms: s.now_ms, errors: [], ...over };
+}
+
+await test("Your computers: the Devbox offers Keep in sync once it sees the laptop, one press, no code (design multi-machine-sync)", async () => {
+  const page = await open("full", { edit: (s) => synced(s, { offer: { name: "LAPTOP-9" }, via: "LAPTOP-9" }) });
+  const offer = page.getByTestId("sync-offer");
+  assert.ok((await offer.innerText()).includes("AIQ on LAPTOP-9 is here too"));
+  assert.deepEqual(await axe(page), []);
+  await offer.getByRole("button", { name: "Keep in sync" }).click();
+  await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent?.includes("Keeping DEVBOX-07 and LAPTOP-9 in sync"));
+  const calls = await page.evaluate(() => window.__AIQ_FIXTURE__.calls);
+  assert.ok(calls.some((c) => c.cmd === "set_setting" && c.args?.key === "sync" && c.args?.value === "on"), JSON.stringify(calls));
+  assert.equal(await page.getByTestId("sync-offer").count(), 0, "gone once chosen");
+  await page.context().close();
+});
+
+await test("Your computers: Not now is remembered, and a store with nothing in it yet still shows the offer", async () => {
+  const page = await open("empty", { edit: (s) => synced(s, { offer: { name: "LAPTOP-9" }, via: "LAPTOP-9" }) });
+  await page.getByTestId("sync-offer").getByRole("button", { name: "Not now" }).click();
+  await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent?.includes("Turn it on any time in Settings"));
+  const calls = await page.evaluate(() => window.__AIQ_FIXTURE__.calls);
+  assert.ok(calls.some((c) => c.cmd === "set_setting" && c.args?.key === "sync" && c.args?.value === "off"));
+  assert.equal(await page.getByTestId("sync-offer").count(), 0);
+  await page.context().close();
+});
+
+await test("Your computers: Settings lists each computer with how it stands, one switch, tasks name where they ran", async () => {
+  const peer = { id: "b2", name: "LAPTOP-9", version: "0.1.44", detail: null, rows: 812 };
+  const page = await open("full", {
+    hash: "#settings",
+    edit: (s) => {
+      synced(s, { setting: "on", via: "LAPTOP-9", peers: [{ ...peer, state: "ok", last_ms: s.now_ms - 60_000 }] });
+      s.tasks[0].computer = "b2";
+    },
+  });
+  const card = page.locator("section", { has: page.getByRole("heading", { name: "Your computers" }) });
+  const text = await card.innerText();
+  assert.ok(text.includes("DEVBOX-07") && text.includes("this computer"), text);
+  assert.ok(text.includes("LAPTOP-9") && text.includes("In sync · 1 min ago"), text);
+  assert.ok(!/watch|monitor|device/i.test(text), "wording rules");
+  const sw = page.getByRole("switch", { name: "Keep in sync" });
+  assert.equal(await sw.getAttribute("aria-checked"), "true");
+  assert.deepEqual(await axe(page), []);
+  await sw.click();
+  await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent?.includes("Each computer keeps what it has"));
+  assert.equal(await sw.getAttribute("aria-checked"), "false");
+  await page.locator("nav.side").getByRole("link", { name: /^Tasks/ }).click();
+  await page.waitForSelector("table[aria-label=Tasks]");
+  assert.equal(await page.locator("table[aria-label=Tasks] .chip", { hasText: "LAPTOP-9" }).count(), 1, "one task ran on the laptop");
+  await page.context().close();
+});
+
+await test("Your computers: paused there, newer AIQ there, and out of reach each say so in plain words", async () => {
+  const base = { version: "0.1.44", detail: null, rows: 3 };
+  const page = await open("full", {
+    hash: "#settings",
+    theme: "dark",
+    edit: (s) =>
+      synced(s, {
+        setting: "on",
+        peers: [
+          { ...base, id: "p", name: "PAUSED-PC", state: "paused", last_ms: s.now_ms - 3_600_000 },
+          { ...base, id: "u", name: "NEWER-PC", state: "update", last_ms: s.now_ms - 60_000 },
+          { ...base, id: "a", name: "AWAY-PC", state: "away", last_ms: s.now_ms - 3 * 3_600_000 },
+        ],
+      }),
+  });
+  const text = await page.locator("section", { has: page.getByRole("heading", { name: "Your computers" }) }).innerText();
+  assert.ok(text.includes("Sync is off on PAUSED-PC"), text);
+  assert.ok(text.includes("NEWER-PC runs a newer AIQ"), text);
+  assert.ok(text.includes("catches up next time you connect"), text);
   assert.deepEqual(await axe(page), []);
   await page.context().close();
 });
@@ -509,8 +586,8 @@ await test("Settings change through the core; tips a day", async () => {
 await test("Settings: a section index, Sharing and Keyboard folded in, analysis off says since when (item 8)", async () => {
   const page = await open("full", { hash: "#settings" });
   const nav = page.getByRole("navigation", { name: "Settings sections" });
-  assert.deepEqual(await nav.getByRole("button").allInnerTexts(), ["Tips", "What AIQ keeps", "Analysis", "Updates", "Theme", "Tools"]);
-  assert.deepEqual(await page.locator("main h2").allInnerTexts(), ["Tips", "What AIQ keeps", "Analysis", "Updates", "Theme", "Tools and keyboard"]);
+  assert.deepEqual(await nav.getByRole("button").allInnerTexts(), ["Tips", "What AIQ keeps", "Your computers", "Analysis", "Updates", "Theme", "Tools"]);
+  assert.deepEqual(await page.locator("main h2").allInnerTexts(), ["Tips", "What AIQ keeps", "Your computers", "Analysis", "Updates", "Theme", "Tools and keyboard"]);
   await nav.getByRole("button", { name: "Updates" }).click();
   await page.waitForFunction(() => document.activeElement?.id === "st6");
   // The index stays in view while the page scrolls.

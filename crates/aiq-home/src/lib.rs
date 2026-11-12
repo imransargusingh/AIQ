@@ -86,6 +86,10 @@ pub struct Snapshot {
     /// snapshot, never stored. Left out of the JSON when no file is set.
     #[serde(skip_serializing_if = "TeamTips::is_unset")]
     pub team_tips: TeamTips,
+    /// Sync between the person's computers (design multi-machine-sync): the core's last pass, with the setting read
+    /// fresh from the store so a choice shows at once. None until the core first looked (or a store from before v12).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sync: Option<aiq_core::sync::Status>,
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize)]
@@ -534,6 +538,8 @@ pub fn analysis_state(
     let pending: Vec<&TaskRow> = tasks
         .iter()
         .filter(|t| t.judgment.is_none() && t.last_ms + idle_gap_ms < now.utc_ms)
+        // Another computer's task is analyzed there and its result arrives with it (sync).
+        .filter(|t| t.computer.is_none())
         .filter(|t| analysis_provider(&t.tool).is_some())
         .filter(|t| fails.get(t.task_id.as_str()).is_none_or(|r| !r.given_up()))
         .collect();
@@ -624,6 +630,9 @@ pub struct TaskRow {
     /// ticks); prompt ids never leave the read model.
     #[serde(rename = "prompt_ms", serialize_with = "times_only")]
     pub members: Vec<(String, i64)>,
+    /// The computer the task ran on when it is another of the person's computers (sync id); None = this one. Only
+    /// this computer analyzes its own tasks, so a task is never analyzed (or paid for) twice.
+    pub computer: Option<String>,
 }
 
 /// One task's current judgment as the views show it. Model-written text is plain text (TR-5).
@@ -1016,6 +1025,7 @@ fn empty(paths: &Paths, pack: &PackV1, now: Now) -> Snapshot {
             .collect(),
         tip_funnel: Default::default(),
         team_tips: TeamTips::read(paths, pack),
+        sync: aiq_core::sync::read_status(paths),
     }
 }
 
@@ -1070,6 +1080,15 @@ fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()>
         }
         if let Some(v) = store.setting(aiq_core::service::SETTING_COPILOT_MID_TURN).ok().flatten() {
             s.settings.copilot_mid_turn = v;
+        }
+        if let Some(sync) = s.sync.as_mut()
+            && let Some(v) = store.setting(aiq_core::sync::SETTING_SYNC).ok().flatten()
+        {
+            // The person's choice shows at once; the core's next pass (within seconds) fills in the rest.
+            if v != sync.setting {
+                sync.offer = None;
+            }
+            sync.setting = v;
         }
         if let Some(v) = store.setting(aiq_core::service::SETTING_AGENT_ACTIONS).ok().flatten() {
             s.settings.agent_actions = v;
@@ -1238,10 +1257,13 @@ const LIVE_MAX: usize = 6;
 /// same rows Home shows).
 fn live(store: &Store, pack: &PackV1, now_ms: i64, s: &Snapshot) -> R<(Vec<Live>, Vec<Starting>)> {
     let gap = pack.idle_gap_min as i64 * 60_000;
-    let mut st = q(store.raw().prepare(
-        "SELECT surface, surface_session_id FROM event WHERE ts_utc_ms >= ?1
-         GROUP BY surface, surface_session_id ORDER BY max(ts_utc_ms) DESC, max(event_id) DESC",
-    ))?;
+    // This computer's live work only: another computer's sessions arrive a minute late (sync) and are not "right now".
+    let own =
+        if store.has_column("event", "computer").map_err(|e| e.to_string())? { "AND computer IS NULL" } else { "" };
+    let mut st = q(store.raw().prepare(&format!(
+        "SELECT surface, surface_session_id FROM event WHERE ts_utc_ms >= ?1 {own}
+         GROUP BY surface, surface_session_id ORDER BY max(ts_utc_ms) DESC, max(event_id) DESC"
+    )))?;
     let sessions: Vec<(String, String)> =
         q(q(st.query_map([now_ms - gap], |r| Ok((r.get(0)?, r.get(1)?))))?.collect::<Result<_, _>>())?;
     let (mut out, mut starting) = (vec![], vec![]);
@@ -1315,6 +1337,14 @@ pub fn tasks(store: &Store, pack: &PackV1, since_ms: i64) -> Result<Vec<TaskRow>
     task_list(store, pack, since_ms, &aside)
 }
 
+/// This computer's own tasks: the ones the rung analysis, its accuracy check and survey work on. Another computer's
+/// tasks arrive with their analyses already done there (sync), so nothing is analyzed or paid for twice.
+pub fn own_tasks(store: &Store, pack: &PackV1, since_ms: i64) -> Result<Vec<TaskRow>, String> {
+    let mut t = tasks(store, pack, since_ms)?;
+    t.retain(|t| t.computer.is_none());
+    Ok(t)
+}
+
 /// The Set aside list: per folder, how many sessions AIQ left out and when last, and how many of the person's own
 /// tasks there it kept (window). The person's folders first, newest rule first; AIQ's own check folders last.
 fn set_aside_rows(store: &Store, set_aside: &[(String, String, i64)], tasks: &[TaskRow]) -> R<Vec<SetAside>> {
@@ -1353,27 +1383,31 @@ fn set_aside_rows(store: &Store, set_aside: &[(String, String, i64)], tasks: &[T
     Ok(rows)
 }
 
-/// A live prompt: event id, surface, session, time, folder, text.
-type LiveRow = (String, String, String, i64, Option<String>, Option<String>);
-/// An imported prompt: key, tool, session, folder key, time, text.
-type ImportRow = (String, String, String, String, i64, Option<String>);
+/// A live prompt: event id, surface, session, time, folder, text, computer (None = this one).
+type LiveRow = (String, String, String, i64, Option<String>, Option<String>, Option<String>);
+/// An imported prompt: key, tool, session, folder key, time, text, computer (None = this one).
+type ImportRow = (String, String, String, String, i64, Option<String>, Option<String>);
 
 fn task_list(store: &Store, pack: &PackV1, window_start: i64, aside: &BTreeSet<&str>) -> R<Vec<TaskRow>> {
     let c = store.raw();
     let gap = pack.idle_gap_min as i64 * 60_000;
     let span = &pack.reprompt.span_surfaces;
     // Live prompts. Read from one idle gap before the window so a Task that started just before it is whole.
+    // A store from before sync (v12) has no `computer` column: every row is this computer's.
+    let synced = store.has_column("event", "computer").map_err(|e| e.to_string())?;
+    let e_computer = if synced { "e.computer" } else { "NULL" };
+    let s_computer = if synced { "s.computer" } else { "NULL" };
     let mut rows: Vec<LiveRow> = Vec::new();
     {
-        let mut st = q(c.prepare(
+        let mut st = q(c.prepare(&format!(
             "SELECT e.event_id, e.surface, e.surface_session_id, e.ts_utc_ms, json_extract(e.payload_meta, '$.folder'),
-                    t.text
+                    t.text, {e_computer}
              FROM event e LEFT JOIN content t ON t.event_id = e.event_id
              WHERE e.kind = 'prompt' AND e.ts_utc_ms >= ?1 AND (t.text IS NULL OR trim(t.text) != '')
-             ORDER BY e.ts_utc_ms, e.event_id",
-        ))?;
+             ORDER BY e.ts_utc_ms, e.event_id"
+        )))?;
         let it = q(st.query_map([window_start - gap], |r| {
-            Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?))
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?))
         }))?;
         for row in it {
             rows.push(q(row)?);
@@ -1384,13 +1418,13 @@ fn task_list(store: &Store, pack: &PackV1, window_start: i64, aside: &BTreeSet<&
     if store.has_table("import_session").map_err(|e| e.to_string())?
         && store.has_table("import_event").map_err(|e| e.to_string())?
     {
-        let mut st = q(c.prepare(
-            "SELECT s.tool, s.source_session_id, s.folder, e.seq, e.ts_utc_ms, e.text
+        let mut st = q(c.prepare(&format!(
+            "SELECT s.tool, s.source_session_id, s.folder, e.seq, e.ts_utc_ms, e.text, {s_computer}
              FROM import_event e JOIN import_session s ON s.tool = e.tool AND s.source_session_id = e.source_session_id
              WHERE s.outcome = 'imported' AND e.kind = 'prompt' AND e.ts_utc_ms IS NOT NULL AND e.ts_utc_ms >= ?1
                AND (e.text IS NULL OR trim(e.text) != '')
-             ORDER BY e.ts_utc_ms, s.source_session_id, e.seq",
-        ))?;
+             ORDER BY e.ts_utc_ms, s.source_session_id, e.seq"
+        )))?;
         let it = q(st.query_map([window_start - gap], |r| {
             Ok((
                 r.get::<_, String>(0)?,
@@ -1399,11 +1433,12 @@ fn task_list(store: &Store, pack: &PackV1, window_start: i64, aside: &BTreeSet<&
                 r.get::<_, i64>(3)?,
                 r.get::<_, i64>(4)?,
                 r.get::<_, Option<String>>(5)?,
+                r.get::<_, Option<String>>(6)?,
             ))
         }))?;
         for r in it {
-            let (tool, sid, folder, seq, ts, text) = q(r)?;
-            imp.push((format!("import:{tool}:{sid}:{seq}"), tool, sid, folder_key(&folder), ts, text));
+            let (tool, sid, folder, seq, ts, text, computer) = q(r)?;
+            imp.push((format!("import:{tool}:{sid}:{seq}"), tool, sid, folder_key(&folder), ts, text, computer));
         }
     }
     // A session both captured live and imported is one session: its imported prompts that have a live twin are
@@ -1411,15 +1446,22 @@ fn task_list(store: &Store, pack: &PackV1, window_start: i64, aside: &BTreeSet<&
     let fates = twins::fates(
         &rows
             .iter()
-            .map(|(_, s, sid, ts, _, t)| twins::Copy { tool: s, session: sid, utc_ms: *ts, text: t.as_deref() })
+            .map(|(_, s, sid, ts, _, t, _)| twins::Copy { tool: s, session: sid, utc_ms: *ts, text: t.as_deref() })
             .collect::<Vec<_>>(),
         &imp.iter()
-            .map(|(_, tool, sid, _, ts, t)| twins::Copy { tool, session: sid, utc_ms: *ts, text: t.as_deref() })
+            .map(|(_, tool, sid, _, ts, t, _)| twins::Copy { tool, session: sid, utc_ms: *ts, text: t.as_deref() })
             .collect::<Vec<_>>(),
     );
     // Live stream: (event id, surface, session, time, folder).
-    let mut stream: Vec<(&str, &str, &str, i64, Option<&str>)> =
-        rows.iter().map(|(id, s, sid, ts, f, _)| (id.as_str(), s.as_str(), sid.as_str(), *ts, f.as_deref())).collect();
+    let mut stream: Vec<(&str, &str, &str, i64, Option<&str>)> = rows
+        .iter()
+        .map(|(id, s, sid, ts, f, _, _)| (id.as_str(), s.as_str(), sid.as_str(), *ts, f.as_deref()))
+        .collect();
+    // Which computer each prompt was typed on (sync, v12): tasks never join prompts from two computers, so every
+    // computer splits its own tasks exactly as it did before sync and their ids (which analyses key on) agree.
+    let mut computer_of: std::collections::BTreeMap<&str, Option<&str>> =
+        rows.iter().map(|(id, .., c)| (id.as_str(), c.as_deref())).collect();
+    computer_of.extend(imp.iter().map(|(id, .., c)| (id.as_str(), c.as_deref())));
     let mut alone: Vec<&ImportRow> = Vec::new();
     for (p, fate) in imp.iter().zip(&fates) {
         match *fate {
@@ -1442,11 +1484,12 @@ fn task_list(store: &Store, pack: &PackV1, window_start: i64, aside: &BTreeSet<&
     // Live tasks of one-prompt sessions in set-aside folders: (surface, session) of their first prompt.
     let session_of: std::collections::BTreeMap<&str, (&str, &str)> =
         stream.iter().map(|(id, surface, session, _, _)| (*id, (*surface, *session))).collect();
-    let live = split_tasks(
-        stream.iter().map(|(id, surface, session, ts, _)| TaskPrompt { event_id: id, surface, session, utc_ms: *ts }),
-        span,
-        gap,
-    );
+    let mut by_computer: std::collections::BTreeMap<Option<&str>, Vec<TaskPrompt<'_>>> = Default::default();
+    for (id, surface, session, ts, _) in &stream {
+        let who = computer_of.get(id).copied().flatten();
+        by_computer.entry(who).or_default().push(TaskPrompt { event_id: id, surface, session, utc_ms: *ts });
+    }
+    let live: Vec<TaskSpan> = by_computer.into_values().flat_map(|ps| split_tasks(ps, span, gap)).collect();
     let mut tasks: Vec<TaskRow> = live
         .into_iter()
         .filter(|t| {
@@ -1456,15 +1499,16 @@ fn task_list(store: &Store, pack: &PackV1, window_start: i64, aside: &BTreeSet<&
         })
         .map(|t| {
             let folder = folder_of.get(t.task_id.as_str()).copied().flatten().map(str::to_owned);
-            row(t, folder, "live")
+            let who = computer_of.get(t.task_id.as_str()).copied().flatten().map(str::to_owned);
+            row(t, folder, "live", who)
         })
         .collect();
 
     // Imported-only sessions never span: each source session is its own stream.
     let folder_of: std::collections::BTreeMap<&str, &str> =
-        alone.iter().map(|(id, _, _, f, _, _)| (id.as_str(), f.as_str())).collect();
+        alone.iter().map(|(id, _, _, f, ..)| (id.as_str(), f.as_str())).collect();
     let spans = split_tasks(
-        alone.iter().map(|(id, tool, sid, _, ts, _)| TaskPrompt {
+        alone.iter().map(|(id, tool, sid, _, ts, ..)| TaskPrompt {
             event_id: id,
             surface: tool,
             session: sid,
@@ -1475,7 +1519,8 @@ fn task_list(store: &Store, pack: &PackV1, window_start: i64, aside: &BTreeSet<&
     );
     for t in spans {
         let f = folder_of.get(t.task_id.as_str()).map(|f| f.to_string()).filter(|f| !f.is_empty());
-        tasks.push(row(t, f, "imported"));
+        let who = computer_of.get(t.task_id.as_str()).copied().flatten().map(str::to_owned);
+        tasks.push(row(t, f, "imported", who));
     }
 
     tasks.retain(|t| t.first_ms >= window_start);
@@ -1484,7 +1529,7 @@ fn task_list(store: &Store, pack: &PackV1, window_start: i64, aside: &BTreeSet<&
     Ok(tasks)
 }
 
-fn row(t: TaskSpan, folder: Option<String>, origin: &'static str) -> TaskRow {
+fn row(t: TaskSpan, folder: Option<String>, origin: &'static str, computer: Option<String>) -> TaskRow {
     TaskRow {
         task_id: t.task_id,
         tool: t.surface,
@@ -1499,6 +1544,7 @@ fn row(t: TaskSpan, folder: Option<String>, origin: &'static str) -> TaskRow {
         judgment: None,
         session: t.session,
         members: t.members,
+        computer,
     }
 }
 
@@ -1905,6 +1951,7 @@ mod analysis_tests {
             },
             None,
             "imported",
+            None,
         );
         if analyzed {
             t.judgment = Some(TaskJudgment {

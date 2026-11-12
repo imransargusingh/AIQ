@@ -627,6 +627,8 @@ pub fn queue<'a>(
     let mut q: Vec<(u8, &TaskRow)> = tasks
         .iter()
         .filter(|t| t.last_ms + idle_gap_ms < now_ms)
+        // Only this computer's tasks: another computer analyzes its own (sync).
+        .filter(|t| t.computer.is_none())
         .filter(|t| provider_for(&t.tool).is_some_and(|p| only.is_none_or(|o| o == p)))
         .filter(|t| judged.get(&t.task_id).is_none_or(|j| !current_version(j)))
         .filter(|t| fails.get(t.task_id.as_str()).is_none_or(|r| r.next_try_ms().is_some_and(|at| now_ms >= at)))
@@ -993,7 +995,7 @@ pub fn run(r: &Run<'_>) -> Result<Report, String> {
     let pack = aiq_core::pack::parse(aiq_core::pack::BUNDLED_TOML).map_err(|e| e.to_string())?;
     let gap = pack.idle_gap_min as i64 * 60_000;
     let set = settings(r.store);
-    let tasks = aiq_home::tasks(r.store, &pack, 0)?;
+    let tasks = aiq_home::own_tasks(r.store, &pack, 0)?;
     let judged = r.store.current_judgments().map_err(|e| e.to_string())?;
     let calls = r.store.judge_calls_since(r.now.utc_ms - 7 * DAY_MS).map_err(|e| e.to_string())?;
     let q: Vec<&TaskRow> = match r.task {
@@ -1305,7 +1307,7 @@ fn analysis_copilot<'a>(
 /// in the log (their F1 and F3 read "no" from missing data).
 fn versions_cli(store: &Store, homes: &Homes) -> ExitCode {
     let Ok(pack) = aiq_core::pack::parse(aiq_core::pack::BUNDLED_TOML) else { return ExitCode::FAILURE };
-    let Ok(tasks) = aiq_home::tasks(store, &pack, 0) else { return ExitCode::FAILURE };
+    let Ok(tasks) = aiq_home::own_tasks(store, &pack, 0) else { return ExitCode::FAILURE };
     let Ok(judged) = store.current_judgments() else { return ExitCode::FAILURE };
     let n = now();
     let calls = store.judge_calls_since(n.utc_ms - 7 * DAY_MS).unwrap_or_default();
@@ -1538,7 +1540,7 @@ fn dry_run(store: &Store, homes: &Homes, n: Now, only: Option<&str>) -> ExitCode
         }
     };
     let set = settings(store);
-    let tasks = aiq_home::tasks(store, &pack, 0).unwrap_or_default();
+    let tasks = aiq_home::own_tasks(store, &pack, 0).unwrap_or_default();
     let judged = store.current_judgments().unwrap_or_default();
     let calls = store.judge_calls_since(n.utc_ms - 7 * DAY_MS).unwrap_or_default();
     let q = queue(&tasks, &judged, &calls, n.utc_ms, pack.idle_gap_min as i64 * 60_000, only);
@@ -1657,7 +1659,7 @@ pub fn run_survey(
     seed: u64,
 ) -> Result<Survey, String> {
     let pack = aiq_core::pack::parse(aiq_core::pack::BUNDLED_TOML).map_err(|e| e.to_string())?;
-    let tasks = aiq_home::tasks(store, &pack, 0)?;
+    let tasks = aiq_home::own_tasks(store, &pack, 0)?;
     let by_id: HashMap<&str, &TaskRow> = tasks.iter().map(|t| (t.task_id.as_str(), t)).collect();
     let sample = survey_candidates(store, &tasks, size, seed).map_err(|e| e.to_string())?;
     let (system, schema) = (survey_system(), survey_schema());
@@ -1729,7 +1731,7 @@ fn survey_cli(args: &[&str], paths: &Paths, store: &Store) -> ExitCode {
             return ExitCode::from(1);
         }
     };
-    let tasks = aiq_home::tasks(store, &pack, 0).unwrap_or_default();
+    let tasks = aiq_home::own_tasks(store, &pack, 0).unwrap_or_default();
     let seed = now_ms() as u64 ^ 0x5A17_0E4F;
     let n = survey_candidates(store, &tasks, size, seed).map(|v| v.len()).unwrap_or(0);
     if args.contains(&"--dry-run") || n == 0 {
@@ -1887,7 +1889,7 @@ pub fn run_check(
 ) -> Result<CheckRun, String> {
     use aiq_contracts::check::{check_schema, parse_check};
     let pack = aiq_core::pack::parse(aiq_core::pack::BUNDLED_TOML).map_err(|e| e.to_string())?;
-    let tasks = aiq_home::tasks(store, &pack, 0)?;
+    let tasks = aiq_home::own_tasks(store, &pack, 0)?;
     let by_id: HashMap<&str, &TaskRow> = tasks.iter().map(|t| (t.task_id.as_str(), t)).collect();
     let cands = check_candidates(store, &tasks, scope).map_err(|e| e.to_string())?;
     let sample = aiq_domain::check::sample(&cands, size, seed);
@@ -2307,7 +2309,7 @@ fn check_cli(args: &[&str], paths: &Paths, store: &Store) -> ExitCode {
             return ExitCode::from(1);
         }
     };
-    let tasks = aiq_home::tasks(store, &pack, 0).unwrap_or_default();
+    let tasks = aiq_home::own_tasks(store, &pack, 0).unwrap_or_default();
     let scope = match args.iter().position(|a| *a == "--job").map(|i| args.get(i + 1).copied()) {
         None if args.contains(&"--no-job") => CheckScope::NoJob,
         None => CheckScope::All,
@@ -2646,7 +2648,7 @@ mod tests {
         };
         store.put_import_session("run2", &session).unwrap();
         let pack = aiq_core::pack::parse(aiq_core::pack::BUNDLED_TOML).unwrap();
-        let tasks = aiq_home::tasks(&store, &pack, 0).unwrap();
+        let tasks = aiq_home::own_tasks(&store, &pack, 0).unwrap();
         let v: Vec<&TaskRow> = tasks.iter().filter(|t| t.session == "sv").collect();
         assert_eq!(v.len(), 1, "one task, not one per copy");
         assert_eq!((v[0].task_id.as_str(), v[0].prompts), ("v1", 2));
@@ -2741,7 +2743,7 @@ mod tests {
         };
         store.put_import_session("run3", &session).unwrap();
         let pack = aiq_core::pack::parse(aiq_core::pack::BUNDLED_TOML).unwrap();
-        let tasks = aiq_home::tasks(&store, &pack, 0).unwrap();
+        let tasks = aiq_home::own_tasks(&store, &pack, 0).unwrap();
         let t = tasks.iter().find(|t| t.session == "cn").unwrap();
         let turns = task_turns(&store, &e.homes, t).unwrap();
         assert_eq!(turns[0].actions, Some(ActionSummary::default()), "read, no tool calls");
@@ -2897,6 +2899,7 @@ mod tests {
             judgment: None,
             session: "s".into(),
             members: vec![],
+            computer: None,
         };
         let tasks = vec![row("old", 1_000), row("new", 2_000), row("open", NOW - MIN), row("gone", 3_000)];
         let fail = |at: i64| CallOutcome {
@@ -2934,6 +2937,7 @@ mod tests {
             judgment: None,
             session: "s".into(),
             members: vec![],
+            computer: None,
         };
         let call = |run: i64, at: i64, outcome: &str| CallOutcome {
             task_id: "t".into(),
@@ -3021,6 +3025,7 @@ mod tests {
             judgment: None,
             session: "s".into(),
             members: vec![],
+            computer: None,
         };
         let tasks = vec![row("new", 3_000), row("uncovered", 1_000), row("old_doc", 2_000)];
         let judged: HashMap<String, JudgmentRow> = [
@@ -3429,7 +3434,7 @@ mod tests {
         assert!(rep.contains("Paused by this check: nothing"), "4 checked is too few to pause: {rep}");
         // --job samples only that job's judgments, so a new job can reach the pause rule's 10 checks.
         let pack = aiq_core::pack::parse(aiq_core::pack::BUNDLED_TOML).unwrap();
-        let tasks = aiq_home::tasks(&e.store, &pack, 0).unwrap();
+        let tasks = aiq_home::own_tasks(&e.store, &pack, 0).unwrap();
         assert_eq!(check_candidates(&e.store, &tasks, CheckScope::Job("code_change")).unwrap().len(), 4);
         assert_eq!(check_candidates(&e.store, &tasks, CheckScope::Job("run_ship")).unwrap().len(), 0);
         let none =

@@ -8,6 +8,8 @@ use rusqlite::{Connection, OptionalExtension, params};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+pub mod sync;
+
 pub const SCHEMA_V1: &str = include_str!("schema_v1.sql");
 pub const SCHEMA_V2: &str = include_str!("schema_v2.sql");
 pub const SCHEMA_V3: &str = include_str!("schema_v3.sql");
@@ -19,10 +21,11 @@ pub const SCHEMA_V8: &str = include_str!("schema_v8.sql");
 pub const SCHEMA_V9: &str = include_str!("schema_v9.sql");
 pub const SCHEMA_V10: &str = include_str!("schema_v10.sql");
 pub const SCHEMA_V11: &str = include_str!("schema_v11.sql");
+pub const SCHEMA_V12: &str = include_str!("schema_v12.sql");
 /// Migration N takes the store from `user_version` N to N+1, in one transaction.
 pub const MIGRATIONS: &[&str] = &[
     SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6, SCHEMA_V7, SCHEMA_V8, SCHEMA_V9, SCHEMA_V10,
-    SCHEMA_V11,
+    SCHEMA_V11, SCHEMA_V12,
 ];
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1156,7 +1159,7 @@ impl Store {
 
     const READY_SQL: &str = "SELECT d.card_id, d.signal_id, d.surface, d.surface_session_id, d.card_json, d.utc_ms
          FROM card_decision d
-         WHERE d.outcome = 'show_ready'
+         WHERE d.outcome = 'show_ready' AND d.computer IS NULL
            AND NOT EXISTS (SELECT 1 FROM card_delivery v WHERE v.card_id = d.card_id)
            AND NOT EXISTS (SELECT 1 FROM card_decision x WHERE x.card_id = d.card_id AND x.outcome <> 'show_ready')";
 
@@ -1218,7 +1221,7 @@ impl Store {
     pub fn last_delivered_card_id(&self) -> Result<Option<String>> {
         self.conn
             .query_row(
-                "SELECT card_id FROM card_delivery ORDER BY delivered_utc_ms DESC, rowid DESC LIMIT 1",
+                "SELECT card_id FROM card_delivery WHERE computer IS NULL ORDER BY delivered_utc_ms DESC, rowid DESC LIMIT 1",
                 [],
                 |r| r.get(0),
             )
@@ -1243,7 +1246,8 @@ impl Store {
     pub fn latest_session(&self, surface: &str) -> Result<Option<String>> {
         self.conn
             .query_row(
-                "SELECT surface_session_id FROM event WHERE surface = ?1 ORDER BY ts_utc_ms DESC, event_id DESC LIMIT 1",
+                "SELECT surface_session_id FROM event WHERE surface = ?1 AND computer IS NULL
+                 ORDER BY ts_utc_ms DESC, event_id DESC LIMIT 1",
                 [surface],
                 |r| r.get(0),
             )
@@ -1479,7 +1483,7 @@ impl Store {
             .prepare(
                 "SELECT e.surface, e.surface_session_id, e.event_id, e.ts_utc_ms, c.text
                  FROM event e JOIN content c ON c.event_id = e.event_id
-                 WHERE e.kind = 'prompt' AND (e.surface, e.surface_session_id) IN
+                 WHERE e.kind = 'prompt' AND e.computer IS NULL AND (e.surface, e.surface_session_id) IN
                    (SELECT surface, surface_session_id FROM event WHERE kind = 'prompt' AND ts_utc_ms >= ?1)
                  ORDER BY e.event_id",
             )
@@ -1973,20 +1977,11 @@ impl Store {
     /// Live capture is untouched.
     pub fn forget_imported(&mut self) -> Result<u64> {
         let tx = self.conn.transaction().map_err(err(codes::STORE_WRITE))?;
-        if tx
-            .query_row("SELECT count(*) FROM sqlite_master WHERE name = 'judge_check'", [], |r| r.get::<_, i64>(0))
-            .map_err(err(codes::STORE_WRITE))?
-            > 0
-        {
-            tx.execute("DELETE FROM judge_check WHERE task_id LIKE 'import:%'", []).map_err(err(codes::STORE_WRITE))?;
-        }
-        tx.execute("DELETE FROM judgment WHERE origin = 'imported'", []).map_err(err(codes::STORE_WRITE))?;
-        tx.execute("DELETE FROM judge_call WHERE task_id LIKE 'import:%'", []).map_err(err(codes::STORE_WRITE))?;
-        tx.execute("DELETE FROM import_event", []).map_err(err(codes::STORE_WRITE))?;
-        let n = tx.execute("DELETE FROM import_session", []).map_err(err(codes::STORE_WRITE))?;
-        tx.execute("DELETE FROM import_run", []).map_err(err(codes::STORE_WRITE))?;
+        let n = forget_imported_in(&tx)?;
+        // Forgotten on every one of the person's computers, not only this one.
+        Self::record_delete(&tx, "imported_all", "")?;
         tx.commit().map_err(err(codes::STORE_WRITE))?;
-        Ok(n as u64)
+        Ok(n)
     }
 
     /// Delete one prompt's text, the person's "delete this item" (design aiq-home-deferred-pages E1, E2).
@@ -2000,6 +1995,8 @@ impl Store {
             .execute("DELETE FROM content WHERE event_id = ?1", [event_id])
             .map_err(err(codes::STORE_WRITE))?;
         if n > 0 {
+            // Deleted on the person's other computers too (sync, schema v12).
+            Self::record_delete(&self.conn, "content", event_id)?;
             // A reader (AIQ home) can hold the WAL open; then the checkpoint is partial and runs again on the next delete.
             let _ = self.conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(()));
         }
@@ -2016,6 +2013,24 @@ impl Store {
     pub fn raw(&self) -> &Connection {
         &self.conn
     }
+}
+
+/// Delete everything history import stored, inside the caller's transaction; returns the sessions removed. Shared by
+/// the person's own "forget imported" and the same delete arriving from another of their computers.
+pub(crate) fn forget_imported_in(tx: &rusqlite::Transaction<'_>) -> Result<u64> {
+    if tx
+        .query_row("SELECT count(*) FROM sqlite_master WHERE name = 'judge_check'", [], |r| r.get::<_, i64>(0))
+        .map_err(err(codes::STORE_WRITE))?
+        > 0
+    {
+        tx.execute("DELETE FROM judge_check WHERE task_id LIKE 'import:%'", []).map_err(err(codes::STORE_WRITE))?;
+    }
+    tx.execute("DELETE FROM judgment WHERE origin = 'imported'", []).map_err(err(codes::STORE_WRITE))?;
+    tx.execute("DELETE FROM judge_call WHERE task_id LIKE 'import:%'", []).map_err(err(codes::STORE_WRITE))?;
+    tx.execute("DELETE FROM import_event", []).map_err(err(codes::STORE_WRITE))?;
+    let n = tx.execute("DELETE FROM import_session", []).map_err(err(codes::STORE_WRITE))?;
+    tx.execute("DELETE FROM import_run", []).map_err(err(codes::STORE_WRITE))?;
+    Ok(n as u64)
 }
 
 /// Create the file readable and writable by the owner only, if it does not exist yet.
