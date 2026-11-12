@@ -40,12 +40,12 @@ landed. It is an estimate from what the agent did; the analyzed rung replaces it
 
 ![The Right now card: a spec task heading for Directed, could reach Delegated, with a tip at turn 3](docs/images/readme/right-now.png)
 
-When nothing is open, the card stays and lists each connected tool with its last activity. Work an agent did
-on its own (for example Claude working in a claude.ai project) shows as **automated, not counted**, so you
-can tell "nothing in progress" from "AIQ has heard nothing". Turns you type yourself always count, on any
-device.
+When nothing is open, the card stays and lists each connected tool with **your last turn**. When an agent
+worked on its own more recently (for example **Claude's own work** in a claude.ai project), that shows beside
+it with its own time and isn't counted, so you can tell "nothing in progress" from "AIQ has heard nothing".
+Turns you type yourself always count, on any device.
 
-![The Right now card with nothing open: Claude Code's last activity is automated, not counted; Copilot's counts](docs/images/readme/right-now-not-counted.png)
+![The Right now card with nothing open: Claude Code shows your last turn and, beside it, Claude's own work, which isn't counted](docs/images/readme/right-now-not-counted.png)
 
 **Is each kind of task moving up?** The last 30 days against the 30 before, per kind of task, with a check
 that a move is more than chance. A line underneath says which habits are growing and which you use less

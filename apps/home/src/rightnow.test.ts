@@ -22,7 +22,7 @@ describe("Right now, several open tasks (option A)", () => {
   });
 });
 
-import { ago, asideText, leftOut, quiet, QUIET_HINT_MS } from "./pages/RightNow";
+import { ago, asideText, leftOut, ownWorkLabel, quiet, QUIET_HINT_MS } from "./pages/RightNow";
 import full from "../tests/fixtures/full.json";
 
 describe("Right now with nothing open (Imran 2026-11-08)", () => {
@@ -56,15 +56,22 @@ describe("Right now with nothing open (Imran 2026-11-08)", () => {
       { surface: "copilot-cli", last_ms: base.now_ms - 30 * 60_000, reason: "burst", left_out_today: 0, counted_today: 0 },
     ];
     const q = quiet(at({ starting: [], seen, aside, setup: { ...base.setup, tools } }));
+    // Imran 2026-11-11: the automated time sits beside the person's own last turn, never in its place.
     expect(q.tools).toEqual([
-      { name: "Claude Code", last: base.now_ms - 2 * 60_000, aside: "projects" },
-      { name: "Copilot", last: base.now_ms - 60_000, aside: null },
+      { name: "Claude Code", last: base.now_ms - 26 * 3_600_000, own: base.now_ms - 2 * 60_000, aside: "projects", latest: base.now_ms - 2 * 60_000 },
+      { name: "Copilot", last: base.now_ms - 60_000, own: null, aside: null, latest: base.now_ms - 60_000 },
     ]);
     expect(q.silent).toEqual([]);
-    expect(asideText(q.aside)).toBe(
-      "Claude Code's newest activity is Claude's own work in a claude.ai project, so AIQ doesn't count it. Turns you type yourself count.",
-    );
-    expect(asideText([{ name: "Copilot", aside: "burst" }])).toBe("Copilot's newest activity looks like an app or script ran it, so AIQ doesn't count it.");
+    expect(asideText(q.aside)).toBe("Claude's own work in a claude.ai project isn't counted. Turns you type yourself count.");
+    expect(asideText([{ name: "Copilot", aside: "burst" }])).toBe("Work in Copilot that an app or script runs isn't counted. Turns you type yourself count.");
+    expect([ownWorkLabel("projects"), ownWorkLabel("not-typed"), ownWorkLabel("burst")]).toEqual(["Claude's own work", "started by an app", "automated"]);
+  });
+  it("keeps a tool with only automated work apart from one never heard (Imran 2026-11-11)", () => {
+    const tools = [{ tool: "claude-code" as const, hooked: true, present: true, install: "" }];
+    const aside = [{ surface: "claude-code", last_ms: base.now_ms - 60_000, reason: "projects", left_out_today: 1, counted_today: 0 }];
+    const q = quiet(at({ starting: [], seen: [], aside, setup: { ...base.setup, tools } }));
+    expect(q.tools[0]).toMatchObject({ last: null, own: base.now_ms - 60_000, latest: base.now_ms - 60_000 });
+    expect(q.silent).toEqual([]);
   });
   it("says when most of a tool's prompts today were left out: 10 or more, and 90% or more (Imran 2026-11-09)", () => {
     const row = (left_out_today: number, counted_today: number, reason = "not-typed") => ({
@@ -81,7 +88,7 @@ describe("Right now with nothing open (Imran 2026-11-08)", () => {
     expect(leftOut(at({ aside: [row(9, 0)] }))).toEqual([]);
     expect(leftOut(at({ aside: [row(17, 3)] }))).toEqual([]);
     expect(asideText([{ name: "Claude Code", aside: "not-typed" }])).toBe(
-      "Claude Code's newest activity was scheduled or started by an app, not typed, so AIQ doesn't count it.",
+      "Work in Claude Code that an app scheduled or started isn't counted. Turns you type yourself count.",
     );
   });
   it("says how long ago in minutes within the hour, then the day and time", () => {

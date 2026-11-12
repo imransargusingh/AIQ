@@ -245,12 +245,15 @@ export function quiet(snap: Snapshot) {
     .filter((t) => t.hooked && t.present && SURFACE[t.tool])
     .map((t) => {
       const [surface, name] = SURFACE[t.tool];
-      const counted = snap.seen.find((x) => x.surface === surface)?.last_ms ?? null;
-      // Activity left out as automated still is activity (Imran 2026-11-08): the card names it instead of calling the tool idle.
-      const a = snap.aside.find((x) => x.surface === surface && (counted === null || x.last_ms > counted));
-      return { name, last: a ? a.last_ms : counted, aside: a?.reason ?? null };
+      const last = snap.seen.find((x) => x.surface === surface)?.last_ms ?? null;
+      // Activity left out as automated still is activity (Imran 2026-11-08): the card names it instead of calling the
+      // tool idle. It sits beside the person's own last turn, never in its place (Imran 2026-11-11: "Yesterday 21:28 ·
+      // automated" alone read as if nothing had happened today).
+      const a = snap.aside.find((x) => x.surface === surface && (last === null || x.last_ms > last));
+      const own = a ? a.last_ms : null;
+      return { name, last, own, aside: a?.reason ?? null, latest: own ?? last };
     });
-  const silent = tools.filter((t) => t.last === null || snap.now_ms - t.last > QUIET_HINT_MS);
+  const silent = tools.filter((t) => t.latest === null || snap.now_ms - t.latest > QUIET_HINT_MS);
   const aside = tools.filter((t) => t.aside !== null);
   const state = snap.status.paused
     ? "paused"
@@ -269,10 +272,15 @@ export function asideText(tools: { name: string; aside: string | null }[]): stri
   const names = tools.map((t) => t.name).join(" and ");
   const all = (r: string) => tools.every((t) => t.aside === r);
   return all("projects")
-    ? `${names}'s newest activity is Claude's own work in a claude.ai project, so AIQ doesn't count it. Turns you type yourself count.`
+    ? "Claude's own work in a claude.ai project isn't counted. Turns you type yourself count."
     : all("not-typed")
-      ? `${names}'s newest activity was scheduled or started by an app, not typed, so AIQ doesn't count it.`
-      : `${names}'s newest activity looks like an app or script ran it, so AIQ doesn't count it.`;
+      ? `Work in ${names} that an app scheduled or started isn't counted. Turns you type yourself count.`
+      : `Work in ${names} that an app or script runs isn't counted. Turns you type yourself count.`;
+}
+
+/** What the card calls a tool's newest activity left out as automated, by rule. */
+export function ownWorkLabel(reason: string): string {
+  return reason === "projects" ? "Claude's own work" : reason === "not-typed" ? "started by an app" : "automated";
 }
 
 /** Same bar as crates/aiq-contracts `AsideNow::mostly_left_out` (10 prompts, 90%; Imran 2026-11-09). */
@@ -367,14 +375,15 @@ function Quiet(ctx: Ctx) {
         <>
           <ul className="rn-tools" aria-label="Connected tools">
             {tools.map((t) => {
-              const recent = t.last !== null && snap.now_ms - t.last < 60 * 60_000;
+              const recent = t.latest !== null && snap.now_ms - t.latest < 60 * 60_000;
+              const when = (ms: number) => ago(ms, snap.now_ms, snap.offset_min);
               return (
                 <li key={t.name}>
-                  <span className={`rn-dot${recent ? " busy" : ""}${t.last === null ? " none" : ""}`} aria-hidden="true" />
+                  <span className={`rn-dot${recent ? " busy" : ""}${t.latest === null ? " none" : ""}`} aria-hidden="true" />
                   <b>{t.name}</b>
                   <span className="meta num">
-                    {t.last === null ? "nothing yet" : `last activity ${ago(t.last, snap.now_ms, snap.offset_min)}`}
-                    {t.aside && " · automated, not counted"}
+                    {t.last !== null ? `your last turn ${when(t.last)}` : t.own !== null ? "no turn of yours yet" : "nothing yet"}
+                    {t.own !== null && t.aside && ` · ${ownWorkLabel(t.aside)} ${when(t.own)}`}
                   </span>
                 </li>
               );
@@ -392,7 +401,7 @@ function Quiet(ctx: Ctx) {
           {state === "idle" && silent.length > 0 && (
             <p className="meta rn-hint" data-testid="right-now-hint">
               Using {silent.map((t) => t.name).join(" or ")} with an agent right now? AIQ has had nothing from {silent.length > 1 ? "them" : "it"}{" "}
-              {silent.length === 1 && silent[0].last !== null ? `since ${when(silent[0].last, snap.now_ms, snap.offset_min)}` : "lately"}.{" "}
+              {silent.length === 1 && silent[0].latest !== null ? `since ${when(silent[0].latest, snap.now_ms, snap.offset_min)}` : "lately"}.{" "}
               <button className="btnlink" onClick={() => ctx.go("settings")}>
                 Check it in Settings
               </button>
