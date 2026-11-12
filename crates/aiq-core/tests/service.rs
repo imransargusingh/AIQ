@@ -1900,3 +1900,40 @@ fn a_project_message_handed_to_a_second_session_counts_once() {
     turn(&mut h, "c", "cmsg_01aaa");
     assert_eq!((h.prompts(), h.stops()), (2, 2), "handed again hours later, after a restart: not counted again");
 }
+
+/// Rule FAST (laptop 2026-11-12): a VS Code Stop hook sent a 394-character prompt 1.3 to 4.6 s after each turn ended,
+/// and it counted as the person's. Such a prompt and its turn's Stop are left out; a typed, a short or a pasted prompt
+/// right after a Stop still counts, and so does a long one after 5 s.
+#[test]
+fn a_long_prompt_a_turn_end_hook_sends_is_left_out_with_its_stop() {
+    let mut h = H::new();
+    let hook = "tacit-like: before you stop, list for the person what you decided this session. ".repeat(3);
+    assert!(hook.len() >= aiq_domain::automated::FAST_MIN_CHARS);
+    let at = |h: &mut H, gap: i64, body: EventBody| {
+        h.clock.advance(gap);
+        let id = h.id();
+        let e = ev_on("vscode", &id, "vs1", h.clock.now().utc_ms, body);
+        h.svc().ingest(&e, None);
+    };
+    let p = |t: &str| {
+        EventBody::Prompt(PromptPayload {
+            text: Some(t.into()),
+            chars: t.len() as u64,
+            prompt_id: None,
+            truncated: false,
+        })
+    };
+    let stop = || EventBody::Stop(StopPayload { stop_hook_active: false, prompt_id: None });
+    at(&mut h, MIN, p("diagnose this error from the devbox"));
+    at(&mut h, MIN, stop());
+    at(&mut h, 1_346, p(&hook)); // the hook: left out
+    at(&mut h, 20_000, stop()); // its turn's end: left out too
+    assert_eq!((h.prompts(), h.stops()), (1, 1));
+    at(&mut h, 2_000, p("does step 10 hash?")); // short: typed
+    at(&mut h, MIN, stop());
+    let pasted = format!("here is the output:\n{}\n{}\n{}", "x".repeat(60), "y".repeat(60), "z".repeat(60));
+    at(&mut h, 2_000, p(&pasted)); // pasted the moment the turn ended: the person's
+    at(&mut h, MIN, stop());
+    at(&mut h, 5_000, p(&hook)); // 5 s after: may be typed, counts
+    assert_eq!((h.prompts(), h.stops()), (4, 3));
+}

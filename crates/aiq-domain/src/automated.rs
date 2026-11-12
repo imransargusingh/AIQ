@@ -111,6 +111,24 @@ pub fn is_aiq_check_folder(cwd: &str) -> bool {
     parts.windows(2).any(|w| matches!(w[0], "temp" | "tmp") && w[1].starts_with("aiq-"))
 }
 
+/// Rule FAST: a prompt that follows the same session's turn end within `FAST_AFTER_STOP_MS` and is at least
+/// `FAST_MIN_CHARS` long was not typed: a turn-end hook sent it to keep the agent going. Measured on the laptop
+/// 2026-11-12 over 217 live prompts: 28 matched (24 from one Stop hook that asks for a list before the agent
+/// stops, 1.3 to 4.6 s after the Stop, 394 characters each; 2 more hook texts; 2 relayed messages), and none was
+/// typed. A pasted prompt (`text::Features::pasted`) is never matched: a person may paste an error the moment a
+/// turn ends. The Stop carries no sign of a hook (`stop_hook_active` was false on all 159 VS Code Stops).
+/// assume: nobody types 150 characters within 5 seconds of a turn ending, and a message queued while the agent
+/// works reaches the hook when it is typed, not when the turn ends. Unmeasured: VS Code and Copilot CLI can queue
+/// a message. If false: that turn is left out as "not typed" (Home's left-out line shows the count), and
+/// `aiq include <folder>` brings its folder back.
+pub const FAST_AFTER_STOP_MS: i64 = 5_000;
+pub const FAST_MIN_CHARS: usize = 150;
+
+/// Rule FAST for one prompt: `gap_ms` since the session's last turn end (None when there was none).
+pub fn sent_by_turn_end_hook(gap_ms: Option<i64>, chars: usize, pasted: bool) -> bool {
+    !pasted && chars >= FAST_MIN_CHARS && gap_ms.is_some_and(|g| (0..FAST_AFTER_STOP_MS).contains(&g))
+}
+
 /// The import spec's template normalization: URLs, GUIDs, paths, quoted strings and digit runs replaced,
 /// whitespace collapsed, lowercase, first 200 chars. None for an empty prompt (empty prompts never group).
 pub fn template_of(prompt: &str, max_chars: usize) -> Option<String> {
@@ -265,6 +283,18 @@ impl Guard {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_long_prompt_just_after_a_turn_end_was_sent_by_a_hook() {
+        // The measured hook: 394 characters, 1.3 to 4.6 s after the Stop.
+        assert!(sent_by_turn_end_hook(Some(1_346), 394, false));
+        assert!(sent_by_turn_end_hook(Some(4_572), 394, false));
+        assert!(!sent_by_turn_end_hook(Some(5_000), 394, false), "5 s or more: a person may have typed it");
+        assert!(!sent_by_turn_end_hook(Some(1_000), 149, false), "short: a person may type it that fast");
+        assert!(!sent_by_turn_end_hook(Some(1_000), 1_285, true), "pasted: a person may paste the moment a turn ends");
+        assert!(!sent_by_turn_end_hook(None, 394, false), "no turn end yet: a first prompt");
+        assert!(!sent_by_turn_end_hook(Some(-10), 394, false), "a prompt stamped before the turn end");
+    }
 
     #[test]
     fn folder_tag_matches_folder_key_not_spelling() {

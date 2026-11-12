@@ -117,6 +117,7 @@ export function Task(ctx: Ctx & { taskId: string }) {
             </Chip>
             {stateLabel(j.state) && <Chip>{stateLabel(j.state)}</Chip>}
             <Chip>Job: {jobName(j.job)}</Chip>
+            {j.task_type_label && <Chip>Kind: {j.task_type_label}</Chip>}
           </div>
           {j.state === "uncertain" && <p className="mute">AIQ isn't sure about this one, so it won't coach on it.</p>}
           <ul className="evidence">
