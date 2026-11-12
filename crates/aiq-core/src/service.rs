@@ -9,7 +9,7 @@ use aiq_contracts::codes;
 use aiq_contracts::event::{EventBody, EventV1, MAX_SESSION_ID};
 use aiq_contracts::frames::{CoachStatus, EvidencePrompt, LeanedOn, ShowReply, StatusReply};
 use aiq_contracts::pack::PackV1;
-use aiq_domain::automated::{Guard, Verdict, folder_key, is_aiq_check_folder};
+use aiq_domain::automated::{Guard, Verdict, folder_key, is_aiq_check_folder, sent_by_turn_end_hook};
 use aiq_domain::card::{compose, compose_move};
 use aiq_domain::clock::{Clock, deliveries_counted_today};
 use aiq_domain::coach::{self, HabitState, TipPref};
@@ -111,6 +111,11 @@ pub struct Service<C: Clock> {
     /// Rule RC per turn: whether the current turn of a Projects session is the person's own (its prompt was typed by
     /// them), so its Stop goes with it. In memory; bounded.
     rc_own: std::collections::HashMap<(String, String), bool>,
+    /// Rule FAST: each session's last turn end (its Stop's time) for tools whose hook names no transcript. In memory;
+    /// bounded.
+    last_stop: std::collections::HashMap<(String, String), i64>,
+    /// Rule FAST: sessions whose current turn a turn-end hook started, so its Stop is left out with it. Bounded.
+    fast_turn: std::collections::HashSet<(String, String)>,
     /// Per surface, when `note_aside` last wrote and for which rule.
     aside_noted: std::collections::HashMap<String, AsideNoted>,
     /// Held prompts whose record never showed outside a Projects session: counted as the person's (`typed_gate`).
@@ -376,6 +381,8 @@ impl<C: Clock> Service<C> {
             projects_folders: Default::default(),
             rc_checked: Default::default(),
             rc_own: Default::default(),
+            last_stop: Default::default(),
+            fast_turn: Default::default(),
             aside_noted: Default::default(),
             rc_force_own: Default::default(),
             rc_matched: Default::default(),
@@ -1533,6 +1540,36 @@ impl<C: Clock> Service<C> {
         false
     }
 
+    /// Rule FAST for one event of a session whose hook names no transcript: a Stop notes the turn end (and is left out
+    /// when a hook started its turn); a prompt is left out as "not typed" when a turn-end hook sent it. A folder the
+    /// person included always counts.
+    fn fast_gate(&mut self, ev: &EventV1) -> Result<Option<Gate>, StoreError> {
+        let key = (ev.surface.clone(), ev.surface_session_id.clone());
+        let ts = parse_rfc3339_ms(&ev.ts).unwrap_or_else(|| self.clock.now().utc_ms);
+        match &ev.body {
+            EventBody::Stop(_) => {
+                if self.last_stop.len() >= 4096 {
+                    self.last_stop.clear();
+                }
+                self.last_stop.insert(key.clone(), ts);
+                Ok(self.fast_turn.remove(&key).then_some(Gate::Skip("not-typed")))
+            }
+            EventBody::Prompt(p) => {
+                let gap = self.last_stop.get(&key).map(|s| ts - s);
+                let pasted = p.text.as_deref().is_some_and(|t| features(t, &self.pack.reprompt).pasted);
+                if sent_by_turn_end_hook(gap, p.chars as usize, pasted) && !self.rc_included(ev)? {
+                    if self.fast_turn.len() >= 4096 {
+                        self.fast_turn.clear();
+                    }
+                    self.fast_turn.insert(key);
+                    return Ok(Some(Gate::Skip("not-typed")));
+                }
+                self.fast_turn.remove(&key);
+                Ok(None)
+            }
+        }
+    }
+
     /// The automated-session rule, live side. A skip names its rule (`projects`, `aiq-check`, `session`,
     /// `folder`, `template`, `burst`) for the log.
     fn automated(&mut self, ev: &EventV1) -> Result<Gate, StoreError> {
@@ -1547,6 +1584,13 @@ impl<C: Clock> Service<C> {
         if (marker || (ev.transcript.is_some() && !self.rc_unsettled(ev)))
             && !self.rc_included(ev)?
             && let Some(gate) = self.typed_gate(ev, marker)?
+        {
+            return Ok(gate);
+        }
+        // Rule FAST: a turn-end hook's prompt (`automated::sent_by_turn_end_hook`). Claude Code's own record says who
+        // typed each turn (above), so this is for the tools whose hook names no transcript (VS Code, Copilot CLI).
+        if ev.transcript.is_none()
+            && let Some(gate) = self.fast_gate(ev)?
         {
             return Ok(gate);
         }

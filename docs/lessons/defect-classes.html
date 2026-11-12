@@ -632,4 +632,15 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <p>test asked what the page shows when one is named.</p>
 <ul><li><strong>Sweep:</strong> every Home reader of <code>task_type_label</code>: Tasks list (shown), day view and rung mix (shown or &quot;No kind</li></ul>
 <p>yet&quot;), task page (was missing, now a &quot;Kind:&quot; chip). Kind pages are keyed by kind, so they cannot miss it.</p>
-<ul><li><strong>Control:</strong> e2e &quot;task detail: the kind shows beside the job when the analysis named one&quot; (and no chip when none).</li><li><strong>Rule:</strong> when a field is added to a judgment, list every page that shows the judgment and check each one.</li></ul></main></body></html>
+<ul><li><strong>Control:</strong> e2e &quot;task detail: the kind shows beside the job when the analysis named one&quot; (and no chip when none).</li><li><strong>Rule:</strong> when a field is added to a judgment, list every page that shows the judgment and check each one.</li></ul>
+<h3>DC-058 — Text a hook sends through the person&#x27;s prompt counted as a typed turn</h3>
+<ul><li><strong>Signature:</strong> 2026-11-12, laptop. A VS Code task showed 5 prompts; 2 began &quot;tacit: before you stop…&quot;, sent by a</li></ul>
+<p>Stop hook in the person&#x27;s own repo to keep the agent going. Over the store, 25 such prompts in 2 sessions, each 394 characters, 24 of them 1.3 to 4.6 s after the session&#x27;s Stop. They counted as the person&#x27;s turns, padded prompt counts and could start a task of their own.</p>
+<ul><li><strong>Why it survives:</strong> the per-turn &quot;who typed it&quot; rule (DC-043) reads Claude Code&#x27;s transcript record; VS Code</li></ul>
+<p>and Copilot CLI hooks name no transcript and their Stop says nothing of a hook (<code>stop_hook_active</code> false on all 159 VS Code Stops), so nothing looked at those tools&#x27; turns.</p>
+<ul><li><strong>Sweep:</strong> every tool whose hook names no transcript (VS Code, Copilot CLI): now rule FAST. Claude Code keeps</li></ul>
+<p>its record-based rule. Imported history: not covered (import reads the tools&#x27; own logs, which mark turns differently); left as a next step.</p>
+<ul><li><strong>Control:</strong> <code>a_long_prompt_just_after_a_turn_end_was_sent_by_a_hook</code> (domain bounds) and</li></ul>
+<p><code>a_long_prompt_a_turn_end_hook_sends_is_left_out_with_its_stop</code> (core: the hook prompt and its Stop left out; short, pasted and 5-second prompts kept).</p>
+<ul><li><strong>Rule:</strong> a turn counts as typed only on evidence a person could have typed it; time since the turn end is</li></ul>
+<p>evidence when the tool gives no record.</p></main></body></html>

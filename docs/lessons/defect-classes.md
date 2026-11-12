@@ -1044,3 +1044,20 @@ summary: >-
   yet"), task page (was missing, now a "Kind:" chip). Kind pages are keyed by kind, so they cannot miss it.
 - **Control:** e2e "task detail: the kind shows beside the job when the analysis named one" (and no chip when none).
 - **Rule:** when a field is added to a judgment, list every page that shows the judgment and check each one.
+
+### DC-058 — Text a hook sends through the person's prompt counted as a typed turn
+- **Signature:** 2026-11-12, laptop. A VS Code task showed 5 prompts; 2 began "tacit: before you stop…", sent by a
+  Stop hook in the person's own repo to keep the agent going. Over the store, 25 such prompts in 2 sessions, each
+  394 characters, 24 of them 1.3 to 4.6 s after the session's Stop. They counted as the person's turns, padded
+  prompt counts and could start a task of their own.
+- **Why it survives:** the per-turn "who typed it" rule (DC-043) reads Claude Code's transcript record; VS Code
+  and Copilot CLI hooks name no transcript and their Stop says nothing of a hook (`stop_hook_active` false on all
+  159 VS Code Stops), so nothing looked at those tools' turns.
+- **Sweep:** every tool whose hook names no transcript (VS Code, Copilot CLI): now rule FAST. Claude Code keeps
+  its record-based rule. Imported history: not covered (import reads the tools' own logs, which mark turns
+  differently); left as a next step.
+- **Control:** `a_long_prompt_just_after_a_turn_end_was_sent_by_a_hook` (domain bounds) and
+  `a_long_prompt_a_turn_end_hook_sends_is_left_out_with_its_stop` (core: the hook prompt and its Stop left out;
+  short, pasted and 5-second prompts kept).
+- **Rule:** a turn counts as typed only on evidence a person could have typed it; time since the turn end is
+  evidence when the tool gives no record.
