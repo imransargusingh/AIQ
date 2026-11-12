@@ -513,6 +513,7 @@ fn handle(
         Dispatch::Forget => {
             let (rtx, rrx) = mpsc::channel();
             let stopped = tx.send(Cmd::Shutdown { reply: rtx }).is_ok() && rrx.recv_timeout(CLI_TIMEOUT).is_ok();
+            crate::sync::stop();
             let r =
                 if stopped { forget_files(paths).map_err(|e| e.to_string()) } else { Err("core did not stop".into()) };
             let _ = stream.write_all(to_line(&OkReply { ok: r.is_ok(), message: r.err() }).as_bytes());

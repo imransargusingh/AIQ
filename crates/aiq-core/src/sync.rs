@@ -373,41 +373,59 @@ fn write_status(paths: &Paths, st: &Status) {
     }
 }
 
-/// The core's sync thread: a pass every minute on its own store connection, logged with counts and codes only.
+/// Held while the sync thread has the store open; `true` once the core is deleting everything.
+static GATE: std::sync::Mutex<bool> = std::sync::Mutex::new(false);
+
+/// `forget --all`: wait for a pass in progress to finish, then keep the sync thread from opening the store again,
+/// so the store can be deleted (Windows refuses to delete an open file) and is not created again afterwards.
+pub fn stop() {
+    *GATE.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = true;
+}
+
+/// The core's sync thread: a pass every minute, logged with counts and codes only. It opens the store only for a
+/// check or a pass and closes it between them, so nothing holds the store while the core deletes everything.
 pub fn run(paths: Paths) {
-    let mut store = match Store::open(&paths.db()) {
-        Ok(s) => s,
-        Err(e) => {
-            tracing::warn!(error.code = e.code, "sync could not open the store");
-            return;
-        }
-    };
     let mut last_setting: Option<String> = None;
     let mut last_pass: Option<std::time::Instant> = None;
     loop {
-        // A choice the person just made ("Keep in sync", the switch) runs a pass within seconds, not a minute.
-        let setting = store.setting(SETTING_SYNC).ok().flatten();
-        if last_pass.is_some_and(|t| t.elapsed() < EVERY) && setting == last_setting {
-            std::thread::sleep(NOTICE);
-            continue;
+        {
+            let stopped = GATE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            if *stopped {
+                return;
+            }
+            let mut store = match Store::open(&paths.db()) {
+                Ok(s) => s,
+                Err(e) => {
+                    tracing::warn!(error.code = e.code, "sync could not open the store");
+                    drop(stopped);
+                    std::thread::sleep(EVERY);
+                    continue;
+                }
+            };
+            // A choice the person just made ("Keep in sync", the switch) runs a pass within seconds, not a minute.
+            let setting = store.setting(SETTING_SYNC).ok().flatten();
+            if !(last_pass.is_some_and(|t| t.elapsed() < EVERY) && setting == last_setting) {
+                last_pass = Some(std::time::Instant::now());
+                let t = std::time::Instant::now();
+                let remote = reachable_homes(&paths);
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_or(0, |d| d.as_millis() as i64);
+                let st = pass(&mut store, &paths, &remote, now);
+                if st.setting == "on" || st.offer.is_some() {
+                    tracing::info!(
+                        sync.setting = %st.setting,
+                        sync.remote = remote.len(),
+                        sync.peers = st.peers.len(),
+                        sync.pending = st.pending,
+                        sync.errors = %st.errors.join(","),
+                        sync.ms = t.elapsed().as_millis() as u64,
+                        "sync.pass"
+                    );
+                }
+                last_setting = store.setting(SETTING_SYNC).ok().flatten();
+            }
         }
-        last_pass = Some(std::time::Instant::now());
-        let t = std::time::Instant::now();
-        let remote = reachable_homes(&paths);
-        let now =
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64);
-        let st = pass(&mut store, &paths, &remote, now);
-        if st.setting == "on" || st.offer.is_some() {
-            tracing::info!(
-                sync.setting = %st.setting,
-                sync.remote = remote.len(),
-                sync.peers = st.peers.len(),
-                sync.pending = st.pending,
-                sync.errors = %st.errors.join(","),
-                sync.ms = t.elapsed().as_millis() as u64,
-                "sync.pass"
-            );
-        }
-        last_setting = store.setting(SETTING_SYNC).ok().flatten();
+        std::thread::sleep(NOTICE);
     }
 }

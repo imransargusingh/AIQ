@@ -1061,3 +1061,20 @@ summary: >-
   short, pasted and 5-second prompts kept).
 - **Rule:** a turn counts as typed only on evidence a person could have typed it; time since the turn end is
   evidence when the tool gives no record.
+
+### DC-059 — A long-lived thread keeps the store open, so Windows can't delete it
+- **Signature:** 2026-11-12, PR #252 CI on Windows. `e2e_forget_all_deletes_store_and_spool` failed with
+  "Could not delete everything: The process cannot access the file because it is being used by another process.
+  (os error 32)". The new sync thread opened its own store connection at start and held it for the life of the
+  core. `forget --all` stops the writer and then deletes the store, but nothing stopped the sync thread. Linux
+  passed because it lets a program delete an open file.
+- **Why it survives:** every other store reader in the core and Home opens a connection per call and drops it.
+  A new thread followed the "own connection" note without the shutdown half. Only the Windows job runs the
+  delete against a live core.
+- **Sweep:** `Store::open`/`open_read_only` in `aiq-core`, `aiq-home` and the Home app. Only `sync::run` held a
+  connection across calls; the rest are per call (`control.rs`, `update.rs`, `aiq-home` lib/detail/diagnostics).
+- **Control (tests):** the Windows `e2e_forget_all_deletes_store_and_spool` (already there; it caught this), and
+  `once_the_core_deletes_everything_the_sync_thread_never_opens_the_store_again` in `aiq-core/tests/sync.rs`. That
+  test proves a stopped sync thread can't create the store again after the delete.
+- **Rule:** a background thread opens the store only for one unit of work. Deleting everything first stops every
+  thread that can open the store.
