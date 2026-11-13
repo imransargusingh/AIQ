@@ -1362,3 +1362,11 @@ summary: >-
   computer's calls only.
 - **Control (test):** `another_computers_calls_never_count_against_this_computers_tasks` (store).
 - **Rule:** a synced row describes the computer that wrote it; a rule about this computer reads only its own rows.
+
+### DC-076 — A run summary that leaves out the work done without a model call
+- **Signature:** 2026-11-13, after 0.1.59. judge.log said `run judged=24 ... waiting=0` while about 70 more outdated
+  tasks had left the queue. Alpha could not tell whether AIQ would release them later or they no longer qualified.
+  They were restamped (log facts unchanged, no model call), which the line never counted.
+- **Sweep:** the Report fields not in the run line: `restamped`, `skipped_no_text`. Both added.
+- **Control (test):** `the_run_line_says_how_many_were_restamped_or_had_no_text`.
+- **Rule:** a summary line accounts for every item that left the queue, by the path it took.
