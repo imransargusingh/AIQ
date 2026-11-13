@@ -1042,6 +1042,21 @@ pub struct Run<'a> {
     pub task: Option<&'a str>,
 }
 
+/// The judge.log summary of one run.
+fn run_line(rep: &Report) -> String {
+    format!(
+        "run judged={} restamped={} no_text={} uncertain={} failed={} waiting={} budget_left={} cost_usd={:.4}",
+        rep.judged,
+        rep.restamped,
+        rep.skipped_no_text,
+        rep.uncertain,
+        rep.failed,
+        rep.waiting,
+        rep.budget_left,
+        rep.cost_usd
+    )
+}
+
 /// One pass over the queue within today's budget.
 pub fn run(r: &Run<'_>) -> Result<Report, String> {
     let pack = aiq_core::pack::parse(aiq_core::pack::BUNDLED_TOML).map_err(|e| e.to_string())?;
@@ -1530,10 +1545,9 @@ pub fn cli(args: &[&str]) -> ExitCode {
     });
     match rep {
         Ok(rep) => {
-            let line = format!(
-                "run judged={} uncertain={} failed={} waiting={} budget_left={} cost_usd={:.4}",
-                rep.judged, rep.uncertain, rep.failed, rep.waiting, rep.budget_left, rep.cost_usd
-            );
+            // restamped and no_text too (DC-076): a run that clears the queue mostly without model calls must say
+            // so, or "judged=24 waiting=0" reads as if the other outdated tasks vanished.
+            let line = run_line(&rep);
             let _ = bounded_append(&paths.data.join("judge.log"), &line, LOG_MAX);
             if !auto {
                 print!("{}", render(&rep, set.daily_tasks));
@@ -2934,6 +2948,14 @@ mod tests {
         assert!(rung::validate_setting(rung::SETTING_CALLS, "3").unwrap().is_err());
         let e = env();
         assert_eq!(settings(&e.store).calls, rung::DEFAULT_CALLS);
+    }
+
+    #[test]
+    fn the_run_line_says_how_many_were_restamped_or_had_no_text() {
+        let rep = Report { judged: 24, restamped: 69, skipped_no_text: 2, budget_left: 376, ..Default::default() };
+        let l = run_line(&rep);
+        assert!(l.starts_with("run judged=24 restamped=69 no_text=2 uncertain=0"), "{l}");
+        assert!(l.contains("waiting=0 budget_left=376"), "{l}");
     }
 
     #[test]
