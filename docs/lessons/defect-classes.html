@@ -754,4 +754,13 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <ul><li><strong>Control (tests):</strong> <code>a_hook_from_another_loader_never_erases_the_copilot_that_worked</code> (rename undone, versions</li></ul>
 <p>newest first); every candidate check is logged to judge.log (<code>copilot-check …</code>), so the next case is measured.</p>
 <ul><li><strong>Rule:</strong> a path read from a running process can be mid-update. Map it back to the program&#x27;s stable name, and also</li></ul>
-<p>look where the tool installs itself.</p></main></body></html>
+<p>look where the tool installs itself.</p>
+<h3>DC-069 — Two surfaces read two states and contradict each other</h3>
+<ul><li><strong>Signature:</strong> 2026-11-13, Imran&#x27;s Devbox (0.1.54). The banner said &quot;AIQ can&#x27;t find Copilot CLI, so it can&#x27;t</li></ul>
+<p>analyze your tasks&quot; while the sidebar said &quot;Connected: Copilot, VS Code&quot; with a green dot. Both were true: the sidebar read the hooks (<code>setup.tools</code>), the banner read analysis (<code>home.analysis.blocked</code>). Side by side they read as a contradiction, and &quot;can&#x27;t find&quot; was wrong for a tool that was plainly running.</p>
+<ul><li><strong>Why it survives:</strong> each surface was tested alone. No test put the two states side by side.</li><li><strong>Sweep:</strong> surfaces that show a tool&#x27;s state: sidebar foot, banner, Settings tool rows, task page, Getting started.</li></ul>
+<p>The sidebar, banner and Settings now read one helper (<code>stuck()</code> in <code>ui.tsx</code>); the task page wording matches. Getting started shows connection only, and its analysis line already reads <code>home.analysis</code>.</p>
+<ul><li><strong>Control (test):</strong> e2e &quot;an expired sign-in shows on every page…&quot; asserts the amber dot, the sidebar line and the</li></ul>
+<p>Settings rows for the affected tools, all from one blocked state, and that working or paused shows none of them.</p>
+<ul><li><strong>Rule:</strong> when two surfaces describe the same tool, derive both from one reader, and say on each what the other</li></ul>
+<p>one knows.</p></main></body></html>
