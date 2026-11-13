@@ -1257,3 +1257,17 @@ summary: >-
   the log's last lines with their write times and the held file, so the next failure is measured.
 - **Rule:** a watcher must never be able to block the writer it watches. Read with full sharing, and read every place
   the writer can put the record (here, the held file too).
+
+### DC-070 — Two surfaces read two states and contradict each other
+- **Signature:** 2026-11-13, Imran's Devbox (0.1.54). The banner said "AIQ can't find Copilot CLI, so it can't
+  analyze your tasks" while the sidebar said "Connected: Copilot, VS Code" with a green dot. Both were true: the
+  sidebar read the hooks (`setup.tools`), the banner read analysis (`home.analysis.blocked`). Side by side they read
+  as a contradiction, and "can't find" was wrong for a tool that was plainly running.
+- **Why it survives:** each surface was tested alone. No test put the two states side by side.
+- **Sweep:** surfaces that show a tool's state: sidebar foot, banner, Settings tool rows, task page, Getting started.
+  The sidebar, banner and Settings now read one helper (`stuck()` in `ui.tsx`); the task page wording matches.
+  Getting started shows connection only, and its analysis line already reads `home.analysis`.
+- **Control (test):** e2e "an expired sign-in shows on every page…" asserts the amber dot, the sidebar line and the
+  Settings rows for the affected tools, all from one blocked state, and that working or paused shows none of them.
+- **Rule:** when two surfaces describe the same tool, derive both from one reader, and say on each what the other
+  one knows.

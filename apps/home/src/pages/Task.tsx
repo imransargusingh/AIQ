@@ -233,7 +233,7 @@ function AnalysisState({ a, tool, taskId, ctx, reload }: { a: TaskAnalysis; tool
       };
       return (
         <div className="empty an-bad" data-testid="analysis-state">
-          <b>{b.why === "missing" ? `AIQ can't find ${via} on this computer.` : `${via} isn't signed in for AIQ.`}</b>
+          <b>{b.why === "missing" ? `AIQ can't run ${via} on this computer.` : `${via} isn't signed in for AIQ.`}</b>
           <span className="mute">This task waits until it can be analyzed. Nothing is lost, and AIQ tries again by itself.</span>
           <p className="an-act">
             <button className="btn pri" onClick={act}>{b.why === "missing" ? `Get ${via}` : `Sign in to ${via}`}</button>

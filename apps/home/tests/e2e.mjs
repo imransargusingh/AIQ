@@ -221,17 +221,41 @@ await test("an expired sign-in shows on every page of a settled install, with si
   await page.context().close();
   // Not found: the install page instead of a sign-in.
   const gone = await open("progress", { edit: stuck({ tool: "copilot-cli", why: "missing" }) });
-  assert.match(await gone.getByTestId("analysis-blocked").innerText(), /AIQ can't find Copilot CLI, so it can't analyze your tasks\./);
+  assert.match(await gone.getByTestId("analysis-blocked").innerText(), /AIQ can't run Copilot CLI, so it can't analyze your tasks\./);
   await gone.getByRole("button", { name: "Get Copilot CLI" }).click();
   await gone.waitForFunction(() => window.__AIQ_FIXTURE__.calls.some((c) => c.cmd === "open_tool_help" && c.args.tool === "copilot-cli"));
   await gone.context().close();
+  // 2026-11-13, Devbox: the banner said AIQ can't find Copilot CLI while the sidebar said "Connected: Copilot, VS Code"
+  // with a green dot. Every surface reads one state, so they agree: amber dot, the reason under Connected, the
+  // affected tools in Settings, and the banner says the sessions still arrive.
+  const devbox = (s) => {
+    stuck({ tool: "copilot-cli", why: "missing" })(s);
+    s.setup.tools = ["copilot", "vscode", "claude-code"].map((tool) => ({ tool, hooked: true, present: true, install: "" }));
+  };
+  const both = await open("progress", { edit: devbox });
+  assert.match(await both.getByTestId("analysis-blocked").innerText(), /Your sessions still reach AIQ\. Open Copilot CLI once, or reinstall it, and AIQ catches up by itself\./);
+  assert.equal(await both.getByTestId("side-analysis").innerText(), "Analysis stopped: can't run Copilot CLI");
+  assert.match(await both.locator("nav.side .foot .dot").getAttribute("class"), /paused/, "the dot is not green while analysis is stopped");
+  await both.context().close();
+  const set = await open("full", { edit: devbox, hash: "#settings" });
+  const rows = await set.locator('ul[aria-label="Tools AIQ connects to"]').innerText();
+  assert.match(rows, /GitHub Copilot · connected · analysis stopped: can't run Copilot CLI/);
+  assert.match(rows, /VS Code · connected · analysis stopped: can't run Copilot CLI/);
+  assert.match(rows, /Claude Code · connected\n|Claude Code · connected$/, "a tool analyzed elsewhere stays plain connected");
+  assert.deepEqual(await axe(set), []);
+  if (shots) await set.screenshot({ path: join(shots, "home-analysis-stopped-settings.png") });
+  assert.deepEqual(set.errors, []);
+  await set.context().close();
   // Paused: the paused banner says why nothing runs; no second banner.
   const paused = await open("progress", { edit: stuck({ tool: "claude-code", why: "not_signed_in" }, { paused: true }) });
   assert.equal(await paused.getByTestId("analysis-blocked").count(), 0);
+  assert.equal(await paused.getByTestId("side-analysis").count(), 0, "paused says Paused, nothing else");
   await paused.context().close();
   // Working again: no banner.
   const ok = await open("progress", { edit: (s) => Object.assign(s.home.analysis, { state: "working", blocked: null }) });
   assert.equal(await ok.getByTestId("analysis-blocked").count(), 0);
+  assert.equal(await ok.getByTestId("side-analysis").count(), 0);
+  assert.doesNotMatch(await ok.locator("nav.side .foot .dot").getAttribute("class"), /paused/);
   await ok.context().close();
 });
 
@@ -1171,7 +1195,7 @@ const ANALYSIS_STATES = [
   ["retrying", { next_try_ms: 1793527200000, tries: 1, last_try_ms: 1793520000000, reply: "GitHub Copilot CLI was not found." }, /tries again .*Try 1 of 3.*answered: GitHub Copilot CLI was not found\./],
   ["gave_up", { tries: 3, last_try_ms: 1793520000000, reply: "timed out" }, /stopped trying.*3 tries.*answered on the last try: timed out/],
   ["today_done", {}, /Waiting for tomorrow\./],
-  ["blocked", { blocked: { tool: "copilot-cli", why: "missing", since_ms: 0 } }, /AIQ can't find Copilot CLI on this computer\./],
+  ["blocked", { blocked: { tool: "copilot-cli", why: "missing", since_ms: 0 } }, /AIQ can't run Copilot CLI on this computer\./],
 ];
 for (const theme of ["light", "dark", "contrast"]) {
   await test(`task detail: each analysis state says where the task stands, no axe violations (${theme})`, async () => {
