@@ -75,13 +75,14 @@ pub fn open_task(
     if now_ms - last.ts_utc_ms > idle_gap_ms {
         return Ok(None);
     }
-    // The task's first prompt: the last prompt that came more than the idle gap after the one before it.
+    // The task's first prompt: the last prompt that came more than the idle gap after the session's activity before
+    // it, the agent's turn ends included (DC-073: the same rule as `split_tasks`).
     let prompts: Vec<usize> = (0..evs.len()).filter(|&i| evs[i].kind == "prompt").collect();
     let Some(&first) = prompts
         .iter()
         .zip(prompts.iter().skip(1))
         .rev()
-        .find(|(a, b)| starts_new_task(evs[**a].ts_utc_ms, evs[**b].ts_utc_ms, idle_gap_ms))
+        .find(|(_, b)| starts_new_task(evs[**b - 1].ts_utc_ms, evs[**b].ts_utc_ms, idle_gap_ms))
         .map(|(_, b)| b)
         .or(prompts.first())
     else {

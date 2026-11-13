@@ -876,3 +876,31 @@ fn an_envelope_shows_the_persons_words_and_one_without_them_is_not_a_task() {
     let texts: Vec<Option<&str>> = det.prompts.iter().map(|p| p.text.as_deref()).collect();
     assert_eq!(texts, vec![Some("why does it say \"Sign in\"?")]);
 }
+
+/// DC-073 (Imran 2026-11-13): a plan handed to an agent that worked two hours, then "keep going" 10 minutes after it
+/// finished, is one task, live and imported; a prompt over 30 minutes after the agent's last turn end is a new one.
+#[test]
+fn a_long_agent_run_is_one_task_with_the_prompt_that_started_it() {
+    let d = tempfile::tempdir().unwrap();
+    let p = Paths::at(d.path());
+    let mut s = Seed::new(&p);
+    s.prompt("copilot-cli", "fleet", NOW - 300 * MIN, Some(AIQ), "implement the plan in docs/plan.md with sub-agents");
+    s.stop("copilot-cli", "fleet", NOW - 180 * MIN);
+    s.prompt("copilot-cli", "fleet", NOW - 170 * MIN, Some(AIQ), "keep going");
+    s.stop("copilot-cli", "fleet", NOW - 165 * MIN);
+    s.prompt("copilot-cli", "fleet", NOW - 100 * MIN, Some(AIQ), "now write the release notes");
+    s.stop("copilot-cli", "fleet", NOW - 99 * MIN);
+    s.imported_session(
+        "copilot-cli",
+        "old-fleet",
+        AIQ,
+        "imported",
+        &[(NOW - 900 * MIN, "run the plan"), (NOW - 770 * MIN, "keep going")],
+    );
+    s.imported_stop("copilot-cli", "old-fleet", 10, NOW - 780 * MIN);
+    drop(s);
+    let snap = snap(&p);
+    let shape: Vec<(&str, u32)> = snap.tasks.iter().map(|t| (t.origin, t.prompts)).collect();
+    assert_eq!(shape, [("live", 1), ("live", 2), ("imported", 2)], "newest first: {shape:?}");
+    assert_eq!(snap.tasks[1].last_ms, NOW - 165 * MIN, "a task ends one idle gap after its last activity");
+}

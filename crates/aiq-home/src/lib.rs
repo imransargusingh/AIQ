@@ -1448,11 +1448,39 @@ fn task_list(store: &Store, pack: &PackV1, window_start: i64, aside: &BTreeSet<&
         }
     }
     not_typed_out(store, &mut rows)?;
+    // The agent's turn ends in the same window: they keep a Task open while its agent works (DC-073).
+    let mut live_stops: Vec<(String, String, String, i64, Option<String>)> = Vec::new();
+    {
+        let mut st = q(c.prepare(&format!(
+            "SELECT e.event_id, e.surface, e.surface_session_id, e.ts_utc_ms, {e_computer}
+             FROM event e WHERE e.kind = 'stop' AND e.ts_utc_ms >= ?1 ORDER BY e.ts_utc_ms, e.event_id"
+        )))?;
+        let it =
+            q(st.query_map([window_start - gap], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))))?;
+        for row in it {
+            live_stops.push(q(row)?);
+        }
+    }
     // Imported prompts (`aiq import`, schema v4). A store from before v4 has no import tables.
     let mut imp: Vec<ImportRow> = Vec::new();
+    // Imported agent turn ends: (key, tool, session, time).
+    let mut imp_stops: Vec<(String, String, String, i64)> = Vec::new();
     if store.has_table("import_session").map_err(|e| e.to_string())?
         && store.has_table("import_event").map_err(|e| e.to_string())?
     {
+        let mut st = q(c.prepare(
+            "SELECT e.tool, e.source_session_id, e.seq, e.ts_utc_ms
+             FROM import_event e JOIN import_session s ON s.tool = e.tool AND s.source_session_id = e.source_session_id
+             WHERE s.outcome = 'imported' AND e.kind = 'stop' AND e.ts_utc_ms IS NOT NULL AND e.ts_utc_ms >= ?1
+             ORDER BY e.ts_utc_ms, e.source_session_id, e.seq",
+        ))?;
+        let it = q(st.query_map([window_start - gap], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, i64>(2)?, r.get::<_, i64>(3)?))
+        }))?;
+        for r in it {
+            let (tool, sid, seq, ts) = q(r)?;
+            imp_stops.push((format!("import:{tool}:{sid}:{seq}:stop"), tool, sid, ts));
+        }
         let mut st = q(c.prepare(&format!(
             "SELECT s.tool, s.source_session_id, s.folder, e.seq, e.ts_utc_ms, e.text, {s_computer}
              FROM import_event e JOIN import_session s ON s.tool = e.tool AND s.source_session_id = e.source_session_id
@@ -1522,7 +1550,30 @@ fn task_list(store: &Store, pack: &PackV1, window_start: i64, aside: &BTreeSet<&
     let mut by_computer: std::collections::BTreeMap<Option<&str>, Vec<TaskPrompt<'_>>> = Default::default();
     for (id, surface, session, ts, _) in &stream {
         let who = computer_of.get(id).copied().flatten();
-        by_computer.entry(who).or_default().push(TaskPrompt { event_id: id, surface, session, utc_ms: *ts });
+        by_computer.entry(who).or_default().push(TaskPrompt {
+            event_id: id,
+            surface,
+            session,
+            utc_ms: *ts,
+            agent_stop: false,
+        });
+    }
+    // simplify: an imported prompt that joined a live session (twins Extra) keeps the live session's turn ends only;
+    // ceiling: a session captured partly live. Upgrade trigger: a measured split inside such a session.
+    for (id, surface, session, ts, who) in &live_stops {
+        by_computer.entry(who.as_deref()).or_default().push(TaskPrompt {
+            event_id: id,
+            surface,
+            session,
+            utc_ms: *ts,
+            agent_stop: true,
+        });
+    }
+    for ps in by_computer.values_mut() {
+        // Event order, a prompt before a turn end at the same instant.
+        ps.sort_by(|a, b| {
+            a.utc_ms.cmp(&b.utc_ms).then(a.agent_stop.cmp(&b.agent_stop)).then(a.event_id.cmp(b.event_id))
+        });
     }
     let live: Vec<TaskSpan> = by_computer.into_values().flat_map(|ps| split_tasks(ps, span, gap)).collect();
     let mut tasks: Vec<TaskRow> = live
@@ -1542,16 +1593,32 @@ fn task_list(store: &Store, pack: &PackV1, window_start: i64, aside: &BTreeSet<&
     // Imported-only sessions never span: each source session is its own stream.
     let folder_of: std::collections::BTreeMap<&str, &str> =
         alone.iter().map(|(id, _, _, f, ..)| (id.as_str(), f.as_str())).collect();
-    let spans = split_tasks(
-        alone.iter().map(|(id, tool, sid, _, ts, ..)| TaskPrompt {
+    let alone_sessions: BTreeSet<(&str, &str)> =
+        alone.iter().map(|(_, tool, sid, ..)| (tool.as_str(), sid.as_str())).collect();
+    let mut alone_stream: Vec<TaskPrompt<'_>> = alone
+        .iter()
+        .map(|(id, tool, sid, _, ts, ..)| TaskPrompt {
             event_id: id,
             surface: tool,
             session: sid,
             utc_ms: *ts,
-        }),
-        &[],
-        gap,
-    );
+            agent_stop: false,
+        })
+        .chain(
+            imp_stops.iter().filter(|(_, tool, sid, _)| alone_sessions.contains(&(tool.as_str(), sid.as_str()))).map(
+                |(id, tool, sid, ts)| TaskPrompt {
+                    event_id: id,
+                    surface: tool,
+                    session: sid,
+                    utc_ms: *ts,
+                    agent_stop: true,
+                },
+            ),
+        )
+        .collect();
+    alone_stream
+        .sort_by(|a, b| a.utc_ms.cmp(&b.utc_ms).then(a.agent_stop.cmp(&b.agent_stop)).then(a.event_id.cmp(b.event_id)));
+    let spans = split_tasks(alone_stream, &[], gap);
     for t in spans {
         let f = folder_of.get(t.task_id.as_str()).map(|f| f.to_string()).filter(|f| !f.is_empty());
         let who = computer_of.get(t.task_id.as_str()).copied().flatten().map(str::to_owned);

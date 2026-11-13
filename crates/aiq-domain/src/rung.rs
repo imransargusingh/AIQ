@@ -11,10 +11,14 @@ use aiq_contracts::judge::{ActionSummary, Fact, Response};
 /// fs3: a turn whose actions AIQ did not record makes a log fact unknown ("not recorded"), never "no" (DC-020).
 /// fs4: F3 reads a quoted program path (`& 'C:\\…\\python.exe' -m unittest`) and interpreter flags before `-m`
 /// (Imran 2026-11-12: 1,888 of 5,050 Copilot commands on his laptop started with a quoted program, read as none).
-pub const FACT_SET_VERSION: &str = "fs4";
+/// fs5: F7's log reading names plan files (`plan.md`, `/plan/`, `/plans/`) and never says "no": a path match can
+/// see a brief but cannot rule one out, so the model reads the prompt for it (DC-074; Imran 2026-11-13: a Fleet launch
+/// naming `…IMPLEMENTATION_PLAN.md` was told "no brief" and placed Directed).
+pub const FACT_SET_VERSION: &str = "fs5";
 /// Judgments of these fact sets stay current unless `fact_set_may_change`: fs2 and fs4 only widen the agent's
 /// checks (F3 `nobody` or `person` can change, and F8 with it) and fs3 only turns a log fact's "no" into unknown.
-pub const FACT_SET_VERSIONS_KEPT: [&str; 3] = ["fs1", "fs2", "fs3"];
+/// fs5 only lets the model read F7 where the log said "no": `brief_may_change` names the judgments that changes.
+pub const FACT_SET_VERSIONS_KEPT: [&str; 4] = ["fs1", "fs2", "fs3", "fs4"];
 /// The log facts as stored on a judgment (`Merged::log`, plus F3's checker).
 const LOG_FACT_IDS: [&str; 4] = ["F1", "F8", "F14", "F15"];
 
@@ -25,6 +29,12 @@ pub fn fact_set_may_change(facts_json: &str) -> bool {
     let f3 = stored.remove("F3").and_then(|f| f.checker);
     f3.is_some_and(|c| c == "nobody" || c == "person")
         || LOG_FACT_IDS.iter().any(|id| stored.get(*id).is_some_and(|f| f.log && f.value == Some(false)))
+}
+/// Whether a judgment from before fs5 could place differently now that F7 is read from the prompt (DC-074): every
+/// Orchestrated need holds but the brief. Needs a model call (the envelope changed), never a restamp.
+pub fn brief_may_change(facts_json: &str, reprompts: u32, job: &str) -> bool {
+    let f = facts_from_json(facts_json, reprompts, job);
+    !f.f7.yes() && missing(&f, 4).iter().all(|g| matches!(g, Gate::Fails("F7") | Gate::Unknown("F7")))
 }
 /// r2: a hedged yes on F6 counts when the person came back after the output (`F6_HEDGED_THRESHOLD`).
 /// r3: a fact AIQ couldn't tell lowers the rung once, never again at the next rung down (`place`). Imran
@@ -292,7 +302,8 @@ const CHECK_SCRIPTS: [&str; 8] = ["test", "lint", "build", "check", "typecheck",
 const WRAPPERS: [&str; 6] = ["npx", "pnpx", "bunx", "uvx", "time", "sudo"];
 const PERSON_RAN: [&str; 6] =
     ["i ran ", "i ran the", "ran the tests myself", "ran them locally", "ran it locally", "i'll run"];
-const SPEC_MARKS: [&str; 7] = ["/spec", "spec.md", "/specs/", "/adr/", "/design/", "brief", "requirements.md"];
+const SPEC_MARKS: [&str; 10] =
+    ["/spec", "spec.md", "/specs/", "/adr/", "/design/", "brief", "requirements.md", "plan.md", "/plan/", "/plans/"];
 
 /// The letters of a turn's step list (`ActionSummary::steps`), written by the core's action reader.
 pub mod step {
@@ -567,7 +578,8 @@ pub fn log_facts(turns: &[Turn]) -> LogFacts {
         agent_edited: found(edits > 0 || subagents > 0),
         edits,
         checks_by,
-        spec_named: found(spec),
+        // fs5 (DC-074): a yes or unknown, never "no": a brief can be pasted, attached or named in words no path shows.
+        spec_named: spec.then_some(true),
         subagents: found(subagents > 0).map(|_| subagents),
         coordinated: found(subagents > 0 && agent_checked),
         looked_up: found(subagents > 0 || acts.iter().any(|a| !a.tools.is_empty() || !a.commands.is_empty())),
@@ -669,7 +681,11 @@ fn render(tool: &str, turns: &[Turn], log: &LogFacts, fence: &str, cap: usize) -
         "- sub-agents started: {}\n",
         log.subagents.map_or(NOT_RECORDED.to_owned(), |n| n.to_string())
     ));
-    o.push_str(&format!("- spec, brief or design doc read or named: {}\n", yn(log.spec_named)));
+    // fs5 (DC-074): a path match can see a brief, never rule one out, so its absence sends the model to the text.
+    o.push_str(match log.spec_named {
+        Some(true) => "- spec, brief or design doc read or named: yes\n",
+        _ => "- spec, brief or design doc read or named: no file path shows one; judge it from the quoted text\n",
+    });
     o.push_str(&format!("- prompts in the task: {}\n\n", turns.len()));
     o.push_str(&format!("{fence} START OF QUOTED TASK DATA\n"));
     let n = turns.len();
@@ -1506,6 +1522,58 @@ mod tests {
         let hedged = r#"{"F6":{"value":null,"confidence":0.55,"source":"model","disputed":false}}"#;
         assert!(rubric_changes("r1", hedged, Some(1), "[]"), "r1 -> r2 still applies to r1");
         assert!(!rubric_changes("r2", hedged, Some(1), "[]"), "an r2 judgment already used the hedged rule");
+    }
+
+    // DC-074 (Imran 2026-11-13): the envelope said "no brief" to a task whose prompt pasted its brief, and the model
+    // was told to trust the log over the text. A path match can see a brief, never rule one out.
+    #[test]
+    fn a_brief_the_log_cannot_see_is_unknown_never_no() {
+        let l = log_facts(&turns(
+            &["You own the upload change. Goal: resumable uploads. Done when the tests pass."],
+            acts(&[("Edit", 2), ("Bash", 1)], &["cargo test"], &["src/upload.rs"], 0),
+        ));
+        assert_eq!((l.unrecorded, l.spec_named), (0, None), "every turn read, still unknown");
+        let e = envelope("claude-code", &turns(&["x"], acts(&[("Edit", 1)], &[], &["a.rs"], 0)), &l, "~~~");
+        assert!(
+            e.contains(
+                "- spec, brief or design doc read or named: no file path shows one; judge it from the quoted text"
+            ),
+            "{e}"
+        );
+        assert!(!e.contains("read or named: no\n"), "{e}");
+    }
+
+    #[test]
+    fn a_plan_file_is_a_brief() {
+        for prompt in [
+            "Fleet deployed: implement the plan captured here: C:\\repo\\REAL_DATA_IMPLEMENTATION_PLAN.md",
+            "Take a look at the latest implementation plan here: file:///c%3A/repo/plan/architecture-refresh-1.md",
+            "work through docs/plans/sync.md",
+        ] {
+            assert_eq!(log_facts(&turns(&[prompt], None)).spec_named, Some(true), "{prompt}");
+        }
+        assert_eq!(log_facts(&turns(&["explain the planner"], None)).spec_named, None);
+        // With the agent's edits, sub-agents and checks, the log alone now places it Orchestrated (the floor).
+        let l = log_facts(&turns(
+            &["Fleet deployed: implement the plan captured here: REAL_DATA_IMPLEMENTATION_PLAN.md"],
+            acts(&[("Edit", 3), ("Task", 3), ("Bash", 2)], &["cargo test"], &["src/a.rs"], 3),
+        ));
+        let (_, p) = place(&[run(2), run(2)], &l, 0);
+        assert_eq!(p.current, 4, "{:?}", p.notes);
+    }
+
+    #[test]
+    fn brief_may_change_only_where_the_brief_is_the_last_need() {
+        let y = |id: &str| format!(r#""{id}":{{"value":true,"confidence":0.9,"source":"model"}}"#);
+        let base =
+            [y("F1"), y("F6"), y("F8"), y("F13"), r#""F12":{"value":false,"confidence":0.9,"source":"model"}"#.into()];
+        let with = |f7: &str, f3: &str| {
+            format!("{{{},{f7},\"F3\":{{\"value\":\"{f3}\",\"source\":\"log\"}}}}", base.join(","))
+        };
+        let no7 = r#""F7":{"value":false,"confidence":0.9,"source":"model"}"#;
+        assert!(brief_may_change(&with(no7, "agent"), 0, "code_change"), "only the brief is missing");
+        assert!(!brief_may_change(&with(&y("F7"), "agent"), 0, "code_change"), "already has one");
+        assert!(!brief_may_change(&with(no7, "nobody"), 0, "code_change"), "checks are missing too");
     }
 
     #[test]

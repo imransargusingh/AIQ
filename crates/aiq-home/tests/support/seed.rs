@@ -308,6 +308,17 @@ impl Seed {
         self.store.set_setting(key, value, at).unwrap();
     }
 
+    /// One more agent turn end in an imported session (seq after the helper's own, which use 0..2n).
+    pub fn imported_stop(&mut self, tool: &str, sid: &str, seq: i64, at: i64) {
+        self.store
+            .raw()
+            .execute(
+                "INSERT INTO import_event (tool, source_session_id, seq, kind, ts_utc_ms, text, actions) VALUES (?1, ?2, ?3, 'stop', ?4, NULL, '[]')",
+                rusqlite::params![tool, sid, seq, at],
+            )
+            .unwrap();
+    }
+
     pub fn imported_session(&mut self, tool: &str, sid: &str, folder: &str, outcome: &str, prompts: &[(i64, &str)]) {
         self.store
             .raw()
