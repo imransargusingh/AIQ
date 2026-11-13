@@ -1257,3 +1257,36 @@ summary: >-
   the log's last lines with their write times and the held file, so the next failure is measured.
 - **Rule:** a watcher must never be able to block the writer it watches. Read with full sharing, and read every place
   the writer can put the record (here, the held file too).
+
+### DC-070 — An install that copies over a running exe, and a failure that says no reason
+- **Signature:** 2026-11-13, Imran's Devbox. Four installs failed in upgrade-log.txt with `AIQ-UPGRADE-SWAP: ...
+  The process cannot access the file ...\.aiq\bin\aiq.exe because it is being used by another process`: 0.1.54 at
+  02:30:02Z and 02:40:40Z, 0.1.55 at 04:08:25Z and 04:09:35Z, each 3 to 6 s after "downloaded and checked". 0.1.54
+  went in on a third try and logged "from 0.1.53 to unknown". Home said only "An update didn't install (installing
+  v0.1.55 failed, so AIQ kept 0.1.54); AIQ 0.1.54 kept. It tries again tomorrow.": no reason, the kept version twice,
+  and "tomorrow" untrue (the next check downloads again, within 15 minutes while Home is open). The diagnostics file
+  held neither upgrade-log.txt nor update.json, so none of this could be read without copying files by hand. What
+  held aiq.exe was not logged; a hook that started after Stop-Aiq is inferred, not measured.
+- **Why it survives:** `-Apply` stopped AIQ, then copied the new exe over the old one. Any process that starts or
+  survives between the stop and the copy makes Windows refuse the overwrite. The CI runner has no hooks firing, so
+  the race never happened there. The failed copy also overwrote `.old` with the current version first, so "Go back"
+  was lost after a failure. update.json kept only "installing X failed"; the error lived in the log alone.
+- **Sweep:** every place that writes an exe into bin: upgrade.ps1 `-Apply` (fixed), install.ps1 (fixed, same
+  rename), `-Rollback` `Swap-Old` (already renames), `aiq-statusline.exe` copy (keeps the one in place on failure,
+  by design). Every reader of update.json's failure: AIQ home's line and `aiq update` (both now read `reason` and say
+  "it tries again at the next check"). The diagnostics file now carries update.json, upgrade-log.txt and
+  upgrade-log-held.txt. Everything that restarts a stopped core: hooks (`maybe_start_core`) now wait while
+  `update-swapping` is there; AIQ home can't run during `-Apply` (Busy-Reason); Stop-Aiq now finds processes the same
+  two ways Busy-Reason does and logs what it couldn't stop.
+- **Control (tests):** release.yml Windows smoke "an install goes through while a process AIQ didn't stop runs
+  aiq.exe" (`-SparePid` keeps a core running `bin\aiq.exe`; the old copy-over fails it; a second install while the
+  core runs `aiq.exe.old` leaves a `.del` that the next run deletes; a broken zip fails with `reason`, puts nothing
+  changed, and logs `AIQ-UPGRADE-HOLDERS`; no `update-swapping` left).
+  `e2e_core_down_prompt_during_an_update_swap_starts_no_core_then_does_after` (red without the marker check),
+  `a_swap_marker_holds_core_starts_for_two_minutes_at_most`. `a_failed_update_is_diagnosable_from_the_file_alone` (diagnostics),
+  `a_failed_install_carries_its_reason_and_an_old_message_loses_the_kept_version` (update.rs),
+  `a_failed_install_says_why_and_that_the_next_check_tries_again` (cli), `failedLine` unit tests and the Home e2e
+  failed line.
+- **Rule:** never overwrite a file that another process may run; rename it aside and write the new one beside it.
+  A failure record carries the error's own words where the person reads it, and the diagnostics file carries every
+  record a diagnosis needs.

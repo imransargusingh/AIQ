@@ -302,6 +302,28 @@ fn e2e_core_down_prompt_starts_core_once_core_survives_and_drains_spool() {
 }
 
 #[test]
+fn e2e_core_down_prompt_during_an_update_swap_starts_no_core_then_does_after() {
+    // DC-070: a core a hook starts while upgrade.ps1 swaps the exes holds aiq.exe and fails the install.
+    let e = Env::new();
+    std::fs::create_dir_all(e.home()).unwrap();
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+    std::fs::write(e.home().join("update-swapping"), format!("{now}\r\n")).unwrap();
+    let o = e.prompt("s", BASE, "p0");
+    assert!(o.status.success() && o.stdout.is_empty());
+    std::thread::sleep(Duration::from_millis(1500));
+    assert!(e.status().contains("not running"), "no core while the swap runs: {}", e.status());
+    let errs = std::fs::read_to_string(e.home().join("hook-errors.log")).unwrap_or_default();
+    assert!(errs.lines().any(|l| l == "AIQ-CORE-START-UPDATING"), "{errs}");
+    assert_eq!(spooled(&e.home()).len(), 1, "the prompt waits in the spool");
+    // The swap is done: the next prompt starts the core, which takes both prompts.
+    std::fs::remove_file(e.home().join("update-swapping")).unwrap();
+    e.prompt("s", R1, "p1");
+    e.wait_running();
+    e.wait_prompts(2);
+    assert!(e.run(&["forget", "--all", "--yes"], b"").status.success());
+}
+
+#[test]
 fn e2e_random_bytes_never_print_always_exit_zero() {
     let e = Env::new();
     let mut x: u64 = 0x9e3779b97f4a7c15;

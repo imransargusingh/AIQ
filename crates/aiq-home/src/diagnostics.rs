@@ -163,6 +163,8 @@ pub fn build(
                 "available": update.available,
                 "checked": update.checked_ms.map(iso),
                 "check_error": update.check_error.as_deref().map(|e| scrub.line(e, LINE_MAX)),
+                "reason": update.reason.as_deref().map(|e| scrub.line(e, LINE_MAX)),
+                "state_file": update_state_file(paths, scrub),
             },
             "folder": scrub.line(&paths.data.display().to_string(), LINE_MAX),
         }),
@@ -200,6 +202,11 @@ pub fn build(
         ("judge.log", None),
         ("aiq.log", Some(&["\"WARN\"", "\"ERROR\"", "core started"][..])),
         ("hook-errors.log", None),
+        // What each update check and install did, and the lines the log couldn't take (AIQ-UPDATE-LOG-HELD): a failed
+        // update is diagnosable from this file alone (devbox, 2026-11-13: 0.1.55 failed on every Check for updates,
+        // and the error was only in upgrade-log.txt, which the person would have had to find and send by hand).
+        ("upgrade-log.txt", None),
+        ("upgrade-log-held.txt", None),
     ] {
         logs.insert(name.into(), Value::Array(tail(&paths.data.join(name), keep, scrub)));
     }
@@ -207,6 +214,28 @@ pub fn build(
 
     let text = serde_json::to_string_pretty(&Value::Object(root)).map_err(|e| e.to_string())? + "\n";
     Ok(Diagnostics { bytes: text.len(), text, tasks: tasks_n, prompts: prompts_n, name: file_name(now) })
+}
+
+/// update.json as upgrade.ps1 wrote it, every text value scrubbed (the error words can hold a folder or an address);
+/// null when there is none, and a note when it isn't JSON.
+fn update_state_file(paths: &Paths, scrub: &Scrub) -> Value {
+    let Ok(b) = std::fs::read(aiq_core::update::state_path(paths)) else { return Value::Null };
+    let b = b.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(&b);
+    match serde_json::from_slice::<Value>(b) {
+        Ok(Value::Object(m)) => Value::Object(
+            m.into_iter()
+                .map(|(k, v)| {
+                    let v = match v {
+                        Value::String(t) => Value::from(scrub.line(&t, LINE_MAX)),
+                        Value::Array(_) | Value::Object(_) => Value::from("(not kept)"),
+                        v => v,
+                    };
+                    (scrub.line(&k, 80), v)
+                })
+                .collect(),
+        ),
+        _ => Value::from("update.json is not a JSON object"),
+    }
 }
 
 /// Each folder as a letter, in first-seen order: A … Z, AA, AB …

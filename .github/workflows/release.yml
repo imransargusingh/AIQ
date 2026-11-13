@@ -454,6 +454,94 @@ jobs:
           $cores = @(Get-CimInstance Win32_Process -Filter "Name='aiq.exe'" | Where-Object { $_.ExecutablePath -eq $exe -and $_.CommandLine -match '\score\s*$' })
           if ($cores.Count -ne 1) { Fail "want one AIQ core after the start through AIQ home, found $($cores.Count)" }
           Get-Content (Join-Path $aiq 'upgrade-log.txt') -Tail 8
+      - name: Smoke test - an install goes through while a process AIQ didn't stop runs aiq.exe; a failed one says why and puts everything back
+        shell: pwsh
+        run: |
+          $v = '${{ steps.version.outputs.version }}'
+          $aiq = Join-Path $env:USERPROFILE '.aiq'
+          $bin = Join-Path $aiq 'bin'
+          $up = Join-Path $bin 'upgrade.ps1'
+          $exe = Join-Path $bin 'aiq.exe'
+          $ulog = Join-Path $aiq 'upgrade-log.txt'
+          $stage = Join-Path $aiq 'update'
+          function St { Get-Content -Raw (Join-Path $aiq 'update.json') | ConvertFrom-Json }
+          function Fail([string]$m) { Write-Error $m; Get-ChildItem $bin | Format-Table Name, Length, LastWriteTimeUtc; Get-Content $ulog -Tail 15; exit 1 }
+          function Hash([string]$f) { (Get-FileHash (Join-Path $bin $f)).Hash }
+          # Stage a zip as the waiting release, as a check leaves it.
+          function Stage([string]$tag, [string]$zip) {
+            Remove-Item -Recurse -Force $stage -ErrorAction SilentlyContinue
+            New-Item -ItemType Directory -Force $stage | Out-Null
+            $name = "aiq-$v-windows-x64.zip"
+            Copy-Item $zip (Join-Path $stage $name)
+            Set-Content (Join-Path $stage 'SHA256SUMS') "$((Get-FileHash (Join-Path $stage $name)).Hash.ToLower())  $name"
+            @{ state = 'waiting'; available = $tag; staged = $name; installed = $v; from = '0.0.1' } | ConvertTo-Json | Set-Content (Join-Path $aiq 'update.json')
+          }
+          Get-Process -Name 'aiq-home' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+
+          # AIQ-UPDATE-REASON: folders are cut from the error words, so a file shows by its name only.
+          $r = powershell -NoProfile -ExecutionPolicy Bypass -File $up -ReasonOf "The process cannot access the file 'C:\Users\Some One\.aiq\bin\aiq.exe' because it is being used by another process."
+          if ($r -ne 'aiq.exe was in use by another program') { Fail "reason: $r" }
+          $r = powershell -NoProfile -ExecutionPolicy Bypass -File $up -ReasonOf "Access to the path '\\server\share\x\aiq-home.exe' is denied."
+          if ($r -ne 'Windows refused access to aiq-home.exe') { Fail "reason: $r" }
+          $r = powershell -NoProfile -ExecutionPolicy Bypass -File $up -ReasonOf "Copying C:\a b\one.exe to C:\c\two.exe failed"
+          if ($r -ne 'Copying one.exe to two.exe failed') { Fail "reason: $r" }
+
+          # A release that can't install (aiq-home.exe missing from its zip): failed, nothing changed, update.json says
+          # why in the error's own words, and the log lists the aiq processes running (AIQ-UPGRADE-HOLDERS).
+          $un = Join-Path $env:RUNNER_TEMP 'broken-unzipped'
+          Expand-Archive -Force "dist/aiq-$v-windows-x64.zip" $un
+          Remove-Item (Join-Path $un 'aiq-home.exe')
+          $brokenZip = Join-Path $env:RUNNER_TEMP 'broken.zip'
+          Compress-Archive -Force -Path (Join-Path $un '*') -DestinationPath $brokenZip
+          $h0 = Hash 'aiq.exe'; $o0 = Hash 'aiq.exe.old'
+          Stage 'v99.3.0' $brokenZip
+          powershell -ExecutionPolicy Bypass -File $up -Apply
+          if ($LASTEXITCODE -ne 1) { Fail "broken release: exit $LASTEXITCODE, want 1" }
+          $s = St
+          if ($s.state -ne 'failed' -or $s.message -ne 'installing v99.3.0 failed' -or $s.reason -ne 'aiq-home.exe is missing from the zip' -or $s.installed -ne $v) { Fail "broken release: $($s | ConvertTo-Json -Compress)" }
+          if ((Hash 'aiq.exe') -ne $h0 -or (Hash 'aiq.exe.old') -ne $o0) { Fail 'the broken release changed an exe or its .old copy' }
+          if (-not (Select-String -Quiet -Path $ulog -Pattern 'AIQ-UPGRADE-HOLDERS: ')) { Fail 'no AIQ-UPGRADE-HOLDERS line after the failed install' }
+          if (Test-Path (Join-Path $aiq 'update-swapping')) { Fail 'update-swapping left after the failed install' }
+          if (-not (Select-String -Quiet -Path $ulog -Pattern 'kept AIQ .*It tries again at the next check\.')) { Fail 'failed install line' }
+
+          # AIQ-UPGRADE-RENAME: a core this script does not stop (-SparePid; devbox 2026-11-13: something held aiq.exe
+          # and four installs failed "being used by another process") keeps running bin\aiq.exe through the install.
+          # Before, Copy-Item over the running exe failed; now the running exe is renamed to .old and the new one copied
+          # in. aiq-home.exe carries a marker so the copies can be told apart (this build is both old and new).
+          $holder = Get-CimInstance Win32_Process -Filter "Name='aiq.exe'" | Where-Object { $_.ExecutablePath -eq $exe -and $_.CommandLine -match '\score\s*$' } | Select-Object -First 1
+          if (-not $holder) { Start-Process -WindowStyle Hidden -FilePath $exe -ArgumentList 'core'; Start-Sleep -Seconds 2; $holder = Get-CimInstance Win32_Process -Filter "Name='aiq.exe'" | Where-Object { $_.ExecutablePath -eq $exe -and $_.CommandLine -match '\score\s*$' } | Select-Object -First 1 }
+          if (-not $holder) { Fail 'no core to hold aiq.exe' }
+          Add-Content -Path (Join-Path $bin 'aiq-home.exe') -Value 'marker: the copy that was installed before'
+          $marked = Hash 'aiq-home.exe'
+          Stage 'v99.4.0' "dist/aiq-$v-windows-x64.zip"
+          $applyAt = (Get-Date).ToUniversalTime().AddSeconds(-2)
+          powershell -ExecutionPolicy Bypass -File $up -Apply -SparePid $holder.ProcessId
+          if ($LASTEXITCODE -ne 0) { Fail "install with aiq.exe running: exit $LASTEXITCODE, want 0" }
+          $s = St
+          if ($s.state -ne 'applied' -or $s.installed_tag -ne 'v99.4.0' -or $s.installed -ne $v -or $s.from -ne $v -or $s.reason) { Fail "install with aiq.exe running: $($s | ConvertTo-Json -Compress)" }
+          if (-not (Get-Process -Id $holder.ProcessId -ErrorAction SilentlyContinue)) { Fail 'the spared core was stopped, so nothing held aiq.exe' }
+          if ((Get-Item $exe).LastWriteTimeUtc -lt $applyAt) { Fail 'aiq.exe was not replaced' }
+          if ((Hash 'aiq-home.exe.old') -ne $marked) { Fail 'aiq-home.exe.old is not the copy installed before' }
+          if ((Hash 'aiq-home.exe') -eq $marked) { Fail 'aiq-home.exe was not replaced' }
+          if (Get-ChildItem $bin -Filter '*.del') { Fail 'a .del file left when nothing held it' }
+          # AIQ-UPDATE-SWAPPING: hooks may start the core again once the swap is done, so the marker is gone.
+          if (Test-Path (Join-Path $aiq 'update-swapping')) { Fail 'update-swapping left after the install' }
+
+          # Again while the core still runs the renamed aiq.exe.old: that copy is set aside as .del (it can't be deleted
+          # while it runs), the install goes through, and the next run deletes the .del once nothing runs it.
+          Stage 'v99.4.1' "dist/aiq-$v-windows-x64.zip"
+          powershell -ExecutionPolicy Bypass -File $up -Apply -SparePid $holder.ProcessId
+          if ($LASTEXITCODE -ne 0 -or (St).state -ne 'applied') { Fail "second install with the old copy running: exit $LASTEXITCODE, $((St) | ConvertTo-Json -Compress)" }
+          if (-not (Get-ChildItem $bin -Filter 'aiq.exe.old-*.del')) { Fail 'the running aiq.exe.old was not set aside as .del' }
+          Stop-Process -Id $holder.ProcessId -Force
+          Start-Sleep -Seconds 1
+          Stage 'v99.4.2' "dist/aiq-$v-windows-x64.zip"
+          powershell -ExecutionPolicy Bypass -File $up -Apply
+          if ($LASTEXITCODE -ne 0 -or (St).state -ne 'applied') { Fail "third install: exit $LASTEXITCODE" }
+          if (Get-ChildItem $bin -Filter '*.del') { Fail '.del files left once nothing ran them' }
+          # Leave a core running, as the steps before did.
+          Start-Process -WindowStyle Hidden -FilePath $exe -ArgumentList 'core'
+          Get-Content $ulog -Tail 12
       - name: Smoke test - update check finds the tag from the releases/latest redirect, falls back to the API, records a rate-limit reset
         shell: pwsh
         run: powershell -NoProfile -ExecutionPolicy Bypass -File packaging/windows/tests/upgrade-network.ps1 (Join-Path $env:USERPROFILE '.aiq\bin\upgrade.ps1')

@@ -22,6 +22,9 @@
 #   -FailExplorer      tests only: with -FailLaunches, only the starts through Explorer fail.
 #   -Feed <folder>  tests only: latest.json and the files in that folder stand in for GitHub.
 #   -Site <url> -Api <url>   tests only: stand-ins for https://github.com and https://api.github.com.
+#   -SparePid <id>     tests only: Stop-Aiq leaves that process running, standing in for one that holds aiq.exe and
+#                      that this script cannot see or stop (devbox, 2026-11-13).
+#   -ReasonOf <text>   tests only: print what update.json's `reason` would say for that error text, then stop.
 #
 # The manual run asks GitHub for the newest PUBLISHED release (drafts are invisible), downloads its zip and
 # SHA256SUMS, refuses the zip unless its SHA-256 matches, unzips it to a temp folder and runs that release's
@@ -49,7 +52,9 @@ param(
     [string]$Feed,
     [string]$Site = 'https://github.com',
     [string]$Api = 'https://api.github.com',
-    [int]$LockWaitSec = 300
+    [int]$LockWaitSec = 300,
+    [string]$ReasonOf,
+    [int]$SparePid = 0
 )
 $ErrorActionPreference = 'Stop'
 
@@ -90,17 +95,59 @@ function Log([string]$m) {
 function Stamp-Now([string]$path) {
     try { (Get-Item -LiteralPath $path).LastWriteTimeUtc = [DateTime]::UtcNow } catch { }
 }
+# AIQ-UPDATE-REASON: why an install failed, in the error's own words, for update.json's `reason` (AIQ home's line
+# and the diagnostics file read it; upgrade-log.txt keeps the error whole). Every folder in it is cut so a file shows by its name only ('aiq.exe', not
+# 'C:\Users\<you>\.aiq\bin\aiq.exe'), on one line of at most 200 characters. Before, update.json said only
+# "installing v0.1.55 failed" and the error was in upgrade-log.txt alone (devbox, 2026-11-13: every Check for
+# updates showed that line and nothing said why).
+function Short-Reason([string]$text) {
+    $t = ("$text" -replace '\s+', ' ').Trim()
+    $t = $t -replace '(?i)\b[a-z]:\\(?:[^\\''"<>|:\r\n]*\\)+', ''
+    $t = $t -replace '\\\\[^\\''"\s]+\\(?:[^\\''"<>|:\r\n]*\\)+', ''
+    # The two Windows file errors a swap meets, in fewer words, so Home's line stays one line.
+    $t = $t -replace '^The process cannot access the file ''([^'']+)'' because it is being used by another process\.?$', '$1 was in use by another program'
+    $t = $t -replace '^Access to the path ''([^'']+)'' is denied\.?$', 'Windows refused access to $1'
+    if ($t.Length -gt 200) { $t = $t.Substring(0, 197) + '...' }
+    return $t
+}
+if ($PSBoundParameters.ContainsKey('ReasonOf')) { Write-Output (Short-Reason $ReasonOf); exit 0 }
 function Now-Utc { (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ') }
+# AIQ-UPGRADE-STOP: every aiq.exe and aiq-home.exe from bin, found two ways and stopped by id. Get-Process leaves
+# .Path empty for a process it may not open, and the process list (CIM, which Busy-Reason reads) can be refused on a
+# locked-down machine, so either finding counts. A stop that fails, and a process still there after the wait, is
+# logged: before, both were silenced and a core that kept running only showed as a failed copy (devbox, 2026-11-13).
 function Stop-Aiq {
-    $p = @(Get-Process -Name 'aiq', 'aiq-home' -ErrorAction SilentlyContinue |
-        Where-Object { $_.Path -and $_.Path.StartsWith($bin, [StringComparison]::OrdinalIgnoreCase) })
+    $found = @{}
+    Get-Process -Name 'aiq', 'aiq-home' -ErrorAction SilentlyContinue |
+        Where-Object { $_.Path -and $_.Path.StartsWith($bin, [StringComparison]::OrdinalIgnoreCase) } |
+        ForEach-Object { $found[[int]$_.Id] = $_.Name }
+    try {
+        Get-CimInstance Win32_Process -Filter "Name='aiq.exe' OR Name='aiq-home.exe'" -ErrorAction Stop |
+            Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($bin, [StringComparison]::OrdinalIgnoreCase) } |
+            ForEach-Object { $found[[int]$_.ProcessId] = $_.Name -replace '\.exe$', '' }
+    } catch { }
+    $found.Remove([int]$SparePid)
     # Any aiq.exe counts as the core: -Apply runs only when no other aiq.exe is (Busy-Reason), and a hook that
     # happens to be stopped during -Rollback only means the core is started once more than needed (it exits).
-    if ($p | Where-Object { $_.Name -eq 'aiq' }) { $script:coreWasRunning = $true }
-    $p | Stop-Process -Force -ErrorAction SilentlyContinue
+    if ($found.Values -contains 'aiq') { $script:coreWasRunning = $true }
+    foreach ($id in @($found.Keys)) {
+        try { Stop-Process -Id $id -Force -ErrorAction Stop }
+        catch { if (Get-Process -Id $id -ErrorAction SilentlyContinue) { Log "AIQ-UPGRADE-STOP: could not stop pid $id $($found[$id]) ($($_.Exception.Message))." } }
+    }
     # Wait for them to end, so their exes are free to replace.
-    $p | Wait-Process -Timeout 10 -ErrorAction SilentlyContinue
+    foreach ($id in @($found.Keys)) { Wait-Process -Id $id -Timeout 10 -ErrorAction SilentlyContinue }
+    $left = @($found.Keys | Where-Object { Get-Process -Id $_ -ErrorAction SilentlyContinue })
+    if ($left.Count) { Log "AIQ-UPGRADE-STOP: still running after the wait: pid $($left -join ', '). Their exes are renamed, not overwritten." }
 }
+# AIQ-UPDATE-SWAPPING: while the exes are swapped, update-swapping holds this time (UTC seconds) and a hook that
+# finds the core down does not start one (crates/aiq-core/src/update.rs `swapping`, 2 minutes at most). Devbox,
+# 2026-11-13: hooks of busy Copilot sessions find the core stopped and start a new one within seconds (inferred from
+# hook.rs and the timing; not measured), and that core held aiq.exe. Removed before Start-Core. Never throws.
+$swapMark = Join-Path $aiqHome 'update-swapping'
+function Set-Swapping {
+    try { Set-Content -LiteralPath $swapMark -Value ([DateTimeOffset]::UtcNow.ToUnixTimeSeconds()) -Encoding ASCII -ErrorAction Stop } catch { }
+}
+function Clear-Swapping { Remove-Item -LiteralPath $swapMark -Force -ErrorAction SilentlyContinue }
 # Start the core again after Stop-Aiq stopped one. Without it AIQ stayed down until the next hook started it (laptop,
 # 2026-11-04: Home's Install now swapped at 04:17:03Z, core back at 04:22:53Z; Home said "AIQ isn't running").
 # A second core exits at once (CORE_ALREADY_RUNNING), so a start is harmless when one is already up; still, a core
@@ -210,8 +257,17 @@ function Start-Home {
         Log 'AIQ-UPDATE-HOME: open AIQ from the Start menu; AIQ home starts the core too.'
     }
 }
+# Asked up to 3 times, 1 s apart: right after a swap the new aiq.exe can fail to answer once (devbox, 2026-11-13
+# 02:41:32Z: "AIQ updated itself from 0.1.53 to unknown"). 'unknown' only when no answer is a version.
 function Installed-Version {
-    try { ((& (Join-Path $bin 'aiq.exe') version) -replace '^aiq\s+', '').Trim() } catch { 'unknown' }
+    foreach ($i in 1..3) {
+        try {
+            $v = ((& (Join-Path $bin 'aiq.exe') version) -replace '^aiq\s+', '' | Select-Object -First 1)
+            if ("$v".Trim() -match '^\d+(\.\d+)+') { return "$v".Trim() }
+        } catch { }
+        if ($i -lt 3) { Start-Sleep -Seconds 1 }
+    }
+    'unknown'
 }
 # [version] or $null: a tag that is not plain numbers (a pre-release) is never "newer".
 function Ver([string]$s) {
@@ -229,6 +285,8 @@ function Read-State {
 }
 function Write-State([hashtable]$changes) {
     $h = Read-State
+    # A new message (or none) ends the old one's reason, so a later line never shows a stale why.
+    if ($changes.ContainsKey('message') -and -not $changes.ContainsKey('reason')) { $changes['reason'] = $null }
     foreach ($k in $changes.Keys) {
         if ($null -eq $changes[$k]) { $h.Remove($k) } else { $h[$k] = $changes[$k] }
     }
@@ -246,23 +304,75 @@ function Checksum-Ok([string]$zipPath, [string]$sums) {
     return [bool]$want -and $want.ToLower() -eq $got
 }
 
-function Exe-Hashes {
-    $h = @{}
-    foreach ($e in $exes) {
-        $p = Join-Path $bin $e
-        $h[$e] = if (Test-Path $p) { (Get-FileHash $p -Algorithm SHA256).Hash } else { '' }
+# AIQ-UPGRADE-RENAME: an exe is replaced by renaming it to .old and copying the new one in, never by copying over
+# it. Windows refuses to overwrite an exe that is running but lets it be renamed, so a process this script did not
+# stop (a hook that started a moment after Stop-Aiq, or one it cannot see) no longer fails the install: devbox,
+# 2026-11-13, four installs (0.1.54 twice, 0.1.55 twice) failed with "The process cannot access the file
+# ...\aiq.exe because it is being used by another process" 3 to 6 s after the download was checked. The .old copy
+# from the update before is set aside under a .del name and deleted once the install is done; one still running
+# stays until a later run can delete it (Remove-Aside). Moves are tried 5 times, 0.2 to 1 s apart, for a scanner
+# that opens a new file for a moment.
+function Move-Retry([string]$from, [string]$to) {
+    for ($i = 1; ; $i++) {
+        try { Move-Item -LiteralPath $from -Destination $to -ErrorAction Stop; return }
+        catch { if ($i -ge 5) { throw }; Start-Sleep -Milliseconds (200 * $i) }
     }
-    $h
+}
+function Aside-Name([string]$path) { "$path-$PID-$([DateTime]::UtcNow.Ticks).del" }
+function Remove-Aside {
+    Get-ChildItem -LiteralPath $bin -Filter '*.del' -ErrorAction SilentlyContinue |
+        ForEach-Object { try { Remove-Item -LiteralPath $_.FullName -Force -ErrorAction Stop } catch { } }
+}
+# Swap one exe in; $undo gets what was moved, so Undo-Swap can put it all back.
+function Swap-In([string]$exe, [string]$src, [System.Collections.ArrayList]$undo) {
+    $to = Join-Path $bin $exe
+    $u = @{ to = $to; keep = $null; moved = $false }
+    [void]$undo.Add($u)
+    if (Test-Path -LiteralPath $to) {
+        if (Test-Path -LiteralPath "$to.old") { $u.keep = Aside-Name "$to.old"; Move-Retry "$to.old" $u.keep }
+        Move-Retry $to "$to.old"
+        $u.moved = $true
+    }
+    Copy-Item -Force -LiteralPath $src -Destination $to
+    Stamp-Now $to
+}
+# After a failed swap: each exe this run moved goes back, last first, and the .old copies are the ones from before
+# the run, so "Go back" still means the version before (laptop 2026-11-04: a swap lost them). Never throws.
+function Undo-Swap([System.Collections.ArrayList]$undo) {
+    for ($i = $undo.Count - 1; $i -ge 0; $i--) {
+        $u = $undo[$i]
+        try {
+            if ($u.moved) {
+                if (Test-Path -LiteralPath $u.to) { Move-Retry $u.to (Aside-Name $u.to) }
+                Move-Retry "$($u.to).old" $u.to
+            }
+            if ($u.keep) { Move-Retry $u.keep "$($u.to).old" }
+        } catch { Log "AIQ-UPGRADE-SWAP: could not put $(Split-Path -Leaf $u.to) back ($($_.Exception.Message))." }
+    }
+}
+# AIQ-UPGRADE-HOLDERS: every aiq process at the moment a swap failed (pid, parent, path, command line), so what held
+# an exe is measured, not guessed (devbox, 2026-11-13: the log had no word of it). Never throws.
+function Log-Holders {
+    try {
+        $ps = @(Get-CimInstance Win32_Process -Filter "Name LIKE 'aiq%'" -ErrorAction Stop)
+        if (-not $ps.Count) { Log 'AIQ-UPGRADE-HOLDERS: no aiq process is running; something else held the file.'; return }
+        foreach ($p in $ps) {
+            $parent = (Get-Process -Id $p.ParentProcessId -ErrorAction SilentlyContinue).Name
+            $cl = "$($p.CommandLine)"
+            if ($cl.Length -gt 200) { $cl = $cl.Substring(0, 197) + '...' }
+            Log "AIQ-UPGRADE-HOLDERS: pid $($p.ProcessId) $($p.Name), parent $($p.ParentProcessId) $parent, path $($p.ExecutablePath), command: $cl"
+        }
+    } catch { Log "AIQ-UPGRADE-HOLDERS: the process list could not be read ($($_.Exception.Message))." }
 }
 
-# Swap each named exe with its .old copy.
+# Swap each named exe with its .old copy (-Rollback).
 function Swap-Old([string[]]$names) {
     foreach ($exe in $names) {
         $cur = Join-Path $bin $exe
-        $tmp = "$cur.swap"
-        if (Test-Path $cur) { Move-Item -Force $cur $tmp }
-        Move-Item -Force "$cur.old" $cur
-        if (Test-Path $tmp) { Move-Item -Force $tmp "$cur.old" }
+        $tmp = Aside-Name $cur  # renamed, never overwritten: one of them may be running (AIQ-UPGRADE-RENAME)
+        if (Test-Path $cur) { Move-Retry $cur $tmp }
+        Move-Retry "$cur.old" $cur
+        if (Test-Path $tmp) { Move-Retry $tmp "$cur.old" }
     }
 }
 
@@ -402,8 +512,8 @@ if ($Rollback) {
     # The release tag being left: the one an update installed, else the version's own tag (they match for
     # every release; release.yml refuses a tag that differs from the Cargo version).
     $leaving = if ($st.installed_tag) { $st.installed_tag } else { "v$from" }
-    Stop-Aiq
-    Swap-Old $old
+    Set-Swapping
+    try { Stop-Aiq; Swap-Old $old } finally { Clear-Swapping }
     $to = Installed-Version
     # Auto-update must not put back the version the person just left; a newer release still installs.
     Write-State @{ state = 'rolled_back'; from = $from; installed = $to; skip = $leaving; installed_tag = $null; at = (Now-Utc); blocked = $null; message = $null }
@@ -527,19 +637,18 @@ if ($Check -or $Apply) {
         }
         $work = Join-Path ([IO.Path]::GetTempPath()) ("aiq-upgrade-" + [Guid]::NewGuid().ToString('N'))
         $from = Installed-Version
-        $before = Exe-Hashes
+        if ($from -eq 'unknown' -and $st.installed -and "$($st.installed)" -ne 'unknown') { $from = "$($st.installed)" }
+        $undo = New-Object System.Collections.ArrayList
+        Remove-Aside
         try {
             Expand-Archive $zipPath $work
             foreach ($exe in $exes) {
                 if (-not (Test-Path (Join-Path $work $exe))) { throw "$exe is missing from the zip" }
             }
+            Set-Swapping
             Stop-Aiq
-            foreach ($exe in $exes) {
-                $to = Join-Path $bin $exe
-                if (Test-Path $to) { Copy-Item -Force $to "$to.old" }
-                Copy-Item -Force (Join-Path $work $exe) $to
-                Stamp-Now $to
-            }
+            foreach ($exe in $exes) { Swap-In $exe (Join-Path $work $exe) $undo }
+            Clear-Swapping
             # upgrade.ps1, and aiq.vsix (the VS Code extension): `aiq install --new` at the core's next start adds
             # it to VS Code if VS Code is a tool AIQ hasn't seen before; an extension already added stays as it is.
             foreach ($f in 'upgrade.ps1', 'aiq.vsix') {
@@ -555,19 +664,27 @@ if ($Check -or $Apply) {
                 catch { Log "AIQ-UPDATE-STATUSLINE: kept the aiq-statusline.exe in place ($($_.Exception.Message))." }
             }
             $now = Installed-Version
+            if ($now -eq 'unknown') {
+                # The zip just swapped in was checked against SHA256SUMS: its tag is the version now installed.
+                $now = "$($st.available)" -replace '^v', ''
+                Log "AIQ-UPDATE-VERSION: the new aiq.exe did not answer 'version'; recorded $now from the release installed."
+            }
+            Remove-Aside
             Remove-Item -Recurse -Force $stage -ErrorAction SilentlyContinue
             Write-State @{ state = 'applied'; from = $from; installed = $now; installed_tag = $st.available; at = (Now-Utc); available = $null; staged = $null; blocked = $null; message = $null; skip = $null }
             Log "AIQ updated itself from $from to $now ($($st.available)). Your data and settings are kept. To go back: upgrade.ps1 -Rollback"
         } catch {
-            # AIQ-UPGRADE-SWAP: put back only the exes this run changed, so .old copies from an earlier
-            # upgrade are never swapped in by mistake.
-            $after = Exe-Hashes
-            $changed = $exes | Where-Object { $after[$_] -ne $before[$_] -and (Test-Path (Join-Path $bin "$_.old")) }
-            if ($changed) { Stop-Aiq; Swap-Old $changed }
-            Write-State @{ state = 'failed'; at = (Now-Utc); blocked = $null; message = "installing $($st.available) failed, so AIQ kept $from" }
-            Log "AIQ-UPGRADE-SWAP: installing $($st.available) failed ($($_.Exception.Message)); kept AIQ $(Installed-Version). It tries again later."
+            # AIQ-UPGRADE-SWAP: put back only what this run moved (Undo-Swap), and say what was running.
+            $err = $_.Exception.Message
+            Log-Holders
+            if ($undo.Count) { Set-Swapping; Stop-Aiq; Undo-Swap $undo }
+            Clear-Swapping
+            $kept = Installed-Version
+            Write-State @{ state = 'failed'; at = (Now-Utc); blocked = $null; installed = $kept; message = "installing $($st.available) failed"; reason = (Short-Reason $err) }
+            Log "AIQ-UPGRADE-SWAP: installing $($st.available) failed ($err); kept AIQ $kept. It tries again at the next check."
             $code = 1
         } finally {
+            Clear-Swapping
             Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue
         }
         # Stop-Aiq stopped the core on both paths (updated, or put back after a failed swap).

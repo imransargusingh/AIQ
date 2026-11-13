@@ -34,7 +34,7 @@ There is one choice, **Include my prompts**, and it is off by default. Nothing i
 |---|---|
 | `about` | format, time made, window, whether prompts are in, what is left out |
 | `machine` | OS family, CPU architecture, UTC offset |
-| `aiq` | version, whether the core answered, paused, setup done, updater state, AIQ's folder (scrubbed) |
+| `aiq` | version, whether the core answered, paused, setup done, updater state (with the failure `reason` and update.json itself, every text value scrubbed), AIQ's folder (scrubbed) |
 | `tools` | each tool: present, connected |
 | `settings` | every current setting; project names only as a count (their keys are folder paths) |
 | `counts` | schema version, events, tasks, set-aside sessions, store size |
@@ -43,7 +43,7 @@ There is one choice, **Include my prompts**, and it is off by default. Nothing i
 | `tip_path_ends` | how many tasks ended at each tip-path step |
 | `tasks` | per task: id, tool, origin, start, folder letter, prompt count, word guesses, labels (outcome, model, job and kind with confidences, ms, message), analysis numbers (job, kind, rung, confidences, state, fact values, versions), analysis calls, tip path, tips (what matched: detector, opportunity and score; decision, reason code, pack version, tip id and its wording as the card held it; shown, opened, answer); `prompt_text` only when chosen |
 | `set_aside` | set-aside sessions: tool, folder letter, reason, time |
-| `logs` | last 200 lines of label.log, judge.log and hook-errors.log, and aiq.log's warnings and errors, scrubbed |
+| `logs` | last 200 lines of label.log, judge.log, hook-errors.log, upgrade-log.txt and upgrade-log-held.txt, and aiq.log's warnings and errors, scrubbed (DC-070: a failed update is diagnosable from the file alone) |
 
 ## Never in the file
 
