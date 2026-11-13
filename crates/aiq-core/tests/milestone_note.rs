@@ -4,11 +4,11 @@
 use aiq_contracts::event::{EventBody, EventV1, PromptPayload, SCHEMA, StopPayload};
 use aiq_core::counters::Counters;
 use aiq_core::pack::BundledPack;
-use aiq_core::service::{Service, TipLineOut, milestone_note_text};
+use aiq_core::service::{Service, TipLineOut, milestone_note_text, stuck_note_text};
 use aiq_core::sysclock::format_rfc3339_ms;
 use aiq_domain::PackSource;
 use aiq_domain::clock::{Clock, Now};
-use aiq_store::{JudgmentRow, Store};
+use aiq_store::{JudgmentRow, NewJudgeCall, Store};
 use std::sync::{Arc, Mutex};
 use tempfile::TempDir;
 
@@ -216,4 +216,75 @@ fn every_milestone_note_fits_the_copilot_status_line() {
         let n = milestone_note_text(&format!("{label} moved up to Orchestrated"));
         assert!(n.chars().count() <= aiq_contracts::card::STATUS_LINE_TOOL_CAP, "{n}");
     }
+}
+
+/// One analysis call on this computer, as the judge records it.
+fn judge_call(h: &H, id: &str, provider: &str, outcome: &str) {
+    let s = Store::open(&h.path).unwrap();
+    s.insert_judge_call(&NewJudgeCall {
+        call_id: id,
+        task_id: "t",
+        run: 1,
+        provider,
+        model: None,
+        started_utc_ms: h.now(),
+        latency_ms: 10,
+        outcome,
+        code: None,
+        input_chars: 1,
+        tool_session_id: None,
+        cost_usd: None,
+        tokens_in: None,
+        tokens_out: None,
+    })
+    .unwrap();
+}
+
+const STUCK: &str = "AIQ can't analyze your tasks: Claude Code is signed out · run claude, then /login";
+
+/// Silent loss of analysis (2026-11-12: the laptop's Claude Code sign-in expired and analysis stopped for 7 hours with
+/// nothing said where the person works). The Copilot CLI status line says it at every turn end until one good call.
+#[test]
+fn copilot_status_line_says_analysis_is_stuck_until_the_tool_is_signed_in_again() {
+    assert_eq!(stuck_note_text("claude-code", "not_signed_in"), STUCK);
+    for (p, w) in [
+        ("claude-code", "missing"),
+        ("copilot-cli", "missing"),
+        ("copilot-cli", "not_signed_in"),
+        ("claude-code", "not_signed_in"),
+    ] {
+        assert!(stuck_note_text(p, w).chars().count() <= 104, "status line limit: {p} {w}");
+    }
+    let mut h = H::new();
+    judge_call(&h, "c1", "claude-code", "not_signed_in");
+    h.prompt("copilot-cli", "cp", "fix the flaky login test");
+    assert!(!matches!(h.cp_turn_end("cp"), Some(TipLineOut::Notice(_))), "analysis off: nothing to say");
+    Store::open(&h.path).unwrap().set_setting("judge", "auto", h.now()).unwrap();
+    h.prompt("copilot-cli", "cp", "and the retry path");
+    let out = h.cp_turn_end("cp");
+    assert_eq!(out, Some(TipLineOut::Notice(STUCK.into())));
+    // The line the status-line program prints: the trend's cyan, never a tip's badge, and no card to show.
+    let r = aiq_core::server::tip_line_reply(out, false, Some("copilot-cli"));
+    assert_eq!((r.notice.as_deref(), r.line_plain.as_deref(), r.card.is_none()), (Some(STUCK), Some(STUCK), true));
+    assert_eq!(r.line.as_deref(), Some(format!("\u{1b}[36m{STUCK}\u{1b}[39m").as_str()));
+    h.prompt("copilot-cli", "cp", "now the docs");
+    assert!(!matches!(h.svc.tip_line("copilot-cli", Some("cp")), Some(TipLineOut::Notice(_))), "mid-turn: the trend");
+    assert_eq!(h.cp_turn_end("cp"), Some(TipLineOut::Notice(STUCK.into())), "every turn end until fixed");
+    // Another computer's signed-out calls say nothing about this one.
+    judge_call(&h, "c2", "claude-code", "ok");
+    let s = Store::open(&h.path).unwrap();
+    s.raw()
+        .execute(
+            "INSERT INTO judge_call (call_id, task_id, run, provider, started_utc_ms, latency_ms, outcome, input_chars,
+               computer) VALUES ('x', 't', 1, 'copilot-cli', ?1, 10, 'not_signed_in', 1, 'devbox')",
+            [h.now()],
+        )
+        .unwrap();
+    h.prompt("copilot-cli", "cp", "ship it");
+    assert!(!matches!(h.cp_turn_end("cp"), Some(TipLineOut::Notice(_))), "signed in again: one good call ends it");
+    // A down tool with no call for a day: nothing waits on it, so the note goes.
+    judge_call(&h, "c3", "copilot-cli", "missing");
+    h.advance(DAY);
+    h.prompt("copilot-cli", "cp", "next day");
+    assert!(!matches!(h.cp_turn_end("cp"), Some(TipLineOut::Notice(_))), "stale after a day");
 }

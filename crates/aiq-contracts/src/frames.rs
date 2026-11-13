@@ -149,6 +149,10 @@ pub struct TipLineReply {
     /// No tip: a milestone just earned, said once (Milestones). Older cores omit it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub milestone: Option<String>,
+    /// No tip: analysis can't run because its tool is signed out or missing, with the one thing to do. Older cores
+    /// omit it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notice: Option<String>,
     /// As `TakeCardReply::plain`.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub plain: bool,

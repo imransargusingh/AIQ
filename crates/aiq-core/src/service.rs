@@ -320,6 +320,26 @@ const MILESTONE_SEEN_KEY: &str = "milestone.seen_ms";
 const MILESTONE_NOTE_KEY: &str = "milestone.note";
 
 /// The one line a milestone note reads, on every surface.
+/// How long after a down tool's newest call the status line still says analysis is stuck. simplify: a fixed day
+/// rather than Home's "tasks wait" rule (the core has no task list). Ceiling: a person who stops using AIQ's tools
+/// for a day sees the note go; upgrade if the core ever reads the task queue.
+pub const STUCK_FRESH_MS: i64 = 24 * 3_600_000;
+
+/// The status line when analysis can't run: what stopped and the one thing to do (≤ 104 characters, design status
+/// line). `provider` is claude-code or copilot-cli; `why` is not_signed_in or missing.
+pub fn stuck_note_text(provider: &str, why: &str) -> String {
+    let (name, login) = match provider {
+        "copilot-cli" => ("Copilot", "type /login"),
+        _ => ("Claude Code", "run claude, then /login"),
+    };
+    let tool = if provider == "copilot-cli" { "Copilot CLI" } else { "Claude Code" };
+    if why == "missing" {
+        format!("AIQ can't analyze your tasks: it can't find {tool} · see AIQ home")
+    } else {
+        format!("AIQ can't analyze your tasks: {name} is signed out · {login}")
+    }
+}
+
 pub fn milestone_note_text(words: &str) -> String {
     format!("AIQ milestone: {words} · see it in AIQ Home")
 }
@@ -364,6 +384,8 @@ pub enum TipLineOut {
     Trend(String),
     /// No tip to show and a milestone just earned: its one note (`milestone_note_text`), plain text.
     Milestone(String),
+    /// No tip to show and analysis can't run because its tool is signed out or missing (`stuck_note_text`).
+    Notice(String),
 }
 
 fn new_id() -> String {
@@ -2084,14 +2106,35 @@ impl<C: Clock> Service<C> {
         Ok(self.deliver(&ready.card_id, &ready.card_json, surface, &session)?.map(TipLineOut::Full))
     }
 
-    /// After a turn ends with no tip to show: the milestone note if there is one for this session, else the trend.
+    /// After a turn ends with no tip to show: analysis being stuck if it is, else the milestone note if there is one
+    /// for this session, else the trend. Stuck comes first: until it is fixed no new rung or tip can come.
     fn quiet_line(&mut self, surface: &str, session: &str) -> Result<Option<TipLineOut>, StoreError> {
+        if self.store.last_event_kind(surface, session)?.as_deref() == Some("stop")
+            && let Some(n) = self.stuck_note()?
+        {
+            return Ok(Some(TipLineOut::Notice(n)));
+        }
         if self.store.last_event_kind(surface, session)?.as_deref() == Some("stop")
             && let Some(n) = self.milestone_note(surface, session)?
         {
             return Ok(Some(TipLineOut::Milestone(n.text)));
         }
         self.trend_line(surface, session)
+    }
+
+    /// Analysis is on and a tool it goes through can't run (its newest call on this computer was signed out or not
+    /// found), said in one line with the one thing to do. None when every tool works or analysis is off.
+    pub fn stuck_note(&self) -> Result<Option<String>, StoreError> {
+        if self.store.setting("judge")?.as_deref() != Some("auto") {
+            return Ok(None);
+        }
+        let now = self.clock.now().utc_ms;
+        let newest = self.store.newest_judge_call_per_provider()?;
+        Ok(self.store.tools_down()?.into_iter().find_map(|(provider, why, _)| {
+            // The judge retries a down tool every 10 minutes while work waits; no call for a day means none waits.
+            let last = newest.iter().find(|(p, _, _)| *p == provider).map_or(0, |(_, _, at)| *at);
+            (now - last < STUCK_FRESH_MS).then(|| stuck_note_text(&provider, &why))
+        }))
     }
 
     /// The milestone note for this session: the one it already holds until its next prompt, else the newest

@@ -450,6 +450,8 @@ pub struct Blocked {
     pub tool: String,
     /// missing or not_signed_in
     pub why: String,
+    /// The first failed call of this unbroken run: since when analysis has been stuck. Measured from the store.
+    pub since_ms: i64,
 }
 
 /// Failed calls after which the judge gives a task up (the judge's queue reads this too).
@@ -523,12 +525,14 @@ pub fn analysis_provider(tool: &str) -> Option<&'static str> {
     }
 }
 
-/// Where analysis stands, from the window's tasks, the last week's calls and each provider's newest call.
+/// Where analysis stands, from the window's tasks, the last week's calls, each provider's newest call and the
+/// providers that can't run now (`Store::tools_down`: provider, why, since).
 #[allow(clippy::too_many_arguments)] // simplify: one call site; a struct only if a second caller appears.
 pub fn analysis_state(
     tasks: &[TaskRow],
     calls: &[aiq_store::CallOutcome],
     newest: &[(String, String, i64)],
+    down: &[(String, String, i64)],
     on: bool,
     paused: bool,
     daily: u32,
@@ -547,11 +551,10 @@ pub fn analysis_state(
         .collect();
     let waiting = pending.len() as u32;
     let analyzed = tasks.iter().filter(|t| t.judgment.is_some()).count() as u32;
-    let blocked = newest
+    let blocked = down
         .iter()
-        .filter(|(_, o, _)| o == "missing" || o == "not_signed_in")
         .find(|(p, _, _)| pending.iter().any(|t| analysis_provider(&t.tool) == Some(p.as_str())))
-        .map(|(p, o, _)| Blocked { tool: p.clone(), why: o.clone() });
+        .map(|(p, o, since)| Blocked { tool: p.clone(), why: o.clone(), since_ms: *since });
     let left = daily.saturating_sub(today);
     let done_by_ms = (waiting > 0 && daily > 0).then(|| {
         let after_today = waiting.saturating_sub(left);
@@ -1136,10 +1139,12 @@ fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()>
         t.cost_usd = (!costs.is_empty()).then(|| costs.iter().sum());
         let week = store.judge_calls_since(now.utc_ms - 7 * DAY_MS).map_err(|e| e.to_string())?;
         let newest = store.newest_judge_call_per_provider().map_err(|e| e.to_string())?;
+        let down = store.tools_down().map_err(|e| e.to_string())?;
         s.home.analysis = analysis_state(
             &tasks,
             &week,
             &newest,
+            &down,
             s.settings.judge == "auto",
             s.status.paused,
             s.settings.judge_daily_tasks,
@@ -2069,7 +2074,9 @@ mod analysis_tests {
     ) -> Analysis {
         let newest: Vec<(String, String, i64)> =
             newest.iter().map(|(p, o, at)| (p.to_string(), o.to_string(), *at)).collect();
-        analysis_state(tasks, calls, &newest, true, false, 50, today, Now { utc_ms: NOW, offset_min: 0 }, GAP)
+        // As the store derives it, with each down tool's run starting at its newest call.
+        let down: Vec<(String, String, i64)> = newest.iter().filter(|(_, o, _)| tool_down(o)).cloned().collect();
+        analysis_state(tasks, calls, &newest, &down, true, false, 50, today, Now { utc_ms: NOW, offset_min: 0 }, GAP)
     }
 
     #[test]
@@ -2106,7 +2113,10 @@ mod analysis_tests {
             1,
         );
         assert_eq!(a.state, "blocked");
-        assert_eq!(a.blocked, Some(Blocked { tool: "copilot-cli".into(), why: "not_signed_in".into() }));
+        assert_eq!(
+            a.blocked,
+            Some(Blocked { tool: "copilot-cli".into(), why: "not_signed_in".into(), since_ms: NOW - 60_000 })
+        );
         // A Claude Code failure doesn't block Copilot tasks.
         let b = state(&tasks, &[], &[("claude-code", "missing", NOW - 60_000), ("copilot-cli", "ok", NOW - DAY_MS)], 0);
         assert_eq!((b.state, b.blocked), ("working", None));
@@ -2178,7 +2188,10 @@ mod analysis_tests {
         assert_eq!((home.state, home.waiting), ("blocked", 1), "still waiting, not given up");
         let a = task_analysis(&t, &tasks, &calls, &home, NOW, GAP, Some("x".into()));
         assert_eq!((a.state, a.tries, a.reply.as_deref()), ("blocked", 0, None));
-        assert_eq!(a.blocked, Some(Blocked { tool: "copilot-cli".into(), why: "missing".into() }));
+        assert_eq!(
+            a.blocked,
+            Some(Blocked { tool: "copilot-cli".into(), why: "missing".into(), since_ms: NOW - 3_600_000 })
+        );
     }
 
     #[test]
@@ -2213,8 +2226,8 @@ mod analysis_tests {
     fn off_and_paused_win_over_the_rest() {
         let tasks = vec![task("a", "copilot-cli", NOW - DAY_MS, false)];
         let n = Now { utc_ms: NOW, offset_min: 0 };
-        assert_eq!(analysis_state(&tasks, &[], &[], false, false, 50, 0, n, GAP).state, "off");
-        let p = analysis_state(&tasks, &[], &[], true, true, 50, 0, n, GAP);
+        assert_eq!(analysis_state(&tasks, &[], &[], &[], false, false, 50, 0, n, GAP).state, "off");
+        let p = analysis_state(&tasks, &[], &[], &[], true, true, 50, 0, n, GAP);
         assert_eq!(p.state, "paused");
         assert!(!p.start);
     }

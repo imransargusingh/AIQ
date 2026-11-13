@@ -486,7 +486,7 @@ export interface Analysis {
   /** The day the waiting tasks are all analyzed at `daily` a day; null when nothing waits. */
   done_by_ms: number | null;
   /** Why analysis can't run, and for which tool. Null unless state is blocked. */
-  blocked: { tool: "claude-code" | "copilot-cli"; why: "missing" | "not_signed_in" } | null;
+  blocked: { tool: "claude-code" | "copilot-cli"; why: "missing" | "not_signed_in"; since_ms: number } | null;
 }
 
 export interface JudgeToday {
@@ -651,7 +651,7 @@ export interface TaskAnalysis {
   reply: string | null;
   /** queued: newer waiting tasks AIQ analyzes first. */
   ahead: number;
-  blocked: { tool: "claude-code" | "copilot-cli"; why: "missing" | "not_signed_in" } | null;
+  blocked: { tool: "claude-code" | "copilot-cli"; why: "missing" | "not_signed_in"; since_ms: number } | null;
 }
 
 export interface TaskPromptText {

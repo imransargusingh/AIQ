@@ -109,6 +109,13 @@ no repeat of the same tip within 72 hours. Tips start with a yellow **AIQ tip:**
   AIQ tip: this request went round 3 times. The agent may need one new detail · aiq show
   ```
 
+  If the tool AIQ analyzes through is signed out or missing, the status line says so at each turn end, and AIQ
+  home shows a banner with one button, until analysis runs again:
+
+  ```
+  AIQ can't analyze your tasks: Claude Code is signed out · run claude, then /login
+  ```
+
 - **Claude Code**: a short card under Claude's reply:
 
   ```

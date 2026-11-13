@@ -1815,7 +1815,8 @@ impl Store {
     }
 
     /// Judge calls started at or after `since_ms`, oldest first (budget and retry back-off are derived from these).
-    /// Each provider's newest judge call: (provider, outcome, started). Says whether that tool works right now.
+    /// Each provider's newest judge call on this computer: (provider, outcome, started). Says whether that tool works
+    /// here right now; another computer's calls arrive by sync and say nothing about this one's tools.
     pub fn newest_judge_call_per_provider(&self) -> Result<Vec<(String, String, i64)>> {
         if !self.has_table("judge_call")? {
             return Ok(vec![]);
@@ -1824,7 +1825,32 @@ impl Store {
             .conn
             .prepare(
                 // SQLite takes a bare column from the row that holds the MAX (documented for min/max aggregates).
-                "SELECT provider, outcome, MAX(started_utc_ms) FROM judge_call GROUP BY provider ORDER BY provider",
+                "SELECT provider, outcome, MAX(started_utc_ms) FROM judge_call WHERE computer IS NULL
+                 GROUP BY provider ORDER BY provider",
+            )
+            .map_err(err(codes::STORE_OPEN))?;
+        let rows = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).map_err(err(codes::STORE_OPEN))?;
+        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(err(codes::STORE_OPEN))
+    }
+
+    /// Each provider whose newest judge call on this computer says the tool can't run (missing, not_signed_in):
+    /// (provider, outcome, since), where since is the first call of that unbroken run of such failures. Empty when
+    /// every tool works.
+    pub fn tools_down(&self) -> Result<Vec<(String, String, i64)>> {
+        if !self.has_table("judge_call")? {
+            return Ok(vec![]);
+        }
+        let mut st = self
+            .conn
+            .prepare(
+                "SELECT n.provider, n.outcome,
+                   (SELECT MIN(c.started_utc_ms) FROM judge_call c WHERE c.provider = n.provider AND c.computer IS NULL
+                      AND c.started_utc_ms > COALESCE((SELECT MAX(o.started_utc_ms) FROM judge_call o
+                        WHERE o.provider = n.provider AND o.computer IS NULL
+                          AND o.outcome NOT IN ('missing', 'not_signed_in')), -1))
+                 FROM (SELECT provider, outcome, MAX(started_utc_ms) FROM judge_call WHERE computer IS NULL
+                       GROUP BY provider) n
+                 WHERE n.outcome IN ('missing', 'not_signed_in') ORDER BY n.provider",
             )
             .map_err(err(codes::STORE_OPEN))?;
         let rows = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).map_err(err(codes::STORE_OPEN))?;

@@ -655,4 +655,81 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <p>DC-048 fix (#222). The 11-09 case may have been this class rather than DC-048 (no core log was kept to tell).</p>
 <ul><li><strong>Sweep:</strong> every caller of <code>ingest_inner</code>: spool drain, socket ingest, <code>take_card</code>, held re-reads (<code>recheck_held</code>,</li></ul>
 <p><code>typed_gate</code>, RC release) and Copilot mid-turn messages. Held events leave <code>rc_held</code> before they are ingested again, so the check skips only true copies. Not covered: a copy of a first prompt the automation guard holds (<code>held</code>, not stored yet) still reaches the guard a second time; not measured, left as a next step.</p>
-<ul><li><strong>Control:</strong> <code>ingest_inner</code> drops an event already stored or already waiting, before any rule; the core test above.</li><li><strong>Rule:</strong> dedupe at the door, before any rule that keeps state, not only where the row is written.</li></ul></main></body></html>
+<ul><li><strong>Control:</strong> <code>ingest_inner</code> drops an event already stored or already waiting, before any rule; the core test above.</li><li><strong>Rule:</strong> dedupe at the door, before any rule that keeps state, not only where the row is written.</li></ul>
+<h3>DC-060 — A long-lived thread keeps the store open, so Windows can&#x27;t delete it</h3>
+<ul><li><strong>Signature:</strong> 2026-11-12, PR #252 CI on Windows. <code>e2e_forget_all_deletes_store_and_spool</code> failed with</li></ul>
+<p>&quot;Could not delete everything: The process cannot access the file because it is being used by another process. (os error 32)&quot;. The new sync thread opened its own store connection at start and held it for the life of the core. <code>forget --all</code> stops the writer and then deletes the store, but nothing stopped the sync thread. Linux passed because it lets a program delete an open file.</p>
+<ul><li><strong>Why it survives:</strong> every other store reader in the core and Home opens a connection per call and drops it.</li></ul>
+<p>A new thread followed the &quot;own connection&quot; note without the shutdown half. Only the Windows job runs the delete against a live core.</p>
+<ul><li><strong>Sweep:</strong> <code>Store::open</code>/<code>open_read_only</code> in <code>aiq-core</code>, <code>aiq-home</code> and the Home app. Only <code>sync::run</code> held a</li></ul>
+<p>connection across calls; the rest are per call (<code>control.rs</code>, <code>update.rs</code>, <code>aiq-home</code> lib/detail/diagnostics).</p>
+<ul><li><strong>Control (tests):</strong> the Windows <code>e2e_forget_all_deletes_store_and_spool</code> (already there; it caught this), and</li></ul>
+<p><code>once_the_core_deletes_everything_the_sync_thread_never_opens_the_store_again</code> in <code>aiq-core/tests/sync.rs</code>. That test proves a stopped sync thread can&#x27;t create the store again after the delete.</p>
+<ul><li><strong>Rule:</strong> a background thread opens the store only for one unit of work. Deleting everything first stops every</li></ul>
+<p>thread that can open the store.</p>
+<h3>DC-061 — One step that fails on a real drive link hides everything that comes after it</h3>
+<ul><li><strong>Signature:</strong> 2026-11-12, Imran&#x27;s laptop and Devbox on 0.1.46, the first real sync. The Devbox copied</li></ul>
+<p><code>00000001.jsonl</code> (07:47:22Z) and <code>00000002.jsonl</code> (07:49:24Z) into the laptop&#x27;s <code>.aiq\sync\&lt;devbox id&gt;\</code>. Then <code>00000003.part</code> (873 bytes, whole: 3 lines, header <code>rows:2</code>) was rewritten every minute and never renamed. The Devbox wrote its <code>computer.json</code> only after every file had copied, so the laptop never saw the Devbox: no peer, no switch, setting still <code>unset</code>. The OS error was not recorded anywhere; only the code <code>AIQ-SYNC-WRITE</code> was.</p>
+<ul><li><strong>Why it survives:</strong> the tests used two local temp folders, where a rename never fails. The pass chained the</li></ul>
+<p>entry after the copy (<code>mirror(..).is_err() || write_whole(computer.json)</code>), so a failed copy also skipped the entry. And the log kept the code without the error text, so the cause could only be inferred.</p>
+<ul><li><strong>Sweep:</strong> every write <code>sync.rs</code> makes across the link: change files, <code>computer.json</code> (both now go through one</li></ul>
+<p><code>write_whole</code> that retries the rename and then writes in place), and the status file (local). The reader already rejects a file whose line count doesn&#x27;t match its header, so writing in place is safe. The cause of the refused rename (a scanner holding the fresh file is the leading guess) is still <strong>not measured</strong>. The new <code>sync rename refused</code> warning in <code>aiq.log</code> records the OS error text the next time it happens.</p>
+<ul><li><strong>Control (tests):</strong> <code>a_file_that_will_not_copy_to_the_laptop_still_lets_the_laptop_see_the_devbox</code> (red before</li></ul>
+<p>the fix), <code>a_rename_the_drive_refuses_still_leaves_the_whole_file_and_no_part</code>, and <code>a_rename_that_works_on_a_later_try_is_used</code>.</p>
+<ul><li><strong>Rule:</strong> across a link we don&#x27;t control, write the &quot;I&#x27;m here&quot; record first and keep it separate from the</li></ul>
+<p>copies. Log the OS error text for every failed write, not just the code.</p>
+<h3>DC-062 — Prompts an agent or the tool wrote are counted as the person&#x27;s tasks</h3>
+<ul><li><strong>Signature:</strong> 2026-11-12, Imran&#x27;s Devbox (Copilot CLI, multi-agent fleet runs), read on the laptop after sync.</li></ul>
+<p>138 Devbox tasks, 105 on Assisted. 104 sessions&#x27; first prompts were sub-agent briefs the parent agent wrote; each named the parent&#x27;s session id. 11 more tasks opened with <code>&lt;system_notification&gt; Agent … has finished</code> or <code>[Scheduled prompt #N]</code>. AIQ counted all of them as typed. The analysis saw a one-prompt task with no recorded agent actions (a sub-agent has no session log of its own: 95 of 95 such sessions <code>no_log</code>) and placed it low.</p>
+<ul><li><strong>Why it survives:</strong> the automated rules look at folders, bursts, templates and turn-end timing. A sub-agent&#x27;s brief</li></ul>
+<p>is long, varied, in the person&#x27;s own folder, and arrives minutes after the parent&#x27;s prompt, so none of them fired.</p>
+<ul><li><strong>Sweep:</strong> ingest (<code>service::automated</code>, now rules TOOL and AGENT before rule FAST, all surfaces) and every reader</li></ul>
+<p>of live prompts that builds tasks (<code>aiq_home::task_list</code>, which also feeds the analysis queue through <code>own_tasks</code>). Imported sessions keep the import&#x27;s own rule. Not covered: a tool&#x27;s hook text such as <code>tacit:</code> (35 rows), which rule FAST only catches inside 5 s.</p>
+<ul><li><strong>Control (tests):</strong> <code>a_sub_agents_brief_and_tool_written_prompts_are_not_counted</code> (core),</li></ul>
+<p><code>sub_agent_briefs_and_tool_written_prompts_are_not_tasks</code> (Home, rows already stored or synced), <code>tool_written_openings_are_not_typed</code>, <code>a_brief_naming_another_session_lists_that_id_once</code> (domain).</p>
+<ul><li><strong>Rule:</strong> a prompt that names another live session, or opens with a mark only the tool writes, was not typed. Apply</li></ul>
+<p>each automated rule on both sides: at ingest, and when reading rows stored before the rule.</p>
+<h3>DC-063 — One fact AIQ couldn&#x27;t tell lowers a task two rungs</h3>
+<ul><li><strong>Signature:</strong> 2026-11-12, Imran&#x27;s laptop and Devbox. Nine current judgments (of 1,033) had the model at Delegated</li></ul>
+<p>and the agent&#x27;s edits in the log, but showed Assisted. Their notes read &quot;Not Delegated: AIQ couldn&#x27;t tell whether the output was checked&quot; and then the same words for Directed.</p>
+<ul><li><strong>Why it survives:</strong> each rung&#x27;s guardrail was tested on its own. Delegated and Directed both need F6, and the</li></ul>
+<p>lowering loop re-tested the same unknown fact at every rung, so a fact that was only <em>unknown</em> cost as much as one that was confidently missing at two rungs.</p>
+<ul><li><strong>Sweep:</strong> <code>place</code> is the only loop that lowers by guardrail; <code>missing</code> lists needs for coaching and does not</li></ul>
+<p>lower. Kept judgments whose notes show one fact untold at two rungs are judged again (<code>rubric_changes</code>, r3).</p>
+<ul><li><strong>Control (tests):</strong> <code>a_fact_aiq_could_not_tell_lowers_the_rung_once</code>,</li></ul>
+<p><code>kept_judgments_with_one_fact_untold_at_two_rungs_are_judged_again</code>; the replay gate shows no golden-set move.</p>
+<ul><li><strong>Rule:</strong> an unknown fact lowers the rung once and marks the task Uncertain; only a confident &quot;no&quot; lowers each</li></ul>
+<p>rung that needs it.</p>
+<h3>DC-064 — A quoted program path hides the check it runs</h3>
+<ul><li><strong>Signature:</strong> 2026-11-12, Imran&#x27;s laptop, 76 recent Copilot CLI session logs. 1,888 of 5,050 shell commands had</li></ul>
+<p>a segment that started with a quoted program (<code>&amp; &#x27;C:\…\.venv\Scripts\python.exe&#x27; -B -m unittest -q …</code>, the usual PowerShell form). The check reader dropped every quoted string, so it saw no program and F3 read &quot;nobody&quot; on runs where the agent ran its tests (163 <code>-m unittest</code> runs alone). <code>python -B -m</code> also missed, because only <code>python -m</code> was skipped as a wrapper.</p>
+<ul><li><strong>Why it survives:</strong> every test case named its program bare (<code>pytest</code>, <code>C:\tools\pytest.exe</code>). Quotes were dropped</li></ul>
+<p>on purpose, so <code>echo &#x27;run cargo test&#x27;</code> is not a check, and nothing tested a quoted program in command position.</p>
+<ul><li><strong>Sweep:</strong> <code>strip_quoted</code> is the only place quotes are handled for checks; <code>script_run</code> already reads an</li></ul>
+<p>interpreter&#x27;s script argument; <code>npm</code>/build-tool paths read the program token, which a quoted path now fills.</p>
+<ul><li><strong>Control (tests):</strong> new yes and no cases in <code>checks_are_read_as_command_lines_not_substrings</code> (quoted interpreter</li></ul>
+<p>with <code>-B -m unittest</code>, quoted path with spaces, <code>&quot;$VENV/bin/pytest&quot;</code>, quoted <code>Test-*.ps1</code>; still no for <code>python -</code>, <code>python -c</code>, a quoted data script, <code>echo &#x27;&lt;path&gt;&#x27;</code>). Fact set fs4; the replay gate shows no golden move.</p>
+<ul><li><strong>Rule:</strong> test the command reader against the shell forms the person&#x27;s own OS uses (PowerShell call operator,</li></ul>
+<p>quoted paths with spaces), not only bare program names.</p>
+<h3>DC-065 — A prompt wrapped in an envelope is shown and analyzed as markup</h3>
+<ul><li><strong>Signature:</strong> 2026-11-12, Imran&#x27;s laptop. 25 Claude Code prompts start with a <code>&lt;wake reason=…&gt;</code> envelope that</li></ul>
+<p>carries the person&#x27;s own message (<code>from=&quot;human&quot;</code>). AIQ counted them as his turns (correct) but stored, titled, showed and analyzed the whole XML. 13 more envelopes (<code>&lt;relay</code>, <code>&lt;task-notification</code>, <code>&lt;scheduled-task</code>, a project brief) carry no message from him at all and were still counted as typed turns.</p>
+<ul><li><strong>Why it survives:</strong> <code>text::own_words</code> already unwrapped envelopes, but only the label and tip funnel called it.</li></ul>
+<p>The store, task list, task page and analysis each read the raw text, and no test seeded an envelope through them.</p>
+<ul><li><strong>Sweep:</strong> one helper, <code>automated::person_words</code>, now feeds every reader: the core&#x27;s record path (stored text and</li></ul>
+<p>length), the TOOL rule (no human words = not typed), Home&#x27;s task list, the task page, and the analysis turns. Rows stored before the fix are unwrapped at read time. Not covered yet: <code>session_events</code> (live trend) and <code>prompts_for_rebuild</code> read raw text; <code>tacit:</code> hook text and mid-session agent messages are not envelopes.</p>
+<ul><li><strong>Control (tests):</strong> <code>an_envelope_counts_only_the_persons_own_words</code> (domain),</li></ul>
+<p><code>an_envelope_is_stored_as_the_persons_words_and_one_without_them_is_not_typed</code> (core), <code>an_envelope_shows_the_persons_words_and_one_without_them_is_not_a_task</code> (Home snapshot + task page).</p>
+<ul><li><strong>Rule:</strong> when a text-normalising helper exists, every reader of that text goes through it; grep the readers, not</li></ul>
+<p>only the feature that found the bug.</p>
+<h3>DC-066 — Analysis stops and the only sign is a grey line nobody reads</h3>
+<ul><li><strong>Signature:</strong> 2026-11-12, Imran&#x27;s laptop. The Claude Code sign-in expired at 15:10Z. From then on, 47 analysis</li></ul>
+<p>calls failed <code>not_signed_in</code> (AIQ-JUDGE-SIGNIN). Nobody noticed for about 7 hours, until a release check read judge.log. Home had 848 tasks, so the first-run &quot;Analysis can&#x27;t run&quot; card (#140) was not shown. The only signal was one grey line under the rung. Nothing appeared on other pages, on the Copilot CLI status line or in VS Code.</p>
+<ul><li><strong>Why it survives:</strong> the blocked state was designed and tested for the first run only. Its card sits in a slot that</li></ul>
+<p>a settled install fills with numbers, and no test opened a settled Home with a stuck tool. Synced <code>judge_call</code> rows from another computer also fed &quot;is this tool working here&quot;, so one computer&#x27;s failure could show on, or hide from, another.</p>
+<ul><li><strong>Sweep:</strong> every reader of a tool&#x27;s newest call (<code>newest_judge_call_per_provider</code>, new <code>tools_down</code>) is now limited to</li></ul>
+<p>this computer&#x27;s rows. Home&#x27;s banner (<code>Banners</code>, every page) and the status line (<code>Service::quiet_line</code>) both read the same store query. Not covered: Claude Code&#x27;s own conversation (signed out, Claude Code says so itself) and VS Code notifications. Seen, not fixed here: <code>judge_calls_since</code> (Home&#x27;s &quot;today&quot; count) also counts synced rows.</p>
+<ul><li><strong>Control (tests):</strong> <code>a_tool_is_down_from_the_first_of_its_unbroken_signed_out_calls_and_up_after_one_good_call</code></li></ul>
+<p>(store), <code>copilot_status_line_says_analysis_is_stuck_until_the_tool_is_signed_in_again</code> (core), e2e &quot;an expired sign-in shows on every page of a settled install, with since when and the one button&quot;.</p>
+<ul><li><strong>Rule:</strong> a state that stops analysis or tips must show on every page and where the person works, with since when</li></ul>
+<p>and the one thing to do. It must also be tested on a settled install, not only a fresh one.</p></main></body></html>

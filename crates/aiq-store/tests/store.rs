@@ -385,6 +385,31 @@ fn judge_calls_are_read_back_by_time_and_forget_imported_takes_imported_judgment
     assert_eq!(s.judge_calls_since(0).unwrap().len(), 1);
 }
 
+#[test]
+fn a_tool_is_down_from_the_first_of_its_unbroken_signed_out_calls_and_up_after_one_good_call() {
+    let (_d, s) = open();
+    assert!(s.tools_down().unwrap().is_empty(), "no calls: nothing down");
+    s.insert_judge_call(&call("c1", "t1", 100, "ok")).unwrap();
+    s.insert_judge_call(&call("c2", "t2", 200, "timeout")).unwrap();
+    s.insert_judge_call(&call("c3", "t3", 300, "not_signed_in")).unwrap();
+    s.insert_judge_call(&call("c4", "t3", 400, "not_signed_in")).unwrap();
+    // since = 300: the timeout before it is not a sign-in failure, so the run starts at the first signed-out call.
+    assert_eq!(s.tools_down().unwrap(), vec![("claude-code".to_owned(), "not_signed_in".to_owned(), 300)]);
+    // Another computer's signed-out calls arrive by sync and say nothing about this computer's tools.
+    s.raw()
+        .execute(
+            "INSERT INTO judge_call (call_id, task_id, run, provider, started_utc_ms, latency_ms, outcome, input_chars,
+               computer) VALUES ('x1', 'tx', 1, 'copilot-cli', 450, 10, 'not_signed_in', 1, 'devbox')",
+            [],
+        )
+        .unwrap();
+    assert_eq!(s.tools_down().unwrap().len(), 1);
+    assert!(s.newest_judge_call_per_provider().unwrap().iter().all(|(p, _, _)| p == "claude-code"));
+    // Signed in again: one good call and the tool is up.
+    s.insert_judge_call(&call("c5", "t3", 500, "ok")).unwrap();
+    assert!(s.tools_down().unwrap().is_empty());
+}
+
 // ------------------------------------------------------------ schema v6 (coaching from rung results)
 
 #[test]
