@@ -539,6 +539,45 @@ jobs:
           powershell -ExecutionPolicy Bypass -File $up -Apply
           if ($LASTEXITCODE -ne 0 -or (St).state -ne 'applied') { Fail "third install: exit $LASTEXITCODE" }
           if (Get-ChildItem $bin -Filter '*.del') { Fail '.del files left once nothing ran them' }
+
+          # AIQ-UPDATE-HANDOFF: a release installs itself with its own upgrade.ps1 (devbox 2026-11-13: 0.1.54's script
+          # failed every try, so 0.1.56's fix never arrived). This release's script with one proof line added stands in
+          # for a newer release whose script differs from the one in bin; before, the installed script did the work
+          # and the proof line never ran.
+          $proof = Join-Path $aiq 'handoff-proof.txt'
+          Remove-Item $proof -ErrorAction SilentlyContinue
+          $nu = Join-Path $env:RUNNER_TEMP 'handoff-unzipped'
+          Expand-Archive -Force "dist/aiq-$v-windows-x64.zip" $nu
+          $nscript = Join-Path $nu 'upgrade.ps1'
+          $text = Get-Content -Raw $nscript
+          $line = "`$ErrorActionPreference = 'Stop'"
+          if (-not $text.Contains($line)) { Fail 'upgrade.ps1 has no ErrorActionPreference line to add the proof after' }
+          $text = $text.Replace($line, "$line`r`nAdd-Content -Path (Join-Path `$env:USERPROFILE '.aiq\handoff-proof.txt') -Value `"handoff=`$Handoff apply=`$Apply`"")
+          Set-Content -Path $nscript -Value $text -NoNewline -Encoding ascii
+          $handZip = Join-Path $env:RUNNER_TEMP 'handoff.zip'
+          Compress-Archive -Force -Path (Join-Path $nu '*') -DestinationPath $handZip
+          $handoffs = @(Select-String -Path $ulog -Pattern 'AIQ-UPDATE-HANDOFF: v99.5.0 installs itself').Count
+          Stage 'v99.5.0' $handZip
+          powershell -ExecutionPolicy Bypass -File $up -Apply
+          if ($LASTEXITCODE -ne 0) { Fail "handoff install: exit $LASTEXITCODE" }
+          $s = St
+          if ($s.state -ne 'applied' -or $s.installed_tag -ne 'v99.5.0') { Fail "handoff install: $($s | ConvertTo-Json -Compress)" }
+          if (@(Select-String -Path $ulog -Pattern 'AIQ-UPDATE-HANDOFF: v99.5.0 installs itself').Count -ne $handoffs + 1) { Fail 'no AIQ-UPDATE-HANDOFF line' }
+          if (-not (Test-Path $proof) -or (Get-Content $proof) -notcontains 'handoff=True apply=True') { Fail "the release's own upgrade.ps1 did not run with -Handoff: $(Get-Content $proof -ErrorAction SilentlyContinue)" }
+          if ((Get-FileHash $up).Hash -ne (Get-FileHash $nscript).Hash) { Fail "the release's upgrade.ps1 was not installed into bin" }
+          if (Get-ChildItem ([IO.Path]::GetTempPath()) -Filter 'aiq-upgrade-next-*' -ErrorAction SilentlyContinue) { Fail 'the handed-off copy was left in the temp folder' }
+          # The same script again: no handoff (the bin script runs it, once).
+          Remove-Item $proof
+          Stage 'v99.5.1' $handZip
+          powershell -ExecutionPolicy Bypass -File $up -Apply
+          if ($LASTEXITCODE -ne 0 -or (St).state -ne 'applied') { Fail "same-script install: exit $LASTEXITCODE" }
+          if (@(Select-String -Path $ulog -Pattern 'AIQ-UPDATE-HANDOFF: v99.5.1').Count) { Fail 'handed off to the same script' }
+          if ((Get-Content $proof) -join '|' -ne 'handoff=False apply=True') { Fail "same-script install ran: $((Get-Content $proof) -join '|')" }
+          # And back to this build's own script, by the same handoff.
+          Stage 'v99.5.2' "dist/aiq-$v-windows-x64.zip"
+          powershell -ExecutionPolicy Bypass -File $up -Apply
+          if ($LASTEXITCODE -ne 0 -or (St).state -ne 'applied') { Fail "handoff back: exit $LASTEXITCODE" }
+          if ((Get-FileHash $up).Hash -ne (Get-FileHash (Join-Path $un 'upgrade.ps1')).Hash) { Fail "this build's upgrade.ps1 is not back in bin" }
           # Leave a core running, as the steps before did.
           Start-Process -WindowStyle Hidden -FilePath $exe -ArgumentList 'core'
           Get-Content $ulog -Tail 12

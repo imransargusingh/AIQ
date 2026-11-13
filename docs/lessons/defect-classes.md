@@ -1304,3 +1304,20 @@ summary: >-
 - **Rule:** never overwrite a file that another process may run; rename it aside and write the new one beside it.
   A failure record carries the error's own words where the person reads it, and the diagnostics file carries every
   record a diagnosis needs.
+
+### DC-072 — An updater fix that ships inside the update the faulty updater must install
+- **Signature:** 2026-11-13. #279 (in 0.1.56) fixed upgrade.ps1's copy-over failure on a held aiq.exe. The laptop
+  installed 0.1.56 first try. The Devbox stayed on 0.1.54: every try ran the installed 0.1.54 upgrade.ps1, which hit the
+  same held aiq.exe, so the fix could never arrive. Imran was asked for a manual install.
+- **Why it survives:** `-Apply` always ran the script already in bin, and a new script reached bin only by a successful
+  install. Every earlier `-Apply` fix had the same one-release lag (noted in U5l, U5o, U5p), but those old scripts still
+  worked, so the lag never stranded a machine.
+- **Sweep:** what runs an install: upgrade.ps1 `-Apply` (fixed: hands off), `-Zip` (already runs the release's own
+  install.ps1), install.ps1 (the person runs the new one). `-Rollback` swaps back to the `.old` exes; the script that
+  runs it is the newer one, which is what a rollback wants.
+- **Control (test):** release.yml Windows smoke: a staged release whose upgrade.ps1 differs installs with that script
+  (`-Handoff` proof line, AIQ-UPDATE-HANDOFF), puts it in bin, cleans its temp copy; the same script again does not hand
+  off; the handoff back to this build's script works.
+- **Rule:** the code that installs a release must be the release's own, verified like the rest of it. A fix to an
+  installer must not depend on the old installer working. Honest limit: this only helps machines whose bin script
+  already hands off; a machine stuck before that still needs one install by other means.
