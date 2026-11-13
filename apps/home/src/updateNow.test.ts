@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AWAY_INSTALL_MS, awayInstallDue, checkOutcome, minuteAsk, outcomeText } from "./updateNow";
+import { AWAY_INSTALL_MS, awayInstallDue, checkOutcome, failedLine, minuteAsk, outcomeText } from "./updateNow";
 import type { Update } from "./types";
 
 const base: Update = {
@@ -12,6 +12,7 @@ const base: Update = {
   from: null,
   at_ms: null,
   message: null,
+  reason: null,
   checked_ms: 1_000_000,
   check_error: null,
   latest: "v0.1.3",
@@ -75,5 +76,25 @@ describe("minuteAsk: one update ask a minute (laptop 2026-11-09 02:52:28Z race)"
     expect(minuteAsk(waiting, away, due, "idle", true)).toBe("check_if_due");
     expect(minuteAsk(null, away, due, "idle", false)).toBe("check_if_due");
     expect(minuteAsk({ ...waiting, note: "none" }, away, due, "idle", false)).toBe("check_if_due");
+  });
+});
+
+describe("failedLine", () => {
+  const f = { running: "0.1.54" };
+  it("says what failed, why in the error's own words, and that the next check tries again", () => {
+    expect(
+      failedLine({ ...f, message: "installing v0.1.55 failed", reason: "aiq.exe was in use by another program" }),
+    ).toBe("Installing v0.1.55 failed: aiq.exe was in use by another program. AIQ 0.1.54 kept; it tries again at the next check.");
+  });
+  it("reads an update.json from a script before 0.1.56 without saying the kept version twice or 'tomorrow' (devbox, 2026-11-13)", () => {
+    const t = failedLine({ ...f, message: "installing v0.1.55 failed, so AIQ kept 0.1.54", reason: null });
+    expect(t).toBe("Installing v0.1.55 failed. AIQ 0.1.54 kept; it tries again at the next check.");
+    expect(t).not.toMatch(/tomorrow/);
+  });
+  it("still reads with no message, and keeps a checksum message whole", () => {
+    expect(failedLine({ ...f, message: null, reason: null })).toBe("An update didn't install. AIQ 0.1.54 kept; it tries again at the next check.");
+    expect(failedLine({ ...f, message: "the download of v0.1.55 did not match its checksum", reason: null })).toBe(
+      "The download of v0.1.55 did not match its checksum. AIQ 0.1.54 kept; it tries again at the next check.",
+    );
   });
 });

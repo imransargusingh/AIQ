@@ -241,6 +241,8 @@ export interface Update {
   from: string | null;
   at_ms: number | null;
   message: string | null;
+  /** Why the last install failed, in the error's own words (folders cut); null from a script before 0.1.56. */
+  reason: string | null;
   checked_ms: number | null;
   check_error: string | null;
   /** The newest release the last good check saw. */

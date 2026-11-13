@@ -1736,9 +1736,12 @@ fn update_text(v: &aiq_core::update::View, now: i64) -> String {
             v.from.as_deref().unwrap_or("the previous version"),
             v.at_ms.map(ago).unwrap_or_default()
         )),
-        "failed" => {
-            o.push_str(&format!("The last update did not install: {}.\n", v.message.as_deref().unwrap_or("unknown")))
-        }
+        "failed" => o.push_str(&format!(
+            "The last update did not install: {}{}. AIQ {} kept; it tries again at the next check.\n",
+            aiq_core::update::failed_lead(v.message.as_deref()),
+            v.reason.as_deref().map(|r| format!(" ({})", r.trim_end_matches('.'))).unwrap_or_default(),
+            v.running
+        )),
         "rolled_back" => o.push_str(&format!(
             "You went back from {}. AIQ won't install that version again by itself.\n",
             v.from.as_deref().unwrap_or("the newer version")
@@ -1767,11 +1770,32 @@ mod update_tests {
             from: None,
             at_ms: None,
             message: None,
+            reason: None,
             checked_ms: None,
             check_error: None,
             latest: None,
             can_rollback: false,
         }
+    }
+
+    #[test]
+    fn a_failed_install_says_why_and_that_the_next_check_tries_again() {
+        let f = View {
+            note: "failed",
+            message: Some("installing v0.1.55 failed".into()),
+            reason: Some("aiq.exe was in use by another program".into()),
+            ..v()
+        };
+        let t = update_text(&f, 0);
+        assert!(
+            t.contains("The last update did not install: installing v0.1.55 failed (aiq.exe was in use by another program). AIQ 0.1.0 kept; it tries again at the next check."),
+            "{t}"
+        );
+        // A script before 0.1.56 wrote the version kept into the message and no reason: said once, not twice.
+        let old = View { message: Some("installing v0.1.55 failed, so AIQ kept 0.1.54".into()), reason: None, ..f };
+        let t = update_text(&old, 0);
+        assert!(t.contains("did not install: installing v0.1.55 failed. AIQ 0.1.0 kept;"), "{t}");
+        assert!(!t.contains("tomorrow"), "{t}");
     }
 
     #[test]

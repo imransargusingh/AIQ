@@ -1953,6 +1953,19 @@ await test("auto-update: the titlebar marker, one-press Update now, Go back, the
   await done.waitForSelector("main h1");
   assert.equal(await done.getByTestId("update-line").count(), 0, "seen on an earlier Home session: gone");
   await done.context().close();
+  // A failed install says why, in the error's own words, and when it tries again; never "tomorrow" (devbox, 2026-11-13).
+  const failed = await open("full", {
+    edit: (s) => Object.assign(s.update, { note: "failed", at_ms: s.now_ms - 60_000, message: "installing v0.1.55 failed", reason: "aiq.exe was in use by another program" }),
+  });
+  const fl = failed.getByTestId("update-line");
+  assert.equal(
+    await fl.locator("span").first().innerText(),
+    "Installing v0.1.55 failed: aiq.exe was in use by another program. AIQ 0.1.0 kept; it tries again at the next check.",
+  );
+  assert.ok((await fl.boundingBox()).height <= 40, "one line high at 1280 px");
+  assert.equal(await failed.getByRole("button", { name: /Go back/ }).count(), 0, "nothing to go back from");
+  assert.deepEqual(await axe(failed), []);
+  await failed.context().close();
   // No previous version known: no Go back that names nothing.
   const nofrom = await open("full", { edit: (s) => (applied(s), (s.update.from = null)) });
   assert.equal(await nofrom.getByRole("button", { name: /Go back/ }).count(), 0);

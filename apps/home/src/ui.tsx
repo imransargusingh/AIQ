@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api } from "./api";
 import type { Snapshot } from "./types";
 import { RUNGS, rungLabel, plural, when } from "./format";
-import { ver, type UpdatePhase } from "./updateNow";
+import { failedLine, ver, type UpdatePhase } from "./updateNow";
 import type { Theme } from "./theme";
 
 /** Nav pages, plus places outside the nav: one task's detail, one kind of task (from Home or Tasks), setup. */
@@ -240,7 +240,7 @@ export function UpdateLine({ snap, announce }: Pick<Ctx, "snap" | "announce">) {
         </button>
       );
   } else if (u.note === "failed") {
-    text = <>An update didn't install{u.message ? ` (${u.message})` : ""}; AIQ {ver(u.running)} kept. It tries again tomorrow.</>;
+    text = <>{failedLine(u)}</>;
   } else {
     text = <>Back on AIQ {ver(u.running)}. {u.from ? ver(u.from) : "That version"} won't install again by itself.</>;
   }

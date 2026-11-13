@@ -3579,6 +3579,7 @@
     "from": null,
     "at_ms": null,
     "message": null,
+    "reason": null,
     "checked_ms": 1793530800000,
     "check_error": null,
     "latest": null,

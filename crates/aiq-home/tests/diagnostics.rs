@@ -153,6 +153,58 @@ fn a_failed_label_carries_the_tools_words_scrubbed() {
 }
 
 #[test]
+fn a_failed_update_is_diagnosable_from_the_file_alone() {
+    // The devbox on 2026-11-13: 0.1.55 failed to install on every Check for updates, and why was only in
+    // upgrade-log.txt. update.json (with a byte-order mark, as Windows PowerShell writes it), the log and the held
+    // log go in, scrubbed.
+    let (_d, p) = seeded();
+    let mut state = vec![0xEF, 0xBB, 0xBF];
+    state.extend_from_slice(
+        br#"{"state":"failed","at":"2026-11-01T11:00:00Z","message":"installing v0.1.55 failed","available":"v0.1.55",
+            "reason":"Access to the path 'C:\\Users\\imran\\.aiq\\bin\\aiq.exe' is denied.","staged":"aiq-0.1.55-windows-x64.zip","n":3}"#,
+    );
+    std::fs::write(p.data.join("update.json"), state).unwrap();
+    std::fs::write(
+        p.data.join("upgrade-log.txt"),
+        "2026-11-13 04:04:58Z AIQ v0.1.55 downloaded and checked. It installs when AIQ is idle.\n\
+         2026-11-13 04:05:00Z AIQ-UPGRADE-SWAP: installing v0.1.55 failed (Access to the path 'C:\\Users\\imran\\.aiq\\bin\\aiq.exe' is denied.); kept AIQ 0.1.54. It tries again later.\n",
+    )
+    .unwrap();
+    std::fs::write(p.data.join("upgrade-log-held.txt"), "2026-11-13 04:05:01Z AIQ-UPDATE-HOME: started AIQ home again (upgrade-log.txt could not be written: in use by IMRAN-LAPTOP)\n").unwrap();
+    let (text, v) = make(&p, false);
+    let u = &v["aiq"]["update"];
+    assert_eq!(u["note"], "failed", "{u}");
+    assert_eq!(u["reason"], r"Access to the path '%USERPROFILE%\.aiq\bin\aiq.exe' is denied.", "{u}");
+    let f = &u["state_file"];
+    assert_eq!(
+        (f["state"].as_str(), f["available"].as_str(), f["n"].as_i64()),
+        (Some("failed"), Some("v0.1.55"), Some(3)),
+        "{f}"
+    );
+    assert_eq!(f["reason"], u["reason"], "{f}");
+    let log: Vec<&str> = v["logs"]["upgrade-log.txt"].as_array().unwrap().iter().filter_map(|x| x.as_str()).collect();
+    assert_eq!(log.len(), 2, "{log:?}");
+    assert!(log[1].contains("AIQ-UPGRADE-SWAP") && log[1].contains(r"%USERPROFILE%\.aiq\bin\aiq.exe"), "{log:?}");
+    let held: Vec<&str> =
+        v["logs"]["upgrade-log-held.txt"].as_array().unwrap().iter().filter_map(|x| x.as_str()).collect();
+    assert!(held.len() == 1 && held[0].contains("<computer>"), "{held:?}");
+    for n in NEVER {
+        assert!(!lower_has(&text, n), "{n:?} reached the file:\n{text}");
+    }
+}
+
+#[test]
+fn no_update_state_or_log_is_null_and_empty() {
+    let (_d, p) = seeded();
+    let (_, v) = make(&p, false);
+    assert!(v["aiq"]["update"]["state_file"].is_null());
+    assert_eq!(v["logs"]["upgrade-log.txt"], serde_json::json!([]));
+    std::fs::write(p.data.join("update.json"), "not json").unwrap();
+    let (_, v) = make(&p, false);
+    assert_eq!(v["aiq"]["update"]["state_file"], "update.json is not a JSON object");
+}
+
+#[test]
 fn a_missing_store_still_makes_a_file() {
     let d = tempfile::tempdir().unwrap();
     let p = Paths::at(d.path());

@@ -85,3 +85,16 @@ export function minuteAsk(
 ): "install_if_away" | "check_if_due" {
   return u && !touring && awayInstallDue(u, awaySince, now, phase) ? "install_if_away" : "check_if_due";
 }
+
+/** The failed-update sentence: what failed, why in the error's own words when the script recorded it (update.json
+ * `reason`, AIQ-UPDATE-REASON), and when it tries again. A failed install leaves nothing waiting, so the next check
+ * downloads the release again and it installs as any update does: "tomorrow" was untrue (devbox, 2026-11-13: it
+ * failed again on every Check for updates). A script before 0.1.56 put "so AIQ kept <version>" in the message and
+ * gave no reason; that tail is dropped so the kept version is said once (`aiq update` does the same:
+ * crates/aiq-core/src/update.rs `failed_lead`). */
+export function failedLine(u: Pick<Update, "message" | "reason" | "running">): string {
+  const m = (u.message ?? "").trim();
+  const lead = (m ? m.split(", so AIQ kept ")[0] : "an update didn't install").replace(/\.+$/, "");
+  const why = u.reason?.trim().replace(/\.+$/, "");
+  return `${lead.charAt(0).toUpperCase()}${lead.slice(1)}${why ? `: ${why}` : ""}. AIQ ${ver(u.running)} kept; it tries again at the next check.`;
+}

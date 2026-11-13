@@ -67,6 +67,9 @@ pub struct State {
     pub from: Option<String>,
     pub at: Option<String>,
     pub message: Option<String>,
+    /// Why the last install failed, in the error's own words with folders cut (`AIQ-UPDATE-REASON`). Missing from
+    /// a script before 0.1.56, which kept the error in upgrade-log.txt only.
+    pub reason: Option<String>,
     /// A tag the person rolled back from; never installed again by itself.
     pub skip: Option<String>,
     /// After a check GitHub's API refused for its rate limit (403/429): when the limit resets. The next check
@@ -75,6 +78,24 @@ pub struct State {
     /// Which source answered the last good check: "redirect" (github.com, no API limit) or "api". Missing (a
     /// script before 0.1.9, or the test feed) reads as the redirect, the source every release so far used.
     pub source: Option<String>,
+}
+
+/// Written by upgrade.ps1 (UTC seconds) just before it stops AIQ to swap the exes, removed once the swap is done and
+/// before it starts the core again. While it is there, a hook that finds the core down does not start one (devbox,
+/// 2026-11-13, DC-071: a busy Copilot's hooks restart a stopped core within seconds, and that core held aiq.exe).
+pub fn swapping_path(paths: &Paths) -> PathBuf {
+    paths.data.join("update-swapping")
+}
+/// A marker older than this is a script that ended mid-swap: it never keeps the core down longer.
+pub const SWAPPING_MAX_S: u64 = 120;
+
+/// Is an update swapping the exes right now? False for no marker, an unreadable one, or one older than
+/// [`SWAPPING_MAX_S`] (degrades to "start the core", the behaviour before the marker existed).
+pub fn swapping(paths: &Paths, now_s: u64) -> bool {
+    std::fs::read_to_string(swapping_path(paths))
+        .ok()
+        .and_then(|s| s.trim().trim_start_matches('\u{feff}').parse::<u64>().ok())
+        .is_some_and(|t| (now_s >= t && now_s - t < SWAPPING_MAX_S) || (t > now_s && t - now_s < 5))
 }
 
 pub fn state_path(paths: &Paths) -> PathBuf {
@@ -401,6 +422,8 @@ pub struct View {
     pub from: Option<String>,
     pub at_ms: Option<i64>,
     pub message: Option<String>,
+    /// Why the last install failed (`State::reason`).
+    pub reason: Option<String>,
     pub checked_ms: Option<i64>,
     pub check_error: Option<String>,
     /// The newest release the last good check saw (it may be one the person went back from, never installed).
@@ -423,6 +446,14 @@ fn numbers(v: &str) -> Option<Vec<u64>> {
 /// "AIQ 0.1.2 is ready, Install now" while it ran 0.1.2, and Install now swapped 0.1.2 over itself).
 fn not_newer(available: &str, running: &str) -> bool {
     matches!((numbers(available), numbers(running)), (Some(a), Some(r)) if a <= r)
+}
+
+/// The start of the line about a failed update: the script's message without the ", so AIQ kept <version>" a script
+/// before 0.1.56 added (the line says which version was kept itself), or "an update didn't install" when there is
+/// none. AIQ home's line (`apps/home/src/ui.tsx` `failedLead`) does the same.
+pub fn failed_lead(message: Option<&str>) -> String {
+    let m = message.map(str::trim).filter(|m| !m.is_empty()).unwrap_or("an update didn't install");
+    m.split_once(", so AIQ kept ").map_or(m, |(lead, _)| lead).trim_end_matches('.').to_owned()
 }
 
 pub fn view(paths: &Paths, mode: Option<&str>, now_ms: i64) -> View {
@@ -452,6 +483,7 @@ pub fn view(paths: &Paths, mode: Option<&str>, now_ms: i64) -> View {
         from: st.from.clone(),
         at_ms,
         message: st.message.clone(),
+        reason: st.reason.clone(),
         checked_ms: st.checked_at.as_deref().and_then(parse_utc_ms),
         check_error: st.check_error.clone(),
         latest: st.latest.clone(),
@@ -751,6 +783,46 @@ mod tests {
         assert_eq!((v.note, v.from.as_deref(), v.can_rollback), ("applied", Some("0.0.1"), true));
         std::fs::write(state_path(&p), format!(r#"{{"state":"applied","at":"{T0}"}}"#)).unwrap();
         assert_eq!(view(&p, None, t0() + 1000).note, "none", "no previous version known: nothing to name");
+    }
+
+    #[test]
+    fn a_swap_marker_holds_core_starts_for_two_minutes_at_most() {
+        let d = tempfile::tempdir().unwrap();
+        let p = Paths::at(d.path());
+        let now = 1_794_528_000;
+        assert!(!swapping(&p, now), "no marker");
+        // Windows PowerShell's Set-Content -Encoding UTF8 writes a byte-order mark and a line end.
+        std::fs::write(swapping_path(&p), format!("\u{feff}{}\r\n", now - 3)).unwrap();
+        assert!(swapping(&p, now));
+        assert!(swapping(&p, now - 4), "a clock a moment behind still sees it");
+        assert!(!swapping(&p, now - 3 + SWAPPING_MAX_S), "a script that ended mid-swap holds starts 2 minutes at most");
+        std::fs::write(swapping_path(&p), "garbage").unwrap();
+        assert!(!swapping(&p, now), "unreadable: start the core as before");
+    }
+
+    #[test]
+    fn a_failed_install_carries_its_reason_and_an_old_message_loses_the_kept_version() {
+        let d = tempfile::tempdir().unwrap();
+        let p = Paths::at(d.path());
+        std::fs::write(
+            state_path(&p),
+            format!(
+                r#"{{"state":"failed","at":"{T0}","message":"installing v0.1.55 failed","reason":"aiq-home.exe is missing from the zip"}}"#
+            ),
+        )
+        .unwrap();
+        let v = view(&p, None, t0() + 1000);
+        assert_eq!(v.note, "failed");
+        assert_eq!(v.reason.as_deref(), Some("aiq-home.exe is missing from the zip"));
+        assert_eq!(failed_lead(v.message.as_deref()), "installing v0.1.55 failed");
+        // The devbox's update.json on 2026-11-13, written by 0.1.54's script: no reason, the kept version in the message.
+        assert_eq!(failed_lead(Some("installing v0.1.55 failed, so AIQ kept 0.1.54")), "installing v0.1.55 failed");
+        assert_eq!(
+            failed_lead(Some("the download of v0.1.55 did not match its checksum")),
+            "the download of v0.1.55 did not match its checksum"
+        );
+        assert_eq!(failed_lead(None), "an update didn't install");
+        assert_eq!(failed_lead(Some("  ")), "an update didn't install");
     }
 
     #[test]

@@ -57,9 +57,22 @@ function Stamp-Now([string]$path) {
 Get-Process -Name 'aiq', 'aiq-home' -ErrorAction SilentlyContinue |
     Where-Object { $_.Path -and $_.Path.StartsWith($bin, [StringComparison]::OrdinalIgnoreCase) } |
     Stop-Process -Force -ErrorAction SilentlyContinue
+# A process that was not stopped (a hook that started a moment later) still holds its exe, which Windows won't let be
+# overwritten but lets be renamed: so each exe is renamed to .old and the new one copied in (AIQ-UPGRADE-RENAME, as
+# upgrade.ps1 does; devbox, 2026-11-13, four updates failed on a held aiq.exe). The .old from before is set aside as
+# .del and deleted; one still running stays until a later install or update can delete it.
+Get-ChildItem -LiteralPath $bin -Filter '*.del' -ErrorAction SilentlyContinue |
+    ForEach-Object { try { Remove-Item -LiteralPath $_.FullName -Force -ErrorAction Stop } catch { } }
 foreach ($exe in 'aiq.exe', 'aiq-home.exe') {
     $to = Join-Path $bin $exe
-    if (Test-Path $to) { Copy-Item -Force $to "$to.old" }
+    if (Test-Path $to) {
+        if (Test-Path "$to.old") {
+            $aside = "$to.old-$PID-$([DateTime]::UtcNow.Ticks).del"
+            Move-Item -LiteralPath "$to.old" -Destination $aside
+            try { Remove-Item -LiteralPath $aside -Force -ErrorAction Stop } catch { }
+        }
+        Move-Item -LiteralPath $to -Destination "$to.old"
+    }
     Copy-Item -Force (Join-Path $src $exe) $to
     Stamp-Now $to
     Write-Host "Copied: $to"
