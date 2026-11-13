@@ -438,6 +438,10 @@ impl<C: Clock> Service<C> {
         let now = self.clock.now().utc_ms;
         let mut engine = Engine::new(&self.pack);
         for r in self.store.prompts_for_rebuild(now - engine.idle_gap_ms())? {
+            if r.agent_stop {
+                engine.agent_stop(&r.surface, &r.session, r.ts_utc_ms);
+                continue;
+            }
             engine.observe(
                 &r.surface,
                 &r.session,
@@ -672,6 +676,10 @@ impl<C: Clock> Service<C> {
             return Ok(()); // replay: idempotent, no second signal
         }
         (0..removed).for_each(|_| self.counters.inc(codes::INGEST_SECRET_REMOVED));
+        if ev.kind() == "stop" {
+            // The agent finished a turn: its Task stays open one idle gap from now (DC-073).
+            self.engine.agent_stop(&ev.surface, &ev.surface_session_id, ts);
+        }
         let Some(text) = text else { return Ok(()) };
         let sig = {
             let _d = info_span!("core.detect", trace_id = trace_id.unwrap_or("")).entered();

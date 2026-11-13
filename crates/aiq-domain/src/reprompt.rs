@@ -34,6 +34,8 @@ pub struct SignalDraft {
 pub struct TaskState {
     pub task_id: String,
     pub last_ms: i64,
+    /// The last activity was a prompt the agent has not finished answering: the Task stays open (DC-073).
+    working: bool,
     seen_words: BTreeSet<String>,
     seen_mentions: BTreeSet<String>,
     /// Word sets of the last `window` content prompts (not cue-only ones) of the current request.
@@ -50,6 +52,7 @@ impl TaskState {
         Self {
             task_id: task_id.to_owned(),
             last_ms: utc_ms,
+            working: true,
             seen_words: BTreeSet::new(),
             seen_mentions: BTreeSet::new(),
             request: VecDeque::new(),
@@ -157,11 +160,22 @@ impl Engine {
             })
             .or_insert_with(|| TaskState::new(obs.event_id, obs.utc_ms));
         task.last_ms = task.last_ms.max(obs.utc_ms);
+        task.working = true;
         let f = features(obs.text, &self.params);
         let out = task.observe(&f, obs.event_id, &self.params);
         task.seen_words.extend(f.words);
         task.seen_mentions.extend(f.mentions);
         out
+    }
+
+    /// The agent finished a turn in this session: the open Task stays open one idle gap from now (DC-073), the same
+    /// rule `split_tasks` reads, so live and read-side Task ids agree.
+    pub fn agent_stop(&mut self, surface: &str, session: &str, utc_ms: i64) {
+        let key = self.key(surface, session);
+        if let Some(t) = self.tasks.get_mut(&key) {
+            t.last_ms = t.last_ms.max(utc_ms);
+            t.working = false;
+        }
     }
 
     /// Current Task id for a session, if one is open.
@@ -174,10 +188,11 @@ impl Engine {
         task_key(&self.params.span_surfaces, surface, session)
     }
 
-    /// Drop Tasks idle for longer than the idle gap; they can never receive another prompt.
+    /// Drop Tasks idle for longer than the idle gap whose agent has finished; they can never receive another prompt.
+    /// A Task whose agent is still working is kept: its turn end keeps it open (DC-073).
     pub fn prune(&mut self, now_ms: i64) {
         let gap = self.idle_gap_ms;
-        self.tasks.retain(|_, t| now_ms - t.last_ms <= gap);
+        self.tasks.retain(|_, t| t.working || now_ms - t.last_ms <= gap);
     }
 
     pub fn open_tasks(&self) -> usize {
@@ -191,18 +206,23 @@ pub fn task_key(span_surfaces: &[String], surface: &str, session: &str) -> (Stri
     (surface.to_owned(), if spans { String::new() } else { session.to_owned() })
 }
 
-/// The Task rule's boundary: a prompt more than the idle gap after the Task's last prompt starts a new Task.
+/// The Task rule's boundary: a prompt more than the idle gap after the Task's last activity starts a new Task.
+/// Activity is a prompt or the agent finishing a turn (DC-073): a long agent run is one Task with the prompt that
+/// started it, so "keep going" after a two-hour run is not a new Task cut off from the plan it continues.
 pub fn starts_new_task(last_ms: i64, utc_ms: i64, idle_gap_ms: i64) -> bool {
     utc_ms - last_ms > idle_gap_ms
 }
 
-/// One prompt for `split_tasks`. Callers pass only prompts the Task rule counts (not empty ones).
+/// One prompt for `split_tasks`, or the agent finishing a turn. Callers pass only prompts the Task rule counts (not
+/// empty ones) and the agent's turn ends (`stop` events) of the same sessions.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TaskPrompt<'a> {
     pub event_id: &'a str,
     pub surface: &'a str,
     pub session: &'a str,
     pub utc_ms: i64,
+    /// The agent finished a turn: it keeps the open Task open (DC-073) but is never a member and never starts one.
+    pub agent_stop: bool,
 }
 
 /// One Task as read views see it. `task_id` is the event id of its first prompt, as in the Engine.
@@ -213,6 +233,8 @@ pub struct TaskSpan {
     /// Session of the first prompt.
     pub session: String,
     pub first_ms: i64,
+    /// The Task's last activity: its last prompt, or the agent's last turn end after it (DC-073). A Task is finished
+    /// one idle gap after this.
     pub last_ms: i64,
     pub prompts: u32,
     /// Event ids of the Task's prompts, with their times, in order (the rung judge reads these prompts).
@@ -230,6 +252,13 @@ pub fn split_tasks<'a>(
     let mut out: Vec<TaskSpan> = Vec::new();
     for p in prompts {
         let key = task_key(span_surfaces, p.surface, p.session);
+        if p.agent_stop {
+            // The agent answering the open Task, however long it worked; with no open Task there is nothing to keep.
+            if let Some(&i) = open.get(&key) {
+                out[i].last_ms = out[i].last_ms.max(p.utc_ms);
+            }
+            continue;
+        }
         match open.get(&key) {
             Some(&i) if !starts_new_task(out[i].last_ms, p.utc_ms, idle_gap_ms) => {
                 let t = &mut out[i];
@@ -519,6 +548,7 @@ pub(crate) mod tests {
     fn prune_drops_idle_tasks_only() {
         let mut e = Engine::new(&pack());
         e.observe("claude-code", "old", PromptObs { event_id: "o", utc_ms: 0, text: BASE });
+        e.agent_stop("claude-code", "old", MIN);
         e.observe("claude-code", "new", PromptObs { event_id: "n", utc_ms: 40 * MIN, text: BASE });
         assert_eq!(e.open_tasks(), 2);
         e.prune(41 * MIN);
@@ -534,6 +564,7 @@ pub(crate) mod tests {
             surface,
             session,
             utc_ms: m * MIN,
+            agent_stop: false,
         };
         let tasks = split_tasks(
             [
@@ -554,30 +585,86 @@ pub(crate) mod tests {
         assert_eq!(tasks[0].last_ms, 30 * MIN);
     }
 
+    /// DC-073 (measured 2026-11-13: 177 of 547 gap splits in Imran's history came after the agent itself had worked
+    /// over 30 minutes): the gap counts from the Task's last activity, the agent's turn end included.
+    #[test]
+    fn a_long_agent_run_keeps_its_task_open() {
+        let p = |id: &'static str, m: i64, agent_stop: bool| TaskPrompt {
+            event_id: id,
+            surface: "copilot-cli",
+            session: "s1",
+            utc_ms: m * MIN,
+            agent_stop,
+        };
+        let tasks = split_tasks(
+            [
+                p("plan", 0, false),   // hands over the plan, starts sub-agents
+                p("x1", 125, true),    // the agent finishes two hours later
+                p("keep", 140, false), // 15 min after the agent: same task, not a new one cut off from the plan
+                p("x2", 150, true),
+                p("later", 181, false), // 31 min after the agent's last turn end: new task
+                p("x3", 300, true),
+            ],
+            &[],
+            30 * MIN,
+        );
+        let ids: Vec<(&str, u32, i64)> = tasks.iter().map(|t| (t.task_id.as_str(), t.prompts, t.last_ms)).collect();
+        assert_eq!(ids, vec![("plan", 2, 150 * MIN), ("later", 1, 300 * MIN)]);
+        // A turn end with no open task (a stop before any prompt) starts nothing.
+        let none = split_tasks([p("x0", 0, true)], &[], 30 * MIN);
+        assert!(none.is_empty());
+    }
+
+    #[test]
+    fn engine_agent_stop_keeps_the_live_task_open() {
+        let mut e = Engine::new(&pack());
+        e.observe("copilot-cli", "s", PromptObs { event_id: "plan", utc_ms: 0, text: BASE });
+        e.prune(100 * MIN);
+        assert_eq!(e.task_id("copilot-cli", "s"), Some("plan"), "kept while the agent works");
+        e.agent_stop("copilot-cli", "s", 125 * MIN);
+        e.prune(150 * MIN);
+        assert_eq!(e.task_id("copilot-cli", "s"), Some("plan"), "open while the agent worked");
+        e.observe("copilot-cli", "s", PromptObs { event_id: "keep", utc_ms: 140 * MIN, text: "keep going" });
+        assert_eq!(e.task_id("copilot-cli", "s"), Some("plan"));
+        e.observe("copilot-cli", "s", PromptObs { event_id: "new", utc_ms: 171 * MIN, text: BASE });
+        assert_eq!(e.task_id("copilot-cli", "s"), Some("new"), "31 min after the last activity");
+    }
+
     proptest::proptest! {
         /// Read views and the live detector agree on every prompt's Task.
         #[test]
-        fn split_tasks_matches_engine_task_ids(gaps in proptest::collection::vec((0i64..90, 0usize..3, 0usize..2), 1..60)) {
+        fn split_tasks_matches_engine_task_ids(gaps in proptest::collection::vec((0i64..90, 0usize..3, 0usize..2, proptest::bool::ANY), 1..60)) {
             let mut e = Engine::new(&pack());
             let mut t = 0i64;
             let mut obs = Vec::new();
-            for (i, (gap, sess, surf)) in gaps.iter().enumerate() {
+            for (i, (gap, sess, surf, stop)) in gaps.iter().enumerate() {
                 t += gap * MIN;
                 let surface = ["claude-code", "vscode"][*surf];
                 let session = ["s0", "s1", "s2"][*sess];
                 let id = format!("e{i:04}");
+                if *stop {
+                    e.agent_stop(surface, session, t);
+                    obs.push((id, surface, session, t, None));
+                    continue;
+                }
                 e.observe(surface, session, PromptObs { event_id: &id, utc_ms: t, text: "write a parser for the config file" });
                 let expect = e.task_id(surface, session).unwrap().to_owned();
-                obs.push((id, surface, session, t, expect));
+                obs.push((id, surface, session, t, Some(expect)));
             }
             let tasks = split_tasks(
-                obs.iter().map(|(id, surface, session, t, _)| TaskPrompt { event_id: id, surface, session, utc_ms: *t }),
+                obs.iter().map(|(id, surface, session, t, x)| TaskPrompt {
+                    event_id: id,
+                    surface,
+                    session,
+                    utc_ms: *t,
+                    agent_stop: x.is_none(),
+                }),
                 &params().span_surfaces,
                 e.idle_gap_ms(),
             );
             let total: u32 = tasks.iter().map(|t| t.prompts).sum();
-            proptest::prop_assert_eq!(total as usize, obs.len());
-            let starts: std::collections::BTreeSet<String> = obs.iter().map(|o| o.4.clone()).collect();
+            proptest::prop_assert_eq!(total as usize, obs.iter().filter(|o| o.4.is_some()).count());
+            let starts: std::collections::BTreeSet<String> = obs.iter().filter_map(|o| o.4.clone()).collect();
             let got: std::collections::BTreeSet<String> = tasks.iter().map(|t| t.task_id.clone()).collect();
             proptest::prop_assert_eq!(starts, got);
         }

@@ -56,6 +56,8 @@ pub struct PromptRow {
     pub event_id: String,
     pub ts_utc_ms: i64,
     pub text: String,
+    /// The agent finished a turn (a `stop` event, text empty): it keeps the open Task open (DC-073).
+    pub agent_stop: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -1507,10 +1509,11 @@ impl Store {
         let mut st = self
             .conn
             .prepare(
-                "SELECT e.surface, e.surface_session_id, e.event_id, e.ts_utc_ms, c.text
-                 FROM event e JOIN content c ON c.event_id = e.event_id
-                 WHERE e.kind = 'prompt' AND e.computer IS NULL AND (e.surface, e.surface_session_id) IN
-                   (SELECT surface, surface_session_id FROM event WHERE kind = 'prompt' AND ts_utc_ms >= ?1)
+                "SELECT e.surface, e.surface_session_id, e.event_id, e.ts_utc_ms, coalesce(c.text, ''), e.kind = 'stop'
+                 FROM event e LEFT JOIN content c ON c.event_id = e.event_id
+                 WHERE (e.kind = 'stop' OR c.event_id IS NOT NULL) AND e.kind IN ('prompt', 'stop')
+                   AND e.computer IS NULL AND (e.surface, e.surface_session_id) IN
+                   (SELECT surface, surface_session_id FROM event WHERE kind IN ('prompt', 'stop') AND ts_utc_ms >= ?1)
                  ORDER BY e.event_id",
             )
             .map_err(err(codes::STORE_OPEN))?;
@@ -1522,6 +1525,7 @@ impl Store {
                     event_id: r.get(2)?,
                     ts_utc_ms: r.get(3)?,
                     text: r.get(4)?,
+                    agent_stop: r.get(5)?,
                 })
             })
             .map_err(err(codes::STORE_OPEN))?;

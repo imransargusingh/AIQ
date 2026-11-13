@@ -1321,3 +1321,31 @@ summary: >-
 - **Rule:** the code that installs a release must be the release's own, verified like the rest of it. A fix to an
   installer must not depend on the old installer working. Honest limit: this only helps machines whose bin script
   already hands off; a machine stuck before that still needs one install by other means.
+
+### DC-073 — A task boundary that counts the person's silence while the agent works
+- **Signature:** 2026-11-13. Imran: "why are no tasks being classified as orchestrated?" Of 1,090 analyzed tasks on
+  the laptop, 1 was Orchestrated. A task ended 30 minutes after the person's last prompt, so a plan handed to a Fleet
+  of sub-agents became one task and "keep going" two hours later another, analyzed without the plan. In the imported
+  history 547 prompts started a new task by the gap; for 177 of them the agent itself had worked over 30 minutes.
+- **Why it survives:** the idle gap was written for chat-style turns, where the person's prompt is the only activity.
+  Long agent runs make the person's silence normal, and nothing measured the agent's side.
+- **Sweep:** every place that splits tasks: `split_tasks` (Home, judge queue, task pages), the live `Engine` (tips,
+  re-prompt signal; its `prune` dropped a task while its agent still worked), `prompts_for_rebuild`, the Right-now
+  `open_task`. All now count the agent's turn end (`stop`) as activity. A task that grew after it was analyzed is
+  analyzed again (`grew`, judge queue).
+- **Control (tests):** `a_long_agent_run_keeps_its_task_open`, `engine_agent_stop_keeps_the_live_task_open`, the
+  `split_tasks_matches_engine_task_ids` property with turn ends mixed in.
+- **Rule:** a boundary in activity is measured from the last activity of anyone in it, not only the person.
+
+### DC-074 — A log fact that says "no" when the log can only ever see "yes"
+- **Signature:** 2026-11-13. The envelope said "spec, brief or design doc read or named: no" and told the model to
+  trust log facts over the quoted text. The path match knew spec, ADR and design paths, not plan files. A Fleet launch
+  naming `…IMPLEMENTATION_PLAN.md`, with 3 sub-agents and agent-run tests, was placed Directed: "Your device logs do
+  not establish a written brief". 44 of the 46 tasks with sub-agents and agent-run checks were marked "no brief".
+- **Why it survives:** DC-020 turned a log fact AIQ could not read into unknown, but kept "no" where every turn was
+  read. A path match can see a brief; it can never rule one out (a brief can be pasted or named in words).
+- **Sweep:** log facts that are "no" when all turns are read: F1 edits, F8, F14, F15 and F3 read the agent's own
+  actions, so a "no" there is a real observation. F7 was the only one that reads for a thing the log cannot cover.
+- **Control (tests):** `a_brief_the_log_cannot_see_is_unknown_never_no`, `a_plan_file_is_a_brief`,
+  `brief_may_change_only_where_the_brief_is_the_last_need`; fact set fs5.
+- **Rule:** a log fact may say "no" only when the log could have seen every way to say "yes".

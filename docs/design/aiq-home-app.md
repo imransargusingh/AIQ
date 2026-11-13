@@ -125,7 +125,7 @@ rows. No backfill (a backfill would guess).
 
 | Value | Derivation | Additivity |
 |---|---|---|
-| Task | `aiq_domain::reprompt::split_tasks`: prompts of one session (or one surface stream for `span_surfaces`), split at gaps over the pack's idle gap. **Same function family as the live detector** (`task_key`, `starts_new_task`) | — |
+| Task | `aiq_domain::reprompt::split_tasks`: prompts of one session (or one surface stream for `span_surfaces`), split at gaps over the pack's idle gap, counted from the task's last activity: a prompt or the agent finishing a turn (DC-073, 2026-11-13). **Same function family as the live detector** (`task_key`, `starts_new_task`) | — |
 | Tasks in 30 days | count of Tasks whose first prompt is in the window | additive |
 | Tasks per week | count per 7-day bucket, newest last | additive |
 | Prompts per task | count of prompts in the Task | additive within a task; never averaged |

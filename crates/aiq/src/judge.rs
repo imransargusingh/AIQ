@@ -621,11 +621,18 @@ fn current_version(j: &JudgmentRow) -> bool {
             ));
     let fact_set = j.fact_set_version == rung::FACT_SET_VERSION
         || (rung::FACT_SET_VERSIONS_KEPT.contains(&j.fact_set_version.as_str())
-            && !rung::fact_set_may_change(&j.facts));
+            && !rung::fact_set_may_change(&j.facts)
+            && !brief_may_change(j));
     fact_set
         && rubric
         && (j.judge_version == rung::JUDGE_VERSION
             || (rung::JUDGE_VERSIONS_KEPT.contains(&j.judge_version.as_str()) && j.job != "unclassified"))
+}
+
+/// fs5 (DC-074): the judgment was read with a log "no brief" that may have hidden one.
+fn brief_may_change(j: &JudgmentRow) -> bool {
+    j.fact_set_version != rung::FACT_SET_VERSION
+        && rung::brief_may_change(&j.facts, aiq_contracts::judge::parse_read(&j.read).reprompts.unwrap_or(0), &j.job)
 }
 
 /// A judgment outdated only because its kept fact set's log facts may read differently, whose task today has
@@ -636,12 +643,22 @@ pub fn restamp(j: &JudgmentRow, log: &rung::LogFacts) -> Option<JudgmentRow> {
     if current_version(j)
         || !rung::FACT_SET_VERSIONS_KEPT.contains(&j.fact_set_version.as_str())
         || !current_version(&fresh)
+        || brief_may_change(j)
     {
         return None;
     }
     let stored = aiq_contracts::judge::parse_stored_facts(&j.facts).remove("F3").and_then(|f| f.checker);
     (log.unrecorded == 0 && stored.as_deref() == log.checks_by.map(rung::Checker::as_str))
         .then(|| JudgmentRow { judgment_id: uuid::Uuid::now_v7().to_string(), ..fresh })
+}
+
+/// The task has a prompt its analysis did not read: it grew after it was analyzed (DC-073, a turn end now keeps a
+/// task open, so a continuation joins the task it continues). A judgment with no `keys` (none stored today) is kept.
+fn grew(t: &TaskRow, j: &JudgmentRow) -> bool {
+    let v: serde_json::Value = serde_json::from_str(&j.read).unwrap_or_default();
+    let Some(keys) = v.get("keys").and_then(serde_json::Value::as_array) else { return false };
+    let read: HashSet<&str> = keys.iter().filter_map(serde_json::Value::as_str).collect();
+    t.members.iter().any(|(k, _)| !read.contains(k.as_str()))
 }
 
 /// Tasks to judge now, best first: closed, not judged at the current versions, not waiting out a retry,
@@ -663,7 +680,7 @@ pub fn queue<'a>(
         // Only this computer's tasks: another computer analyzes its own (sync).
         .filter(|t| t.computer.is_none())
         .filter(|t| provider_for(&t.tool).is_some_and(|p| only.is_none_or(|o| o == p)))
-        .filter(|t| judged.get(&t.task_id).is_none_or(|j| !current_version(j)))
+        .filter(|t| judged.get(&t.task_id).is_none_or(|j| !current_version(j) || grew(t, j)))
         .filter(|t| fails.get(t.task_id.as_str()).is_none_or(|r| r.next_try_ms().is_some_and(|at| now_ms >= at)))
         .map(|t| {
             let rank = match judged.get(&t.task_id) {
@@ -1038,7 +1055,7 @@ pub fn run(r: &Run<'_>) -> Result<Report, String> {
         Some(id) => tasks
             .iter()
             .filter(|t| t.task_id == id && t.last_ms + gap < r.now.utc_ms && provider_for(&t.tool).is_some())
-            .filter(|t| judged.get(&t.task_id).is_none_or(|j| !current_version(j)))
+            .filter(|t| judged.get(&t.task_id).is_none_or(|j| !current_version(j) || grew(t, j)))
             .collect(),
     };
     let used = tasks_today(&calls, r.now.local_midnight_utc_ms()) as u32;
