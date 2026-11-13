@@ -22,6 +22,8 @@
 #   -FailExplorer      tests only: with -FailLaunches, only the starts through Explorer fail.
 #   -Feed <folder>  tests only: latest.json and the files in that folder stand in for GitHub.
 #   -Site <url> -Api <url>   tests only: stand-ins for https://github.com and https://api.github.com.
+#   -Handoff        internal: this run was started by an older upgrade.ps1 -Apply, which holds update.lock for it and
+#                   waits; it never hands off again (AIQ-UPDATE-HANDOFF). Keep this switch in every release.
 #   -SparePid <id>     tests only: Stop-Aiq leaves that process running, standing in for one that holds aiq.exe and
 #                      that this script cannot see or stop (devbox, 2026-11-13).
 #   -ReasonOf <text>   tests only: print what update.json's `reason` would say for that error text, then stop.
@@ -54,7 +56,8 @@ param(
     [string]$Api = 'https://api.github.com',
     [int]$LockWaitSec = 300,
     [string]$ReasonOf,
-    [int]$SparePid = 0
+    [int]$SparePid = 0,
+    [switch]$Handoff
 )
 $ErrorActionPreference = 'Stop'
 
@@ -365,6 +368,53 @@ function Log-Holders {
     } catch { Log "AIQ-UPGRADE-HOLDERS: the process list could not be read ($($_.Exception.Message))." }
 }
 
+# AIQ-UPDATE-HANDOFF: the release being installed installs itself, with its own upgrade.ps1, not the one in bin.
+# Before, a fault in the installed script could never be fixed by an update: the fix shipped inside the update the
+# faulty script had to install (devbox, 2026-11-13: 0.1.54's copy-over failed on a held aiq.exe at every try, so
+# 0.1.56, which fixes it, never installed there; the laptop, where it didn't fail, took it first try).
+# What verifies the script that runs: it is taken from a private copy of the staged zip, and that copy's SHA-256 must
+# match SHA256SUMS, downloaded over HTTPS from the same GitHub release; the same check guards the exes this run is
+# about to install and start, so running the script adds no trust beyond them. It must also carry the
+# AIQ-AUTO-UPDATE marker. The new script runs in the same PowerShell, with -Handoff (this run keeps update.lock and
+# waits), and its exit code is this run's. Same script, no zip entry or no marker: this script installs as before.
+# A start that fails is logged, and this script installs instead. Like every -Apply step it needs a bin script that
+# has it: the first release that carries it still installs with the script before it.
+function Handoff-To-Staged([string]$zipPath, [string]$sums, [string]$tag) {
+    $copy = Join-Path ([IO.Path]::GetTempPath()) ("aiq-upgrade-next-" + [Guid]::NewGuid().ToString('N'))
+    $next = $null
+    try {
+        New-Item -ItemType Directory -Force $copy | Out-Null
+        $zipCopy = Join-Path $copy (Split-Path -Leaf $zipPath)
+        Copy-Item -LiteralPath $zipPath -Destination $zipCopy
+        if (-not (Checksum-Ok $zipCopy $sums)) { Log "AIQ-UPDATE-HANDOFF: the copy of $tag did not match SHA256SUMS; installing with this script."; return }
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $z = [IO.Compression.ZipFile]::OpenRead($zipCopy)
+        try {
+            $entry = $z.Entries | Where-Object { ($_.FullName -replace '\\', '/') -eq 'upgrade.ps1' } | Select-Object -First 1
+            if (-not $entry) { return }
+            $next = Join-Path $copy 'upgrade.ps1'
+            [IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $next)
+        } finally { $z.Dispose() }
+        if (-not (Get-Content -LiteralPath $next -TotalCount 40 | Select-String -Quiet -SimpleMatch 'AIQ-AUTO-UPDATE: 1')) { Log "AIQ-UPDATE-HANDOFF: $tag's upgrade.ps1 has no AIQ-AUTO-UPDATE marker; installing with this script."; return }
+        if ((Get-FileHash -LiteralPath $next).Hash -eq (Get-FileHash -LiteralPath $PSCommandPath).Hash) { return }
+        $a = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $next, '-Apply', '-Handoff')
+        if ($Relaunch) { $a += '-Relaunch' }
+        if ($FailLaunches) { $a += @('-FailLaunches', $FailLaunches) }
+        if ($FailExplorer) { $a += '-FailExplorer' }
+        if ($SparePid) { $a += @('-SparePid', $SparePid) }
+        Log "AIQ-UPDATE-HANDOFF: $tag installs itself with its own upgrade.ps1."
+        $code = 1
+        try { & (Get-Process -Id $PID).Path @a; $code = $LASTEXITCODE }
+        catch { Log "AIQ-UPDATE-HANDOFF: could not start $tag's upgrade.ps1 ($($_.Exception.Message)); installing with this script."; return }
+        Remove-Item -Recurse -Force $copy -ErrorAction SilentlyContinue
+        exit $code
+    } catch {
+        Log "AIQ-UPDATE-HANDOFF: could not read $tag's upgrade.ps1 ($($_.Exception.Message)); installing with this script."
+    } finally {
+        Remove-Item -Recurse -Force $copy -ErrorAction SilentlyContinue
+    }
+}
+
 # Swap each named exe with its .old copy (-Rollback).
 function Swap-Old([string[]]$names) {
     foreach ($exe in $names) {
@@ -479,7 +529,9 @@ function Take-Lock {
     try { $script:lockHandle = [IO.File]::Open((Join-Path $aiqHome 'update.lock'), 'OpenOrCreate', 'ReadWrite', 'None'); $true }
     catch { $false }
 }
-if (-not (Take-Lock)) {
+if ($Handoff) {
+    # The upgrade.ps1 that started this run holds update.lock and waits for it (AIQ-UPDATE-HANDOFF).
+} elseif (-not (Take-Lock)) {
     # AIQ-UPDATE-LOCK: an install or a rollback that AIQ home closed itself for (-Relaunch: Install now, Go back, an
     # away install) waits for the other run (a check downloading, the core's run) instead of giving up. Laptop,
     # 2026-11-09 02:52:28Z: Home's check took the lock 18 ms before its away install, which logged "Nothing
@@ -635,6 +687,7 @@ if ($Check -or $Apply) {
             Log "AIQ-UPGRADE-CHECKSUM: staged $($st.staged) no longer matches SHA256SUMS. Deleted; nothing changed."
             exit 1
         }
+        if (-not $Handoff) { Handoff-To-Staged $zipPath (Join-Path $stage 'SHA256SUMS') "$($st.available)" }
         $work = Join-Path ([IO.Path]::GetTempPath()) ("aiq-upgrade-" + [Guid]::NewGuid().ToString('N'))
         $from = Installed-Version
         if ($from -eq 'unknown' -and $st.installed -and "$($st.installed)" -ne 'unknown') { $from = "$($st.installed)" }
