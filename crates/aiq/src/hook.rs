@@ -80,6 +80,7 @@ fn record_copilot_seen(paths: &Paths, env: impl Fn(&str) -> Option<String>) {
         hook_dir: env("COPILOT_HOOK_DIR").filter(|v| !v.is_empty()),
         home_env: env("COPILOT_HOME").filter(|v| !v.is_empty()),
         at_ms,
+        known: Vec::new(), // `record` carries the earlier ones over
     };
     let _ = aiq_core::copilot_seen::record(paths, &seen);
 }

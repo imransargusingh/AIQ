@@ -141,13 +141,14 @@ fn copilot_install_dirs() -> Vec<PathBuf> {
     d
 }
 
-/// The first candidate that answers `--version` without saying it isn't installed. With one candidate, or when
-/// none answers, the first one, so its own words still reach the call (and Home says "not found").
-pub(crate) fn pick_working(cands: &[PathBuf], works: impl Fn(&Path) -> bool) -> Option<PathBuf> {
-    if cands.len() <= 1 {
-        return cands.first().cloned();
+/// The first candidate that answers `--version` without saying it isn't installed, and `true`. When none answers,
+/// the first one and `false`, so its own words still reach the call (and Home says "not found"). Every candidate is
+/// checked, even a lone one: a lone stand-in was kept for a day without a check (DC-067).
+pub(crate) fn pick_working(cands: &[PathBuf], works: impl Fn(&Path) -> bool) -> Option<(PathBuf, bool)> {
+    match cands.iter().find(|c| works(c)) {
+        Some(c) => Some((c.clone(), true)),
+        None => cands.first().map(|c| (c.clone(), false)),
     }
-    cands.iter().find(|c| works(c)).or(cands.first()).cloned()
 }
 
 fn answers_version(exe: &Path) -> bool {
@@ -164,9 +165,10 @@ pub(crate) const COPILOT_PICK: &str = "copilot-exe.txt";
 
 /// The Copilot CLI AIQ calls. A stand-in `copilot` earlier on PATH (one that only installs the real CLI from a
 /// terminal) answered every call "was not found" on a second install (DC-055), so AIQ checks each `copilot` it
-/// can find and keeps the first that works: first the program that runs AIQ's Copilot hooks (DC-056), then PATH,
-/// then the install folders. The pick is kept for a day in `copilot-exe.txt`, so a label call
-/// doesn't pay for the check.
+/// can find and keeps the first that works: first the Copilot programs AIQ's hooks ran from, newest first (DC-056,
+/// DC-067), then the last pick that worked, then PATH, then the install folders. A pick that works is kept for a
+/// day in `copilot-exe.txt`, so a label call doesn't pay for the check; one that doesn't is never kept, so the
+/// next call checks again.
 pub(crate) fn find_copilot(paths: &Paths) -> Option<PathBuf> {
     let cache = paths.data.join(COPILOT_PICK);
     let fresh = std::fs::metadata(&cache)
@@ -187,15 +189,19 @@ pub(crate) fn find_copilot(paths: &Paths) -> Option<PathBuf> {
         return Some(p);
     }
     // The Copilot that runs AIQ's hooks comes first: it is the one that works for the person (DC-056).
-    let seen = aiq_core::copilot_seen::read(paths).and_then(|s| s.copilot_exe());
-    let mut cands: Vec<PathBuf> = seen.into_iter().collect();
-    for c in exe_candidates("copilot", std::env::var_os("PATH"), &copilot_install_dirs()) {
+    let mut cands: Vec<PathBuf> = aiq_core::copilot_seen::read(paths).map(|s| s.copilot_programs()).unwrap_or_default();
+    let last = std::fs::read_to_string(&cache).ok().map(|t| PathBuf::from(t.trim())).filter(|p| p.is_file());
+    for c in last.into_iter().chain(exe_candidates("copilot", std::env::var_os("PATH"), &copilot_install_dirs())) {
         if !cands.contains(&c) {
             cands.push(c);
         }
     }
-    let pick = pick_working(&cands, answers_version)?;
-    let _ = std::fs::write(&cache, pick.display().to_string());
+    let (pick, works) = pick_working(&cands, answers_version)?;
+    if works {
+        let _ = std::fs::write(&cache, pick.display().to_string());
+    } else {
+        let _ = std::fs::remove_file(&cache);
+    }
     Some(pick)
 }
 
@@ -2974,9 +2980,18 @@ mod tests {
         let path = std::env::join_paths([&a, &b]).unwrap();
         let c = exe_candidates("copilot", Some(path), &[x.clone(), a.clone()]);
         assert_eq!(c, vec![a.join(name), x.join(name)], "PATH first, then install folders, no duplicates");
-        assert_eq!(pick_working(&c, |p| p.starts_with(&x)), Some(x.join(name)), "the stand-in on PATH is skipped");
-        assert_eq!(pick_working(&c, |_| false), Some(a.join(name)), "none works: the first, so its words show");
-        assert_eq!(pick_working(&c[..1], |_| panic!("one candidate is never checked")), Some(a.join(name)));
+        assert_eq!(
+            pick_working(&c, |p| p.starts_with(&x)),
+            Some((x.join(name), true)),
+            "the stand-in on PATH is skipped"
+        );
+        assert_eq!(
+            pick_working(&c, |_| false),
+            Some((a.join(name), false)),
+            "none works: the first, so its words show"
+        );
+        // A lone stand-in is checked too, and comes back marked as not working, so it is never kept (DC-067).
+        assert_eq!(pick_working(&c[..1], |_| false), Some((a.join(name), false)));
         assert_eq!(pick_working(&[], |_| true), None);
     }
 
@@ -2984,6 +2999,42 @@ mod tests {
     fn a_stand_in_copilot_that_says_not_found_is_missing() {
         assert!(says_not_found("GitHub Copilot CLI was not found. Run copilot in a terminal to install it, or see x"));
         assert!(!says_not_found("Error: model not available"));
+    }
+
+    /// DC-067 end to end: the newest hook ran from another loader, yet AIQ still calls the Copilot an earlier hook
+    /// ran from; and a pick that doesn't work is never kept, so the next call checks again.
+    #[cfg(unix)]
+    #[test]
+    fn analysis_keeps_calling_the_copilot_a_hook_ran_from_and_never_keeps_a_broken_pick() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = tempfile::tempdir().unwrap();
+        let paths = Paths::at(d.path());
+        std::fs::create_dir_all(&paths.data).unwrap();
+        let script = |dir: &str, body: &str| {
+            let p = d.path().join(dir).join("copilot");
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(&p, format!("#!/bin/sh\n{body}\n")).unwrap();
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+            p
+        };
+        let real = script("real", "echo 1.0.0");
+        let node = d.path().join("node");
+        std::fs::write(&node, "").unwrap();
+        let rec = |exe: &Path, at: i64| {
+            let s =
+                aiq_core::copilot_seen::Seen { exe: Some(exe.display().to_string()), at_ms: at, ..Default::default() };
+            aiq_core::copilot_seen::record(&paths, &s).unwrap();
+        };
+        rec(&real, 1);
+        rec(&node, 2);
+        assert_eq!(find_copilot(&paths), Some(real.clone()));
+        let cache = paths.data.join(COPILOT_PICK);
+        assert_eq!(std::fs::read_to_string(&cache).unwrap(), real.display().to_string(), "a working pick is kept");
+        // The kept Copilot now answers "not found": it comes back unverified and is not kept.
+        std::fs::remove_file(&cache).unwrap();
+        std::fs::write(&real, "#!/bin/sh\necho 'GitHub Copilot CLI was not found.'\nexit 1\n").unwrap();
+        assert_eq!(find_copilot(&paths), Some(real.clone()), "its own words still reach the call");
+        assert!(!cache.exists(), "a pick that doesn't work is never kept");
     }
 
     #[test]

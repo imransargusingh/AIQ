@@ -1202,3 +1202,20 @@ summary: >-
   sign-in shows on every page of a settled install, with since when and the one button".
 - **Rule:** a state that stops analysis or tips must show on every page and where the person works, with since when
   and the one thing to do. It must also be tested on a settled install, not only a fresh one.
+### DC-067 — One hook from another program makes AIQ forget the Copilot that worked
+- **Signature:** 2026-11-13, Imran's Devbox (0.1.52), read on the laptop after sync. On 11-12, 120 Copilot analysis
+  calls were answered, the last at 21:15Z. From 00:48Z, every call failed `missing` in about 110 ms, which is the
+  stand-in `copilot` on PATH (DC-055) again. Copilot CLI was running hooks the whole time. Home's new banner said
+  "AIQ can't find Copilot CLI".
+- **Why it survives:** `copilot-seen.json` held only the newest hook's loader program. A hook from a loader that
+  isn't `copilot` (a Node runtime, or a Copilot that moved after updating itself) replaced the good path. With it
+  gone, the only candidate was the PATH stand-in, and `pick_working` returned a lone candidate without checking it.
+  Inferred from the code; the Devbox's file was not read.
+- **Sweep:** every reader of the hook-seen path (`find_copilot`, the only caller of `copilot_exe`); every place a
+  pick is kept (`copilot-exe.txt`, written only by `find_copilot`). The Claude Code finder (`find_exe("claude")`) keeps
+  no pick and has no stand-in reported.
+- **Control (tests):** `a_hook_from_another_loader_never_erases_the_copilot_that_worked` (core),
+  `analysis_keeps_calling_the_copilot_a_hook_ran_from_and_never_keeps_a_broken_pick`, and the updated
+  `pick_working` cases.
+- **Rule:** keep every program that is known to work, and let only a newer working one move it down the list. Check
+  every pick, even a lone one, and never keep a pick that failed its check.

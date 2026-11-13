@@ -19,6 +19,18 @@ pub struct Seen {
     pub home_env: Option<String>,
     /// When a hook last wrote this (ms since the epoch).
     pub at_ms: i64,
+    /// Every Copilot program a hook ran from, newest first (at most `KNOWN_MAX`). A hook run from another loader
+    /// (a Node runtime, say) never erases these, so one such run can't send analysis back to a stand-in on PATH
+    /// (DC-067). Older files omit it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub known: Vec<String>,
+}
+
+/// How many Copilot programs `Seen::known` keeps.
+pub const KNOWN_MAX: usize = 5;
+
+fn named_copilot(p: &Path) -> bool {
+    p.file_stem().and_then(|s| s.to_str()).is_some_and(|s| s.eq_ignore_ascii_case("copilot"))
 }
 
 impl Seen {
@@ -36,8 +48,20 @@ impl Seen {
     /// A loader that is another program (a Node runtime, say) is recorded for diagnostics but not called.
     pub fn copilot_exe(&self) -> Option<PathBuf> {
         let p = PathBuf::from(self.exe.as_deref()?);
-        let stem = p.file_stem()?.to_str()?.to_ascii_lowercase();
-        (stem == "copilot" && p.is_file()).then_some(p)
+        (named_copilot(&p) && p.is_file()).then_some(p)
+    }
+
+    /// Every Copilot program AIQ may call, best first: the one that ran the newest hook, then the ones earlier hooks
+    /// ran from. Only programs named `copilot` that are still on disk.
+    pub fn copilot_programs(&self) -> Vec<PathBuf> {
+        let mut out: Vec<PathBuf> = self.copilot_exe().into_iter().collect();
+        for k in &self.known {
+            let p = PathBuf::from(k);
+            if named_copilot(&p) && p.is_file() && !out.contains(&p) {
+                out.push(p);
+            }
+        }
+        out
     }
 }
 
@@ -48,14 +72,25 @@ pub fn read(paths: &Paths) -> Option<Seen> {
 /// Keep what the hook saw. Writes only when something other than the time changed, or a day passed, so the
 /// hook's cost is one small read on most runs.
 pub fn record(paths: &Paths, seen: &Seen) -> std::io::Result<bool> {
-    if let Some(old) = read(paths) {
+    let old = read(paths);
+    // The Copilot programs seen so far stay, the newest first, whatever ran this hook.
+    let mut known: Vec<String> = Vec::new();
+    let mine = seen.exe.iter().filter(|e| named_copilot(Path::new(e.as_str())));
+    let before = old.iter().flat_map(|o| o.exe.iter().filter(|e| named_copilot(Path::new(e.as_str()))).chain(&o.known));
+    for k in mine.chain(before).chain(&seen.known) {
+        if !known.contains(k) && known.len() < KNOWN_MAX {
+            known.push(k.clone());
+        }
+    }
+    let seen = Seen { known, ..seen.clone() };
+    if let Some(old) = &old {
         let same = Seen { at_ms: 0, ..old.clone() } == Seen { at_ms: 0, ..seen.clone() };
         if same && seen.at_ms.saturating_sub(old.at_ms) < 86_400_000 {
             return Ok(false);
         }
     }
     let tmp = paths.data.join(format!("{FILE}.tmp"));
-    std::fs::write(&tmp, serde_json::to_vec(seen).unwrap_or_default())?;
+    std::fs::write(&tmp, serde_json::to_vec(&seen).unwrap_or_default())?;
     std::fs::rename(&tmp, paths.data.join(FILE))?;
     Ok(true)
 }
@@ -106,5 +141,37 @@ mod tests {
         assert!(record(&paths, &Seen { at_ms: 2_000, ..s(&node) }).unwrap(), "changed");
         assert_eq!(read(&paths).unwrap().exe, Some(node.display().to_string()));
         assert!(record(&paths, &Seen { at_ms: 2_000 + 86_400_000, ..s(&node) }).unwrap(), "a day later");
+    }
+
+    /// 2026-11-13, a second install: analysis ran on the Copilot the hooks named, then a hook ran from another
+    /// loader, the Copilot path was gone from the file, and every call went to a stand-in on PATH ("not found").
+    #[test]
+    fn a_hook_from_another_loader_never_erases_the_copilot_that_worked() {
+        let d = tempfile::tempdir().unwrap();
+        let name = if cfg!(windows) { "copilot.exe" } else { "copilot" };
+        let (a, b) = (d.path().join("a"), d.path().join("b"));
+        std::fs::create_dir_all(&a).unwrap();
+        std::fs::create_dir_all(&b).unwrap();
+        let (exe, newer, node) = (a.join(name), b.join(name), d.path().join("node.exe"));
+        for f in [&exe, &newer, &node] {
+            std::fs::write(f, "").unwrap();
+        }
+        let s = |p: &Path, at: i64| Seen { exe: Some(p.display().to_string()), at_ms: at, ..Seen::default() };
+        let paths = Paths::at(d.path());
+        std::fs::create_dir_all(&paths.data).unwrap();
+        record(&paths, &s(&exe, 1)).unwrap();
+        record(&paths, &s(&node, 2)).unwrap();
+        let got = read(&paths).unwrap();
+        assert_eq!(got.copilot_exe(), None, "the newest hook ran from Node");
+        assert_eq!(got.copilot_programs(), vec![exe.clone()], "the Copilot that worked is still there");
+        // A newer Copilot comes first; the older one stays as a fallback.
+        record(&paths, &s(&newer, 3)).unwrap();
+        assert_eq!(read(&paths).unwrap().copilot_programs(), vec![newer.clone(), exe.clone()]);
+        // One that is gone from disk (Copilot updated itself to a new folder) is skipped, never called.
+        std::fs::remove_file(&newer).unwrap();
+        assert_eq!(read(&paths).unwrap().copilot_programs(), vec![exe.clone()]);
+        // Older files without the list still read.
+        let old: Seen = serde_json::from_str(r#"{"exe":null,"hook_dir":null,"home_env":null,"at_ms":1}"#).unwrap();
+        assert!(old.known.is_empty());
     }
 }
