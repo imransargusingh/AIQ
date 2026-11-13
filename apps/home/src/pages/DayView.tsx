@@ -6,7 +6,7 @@ import { useMemo, useState } from "react";
 import { clock, day, jobOf, plural, rungLabel, stateLabel, toolName } from "../format";
 import { GAP_MIN, daySummary, lanes, taskDays, timeline, type Lane } from "../day";
 import { projectName, projectOf } from "../project";
-import type { Ctx } from "../ui";
+import { Rung, type Ctx } from "../ui";
 import type { TaskRow } from "../types";
 
 const span = (a: number, b: number, off: number) => (clock(a, off) === clock(b, off) ? clock(a, off) : `${clock(a, off)}–${clock(b, off)}`);
@@ -20,8 +20,12 @@ function TaskTip({ t, off }: { t: TaskRow; off: number }) {
       <br />
       {t.judgment ? (
         <>
-          {rungLabel(t.judgment.current)}
-          {t.judgment.potential > t.judgment.current && ` · could be ${rungLabel(t.judgment.potential)}`}
+          <Rung r={t.judgment.current} />
+          {t.judgment.potential > t.judgment.current && (
+            <>
+              {" "}· could be <Rung r={t.judgment.potential} />
+            </>
+          )}
           {stateLabel(t.judgment.state) && ` · ${stateLabel(t.judgment.state)}`}
         </>
       ) : (
@@ -54,7 +58,7 @@ function LaneTip({ l, name, off }: { l: Lane; name: string; off: number }) {
       {l.usual_rung !== null && (
         <>
           <br />
-          Mostly {rungLabel(l.usual_rung)}
+          Mostly <Rung r={l.usual_rung} />
         </>
       )}
     </span>
@@ -96,7 +100,7 @@ export function DayView(ctx: Ctx) {
         {sum.kinds > 0 && <> · {plural(sum.kinds, "kind")} of task</>}
         {sum.usual !== null && (
           <>
-            {" "}· mostly <b>{rungLabel(sum.usual)}</b>
+            {" "}· mostly <b><Rung r={sum.usual} /></b>
           </>
         )}
         {sum.not_judged > 0 && <> · {sum.not_judged} not analyzed yet</>} · {hm} inside tasks · {plural(ls.length, "session")}

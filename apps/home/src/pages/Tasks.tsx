@@ -125,7 +125,7 @@ export function Tasks({ start, ...ctx }: Ctx & { start?: View }) {
                 <th>Project</th>
                 <th>Job and kind</th>
                 <th>
-                  <span className="rung" title="How much of the task you handed to the agent, from Assisted (1) to Factory (5). Hover a rung to see what it means.">Rung</span>
+                  <span className="rung" title="How much of the task you handed to the agent, from Assisted, rung 1, to Factory, rung 5. Hover a rung to see what it means.">Rung</span>
                 </th>
               </tr>
             </thead>
@@ -178,7 +178,7 @@ export function Tasks({ start, ...ctx }: Ctx & { start?: View }) {
 
 type View = "kinds" | "list" | "day";
 
-/** "↑ up from Directed (2)", from the same 14-day comparison as Home's progress (US-H5b). */
+/** "↑ up from Directed", from the same 14-day comparison as Home's progress (US-H5b). */
 function trendText(p: ProgressRow | undefined): { text: string; tone?: "ok" | "warn" } {
   if (!p || p.trend === "too_few") return { text: "Too few tasks to say" };
   if (p.trend === "same") return { text: "– same rung" };

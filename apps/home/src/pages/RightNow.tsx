@@ -6,7 +6,7 @@
 import { useState } from "react";
 import { clock, jobName, plural, rungLabel, sentence, toolName, when } from "../format";
 import { projectName } from "../project";
-import type { Ctx } from "../ui";
+import { Rung, type Ctx } from "../ui";
 import type { Live, Snapshot } from "../types";
 
 const RN = ["Assisted", "Directed", "Delegated", "Orchestrated"];
@@ -39,7 +39,7 @@ export function reasons(l: Live): { ok: boolean; text: string }[] {
 
 function Trace({ l }: { l: Live }) {
   const n = Math.max(l.steps.length, 1);
-  const L = 104, W = Math.max(160, n * 44), top = 8, RH = 26, H = top + 4 * RH;
+  const L = 124, W = Math.max(160, n * 44), top = 8, RH = 26, H = top + 4 * RH;
   const Y = (r: number) => top + (4 - r) * RH + RH / 2;
   const X = (i: number) => L + (n === 1 ? W / 2 : (i * W) / (n - 1));
   let d = "";
@@ -55,8 +55,12 @@ function Trace({ l }: { l: Live }) {
       {[1, 2, 3, 4].map((r) => (
         <g key={r}>
           <line x1={L} x2={L + W} y1={Y(r)} y2={Y(r)} className="rn-grid" />
-          <text x={L - 8} y={Y(r) + 4} textAnchor="end" className="rn-ax">
-            {RN[r - 1]} ({r})
+          <text x={L - 30} y={Y(r) + 4} textAnchor="end" className="rn-ax">
+            {RN[r - 1]}
+          </text>
+          <circle cx={L - 16} cy={Y(r)} r={8} style={{ fill: `var(--rung-${r})` }} />
+          <text x={L - 16} y={Y(r) + 3.5} textAnchor="middle" className="rn-no" style={{ fill: `var(--on-rung-${r})` }}>
+            {r}
           </text>
         </g>
       ))}
@@ -180,10 +184,10 @@ export function RightNow(ctx: Ctx) {
         <p className="rn-head">
           {l.rung !== null ? (
             <>
-              Heading for <b>{rungLabel(l.rung)}</b>
+              Heading for <b><Rung r={l.rung} /></b>
               {l.could !== null && (
                 <>
-                  {" "}· could reach <b>{rungLabel(l.could)}</b>
+                  {" "}· could reach <b><Rung r={l.could} /></b>
                 </>
               )}
             </>

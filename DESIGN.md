@@ -268,7 +268,7 @@ AIQ home shows a model's judgment (the rung judge) and a model's suggested next 
 ## 11. Do's & Don'ts
 
 - Do lead with the kept rate; rungs explain underneath.
-- Do write rung names first, numbers second ("Directed (2)").
+- Do write rung names first; on screen the rung number is a badge before the name in its hue, never "(2)" after it, which beside counts reads as a count (DC-077). Plain text (terminal) may write "Directed (2)".
 - Don't show scores, grades, streaks, badges or any comparison with other people.
 - Don't use `{colors.danger}` for anything except errors and deletion.
 - Don't use a thick coloured side bar on banners or cards.
