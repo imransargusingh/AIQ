@@ -151,12 +151,22 @@ pub(crate) fn pick_working(cands: &[PathBuf], works: impl Fn(&Path) -> bool) -> 
     }
 }
 
-fn answers_version(exe: &Path) -> bool {
+/// Whether `exe --version` answers without saying it isn't installed, with one line saying what it did: the exit
+/// code, how long it took and the start of its own words. judge.log keeps the line, and the diagnostics file carries
+/// judge.log, so why a pick was made is measured, never guessed (DC-067).
+fn answers_version(exe: &Path) -> (bool, String) {
     let mut c = Command::new(exe);
     c.arg("--version");
     match run_child(c, "", Duration::from_secs(15)) {
-        Ok(r) => r.status == Some(0) && !says_not_found(&format!("{} {}", r.stdout, r.stderr)),
-        Err(_) => false,
+        Ok(r) => {
+            let said = format!("{} {}", r.stdout, r.stderr);
+            let works = !r.timed_out && r.status == Some(0) && !says_not_found(&said);
+            let words: String = said.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(100).collect();
+            let exit =
+                if r.timed_out { "timeout".to_owned() } else { r.status.map_or("none".into(), |c| c.to_string()) };
+            (works, format!("exit={exit} ms={} said={words:?}", r.ms))
+        }
+        Err(e) => (false, format!("exit=start-failed said={:?}", e.to_string())),
     }
 }
 
@@ -166,7 +176,8 @@ pub(crate) const COPILOT_PICK: &str = "copilot-exe.txt";
 /// The Copilot CLI AIQ calls. A stand-in `copilot` earlier on PATH (one that only installs the real CLI from a
 /// terminal) answered every call "was not found" on a second install (DC-055), so AIQ checks each `copilot` it
 /// can find and keeps the first that works: first the Copilot programs AIQ's hooks ran from, newest first (DC-056,
-/// DC-067), then the last pick that worked, then PATH, then the install folders. A pick that works is kept for a
+/// DC-067, with a self-update's rename undone, DC-068), then Copilot CLI's own `~/.copilot-cli/<version>` folders,
+/// then the last pick that worked, then PATH, then the install folders. A pick that works is kept for a
 /// day in `copilot-exe.txt`, so a label call doesn't pay for the check; one that doesn't is never kept, so the
 /// next call checks again.
 pub(crate) fn find_copilot(paths: &Paths) -> Option<PathBuf> {
@@ -190,13 +201,24 @@ pub(crate) fn find_copilot(paths: &Paths) -> Option<PathBuf> {
     }
     // The Copilot that runs AIQ's hooks comes first: it is the one that works for the person (DC-056).
     let mut cands: Vec<PathBuf> = aiq_core::copilot_seen::read(paths).map(|s| s.copilot_programs()).unwrap_or_default();
+    // Then Copilot CLI's own install folder, where its self-update puts the program (DC-068).
+    for c in aiq_core::copilot_seen::installed_versions() {
+        if !cands.contains(&c) {
+            cands.push(c);
+        }
+    }
     let last = std::fs::read_to_string(&cache).ok().map(|t| PathBuf::from(t.trim())).filter(|p| p.is_file());
     for c in last.into_iter().chain(exe_candidates("copilot", std::env::var_os("PATH"), &copilot_install_dirs())) {
         if !cands.contains(&c) {
             cands.push(c);
         }
     }
-    let (pick, works) = pick_working(&cands, answers_version)?;
+    let log = paths.data.join("judge.log");
+    let (pick, works) = pick_working(&cands, |c| {
+        let (works, how) = answers_version(c);
+        let _ = bounded_append(&log, &format!("copilot-check {} works={works} {how}", c.display()), LOG_MAX);
+        works
+    })?;
     if works {
         let _ = std::fs::write(&cache, pick.display().to_string());
     } else {
@@ -3035,6 +3057,10 @@ mod tests {
         std::fs::write(&real, "#!/bin/sh\necho 'GitHub Copilot CLI was not found.'\nexit 1\n").unwrap();
         assert_eq!(find_copilot(&paths), Some(real.clone()), "its own words still reach the call");
         assert!(!cache.exists(), "a pick that doesn't work is never kept");
+        // Each check is in judge.log (the diagnostics file carries it), so why a pick was made is measured.
+        let log = std::fs::read_to_string(paths.data.join("judge.log")).unwrap();
+        assert!(log.contains(&format!("copilot-check {} works=true exit=0", real.display())), "{log}");
+        assert!(log.contains("works=false exit=1") && log.contains("Copilot CLI was not found"), "{log}");
     }
 
     #[test]

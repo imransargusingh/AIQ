@@ -1219,3 +1219,18 @@ summary: >-
   `pick_working` cases.
 - **Rule:** keep every program that is known to work, and let only a newer working one move it down the list. Check
   every pick, even a lone one, and never keep a pick that failed its check.
+### DC-068 — Copilot updates itself and AIQ loses it
+- **Signature:** 2026-11-13, Imran's Devbox diagnostics (0.1.54). The hook saw
+  `%USERPROFILE%\.copilot-cli\1.0.108\copilot.exe.old-40784-1794526599041` at 23:36:51Z. The suffix's time is
+  23:36:39Z, which is Copilot CLI renaming its running program during a self-update. AIQ refused that name because it
+  isn't `copilot`. The only `copilot` files on PATH were VS Code's `copilot-shim` stand-ins. Every analysis call from
+  00:48Z failed `missing`. DC-067's fix (#272) shipped too late to have kept the old path.
+- **Why it survives:** the tests used tidy names. Nobody had looked at what a self-updating program's path is while
+  it runs.
+- **Sweep:** every reader of a hook-seen path (`copilot_exe`, `copilot_programs`, `record`) undoes the rename.
+  `find_copilot` also looks in Copilot CLI's own `~/.copilot-cli/<version>/` folders, newest first. Claude Code's
+  finder reads PATH only and has no such report.
+- **Control (tests):** `a_hook_from_another_loader_never_erases_the_copilot_that_worked` (rename undone, versions
+  newest first); every candidate check is logged to judge.log (`copilot-check …`), so the next case is measured.
+- **Rule:** a path read from a running process can be mid-update. Map it back to the program's stable name, and also
+  look where the tool installs itself.
