@@ -2025,3 +2025,27 @@ fn a_sub_agents_brief_and_tool_written_prompts_are_not_counted() {
     let reason = h.svc().store().set_aside_reason("copilot-cli", child).unwrap();
     assert_eq!(reason.as_deref(), Some("agent"));
 }
+
+// Laptop 2026-11-12: 25 Claude Code prompts were `<wake …>` envelopes around the person's own message (stored and
+// shown as XML), and 13 were envelopes with no message from a person (relays, a task notification, a scheduled task).
+#[test]
+fn an_envelope_is_stored_as_the_persons_words_and_one_without_them_is_not_typed() {
+    let mut h = H::new();
+    h.send(
+        "rc1",
+        "<wake reason=\"mention\" current-time=\"2026-11-12T22:33:10Z\">\n  <project id=\"p\">\n    <thread ts=\"t\">\n      <message trigger=\"true\" from=\"human\" trust=\"principal\" id=\"m1\">why does it say &#34;Sign in&#34;?</message>\n    </thread>\n  </project>\n</wake>",
+    );
+    assert_eq!(h.prompts(), 1, "the person's message counts");
+    let (text, chars): (String, i64) = h
+        .svc()
+        .store()
+        .raw()
+        .query_row("SELECT c.text, e.prompt_chars FROM event e JOIN content c ON c.event_id = e.event_id", [], |r| {
+            Ok((r.get(0)?, r.get(1)?))
+        })
+        .unwrap();
+    assert_eq!((text.as_str(), chars), ("why does it say \"Sign in\"?", 26), "stored as the person's own words");
+    h.send("rc1", "<relay from=\"coordinator\"><note>Check the laptop store.</note></relay>");
+    h.send("rc1", "<task-notification> <task-id>b5</task-id> </task-notification>");
+    assert_eq!(h.prompts(), 1, "envelopes with no message from a person are not typed");
+}

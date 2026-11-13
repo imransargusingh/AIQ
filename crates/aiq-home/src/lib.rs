@@ -1567,10 +1567,10 @@ fn task_list(store: &Store, pack: &PackV1, window_start: i64, aside: &BTreeSet<&
 /// Leaves out live prompts no person typed, with the core's ingest rules (`aiq_domain::automated`), so rows stored
 /// before those rules, or synced from a computer running an older AIQ, are not the person's tasks either: a prompt
 /// the tool wrote (rule TOOL), and every prompt of a session whose first prompt names another session AIQ has on the
-/// same tool (rule AGENT: a sub-agent's brief). Measured 2026-11-12: 104 of 138 Devbox tasks were sub-agent briefs
+/// same tool (rule AGENT: a sub-agent's brief), and an envelope with no message from a person (rule WRAP). Measured 2026-11-12: 104 of 138 Devbox tasks were sub-agent briefs
 /// and 11 more opened with a notification or a scheduled prompt.
 fn not_typed_out(store: &Store, rows: &mut Vec<LiveRow>) -> R<()> {
-    use aiq_domain::automated::{named_sessions, written_by_tool};
+    use aiq_domain::automated::{named_sessions, person_words, written_by_tool};
     let mut known: BTreeSet<(String, String)> = BTreeSet::new();
     {
         let mut st = q(store.raw().prepare("SELECT surface, lower(surface_session_id) FROM surface_session"))?;
@@ -1591,8 +1591,17 @@ fn not_typed_out(store: &Store, rows: &mut Vec<LiveRow>) -> R<()> {
         }
     }
     rows.retain(|(_, surface, session, _, _, text, _)| {
-        !text.as_deref().is_some_and(written_by_tool) && !agent.contains(&(surface.clone(), session.clone()))
+        !text.as_deref().is_some_and(|t| written_by_tool(t) || person_words(t).is_none())
+            && !agent.contains(&(surface.clone(), session.clone()))
     });
+    // Rule WRAP: rows stored before it show and are read as the person's own words.
+    for row in rows.iter_mut() {
+        if let Some(t) = row.5.as_deref()
+            && let Some(std::borrow::Cow::Owned(w)) = person_words(t)
+        {
+            row.5 = Some(w);
+        }
+    }
     Ok(())
 }
 

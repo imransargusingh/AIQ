@@ -1167,7 +1167,24 @@ summary: >-
   `python -`, `python -c`, a quoted data script, `echo '<path>'`). Fact set fs4; the replay gate shows no golden move.
 - **Rule:** test the command reader against the shell forms the person's own OS uses (PowerShell call operator,
   quoted paths with spaces), not only bare program names.
-### DC-065 — Analysis stops and the only sign is a grey line nobody reads
+
+### DC-065 — A prompt wrapped in an envelope is shown and analyzed as markup
+- **Signature:** 2026-11-12, Imran's laptop. 25 Claude Code prompts start with a `<wake reason=…>` envelope that
+  carries the person's own message (`from="human"`). AIQ counted them as his turns (correct) but stored, titled,
+  showed and analyzed the whole XML. 13 more envelopes (`<relay`, `<task-notification`, `<scheduled-task`, a project
+  brief) carry no message from him at all and were still counted as typed turns.
+- **Why it survives:** `text::own_words` already unwrapped envelopes, but only the label and tip funnel called it.
+  The store, task list, task page and analysis each read the raw text, and no test seeded an envelope through them.
+- **Sweep:** one helper, `automated::person_words`, now feeds every reader: the core's record path (stored text and
+  length), the TOOL rule (no human words = not typed), Home's task list, the task page, and the analysis turns.
+  Rows stored before the fix are unwrapped at read time. Not covered yet: `session_events` (live trend) and
+  `prompts_for_rebuild` read raw text; `tacit:` hook text and mid-session agent messages are not envelopes.
+- **Control (tests):** `an_envelope_counts_only_the_persons_own_words` (domain),
+  `an_envelope_is_stored_as_the_persons_words_and_one_without_them_is_not_typed` (core),
+  `an_envelope_shows_the_persons_words_and_one_without_them_is_not_a_task` (Home snapshot + task page).
+- **Rule:** when a text-normalising helper exists, every reader of that text goes through it; grep the readers, not
+  only the feature that found the bug.
+### DC-066 — Analysis stops and the only sign is a grey line nobody reads
 - **Signature:** 2026-11-12, Imran's laptop. The Claude Code sign-in expired at 15:10Z. From then on, 47 analysis
   calls failed `not_signed_in` (AIQ-JUDGE-SIGNIN). Nobody noticed for about 7 hours, until a release check read
   judge.log. Home had 848 tasks, so the first-run "Analysis can't run" card (#140) was not shown. The only signal was

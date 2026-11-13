@@ -711,7 +711,18 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <p>with <code>-B -m unittest</code>, quoted path with spaces, <code>&quot;$VENV/bin/pytest&quot;</code>, quoted <code>Test-*.ps1</code>; still no for <code>python -</code>, <code>python -c</code>, a quoted data script, <code>echo &#x27;&lt;path&gt;&#x27;</code>). Fact set fs4; the replay gate shows no golden move.</p>
 <ul><li><strong>Rule:</strong> test the command reader against the shell forms the person&#x27;s own OS uses (PowerShell call operator,</li></ul>
 <p>quoted paths with spaces), not only bare program names.</p>
-<h3>DC-065 — Analysis stops and the only sign is a grey line nobody reads</h3>
+<h3>DC-065 — A prompt wrapped in an envelope is shown and analyzed as markup</h3>
+<ul><li><strong>Signature:</strong> 2026-11-12, Imran&#x27;s laptop. 25 Claude Code prompts start with a <code>&lt;wake reason=…&gt;</code> envelope that</li></ul>
+<p>carries the person&#x27;s own message (<code>from=&quot;human&quot;</code>). AIQ counted them as his turns (correct) but stored, titled, showed and analyzed the whole XML. 13 more envelopes (<code>&lt;relay</code>, <code>&lt;task-notification</code>, <code>&lt;scheduled-task</code>, a project brief) carry no message from him at all and were still counted as typed turns.</p>
+<ul><li><strong>Why it survives:</strong> <code>text::own_words</code> already unwrapped envelopes, but only the label and tip funnel called it.</li></ul>
+<p>The store, task list, task page and analysis each read the raw text, and no test seeded an envelope through them.</p>
+<ul><li><strong>Sweep:</strong> one helper, <code>automated::person_words</code>, now feeds every reader: the core&#x27;s record path (stored text and</li></ul>
+<p>length), the TOOL rule (no human words = not typed), Home&#x27;s task list, the task page, and the analysis turns. Rows stored before the fix are unwrapped at read time. Not covered yet: <code>session_events</code> (live trend) and <code>prompts_for_rebuild</code> read raw text; <code>tacit:</code> hook text and mid-session agent messages are not envelopes.</p>
+<ul><li><strong>Control (tests):</strong> <code>an_envelope_counts_only_the_persons_own_words</code> (domain),</li></ul>
+<p><code>an_envelope_is_stored_as_the_persons_words_and_one_without_them_is_not_typed</code> (core), <code>an_envelope_shows_the_persons_words_and_one_without_them_is_not_a_task</code> (Home snapshot + task page).</p>
+<ul><li><strong>Rule:</strong> when a text-normalising helper exists, every reader of that text goes through it; grep the readers, not</li></ul>
+<p>only the feature that found the bug.</p>
+<h3>DC-066 — Analysis stops and the only sign is a grey line nobody reads</h3>
 <ul><li><strong>Signature:</strong> 2026-11-12, Imran&#x27;s laptop. The Claude Code sign-in expired at 15:10Z. From then on, 47 analysis</li></ul>
 <p>calls failed <code>not_signed_in</code> (AIQ-JUDGE-SIGNIN). Nobody noticed for about 7 hours, until a release check read judge.log. Home had 848 tasks, so the first-run &quot;Analysis can&#x27;t run&quot; card (#140) was not shown. The only signal was one grey line under the rung. Nothing appeared on other pages, on the Copilot CLI status line or in VS Code.</p>
 <ul><li><strong>Why it survives:</strong> the blocked state was designed and tested for the first run only. Its card sits in a slot that</li></ul>

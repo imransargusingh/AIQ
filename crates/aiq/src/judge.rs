@@ -761,6 +761,8 @@ pub fn task_turns(store: &Store, homes: &Homes, t: &TaskRow) -> aiq_store::Resul
                 .flatten(),
             None => c.query_row("SELECT text FROM content WHERE event_id = ?1", [id], |r| r.get(0)).ok(),
         };
+        // Rule WRAP: an envelope stored before it is read as the person's own words; one with none is not a turn.
+        let text = text.and_then(|t| aiq_domain::automated::person_words(&t).map(|w| w.into_owned()));
         if let Some(text) = text.filter(|t| !t.trim().is_empty()) {
             turns.push(Turn { at_ms: *at, prompt: text, actions: None });
         }
