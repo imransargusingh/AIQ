@@ -732,4 +732,15 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <ul><li><strong>Control (tests):</strong> <code>a_tool_is_down_from_the_first_of_its_unbroken_signed_out_calls_and_up_after_one_good_call</code></li></ul>
 <p>(store), <code>copilot_status_line_says_analysis_is_stuck_until_the_tool_is_signed_in_again</code> (core), e2e &quot;an expired sign-in shows on every page of a settled install, with since when and the one button&quot;.</p>
 <ul><li><strong>Rule:</strong> a state that stops analysis or tips must show on every page and where the person works, with since when</li></ul>
-<p>and the one thing to do. It must also be tested on a settled install, not only a fresh one.</p></main></body></html>
+<p>and the one thing to do. It must also be tested on a settled install, not only a fresh one.</p>
+<h3>DC-067 — One hook from another program makes AIQ forget the Copilot that worked</h3>
+<ul><li><strong>Signature:</strong> 2026-11-13, Imran&#x27;s Devbox (0.1.52), read on the laptop after sync. On 11-12, 120 Copilot analysis</li></ul>
+<p>calls were answered, the last at 21:15Z. From 00:48Z, every call failed <code>missing</code> in about 110 ms, which is the stand-in <code>copilot</code> on PATH (DC-055) again. Copilot CLI was running hooks the whole time. Home&#x27;s new banner said &quot;AIQ can&#x27;t find Copilot CLI&quot;.</p>
+<ul><li><strong>Why it survives:</strong> <code>copilot-seen.json</code> held only the newest hook&#x27;s loader program. A hook from a loader that</li></ul>
+<p>isn&#x27;t <code>copilot</code> (a Node runtime, or a Copilot that moved after updating itself) replaced the good path. With it gone, the only candidate was the PATH stand-in, and <code>pick_working</code> returned a lone candidate without checking it. Inferred from the code; the Devbox&#x27;s file was not read.</p>
+<ul><li><strong>Sweep:</strong> every reader of the hook-seen path (<code>find_copilot</code>, the only caller of <code>copilot_exe</code>); every place a</li></ul>
+<p>pick is kept (<code>copilot-exe.txt</code>, written only by <code>find_copilot</code>). The Claude Code finder (<code>find_exe(&quot;claude&quot;)</code>) keeps no pick and has no stand-in reported.</p>
+<ul><li><strong>Control (tests):</strong> <code>a_hook_from_another_loader_never_erases_the_copilot_that_worked</code> (core),</li></ul>
+<p><code>analysis_keeps_calling_the_copilot_a_hook_ran_from_and_never_keeps_a_broken_pick</code>, and the updated <code>pick_working</code> cases.</p>
+<ul><li><strong>Rule:</strong> keep every program that is known to work, and let only a newer working one move it down the list. Check</li></ul>
+<p>every pick, even a lone one, and never keep a pick that failed its check.</p></main></body></html>
