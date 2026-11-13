@@ -410,6 +410,25 @@ fn a_tool_is_down_from_the_first_of_its_unbroken_signed_out_calls_and_up_after_o
     assert!(s.tools_down().unwrap().is_empty());
 }
 
+/// DC-075 (laptop 2026-11-13): 2,136 failed Devbox calls on laptop task ids, synced in, gave up on 135 laptop tasks
+/// (6 failures each), so the laptop never re-analyzed them. Only this computer's calls reach the queue and budget.
+#[test]
+fn another_computers_calls_never_count_against_this_computers_tasks() {
+    let (_d, s) = open();
+    s.insert_judge_call(&call("c1", "t1", 100, "error")).unwrap();
+    for i in 0..6 {
+        s.raw()
+            .execute(
+                "INSERT INTO judge_call (call_id, task_id, run, provider, started_utc_ms, latency_ms, outcome, input_chars,
+                   computer) VALUES (?1, 't2', 1, 'copilot-cli', ?2, 10, 'error', 1, 'devbox')",
+                rusqlite::params![format!("x{i}"), 200 + i],
+            )
+            .unwrap();
+    }
+    let calls = s.judge_calls_since(0).unwrap();
+    assert_eq!(calls.iter().map(|c| c.task_id.as_str()).collect::<Vec<_>>(), ["t1"], "the Devbox's six are left out");
+}
+
 // ------------------------------------------------------------ schema v6 (coaching from rung results)
 
 #[test]
