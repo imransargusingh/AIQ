@@ -176,7 +176,8 @@ pub(crate) const COPILOT_PICK: &str = "copilot-exe.txt";
 /// The Copilot CLI AIQ calls. A stand-in `copilot` earlier on PATH (one that only installs the real CLI from a
 /// terminal) answered every call "was not found" on a second install (DC-055), so AIQ checks each `copilot` it
 /// can find and keeps the first that works: first the Copilot programs AIQ's hooks ran from, newest first (DC-056,
-/// DC-067), then the last pick that worked, then PATH, then the install folders. A pick that works is kept for a
+/// DC-067, with a self-update's rename undone, DC-068), then Copilot CLI's own `~/.copilot-cli/<version>` folders,
+/// then the last pick that worked, then PATH, then the install folders. A pick that works is kept for a
 /// day in `copilot-exe.txt`, so a label call doesn't pay for the check; one that doesn't is never kept, so the
 /// next call checks again.
 pub(crate) fn find_copilot(paths: &Paths) -> Option<PathBuf> {
@@ -200,6 +201,12 @@ pub(crate) fn find_copilot(paths: &Paths) -> Option<PathBuf> {
     }
     // The Copilot that runs AIQ's hooks comes first: it is the one that works for the person (DC-056).
     let mut cands: Vec<PathBuf> = aiq_core::copilot_seen::read(paths).map(|s| s.copilot_programs()).unwrap_or_default();
+    // Then Copilot CLI's own install folder, where its self-update puts the program (DC-068).
+    for c in aiq_core::copilot_seen::installed_versions() {
+        if !cands.contains(&c) {
+            cands.push(c);
+        }
+    }
     let last = std::fs::read_to_string(&cache).ok().map(|t| PathBuf::from(t.trim())).filter(|p| p.is_file());
     for c in last.into_iter().chain(exe_candidates("copilot", std::env::var_os("PATH"), &copilot_install_dirs())) {
         if !cands.contains(&c) {

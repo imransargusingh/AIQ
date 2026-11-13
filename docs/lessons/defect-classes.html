@@ -743,4 +743,15 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <ul><li><strong>Control (tests):</strong> <code>a_hook_from_another_loader_never_erases_the_copilot_that_worked</code> (core),</li></ul>
 <p><code>analysis_keeps_calling_the_copilot_a_hook_ran_from_and_never_keeps_a_broken_pick</code>, and the updated <code>pick_working</code> cases.</p>
 <ul><li><strong>Rule:</strong> keep every program that is known to work, and let only a newer working one move it down the list. Check</li></ul>
-<p>every pick, even a lone one, and never keep a pick that failed its check.</p></main></body></html>
+<p>every pick, even a lone one, and never keep a pick that failed its check.</p>
+<h3>DC-068 — Copilot updates itself and AIQ loses it</h3>
+<ul><li><strong>Signature:</strong> 2026-11-13, Imran&#x27;s Devbox diagnostics (0.1.54). The hook saw</li></ul>
+<p><code>%USERPROFILE%\.copilot-cli\1.0.108\copilot.exe.old-40784-1794526599041</code> at 23:36:51Z. The suffix&#x27;s time is 23:36:39Z, which is Copilot CLI renaming its running program during a self-update. AIQ refused that name because it isn&#x27;t <code>copilot</code>. The only <code>copilot</code> files on PATH were VS Code&#x27;s <code>copilot-shim</code> stand-ins. Every analysis call from 00:48Z failed <code>missing</code>. DC-067&#x27;s fix (#272) shipped too late to have kept the old path.</p>
+<ul><li><strong>Why it survives:</strong> the tests used tidy names. Nobody had looked at what a self-updating program&#x27;s path is while</li></ul>
+<p>it runs.</p>
+<ul><li><strong>Sweep:</strong> every reader of a hook-seen path (<code>copilot_exe</code>, <code>copilot_programs</code>, <code>record</code>) undoes the rename.</li></ul>
+<p><code>find_copilot</code> also looks in Copilot CLI&#x27;s own <code>~/.copilot-cli/&lt;version&gt;/</code> folders, newest first. Claude Code&#x27;s finder reads PATH only and has no such report.</p>
+<ul><li><strong>Control (tests):</strong> <code>a_hook_from_another_loader_never_erases_the_copilot_that_worked</code> (rename undone, versions</li></ul>
+<p>newest first); every candidate check is logged to judge.log (<code>copilot-check …</code>), so the next case is measured.</p>
+<ul><li><strong>Rule:</strong> a path read from a running process can be mid-update. Map it back to the program&#x27;s stable name, and also</li></ul>
+<p>look where the tool installs itself.</p></main></body></html>
