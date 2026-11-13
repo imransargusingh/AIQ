@@ -151,12 +151,22 @@ pub(crate) fn pick_working(cands: &[PathBuf], works: impl Fn(&Path) -> bool) -> 
     }
 }
 
-fn answers_version(exe: &Path) -> bool {
+/// Whether `exe --version` answers without saying it isn't installed, with one line saying what it did: the exit
+/// code, how long it took and the start of its own words. judge.log keeps the line, and the diagnostics file carries
+/// judge.log, so why a pick was made is measured, never guessed (DC-067).
+fn answers_version(exe: &Path) -> (bool, String) {
     let mut c = Command::new(exe);
     c.arg("--version");
     match run_child(c, "", Duration::from_secs(15)) {
-        Ok(r) => r.status == Some(0) && !says_not_found(&format!("{} {}", r.stdout, r.stderr)),
-        Err(_) => false,
+        Ok(r) => {
+            let said = format!("{} {}", r.stdout, r.stderr);
+            let works = !r.timed_out && r.status == Some(0) && !says_not_found(&said);
+            let words: String = said.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(100).collect();
+            let exit =
+                if r.timed_out { "timeout".to_owned() } else { r.status.map_or("none".into(), |c| c.to_string()) };
+            (works, format!("exit={exit} ms={} said={words:?}", r.ms))
+        }
+        Err(e) => (false, format!("exit=start-failed said={:?}", e.to_string())),
     }
 }
 
@@ -196,7 +206,12 @@ pub(crate) fn find_copilot(paths: &Paths) -> Option<PathBuf> {
             cands.push(c);
         }
     }
-    let (pick, works) = pick_working(&cands, answers_version)?;
+    let log = paths.data.join("judge.log");
+    let (pick, works) = pick_working(&cands, |c| {
+        let (works, how) = answers_version(c);
+        let _ = bounded_append(&log, &format!("copilot-check {} works={works} {how}", c.display()), LOG_MAX);
+        works
+    })?;
     if works {
         let _ = std::fs::write(&cache, pick.display().to_string());
     } else {
@@ -3035,6 +3050,10 @@ mod tests {
         std::fs::write(&real, "#!/bin/sh\necho 'GitHub Copilot CLI was not found.'\nexit 1\n").unwrap();
         assert_eq!(find_copilot(&paths), Some(real.clone()), "its own words still reach the call");
         assert!(!cache.exists(), "a pick that doesn't work is never kept");
+        // Each check is in judge.log (the diagnostics file carries it), so why a pick was made is measured.
+        let log = std::fs::read_to_string(paths.data.join("judge.log")).unwrap();
+        assert!(log.contains(&format!("copilot-check {} works=true exit=0", real.display())), "{log}");
+        assert!(log.contains("works=false exit=1") && log.contains("Copilot CLI was not found"), "{log}");
     }
 
     #[test]
