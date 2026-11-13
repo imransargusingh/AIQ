@@ -1235,7 +1235,30 @@ summary: >-
 - **Rule:** a path read from a running process can be mid-update. Map it back to the program's stable name, and also
   look where the tool installs itself.
 
-### DC-069 — Two surfaces read two states and contradict each other
+### DC-069 — A test that watches a log blocks the writes it is waiting for
+- **Signature:** 2026-11-13, release run 43359642603 (0.1.55), Windows auto-update smoke step: "core that came back
+  by itself was not seen". upgrade.ps1 printed "Rolled back to AIQ" at 03:41:08.39Z. The test's stand-in hook, which
+  polls upgrade-log.txt every 200 ms, started its core only at 03:41:24.63Z. That is 0.18 s after upgrade.ps1's next
+  log line (03:41:24.45Z) and 0.18 s too late. The next line is the one that brings a held line back
+  (AIQ-UPDATE-LOG-HELD, #237). So the rollback line could not be appended while the hook was reading the file, waited
+  in upgrade-log-held.txt, and reached upgrade-log.txt 16 s late. The same step failed the same way on 2026-11-07
+  ("Stream was not readable" right after a rollback, 0.1.15), which is why Log retries. The re-run passed. 1 of the
+  last 40 release runs failed.
+- **Why it survives:** the hook read the log with `Select-String`, whose open in Windows PowerShell can conflict with
+  `Add-Content`. Each collision is short, so it fails rarely. A delayed line is correct product behaviour (nothing is
+  lost), so only a watcher with a deadline notices. Inferred, not measured: exactly which open denies which; the
+  timing above is measured.
+- **Sweep:** release.yml and packaging/windows/tests: the hook is the only reader of a log while upgrade.ps1 is still
+  running. Every other check reads after the run has exited. Product readers (`aiq status`, scanners, a tail) can
+  delay a line the same way. The line is held, not lost, but a held line that is a run's last line waits for the
+  next run's first line. Not changed here.
+- **Control (test):** the hook now reads with share Read+Write+Delete through `IO.File.Open`, reads
+  upgrade-log-held.txt too, and records where it saw the line and how many reads failed. On failure the step prints
+  the log's last lines with their write times and the held file, so the next failure is measured.
+- **Rule:** a watcher must never be able to block the writer it watches. Read with full sharing, and read every place
+  the writer can put the record (here, the held file too).
+
+### DC-070 — Two surfaces read two states and contradict each other
 - **Signature:** 2026-11-13, Imran's Devbox (0.1.54). The banner said "AIQ can't find Copilot CLI, so it can't
   analyze your tasks" while the sidebar said "Connected: Copilot, VS Code" with a green dot. Both were true: the
   sidebar read the hooks (`setup.tools`), the banner read analysis (`home.analysis.blocked`). Side by side they read

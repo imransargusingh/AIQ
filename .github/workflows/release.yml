@@ -320,15 +320,30 @@ jobs:
           $hookPs = Join-Path $env:RUNNER_TEMP 'hook.ps1'
           Set-Content -Path $hookPs -Value @'
           param($ulog, $exe, $out, [int]$before)
+          # Read without ever blocking upgrade.ps1's own writes (share Read+Write+Delete, never Select-String's
+          # open), and read upgrade-log-held.txt too. Release run 43359642603 (0.1.55, 2026-11-13): this hook's
+          # reads made the "Rolled back" append fail, the line waited in upgrade-log-held.txt (AIQ-UPDATE-LOG-HELD)
+          # until upgrade.ps1's next line 16 s later, and the hook started its core 0.18 s after that, too late.
+          $held = Join-Path (Split-Path $ulog) 'upgrade-log-held.txt'
+          $readErrors = 0
+          function Count-Rolled([string]$path) {
+            if (-not (Test-Path $path)) { return 0 }
+            $fs = [IO.File]::Open($path, 'Open', 'Read', [IO.FileShare]'ReadWrite, Delete')
+            try { $text = (New-Object IO.StreamReader($fs)).ReadToEnd() } finally { $fs.Dispose() }
+            ([regex]::Matches($text, 'Rolled back to AIQ')).Count
+          }
           foreach ($i in 1..150) {
-            if (@(Select-String -Path $ulog -Pattern 'Rolled back to AIQ').Count -gt $before) {
+            $inLog = 0; $inHeld = 0
+            try { $inLog = Count-Rolled $ulog; $inHeld = Count-Rolled $held } catch { $readErrors++ }
+            if ($inLog + $inHeld -gt $before) {
               Start-Process -WindowStyle Hidden -FilePath $exe -ArgumentList 'core'
-              Add-Content -Path $out -Value "started the core at $((Get-Date).ToUniversalTime().ToString('o'))"
+              $where = if ($inLog -gt $before) { 'upgrade-log.txt' } else { 'upgrade-log-held.txt' }
+              Add-Content -Path $out -Value "started the core at $((Get-Date).ToUniversalTime().ToString('o')) (line seen in $where; $readErrors failed reads)"
               return
             }
             Start-Sleep -Milliseconds 200
           }
-          Add-Content -Path $out -Value 'never saw the rollback line'
+          Add-Content -Path $out -Value "never saw the rollback line ($readErrors failed reads)"
           '@
           # The earlier smoke step rolled back too, so the hook waits for a new "Rolled back" line, not any (main f2b8c3f:
           # it saw the old line, started its core before this rollback stopped AIQ, and the rollback stopped it).
@@ -340,6 +355,9 @@ jobs:
           if (-not (Select-String -Quiet -Path $ulog -Pattern 'AIQ-UPDATE-CORE: the AIQ core was already running again\.')) {
             Get-Content $hookLog -ErrorAction SilentlyContinue
             Get-CimInstance Win32_Process -Filter "Name='aiq.exe'" | ForEach-Object { "$($_.ProcessId) $($_.CommandLine)" }
+            # The file lines carry their own write time, so a late or held line shows (Write-Host does not).
+            Get-Content $ulog -Tail 12 -ErrorAction SilentlyContinue
+            Get-Content (Join-Path $aiq 'upgrade-log-held.txt') -ErrorAction SilentlyContinue
             Fail 'core that came back by itself was not seen'
           }
           if (-not (Select-String -Quiet -Path $ulog -Pattern 'AIQ-UPDATE-HOME: could not start AIQ home')) { Fail 'refused AIQ home start not logged' }

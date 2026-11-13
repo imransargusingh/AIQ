@@ -755,7 +755,18 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <p>newest first); every candidate check is logged to judge.log (<code>copilot-check …</code>), so the next case is measured.</p>
 <ul><li><strong>Rule:</strong> a path read from a running process can be mid-update. Map it back to the program&#x27;s stable name, and also</li></ul>
 <p>look where the tool installs itself.</p>
-<h3>DC-069 — Two surfaces read two states and contradict each other</h3>
+<h3>DC-069 — A test that watches a log blocks the writes it is waiting for</h3>
+<ul><li><strong>Signature:</strong> 2026-11-13, release run 43359642603 (0.1.55), Windows auto-update smoke step: &quot;core that came back</li></ul>
+<p>by itself was not seen&quot;. upgrade.ps1 printed &quot;Rolled back to AIQ&quot; at 03:41:08.39Z. The test&#x27;s stand-in hook, which polls upgrade-log.txt every 200 ms, started its core only at 03:41:24.63Z. That is 0.18 s after upgrade.ps1&#x27;s next log line (03:41:24.45Z) and 0.18 s too late. The next line is the one that brings a held line back (AIQ-UPDATE-LOG-HELD, #237). So the rollback line could not be appended while the hook was reading the file, waited in upgrade-log-held.txt, and reached upgrade-log.txt 16 s late. The same step failed the same way on 2026-11-07 (&quot;Stream was not readable&quot; right after a rollback, 0.1.15), which is why Log retries. The re-run passed. 1 of the last 40 release runs failed.</p>
+<ul><li><strong>Why it survives:</strong> the hook read the log with <code>Select-String</code>, whose open in Windows PowerShell can conflict with</li></ul>
+<p><code>Add-Content</code>. Each collision is short, so it fails rarely. A delayed line is correct product behaviour (nothing is lost), so only a watcher with a deadline notices. Inferred, not measured: exactly which open denies which; the timing above is measured.</p>
+<ul><li><strong>Sweep:</strong> release.yml and packaging/windows/tests: the hook is the only reader of a log while upgrade.ps1 is still</li></ul>
+<p>running. Every other check reads after the run has exited. Product readers (<code>aiq status</code>, scanners, a tail) can delay a line the same way. The line is held, not lost, but a held line that is a run&#x27;s last line waits for the next run&#x27;s first line. Not changed here.</p>
+<ul><li><strong>Control (test):</strong> the hook now reads with share Read+Write+Delete through <code>IO.File.Open</code>, reads</li></ul>
+<p>upgrade-log-held.txt too, and records where it saw the line and how many reads failed. On failure the step prints the log&#x27;s last lines with their write times and the held file, so the next failure is measured.</p>
+<ul><li><strong>Rule:</strong> a watcher must never be able to block the writer it watches. Read with full sharing, and read every place</li></ul>
+<p>the writer can put the record (here, the held file too).</p>
+<h3>DC-070 — Two surfaces read two states and contradict each other</h3>
 <ul><li><strong>Signature:</strong> 2026-11-13, Imran&#x27;s Devbox (0.1.54). The banner said &quot;AIQ can&#x27;t find Copilot CLI, so it can&#x27;t</li></ul>
 <p>analyze your tasks&quot; while the sidebar said &quot;Connected: Copilot, VS Code&quot; with a green dot. Both were true: the sidebar read the hooks (<code>setup.tools</code>), the banner read analysis (<code>home.analysis.blocked</code>). Side by side they read as a contradiction, and &quot;can&#x27;t find&quot; was wrong for a tool that was plainly running.</p>
 <ul><li><strong>Why it survives:</strong> each surface was tested alone. No test put the two states side by side.</li><li><strong>Sweep:</strong> surfaces that show a tool&#x27;s state: sidebar foot, banner, Settings tool rows, task page, Getting started.</li></ul>
