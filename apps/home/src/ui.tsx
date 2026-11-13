@@ -84,6 +84,26 @@ export function Title({ children, sr = false }: { children: ReactNode; sr?: bool
 
 const TOOL_NAME = { "copilot-cli": "Copilot CLI", "claude-code": "Claude Code" } as const;
 const SIGN_IN_NAME = { "copilot-cli": "Copilot", "claude-code": "Claude Code" } as const;
+/** The connected tools whose tasks each analysis tool analyzes (aiq-home `analysis_provider`). */
+const ANALYZES = { "copilot-cli": ["copilot", "vscode"], "claude-code": ["claude-code"] } as const;
+
+/** Analysis is stuck for a tool, read once from `home.analysis` so the banner, the sidebar and Settings never
+ *  disagree (Imran 2026-11-13: "Connected: Copilot" with a green dot beside "AIQ can't find Copilot CLI").
+ *  Null while paused: the paused banner says why nothing runs. */
+export function stuck(snap: Ctx["snap"]) {
+  const a = snap.home.analysis;
+  if (snap.status.paused || a.state !== "blocked" || !a.blocked) return null;
+  const b = a.blocked;
+  const out = b.why === "not_signed_in";
+  return {
+    ...b,
+    out,
+    /** The setup tools (copilot, vscode, claude-code) whose tasks wait on it. */
+    tools: ANALYZES[b.tool] as readonly string[],
+    /** One short line: the sidebar and the Settings rows. */
+    short: out ? `${TOOL_NAME[b.tool]} signed out` : `can't run ${TOOL_NAME[b.tool]}`,
+  };
+}
 
 /** "14:05 today", "09:12 yesterday", "Sat 31 Oct 18:40". */
 function sinceWords(ms: number, nowMs: number, offsetMin: number): string {
@@ -93,9 +113,11 @@ function sinceWords(ms: number, nowMs: number, offsetMin: number): string {
 /** Analysis can't run because the tool it goes through is signed out or missing: on every page, until it runs again. */
 function AnalysisBlocked({ snap, announce }: Pick<Ctx, "snap" | "announce">) {
   const a = snap.home.analysis;
-  const b = a.blocked;
-  if (a.state !== "blocked" || !b) return null;
-  const out = b.why === "not_signed_in";
+  const b = stuck(snap);
+  if (!b) return null;
+  const out = b.out;
+  // The tool still sends AIQ its sessions; only AIQ's own call to it fails.
+  const live = snap.setup.tools.some((t) => t.hooked && t.present && b.tools.includes(t.tool));
   const act = async () => {
     const r = out ? await api.openSignIn(b.tool) : await api.openHelp(b.tool);
     announce(r.ok ? (out ? `Opened ${SIGN_IN_NAME[b.tool]}. Type /login there; AIQ picks up by itself.` : "Opened the install page.") : r.message);
@@ -103,12 +125,14 @@ function AnalysisBlocked({ snap, announce }: Pick<Ctx, "snap" | "announce">) {
   return (
     <div className="banner" role="alert" data-testid="analysis-blocked">
       <div className="grow">
-        <b>{out ? `${TOOL_NAME[b.tool]} is signed out, so AIQ can't analyze your tasks.` : `AIQ can't find ${TOOL_NAME[b.tool]}, so it can't analyze your tasks.`}</b>{" "}
+        <b>{out ? `${TOOL_NAME[b.tool]} is signed out, so AIQ can't analyze your tasks.` : `AIQ can't run ${TOOL_NAME[b.tool]}, so it can't analyze your tasks.`}</b>{" "}
         Since {sinceWords(b.since_ms, snap.now_ms, snap.offset_min)}.{" "}
         {plural(a.waiting, "task")} wait.{" "}
         {out
           ? "A window that is already open can keep working; AIQ needs a fresh sign-in. Sign in once and AIQ catches up by itself."
-          : "Install it and AIQ catches up by itself."}
+          : live
+            ? `Your sessions still reach AIQ. Open ${TOOL_NAME[b.tool]} once, or reinstall it, and AIQ catches up by itself.`
+            : "Install it and AIQ catches up by itself."}
       </div>
       <button className="btn pri" onClick={act}>{out ? `Sign in to ${SIGN_IN_NAME[b.tool]}` : `Get ${TOOL_NAME[b.tool]}`}</button>
     </div>
@@ -120,7 +144,7 @@ export function Banners({ snap, togglePause, refresh, announce }: Pick<Ctx, "sna
   const s = snap.status;
   return (
     <>
-      {!s.paused && <AnalysisBlocked snap={snap} announce={announce} />}
+      <AnalysisBlocked snap={snap} announce={announce} />
       {s.error && (
         <div className="banner bad" role="alert">
           <div className="grow">

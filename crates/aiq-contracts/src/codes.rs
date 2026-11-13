@@ -37,7 +37,7 @@ pub const STORE_APPEND_ONLY: &str = "AIQ-STORE-APPEND-ONLY";
 pub const CORE_ALREADY_RUNNING: &str = "AIQ-CORE-ALREADY-RUNNING";
 pub const CORE_START_BACKOFF: &str = "AIQ-CORE-START-BACKOFF";
 /// A hook found the core down while an update swapped the exes (`update-swapping`), so it did not start one: a core
-/// started then holds aiq.exe and fails the swap (devbox, 2026-11-13, DC-070).
+/// started then holds aiq.exe and fails the swap (devbox, 2026-11-13, DC-071).
 pub const CORE_START_UPDATING: &str = "AIQ-CORE-START-UPDATING";
 /// The core could not write the per-user Windows Run entry that starts AIQ at sign-in.
 pub const CORE_LOGIN_START: &str = "AIQ-CORE-LOGIN-START";

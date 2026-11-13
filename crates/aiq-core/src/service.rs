@@ -334,7 +334,7 @@ pub fn stuck_note_text(provider: &str, why: &str) -> String {
     };
     let tool = if provider == "copilot-cli" { "Copilot CLI" } else { "Claude Code" };
     if why == "missing" {
-        format!("AIQ can't analyze your tasks: it can't find {tool} · see AIQ home")
+        format!("AIQ can't analyze your tasks: it can't run {tool} · see AIQ home")
     } else {
         format!("AIQ can't analyze your tasks: {name} is signed out · {login}")
     }

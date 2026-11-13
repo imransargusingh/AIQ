@@ -6,7 +6,7 @@ import { singleFlight } from "./refresh";
 import type { Snapshot } from "./types";
 import { scoped } from "./project";
 import { Guide } from "./pages/Guide";
-import { Dialog, PAGES, Sk, UpdateChip, type Ctx, type Page } from "./ui";
+import { Dialog, PAGES, Sk, UpdateChip, stuck, type Ctx, type Page } from "./ui";
 import { Home } from "./pages/Home";
 import { Tasks } from "./pages/Tasks";
 import { Tips } from "./pages/Tips";
@@ -306,6 +306,7 @@ export function App() {
   const step = tour ? STEPS[tour.step] : null;
   // The tools AIQ is connected to and that are installed, not the tools it holds tasks from (an imported or
   // disconnected tool doesn't count).
+  const halted = snap ? stuck(snap) : null;
   const connected = snap?.setup.tools.filter((t) => t.hooked && t.present).map((t) => ({ copilot: "Copilot", "claude-code": "Claude Code", vscode: "VS Code" })[t.tool]) ?? [];
 
   if (ctx && inSetup) {
@@ -373,9 +374,14 @@ export function App() {
             {snap && (
               <>
                 <span>
-                  <span className={`dot${snap.status.paused || !snap.status.core ? " paused" : ""}`} aria-hidden="true" />
+                  <span className={`dot${snap.status.paused || !snap.status.core || halted ? " paused" : ""}`} aria-hidden="true" />
                   {snap.status.paused ? "Paused" : snap.status.core_state === "failed" ? "Not running" : !snap.status.core ? "Starting" : connected.length ? `Connected: ${connected.join(", ")}` : "No tool connected"}
                 </span>
+                {halted && snap.status.core && (
+                  <span className="halted" data-testid="side-analysis">
+                    Analysis stopped: {halted.short}
+                  </span>
+                )}
                 <span>
                   Tips today: {snap.home.tips_today} of {snap.settings.daily_cap}
                 </span>

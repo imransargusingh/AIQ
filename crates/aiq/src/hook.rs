@@ -455,7 +455,7 @@ fn maybe_start_core(paths: &Paths) {
         count(paths, codes::CORE_START_BACKOFF);
         return;
     }
-    // An update is swapping the exes: a core started now would hold aiq.exe (DC-070). upgrade.ps1 starts it after.
+    // An update is swapping the exes: a core started now would hold aiq.exe (DC-071). upgrade.ps1 starts it after.
     if aiq_core::update::swapping(paths, now) {
         count(paths, codes::CORE_START_UPDATING);
         return;

@@ -82,7 +82,7 @@ pub struct State {
 
 /// Written by upgrade.ps1 (UTC seconds) just before it stops AIQ to swap the exes, removed once the swap is done and
 /// before it starts the core again. While it is there, a hook that finds the core down does not start one (devbox,
-/// 2026-11-13, DC-070: a busy Copilot's hooks restart a stopped core within seconds, and that core held aiq.exe).
+/// 2026-11-13, DC-071: a busy Copilot's hooks restart a stopped core within seconds, and that core held aiq.exe).
 pub fn swapping_path(paths: &Paths) -> PathBuf {
     paths.data.join("update-swapping")
 }

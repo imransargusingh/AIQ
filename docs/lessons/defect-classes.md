@@ -1258,7 +1258,21 @@ summary: >-
 - **Rule:** a watcher must never be able to block the writer it watches. Read with full sharing, and read every place
   the writer can put the record (here, the held file too).
 
-### DC-070 — An install that copies over a running exe, and a failure that says no reason
+### DC-070 — Two surfaces read two states and contradict each other
+- **Signature:** 2026-11-13, Imran's Devbox (0.1.54). The banner said "AIQ can't find Copilot CLI, so it can't
+  analyze your tasks" while the sidebar said "Connected: Copilot, VS Code" with a green dot. Both were true: the
+  sidebar read the hooks (`setup.tools`), the banner read analysis (`home.analysis.blocked`). Side by side they read
+  as a contradiction, and "can't find" was wrong for a tool that was plainly running.
+- **Why it survives:** each surface was tested alone. No test put the two states side by side.
+- **Sweep:** surfaces that show a tool's state: sidebar foot, banner, Settings tool rows, task page, Getting started.
+  The sidebar, banner and Settings now read one helper (`stuck()` in `ui.tsx`); the task page wording matches.
+  Getting started shows connection only, and its analysis line already reads `home.analysis`.
+- **Control (test):** e2e "an expired sign-in shows on every page…" asserts the amber dot, the sidebar line and the
+  Settings rows for the affected tools, all from one blocked state, and that working or paused shows none of them.
+- **Rule:** when two surfaces describe the same tool, derive both from one reader, and say on each what the other
+  one knows.
+
+### DC-071 — An install that copies over a running exe, and a failure that says no reason
 - **Signature:** 2026-11-13, Imran's Devbox. Four installs failed in upgrade-log.txt with `AIQ-UPGRADE-SWAP: ...
   The process cannot access the file ...\.aiq\bin\aiq.exe because it is being used by another process`: 0.1.54 at
   02:30:02Z and 02:40:40Z, 0.1.55 at 04:08:25Z and 04:09:35Z, each 3 to 6 s after "downloaded and checked". 0.1.54

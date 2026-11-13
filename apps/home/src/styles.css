@@ -68,6 +68,7 @@ nav.side a:hover{background:var(--canvas-soft);color:var(--ink)}
 nav.side a[aria-current="page"]{background:var(--surface);color:var(--primary);font-weight:600}
 nav.side a[aria-current="page"]::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:var(--r-sm);background:var(--primary)}
 nav.side .foot{margin-top:auto;padding:var(--s4);border-top:1px solid var(--hairline);display:flex;flex-direction:column;gap:var(--s2);font:var(--t-caption);color:var(--ink-mute)}
+nav.side .foot .halted{padding-left:calc(8px + var(--s3));color:var(--ink)}
 .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--success);margin-right:var(--s3)}
 .dot.paused{background:var(--warning)}
 main{min-width:0}

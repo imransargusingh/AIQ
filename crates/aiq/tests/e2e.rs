@@ -303,7 +303,7 @@ fn e2e_core_down_prompt_starts_core_once_core_survives_and_drains_spool() {
 
 #[test]
 fn e2e_core_down_prompt_during_an_update_swap_starts_no_core_then_does_after() {
-    // DC-070: a core a hook starts while upgrade.ps1 swaps the exes holds aiq.exe and fails the install.
+    // DC-071: a core a hook starts while upgrade.ps1 swaps the exes holds aiq.exe and fails the install.
     let e = Env::new();
     std::fs::create_dir_all(e.home()).unwrap();
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();

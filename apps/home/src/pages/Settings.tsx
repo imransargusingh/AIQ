@@ -6,7 +6,7 @@ import { useState } from "react";
 import { api, type SettingKey } from "../api";
 import type { Settings as S } from "../types";
 import { jobName, plural, when } from "../format";
-import { AccuracyPaused, Banners, Title, type Ctx } from "../ui";
+import { AccuracyPaused, Banners, Title, stuck, type Ctx } from "../ui";
 import { ver } from "../updateNow";
 import { THEMES } from "../theme";
 import { teamTipsText } from "../team";
@@ -72,6 +72,7 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
   const [msg, setMsg] = useState<string | null>(null);
   const [teamBusy, setTeamBusy] = useState(false);
   const down = !snap.status.core;
+  const halted = stuck(snap);
   const st = snap.settings;
   const up = snap.update;
   const judging = st.judge === "auto";
@@ -546,7 +547,9 @@ export function Settings(ctx: Ctx & { singleKeys: boolean; setSingleKeys: (on: b
                     ? "VS Code's code command not found, AIQ's extension still installed"
                     : "not installed, AIQ's hooks still in its settings"
                   : t.hooked
-                    ? "connected"
+                    ? halted?.tools.includes(t.tool)
+                      ? `connected · analysis stopped: ${halted.short}`
+                      : "connected"
                     : "not connected"}
               </span>
               {t.hooked && (
