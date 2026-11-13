@@ -10,7 +10,8 @@ use aiq_contracts::event::{EventBody, EventV1, MAX_SESSION_ID};
 use aiq_contracts::frames::{CoachStatus, EvidencePrompt, LeanedOn, ShowReply, StatusReply};
 use aiq_contracts::pack::PackV1;
 use aiq_domain::automated::{
-    Guard, Verdict, folder_key, is_aiq_check_folder, named_sessions, sent_by_turn_end_hook, written_by_tool,
+    Guard, Verdict, folder_key, is_aiq_check_folder, named_sessions, person_words, sent_by_turn_end_hook,
+    written_by_tool,
 };
 use aiq_domain::card::{compose, compose_move};
 use aiq_domain::clock::{Clock, deliveries_counted_today};
@@ -593,7 +594,10 @@ impl<C: Clock> Service<C> {
         // Security review S2: the hook already removed secrets; this pass covers spool lines written by an
         // older hook and any other client. Markers from either pass are counted, so status shows both.
         let clean = match &ev.body {
-            EventBody::Prompt(p) => p.text.as_deref().map(|t| aiq_domain::secrets::redact(t).0),
+            // Rule WRAP: an envelope a person's message arrived in is stored as the person's own words.
+            EventBody::Prompt(p) => {
+                p.text.as_deref().map(|t| aiq_domain::secrets::redact(&person_words(t).unwrap_or_default()).0)
+            }
             EventBody::Stop(_) => None,
         };
         let removed = clean.as_deref().map_or(0, |t| t.matches(aiq_domain::secrets::MARKER).count());
@@ -603,9 +607,12 @@ impl<C: Clock> Service<C> {
                     self.counters.inc(codes::INGEST_SHAPE);
                 }
                 let f = clean.as_deref().map(|t| features(t, &self.pack.reprompt));
+                // An unwrapped envelope counts the person's words, not the envelope's.
+                let unwrapped = p.text.as_deref().is_some_and(|t| person_words(t).is_some_and(|w| w.len() != t.len()));
+                let chars = if unwrapped { clean.as_deref().map_or(0, |t| t.chars().count() as u64) } else { p.chars };
                 let meta = serde_json::json!({
                     "hook_event": "UserPromptSubmit",
-                    "chars": p.chars,
+                    "chars": chars,
                     "has_text": p.text.is_some(),
                     "truncated": p.truncated,
                     "file_mentions": f.as_ref().map_or(0, |f| f.mentions.len()),
@@ -614,7 +621,7 @@ impl<C: Clock> Service<C> {
                     "folder": ev.cwd.as_deref().map(folder_key).filter(|k| !k.is_empty()),
                     "secrets_removed": removed,
                 });
-                (p.prompt_id.as_deref(), clean.as_deref(), Some(p.chars as i64), meta)
+                (p.prompt_id.as_deref(), clean.as_deref(), Some(chars as i64), meta)
             }
             EventBody::Stop(s) => (
                 s.prompt_id.as_deref(),
@@ -1642,7 +1649,7 @@ impl<C: Clock> Service<C> {
         }
         // Rule TOOL: a prompt the tool wrote (a background agent's notification, a scheduled run).
         if let EventBody::Prompt(p) = &ev.body
-            && p.text.as_deref().is_some_and(written_by_tool)
+            && p.text.as_deref().is_some_and(|t| written_by_tool(t) || person_words(t).is_none())
         {
             return Ok(Gate::Skip("not-typed"));
         }

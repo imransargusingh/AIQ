@@ -847,3 +847,32 @@ fn sub_agent_briefs_and_tool_written_prompts_are_not_tasks() {
         "the fleet prompt and 'keep going' are the person's; an unknown id names no parent"
     );
 }
+
+#[test]
+fn an_envelope_shows_the_persons_words_and_one_without_them_is_not_a_task() {
+    let d = tempfile::tempdir().unwrap();
+    let p = Paths::at(d.path());
+    let mut s = Seed::new(&p);
+    let t0 = NOW - 10 * 3_600_000;
+    let wake = "<wake reason=\"mention\"><thread><message trigger=\"true\" from=\"human\" author=\"Pat\">\
+                why does it say &quot;Sign in&quot;?</message></thread></wake>";
+    s.prompt("claude-code", "c0ffee00-1111-4222-8333-944455556666", t0, None, wake);
+    s.prompt(
+        "claude-code",
+        "c0ffee01-1111-4222-8333-944455556666",
+        t0 + 3_600_000,
+        None,
+        "<relay from=\"coordinator\"><note>Build fix 4.</note></relay>",
+    );
+    drop(s);
+    let snap = snap(&p);
+    let sessions: Vec<&str> = snap.tasks.iter().map(|t| t.session.as_str()).collect();
+    assert_eq!(
+        sessions,
+        vec!["c0ffee00-1111-4222-8333-944455556666"],
+        "a relay with no message from the person is not a task"
+    );
+    let det = aiq_home::task_detail(&p, &BundledPack.load().unwrap(), now(), &snap.tasks[0].task_id).unwrap();
+    let texts: Vec<Option<&str>> = det.prompts.iter().map(|p| p.text.as_deref()).collect();
+    assert_eq!(texts, vec![Some("why does it say \"Sign in\"?")]);
+}
