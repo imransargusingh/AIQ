@@ -1861,16 +1861,20 @@ impl Store {
         rows.collect::<rusqlite::Result<Vec<_>>>().map_err(err(codes::STORE_OPEN))
     }
 
+    /// This computer's judge calls since `since_ms`. Another computer's calls arrive by sync and say nothing about
+    /// this one: its failures must not give up on this computer's tasks, and its calls do not spend this computer's
+    /// budget (DC-075: 2,136 failed Devbox calls on laptop task ids held 135 laptop tasks as "gave up").
     pub fn judge_calls_since(&self, since_ms: i64) -> Result<Vec<CallOutcome>> {
         if !self.has_table("judge_call")? {
             return Ok(vec![]);
         }
+        let own = if self.has_column("judge_call", "computer")? { "AND computer IS NULL" } else { "" };
         let mut st = self
             .conn
-            .prepare(
-                "SELECT task_id, started_utc_ms, outcome, cost_usd, run FROM judge_call WHERE started_utc_ms >= ?1
-                 ORDER BY started_utc_ms, rowid",
-            )
+            .prepare(&format!(
+                "SELECT task_id, started_utc_ms, outcome, cost_usd, run FROM judge_call WHERE started_utc_ms >= ?1 {own}
+                 ORDER BY started_utc_ms, rowid"
+            ))
             .map_err(err(codes::STORE_OPEN))?;
         let rows = st
             .query_map([since_ms], |r| {

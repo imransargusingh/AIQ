@@ -1349,3 +1349,16 @@ summary: >-
 - **Control (tests):** `a_brief_the_log_cannot_see_is_unknown_never_no`, `a_plan_file_is_a_brief`,
   `brief_may_change_only_where_the_brief_is_the_last_need`; fact set fs5.
 - **Rule:** a log fact may say "no" only when the log could have seen every way to say "yes".
+
+### DC-075 — Another computer's analysis calls counted as this computer's
+- **Signature:** 2026-11-13, after 0.1.58. `aiq judge --versions` on the laptop: 132 outdated analyses "not queued".
+  Each of them had exactly 6 failed calls (AIQ-JUDGE-ERROR) made by the Devbox, synced in: 2,136 Devbox failures
+  on 391 laptop task ids, 11-09 to 11-12. The laptop's retry rule counted them, so it "gave up" on its own tasks and
+  they stayed on the old task cut and fact set.
+- **Why it survives:** sync (#252) brought `judge_call` rows from other computers; `tools_down` and
+  `newest_judge_call_per_provider` were scoped to `computer IS NULL`, `judge_calls_since` was not.
+- **Sweep:** every `judge_calls_since` reader: the analysis queue's retries and give-up, the daily budget
+  (`tasks_today`), Home's "analysis today" counts and back-off state, `aiq judge --versions`. All now read this
+  computer's calls only.
+- **Control (test):** `another_computers_calls_never_count_against_this_computers_tasks` (store).
+- **Rule:** a synced row describes the computer that wrote it; a rule about this computer reads only its own rows.
