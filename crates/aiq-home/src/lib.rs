@@ -695,11 +695,12 @@ impl TaskRow {
     fn attach(&mut self, j: &aiq_store::JudgmentRow, first_prompt: Option<&str>) {
         let read: serde_json::Value = serde_json::from_str(&j.read).unwrap_or_default();
         let n = |k: &str| read.get(k).and_then(serde_json::Value::as_u64).unwrap_or(0) as u32;
-        let progress_check = first_prompt.is_some_and(|p| {
+        let progress_check = {
             let reprompts = aiq_contracts::judge::parse_read(&j.read).reprompts.unwrap_or(0);
             let f = aiq_domain::rung::facts_from_json(&j.facts, reprompts, &j.job);
-            aiq_domain::coach::is_progress_check(p, &j.state, j.current_rung, &f.f4)
-        });
+            let kind = j.task_type.as_deref().map(|t| (j.job.as_str(), t));
+            aiq_domain::coach::is_progress_check(first_prompt, kind, &j.state, j.current_rung, &f.f4)
+        };
         self.job = Some(j.job.clone());
         self.rung = Some(j.current_rung);
         self.judgment = Some(TaskJudgment {

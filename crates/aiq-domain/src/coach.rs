@@ -143,6 +143,9 @@ impl JudgedTask {
 /// The job id the views give a progress check. It is never stored: the analysis keeps its own job, and this is read
 /// from the first prompt and the analysis each time.
 pub const PROGRESS_CHECK_JOB: &str = "progress_check";
+/// The kind the analysis gives a progress check since the re-cut list (j7): "Checking on progress", an
+/// ask_research kind (`aiq_contracts::judge::TASK_TYPES`).
+pub const PROGRESS_KIND: &str = "progress";
 /// A progress check is a short prompt: longer ones carry new work (measured 2026-11-14 on Imran's laptop, 4 of 68
 /// progress checks were longer than this).
 pub const PROGRESS_CHECK_MAX_WORDS: usize = 25;
@@ -153,10 +156,27 @@ pub const PROGRESS_CHECK_MAX_WORDS: usize = 25;
 /// (F4) qualifies, so a task that reads higher, or that states a goal, is never hidden. Measured on his 741 tasks
 /// (`docs/investigations/rung-groups/cue_match.py`): the words below found 55 of the 68 and 15 other short
 /// prompts; the extra Assisted and F4 conditions keep every one of those 15 that read higher on its rung.
-pub fn is_progress_check(first_prompt: &str, state: &str, current: u8, f4: &rung::Merged) -> bool {
+///
+/// Since the re-cut list (j7) the analysis names such a task itself, as the kind `PROGRESS_KIND`. A task with
+/// that kind is a progress check under the same Assisted and F4 conditions, whatever its words or length, so
+/// the 13 the words missed do not come back as a kind AIQ coaches. The words stay for analyses older than j7.
+/// assume: a task both runs name `progress`, read as a sure Assisted with no goal, only checks on running work.
+/// Confirm with the second-reader check after the re-analysis (`aiq analyze --check`): if it agrees on this
+/// kind in fewer than 8 of 10, take the kind out of this rule. If false, a real question leaves the ladder.
+pub fn is_progress_check(
+    first_prompt: Option<&str>,
+    kind: Option<(&str, &str)>,
+    state: &str,
+    current: u8,
+    f4: &rung::Merged,
+) -> bool {
     if state == "uncertain" || current != 1 || f4.value == Some(true) {
         return false;
     }
+    if kind == Some((rung::ANSWER_JOB, PROGRESS_KIND)) {
+        return true;
+    }
+    let Some(first_prompt) = first_prompt else { return false };
     let own = crate::text::own_words(first_prompt);
     let words: Vec<String> = own
         .split(|c: char| !c.is_alphanumeric() && c != '\'')
@@ -171,11 +191,13 @@ pub fn is_progress_check(first_prompt: &str, state: &str, current: u8, f4: &rung
 }
 
 impl JudgedTask {
-    /// `as_progress_check` when the first prompt makes this a progress check; else unchanged.
+    /// `as_progress_check` when the analysis's kind or the first prompt makes this a progress check; else
+    /// unchanged.
     pub fn with_first_prompt(self, first_prompt: Option<&str>) -> Self {
-        match first_prompt {
-            Some(p) if is_progress_check(p, &self.state, self.current, &self.facts.f4) => self.as_progress_check(),
-            _ => self,
+        if is_progress_check(first_prompt, self.kind(), &self.state, self.current, &self.facts.f4) {
+            self.as_progress_check()
+        } else {
+            self
         }
     }
 
@@ -1272,23 +1294,26 @@ mod tests {
         for p in
             ["status?", "What's the status", "progress update please", "where are you on this?", "why did you stop?"]
         {
-            assert!(is_progress_check(p, "judged", 1, &f4(Some(false))), "{p}");
-            assert!(is_progress_check(p, "judged", 1, &f4(None)), "{p}: goal unknown");
+            assert!(is_progress_check(Some(p), None, "judged", 1, &f4(Some(false))), "{p}");
+            assert!(is_progress_check(Some(p), None, "judged", 1, &f4(None)), "{p}: goal unknown");
         }
         // The Remote Control envelope: only the person's own words count.
         let wake = r#"<wake reason="mention"><message from="human" trigger="true">status?</message></wake>"#;
-        assert!(is_progress_check(wake, "judged", 1, &f4(Some(false))));
+        assert!(is_progress_check(Some(wake), None, "judged", 1, &f4(Some(false))));
     }
 
     #[test]
     fn a_progress_check_never_hides_a_task_that_reads_higher_or_states_a_goal() {
-        assert!(!is_progress_check("status?", "judged", 2, &f4(Some(false))), "reads Directed");
-        assert!(!is_progress_check("status?", "judged", 1, &f4(Some(true))), "states a goal");
-        assert!(!is_progress_check("status?", "uncertain", 1, &f4(Some(false))), "already unsure");
+        assert!(!is_progress_check(Some("status?"), None, "judged", 2, &f4(Some(false))), "reads Directed");
+        assert!(!is_progress_check(Some("status?"), None, "judged", 1, &f4(Some(true))), "states a goal");
+        assert!(!is_progress_check(Some("status?"), None, "uncertain", 1, &f4(Some(false))), "already unsure");
         assert!(
             !is_progress_check(
-                "fix the status bar colour and the progress spinner on the settings page so they \
-             match the new theme tokens, then run the visual tests and update the snapshots where they changed",
+                Some(
+                    "fix the status bar colour and the progress spinner on the settings page so they \
+             match the new theme tokens, then run the visual tests and update the snapshots where they changed"
+                ),
+                None,
                 "judged",
                 1,
                 &f4(Some(false))
@@ -1298,8 +1323,44 @@ mod tests {
         for p in ["eta?", "how long will it take", "statuses", "progressive rollout", "add a status", ""] {
             // Whole words only; "add a status" is a known false hit, kept off any higher rung by the checks above.
             let want = p == "add a status";
-            assert_eq!(is_progress_check(p, "judged", 1, &f4(Some(false))), want, "{p}");
+            assert_eq!(is_progress_check(Some(p), None, "judged", 1, &f4(Some(false))), want, "{p}");
         }
+    }
+
+    /// The re-cut list (j7) has the kind "Checking on progress", so the analysis names a progress check itself.
+    /// Such a task is one whatever its words or length, and with its text deleted: the word rule missed 13 of
+    /// Imran's 68. The same guards hold, so a task that reads higher or states a goal keeps its rung.
+    #[test]
+    fn a_task_the_analysis_names_checking_on_progress_is_a_progress_check_whatever_its_words() {
+        let kind = Some((rung::ANSWER_JOB, PROGRESS_KIND));
+        assert!(aiq_contracts::judge::task_type_named(rung::ANSWER_JOB, PROGRESS_KIND), "the list offers it");
+        let no_cue = "how far along is the re-import? is it past stop_times yet";
+        assert!(!is_progress_check(Some(no_cue), None, "judged", 1, &f4(Some(false))), "no cue word in it");
+        assert!(is_progress_check(Some(no_cue), kind, "judged", 1, &f4(Some(false))));
+        assert!(is_progress_check(None, kind, "judged", 1, &f4(None)), "text deleted, goal unknown");
+        assert!(!is_progress_check(None, kind, "judged", 2, &f4(Some(false))), "reads Directed");
+        assert!(!is_progress_check(None, kind, "judged", 1, &f4(Some(true))), "states a goal");
+        assert!(!is_progress_check(None, kind, "uncertain", 1, &f4(Some(false))), "already unsure");
+        let lookup = Some((rung::ANSWER_JOB, "find"));
+        assert!(!is_progress_check(Some(no_cue), lookup, "judged", 1, &f4(Some(false))), "another kind, no cue");
+        assert!(!is_progress_check(None, Some(("run_ship", PROGRESS_KIND)), "judged", 1, &f4(Some(false))));
+        // Through the task: it leaves coaching and the rung counts, as a word-rule progress check does.
+        let t = JudgedTask::new(
+            "t1",
+            true,
+            "copilot-cli",
+            0,
+            rung::ANSWER_JOB,
+            Some(PROGRESS_KIND),
+            "judged",
+            1,
+            2,
+            true,
+            "{}",
+            ReadRecord::default(),
+        )
+        .with_first_prompt(None);
+        assert_eq!((t.job.as_str(), t.task_type.as_deref(), t.coachable), (PROGRESS_CHECK_JOB, None, false));
     }
 
     #[test]

@@ -967,13 +967,33 @@ fn a_progress_check_has_no_rung_of_its_own_on_home() {
     s.judgment(&check, "live", "copilot-cli", NOW - 2 * HOUR, read, &["e"], "g");
     let goal = r#"{"F4":{"value":true,"confidence":0.9,"source":"model"}}"#;
     s.judgment_with_facts(&gave_goal, "live", "copilot-cli", NOW - HOUR, read, &["e"], "g", goal);
+    // The kind "Checking on progress" (j7): the analysis names the check itself; the prompt has no cue word.
+    // Three of them in 30 days would make a kind AIQ coaches, so they leave the kinds too. One that reads
+    // Directed keeps its rung.
+    let no_goal = r#"{"F4":{"value":false,"confidence":0.9,"source":"model","disputed":false}}"#;
+    let mut by_kind = vec![];
+    for (i, current) in [1, 1, 1, 2].into_iter().enumerate() {
+        let at = NOW - (100 - 10 * i as i64) * MIN;
+        let id = s.prompt("copilot-cli", &format!("k{i}"), at, Some(AIQ), "how far along is the re-import?");
+        let j = aiq_store::JudgmentRow {
+            facts: no_goal.into(),
+            ..coach_row(&id, "ask_research", "progress", current, "judged", 0)
+        };
+        s.store.insert_judgment(&j).unwrap();
+        by_kind.push(id);
+    }
     let snap = snap(&p);
     assert!(snap.status.error.is_none(), "{:?}", snap.status.error);
-    let pc: Vec<bool> = [&work, &check, &gave_goal]
-        .iter()
-        .map(|id| snap.tasks.iter().find(|t| &&t.task_id == id).unwrap().judgment.as_ref().unwrap().progress_check)
-        .collect();
-    assert_eq!(pc, vec![false, true, false], "a check that states a goal keeps its rung");
-    assert_eq!((snap.home.judged, snap.home.uncertain, snap.home.progress_checks), (3, 0, 1));
-    assert_eq!(snap.home.rungs, [2, 0, 0, 0, 0], "the progress check is not counted as Assisted");
+    let c = &snap.coaching;
+    let kinds: Vec<(&str, &str)> = c.kinds.iter().map(|k| (k.task_type.as_str(), k.state)).collect();
+    assert_eq!(kinds, [("progress", "too_few")], "only the Directed one is a task of the kind; none is coached");
+    let pc = |ids: &[&String]| -> Vec<bool> {
+        let of = |id: &String| snap.tasks.iter().find(|t| &t.task_id == id).unwrap().judgment.as_ref().unwrap();
+        ids.iter().map(|id| of(id).progress_check).collect()
+    };
+    assert_eq!(pc(&[&work, &check, &gave_goal]), [false, true, false], "a check that states a goal keeps its rung");
+    assert_eq!(pc(&by_kind.iter().collect::<Vec<_>>()), [true, true, true, false], "named by the analysis");
+    assert_eq!((snap.home.judged, snap.home.uncertain, snap.home.progress_checks), (7, 0, 4));
+    assert_eq!(snap.home.rungs, [2, 1, 0, 0, 0], "a progress check is not counted as Assisted");
+    assert_eq!((c.split.tasks, c.split.uncertain, c.split.progress_checks), (3, 0, 4));
 }
