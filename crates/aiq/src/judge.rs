@@ -623,10 +623,26 @@ fn current_version(j: &JudgmentRow) -> bool {
         || (rung::FACT_SET_VERSIONS_KEPT.contains(&j.fact_set_version.as_str())
             && !rung::fact_set_may_change(&j.facts)
             && !brief_may_change(j));
-    fact_set
-        && rubric
-        && (j.judge_version == rung::JUDGE_VERSION
-            || (rung::JUDGE_VERSIONS_KEPT.contains(&j.judge_version.as_str()) && j.job != "unclassified"))
+    fact_set && rubric && list_outdated(j).is_none()
+}
+
+/// Why today's kinds list sends this analysis to the model again, in words for `aiq analyze --versions`; None
+/// when the list keeps it. An analysis at today's version is kept whatever it named, so each task is asked
+/// once; one of a kept version only when it names a kind today's list offers (`rung::JUDGE_VERSIONS_KEPT`).
+fn list_outdated(j: &JudgmentRow) -> Option<&'static str> {
+    if j.judge_version == rung::JUDGE_VERSION {
+        return None;
+    }
+    if !rung::JUDGE_VERSIONS_KEPT.contains(&j.judge_version.as_str()) {
+        return Some("an analysis version that is not kept");
+    }
+    match j.task_type.as_deref() {
+        _ if j.job == "unclassified" => Some("no job"),
+        None => Some("no kind recorded"),
+        Some("other") => Some("the kind other"),
+        Some(k) if !aiq_contracts::judge::task_type_named(&j.job, k) => Some("a kind the list retired"),
+        Some(_) => None,
+    }
 }
 
 /// fs5 (DC-074): the judgment was read with a log "no brief" that may have hidden one.
@@ -1410,7 +1426,12 @@ fn versions_cli(store: &Store, homes: &Homes) -> ExitCode {
                 restamped += 1;
             } else {
                 *again.entry(t.tool.clone()).or_default() += 1;
-                // Why: the stored F3 against today's, and whether a turn is now "not recorded".
+                // Why: today's kinds list may name it now; else the stored F3 against today's, and whether a
+                // turn is now "not recorded".
+                if let Some(words) = list_outdated(j) {
+                    *why_again.entry(format!("{} {}: {words}", t.tool, j.judge_version)).or_default() += 1;
+                    continue;
+                }
                 let was = aiq_contracts::judge::parse_stored_facts(&j.facts).remove("F3").and_then(|f| f.checker);
                 let why = format!(
                     "{} {}: F3 {} -> {}{}",
@@ -3102,8 +3123,17 @@ mod tests {
         assert!(log.contains("works=false exit=1") && log.contains("Copilot CLI was not found"), "{log}");
     }
 
+    /// Option A of the Kinds re-cut (Imran 2026-11-14): an analysis from an earlier version stays only when it
+    /// names a kind today's list offers. No job, the kind `other`, no kind recorded and a retired kind are each
+    /// analyzed again, once: an analysis at today's version is current whatever kind it gave.
     #[test]
-    fn only_unclassified_judgments_of_the_last_version_are_judged_again() {
+    fn an_earlier_versions_analysis_stays_only_with_a_kind_on_todays_list() {
+        let named = |job: &str| match job {
+            "code_change" => Some("fix_bug"),
+            "write_doc" => Some("spec"),
+            "ask_research" => Some("how_to"),
+            _ => None,
+        };
         let j = |job: &str, version: &str| JudgmentRow {
             judgment_id: "j".into(),
             task_id: "t".into(),
@@ -3131,9 +3161,38 @@ mod tests {
             fact_set_version: rung::FACT_SET_VERSION.into(),
             rubric_version: rung::RUBRIC_VERSION.into(),
             judge_version: version.into(),
-            task_type: None,
-            task_type_confidence: None,
+            task_type: named(job).map(str::to_owned),
+            task_type_confidence: named(job).map(|_| 0.9),
         };
+        let kind = |job: &str, kind: Option<&str>, version: &str| JudgmentRow {
+            task_type: kind.map(str::to_owned),
+            ..j(job, version)
+        };
+        let kept = rung::JUDGE_VERSIONS_KEPT[rung::JUDGE_VERSIONS_KEPT.len() - 1];
+        assert!(current_version(&kind("code_change", Some("fix_bug"), kept)), "a named kind on today's list stays");
+        assert!(current_version(&kind("ask_research", Some("troubleshoot"), kept)), "reworded, same kind: stays");
+        assert!(!current_version(&kind("code_change", Some("other"), kept)), "Other: today's list may name it");
+        assert!(!current_version(&kind("code_change", None, kept)), "no kind recorded");
+        assert!(!current_version(&kind("code_change", Some("review"), kept)), "retired: reviewing moved jobs");
+        assert!(!current_version(&kind("write_doc", Some("notes"), kept)), "retired");
+        assert!(!current_version(&kind("unclassified", None, kept)), "no job");
+        for (job, k) in [("code_change", Some("other")), ("code_change", Some("review")), ("unclassified", None)] {
+            assert!(
+                current_version(&kind(job, k, rung::JUDGE_VERSION)),
+                "{job} {k:?}: analyzed once under today's list"
+            );
+        }
+        // `aiq analyze --versions` says why, per task it would send again.
+        for (job, k, version, why) in [
+            ("code_change", Some("fix_bug"), kept, None),
+            ("code_change", Some("other"), kept, Some("the kind other")),
+            ("code_change", None, kept, Some("no kind recorded")),
+            ("code_change", Some("review"), kept, Some("a kind the list retired")),
+            ("unclassified", None, kept, Some("no job")),
+            ("code_change", Some("fix_bug"), "j1", Some("an analysis version that is not kept")),
+        ] {
+            assert_eq!(list_outdated(&kind(job, k, version)), why, "{job} {k:?} {version}");
+        }
         // Tasks the new pack may cover go first, then never-judged ones, then other outdated judgments.
         let row = |id: &str, first: i64| TaskRow {
             task_id: id.into(),
@@ -3150,15 +3209,23 @@ mod tests {
             members: vec![],
             computer: None,
         };
-        let tasks = vec![row("new", 3_000), row("uncovered", 1_000), row("old_doc", 2_000)];
+        let tasks = vec![
+            row("new", 3_000),
+            row("uncovered", 1_000),
+            row("old_doc", 2_000),
+            row("other_kind", 2_500),
+            row("named", 2_700),
+        ];
         let judged: HashMap<String, JudgmentRow> = [
             ("uncovered".to_owned(), j("unclassified", rung::JUDGE_VERSIONS_KEPT[1])),
             ("old_doc".to_owned(), j("write_doc", "j1")),
+            ("other_kind".to_owned(), kind("code_change", Some("other"), kept)),
+            ("named".to_owned(), j("code_change", kept)),
         ]
         .into();
         let q = queue(&tasks, &judged, &[], NOW, 30 * MIN, None);
         let ids: Vec<&str> = q.iter().map(|t| t.task_id.as_str()).collect();
-        assert_eq!(ids, vec!["uncovered", "new", "old_doc"]);
+        assert_eq!(ids, vec!["uncovered", "new", "other_kind", "old_doc"], "a new task waits behind no-job tasks only");
         assert!(current_version(&j("code_change", rung::JUDGE_VERSIONS_KEPT[1])));
         assert!(!current_version(&j("unclassified", rung::JUDGE_VERSIONS_KEPT[1])), "Ask or research may cover it now");
         // DC-009: the check compares "no pack job" in the grader's word, `other`.
@@ -3200,6 +3267,12 @@ mod tests {
         let same = restamp(&fs1(r#""nobody""#), &log("scripts/refresh.sh --all")).expect("same F3: no call");
         assert_eq!(same.fact_set_version, rung::FACT_SET_VERSION);
         assert!(current_version(&same));
+        // The same restamp holds for an earlier version's analysis with a named kind, and never for an unnamed
+        // one: that goes to the model.
+        let earlier =
+            |k: &str| JudgmentRow { judge_version: kept.into(), task_type: Some(k.into()), ..fs1(r#""nobody""#) };
+        assert!(restamp(&earlier("fix_bug"), &log("scripts/refresh.sh --all")).is_some());
+        assert!(restamp(&earlier("other"), &log("scripts/refresh.sh --all")).is_none());
         assert!(restamp(&fs1(r#""nobody""#), &log("scripts/verify_refresh.py")).is_none(), "now the agent checked");
         assert!(restamp(&fs1(r#""agent""#), &log("cargo test")).is_none(), "already current");
         assert!(restamp(&JudgmentRow { judge_version: "j1".into(), ..fs1(r#""nobody""#) }, &log("ls")).is_none());

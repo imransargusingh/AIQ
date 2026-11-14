@@ -129,6 +129,11 @@ pub fn task_type_offered(job: &str, id: &str) -> bool {
     TASK_TYPES.iter().any(|(j, i, _)| *j == job && *i == id)
 }
 
+/// Whether the pair is a named kind on today's list: offered for the job, and not the job's `other`.
+pub fn task_type_named(job: &str, id: &str) -> bool {
+    id != "other" && task_type_offered(job, id)
+}
+
 fn fact(desc: &str) -> serde_json::Value {
     serde_json::json!({
         "type": "object", "additionalProperties": false, "description": desc,
@@ -396,6 +401,13 @@ mod tests {
             assert!(parse_response(with_kind("code_change", id)).is_err(), "{id}");
         }
         assert!(task_type_ids().contains(&"review") && !task_type_offered("code_change", "review"));
+        // A named kind is one today's list offers for the job, and never `other`.
+        assert!(task_type_named("ask_research", "review") && task_type_named("code_change", "fix_bug"));
+        for (job, id) in
+            [("code_change", "other"), ("code_change", "review"), ("write_doc", "notes"), ("unclassified", "fix_bug")]
+        {
+            assert!(!task_type_named(job, id), "{job} {id}");
+        }
         // No (job, id) pair is on both lists, and none twice.
         let mut seen = std::collections::HashSet::new();
         for (job, id, _) in TASK_TYPES.iter().chain(&RETIRED_TASK_TYPES) {

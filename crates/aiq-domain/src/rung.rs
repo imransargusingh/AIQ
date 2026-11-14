@@ -77,12 +77,11 @@ fn unknown_twice(placement_json: &str) -> bool {
 /// to match: build plans, release follow-ups, progress checks, reviews, planning, source control, and one order
 /// for a task that spans two jobs (research 2026-11-14).
 pub const JUDGE_VERSION: &str = "j7";
-/// Judgments of these versions stay current unless their job was unclassified: j3 to j7 change nothing
-/// for a task that got a pack job (j6 only redraws two ask_research kinds, not worth a model call per past
-/// task), so only tasks with no job need judging again.
-// assume: j6 is kept like the others, so j7 re-analyzes only past tasks with no job. Which past tasks j7
-// re-analyzes is Imran's open choice (Kinds research card, 2026-11-14); this is the cheapest of its options
-// and must match his pick before this ships. Nothing reads it in `aiq analyze --trial`, which stores nothing.
+/// An analysis of one of these versions stays current only when it names a kind today's list offers (Imran
+/// 2026-11-14, the Kinds re-cut card: "New list, re-analyze all unnamed"). A task with no job, the kind
+/// `other`, no kind recorded or a retired kind is analyzed again, once, because j7's list may now name it
+/// (trial 2026-11-14 on 103 past tasks with no sure rung, most of them with no job: j7 named a kind for 54).
+/// A named kind the list kept is not worth a model call.
 pub const JUDGE_VERSIONS_KEPT: [&str; 5] = ["j2", "j3", "j4", "j5", "j6"];
 /// A model fact below this confidence counts as unknown (D10: the spike's correct facts sat at 0.5–0.6).
 pub const FACT_THRESHOLD: f64 = 0.6;
@@ -1249,14 +1248,13 @@ impl KindOther {
 /// The cause of a fallback `other` kind for `job`, or None when the runs give a listed kind.
 pub fn kind_other_cause(job: &str, runs: &[TypeRun]) -> Option<KindOther> {
     let first = runs.first()?;
-    let listed = |t: &str| t != "other" && aiq_contracts::judge::task_type_label(job, t).is_some();
     if runs.iter().any(|r| r.task_type != first.task_type) {
         return Some(KindOther::Disagree);
     }
     if first.task_type == "other" {
         return Some(KindOther::AllOther);
     }
-    if !listed(&first.task_type) {
+    if !aiq_contracts::judge::task_type_named(job, &first.task_type) {
         return Some(KindOther::NotOnList);
     }
     runs.iter().any(|r| r.confidence < TASK_TYPE_THRESHOLD).then_some(KindOther::LowConfidence)
@@ -1265,9 +1263,8 @@ pub fn kind_other_cause(job: &str, runs: &[TypeRun]) -> Option<KindOther> {
 /// Candidate rules for giving a fallback-`other` task a listed kind (design kind-of-task T3). Each returns
 /// the kind it would give, or None. Not in use: measured against the second reading first, like R1-R2.
 pub fn candidate_type(rule: &str, job: &str, runs: &[TypeRun]) -> Option<String> {
-    let listed =
-        |r: &&TypeRun| r.task_type != "other" && aiq_contracts::judge::task_type_label(job, &r.task_type).is_some();
-    let named: Vec<&TypeRun> = runs.iter().filter(listed).collect();
+    let named: Vec<&TypeRun> =
+        runs.iter().filter(|r| aiq_contracts::judge::task_type_named(job, &r.task_type)).collect();
     match rule {
         // K1: the runs named different listed kinds (or one said other): take the more confident listed
         // kind, if it clears the bar and is clearly ahead (0.1) of every other run.
@@ -1808,14 +1805,14 @@ mod tests {
 
     #[test]
     fn the_judge_names_the_run_or_ship_job_and_rejudges_every_older_no_job_task() {
-        assert!(JUDGE_VERSIONS_KEPT.contains(&"j4"), "a task with a pack job keeps its judgment");
+        assert!(JUDGE_VERSIONS_KEPT.contains(&"j4"), "a task with a kind on today's list keeps its analysis");
         assert!(SYSTEM.contains("- run_ship:"));
         assert!(SYSTEM.contains("restart_fix") && SYSTEM.contains("run_job"));
     }
 
     #[test]
     fn analyze_data_means_a_computed_result_and_find_means_one_fact() {
-        assert!(JUDGE_VERSIONS_KEPT.contains(&"j5"), "past kinds are kept, not judged again");
+        assert!(JUDGE_VERSIONS_KEPT.contains(&"j5"), "a past kind still on the list is kept, not analyzed again");
         assert!(SYSTEM.contains("analyse (analyzing data: the result is a number, table, chart"));
         assert!(SYSTEM.contains("not reviewing or critiquing a plan, doc, deck or code"));
         assert!(SYSTEM.contains("find (looking up one fact"));
@@ -2114,11 +2111,13 @@ mod tests {
     fn kind_other_cause_matches_the_merge_rule() {
         // The cause is None exactly when `place` keeps the runs' kind; otherwise it names why it fell back.
         let l = log_facts(&turns(&["a"], None));
-        let cases: [(&str, f64, &str, f64, Option<KindOther>); 6] = [
+        let cases: [(&str, f64, &str, f64, Option<KindOther>); 7] = [
             ("fix_bug", 0.9, "fix_bug", 0.8, None),
             ("fix_bug", 0.9, "tests", 0.9, Some(KindOther::Disagree)),
             ("fix_bug", 0.9, "fix_bug", 0.6, Some(KindOther::LowConfidence)),
             ("spec", 0.9, "spec", 0.9, Some(KindOther::NotOnList)),
+            // A kind the list retired for this job (reviewing is an ask_research kind now) is not on the list.
+            ("review", 0.9, "review", 0.9, Some(KindOther::NotOnList)),
             ("other", 0.9, "other", 0.9, Some(KindOther::AllOther)),
             ("other", 0.9, "fix_bug", 0.9, Some(KindOther::Disagree)),
         ];
@@ -2148,6 +2147,9 @@ mod tests {
         assert_eq!(k("K2", tr("find", 0.4), tr("find", 0.9)), None);
         assert_eq!(k("K2", tr("other", 0.9), tr("other", 0.9)), None);
         assert_eq!(k("K9", tr("find", 0.9), tr("find", 0.9)), None);
+        assert_eq!(k("K2", tr("review", 0.9), tr("review", 0.9)).as_deref(), Some("review"));
+        let retired = candidate_type("K2", "code_change", &[tr("review", 0.9), tr("review", 0.9)]);
+        assert_eq!(retired, None, "a retired kind is never given");
     }
 
     #[test]
