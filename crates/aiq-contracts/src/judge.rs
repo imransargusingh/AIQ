@@ -54,25 +54,29 @@ pub const JOBS: [&str; 5] = ["code_change", "write_doc", "ask_research", "run_sh
 /// Re-cut 2026-11-14 against Imran's own tasks and published role studies (research "Task Kinds against real
 /// jobs"): 27 named kinds as before, 10 unchanged, 12 reworded, 5 new (`deck`, `progress`, `review` under
 /// ask_research, `plan`, `source_control`), 5 retired (`RETIRED_TASK_TYPES`).
+///
+/// A label stays short: it is printed inside a tip and a milestone on the Copilot CLI status line, which cuts
+/// a long line. Two tests hold the room it has (aiq-core `pack.rs` for the tip line, `tests/milestone_note.rs`
+/// for the milestone); the longest label today is 35 characters.
 pub const TASK_TYPES: [(&str, &str, &str); 31] = [
-    ("code_change", "fix_bug", "Fixing a bug, failing test or build error"),
+    ("code_change", "fix_bug", "Fixing a bug, test or build error"),
     ("code_change", "feature", "Building or adding a feature"),
     ("code_change", "tests", "Writing tests"),
     ("code_change", "refactor", "Refactoring or cleaning up"),
     ("code_change", "deps", "Upgrading or migrating"),
     ("code_change", "scaffold", "Scaffolding or prototyping"),
     ("code_change", "other", "Other coding"),
-    ("write_doc", "spec", "Writing a spec, PRD or acceptance criteria"),
-    ("write_doc", "design_note", "Designing an architecture or writing a design note"),
-    ("write_doc", "status", "Writing an update, newsletter or announcement"),
+    ("write_doc", "spec", "Writing a spec or PRD"),
+    ("write_doc", "design_note", "Designing an architecture or plan"),
+    ("write_doc", "status", "Writing an update or announcement"),
     ("write_doc", "research", "Summarising notes or research"),
     ("write_doc", "howto", "Writing documentation or a how-to"),
     ("write_doc", "deck", "Preparing a deck or presentation"),
     ("write_doc", "other", "Other writing"),
     // Ask or research (Imran 2026-11-02, card: 9 of his first 10 real tasks were questions or research).
     ("ask_research", "how_to", "Asking how to do something"),
-    ("ask_research", "explain", "Understanding code or how something works"),
-    ("ask_research", "troubleshoot", "Investigating a bug or finding a cause"),
+    ("ask_research", "explain", "Understanding code or a concept"),
+    ("ask_research", "troubleshoot", "Investigating a bug or problem"),
     ("ask_research", "compare", "Comparing options"),
     ("ask_research", "find", "Looking up a fact"),
     ("ask_research", "research", "Researching a topic"),
@@ -81,12 +85,12 @@ pub const TASK_TYPES: [(&str, &str, &str); 31] = [
     ("ask_research", "analyse", "Analyzing data"),
     ("ask_research", "progress", "Checking on progress"),
     ("ask_research", "review", "Reviewing code or other work"),
-    ("ask_research", "plan", "Planning or brainstorming an approach"),
+    ("ask_research", "plan", "Planning or brainstorming"),
     ("ask_research", "other", "Other questions"),
     // Run or ship it (Imran 2026-11-02, card: most tasks no pack covered were restart, release or set-up work).
     ("run_ship", "restart_fix", "Getting something running again"),
     ("run_ship", "release", "Releasing or publishing"),
-    ("run_ship", "run_job", "Running or stopping an app, script or pipeline"),
+    ("run_ship", "run_job", "Running an app, script or pipeline"),
     ("run_ship", "setup", "Setting up or connecting a tool"),
     ("run_ship", "source_control", "Committing, merging or syncing code"),
     ("run_ship", "other", "Other running or shipping"),
@@ -364,7 +368,7 @@ mod tests {
         let mut v = good();
         v["task_type_confidence"] = serde_json::json!(2.0);
         assert!(parse_response(v).is_err());
-        assert_eq!(task_type_label("write_doc", "spec"), Some("Writing a spec, PRD or acceptance criteria"));
+        assert_eq!(task_type_label("write_doc", "spec"), Some("Writing a spec or PRD"));
         assert_eq!(task_type_label("write_doc", "tests"), None, "type must belong to the job");
         assert_eq!(task_type_ids().iter().filter(|i| **i == "other").count(), 1);
     }

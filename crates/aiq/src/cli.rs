@@ -1591,7 +1591,7 @@ mod tips_tests {
             "{o}"
         );
         assert!(o.contains("Moved up a rung: 0. Moved down: 0."), "{o}");
-        assert!(o.contains("Habits that changed, last 30 days against the 30 before (bigger than chance):\nGrowing\n  Building or adding a feature: Keep an instructions file in the repo and point to it\n    2 of 12 tasks before, 9 of 14 now\nLess often lately\n  Fixing a bug, failing test or build error: Paste the error or name the files\n    9 of 12 tasks before, 4 of 15 now\n"), "{o}");
+        assert!(o.contains("Habits that changed, last 30 days against the 30 before (bigger than chance):\nGrowing\n  Building or adding a feature: Keep an instructions file in the repo and point to it\n    2 of 12 tasks before, 9 of 14 now\nLess often lately\n  Fixing a bug, test or build error: Paste the error or name the files\n    9 of 12 tasks before, 4 of 15 now\n"), "{o}");
         for w in ["judge", "watch", "monitor"] {
             assert!(!o.to_lowercase().contains(w), "{w} in {o}");
         }

@@ -526,7 +526,7 @@ fn live_trend_reads_the_open_task_turn_by_turn() {
     assert_eq!(l.trend.unrecorded, [4]);
     assert_eq!(l.trend.unrecorded_why, ["read_error"]);
     assert_eq!((l.trend.rung, l.trend.could), (Some(2), Some(3)), "could reach comes from the spec kind's row");
-    assert_eq!(l.kind, Some("Writing a spec, PRD or acceptance criteria"));
+    assert_eq!(l.kind, Some("Writing a spec or PRD"));
     assert_eq!(l.trend.tip.as_ref().map(|t| t.turn), Some(3));
     assert!(s.tasks.iter().any(|t| t.task_id == l.task_id), "opens a task the list has");
     let json = serde_json::to_string(l).unwrap();

@@ -1574,7 +1574,7 @@ mod tests {
             ("code_change", ANY_KIND, RowState::Coach, Some("brief"))
         );
         assert_eq!(card_label("code_change", ANY_KIND), "changing code");
-        assert_eq!(card_label("code_change", "fix_bug"), "fixing a bug, failing test or build error");
+        assert_eq!(card_label("code_change", "fix_bug"), "fixing a bug, test or build error");
         // A flag on any kind of the job stops the job row's move.
         let f = Flag {
             job: "code_change".into(),
@@ -1862,7 +1862,7 @@ mod tests {
 
     #[test]
     fn card_labels_lower_case_the_first_letter_only() {
-        assert_eq!(card_label("write_doc", "spec"), "writing a spec, PRD or acceptance criteria");
+        assert_eq!(card_label("write_doc", "spec"), "writing a spec or PRD");
         assert_eq!(card_label("code_change", "tests"), "writing tests");
     }
     // ---------------------------------------------------------------- rung progress
