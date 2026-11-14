@@ -5,7 +5,7 @@
 import { api } from "../api";
 import { HabitChangeLine, LadderMap, MilestoneLine, NextSteps, RungMix, judgedBy, moved, pct } from "../coach";
 import { DAY, rungCounts, shift } from "../mix";
-import { RUNGS, day, folderName, noRungCounts, plural, sentence, shortDay, shortPath, toolName, when } from "../format";
+import { RUNGS, day, folderName, leftOut, plural, sentence, shortDay, shortPath, toolName, when } from "../format";
 import { AccuracyPaused, Banners, ProjectPicker, Rung, RungNo, Title, UpdateLine, type Ctx } from "../ui";
 import type { SetAside } from "../types";
 import { RightNow } from "./RightNow";
@@ -45,8 +45,8 @@ export function Home(ctx: Ctx) {
   const ready = sp.tasks >= c.split_min;
   const f = pct(sp.finished, sp.tasks);
   const fc = pct(sp.finished + sp.could, sp.tasks);
-  // The tasks with no rung of their own, by reason: Home's count and the split's, each beside its unsure count.
-  const [off, spOff] = [noRungCounts(h.no_rung), noRungCounts(sp.no_rung)];
+  // The analyzed tasks left out of the rungs, and of the split: the unsure ones and those with no rung of their own.
+  const [off, spOff] = [leftOut(h.uncertain, h.no_rung), leftOut(sp.uncertain, sp.no_rung)];
   const by = judgedBy(snap.tasks);
   const one = ctx.project === null ? undefined : snap.projects.find((p) => p.key === ctx.project);
   return (
@@ -85,9 +85,8 @@ export function Home(ctx: Ctx) {
           <span className="meta">
             {(ctx.project === null && h.analysis.state !== "blocked" && analysisLine(h.analysis)) ||
               (h.judged > 0 ? `${plural(h.judged, "task")} analyzed in ${h.window_days} days` : "No task analyzed yet")}
-            {h.uncertain > 0 && ` · ${h.uncertain} unsure, not on a rung`}
-            {off && ` · ${off}, not on a rung`}
           </span>
+          {off && <span className="meta">Not on a rung: {off}</span>}
           {mc && <span className="meta means">{RUNGS[mc - 1].means}</span>}
         </div>
         <div className="scale counted" aria-hidden="true">
@@ -129,9 +128,8 @@ export function Home(ctx: Ctx) {
               <p className="meta">
                 {sp.finished} of {plural(sp.tasks, "analyzed task")} finished by agents
                 {sp.could > 0 && <> · {sp.could} could be</>} · {sp.needs} need you
-                {sp.uncertain > 0 && <> · {sp.uncertain} unsure, not counted</>}
-                {spOff && <> · {spOff}, not counted</>}
               </p>
+              {spOff && <p className="meta">Not counted: {spOff}</p>}
             </>
           ) : (
             <AnalysisCard {...ctx} />

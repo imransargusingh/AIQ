@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bytes, folderName, jobName, jobOf, jobOptions, noRungCounts, plural, rungLabel, sentence, sortTasks, stateLabel, when } from "./format";
+import { bytes, folderName, jobName, jobOf, jobOptions, leftOut, plural, rungLabel, sentence, sortTasks, stateLabel, when } from "./format";
 import type { TaskRow } from "./types";
 
 const t = (over: Partial<TaskRow>): TaskRow => ({
@@ -19,10 +19,11 @@ describe("format", () => {
     expect(stateLabel("judged")).toBe("");
   });
 
-  it("counts the tasks with no rung of their own in words, and says nothing when there are none", () => {
-    expect(noRungCounts({ progress_check: 0 })).toBe("");
-    expect(noRungCounts({ progress_check: 1 })).toBe("1 progress check");
-    expect(noRungCounts({ progress_check: 62 })).toBe("62 progress checks");
+  it("names the analyzed tasks a count leaves out, and says nothing when there are none", () => {
+    expect(leftOut(0, { progress_check: 0 })).toBe("");
+    expect(leftOut(1, { progress_check: 0 })).toBe("1 unsure");
+    expect(leftOut(0, { progress_check: 1 })).toBe("1 progress check");
+    expect(leftOut(12, { progress_check: 1064 })).toBe("12 unsure · 1,064 progress checks");
   });
 
   it("names a rung by name only: its number is a badge on screen, never \"(2)\" (DC-077)", () => {

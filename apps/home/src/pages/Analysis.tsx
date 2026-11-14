@@ -3,7 +3,7 @@
 // reason and the one action; this card only says what waits.
 // Every number is measured from the snapshot; only the finish day is a forecast, from the daily share. The
 // tasks counted are Home's 30-day window, so "of N" matches the weekly chart.
-import { RUNGS, day, plural } from "../format";
+import { RUNGS, day, leftOut, plural } from "../format";
 import type { Analysis, Snapshot } from "../types";
 import type { Ctx } from "../ui";
 
@@ -62,6 +62,7 @@ export function AnalysisCard({ snap, go, project }: Pick<Ctx, "snap" | "go" | "p
   const total = a.analyzed + a.waiting;
   const sp = snap.coaching.split;
   const need = snap.coaching.split_min;
+  const off = leftOut(sp.uncertain, sp.no_rung);
   if (a.state === "off")
     return (
       <>
@@ -133,8 +134,7 @@ export function AnalysisCard({ snap, go, project }: Pick<Ctx, "snap" | "go" | "p
       <SoFar rungs={snap.home.rungs} />
       {first && sp.tasks > 0 && (
         <p className="meta" data-testid="analysis-need">
-          How much agents finish shows here from {need} analyzed tasks ({sp.tasks} so far
-          {sp.uncertain > 0 && `; ${plural(sp.uncertain, "task")} AIQ isn't sure about ${sp.uncertain === 1 ? "doesn't" : "don't"} count`}).
+          How much agents finish shows here from {need} analyzed tasks ({sp.tasks} so far{off && `; not counted: ${off}`}).
         </p>
       )}
     </>

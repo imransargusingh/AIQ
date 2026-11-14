@@ -32,13 +32,13 @@ export const NO_RUNG: Record<NoRung, { name: string; does: string }> = {
   progress_check: { name: "Progress check", does: "This checks on work already running" },
 };
 
-/** The tasks with no rung of their own as words for a count line ("2 progress checks"), each reason that has
- *  any; empty when there are none. */
-export const noRungCounts = (c: NoRungCounts) =>
-  (Object.keys(NO_RUNG) as NoRung[])
-    .filter((why) => c[why] > 0)
-    .map((why) => plural(c[why], NO_RUNG[why].name.toLowerCase()))
-    .join(" and ");
+/** The analyzed tasks a count leaves out, in words: the unsure ones, then each reason for no rung that has any
+ *  ("1 unsure · 2 progress checks"). Empty when there are none. Every place that names them says it this way. */
+export const leftOut = (unsure: number, noRung: NoRungCounts) =>
+  [
+    ...(unsure > 0 ? [`${unsure.toLocaleString("en-GB")} unsure`] : []),
+    ...(Object.keys(NO_RUNG) as NoRung[]).filter((why) => noRung[why] > 0).map((why) => plural(noRung[why], NO_RUNG[why].name.toLowerCase())),
+  ].join(" · ");
 
 const TOOLS: Record<string, string> = { "claude-code": "Claude Code", "copilot-cli": "Copilot CLI", vscode: "VS Code" };
 export const toolName = (t: string) => TOOLS[t] ?? t;

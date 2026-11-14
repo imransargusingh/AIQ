@@ -1511,3 +1511,26 @@ summary: >-
   screen test read "2 progress checks" on the project with none.
 - **Rule:** a view built by overriding the whole with a part's numbers must fail when the part lacks one. Sweep
   each screen under each filter, not only each screen.
+
+### DC-085 — A line that grows with the data sets a column's width, and the picture beside it is cut
+- **Signature:** 2026-11-14, wording the count of release notices for Home (design kinds-recut K13). Home's ladder
+  card was a grid whose label column took the width of its longest line, and the ladder got what was left. #294
+  added ", N progress checks, not on a rung" to the analysis line. Measured on the built app
+  (a script that opens Home at several widths and reads each box): at 1280 px with the test data the label took
+  499 px and the ladder 421, and the last rung ended past the card in every window 1180 px wide or narrower. With
+  the longest analysis line at a month's counts the label took 600 px, the ladder 320, and the last rung ended
+  70 px past the card at 1280 px. At 1000 px Orchestrated and Factory were out of view. A second reason on the same
+  line left the ladder 266 px at 1280 px.
+- **Why it survives:** nothing fails. `main` clips what passes its edge, so the checks that ask "does the page
+  scroll sideways" say no. Every screen test opened Home at 1280 px with counts of one or two digits.
+- **Sweep:** every grid in the stylesheet with a column sized by its content. Only this one held text that grows
+  with the data beside a picture. The others hold fixed words (a chart's rung names), a fixed set of weeks, or a
+  short number or button (read from the markup, not rendered one by one).
+- **Control (test):** e2e "Home's ladder keeps all five rungs in view at every window width, however long the
+  lines beside it": at 1280, 1100, 1000 and 760 px, with a month's counts and the longest analysis line, each
+  rung and the label end inside the card and `main` does not scroll sideways. Red before the fix, at 1280 px.
+- **Fix:** the tasks left out get one short line of their own ("Not on a rung: 12 unsure · 64 progress checks");
+  the label has a widest width and wraps inside it; the ladder sits beside the label while both fit and drops
+  below it when they don't.
+- **Rule:** text that grows with the data wraps inside its own box. Test a picture's edges against its card, at
+  several widths, with counts of real size: "the page does not scroll" does not see a clipped picture.

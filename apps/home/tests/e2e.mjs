@@ -133,11 +133,11 @@ await test("Home shows analyzed rungs, progress toward the split, and only measu
   assert.match(t, /Tasks agents finished\s+Analyzing your tasks\s+3 of 6 analyzed · about 500 a day, all by today/);
   assert.match(t, /Nothing to do\. AIQ works in the background, newest first\./);
   assert.match(t, /So far, from 2 tasks: mostly Directed/);
-  assert.match(t, /How much agents finish shows here from 10 analyzed tasks \(2 so far; 1 task AIQ isn't sure about doesn't count\)/);
+  assert.match(t, /How much agents finish shows here from 10 analyzed tasks \(2 so far; not counted: 1 unsure\)/);
   await page.getByText("How AIQ counts").click();
   assert.match(await page.locator("details.how").innerText(), /7 tasks in the last 30 days · 1 imported task/);
   assert.doesNotMatch(t, /\d+%/, "no percentages under 10 analyzed tasks");
-  assert.match(t, /Your most common rung\s+Directed\s+1 of 2 tasks on a rung · last 30 days\s+3 of 6 tasks analyzed · 1 unsure, not on a rung/);
+  assert.match(t, /Your most common rung\s+Directed\s+1 of 2 tasks on a rung · last 30 days\s+3 of 6 tasks analyzed\s+Not on a rung: 1 unsure\s/);
   assert.match(t, /1 task AIQ wasn't sure about is left out · See them/);
   assert.match(t, /Next steps\s+[^\n]*\n+Next steps show once AIQ knows the kind of each task/);
   // The rung mix: counts only under 10 judged tasks (no share), each rung's meaning on hover, the change waits.
@@ -870,8 +870,8 @@ for (const theme of ["light", "dark", "contrast"]) {
     const home = await open("no-rung", { theme: th });
     const front = await home.locator("main").innerText();
     assert.match(front, /of 16 tasks on a rung/);
-    assert.match(front, /· 1 unsure, not on a rung · 2 progress checks, not on a rung/);
-    assert.match(front, /of 16 analyzed tasks finished by agents.*· 1 unsure, not counted · 2 progress checks, not counted/);
+    assert.match(front, /19 tasks analyzed in 30 days\s+Not on a rung: 1 unsure · 2 progress checks\s/);
+    assert.match(front, /6 of 16 analyzed tasks finished by agents · 5 could be · 5 need you\s+Not counted: 1 unsure · 2 progress checks\s/);
     assert.deepEqual(await axe(home), []);
     assert.deepEqual(home.errors, []);
     if (shots) await home.screenshot({ path: join(shots, `no-rung-home-${theme}.png`), fullPage: true });
@@ -938,12 +938,44 @@ await test("one project's Home counts only its own tasks with no rung", async ()
   const counts = async (key) => {
     await home.getByLabel("Project").selectOption(key);
     await home.waitForSelector("[data-testid=project-note]");
-    return (await home.locator("main").innerText()).match(/\d+ tasks analyzed in 30 days[^\n]*/g);
+    return (await home.locator(".mainrung .lbl").innerText()).split("\n").filter((line) => /analyzed in 30 days|Not on a rung/.test(line));
   };
   assert.deepEqual(await counts("c:\\users\\imran\\source\\repos\\foresight"), ["4 tasks analyzed in 30 days"]);
-  assert.deepEqual(await counts("c:\\users\\imran\\source\\repos\\aiq"), ["15 tasks analyzed in 30 days · 1 unsure, not on a rung · 2 progress checks, not on a rung"]);
+  assert.deepEqual(await counts("c:\\users\\imran\\source\\repos\\aiq"), ["15 tasks analyzed in 30 days", "Not on a rung: 1 unsure · 2 progress checks"]);
   assert.deepEqual(home.errors, []);
   await home.context().close();
+});
+
+// Home's ladder card gave its label the width of its longest line and the ladder what was left. With the counts
+// of tasks not on a rung on the analysis line, the last rung ended past the card in every window 1180 px wide or
+// narrower with the test data, and in the normal 1280 px window with a month's counts (DC-085). So the test uses
+// counts of the size a month of use gives, and the longest analysis line.
+await test("Home's ladder keeps all five rungs in view at every window width, however long the lines beside it", async () => {
+  for (const width of [1280, 1100, 1000, 760]) {
+    const home = await open("no-rung", {
+      width,
+      edit: (s) => {
+        Object.assign(s.home, { judged: 285, uncertain: 12, no_rung: { progress_check: 64 }, rungs: [120, 60, 29, 0, 0], most_common_rung: 1 });
+        Object.assign(s.home.analysis, { state: "today_done", analyzed: 285, waiting: 215 });
+      },
+    });
+    const seen = await home.evaluate(() => {
+      const card = document.querySelector(".mainrung").getBoundingClientRect();
+      const past = (el) => Math.max(0, Math.round(el.getBoundingClientRect().right - card.right));
+      const main = document.querySelector("main");
+      return {
+        rungs: [...document.querySelectorAll(".mainrung .scale > span")].map((s) => [s.querySelector(".step-name").textContent, past(s)]),
+        label: past(document.querySelector(".mainrung .lbl")),
+        sideways: main.scrollWidth - main.clientWidth,
+      };
+    });
+    assert.deepEqual(seen, { rungs: [["1Assisted", 0], ["2Directed", 0], ["3Delegated", 0], ["4Orchestrated", 0], ["5Factory", 0]], label: 0, sideways: 0 }, `${width}px wide: pixels past the card's right edge`);
+    const said = await home.locator(".mainrung .lbl").innerText();
+    assert.match(said, /^Your most common rung\s+Assisted\s+57% of 209 tasks on a rung · last 30 days\s+285 of 500 tasks analyzed · more tomorrow\s+Not on a rung: 12 unsure · 64 progress checks\s+You ask AI/);
+    assert.deepEqual(home.errors, []);
+    if (shots) await home.locator(".mainrung").screenshot({ path: join(shots, `ladder-${width}.png`) });
+    await home.context().close();
+  }
 });
 
 for (const theme of ["light", "dark", "contrast"]) {
@@ -1630,7 +1662,7 @@ await test("coaching Home: finished and could be, the rule, uncertain left out, 
   assert.match(t, /Tasks agents finished\s+33%\s+could be 67%/);
   assert.equal(await page.getByRole("img", { name: "Agents finished 33%, could be 67%" }).count(), 1);
   // Outcome first, then the measured counts on one line; how it is counted stays folded away until asked for.
-  assert.match(t, /47% have an easy next step, most often to \s*3\s*Delegated\s*\.\s+5 of 15 analyzed tasks finished by agents · 5 could be · 5 need you · 1 unsure, not counted/);
+  assert.match(t, /47% have an easy next step, most often to \s*3\s*Delegated\s*\.\s+5 of 15 analyzed tasks finished by agents · 5 could be · 5 need you\s+Not counted: 1 unsure\s/);
   assert.ok(!t.includes("A task counts as finished"), "the rule is folded away");
   await page.getByText("How AIQ counts").click();
   const how = await page.locator("details.how").innerText();
@@ -2152,7 +2184,7 @@ await test("Home drops 'could be' when no kind of task is one step from agents f
   const page = await open("coaching", { edit: (s) => { s.coaching.split = { ...s.coaching.split, finished: 1, could: 0, needs: 14, up: 13, up_to: 2 }; } });
   const t = await page.locator("main").innerText();
   assert.ok(!t.includes("could be"), "no 'could be' figure");
-  assert.match(t, /1 of 15 analyzed tasks finished by agents · 14 need you · 1 unsure, not counted/);
+  assert.match(t, /1 of 15 analyzed tasks finished by agents · 14 need you\s+Not counted: 1 unsure\s/);
   assert.match(t, /87% have an easy next step, most often to \s*2\s*Directed\s*\./);
   assert.equal(await page.getByRole("img", { name: "Agents finished 7%" }).count(), 1);
   await page.context().close();

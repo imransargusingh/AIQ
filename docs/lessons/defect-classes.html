@@ -912,4 +912,17 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <ul><li><strong>Control (tests):</strong> <code>project.test.ts</code>: the picker swaps in every number a project carries under one of Home&#x27;s</li></ul>
 <p>names (read from the fixture the Rust read model writes), and each project&#x27;s analyzed tasks add up: on a rung, unsure, or with no rung. Home snapshot <code>a_project_counts_its_own_tasks_with_no_rung</code>. e2e &quot;one project&#x27;s Home counts only its own tasks with no rung&quot;. Red before the fix: the unit test read 6 against 4 analyzed, the screen test read &quot;2 progress checks&quot; on the project with none.</p>
 <ul><li><strong>Rule:</strong> a view built by overriding the whole with a part&#x27;s numbers must fail when the part lacks one. Sweep</li></ul>
-<p>each screen under each filter, not only each screen.</p></main></body></html>
+<p>each screen under each filter, not only each screen.</p>
+<h3>DC-085 — A line that grows with the data sets a column&#x27;s width, and the picture beside it is cut</h3>
+<ul><li><strong>Signature:</strong> 2026-11-14, wording the count of release notices for Home (design kinds-recut K13). Home&#x27;s ladder</li></ul>
+<p>card was a grid whose label column took the width of its longest line, and the ladder got what was left. #294 added &quot;, N progress checks, not on a rung&quot; to the analysis line. Measured on the built app (a script that opens Home at several widths and reads each box): at 1280 px with the test data the label took 499 px and the ladder 421, and the last rung ended past the card in every window 1180 px wide or narrower. With the longest analysis line at a month&#x27;s counts the label took 600 px, the ladder 320, and the last rung ended 70 px past the card at 1280 px. At 1000 px Orchestrated and Factory were out of view. A second reason on the same line left the ladder 266 px at 1280 px.</p>
+<ul><li><strong>Why it survives:</strong> nothing fails. <code>main</code> clips what passes its edge, so the checks that ask &quot;does the page</li></ul>
+<p>scroll sideways&quot; say no. Every screen test opened Home at 1280 px with counts of one or two digits.</p>
+<ul><li><strong>Sweep:</strong> every grid in the stylesheet with a column sized by its content. Only this one held text that grows</li></ul>
+<p>with the data beside a picture. The others hold fixed words (a chart&#x27;s rung names), a fixed set of weeks, or a short number or button (read from the markup, not rendered one by one).</p>
+<ul><li><strong>Control (test):</strong> e2e &quot;Home&#x27;s ladder keeps all five rungs in view at every window width, however long the</li></ul>
+<p>lines beside it&quot;: at 1280, 1100, 1000 and 760 px, with a month&#x27;s counts and the longest analysis line, each rung and the label end inside the card and <code>main</code> does not scroll sideways. Red before the fix, at 1280 px.</p>
+<ul><li><strong>Fix:</strong> the tasks left out get one short line of their own (&quot;Not on a rung: 12 unsure · 64 progress checks&quot;);</li></ul>
+<p>the label has a widest width and wraps inside it; the ladder sits beside the label while both fit and drops below it when they don&#x27;t.</p>
+<ul><li><strong>Rule:</strong> text that grows with the data wraps inside its own box. Test a picture&#x27;s edges against its card, at</li></ul>
+<p>several widths, with counts of real size: &quot;the page does not scroll&quot; does not see a clipped picture.</p></main></body></html>
