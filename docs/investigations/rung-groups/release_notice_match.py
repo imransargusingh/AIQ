@@ -1,6 +1,6 @@
 """Read-only, counts only: how well a fixed word list tells a one-line "the release is out" notice from a request
 to do a release, on the person's first prompt of a task. Prints no text from the store: only counts, and the
-words of the list below.
+words of the two fixed lists below. It ends with what each computer would analyze again under the re-cut list.
 
 A task the Kinds trial re-read (results file of `aiq analyze --trial --out`, commit 749c451) is counted with the
 job, Kind and rung the re-cut list gave it; every other task with what the store holds. The goal-given fact (F4)
@@ -41,6 +41,14 @@ REQUEST_RX = re.compile(
     r"(publish|release|ship|cut|deploy|tag|draft|rerun|re-run|bump|build|make|create|prepare|start|kick off|run)\b",
     re.I,
 )
+# Not part of any rule: other words a notice or a request might use, counted the same way, so one run shows
+# whether the list above misses a common word. A fixed list of plain English words; nothing is read from the store.
+CANDIDATES = [
+    "done", "complete", "completed", "finished", "ready", "available", "live", "out", "up", "pushed", "merged", "landed",
+    "updated", "installed", "release", "version", "latest", "new", "update", "upgrade", "install", "verify", "check",
+    "confirm", "test", "now", "just", "has been", "have been", "was", "is", "you", "please", "go ahead",
+    "publish", "ship", "deploy", "cut", "tag", "draft", "rerun", "build", "bump", "run",
+]
 VERSION_RX = re.compile(r"\b\d+\.\d+(\.\d+)?\b")
 # The shipped progress-check words (aiq-domain coach::is_progress_check), to count tasks both rules would take.
 PROGRESS_RX = re.compile(r"\b(status|progress|where are you|why did you stop)\b", re.I)
@@ -190,14 +198,45 @@ print(f"  sure rungs {dict(sorted(collections.Counter(t['vrung'] for t in H if t
 print(f"  sure Assisted {len(S1)}; progress checks (shipped rule) {len(P)}; release notices (rule A) {len(M)}; both {sum(1 for t in M if t['prog'])}; "
       f"Assisted left on the ladder {len(S1) - len(set(id(t) for t in P) | set(id(t) for t in M))}")
 
-# What this computer analyzes again when the re-cut list ships with "every task with no named Kind": by provider.
-own = [t for t in H if t["computer"] is None]
-print(f"\n== this computer's analyzed tasks: {len(own)} ==")
-for label, pick in (("no job", lambda t: group(t) == "no_job"), ("Other kind", lambda t: group(t) == "job_other"),
-                    ("Kind not recorded", lambda t: group(t) == "kind_not_recorded"), ("named Kind", lambda t: group(t) == "named")):
-    X = [t for t in own if pick(t)]
-    print(f"  {label}: {len(X)}; by analysis provider {cnt(t['provider'] for t in X)}; first prompt in the last 30 days {sum(1 for t in X if t['first'] >= NOW - 30 * DAY)}; "
-          f"with text {sum(1 for t in X if text_of.get(t['task_id']) is not None)}")
-print(f"  analysis versions {cnt(t['jv'] for t in own)}")
-retired = {("code_change", "build_fix"), ("code_change", "review"), ("code_change", "explain"), ("write_doc", "criteria"), ("write_doc", "notes")}
-print(f"  stored with a Kind the re-cut list retires: {cnt((t['job'], t['kind']) for t in H if (t['job'], t['kind']) in retired)}")
+print("\n== other words, not part of any rule: tasks with a short first prompt that hold the word ==")
+print("   (sure Assisted release tasks with a notice word, the same without one, other release tasks, tasks of any other Kind)")
+for w in CANDIDATES:
+    rx = re.compile(r"\b" + re.escape(w) + r"\b", re.I)
+    v = [0, 0, 0, 0]
+    for t in H:
+        if t["short"] and rx.search(text_of.get(t["task_id"]) or ""):
+            v[(0 if t["notice"] else 1) if (t["rel"] and t["sure1"]) else (2 if t["rel"] else 3)] += 1
+    if any(v):
+        print(f"  {w}: {tuple(v)}")
+
+FIRST_PERSON_RX = re.compile(r"^\W*(i|i've|i'm|we|we've)\b", re.I)
+print("\n== shape of the short first prompt, sure Assisted release tasks ==")
+for label, sel in (("notice word", lambda t: t["notice"]), ("no notice word", lambda t: not t["notice"])):
+    S = [t for t in A if sel(t) and t["short"]]
+    texts = [text_of.get(t["task_id"]) or "" for t in S]
+    print(f"  {label}: {len(S)}; has a question mark {sum(1 for s in texts if '?' in s)}; opens in the first person {sum(1 for s in texts if FIRST_PERSON_RX.search(s))}; "
+          f"names a version number {sum(1 for s in texts if VERSION_RX.search(s))}; one prompt {sum(1 for t in S if t['prompts'] == 1)}")
+
+# What each computer analyzes again when the re-cut list ships with "every task whose Kind is not on the new list":
+# by provider. A computer analyzes only its own tasks, so the other computers' share is spent there.
+RETIRED = {("code_change", "build_fix"), ("code_change", "review"), ("code_change", "explain"), ("write_doc", "criteria"), ("write_doc", "notes")}
+
+
+def forecast(label, T):
+    print(f"\n== {label}: {len(T)} analyzed tasks ==")
+    for name, pick in (
+        ("no job", lambda t: group(t) == "no_job"),
+        ("Other kind", lambda t: group(t) == "job_other"),
+        ("Kind not recorded", lambda t: group(t) == "kind_not_recorded"),
+        ("a Kind the re-cut list retires", lambda t: group(t) == "named" and (t["job"], t["kind"]) in RETIRED),
+        ("a Kind the re-cut list keeps", lambda t: group(t) == "named" and (t["job"], t["kind"]) not in RETIRED),
+    ):
+        X = [t for t in T if pick(t)]
+        print(f"  {name}: {len(X)}; by analysis provider {cnt(t['provider'] for t in X)}; first prompt in the last 30 days {sum(1 for t in X if t['first'] >= NOW - 30 * DAY)}; "
+              f"with text {sum(1 for t in X if text_of.get(t['task_id']) is not None)}; a sure rung today {sum(1 for t in X if t['state'] != 'uncertain')}")
+    print(f"  analysis versions {cnt(t['jv'] for t in T)}")
+    print(f"  retired Kinds stored {cnt((t['job'], t['kind']) for t in T if (t['job'], t['kind']) in RETIRED)}")
+
+
+forecast("this computer", [t for t in H if t["computer"] is None])
+forecast("other computers", [t for t in H if t["computer"] is not None])
