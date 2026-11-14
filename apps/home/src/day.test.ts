@@ -62,4 +62,15 @@ describe("day view", () => {
     ]);
     expect(s).toEqual({ tasks: 4, kinds: 2, usual: 2, minutes: 90, not_judged: 1 });
   });
+
+  it("a task with no rung of its own never counts toward a session's or the day's usual rung", () => {
+    const off = { ...j(1, "Checking on progress"), state: "judged", no_rung: "progress_check" } as TaskJudgment;
+    const ts = [
+      t("a", "s", D0 + 9 * H, D0 + 10 * H, { ...j(3, "Writing tests"), state: "judged" } as TaskJudgment),
+      t("b", "s", D0 + 11 * H, D0 + 11 * H, off),
+      t("c", "s", D0 + 12 * H, D0 + 12 * H, off),
+    ];
+    expect(lanes(ts, dayKey(D0, 0), 0)[0].usual_rung).toBe(3);
+    expect(daySummary(ts).usual).toBe(3);
+  });
 });

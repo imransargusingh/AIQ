@@ -989,10 +989,16 @@ fn a_progress_check_has_no_rung_of_its_own_on_home() {
     assert_eq!(kinds, [("progress", "too_few")], "only the Directed one is a task of the kind; none is coached");
     let pc = |ids: &[&String]| -> Vec<bool> {
         let of = |id: &String| snap.tasks.iter().find(|t| &t.task_id == id).unwrap().judgment.as_ref().unwrap();
-        ids.iter().map(|id| of(id).progress_check).collect()
+        ids.iter().map(|id| of(id).no_rung == Some(aiq_domain::coach::NoRung::ProgressCheck)).collect()
     };
     assert_eq!(pc(&[&work, &check, &gave_goal]), [false, true, false], "a check that states a goal keeps its rung");
     assert_eq!(pc(&by_kind.iter().collect::<Vec<_>>()), [true, true, true, false], "named by the analysis");
+    // What the views are sent: the reason's id, and null for a task on a rung.
+    let sent = |id: &String| {
+        let row = snap.tasks.iter().find(|t| &t.task_id == id).unwrap();
+        serde_json::to_value(row).unwrap()["judgment"]["no_rung"].clone()
+    };
+    assert_eq!((sent(&check), sent(&work)), (serde_json::json!("progress_check"), serde_json::Value::Null));
     assert_eq!((snap.home.judged, snap.home.uncertain, snap.home.progress_checks), (7, 0, 4));
     assert_eq!(snap.home.rungs, [2, 1, 0, 0, 0], "a progress check is not counted as Assisted");
     assert_eq!((c.split.tasks, c.split.uncertain, c.split.progress_checks), (3, 0, 4));

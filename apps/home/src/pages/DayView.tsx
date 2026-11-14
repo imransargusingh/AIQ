@@ -1,9 +1,10 @@
 // Day view on the Tasks page (design day-view; UI review 2026-11-04, item 5a): one row per tool session for one
 // day, named by its kinds of task, each task a block with its rung number, coloured by rung, prompts as ticks.
 // Quiet gaps over 30 minutes shrink to a break, and one line sums the day. Hover or focus a row or block for
-// details; Enter or a click on a block opens the task. Rung is in text and number, never colour alone.
+// details; Enter or a click on a block opens the task. Rung is in text and number, never colour alone. A task
+// with no rung of its own (`no_rung`) is a plain block with a dash, named by its reason.
 import { useMemo, useState } from "react";
-import { clock, day, jobOf, plural, rungLabel, stateLabel, toolName } from "../format";
+import { NO_RUNG, clock, day, jobOf, plural, rungLabel, stateLabel, toolName } from "../format";
 import { GAP_MIN, daySummary, lanes, taskDays, timeline, type Lane } from "../day";
 import { projectName, projectOf } from "../project";
 import { Rung, type Ctx } from "../ui";
@@ -18,7 +19,9 @@ function TaskTip({ t, off }: { t: TaskRow; off: number }) {
       <br />
       {span(t.first_ms, t.last_ms, off)} · {plural(t.prompts, "prompt")}
       <br />
-      {t.judgment ? (
+      {t.judgment?.no_rung ? (
+        `${NO_RUNG[t.judgment.no_rung].name} · no rung of its own`
+      ) : t.judgment ? (
         <>
           <Rung r={t.judgment.current} />
           {t.judgment.potential > t.judgment.current && (
@@ -117,6 +120,10 @@ export function DayView(ctx: Ctx) {
           <i className="dv-none" />
           Not analyzed yet
         </span>
+        <span>
+          <i className="dv-off" />
+          No rung of its own
+        </span>
       </div>
       <div className="dv" role="list" aria-label={`Sessions on ${day(key * 86_400_000, 0)}`} >
         {ls.map((l) => {
@@ -140,13 +147,15 @@ export function DayView(ctx: Ctx) {
                 {l.tasks.map((t) => {
                   const a = pct(t.first_ms);
                   const w = Math.max(pct(t.last_ms) - a, 0);
-                  const r = t.judgment?.current;
+                  const why = t.judgment?.no_rung;
+                  const r = why ? undefined : t.judgment?.current;
+                  const rung = why ? `${NO_RUNG[why].name.toLowerCase()}, no rung of its own` : t.judgment ? rungLabel(t.judgment.current) : "not analyzed yet";
                   return (
                     <button
                       key={t.task_id}
-                      className={`dv-task ${r ? `dv-r${r}` : "dv-none"}`}
+                      className={`dv-task ${why ? "dv-off" : r ? `dv-r${r}` : "dv-none"}`}
                       style={{ left: `min(${a}%, calc(100% - 24px))`, width: `max(24px, ${w}%)` }}
-                      aria-label={`${t.judgment?.task_type_label ?? jobOf(t)}, ${span(t.first_ms, t.last_ms, off)}, ${plural(t.prompts, "prompt")}, ${t.judgment ? rungLabel(t.judgment.current) : "not analyzed yet"}. Open task`}
+                      aria-label={`${t.judgment?.task_type_label ?? jobOf(t)}, ${span(t.first_ms, t.last_ms, off)}, ${plural(t.prompts, "prompt")}, ${rung}. Open task`}
                       onClick={() => ctx.openTask(t.task_id)}
                     >
                       <span className="dv-n" aria-hidden="true">{r ?? "–"}</span>

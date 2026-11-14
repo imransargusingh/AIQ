@@ -78,6 +78,8 @@ pub struct JudgedTask {
     /// The analysis's own confidence in its job (1.0 when not given). The self-checks use only sure analyses as
     /// the answer key (`ANSWER_KEY_MIN`): an unsure analysis cannot say whether a guess was right.
     pub job_confidence: f64,
+    /// Why the task gets no rung of its own, when it gets none (`without_rung`).
+    pub no_rung: Option<NoRung>,
 }
 
 impl JudgedTask {
@@ -111,6 +113,7 @@ impl JudgedTask {
             facts: rung::facts_from_json(facts_json, reprompts, job),
             corrections: read.corrections,
             job_confidence: 1.0,
+            no_rung: None,
         }
     }
 
@@ -129,20 +132,36 @@ impl JudgedTask {
         self.state == "uncertain"
     }
 
-    /// This task only checks on work already running (`is_progress_check`): it leaves the rung counts and coaching,
-    /// the way a task with no job does, under its own job id so the views can name it.
-    pub fn as_progress_check(mut self) -> Self {
-        self.job = PROGRESS_CHECK_JOB.to_owned();
+    /// This task gets no rung of its own (`no_rung`): it leaves the rung counts and coaching, the way a task with
+    /// no job does. Its job becomes the reason's id, which is no job of any pack.
+    pub fn without_rung(mut self, why: NoRung) -> Self {
+        self.job = why.id().to_owned();
         self.task_type = None;
         self.state = "uncertain".to_owned();
         self.coachable = false;
+        self.no_rung = Some(why);
         self
     }
 }
 
-/// The job id the views give a progress check. It is never stored: the analysis keeps its own job, and this is read
-/// from the first prompt and the analysis each time.
-pub const PROGRESS_CHECK_JOB: &str = "progress_check";
+/// Why a task gets no rung of its own. It is never stored: the analysis keeps its own job, kind and rung, and the
+/// reason is read from the first prompt and the analysis each time (`no_rung`). One reason at most, so a view
+/// names it, and a count over tasks without a rung has one place per reason.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NoRung {
+    /// It only asks how work already running is going (`is_progress_check`).
+    ProgressCheck,
+}
+
+impl NoRung {
+    /// What the read model sends the views, and the job such a task carries (`JudgedTask::without_rung`).
+    pub fn id(self) -> &'static str {
+        match self {
+            NoRung::ProgressCheck => "progress_check",
+        }
+    }
+}
+
 /// The kind the analysis gives a progress check since the re-cut list (j7): "Checking on progress", an
 /// ask_research kind (`aiq_contracts::judge::TASK_TYPES`).
 pub const PROGRESS_KIND: &str = "progress";
@@ -190,14 +209,25 @@ pub fn is_progress_check(
     has(&["status"]) || has(&["progress"]) || has(&["where", "are", "you"]) || has(&["why", "did", "you", "stop"])
 }
 
+/// Why this task gets no rung of its own, or None when it keeps its rung. The one rule every reader asks: the
+/// coaching inputs (`JudgedTask::with_first_prompt`) and Home's task list.
+pub fn no_rung(
+    first_prompt: Option<&str>,
+    kind: Option<(&str, &str)>,
+    state: &str,
+    current: u8,
+    f4: &rung::Merged,
+) -> Option<NoRung> {
+    is_progress_check(first_prompt, kind, state, current, f4).then_some(NoRung::ProgressCheck)
+}
+
 impl JudgedTask {
-    /// `as_progress_check` when the analysis's kind or the first prompt makes this a progress check; else
+    /// `without_rung` when the analysis and the first prompt give this task no rung of its own (`no_rung`); else
     /// unchanged.
     pub fn with_first_prompt(self, first_prompt: Option<&str>) -> Self {
-        if is_progress_check(first_prompt, self.kind(), &self.state, self.current, &self.facts.f4) {
-            self.as_progress_check()
-        } else {
-            self
+        match no_rung(first_prompt, self.kind(), &self.state, self.current, &self.facts.f4) {
+            Some(why) => self.without_rung(why),
+            None => self,
         }
     }
 
@@ -947,8 +977,10 @@ pub fn split(tasks: &[JudgedTask], rows: &[TypeRow], from_ms: i64, to_ms: i64) -
     let mut s = Split::default();
     let mut to = [0u32; 6];
     for t in tasks.iter().filter(|t| t.first_ms >= from_ms && t.first_ms < to_ms) {
-        if t.job == PROGRESS_CHECK_JOB {
-            s.progress_checks += 1;
+        if let Some(why) = t.no_rung {
+            match why {
+                NoRung::ProgressCheck => s.progress_checks += 1,
+            }
             continue;
         }
         if t.uncertain() {
@@ -1360,7 +1392,7 @@ mod tests {
             ReadRecord::default(),
         )
         .with_first_prompt(None);
-        assert_eq!((t.job.as_str(), t.task_type.as_deref(), t.coachable), (PROGRESS_CHECK_JOB, None, false));
+        assert_eq!((t.no_rung, t.task_type.as_deref(), t.coachable), (Some(NoRung::ProgressCheck), None, false));
     }
 
     #[test]
@@ -1381,9 +1413,10 @@ mod tests {
         )
         .with_first_prompt(Some("status?"));
         assert_eq!(
-            (t.job.as_str(), t.task_type.as_deref(), t.uncertain(), t.coachable),
-            (PROGRESS_CHECK_JOB, None, true, false)
+            (t.no_rung, t.job.as_str(), t.task_type.as_deref(), t.uncertain(), t.coachable),
+            (Some(NoRung::ProgressCheck), "progress_check", None, true, false)
         );
+        assert!(!rung::PACK_JOBS.contains(&t.job.as_str()), "no pack's job, so no job or kind row counts it");
         let kept = JudgedTask::new(
             "t2",
             true,

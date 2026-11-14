@@ -888,4 +888,15 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <ul><li><strong>Control:</strong> none automated yet. The change surfaces in design kinds-recut name the README screenshots. A gate</li></ul>
 <p>would save each shot&#x27;s visible text beside it and have the screen tests compare it with today&#x27;s render; that makes every text change on those screens retake images, so it is a decision of its own and is not built here.</p>
 <ul><li><strong>Rule:</strong> after a change to names people read, run the scripts that make pictures from the data, and open the</li></ul>
-<p>pictures.</p></main></body></html>
+<p>pictures.</p>
+<h3>DC-083 — A flag that takes a value off the screen, honoured only on the screens its author opened</h3>
+<ul><li><strong>Signature:</strong> 2026-11-14, preparing the release-notice rule (design kinds-recut K10, K11). #294 gave a progress</li></ul>
+<p>check &quot;no rung of its own&quot; with a yes-or-no flag. The rung, the next rung and the next step the analysis gave stay in the record beside it. Home&#x27;s counts, the task list and the task page&#x27;s chip read the flag. The Day view did not: it drew each progress check as an Assisted block, with &quot;Assisted · could be Directed&quot; on hover and &quot;Assisted&quot; for a screen reader. The task page printed &quot;Next step (Assisted → Directed)&quot; under &quot;AIQ won&#x27;t coach on it&quot;. Found by reading every reader of the rung before adding a second reason.</p>
+<ul><li><strong>Why it survives:</strong> the record carries both the flag and the fields it is meant to hide, so each screen must</li></ul>
+<p>remember to ask. #294&#x27;s tests asserted the read model. No test rendered a flagged task, so a screen that never asked passed.</p>
+<ul><li><strong>Sweep:</strong> every reader of a task&#x27;s analyzed rung, next rung or next step. Right already: Home&#x27;s ladder card and</li></ul>
+<p>split (the core&#x27;s counts), the rung mix (<code>mix.ts</code>), the Day view&#x27;s summaries (<code>day.ts</code>), the task list cell, the task page&#x27;s chip. Fixed here: the Day view&#x27;s block, hover text and label, and the task page&#x27;s next step. A kind&#x27;s page lists only the tasks the core gives it, and the core gives it none without a rung (the Home snapshot test holds that). Outside Home, a stored rung is read only by the analysis&#x27;s own log line and the second-reader check, which report the analysis itself.</p>
+<ul><li><strong>Control (test):</strong> e2e &quot;a task with no rung of its own shows no rung on any screen&quot; (three themes), on a fixture</li></ul>
+<p>the Rust read model writes (<code>no-rung</code>) whose tasks carry a rung, a next rung and a next step from the analysis. It asserts the reason, and that no rung name shows, on Home, the task list, the Day view (block, hover text, label, key) and the task page. Red before the fix, on the Day view. The flag is now one field that names the reason (<code>no_rung</code>), so a second reason cannot be honoured on one screen and missed on another.</p>
+<ul><li><strong>Rule:</strong> when a flag hides a field, keep a record that holds both in the test data, render it on every screen</li></ul>
+<p>that shows the field, and assert the field&#x27;s words are absent.</p></main></body></html>

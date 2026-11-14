@@ -132,6 +132,7 @@ them in the 708 tasks.
 | K8 | The first-prompt label | **Prompt version `label-3`.** The label prompt cuts its job and Kind lines from the analysis prompt, so it changes with the list. Past tasks are not labelled again | One list for both readers. A label reads only new tasks |
 | K9 | Is "Checking on progress" a Kind AIQ coaches? | **No.** A task the analysis names `progress`, read as a sure Assisted with no goal given, is a progress check: no rung of its own, never coached (`coach::is_progress_check`). The word rule of #294 stays for analyses older than `j7` | Imran chose on 2026-11-14 that progress checks get no rung. Without this, three such tasks in 30 days become a coached Kind: a Home snapshot test showed the row reading "coach". The words found 55 of his 68 progress checks, so the Kind can catch the rest. Marked `assume:` in the code, to be confirmed by the second-reader check |
 | K10 | A one-line release notice | **No rung, like a progress check** (Imran's card, 2026-11-14 20:05 UTC). **Not built yet**: the words that tell a notice from a real release request must be counted on real tasks first (`docs/investigations/rung-groups/release_notice_match.py`, read-only, counts only) | In the trial, 21 of the 58 tasks that gained a rung were release work at Assisted. Counted as tasks, they would pull the ladder down. A word list drawn from memory would be a guess |
+| K11 | How does a screen know that a task has no rung? | **One field that names the reason** (`no_rung`: `progress_check` today, a second id when K10 is built), in place of the yes-or-no flag of #294. Every screen shows the reason where the rung would be: Home's counts, the task list, the Day view and the task's own page. The rung, the next rung and the next step the analysis gave stay stored and are never shown for such a task | A second reason is coming (K10), and one flag per reason lets a screen honour one and miss the other. Building it found two places #294 had missed: the Day view drew a progress check as an Assisted block, and the task's page gave a next step under "AIQ won't coach on it" (defect class DC-083). A screen test now opens each of these screens on a task with no rung, in the three themes |
 
 ## Change surfaces
 
@@ -142,8 +143,9 @@ them in the 708 tasks.
 | Analysis prompt and placement (`aiq-domain` `rung.rs`) | `SYSTEM` job and Kind lines; `JUDGE_VERSION` `j7`; `j6` joins `JUDGE_VERSIONS_KEPT`; `kind_other_cause` and `candidate_type` use `task_type_named`. A test holds that the prompt offers exactly the list |
 | Re-analysis (`aiq` `judge.rs`) | `current_version` reads `list_outdated`. `aiq analyze --versions` prints, per tool, why each outdated analysis is sent again |
 | Label (`aiq-domain` `label.rs`) | `PROMPT_VERSION` `label-3` |
-| Coaching (`aiq-domain` `coach.rs`) | `is_progress_check` also takes the analysis's Kind. Both entry points use it: Home's task list and the core's coaching read |
-| Read model and Home | Names only. `task_type_label` resolves retired ids. Five fixtures regenerated; the screen tests pin the new names |
+| Coaching (`aiq-domain` `coach.rs`) | `is_progress_check` also takes the analysis's Kind. `no_rung` gives the reason a task gets no rung (`NoRung`). Both entry points ask it: Home's task list and the core's coaching read |
+| Read model (`aiq-home`) | `task_type_label` resolves retired ids. `TaskJudgment.no_rung` carries the reason's id in place of the `progress_check` flag (K11). The counts keep their names |
+| Home (`apps/home`) | The new names. The task list, the Day view and the task page read `no_rung`: the reason in place of the rung, a plain block with a dash in the Day view and one more entry in its key, no next step on the task page. Fixtures regenerated; a new one, `no-rung`, holds tasks with no rung of their own. The screen tests pin the new names and open each screen on such a task |
 | Accuracy sets | `evals/judge/golden.json` `g2` (42 cases), `evals/label/golden.json` `l2` (67 prompts), both recordings |
 | Docs | This note; coaching-from-rungs "Pack data"; judge-evals; kind-label; the cost lines in the welcome page and the privacy page (an update can analyze some past tasks again, once, inside the daily limit); the README's tip example; the README screenshots, retaken from the test data (`npm run readme-shots`) |
 
@@ -237,16 +239,16 @@ the re-analysis only as today's count of analyzed tasks: its "waiting" number co
 
 | Gate | Result |
 |---|---|
-| Red first | The re-analysis rule, the retired-Kind placement, the golden validity checks and the progress-check Kind each failed before the change and pass after |
+| Red first | The re-analysis rule, the retired-Kind placement, the golden validity checks and the progress-check Kind each failed before the change and pass after. So did the screen test for a task with no rung: it failed on the Day view, in each theme |
 | `cargo test --workspace` | Pass |
 | `cargo clippy --workspace --all-targets -- -D warnings`, `cargo fmt --check` | Clean |
-| Home: `npm test`, `npm run build`, `npm run e2e` | 87 unit tests and 108 screen tests pass; fixtures regenerate with no diff |
+| Home: `npm test`, `npm run build`, `npm run e2e` | 89 unit tests and 111 screen tests pass; fixtures regenerate with no diff |
 | Replay gates | Both pass on recordings made with today's prompts. No test is skipped. Two bars were set again from measurement, each named above: the label gate's "every recorded answer parses" is now 19 in 20 with the exact count pinned by the totals, and the live-trend floors are re-measured on `g2` |
 
 ## Status
 
 | | |
 |---|---|
-| **Completed** | The list, the prompt, the re-analysis rule, the label prompt, both accuracy sets and recordings, Home test data, the progress-check Kind rule |
+| **Completed** | The list, the prompt, the re-analysis rule, the label prompt, both accuracy sets and recordings, Home test data, the progress-check Kind rule, one "no rung, and why" field for every screen (K11) |
 | **Remaining** | The release-notice rule (K10), after the word count. The refreshed cost forecast. Imran's go-ahead on the merge card |
 | **Next** | After the merge: `aiq analyze --versions` and the counting scripts before and after the re-analysis; the accuracy check; the same counts on his other computers |

@@ -3,15 +3,17 @@ import { DAY, kindsOn, ladder, mixHeadline, rungCounts, shift, type Five } from 
 import type { Snapshot, TaskRow } from "./types";
 import coaching from "../tests/fixtures/coaching.json";
 import full from "../tests/fixtures/full.json";
+import noRung from "../tests/fixtures/no-rung.json";
 import progress from "../tests/fixtures/progress.json";
 
-const FX = { coaching, full, progress } as unknown as Record<string, Snapshot>;
+const FX = { coaching, full, progress, "no-rung": noRung } as unknown as Record<string, Snapshot>;
 const fx = (n: string) => FX[n];
 const NAMES = ["Assisted", "Directed", "Delegated", "Orchestrated", "Factory"];
 const name = (i: number) => NAMES[i];
 
 describe("rung mix agrees with the core", () => {
-  for (const f of ["full", "coaching", "progress"]) {
+  // "no-rung" holds tasks with no rung of their own: the core leaves them out of home.rungs, and so must this.
+  for (const f of ["full", "coaching", "progress", "no-rung"]) {
     it(`${f}: rung counts over the window equal home.rungs, and the kinds on each rung add up to it`, () => {
       const s = fx(f);
       const n = rungCounts(s.tasks, s.now_ms - s.home.window_days * DAY, s.now_ms + 1);

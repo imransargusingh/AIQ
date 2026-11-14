@@ -678,13 +678,19 @@ pub struct TaskJudgment {
     pub read_chars: u32,
     pub read_actions: bool,
     pub versions: String,
-    /// The task only checks on work already running (`aiq_domain::coach::is_progress_check`): no rung of its own,
-    /// never coached, counted apart from the unsure ones. `job` and `state` keep what the analysis said.
-    pub progress_check: bool,
+    /// Why the task has no rung of its own, as the reason's id (`aiq_domain::coach::no_rung`); None when it keeps
+    /// its rung. Such a task is never coached and is counted apart from the unsure ones. `job`, `state` and
+    /// `current` keep what the analysis said.
+    #[serde(serialize_with = "reason_id")]
+    pub no_rung: Option<aiq_domain::coach::NoRung>,
 }
 
 fn times_only<S: serde::Serializer>(m: &[(String, i64)], s: S) -> Result<S::Ok, S::Error> {
     s.collect_seq(m.iter().map(|(_, t)| t))
+}
+
+fn reason_id<S: serde::Serializer>(r: &Option<aiq_domain::coach::NoRung>, s: S) -> Result<S::Ok, S::Error> {
+    r.map(aiq_domain::coach::NoRung::id).serialize(s)
 }
 
 fn json_strings(s: &str) -> Vec<String> {
@@ -695,11 +701,11 @@ impl TaskRow {
     fn attach(&mut self, j: &aiq_store::JudgmentRow, first_prompt: Option<&str>) {
         let read: serde_json::Value = serde_json::from_str(&j.read).unwrap_or_default();
         let n = |k: &str| read.get(k).and_then(serde_json::Value::as_u64).unwrap_or(0) as u32;
-        let progress_check = {
+        let no_rung = {
             let reprompts = aiq_contracts::judge::parse_read(&j.read).reprompts.unwrap_or(0);
             let f = aiq_domain::rung::facts_from_json(&j.facts, reprompts, &j.job);
             let kind = j.task_type.as_deref().map(|t| (j.job.as_str(), t));
-            aiq_domain::coach::is_progress_check(first_prompt, kind, &j.state, j.current_rung, &f.f4)
+            aiq_domain::coach::no_rung(first_prompt, kind, &j.state, j.current_rung, &f.f4)
         };
         self.job = Some(j.job.clone());
         self.rung = Some(j.current_rung);
@@ -724,7 +730,7 @@ impl TaskRow {
             read_chars: n("chars"),
             read_actions: read.get("actions").and_then(serde_json::Value::as_bool).unwrap_or(false),
             versions: format!("{} · {} · {}", j.fact_set_version, j.rubric_version, j.judge_version),
-            progress_check,
+            no_rung,
         });
     }
 }
@@ -1894,12 +1900,10 @@ fn tally<'a>(tasks: impl Iterator<Item = &'a TaskRow>, weeks: &[Week]) -> Tally 
         t.tasks += 1;
         if let Some(j) = &r.judgment {
             t.judged += 1;
-            if j.progress_check {
-                t.progress_checks += 1;
-            } else if j.state == "uncertain" {
-                t.uncertain += 1;
-            } else {
-                t.rungs[(j.current.clamp(1, 5) - 1) as usize] += 1;
+            match j.no_rung {
+                Some(aiq_domain::coach::NoRung::ProgressCheck) => t.progress_checks += 1,
+                None if j.state == "uncertain" => t.uncertain += 1,
+                None => t.rungs[(j.current.clamp(1, 5) - 1) as usize] += 1,
             }
         }
         t.imported += u32::from(r.origin == "imported");
@@ -1940,7 +1944,10 @@ fn judged_tasks<'a>(
                 )
                 .with_job_confidence(j.job_confidence),
             )
-            .map(|jt| if t.judgment.as_ref().is_some_and(|x| x.progress_check) { jt.as_progress_check() } else { jt })
+            .map(|jt| match t.judgment.as_ref().and_then(|x| x.no_rung) {
+                Some(why) => jt.without_rung(why),
+                None => jt,
+            })
         })
         .collect()
 }
@@ -2167,7 +2174,7 @@ mod analysis_tests {
                 read_chars: 1,
                 read_actions: true,
                 versions: String::new(),
-                progress_check: false,
+                no_rung: None,
             });
         }
         t

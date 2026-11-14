@@ -623,6 +623,48 @@ fn coaching_from(paths: &Paths, first: u32) {
     );
 }
 
+/// Tasks with no rung of their own beside the work they belong to (design kinds-recut K9), over the coaching
+/// seed: this morning the person hands a page to an agent, then checks on it twice. One check is found by its
+/// words, one the analysis named. For the views, which must show no rung for either.
+pub fn no_rung(paths: &Paths) {
+    coaching(paths);
+    let mut s = Seed::new(paths);
+    s.n = 30_000; // after the coaching seed's ids
+    // (minutes ago, job, kind, rung, goal given, first prompt, what the analysis saw)
+    let morning: [(i64, &str, &str, u8, bool, &str, &str); 3] = [
+        (
+            170,
+            "code_change",
+            "feature",
+            3,
+            true,
+            "Build the export page from docs/specs/export.md. Done when the page tests pass.",
+            "You handed over the whole page, with a spec and a check for done.",
+        ),
+        (110, "ask_research", "find", 1, false, "status?", "You asked how the work was going."),
+        (
+            50,
+            "ask_research",
+            "progress",
+            1,
+            false,
+            "how far along is the export page?",
+            "You asked how far the agent had got.",
+        ),
+    ];
+    for (ago, job, ty, cur, goal, text, saw) in morning {
+        let at = NOW - ago * MIN;
+        let id = s.prompt("copilot-cli", "b1", at, Some(AIQ), text);
+        s.stop("copilot-cli", "b1", at + 4 * MIN);
+        let mut j = coach_row(&id, job, ty, cur, "judged", 0);
+        if !goal {
+            j.facts = j.facts.replace(r#""F4":{"value":true"#, r#""F4":{"value":false"#);
+        }
+        j.evidence = serde_json::json!([saw]).to_string();
+        s.store.insert_judgment(&j).unwrap();
+    }
+}
+
 /// The tour's example data (design home-tour T2): every Home view filled at once. The progress seed (rung mix,
 /// ladder map, kinds), the coaching seed (habits, tip history) and a task open right now, in one store.
 pub fn tour(paths: &Paths) {

@@ -6,7 +6,7 @@ import type { Coaching, KindRow, ProgressRow, TaskRow } from "./types";
 export type Five = [number, number, number, number, number];
 export const DAY = 86_400_000;
 const zero = (): Five => [0, 0, 0, 0, 0];
-const counted = (t: TaskRow) => t.judgment != null && t.judgment.state !== "uncertain" && !t.judgment.progress_check;
+const counted = (t: TaskRow) => t.judgment != null && t.judgment.state !== "uncertain" && !t.judgment.no_rung;
 const at = (t: TaskRow) => Math.min(5, Math.max(1, t.judgment!.current)) - 1;
 
 /** Judged, not-Uncertain tasks per rung whose first prompt is in [from, to). */

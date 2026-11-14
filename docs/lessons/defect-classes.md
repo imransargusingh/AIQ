@@ -1461,3 +1461,27 @@ summary: >-
   makes every text change on those screens retake images, so it is a decision of its own and is not built here.
 - **Rule:** after a change to names people read, run the scripts that make pictures from the data, and open the
   pictures.
+
+### DC-083 — A flag that takes a value off the screen, honoured only on the screens its author opened
+- **Signature:** 2026-11-14, preparing the release-notice rule (design kinds-recut K10, K11). #294 gave a progress
+  check "no rung of its own" with a yes-or-no flag. The rung, the next rung and the next step the analysis gave
+  stay in the record beside it. Home's counts, the task list and the task page's chip read the flag. The Day view
+  did not: it drew each progress check as an Assisted block, with "Assisted · could be Directed" on hover and
+  "Assisted" for a screen reader. The task page printed "Next step (Assisted → Directed)" under "AIQ won't coach on
+  it". Found by reading every reader of the rung before adding a second reason.
+- **Why it survives:** the record carries both the flag and the fields it is meant to hide, so each screen must
+  remember to ask. #294's tests asserted the read model. No test rendered a flagged task, so a screen that never
+  asked passed.
+- **Sweep:** every reader of a task's analyzed rung, next rung or next step. Right already: Home's ladder card and
+  split (the core's counts), the rung mix (`mix.ts`), the Day view's summaries (`day.ts`), the task list cell, the
+  task page's chip. Fixed here: the Day view's block, hover text and label, and the task page's next step. A kind's
+  page lists only the tasks the core gives it, and the core gives it none without a rung (the Home snapshot test
+  holds that). Outside Home, a stored rung is read only by the analysis's own log line and the second-reader check,
+  which report the analysis itself.
+- **Control (test):** e2e "a task with no rung of its own shows no rung on any screen" (three themes), on a fixture
+  the Rust read model writes (`no-rung`) whose tasks carry a rung, a next rung and a next step from the analysis. It
+  asserts the reason, and that no rung name shows, on Home, the task list, the Day view (block, hover text, label,
+  key) and the task page. Red before the fix, on the Day view. The flag is now one field that names the reason
+  (`no_rung`), so a second reason cannot be honoured on one screen and missed on another.
+- **Rule:** when a flag hides a field, keep a record that holds both in the test data, render it on every screen
+  that shows the field, and assert the field's words are absent.

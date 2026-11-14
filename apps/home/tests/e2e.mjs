@@ -83,7 +83,7 @@ const pages = [
 ];
 
 await test("contract: fixtures are aiq.home.v1 snapshots from the Rust read model", async () => {
-  for (const f of ["full", "down", "paused", "empty", "first-run", "coaching", "progress", "live", "live-many", "tour"]) {
+  for (const f of ["full", "down", "paused", "empty", "first-run", "coaching", "progress", "live", "live-many", "tour", "no-rung"]) {
     const s = JSON.parse(readFileSync(join(fixtures, `${f}.json`), "utf8"));
     assert.equal(s.schema, "aiq.home.v1");
     for (const k of ["status", "home", "tasks", "tips", "data", "settings", "setup", "coaching"]) assert.ok(k in s, `${f}: ${k}`);
@@ -852,6 +852,84 @@ await test("Tasks Day view: a row per session, rung named on hover and focus, En
   assert.ok(over <= 0, `Day view overflows the page by ${over}px`);
   await narrow.context().close();
 });
+
+// A task with no rung of its own (design kinds-recut K9; fixture no-rung, written by the Rust read model). The
+// analysis still gave each one a rung, a next rung and a next step, and no view may show them (DC-083: #294 took
+// progress checks off Home's counts and the Tasks list, while the Day view still drew each as an Assisted block
+// and its own page still gave a next step).
+for (const theme of ["light", "dark", "contrast"]) {
+  await test(`a task with no rung of its own shows no rung on any screen (${theme})`, async () => {
+    const th = theme === "light" ? undefined : theme;
+    const snapshot = JSON.parse(readFileSync(join(fixtures, "no-rung.json"), "utf8"));
+    const off = snapshot.tasks.filter((t) => t.judgment?.no_rung);
+    assert.deepEqual(off.map((t) => t.judgment.no_rung), ["progress_check", "progress_check"]);
+    assert.ok(off.every((t) => t.judgment.current === 1 && t.judgment.potential === 2 && t.judgment.gap), "each carries a rung and a next step to leave out");
+    const RUNG = /Assisted|Directed|Delegated|Orchestrated|Factory/;
+
+    // Home: counted apart from the tasks on a rung, on the ladder card and under the split.
+    const home = await open("no-rung", { theme: th });
+    const front = await home.locator("main").innerText();
+    assert.match(front, /of 16 tasks on a rung/);
+    assert.match(front, /· 1 unsure, not on a rung · 2 progress checks, not on a rung/);
+    assert.match(front, /of 16 analyzed tasks finished by agents.*· 1 unsure, not counted · 2 progress checks, not counted/);
+    assert.deepEqual(await axe(home), []);
+    assert.deepEqual(home.errors, []);
+    if (shots) await home.screenshot({ path: join(shots, `no-rung-home-${theme}.png`), fullPage: true });
+    await home.context().close();
+
+    // Tasks, the list: the Rung cell names the reason and no rung.
+    const tasks = await open("no-rung", { theme: th, hash: "#tasks" });
+    await tasks.getByRole("button", { name: "All tasks", exact: true }).click();
+    for (const t of off) {
+      const cell = tasks.locator(`table[aria-label=Tasks] tbody tr:has(a[href="#task/${t.task_id}"]) td`).last();
+      assert.equal((await cell.innerText()).trim(), "Progress check");
+    }
+    if (shots) await tasks.screenshot({ path: join(shots, `no-rung-tasks-${theme}.png`), fullPage: true });
+
+    // Tasks, the Day view: a block with no rung number, named on focus and to a screen reader, and in the key.
+    await tasks.getByRole("button", { name: "Day", exact: true }).click();
+    assert.match(await tasks.getByTestId("day-summary").innerText(), /^3 tasks · 3 kinds of task · mostly \s*3\s*Delegated/, "the day's usual rung leaves them out");
+    const blocks = tasks.locator(".dv-task.dv-off");
+    assert.equal(await blocks.count(), off.length, "one block each, in its own style");
+    for (const b of await blocks.all()) {
+      assert.equal(await b.locator(".dv-n").innerText(), "–");
+      await b.focus();
+      const tip = await b.locator(".tip").innerText();
+      assert.match(tip, /Progress check · no rung of its own$/);
+      assert.doesNotMatch(tip, RUNG);
+      const label = (await b.getAttribute("aria-label")) ?? "";
+      assert.match(label, /, progress check, no rung of its own\. Open task$/);
+      assert.doesNotMatch(label, RUNG);
+    }
+    assert.match(await tasks.locator(".key").innerText(), /Not analyzed yet\s+No rung of its own$/);
+    assert.deepEqual(await axe(tasks), []);
+    assert.deepEqual(tasks.errors, []);
+    if (shots) await tasks.screenshot({ path: join(shots, `no-rung-day-${theme}.png`), fullPage: true });
+    await tasks.context().close();
+
+    // The task's own page: the reason in place of the rung, one line of why, and no next step.
+    const row = off[0];
+    const page = await open("no-rung", {
+      theme: th,
+      hash: `#task/${row.task_id}`,
+      editTask: (t) => {
+        t.task = row;
+        t.prompts = [{ event_id: row.task_id, ts_ms: row.first_ms, text: "how far along is the export page?", deleted: false }];
+        t.tips.shown = [];
+      },
+    });
+    const said = await page.locator("section[aria-labelledby=jd]").innerText();
+    assert.match(said, /Progress check\s+Job: Ask or research\s+Kind: Checking on progress/);
+    assert.match(said, /This checks on work already running, so it has no rung of its own and AIQ won't coach on it\./);
+    assert.match(said, /You asked how far the agent had got\./, "what the analysis saw stays");
+    assert.doesNotMatch(said, /Rung:|Next step/);
+    assert.doesNotMatch(said, RUNG);
+    assert.deepEqual(await axe(page), []);
+    assert.deepEqual(page.errors, []);
+    if (shots) await page.screenshot({ path: join(shots, `no-rung-task-${theme}.png`), fullPage: true });
+    await page.context().close();
+  });
+}
 
 for (const theme of ["light", "dark", "contrast"]) {
   await test(`Right now card: the open task's estimate per turn, rung in words, tip at its turn, no axe violations (${theme})`, async () => {

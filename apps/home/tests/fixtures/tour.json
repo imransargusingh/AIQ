@@ -134,7 +134,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "t3",
       "prompt_ms": [
@@ -176,7 +176,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "t2",
       "prompt_ms": [
@@ -218,7 +218,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "t1",
       "prompt_ms": [
@@ -260,7 +260,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "t0",
       "prompt_ms": [
@@ -302,7 +302,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "p16",
       "prompt_ms": [
@@ -343,7 +343,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "k0",
       "prompt_ms": [
@@ -384,7 +384,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "wb0",
       "prompt_ms": [
@@ -425,7 +425,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "p17",
       "prompt_ms": [
@@ -466,7 +466,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "p32",
       "prompt_ms": [
@@ -507,7 +507,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "k1",
       "prompt_ms": [
@@ -548,7 +548,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "p18",
       "prompt_ms": [
@@ -589,7 +589,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "p26",
       "prompt_ms": [
@@ -630,7 +630,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "p33",
       "prompt_ms": [
@@ -671,7 +671,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "k2",
       "prompt_ms": [
@@ -712,7 +712,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "wb1",
       "prompt_ms": [
@@ -753,7 +753,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "p19",
       "prompt_ms": [
@@ -794,7 +794,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "p20",
       "prompt_ms": [
@@ -835,7 +835,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "p27",
       "prompt_ms": [
@@ -876,7 +876,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "k3",
       "prompt_ms": [
@@ -917,7 +917,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "p21",
       "prompt_ms": [
@@ -958,7 +958,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "k4",
       "prompt_ms": [
@@ -999,7 +999,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "p22",
       "prompt_ms": [
@@ -1040,7 +1040,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "p28",
       "prompt_ms": [
@@ -1081,7 +1081,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "k5",
       "prompt_ms": [
@@ -1122,7 +1122,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "p23",
       "prompt_ms": [
@@ -1163,7 +1163,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "p29",
       "prompt_ms": [
@@ -1204,7 +1204,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "p24",
       "prompt_ms": [
@@ -1245,7 +1245,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "k6",
       "prompt_ms": [
@@ -1286,7 +1286,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "p25",
       "prompt_ms": [
@@ -1327,7 +1327,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "p30",
       "prompt_ms": [
@@ -1368,7 +1368,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "k7",
       "prompt_ms": [
@@ -1409,7 +1409,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "k8",
       "prompt_ms": [
@@ -1450,7 +1450,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "p31",
       "prompt_ms": [
@@ -1491,7 +1491,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "k9",
       "prompt_ms": [
@@ -1532,7 +1532,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "k10",
       "prompt_ms": [
@@ -1573,7 +1573,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "k11",
       "prompt_ms": [
@@ -1614,7 +1614,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "k12",
       "prompt_ms": [
@@ -1655,7 +1655,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "k13",
       "prompt_ms": [
@@ -1696,7 +1696,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "k14",
       "prompt_ms": [
@@ -1737,7 +1737,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "k15",
       "prompt_ms": [

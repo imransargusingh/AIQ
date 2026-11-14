@@ -1,5 +1,5 @@
 // Pure formatting and ordering helpers. No DOM, so vitest covers them directly.
-import type { TaskRow } from "./types";
+import type { NoRung, TaskRow } from "./types";
 
 export const RUNGS: { name: string; means: string }[] = [
   { name: "Assisted", means: "You ask AI for answers or pieces, and you do the work." },
@@ -25,6 +25,12 @@ const STATES: Record<string, string> = {
 };
 /** The text label every non-default judgment state carries (spec: never by colour alone). */
 export const stateLabel = (s: string) => STATES[s] ?? s;
+
+/** A task with no rung of its own (`TaskJudgment.no_rung`): what every view shows in place of a rung, and what
+ *  the task does, which opens the task page's one line of explanation. */
+export const NO_RUNG: Record<NoRung, { name: string; does: string }> = {
+  progress_check: { name: "Progress check", does: "This checks on work already running" },
+};
 
 const TOOLS: Record<string, string> = { "claude-code": "Claude Code", "copilot-cli": "Copilot CLI", vscode: "VS Code" };
 export const toolName = (t: string) => TOOLS[t] ?? t;

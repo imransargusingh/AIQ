@@ -348,9 +348,13 @@ export interface TaskJudgment {
   versions: string;
   task_type: string | null;
   task_type_label: string | null;
-  /** Only checks on work already running: no rung of its own, never coached. */
-  progress_check: boolean;
+  /** Why the task has no rung of its own and is never coached; null when it keeps its rung. `current`, `potential`
+   *  and `state` keep what the analysis said, so no view may show them for such a task. */
+  no_rung: NoRung | null;
 }
+
+/** Why a task has no rung of its own (the ids of aiq-domain `coach::NoRung`). */
+export type NoRung = "progress_check";
 
 /** Coaching from rung results (design coaching-from-rungs). Every number is derived from judgments. */
 export interface Coaching {
