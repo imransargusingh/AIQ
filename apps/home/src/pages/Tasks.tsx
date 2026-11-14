@@ -155,7 +155,9 @@ export function Tasks({ start, ...ctx }: Ctx & { start?: View }) {
                     {t.judgment?.task_type_label && <span className="meta"> · {t.judgment.task_type_label}</span>}
                   </td>
                   <td className={t.judgment ? undefined : "mute"}>
-                    {t.judgment ? (
+                    {t.judgment?.progress_check ? (
+                      "Progress check"
+                    ) : t.judgment ? (
                       <>
                         <Rung r={t.judgment.current} />
                         {stateLabel(t.judgment.state) && <> <Chip>{stateLabel(t.judgment.state)}</Chip></>}

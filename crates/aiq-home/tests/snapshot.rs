@@ -951,3 +951,29 @@ fn a_long_agent_run_is_one_task_with_the_prompt_that_started_it() {
     assert_eq!(shape, [("live", 1), ("live", 2), ("imported", 2)], "newest first: {shape:?}");
     assert_eq!(snap.tasks[1].last_ms, NOW - 165 * MIN, "a task ends one idle gap after its last activity");
 }
+
+#[test]
+fn a_progress_check_has_no_rung_of_its_own_on_home() {
+    const HOUR: i64 = DAY / 24;
+    let d = tempfile::tempdir().unwrap();
+    let p = Paths::at(d.path());
+    let mut s = Seed::new(&p);
+    let work =
+        s.prompt("copilot-cli", "s1", NOW - 6 * HOUR, Some(AIQ), "Look up how the retry limit is set in the client");
+    let check = s.prompt("copilot-cli", "s1", NOW - 3 * HOUR, Some(AIQ), "status?");
+    let gave_goal = s.prompt("copilot-cli", "s2", NOW - 2 * HOUR, Some(AIQ), "status?");
+    let read = ("ask_research", 1, 2, "judged", true);
+    s.judgment(&work, "live", "copilot-cli", NOW - 5 * HOUR, read, &["e"], "g");
+    s.judgment(&check, "live", "copilot-cli", NOW - 2 * HOUR, read, &["e"], "g");
+    let goal = r#"{"F4":{"value":true,"confidence":0.9,"source":"model"}}"#;
+    s.judgment_with_facts(&gave_goal, "live", "copilot-cli", NOW - HOUR, read, &["e"], "g", goal);
+    let snap = snap(&p);
+    assert!(snap.status.error.is_none(), "{:?}", snap.status.error);
+    let pc: Vec<bool> = [&work, &check, &gave_goal]
+        .iter()
+        .map(|id| snap.tasks.iter().find(|t| &&t.task_id == id).unwrap().judgment.as_ref().unwrap().progress_check)
+        .collect();
+    assert_eq!(pc, vec![false, true, false], "a check that states a goal keeps its rung");
+    assert_eq!((snap.home.judged, snap.home.uncertain, snap.home.progress_checks), (3, 0, 1));
+    assert_eq!(snap.home.rungs, [2, 0, 0, 0, 0], "the progress check is not counted as Assisted");
+}

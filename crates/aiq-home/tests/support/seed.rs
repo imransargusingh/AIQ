@@ -241,9 +241,25 @@ impl Seed {
         origin: &str,
         provider: &str,
         at: i64,
+        read: (&str, u8, u8, &str, bool),
+        evidence: &[&str],
+        gap: &str,
+    ) {
+        self.judgment_with_facts(task_id, origin, provider, at, read, evidence, gap, "{}");
+    }
+
+    /// `judgment` with its stored facts JSON.
+    #[allow(clippy::too_many_arguments)]
+    pub fn judgment_with_facts(
+        &mut self,
+        task_id: &str,
+        origin: &str,
+        provider: &str,
+        at: i64,
         (job, current, potential, state, coachable): (&str, u8, u8, &str, bool),
         evidence: &[&str],
         gap: &str,
+        facts: &str,
     ) {
         let id = self.id();
         for run in 1..=2u8 {
@@ -284,7 +300,7 @@ impl Seed {
                 ceiling_rung: 5,
                 state: state.into(),
                 coachable,
-                facts: "{}".into(),
+                facts: facts.into(),
                 evidence: serde_json::json!(evidence).to_string(),
                 gap: gap.into(),
                 blockers: "[]".into(),

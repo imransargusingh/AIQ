@@ -313,6 +313,8 @@ pub struct SplitOut {
     pub could: u32,
     pub needs: u32,
     pub uncertain: u32,
+    /// Progress checks on work already running, left out beside `uncertain`.
+    pub progress_checks: u32,
     /// Not finished, with a next step at least one rung up (aiq-domain coach::Split::up).
     pub up: u32,
     /// The rung those next steps reach most often.
@@ -415,6 +417,8 @@ pub struct Home {
     pub judged: u32,
     /// Of those, judged Uncertain (shown, never coached, not in `rungs`).
     pub uncertain: u32,
+    /// Of those, progress checks on work already running (no rung of their own, not in `uncertain` or `rungs`).
+    pub progress_checks: u32,
     /// Judged, not-Uncertain tasks in the window per current rung (index 0 = Assisted).
     pub rungs: [u32; 5],
     /// The rung with the most judged tasks in the window (ties go to the lower rung). None when none.
@@ -674,6 +678,9 @@ pub struct TaskJudgment {
     pub read_chars: u32,
     pub read_actions: bool,
     pub versions: String,
+    /// The task only checks on work already running (`aiq_domain::coach::is_progress_check`): no rung of its own,
+    /// never coached, counted apart from the unsure ones. `job` and `state` keep what the analysis said.
+    pub progress_check: bool,
 }
 
 fn times_only<S: serde::Serializer>(m: &[(String, i64)], s: S) -> Result<S::Ok, S::Error> {
@@ -685,9 +692,14 @@ fn json_strings(s: &str) -> Vec<String> {
 }
 
 impl TaskRow {
-    fn attach(&mut self, j: &aiq_store::JudgmentRow) {
+    fn attach(&mut self, j: &aiq_store::JudgmentRow, first_prompt: Option<&str>) {
         let read: serde_json::Value = serde_json::from_str(&j.read).unwrap_or_default();
         let n = |k: &str| read.get(k).and_then(serde_json::Value::as_u64).unwrap_or(0) as u32;
+        let progress_check = first_prompt.is_some_and(|p| {
+            let reprompts = aiq_contracts::judge::parse_read(&j.read).reprompts.unwrap_or(0);
+            let f = aiq_domain::rung::facts_from_json(&j.facts, reprompts, &j.job);
+            aiq_domain::coach::is_progress_check(p, &j.state, j.current_rung, &f.f4)
+        });
         self.job = Some(j.job.clone());
         self.rung = Some(j.current_rung);
         self.judgment = Some(TaskJudgment {
@@ -711,6 +723,7 @@ impl TaskRow {
             read_chars: n("chars"),
             read_actions: read.get("actions").and_then(serde_json::Value::as_bool).unwrap_or(false),
             versions: format!("{} · {} · {}", j.fact_set_version, j.rubric_version, j.judge_version),
+            progress_check,
         });
     }
 }
@@ -944,6 +957,7 @@ fn empty(paths: &Paths, pack: &PackV1, now: Now) -> Snapshot {
             tasks_in_window: 0,
             judged: 0,
             uncertain: 0,
+            progress_checks: 0,
             rungs: [0; 5],
             most_common_rung: None,
             judge_today: JudgeToday { tasks: 0, calls: 0, failed_calls: 0, cost_usd: None },
@@ -1128,13 +1142,14 @@ fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()>
     let judgments = store.current_judgments().map_err(|e| e.to_string())?;
     for t in tasks.iter_mut().chain(older.iter_mut()) {
         if let Some(j) = judgments.get(&t.task_id) {
-            t.attach(j);
+            let first = store.task_first_prompt(&t.task_id).map_err(|e| e.to_string())?.and_then(|(_, text)| text);
+            t.attach(j, first.as_deref());
         }
     }
     let all = tally(tasks.iter(), &s.home.weeks);
     let h = &mut s.home;
-    (h.tasks_in_window, h.judged, h.uncertain, h.rungs, h.most_common_rung) =
-        (all.tasks, all.judged, all.uncertain, all.rungs, all.most_common_rung);
+    (h.tasks_in_window, h.judged, h.uncertain, h.progress_checks, h.rungs, h.most_common_rung) =
+        (all.tasks, all.judged, all.uncertain, all.progress_checks, all.rungs, all.most_common_rung);
     (h.imported_in_window, h.weeks, h.by_tool) = (all.imported, all.weeks, all.by_tool);
     {
         let calls = store.judge_calls_since(now.local_midnight_utc_ms()).map_err(|e| e.to_string())?;
@@ -1852,6 +1867,8 @@ struct Tally {
     tasks: u32,
     judged: u32,
     uncertain: u32,
+    /// Judged tasks that are progress checks: not in `uncertain` or `rungs`.
+    progress_checks: u32,
     rungs: [u32; 5],
     most_common_rung: Option<u8>,
     imported: u32,
@@ -1864,6 +1881,7 @@ fn tally<'a>(tasks: impl Iterator<Item = &'a TaskRow>, weeks: &[Week]) -> Tally 
         tasks: 0,
         judged: 0,
         uncertain: 0,
+        progress_checks: 0,
         rungs: [0; 5],
         most_common_rung: None,
         imported: 0,
@@ -1875,7 +1893,9 @@ fn tally<'a>(tasks: impl Iterator<Item = &'a TaskRow>, weeks: &[Week]) -> Tally 
         t.tasks += 1;
         if let Some(j) = &r.judgment {
             t.judged += 1;
-            if j.state == "uncertain" {
+            if j.progress_check {
+                t.progress_checks += 1;
+            } else if j.state == "uncertain" {
                 t.uncertain += 1;
             } else {
                 t.rungs[(j.current.clamp(1, 5) - 1) as usize] += 1;
@@ -1919,6 +1939,7 @@ fn judged_tasks<'a>(
                 )
                 .with_job_confidence(j.job_confidence),
             )
+            .map(|jt| if t.judgment.as_ref().is_some_and(|x| x.progress_check) { jt.as_progress_check() } else { jt })
         })
         .collect()
 }
@@ -1945,6 +1966,7 @@ fn coach_view(
         could: sp.could,
         needs: sp.needs,
         uncertain: sp.uncertain,
+        progress_checks: sp.progress_checks,
         up: sp.up,
         up_to: sp.up_to,
     };
@@ -2144,6 +2166,7 @@ mod analysis_tests {
                 read_chars: 1,
                 read_actions: true,
                 versions: String::new(),
+                progress_check: false,
             });
         }
         t

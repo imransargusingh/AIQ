@@ -113,16 +113,26 @@ export function Task(ctx: Ctx & { taskId: string }) {
         <section className="card group" aria-labelledby="jd">
           <h2 id="jd">How this task was done</h2>
           <div className="row">
-            <Chip>
-              <span>
-                Rung: <Rung r={j.current} />
-              </span>
-            </Chip>
-            {stateLabel(j.state) && <Chip>{stateLabel(j.state)}</Chip>}
+            {j.progress_check ? (
+              <Chip>Progress check</Chip>
+            ) : (
+              <>
+                <Chip>
+                  <span>
+                    Rung: <Rung r={j.current} />
+                  </span>
+                </Chip>
+                {stateLabel(j.state) && <Chip>{stateLabel(j.state)}</Chip>}
+              </>
+            )}
             <Chip>Job: {jobName(j.job)}</Chip>
             {j.task_type_label && <Chip>Kind: {j.task_type_label}</Chip>}
           </div>
-          {j.state === "uncertain" && <p className="mute">AIQ isn't sure about this one, so it won't coach on it.</p>}
+          {j.progress_check ? (
+            <p className="mute">This checks on work already running, so it has no rung of its own and AIQ won't coach on it.</p>
+          ) : (
+            j.state === "uncertain" && <p className="mute">AIQ isn't sure about this one, so it won't coach on it.</p>
+          )}
           <ul className="evidence">
             {j.evidence.map((e, i) => (
               <li key={i}>{e}</li>

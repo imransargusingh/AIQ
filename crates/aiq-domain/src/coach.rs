@@ -129,6 +129,56 @@ impl JudgedTask {
         self.state == "uncertain"
     }
 
+    /// This task only checks on work already running (`is_progress_check`): it leaves the rung counts and coaching,
+    /// the way a task with no job does, under its own job id so the views can name it.
+    pub fn as_progress_check(mut self) -> Self {
+        self.job = PROGRESS_CHECK_JOB.to_owned();
+        self.task_type = None;
+        self.state = "uncertain".to_owned();
+        self.coachable = false;
+        self
+    }
+}
+
+/// The job id the views give a progress check. It is never stored: the analysis keeps its own job, and this is read
+/// from the first prompt and the analysis each time.
+pub const PROGRESS_CHECK_JOB: &str = "progress_check";
+/// A progress check is a short prompt: longer ones carry new work (measured 2026-11-14 on Imran's laptop, 4 of 68
+/// progress checks were longer than this).
+pub const PROGRESS_CHECK_MAX_WORDS: usize = 25;
+
+/// A task that only asks how work already running is going ("status?", "where are you on this?"). Imran 2026-11-14
+/// ("Fix both"): 62 of his 68 progress checks read as Assisted, 13% of his Assisted tasks, each one him supervising
+/// work he had delegated. Such a task gets no rung of its own. Only a sure Assisted reading with no goal given
+/// (F4) qualifies, so a task that reads higher, or that states a goal, is never hidden. Measured on his 741 tasks
+/// (`docs/investigations/rung-groups/cue_match.py`): the words below found 55 of the 68 and 15 other short
+/// prompts; the extra Assisted and F4 conditions keep every one of those 15 that read higher on its rung.
+pub fn is_progress_check(first_prompt: &str, state: &str, current: u8, f4: &rung::Merged) -> bool {
+    if state == "uncertain" || current != 1 || f4.value == Some(true) {
+        return false;
+    }
+    let own = crate::text::own_words(first_prompt);
+    let words: Vec<String> = own
+        .split(|c: char| !c.is_alphanumeric() && c != '\'')
+        .filter(|w| !w.is_empty())
+        .map(str::to_lowercase)
+        .collect();
+    if words.is_empty() || words.len() > PROGRESS_CHECK_MAX_WORDS {
+        return false;
+    }
+    let has = |p: &[&str]| words.windows(p.len()).any(|w| w.iter().zip(p).all(|(a, b)| a == b));
+    has(&["status"]) || has(&["progress"]) || has(&["where", "are", "you"]) || has(&["why", "did", "you", "stop"])
+}
+
+impl JudgedTask {
+    /// `as_progress_check` when the first prompt makes this a progress check; else unchanged.
+    pub fn with_first_prompt(self, first_prompt: Option<&str>) -> Self {
+        match first_prompt {
+            Some(p) if is_progress_check(p, &self.state, self.current, &self.facts.f4) => self.as_progress_check(),
+            _ => self,
+        }
+    }
+
     /// (job, task type) when both are known and the job has a pack.
     pub fn kind(&self) -> Option<(&str, &str)> {
         let t = self.task_type.as_deref()?;
@@ -849,6 +899,8 @@ pub struct Split {
     pub needs: u32,
     /// Uncertain judgments left out, counted beside.
     pub uncertain: u32,
+    /// Progress checks (`is_progress_check`) left out, counted beside; not in `uncertain`.
+    pub progress_checks: u32,
     /// Not finished, and the judge sees a next step at least one rung up (potential > current): a subset of
     /// could + needs, so the move people can make now shows even when no kind reaches Delegated.
     pub up: u32,
@@ -873,6 +925,10 @@ pub fn split(tasks: &[JudgedTask], rows: &[TypeRow], from_ms: i64, to_ms: i64) -
     let mut s = Split::default();
     let mut to = [0u32; 6];
     for t in tasks.iter().filter(|t| t.first_ms >= from_ms && t.first_ms < to_ms) {
+        if t.job == PROGRESS_CHECK_JOB {
+            s.progress_checks += 1;
+            continue;
+        }
         if t.uncertain() {
             s.uncertain += 1;
             continue;
@@ -1206,6 +1262,85 @@ pub fn check_guesses<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn f4(v: Option<bool>) -> rung::Merged {
+        rung::Merged { id: "F4", value: v, confidence: 0.9, source: rung::Source::Model, disputed: false }
+    }
+
+    #[test]
+    fn a_short_assisted_status_question_is_a_progress_check() {
+        for p in
+            ["status?", "What's the status", "progress update please", "where are you on this?", "why did you stop?"]
+        {
+            assert!(is_progress_check(p, "judged", 1, &f4(Some(false))), "{p}");
+            assert!(is_progress_check(p, "judged", 1, &f4(None)), "{p}: goal unknown");
+        }
+        // The Remote Control envelope: only the person's own words count.
+        let wake = r#"<wake reason="mention"><message from="human" trigger="true">status?</message></wake>"#;
+        assert!(is_progress_check(wake, "judged", 1, &f4(Some(false))));
+    }
+
+    #[test]
+    fn a_progress_check_never_hides_a_task_that_reads_higher_or_states_a_goal() {
+        assert!(!is_progress_check("status?", "judged", 2, &f4(Some(false))), "reads Directed");
+        assert!(!is_progress_check("status?", "judged", 1, &f4(Some(true))), "states a goal");
+        assert!(!is_progress_check("status?", "uncertain", 1, &f4(Some(false))), "already unsure");
+        assert!(
+            !is_progress_check(
+                "fix the status bar colour and the progress spinner on the settings page so they \
+             match the new theme tokens, then run the visual tests and update the snapshots where they changed",
+                "judged",
+                1,
+                &f4(Some(false))
+            ),
+            "long: new work"
+        );
+        for p in ["eta?", "how long will it take", "statuses", "progressive rollout", "add a status", ""] {
+            // Whole words only; "add a status" is a known false hit, kept off any higher rung by the checks above.
+            let want = p == "add a status";
+            assert_eq!(is_progress_check(p, "judged", 1, &f4(Some(false))), want, "{p}");
+        }
+    }
+
+    #[test]
+    fn a_progress_check_leaves_coaching_and_the_rung_counts() {
+        let t = JudgedTask::new(
+            "t1",
+            true,
+            "copilot-cli",
+            0,
+            "ask_research",
+            Some("lookup"),
+            "judged",
+            1,
+            2,
+            true,
+            "{}",
+            ReadRecord::default(),
+        )
+        .with_first_prompt(Some("status?"));
+        assert_eq!(
+            (t.job.as_str(), t.task_type.as_deref(), t.uncertain(), t.coachable),
+            (PROGRESS_CHECK_JOB, None, true, false)
+        );
+        let kept = JudgedTask::new(
+            "t2",
+            true,
+            "copilot-cli",
+            0,
+            "ask_research",
+            Some("lookup"),
+            "judged",
+            1,
+            2,
+            true,
+            "{}",
+            ReadRecord::default(),
+        )
+        .with_first_prompt(Some("look up the retry limit in the client config"));
+        assert_eq!(kept.job, "ask_research");
+        assert!(!kept.uncertain());
+    }
 
     fn params() -> CoachParams {
         CoachParams::default()
