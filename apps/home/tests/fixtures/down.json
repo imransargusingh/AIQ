@@ -17,6 +17,7 @@
     "tasks_in_window": 7,
     "judged": 3,
     "uncertain": 1,
+    "progress_checks": 0,
     "rungs": [
       0,
       1,
@@ -155,7 +156,8 @@
         "read_prompts": 3,
         "read_chars": 160,
         "read_actions": true,
-        "versions": "fs1 · r1 · j1"
+        "versions": "fs1 · r1 · j1",
+        "progress_check": false
       },
       "session": "cc1",
       "prompt_ms": [
@@ -215,7 +217,8 @@
         "read_prompts": 3,
         "read_chars": 160,
         "read_actions": true,
-        "versions": "fs1 · r1 · j1"
+        "versions": "fs1 · r1 · j1",
+        "progress_check": false
       },
       "session": "cp1",
       "prompt_ms": [
@@ -290,7 +293,8 @@
         "read_prompts": 3,
         "read_chars": 160,
         "read_actions": true,
-        "versions": "fs1 · r1 · j1"
+        "versions": "fs1 · r1 · j1",
+        "progress_check": false
       },
       "session": "imp1",
       "prompt_ms": [
@@ -631,6 +635,7 @@
       "could": 0,
       "needs": 2,
       "uncertain": 1,
+      "progress_checks": 0,
       "up": 1,
       "up_to": 3
     },
@@ -739,6 +744,7 @@
           "could": 0,
           "needs": 1,
           "uncertain": 0,
+          "progress_checks": 0,
           "up": 1,
           "up_to": 3
         },
@@ -831,6 +837,7 @@
           "could": 0,
           "needs": 1,
           "uncertain": 1,
+          "progress_checks": 0,
           "up": 0,
           "up_to": null
         },
@@ -923,6 +930,7 @@
           "could": 0,
           "needs": 0,
           "uncertain": 0,
+          "progress_checks": 0,
           "up": 0,
           "up_to": null
         },
