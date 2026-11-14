@@ -440,7 +440,7 @@ pub fn record_flag(
 
 /// Today's kind labels and their self-check, counted from stored rows (design kind-label).
 pub fn label_status(store: &Store, cache: &Cache, now: Now) -> Result<aiq_contracts::frames::LabelStatus, StoreError> {
-    let rows = store.kind_labels_since(now.local_midnight_utc_ms())?;
+    let rows = store.own_kind_labels_since(now.local_midnight_utc_ms())?;
     let mut ms: Vec<u64> = rows.iter().map(|r| r.latency_ms.max(0) as u64).collect();
     ms.sort_unstable();
     let ok: Vec<_> = rows.iter().filter(|r| r.outcome == "ok").collect();
@@ -465,23 +465,12 @@ pub fn label_status(store: &Store, cache: &Cache, now: Now) -> Result<aiq_contra
     Ok(aiq_contracts::frames::LabelStatus {
         enabled: labels_enabled(store),
         today: rows.len() as u32,
-        daily: daily_labels(store),
         answered: ok.len() as u32,
         confident: confident as u32,
         median_ms: (!ms.is_empty()).then(|| ms[ms.len() / 2]),
         checked: cache.label_check.checked,
         right: cache.label_check.right,
     })
-}
-
-/// The daily label budget (setting `kind_label_daily`, default `label::DEFAULT_DAILY`).
-pub fn daily_labels(store: &Store) -> u32 {
-    store
-        .setting(aiq_domain::label::SETTING_LABEL_DAILY)
-        .ok()
-        .flatten()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(aiq_domain::label::DEFAULT_DAILY)
 }
 
 /// Labels can run by the person's settings: background judging is on and labels are not turned off.

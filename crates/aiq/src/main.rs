@@ -93,7 +93,6 @@ Usage:
                                       (default gpt-6-luna; same = the first call's model)
   aiq config set kind-label <auto|off>  When word matching can't tell a new task's kind, a small model
                                       names it from the first prompt, in the background (on while analysis is on)
-  aiq config set kind-label-daily <n>  Most kind labels per day (0-500, default 20; one call each)
   aiq label --eval [--sample <n>] [--only claude-code|copilot-cli] [--dry-run]
                                       Measure kind labels against AIQ's analysis on your analyzed tasks (stores nothing)
   aiq export [<folder>]               Copy everything AIQ stored to plain JSON files you can read

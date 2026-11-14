@@ -558,7 +558,7 @@ fn a_word_match_needs_no_label_and_labels_stay_off_without_judging_or_when_turne
     h.advance(2 * HOUR);
     h.prompt("copilot-cli", "z", UNLIKE);
     assert_eq!(asked.lock().unwrap().len(), 1);
-    assert!(h.svc.set("kind_label_daily", "501").is_err());
+    assert!(h.svc.set("kind_label_daily", "5").is_err(), "there is no daily label limit to set");
 }
 
 /// A label sure of the job but not the kind: the job's own row picks the habit, worded by the job (design

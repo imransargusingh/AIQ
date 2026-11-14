@@ -4,8 +4,8 @@
 //! The core starts `aiq label --task <id> --surface <s> --session <id> --requested <ms>` detached when its word
 //! guess finds no kind, and never waits for it (C9). This process makes one call through the person's own tool
 //! that already saw the task, sealed exactly like the judge (same `Provider`s), stores one `kind_label` row,
-//! and tells the core, which decides the next-step tip as it would from a word guess. Within a daily budget
-//! of its own (`kind-label-daily`), and only while background judging is on.
+//! and tells the core, which decides the next-step tip as it would from a word guess. No daily limit (at most two
+//! labels a task), and only while background judging is on. A label not asked is recorded on the task's tip path.
 //!
 //! `aiq label --eval [--sample <n>] [--only claude-code|copilot-cli] [--dry-run]` measures the label against
 //! the judge on already-judged tasks before anyone relies on it. It stores nothing.
@@ -75,7 +75,6 @@ pub const MAX_LABELS_PER_TASK: usize = 2;
 #[derive(Debug, Clone, PartialEq)]
 pub enum Skip {
     Off,
-    Budget(u32),
     AlreadyLabelled,
     NoText,
     NoProvider,
@@ -93,10 +92,6 @@ pub fn label_task(
     let get = |k: &str| store.setting(k).ok().flatten();
     if !label::enabled(get(rung::SETTING_JUDGE).as_deref(), get(label::SETTING_LABEL).as_deref()) {
         return Ok(Err(Skip::Off));
-    }
-    let daily = aiq_core::coaching::daily_labels(store);
-    if store.kind_labels_since(n.local_midnight_utc_ms())?.len() as u32 >= daily {
-        return Ok(Err(Skip::Budget(daily)));
     }
     let have = store.kind_labels_of(&r.task_id)?.len();
     if have >= if r.prompt_id.is_some() { MAX_LABELS_PER_TASK } else { 1 } {
@@ -153,6 +148,16 @@ pub fn label_task(
         let _ = bounded_append(&paths.data.join("label.log"), &format!("why {} {}", row.task_id, why), LOG_MAX);
     }
     Ok(Ok(row))
+}
+
+/// A label that was never asked ends the task's tip path with why, so the task never reads "kind label never came
+/// back" for a call that was not made. A task already labelled (the second try's limit) changes nothing.
+fn record_skip(store: &Store, r: &Req, skip: &Skip, n: Now) {
+    let step = match skip {
+        Skip::AlreadyLabelled => return,
+        Skip::Off | Skip::NoText | Skip::NoProvider => aiq_domain::funnel::Step::LabelSkipped,
+    };
+    let _ = store.insert_tip_step(&r.task_id, &r.surface, step.as_str(), n);
 }
 
 fn outcome_name(o: &Outcome) -> &'static str {
@@ -237,7 +242,10 @@ pub fn cli(args: &[&str]) -> ExitCode {
                 row.utc_ms - row.requested_utc_ms
             )
         }
-        Ok(Err(skip)) => format!("label {} skipped {skip:?}", req.task_id),
+        Ok(Err(skip)) => {
+            record_skip(&store, &req, &skip, n);
+            format!("label {} skipped {skip:?}", req.task_id)
+        }
         Err(e) => format!("label {} failed {}", req.task_id, e.code),
     };
     let _ = bounded_append(&paths.data.join("label.log"), &line, LOG_MAX);
@@ -738,6 +746,23 @@ mod tests {
         (d, paths, store)
     }
 
+    fn prompt_event(store: &mut Store, id: &str) {
+        let e = NewEvent {
+            event_id: id,
+            surface: "copilot-cli",
+            session: id,
+            kind: "prompt",
+            ts_utc_ms: NOW,
+            prompt_id: None,
+            trace_id: None,
+            collector_version: "t",
+            prompt_chars: Some(30),
+            payload_meta: "{}",
+            text: Some("the login test fails since the upgrade, fix it"),
+        };
+        store.insert_event(&e, NOW).unwrap();
+    }
+
     fn req(id: &str) -> Req {
         Req {
             task_id: id.into(),
@@ -826,8 +851,20 @@ mod tests {
     }
 
     #[test]
-    fn nothing_is_sent_with_judging_off_labels_off_or_the_budget_spent() {
-        let (_d, paths, store) = setup();
+    fn a_label_not_asked_ends_the_tip_path_with_why_never_as_never_came_back() {
+        let (_d, _paths, store) = setup();
+        let last = |t: &str| store.tip_steps_since(0).unwrap().into_iter().rfind(|r| r.task_id == t).map(|r| r.step);
+        store.insert_tip_step("t1", "copilot-cli", "label_asked", n()).unwrap();
+        record_skip(&store, &req("t1"), &Skip::Off, n());
+        assert_eq!(last("t1").as_deref(), Some("label_skipped"));
+        store.insert_tip_step("t2", "copilot-cli", "label_asked", n()).unwrap();
+        record_skip(&store, &req("t2"), &Skip::AlreadyLabelled, n());
+        assert_eq!(last("t2").as_deref(), Some("label_asked"), "a second try's limit changes nothing");
+    }
+
+    #[test]
+    fn nothing_is_sent_with_judging_off_or_labels_off_and_no_day_runs_out() {
+        let (_d, paths, mut store) = setup();
         let f = Fake::ok(answer());
         store.set_setting(label::SETTING_LABEL, "off", NOW).unwrap();
         assert_eq!(label_task(&store, &paths, &f, &f, &req("t1"), n()).unwrap(), Err(Skip::Off));
@@ -835,15 +872,14 @@ mod tests {
         store.set_setting(rung::SETTING_JUDGE, "off", NOW).unwrap();
         assert_eq!(label_task(&store, &paths, &f, &f, &req("t1"), n()).unwrap(), Err(Skip::Off));
         store.set_setting(rung::SETTING_JUDGE, "auto", NOW).unwrap();
-        store.set_setting(label::SETTING_LABEL_DAILY, "1", NOW).unwrap();
-        assert!(label_task(&store, &paths, &f, &f, &req("t1"), n()).unwrap().is_ok());
-        assert_eq!(label_task(&store, &paths, &f, &f, &req("t2"), n()).unwrap(), Err(Skip::Budget(1)));
-        // Tomorrow the budget is new.
-        let tomorrow = Now { utc_ms: NOW + DAY_MS, offset_min: 0 };
-        assert!(label_task(&store, &paths, &f, &f, &req("t2"), tomorrow).unwrap().is_ok());
-        assert_eq!(f.sent.borrow().len(), 2);
-        store.set_setting(label::SETTING_LABEL_DAILY, "5", NOW).unwrap();
-        assert_eq!(label_task(&store, &paths, &f, &f, &req("nope"), tomorrow).unwrap(), Err(Skip::NoText));
+        // No daily limit (2026-11-14): a busy day's 82 new tasks each get their label. Even an old
+        // `kind_label_daily` setting left in the store limits nothing.
+        store.set_setting("kind_label_daily", "1", NOW).unwrap();
+        for i in 0..82 {
+            prompt_event(&mut store, &format!("busy{i}"));
+            assert!(label_task(&store, &paths, &f, &f, &req(&format!("busy{i}")), n()).unwrap().is_ok(), "task {i}");
+        }
+        assert_eq!(label_task(&store, &paths, &f, &f, &req("nope"), n()).unwrap(), Err(Skip::NoText));
     }
 
     #[test]

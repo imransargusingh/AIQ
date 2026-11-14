@@ -756,6 +756,17 @@ impl Store {
         self.kind_labels_where("started_utc_ms >= ?1", [since_ms])
     }
 
+    /// This computer's kind labels since `since_ms`: the daily label budget and today's label count. Another
+    /// computer's labels arrive by sync and spend its own budget, not this one's (2026-11-12: the Devbox's 22 labels
+    /// used up the laptop's 20 too, and the Devbox counted the laptop's; 207 tasks were never labelled).
+    pub fn own_kind_labels_since(&self, since_ms: i64) -> Result<Vec<KindLabelRow>> {
+        if self.has_table("kind_label")? && self.has_column("kind_label", "computer")? {
+            self.kind_labels_where("started_utc_ms >= ?1 AND computer IS NULL", [since_ms])
+        } else {
+            self.kind_labels_since(since_ms)
+        }
+    }
+
     /// Store one live turn's actions. False when that stop already has a row (a replayed stop stores nothing).
     pub fn insert_turn_action(&self, t: &TurnActionRow) -> Result<bool> {
         self.conn

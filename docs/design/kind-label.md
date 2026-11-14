@@ -64,10 +64,12 @@ From the tip decision log and store on the laptop, 2026-11-02:
 7. **Own self-check.** D10 (`check_guesses` against the later judgment) now runs per method. Labels turn
    off by themselves below 8 in 10 right with at least 10 checked, without touching word guesses, and the
    other way round. `next-rung-tips on` overrides both, as before.
-8. **Switches and budget.** Labels run only while background judging is on (PR #75) and
-   `kind-label` is not `off`. Their own daily budget, `kind-label-daily`, default 20, 0 to 500, counted
-   from `kind_label` rows since local midnight. It is separate from the judge's budget because a label is
-   one call and a judgment two, and the person can see and cap each. Set-aside and automated sessions
+8. **Switches, no daily limit.** Labels run only while background judging is on (PR #75) and
+   `kind-label` is not `off`. There is no daily limit (Imran 2026-11-14): the old `kind-label-daily`
+   budget of 20, counted over every computer's synced rows, left 207 new tasks unlabelled on 10-13 Nov
+   (82 asks on one Devbox day). At most two labels a task (the first prompt and one second try). A label
+   that is not asked (labels off, no tool, no text) ends the task's tip path as `label_skipped`, never as
+   "never came back". Set-aside and automated sessions
    never reach the decision, so they are never labelled.
 
 ## Second try (2026-11-08)
@@ -103,7 +105,7 @@ said what the task was. Only the first prompt was ever read.
 | Hook time unchanged | Inferred from the code: no hook-path change; the hook budget block in `aiq status` will show it |
 | A label returns before most first turns end | Inferred: a sealed Copilot judge call took ~11 s (measured); turns ran 18 s to 42 min that day. Each `kind_label` row records `wait_ms` (request to answer) in `label.log`, so this becomes measured after install |
 | Label accuracy against the judge | Measured 2026-11-08 (see Accuracy): live 6 of 10; with troubleshoot labels not coached, 8 of 10 confident on the 20 newest tasks |
-| Default budget 20 a day | Guess (about 9 new tasks a day, one day measured) |
+| Labels a day | No limit. Measured 2026-11-12: 82 label asks on the Devbox in one day, 8 on the laptop |
 | Copilot model | Labels now use the analysis models (gpt-6.1-sol first). Luna with a rewritten prompt measured 8 of 14 confident right |
 
 ## Accuracy (measured 2026-11-08)

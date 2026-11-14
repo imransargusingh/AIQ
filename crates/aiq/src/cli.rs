@@ -725,9 +725,9 @@ pub fn render_labels(l: &aiq_contracts::frames::LabelStatus) -> String {
     }
     let ms = l.median_ms.map_or(String::new(), |m| format!(", median {:.1} s", m as f64 / 1000.0));
     format!(
-        "Kind-of-task labels today: {} of {} (answered {}, confident {}{ms}). Labels checked against the analysis: \
-         right {} of {}\n",
-        l.today, l.daily, l.answered, l.confident, l.right, l.checked
+        "Kind-of-task labels today on this computer: {} (answered {}, confident {}{ms}). Labels checked against the \
+         analysis: right {} of {}\n",
+        l.today, l.answered, l.confident, l.right, l.checked
     )
 }
 
@@ -784,7 +784,6 @@ pub fn config_set(name: &str, value: &str) -> ExitCode {
         "agent-actions" => ("agent_actions", format!("What the agent did in each turn: {value}.")),
         "live-trend" => ("live_trend", format!("Where an open task is heading: {value}.")),
         "kind-label" => ("kind_label", format!("Kind-of-task labels: {value}.")),
-        "kind-label-daily" => ("kind_label_daily", format!("Most kind labels per day: {value}.")),
         "kind-label-claude-model" => ("kind_label_claude_model", format!("Kind label, Claude model: {value}.")),
         "kind-label-copilot-model" => ("kind_label_copilot_model", format!("Kind label, Copilot model: {value}.")),
         _ => {
@@ -792,7 +791,7 @@ pub fn config_set(name: &str, value: &str) -> ExitCode {
                 "Unknown setting {name}. Settings: daily-cap, copilot-tip-stays, copilot-tip-in-chat, tip-popup, \
                  tip-highlight, analysis, analysis-daily-tasks, \
                  analysis-claude-model, analysis-copilot-model, analysis-copilot-sessions, analysis-calls, analysis-copilot-second-model, next-rung-tips, check-claude-model, \
-                 check-copilot-model, update, kind-label, kind-label-daily, kind-label-claude-model, kind-label-copilot-model, \
+                 check-copilot-model, update, kind-label, kind-label-claude-model, kind-label-copilot-model, \
                  copilot-mid-turn, agent-actions, live-trend, keep-on.<job or job/kind>."
             );
             return ExitCode::from(2);

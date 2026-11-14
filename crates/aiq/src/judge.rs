@@ -1299,7 +1299,7 @@ own edits or diffs. Where: only to the tool that already saw the task, through y
                       own folder, which AIQ deletes after each call unless you keep them:
                       aiq config set analysis-copilot-sessions keep)
 When AIQ can't tell what kind of task you just started, it sends that task's first prompt once, the same
-way, to a small model, so a tip can show when your turn ends (up to 20 a day; aiq config set kind-label off).
+way, to a small model, so a tip can show when your turn ends (one per new task; aiq config set kind-label off).
 Analysis calls use your plan's usage (two calls per task). A work account's admin policies, logging and
 retention apply to them. AIQ never reads or stores your sign-in.";
 

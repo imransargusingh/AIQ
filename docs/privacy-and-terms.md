@@ -111,7 +111,7 @@ suggests a next step. To do that, it asks an AI model to read the task.
   tasks what kind of task you just started, it sends **that task's first prompt** (secrets removed, cut
   to 4,000 characters) once to the same tool, sealed the same way, with a small model (Claude Code:
   `haiku`). The answer is only a job and a kind of task, so a tip can show when your turn ends. One call
-  per new task, at most 20 a day by default (`aiq config set kind-label-daily <n>`, 0 to 500). On
+  per new task (at most two if the first answer isn't sure), with no daily limit. On
   Copilot each label is one premium request. Turn labels off and keep analysis on:
   `aiq config set kind-label off`.
 - **Accuracy check, only when you run it.** `aiq analyze --check` asks a second model, through the same
