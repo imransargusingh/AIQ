@@ -137,7 +137,7 @@ await test("Home shows analyzed rungs, progress toward the split, and only measu
   await page.getByText("How AIQ counts").click();
   assert.match(await page.locator("details.how").innerText(), /7 tasks in the last 30 days · 1 imported task/);
   assert.doesNotMatch(t, /\d+%/, "no percentages under 10 analyzed tasks");
-  assert.match(t, /Your most common rung\s+Directed \(2\)\s+3 of 6 tasks analyzed/);
+  assert.match(t, /Your most common rung\s+Directed\s+1 of 2 tasks on a rung · last 30 days\s+3 of 6 tasks analyzed · 1 unsure, not on a rung/);
   assert.match(t, /1 task AIQ wasn't sure about is left out · See them/);
   assert.match(t, /Next steps\s+[^\n]*\n+Next steps show once AIQ knows the kind of each task/);
   // The rung mix: counts only under 10 judged tasks (no share), each rung's meaning on hover, the change waits.
@@ -149,7 +149,7 @@ await test("Home shows analyzed rungs, progress toward the split, and only measu
   assert.equal(await page.locator(".wk-col").count(), 4);
   assert.equal(await page.locator(".mix-col").count(), 4);
   // Selecting a rung lists its kinds of task.
-  const row = page.getByRole("button", { name: /^Delegated \(3\): / });
+  const row = page.getByRole("button", { name: /^Delegated: / });
   await row.click();
   assert.equal(await row.getAttribute("aria-pressed"), "true");
   assert.match(await page.locator(".mix-kinds").innerText(), /On Delegated:/);
@@ -259,6 +259,31 @@ await test("an expired sign-in shows on every page of a settled install, with si
   await ok.context().close();
 });
 
+await test("rung numbers are badges, never \"(n)\" beside counts; the Home ladder shows each rung's tasks (DC-077)", async () => {
+  const bracket = /\b(Assisted|Directed|Delegated|Orchestrated|Factory) \([1-5]\)/;
+  for (const [fixture, hash] of [["full", "#home"], ["full", "#tasks"], ["full", "#day"], ["live", "#home"]]) {
+    const page = await open(fixture, { hash });
+    // textContent too: the Right now chart's axis is SVG text.
+    for (const t of [await page.locator("main").innerText(), await page.locator("main").textContent()]) assert.doesNotMatch(t ?? "", bracket, `${fixture} ${hash}`);
+    await page.context().close();
+  }
+  const page = await open("full");
+  const snap = JSON.parse(readFileSync(join(fixtures, "full.json"), "utf8"));
+  const on = snap.home.rungs.reduce((a, b) => a + b, 0);
+  const steps = page.locator(".scale.counted > span");
+  assert.equal(await steps.count(), 5);
+  for (let i = 0; i < 5; i++) {
+    const v = snap.home.rungs[i];
+    const n = `${v} ${v === 1 ? "task" : "tasks"}`;
+    const want = v === 0 ? "none" : on >= snap.coaching.split_min ? `${n} · ${Math.round((100 * v) / on)}%` : n;
+    assert.equal((await steps.nth(i).locator(".step-n").innerText()).trim(), want, `rung ${i + 1}`);
+    assert.equal((await steps.nth(i).locator(".rung-no").innerText()).trim(), String(i + 1));
+  }
+  assert.match(await page.getByTestId("rung-share").innerText(), new RegExp(`^\\d+%? of ${on} tasks? on a rung · last 30 days$`));
+  assert.deepEqual(await axe(page), []);
+  await page.context().close();
+});
+
 await test("every rung name says what it means on hover: Home ladder, Tasks column, task detail", async () => {
   const page = await open("full");
   const scale = page.locator(".scale > span");
@@ -266,7 +291,7 @@ await test("every rung name says what it means on hover: Home ladder, Tasks colu
   assert.match((await scale.nth(2).getAttribute("title")) ?? "", /hand the agent a whole outcome/);
   await page.context().close();
   const tasks = await open("full", { hash: "#tasks" });
-  assert.match((await tasks.locator("th .rung").getAttribute("title")) ?? "", /from Assisted \(1\) to Factory \(5\)/);
+  assert.match((await tasks.locator("th .rung").getAttribute("title")) ?? "", /from Assisted, rung 1, to Factory, rung 5/);
   const named = tasks.locator("table[aria-label=Tasks] td .rung");
   assert.ok((await named.count()) > 0, "analyzed rows name a rung");
   for (const r of await named.all()) assert.ok(((await r.getAttribute("title")) ?? "").length > 20, await r.innerText());
@@ -325,7 +350,7 @@ await test("screen readers hear clean names: nav, rung rows, skip link", async (
   assert.equal(await page.getByRole("link", { name: "Home", exact: true }).getAttribute("aria-keyshortcuts"), "G H");
   // The G-letter shortcuts still work but the nav shows no hint text (Imran 2026-11-02: "Get rid of the hints").
   assert.doesNotMatch(await page.locator("nav.side a").allInnerTexts().then((t) => t.join("|")), /\bG [A-Z]\b/);
-  for (const name of ["Factory (5): 0 tasks", "Directed (2): 1 task"]) {
+  for (const name of ["Factory: 0 tasks", "Directed: 1 task"]) {
     assert.equal(await page.getByRole("button", { name, exact: true }).count(), 1, name);
   }
   // Focus starts on the page title; the skip link is the first stop of the window chrome, before the nav.
@@ -797,7 +822,7 @@ await test("Tasks Day view: a row per session, rung named on hover and focus, En
   assert.ok((await lanes.count()) >= 3, "one row per session");
   assert.equal(await page.locator("table[aria-label=Tasks]").count(), 0, "the list is replaced by the Day view");
   // Item 5a: one line sums the day; blocks carry their rung number; rows are named by kind.
-  assert.match(await page.getByTestId("day-summary").innerText(), /^7 tasks( · \d+ kinds? of task)? · mostly \w+ \(\d\) · \d+ not analyzed yet · .* inside tasks · \d+ sessions?/);
+  assert.match(await page.getByTestId("day-summary").innerText(), /^7 tasks( · \d+ kinds? of task)? · mostly \s*\d\s*\w+\s*· \d+ not analyzed yet · .* inside tasks · \d+ sessions?/);
   assert.match(await page.locator(".dv-task:not(.dv-none) .dv-n").first().innerText(), /^[1-5]$/);
   assert.equal(await page.locator(".dv-task.dv-none .dv-n").first().innerText(), "–");
   const names = await page.locator(".dv-name .dv-t b").allInnerTexts();
@@ -812,7 +837,7 @@ await test("Tasks Day view: a row per session, rung named on hover and focus, En
   // A judged block names its rung in words.
   const judged = page.locator(".dv-task:not(.dv-none)").first();
   await judged.focus();
-  assert.match(await judged.locator(".tip").innerText(), /\((\d)\)/);
+  assert.match(await judged.locator(".tip").innerText(), /\b\d\s+(Assisted|Directed|Delegated|Orchestrated|Factory)\b/);
   assert.match((await judged.getAttribute("aria-label")) ?? "", /Open task$/);
   assert.deepEqual(await axe(page), []);
   await page.keyboard.press("Enter");
@@ -835,14 +860,14 @@ for (const theme of ["light", "dark", "contrast"]) {
     const t = await card.innerText();
     assert.match(t, /Right now · Writing a spec or PRD/);
     assert.match(t, /Copilot CLI · since 11:38 · 5 prompts · 22 min · agent working/);
-    assert.match(t, /Heading for Directed \(2\)\s*· could reach Delegated \(3\)/);
+    assert.match(t, /Heading for \s*2\s*Directed\s*· could reach \s*3\s*Delegated/);
     assert.match(t, /Agent made the edits itself \(turns 2, 3\)/);
     assert.match(t, /Step by step: 5 prompts/);
     assert.match(t, /Turn 4: no details \(the log couldn't be read\)/);
     assert.match(t, /AIQ tip:.*from turn 3/);
     assert.match(t, /analyzed rung replaces it/);
     const img = await card.getByRole("img").getAttribute("aria-label");
-    assert.equal(img, "Estimate after each turn: turn 1: Assisted (1); turn 2: Delegated (3); turn 3: Directed (2); turn 4: Directed (2) (no details)");
+    assert.equal(img, "Estimate after each turn: turn 1: Assisted; turn 2: Delegated; turn 3: Directed; turn 4: Directed (no details)");
     assert.deepEqual(await axe(page), []);
     if (shots) await page.screenshot({ path: join(shots, `right-now-${theme}.png`) });
     if (theme === "light") {
@@ -1001,9 +1026,9 @@ for (const theme of ["light", "dark", "contrast"]) {
     // Chips in start order; each names the kind, project and tool and says the rung in words.
     const names = await tabs.allInnerTexts();
     assert.equal(names.length, 3);
-    assert.match(names[0], /Fixing a bug or failing test\s*aiq · VS Code · 4 prompts.*heading for Assisted \(1\), agent working/s);
-    assert.match(names[1], /Writing a spec or PRD\s*aiq · Copilot CLI · 5 prompts.*heading for Directed \(2\), agent working/s);
-    assert.match(names[2], /Writing tests\s*foresight · Claude Code · 1 prompt.*heading for Delegated \(3\), waiting for you/s);
+    assert.match(names[0], /Fixing a bug or failing test\s*aiq · VS Code · 4 prompts.*heading for Assisted, agent working/s);
+    assert.match(names[1], /Writing a spec or PRD\s*aiq · Copilot CLI · 5 prompts.*heading for Directed, agent working/s);
+    assert.match(names[2], /Writing tests\s*foresight · Claude Code · 1 prompt.*heading for Delegated, waiting for you/s);
     // The newest activity is chosen first: the VS Code task.
     assert.equal(await tabs.nth(0).getAttribute("aria-selected"), "true");
     const panel = card.getByRole("tabpanel");
@@ -1015,7 +1040,7 @@ for (const theme of ["light", "dark", "contrast"]) {
       assert.equal(await tabs.nth(2).getAttribute("aria-selected"), "true");
       const t = await panel.innerText();
       assert.match(t, /foresight · Claude Code · since 11:48 · 1 prompt · 12 min · waiting for you/);
-      assert.match(t, /Heading for Delegated \(3\)/);
+      assert.match(t, /Heading for \s*3\s*Delegated/);
       // Arrow keys move between chips (tabs pattern).
       await page.keyboard.press("ArrowRight");
       assert.equal(await tabs.nth(0).getAttribute("aria-selected"), "true", "wraps to the first");
@@ -1087,11 +1112,11 @@ await test("rung guide: steps by kind of work, where you are, your next step ope
   assert.equal(await grid.locator(".gd-pill").count(), cells);
   // Each job's cell at its most common rung says so; the first job with a coached next step opens first.
   const head = await grid.getByRole("columnheader", { name: /Write a spec or doc/ }).innerText();
-  assert.match(head, /Mostly Directed \(2\)/);
+  assert.match(head, /Mostly \s*2\s*Directed/);
   assert.equal(await grid.locator(".gd-cell.here").count(), 2, "one per job with analyzed kinds");
   const side = page.getByRole("complementary", { name: "The habit you picked" });
   assert.match(await side.locator("h2").innerText(), /Keep an instructions file in the repo and point to it/);
-  assert.match(await side.innerText(), /Code a change · Delegated \(3\) → Orchestrated \(4\)/);
+  assert.match(await side.innerText(), /Code a change · \s*3\s*Delegated\s*→\s*4\s*Orchestrated/);
   assert.match(await side.innerText(), /How AIQ notices it: Counts when you give the agent a written brief, spec or instructions file\./);
   // Writing tests took up this habit (seeded growing), so its next step moved on; adding a feature still needs it.
   assert.match(await side.innerText(), /Your next step for adding a feature/);
@@ -1100,7 +1125,7 @@ await test("rung guide: steps by kind of work, where you are, your next step ope
   // Pick another habit: the side panel follows; the starter copies.
   await grid.getByRole("button", { name: "Send all your changes in one message, then review the draft" }).click();
   assert.match(await side.locator("h2").innerText(), /Send all your changes in one message/);
-  assert.match(await side.innerText(), /Write a spec or doc · Directed \(2\) → Delegated \(3\)/);
+  assert.match(await side.innerText(), /Write a spec or doc · \s*2\s*Directed\s*→\s*3\s*Delegated/);
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   await side.getByRole("button", { name: "Copy starter" }).click();
   await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent?.startsWith("Starter copied"));
@@ -1133,10 +1158,10 @@ await test("task detail: Enter on a Tasks row opens it; prompts in order; judgme
   const t = await page.locator("main").innerText();
   assert.match(t, /Claude Code · started 2 days ago|Claude Code · started/);
   assert.match(t, /3 prompts/);
-  assert.match(t, /Rung: Directed \(2\)\s+Job: Code a change/);
+  assert.match(t, /Rung: \s*2\s*Directed\s+Job: Code a change/);
   assert.ok(t.includes("You checked the diff before keeping it <b>bold</b>."), "model text renders as text");
   assert.equal(await page.locator("ul.evidence b").count(), 0);
-  assert.match(t, /Next step \(Directed \(2\) → Delegated \(3\)\): Hand the agent the whole change/);
+  assert.match(t, /Next step \(\s*2\s*Directed\s*→\s*3\s*Delegated\s*\): Hand the agent the whole change/);
   assert.match(t, /by your Claude Code/);
   const items = page.locator("ol.prompts li");
   assert.equal(await items.count(), 3);
@@ -1480,7 +1505,7 @@ await test("coaching Home: finished and could be, the rule, uncertain left out, 
   assert.match(t, /Tasks agents finished\s+33%\s+could be 67%/);
   assert.equal(await page.getByRole("img", { name: "Agents finished 33%, could be 67%" }).count(), 1);
   // Outcome first, then the measured counts on one line; how it is counted stays folded away until asked for.
-  assert.match(t, /47% have an easy next step, most often to Delegated \(3\)\.\s+5 of 15 analyzed tasks finished by agents · 5 could be · 5 need you · 1 unsure, not counted/);
+  assert.match(t, /47% have an easy next step, most often to \s*3\s*Delegated\s*\.\s+5 of 15 analyzed tasks finished by agents · 5 could be · 5 need you · 1 unsure, not counted/);
   assert.ok(!t.includes("A task counts as finished"), "the rule is folded away");
   await page.getByText("How AIQ counts").click();
   const how = await page.locator("details.how").innerText();
@@ -1492,7 +1517,7 @@ await test("coaching Home: finished and could be, the rule, uncertain left out, 
   const rows = page.getByRole("list", { name: "Kinds of task with a next step" }).getByRole("listitem");
   assert.equal(await rows.count(), 2);
   const first = await rows.first().innerText();
-  assert.match(first, /Writing tests\s+Keep an instructions file in the repo and point to it\s+→ Orchestrated \(4\)/);
+  assert.match(first, /Writing tests\s+Keep an instructions file in the repo and point to it\s+→ \s*4\s*Orchestrated/);
   // The rung mix: 15 judged tasks, so shares show; the kinds on the highest rung reached are listed.
   const mix = await page.locator("section", { has: page.locator("h2#rg") }).innerText();
   assert.match(mix, /Delegated\s+40%\s+6 tasks/);
@@ -1519,11 +1544,11 @@ await test("progress Home: kinds that moved up or down beyond chance, counts beh
     const rows = page.getByRole("list", { name: "Rung progress by kind of task" }).getByRole("button");
     assert.equal(await rows.count(), 4, "too-few kinds are one line, not rows");
     // Movers first in their pack; the row's name carries what the dots show.
-    assert.equal(await rows.nth(0).getAttribute("aria-label"), "Writing tests, Delegated (3) in the last 30 days, moved up from Directed (2), next step reaches Orchestrated (4), 5 tasks in the last 30 days, 5 before");
+    assert.equal(await rows.nth(0).getAttribute("aria-label"), "Writing tests, Delegated in the last 30 days, moved up from Directed, next step reaches Orchestrated, 5 tasks in the last 30 days, 5 before");
     assert.match(await rows.nth(0).innerText(), /Writing tests\s+↑ up/);
     // Its typical rung went from Assisted to Delegated, but only by chance: drawn where it is, no ring, no arrow.
-    assert.equal(await rows.nth(1).getAttribute("aria-label"), "Adding a feature, Delegated (3) in the last 30 days, same rung, next step reaches Orchestrated (4), 3 tasks in the last 30 days, 3 before");
-    assert.equal(await rows.nth(2).getAttribute("aria-label"), "Fixing a bug or failing test, Assisted (1) in the last 30 days, same rung, 3 tasks in the last 30 days, 3 before");
+    assert.equal(await rows.nth(1).getAttribute("aria-label"), "Adding a feature, Delegated in the last 30 days, same rung, next step reaches Orchestrated, 3 tasks in the last 30 days, 3 before");
+    assert.equal(await rows.nth(2).getAttribute("aria-label"), "Fixing a bug or failing test, Assisted in the last 30 days, same rung, 3 tasks in the last 30 days, 3 before");
     assert.match(await rows.nth(3).innerText(), /Writing a spec or PRD\s+↓ down/);
     // Habit changes are one line under the map; the habits themselves live in Habits and tips.
     assert.match(t, /1 habit is growing: the steps that move a kind of task up\. See them in Habits and tips/);
@@ -1647,8 +1672,8 @@ await test("Tasks opens on kinds of task: rung today, could be, a week, the 30-d
   const rows = table.locator("tbody tr");
   assert.equal(await rows.count(), 5);
   const t = await table.innerText();
-  assert.match(t, /Writing tests[\s\S]*Code a change[\s\S]*↑ up from Directed \(2\)/);
-  assert.match(t, /Writing a spec or PRD[\s\S]*↓ down from Delegated \(3\)/);
+  assert.match(t, /Writing tests[\s\S]*Code a change[\s\S]*↑ up from Directed/);
+  assert.match(t, /Writing a spec or PRD[\s\S]*↓ down from Delegated/);
   assert.match(t, /Fixing a bug or failing test[\s\S]*– same rung/);
   assert.match(t, /Refactoring or cleaning up[\s\S]*Too few tasks to say/);
   assert.match(await page.locator("main header.head").innerText(), /Kinds\s+All tasks\s+Day/);
@@ -1737,7 +1762,7 @@ await test("Habits grouped by the rung they help you reach, with an adopted bar;
 await test("Kind page: Moving up? draws each analyzed task's rung, says the 30-day move, names every dot for screen readers (item 9)", async () => {
   const page = await open("progress", { hash: "#kind/code_change/tests" });
   const card = page.locator("section", { has: page.locator("#km") });
-  assert.match(await card.innerText(), /Moved up\s*Directed \(2\) → Delegated \(3\), last 30 days against the 30 before\./);
+  assert.match(await card.innerText(), /Moved up\s*Directed → Delegated, last 30 days against the 30 before\./);
   const label = await page.getByRole("img", { name: /Rung of each analyzed task/ }).getAttribute("aria-label");
   const dots = await page.locator(".km-dot").count();
   assert.equal(label.split(";").length, dots, "every dot is named in the label");
@@ -2003,7 +2028,7 @@ await test("Home drops 'could be' when no kind of task is one step from agents f
   const t = await page.locator("main").innerText();
   assert.ok(!t.includes("could be"), "no 'could be' figure");
   assert.match(t, /1 of 15 analyzed tasks finished by agents · 14 need you · 1 unsure, not counted/);
-  assert.match(t, /87% have an easy next step, most often to Directed \(2\)\./);
+  assert.match(t, /87% have an easy next step, most often to \s*2\s*Directed\s*\./);
   assert.equal(await page.getByRole("img", { name: "Agents finished 7%" }).count(), 1);
   await page.context().close();
 });
@@ -2048,8 +2073,8 @@ await test("projects: Your projects ranks folders on Tasks, the picker scopes Ho
   const table = page.getByRole("table", { name: "Your projects" });
   const rows = table.locator("tbody tr");
   assert.equal(await rows.count(), 2);
-  assert.match(await rows.nth(0).innerText(), /aiq[\s\S]*12[\s\S]*Delegated \(3\)[\s\S]*45%[\s\S]*3 \(27%\)/);
-  assert.match(await rows.nth(1).innerText(), /foresight[\s\S]*4[\s\S]*Directed \(2\)[\s\S]*Too few analyzed/);
+  assert.match(await rows.nth(0).innerText(), /aiq[\s\S]*12[\s\S]*3\s*Delegated[\s\S]*45%[\s\S]*3 \(27%\)/);
+  assert.match(await rows.nth(1).innerText(), /foresight[\s\S]*4[\s\S]*2\s*Directed[\s\S]*Too few analyzed/);
   // Selecting a name scopes Tasks, and the table goes.
   await page.getByRole("button", { name: "Show foresight only" }).click();
   await page.waitForFunction(() => !document.querySelector("table[aria-label='Your projects']"));

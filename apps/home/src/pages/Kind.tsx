@@ -8,7 +8,7 @@ import { api, type FlagReason } from "../api";
 import { KIND_STATE, perWeek } from "../coach";
 import { day, jobName, plural, rungLabel, sentence, toolName, when } from "../format";
 import type { Coaching, KindRow, TaskRow } from "../types";
-import { Banners, Chip, Rung, Title, type Ctx } from "../ui";
+import { Banners, Chip, Rung, RungNo, Title, type Ctx } from "../ui";
 import { TeamToolLine, teamTool } from "../team";
 
 const REASONS: { v: FlagReason; label: string }[] = [
@@ -237,7 +237,7 @@ function MovingUp({ k, tasks, c, now, days, off }: { k: KindRow; tasks: TaskRow[
       <figure className="km" role="img" aria-label={label}>
         <div className="km-y" aria-hidden="true">
           {rows.map((r) => (
-            <span key={r} style={{ top: `${y(r)}%` }}>{rungLabel(r)}</span>
+            <span key={r} style={{ top: `${y(r)}%` }}><RungNo r={r} />{rungLabel(r)}</span>
           ))}
         </div>
         <div className="km-plot" aria-hidden="true">

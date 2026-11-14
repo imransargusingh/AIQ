@@ -19,9 +19,9 @@ describe("format", () => {
     expect(stateLabel("judged")).toBe("");
   });
 
-  it("names rungs first, numbers second", () => {
-    expect(rungLabel(2)).toBe("Directed (2)");
-    expect(rungLabel(5)).toBe("Factory (5)");
+  it("names a rung by name only: its number is a badge on screen, never \"(2)\" (DC-077)", () => {
+    expect(rungLabel(2)).toBe("Directed");
+    expect(rungLabel(5)).toBe("Factory");
   });
   it("shows the folder's own name", () => {
     expect(folderName("c:\\users\\imran\\source\\repos\\aiq")).toBe("aiq");

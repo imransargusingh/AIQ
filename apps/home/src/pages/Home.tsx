@@ -5,8 +5,8 @@
 import { api } from "../api";
 import { HabitChangeLine, LadderMap, MilestoneLine, NextSteps, RungMix, judgedBy, moved, pct } from "../coach";
 import { DAY, rungCounts, shift } from "../mix";
-import { RUNGS, day, folderName, plural, rungLabel, sentence, shortDay, shortPath, toolName, when } from "../format";
-import { AccuracyPaused, Banners, ProjectPicker, Rung, Title, UpdateLine, type Ctx } from "../ui";
+import { RUNGS, day, folderName, plural, sentence, shortDay, shortPath, toolName, when } from "../format";
+import { AccuracyPaused, Banners, ProjectPicker, Rung, RungNo, Title, UpdateLine, type Ctx } from "../ui";
 import type { SetAside } from "../types";
 import { RightNow } from "./RightNow";
 import { DroughtNote } from "../funnel";
@@ -37,6 +37,8 @@ export function Home(ctx: Ctx) {
   const max = Math.max(1, ...h.weeks.map((w) => w.tasks));
   const mc = h.most_common_rung;
   const onRung = h.rungs.reduce((a, b) => a + b, 0);
+  // Shares only from the split minimum, as the rung mix below: a few tasks can't swing a percentage.
+  const shares = onRung >= snap.coaching.split_min;
   const mv = moved(snap.coaching);
   const c = snap.coaching;
   const sp = c.split;
@@ -64,25 +66,38 @@ export function Home(ctx: Ctx) {
       <section
         className="mainrung"
         role="img"
-        aria-label={`Your most common rung: ${mc ? `${rungLabel(mc)}. ${RUNGS[mc - 1].means}` : "not analyzed yet"}. The ladder runs Assisted, Directed, Delegated, Orchestrated, Factory.`}
+        aria-label={`Your most common rung: ${mc ? `${RUNGS[mc - 1].name}, rung ${mc} of 5. ${RUNGS[mc - 1].means} ${RUNGS.map((r, i) => `${r.name} ${plural(h.rungs[i] ?? 0, "task")}`).join(", ")}, last ${h.window_days} days.` : "not analyzed yet. The ladder runs Assisted, Directed, Delegated, Orchestrated, Factory."}`}
       >
         <div className="lbl" aria-hidden="true">
           <span className="mute">Your most common rung</span>
           {mc ? (
-            <span style={{ font: "var(--t-heading)" }}>{rungLabel(mc)}</span>
+            <span style={{ font: "var(--t-heading)" }}>{RUNGS[mc - 1].name}</span>
           ) : (
             <span className="meta">{h.analysis.state === "off" ? "Analysis is off" : "Not analyzed yet"}</span>
+          )}
+          {mc && (
+            <span className="meta" data-testid="rung-share">
+              {shares ? `${pct(h.rungs[mc - 1], onRung)}%` : h.rungs[mc - 1]} of {plural(onRung, "task")} on a rung · last {h.window_days} days
+            </span>
           )}
           <span className="meta">
             {(ctx.project === null && h.analysis.state !== "blocked" && analysisLine(h.analysis)) ||
               (h.judged > 0 ? `${plural(h.judged, "task")} analyzed in ${h.window_days} days` : "No task analyzed yet")}
+            {h.uncertain > 0 && ` · ${h.uncertain} unsure, not on a rung`}
           </span>
           {mc && <span className="meta means">{RUNGS[mc - 1].means}</span>}
         </div>
-        <div className="scale" aria-hidden="true">
-          {RUNGS.map((_, i) => (
-            <span key={i} className={mc === i + 1 ? "on" : undefined} title={RUNGS[i].means}>{rungLabel(i + 1)}</span>
-          ))}
+        <div className="scale counted" aria-hidden="true">
+          {RUNGS.map((r, i) => {
+            const v = h.rungs[i] ?? 0;
+            return (
+              <span key={i} className={mc === i + 1 ? "on" : undefined} title={r.means}>
+                <span className="step-bar"><i className={`rg-${i + 1}`} style={{ width: `${pct(v, onRung)}%` }} /></span>
+                <span className="step-name"><RungNo r={i + 1} />{r.name}</span>
+                <span className="step-n num">{v === 0 ? "none" : shares ? `${plural(v, "task")} · ${pct(v, onRung)}%` : plural(v, "task")}</span>
+              </span>
+            );
+          })}
         </div>
       </section>
 

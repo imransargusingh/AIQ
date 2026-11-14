@@ -9,8 +9,9 @@ export const RUNGS: { name: string; means: string }[] = [
   { name: "Factory", means: "A saved, versioned workflow runs the work, for you and for others." },
 ];
 
-/** Rung names first, numbers second (spec H4): "Directed (2)". */
-export const rungLabel = (rung: number) => `${RUNGS[rung - 1].name} (${rung})`;
+/** A rung's name for text (aria labels, titles, sentences). On screen the rung's number is a badge before the
+ *  name (`Rung` in ui.tsx), never "(2)" after it: beside counts a bracketed number reads as a count (DC-077). */
+export const rungLabel = (rung: number) => RUNGS[rung - 1].name;
 
 const JOBS: Record<string, string> = { code_change: "Code a change", write_doc: "Write a spec or doc", ask_research: "Ask or research", run_ship: "Run or ship it", unclassified: "No job fits" };
 /** The job a task was judged to be. */

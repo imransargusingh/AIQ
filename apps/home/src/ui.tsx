@@ -309,10 +309,20 @@ export const Chip = ({ children, tone }: { children: ReactNode; tone?: "ok" | "w
   <span className={`chip${tone ? ` ${tone}` : ""}`}>{children}</span>
 );
 
-/** A rung's name; hovering it says what the rung means (the full ladder is on Home, How you work with agents). */
+/** A rung's place on the ladder as a badge in its hue: a number, never "(2)", which beside counts reads as a count. */
+export const RungNo = ({ r }: { r: number }) => (
+  <i className={`rung-no rg-${r}`} aria-hidden="true">
+    {r}
+  </i>
+);
+
+/** A rung's number badge and name; hovering the name says what the rung means (the full ladder is on Home). */
 export const Rung = ({ r }: { r: number }) => (
-  <span className="rung" title={RUNGS[r - 1].means}>
-    {rungLabel(r)}
+  <span className="rung-tag">
+    <RungNo r={r} />
+    <span className="rung" title={RUNGS[r - 1].means}>
+      {rungLabel(r)}
+    </span>
   </span>
 );
 

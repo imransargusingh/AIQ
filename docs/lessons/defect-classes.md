@@ -1370,3 +1370,18 @@ summary: >-
 - **Sweep:** the Report fields not in the run line: `restamped`, `skipped_no_text`. Both added.
 - **Control (test):** `the_run_line_says_how_many_were_restamped_or_had_no_text`.
 - **Rule:** a summary line accounts for every item that left the queue, by the path it took.
+
+### DC-077 — An ordinal written like a count, beside counts
+- **Signature:** 2026-11-13, Imran on Home: "Your most common rung: Assisted (1) · 286 of 287 tasks analyzed" over a
+  ladder "Assisted (1) … Factory (5)". He read the bracketed numbers as tasks per rung and asked why they disagreed
+  with the Kinds view (9 kinds Directed) and All tasks (many Directed). They were ladder positions.
+- **Why it survives:** spec H4 "names first, numbers second" chose `Directed (2)` for one rung in a sentence; the
+  same helper (`rungLabel`) was reused on screens that also show counts, where "(n)" is the common count notation.
+- **Sweep:** every `rungLabel` reader in Home (strip, Right now, Day view, Kind chart axis, Tasks, Kinds, chips).
+  On screen the number is now a badge before the name (`RungNo`, `Rung`); text (aria labels, titles) uses the
+  name alone. Not swept: the terminal status line and `aiq progress` text (no counts beside the rung there);
+  follow-up if they confuse.
+- **Control (test):** `rungno.test.ts` fails if any Home source writes a rung name followed by "(1)"–"(5)" or the
+  old template; e2e "rung numbers are badges, never \"(n)\" beside counts" reads the rendered Home, Tasks and Day
+  text and checks the ladder's per-rung counts against the snapshot.
+- **Rule:** never write a position in the notation the same screen uses for counts; show it as a mark (badge).

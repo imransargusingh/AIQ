@@ -774,4 +774,68 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <ul><li><strong>Control (test):</strong> e2e &quot;an expired sign-in shows on every page…&quot; asserts the amber dot, the sidebar line and the</li></ul>
 <p>Settings rows for the affected tools, all from one blocked state, and that working or paused shows none of them.</p>
 <ul><li><strong>Rule:</strong> when two surfaces describe the same tool, derive both from one reader, and say on each what the other</li></ul>
-<p>one knows.</p></main></body></html>
+<p>one knows.</p>
+<h3>DC-071 — An install that copies over a running exe, and a failure that says no reason</h3>
+<ul><li><strong>Signature:</strong> 2026-11-13, Imran&#x27;s Devbox. Four installs failed in upgrade-log.txt with `AIQ-UPGRADE-SWAP: ...</li></ul>
+<p>The process cannot access the file ...\.aiq\bin\aiq.exe because it is being used by another process`: 0.1.54 at 02:30:02Z and 02:40:40Z, 0.1.55 at 04:08:25Z and 04:09:35Z, each 3 to 6 s after &quot;downloaded and checked&quot;. 0.1.54 went in on a third try and logged &quot;from 0.1.53 to unknown&quot;. Home said only &quot;An update didn&#x27;t install (installing v0.1.55 failed, so AIQ kept 0.1.54); AIQ 0.1.54 kept. It tries again tomorrow.&quot;: no reason, the kept version twice, and &quot;tomorrow&quot; untrue (the next check downloads again, within 15 minutes while Home is open). The diagnostics file held neither upgrade-log.txt nor update.json, so none of this could be read without copying files by hand. What held aiq.exe was not logged; a hook that started after Stop-Aiq is inferred, not measured.</p>
+<ul><li><strong>Why it survives:</strong> <code>-Apply</code> stopped AIQ, then copied the new exe over the old one. Any process that starts or</li></ul>
+<p>survives between the stop and the copy makes Windows refuse the overwrite. The CI runner has no hooks firing, so the race never happened there. The failed copy also overwrote <code>.old</code> with the current version first, so &quot;Go back&quot; was lost after a failure. update.json kept only &quot;installing X failed&quot;; the error lived in the log alone.</p>
+<ul><li><strong>Sweep:</strong> every place that writes an exe into bin: upgrade.ps1 <code>-Apply</code> (fixed), install.ps1 (fixed, same</li></ul>
+<p>rename), <code>-Rollback</code> <code>Swap-Old</code> (already renames), <code>aiq-statusline.exe</code> copy (keeps the one in place on failure, by design). Every reader of update.json&#x27;s failure: AIQ home&#x27;s line and <code>aiq update</code> (both now read <code>reason</code> and say &quot;it tries again at the next check&quot;). The diagnostics file now carries update.json, upgrade-log.txt and upgrade-log-held.txt. Everything that restarts a stopped core: hooks (<code>maybe_start_core</code>) now wait while <code>update-swapping</code> is there; AIQ home can&#x27;t run during <code>-Apply</code> (Busy-Reason); Stop-Aiq now finds processes the same two ways Busy-Reason does and logs what it couldn&#x27;t stop.</p>
+<ul><li><strong>Control (tests):</strong> release.yml Windows smoke &quot;an install goes through while a process AIQ didn&#x27;t stop runs</li></ul>
+<p>aiq.exe&quot; (<code>-SparePid</code> keeps a core running <code>bin\aiq.exe</code>; the old copy-over fails it; a second install while the core runs <code>aiq.exe.old</code> leaves a <code>.del</code> that the next run deletes; a broken zip fails with <code>reason</code>, puts nothing changed, and logs <code>AIQ-UPGRADE-HOLDERS</code>; no <code>update-swapping</code> left). <code>e2e_core_down_prompt_during_an_update_swap_starts_no_core_then_does_after</code> (red without the marker check), <code>a_swap_marker_holds_core_starts_for_two_minutes_at_most</code>. <code>a_failed_update_is_diagnosable_from_the_file_alone</code> (diagnostics), <code>a_failed_install_carries_its_reason_and_an_old_message_loses_the_kept_version</code> (update.rs), <code>a_failed_install_says_why_and_that_the_next_check_tries_again</code> (cli), <code>failedLine</code> unit tests and the Home e2e failed line.</p>
+<ul><li><strong>Rule:</strong> never overwrite a file that another process may run; rename it aside and write the new one beside it.</li></ul>
+<p>A failure record carries the error&#x27;s own words where the person reads it, and the diagnostics file carries every record a diagnosis needs.</p>
+<h3>DC-072 — An updater fix that ships inside the update the faulty updater must install</h3>
+<ul><li><strong>Signature:</strong> 2026-11-13. #279 (in 0.1.56) fixed upgrade.ps1&#x27;s copy-over failure on a held aiq.exe. The laptop</li></ul>
+<p>installed 0.1.56 first try. The Devbox stayed on 0.1.54: every try ran the installed 0.1.54 upgrade.ps1, which hit the same held aiq.exe, so the fix could never arrive. Imran was asked for a manual install.</p>
+<ul><li><strong>Why it survives:</strong> <code>-Apply</code> always ran the script already in bin, and a new script reached bin only by a successful</li></ul>
+<p>install. Every earlier <code>-Apply</code> fix had the same one-release lag (noted in U5l, U5o, U5p), but those old scripts still worked, so the lag never stranded a machine.</p>
+<ul><li><strong>Sweep:</strong> what runs an install: upgrade.ps1 <code>-Apply</code> (fixed: hands off), <code>-Zip</code> (already runs the release&#x27;s own</li></ul>
+<p>install.ps1), install.ps1 (the person runs the new one). <code>-Rollback</code> swaps back to the <code>.old</code> exes; the script that runs it is the newer one, which is what a rollback wants.</p>
+<ul><li><strong>Control (test):</strong> release.yml Windows smoke: a staged release whose upgrade.ps1 differs installs with that script</li></ul>
+<p>(<code>-Handoff</code> proof line, AIQ-UPDATE-HANDOFF), puts it in bin, cleans its temp copy; the same script again does not hand off; the handoff back to this build&#x27;s script works.</p>
+<ul><li><strong>Rule:</strong> the code that installs a release must be the release&#x27;s own, verified like the rest of it. A fix to an</li></ul>
+<p>installer must not depend on the old installer working. Honest limit: this only helps machines whose bin script already hands off; a machine stuck before that still needs one install by other means.</p>
+<h3>DC-073 — A task boundary that counts the person&#x27;s silence while the agent works</h3>
+<ul><li><strong>Signature:</strong> 2026-11-13. Imran: &quot;why are no tasks being classified as orchestrated?&quot; Of 1,090 analyzed tasks on</li></ul>
+<p>the laptop, 1 was Orchestrated. A task ended 30 minutes after the person&#x27;s last prompt, so a plan handed to a Fleet of sub-agents became one task and &quot;keep going&quot; two hours later another, analyzed without the plan. In the imported history 547 prompts started a new task by the gap; for 177 of them the agent itself had worked over 30 minutes.</p>
+<ul><li><strong>Why it survives:</strong> the idle gap was written for chat-style turns, where the person&#x27;s prompt is the only activity.</li></ul>
+<p>Long agent runs make the person&#x27;s silence normal, and nothing measured the agent&#x27;s side.</p>
+<ul><li><strong>Sweep:</strong> every place that splits tasks: <code>split_tasks</code> (Home, judge queue, task pages), the live <code>Engine</code> (tips,</li></ul>
+<p>re-prompt signal; its <code>prune</code> dropped a task while its agent still worked), <code>prompts_for_rebuild</code>, the Right-now <code>open_task</code>. All now count the agent&#x27;s turn end (<code>stop</code>) as activity. A task that grew after it was analyzed is analyzed again (<code>grew</code>, judge queue).</p>
+<ul><li><strong>Control (tests):</strong> <code>a_long_agent_run_keeps_its_task_open</code>, <code>engine_agent_stop_keeps_the_live_task_open</code>, the</li></ul>
+<p><code>split_tasks_matches_engine_task_ids</code> property with turn ends mixed in.</p>
+<ul><li><strong>Rule:</strong> a boundary in activity is measured from the last activity of anyone in it, not only the person.</li></ul>
+<h3>DC-074 — A log fact that says &quot;no&quot; when the log can only ever see &quot;yes&quot;</h3>
+<ul><li><strong>Signature:</strong> 2026-11-13. The envelope said &quot;spec, brief or design doc read or named: no&quot; and told the model to</li></ul>
+<p>trust log facts over the quoted text. The path match knew spec, ADR and design paths, not plan files. A Fleet launch naming <code>…IMPLEMENTATION_PLAN.md</code>, with 3 sub-agents and agent-run tests, was placed Directed: &quot;Your device logs do not establish a written brief&quot;. 44 of the 46 tasks with sub-agents and agent-run checks were marked &quot;no brief&quot;.</p>
+<ul><li><strong>Why it survives:</strong> DC-020 turned a log fact AIQ could not read into unknown, but kept &quot;no&quot; where every turn was</li></ul>
+<p>read. A path match can see a brief; it can never rule one out (a brief can be pasted or named in words).</p>
+<ul><li><strong>Sweep:</strong> log facts that are &quot;no&quot; when all turns are read: F1 edits, F8, F14, F15 and F3 read the agent&#x27;s own</li></ul>
+<p>actions, so a &quot;no&quot; there is a real observation. F7 was the only one that reads for a thing the log cannot cover.</p>
+<ul><li><strong>Control (tests):</strong> <code>a_brief_the_log_cannot_see_is_unknown_never_no</code>, <code>a_plan_file_is_a_brief</code>,</li></ul>
+<p><code>brief_may_change_only_where_the_brief_is_the_last_need</code>; fact set fs5.</p>
+<ul><li><strong>Rule:</strong> a log fact may say &quot;no&quot; only when the log could have seen every way to say &quot;yes&quot;.</li></ul>
+<h3>DC-075 — Another computer&#x27;s analysis calls counted as this computer&#x27;s</h3>
+<ul><li><strong>Signature:</strong> 2026-11-13, after 0.1.58. <code>aiq judge --versions</code> on the laptop: 132 outdated analyses &quot;not queued&quot;.</li></ul>
+<p>Each of them had exactly 6 failed calls (AIQ-JUDGE-ERROR) made by the Devbox, synced in: 2,136 Devbox failures on 391 laptop task ids, 11-09 to 11-12. The laptop&#x27;s retry rule counted them, so it &quot;gave up&quot; on its own tasks and they stayed on the old task cut and fact set.</p>
+<ul><li><strong>Why it survives:</strong> sync (#252) brought <code>judge_call</code> rows from other computers; <code>tools_down</code> and</li></ul>
+<p><code>newest_judge_call_per_provider</code> were scoped to <code>computer IS NULL</code>, <code>judge_calls_since</code> was not.</p>
+<ul><li><strong>Sweep:</strong> every <code>judge_calls_since</code> reader: the analysis queue&#x27;s retries and give-up, the daily budget</li></ul>
+<p>(<code>tasks_today</code>), Home&#x27;s &quot;analysis today&quot; counts and back-off state, <code>aiq judge --versions</code>. All now read this computer&#x27;s calls only.</p>
+<ul><li><strong>Control (test):</strong> <code>another_computers_calls_never_count_against_this_computers_tasks</code> (store).</li><li><strong>Rule:</strong> a synced row describes the computer that wrote it; a rule about this computer reads only its own rows.</li></ul>
+<h3>DC-076 — A run summary that leaves out the work done without a model call</h3>
+<ul><li><strong>Signature:</strong> 2026-11-13, after 0.1.59. judge.log said <code>run judged=24 ... waiting=0</code> while about 70 more outdated</li></ul>
+<p>tasks had left the queue. Alpha could not tell whether AIQ would release them later or they no longer qualified. They were restamped (log facts unchanged, no model call), which the line never counted.</p>
+<ul><li><strong>Sweep:</strong> the Report fields not in the run line: <code>restamped</code>, <code>skipped_no_text</code>. Both added.</li><li><strong>Control (test):</strong> <code>the_run_line_says_how_many_were_restamped_or_had_no_text</code>.</li><li><strong>Rule:</strong> a summary line accounts for every item that left the queue, by the path it took.</li></ul>
+<h3>DC-077 — An ordinal written like a count, beside counts</h3>
+<ul><li><strong>Signature:</strong> 2026-11-13, Imran on Home: &quot;Your most common rung: Assisted (1) · 286 of 287 tasks analyzed&quot; over a</li></ul>
+<p>ladder &quot;Assisted (1) … Factory (5)&quot;. He read the bracketed numbers as tasks per rung and asked why they disagreed with the Kinds view (9 kinds Directed) and All tasks (many Directed). They were ladder positions.</p>
+<ul><li><strong>Why it survives:</strong> spec H4 &quot;names first, numbers second&quot; chose <code>Directed (2)</code> for one rung in a sentence; the</li></ul>
+<p>same helper (<code>rungLabel</code>) was reused on screens that also show counts, where &quot;(n)&quot; is the common count notation.</p>
+<ul><li><strong>Sweep:</strong> every <code>rungLabel</code> reader in Home (strip, Right now, Day view, Kind chart axis, Tasks, Kinds, chips).</li></ul>
+<p>On screen the number is now a badge before the name (<code>RungNo</code>, <code>Rung</code>); text (aria labels, titles) uses the name alone. Not swept: the terminal status line and <code>aiq progress</code> text (no counts beside the rung there); follow-up if they confuse.</p>
+<ul><li><strong>Control (test):</strong> <code>rungno.test.ts</code> fails if any Home source writes a rung name followed by &quot;(1)&quot;–&quot;(5)&quot; or the</li></ul>
+<p>old template; e2e &quot;rung numbers are badges, never \&quot;(n)\&quot; beside counts&quot; reads the rendered Home, Tasks and Day text and checks the ladder&#x27;s per-rung counts against the snapshot.</p>
+<ul><li><strong>Rule:</strong> never write a position in the notation the same screen uses for counts; show it as a mark (badge).</li></ul></main></body></html>
