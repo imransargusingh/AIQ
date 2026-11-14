@@ -145,7 +145,7 @@ them in the 708 tasks.
 | Coaching (`aiq-domain` `coach.rs`) | `is_progress_check` also takes the analysis's Kind. Both entry points use it: Home's task list and the core's coaching read |
 | Read model and Home | Names only. `task_type_label` resolves retired ids. Five fixtures regenerated; the screen tests pin the new names |
 | Accuracy sets | `evals/judge/golden.json` `g2` (42 cases), `evals/label/golden.json` `l2` (67 prompts), both recordings |
-| Docs | This note; coaching-from-rungs "Pack data"; judge-evals; kind-label; the cost lines in the welcome page and the privacy page (an update can analyze some past tasks again, once, inside the daily limit); the README's tip example |
+| Docs | This note; coaching-from-rungs "Pack data"; judge-evals; kind-label; the cost lines in the welcome page and the privacy page (an update can analyze some past tasks again, once, inside the daily limit); the README's tip example; the README screenshots, retaken from the test data (`npm run readme-shots`) |
 
 ## Measured: the accuracy sets
 
@@ -230,6 +230,8 @@ the re-analysis only as today's count of analyzed tasks: its "waiting" number co
 - **One accuracy check after the re-analysis** (about 60 premium requests): keep each changed Kind only if a
   second reader agrees at least 8 in 10. It also settles the `assume:` in K9.
 - **Human labels** for the 8 new golden cases.
+- **No gate keeps the README screenshots current.** They still showed the old names after the text sweep, and
+  were four versions old (defect class DC-082). They are retaken here by hand.
 
 ## Gate record
 

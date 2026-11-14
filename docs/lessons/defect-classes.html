@@ -877,4 +877,15 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <p>demanded that the model never give such an answer, which no recording can promise. Live, that answer is a lost label.</p>
 <ul><li><strong>Sweep:</strong> both replay gates. Label: the assert is now a floor (19 in 20 parse) and the recorded totals pin the</li></ul>
 <p>exact count, so a parser change still fails. Analysis (<code>replay_gate</code>): the same demand (<code>answered == calls</code> for each case). Its <code>j7</code> recording holds no such answer (84 of 84 parse), so it is unchanged. If a recording ever holds one, pin it the same way there.</p>
-<ul><li><strong>Control (gate):</strong> <code>label_replay_gate</code>: the totals are equal, and <code>answered * 20 &gt;= sent * 19</code>.</li><li><strong>Rule:</strong> a gate on recorded answers pins what was measured. It never asks the sample to be clean.</li></ul></main></body></html>
+<ul><li><strong>Control (gate):</strong> <code>label_replay_gate</code>: the totals are equal, and <code>answered * 20 &gt;= sent * 19</code>.</li><li><strong>Rule:</strong> a gate on recorded answers pins what was measured. It never asks the sample to be clean.</li></ul>
+<h3>DC-082 — A rename swept as text misses the pictures made from the data</h3>
+<ul><li><strong>Signature:</strong> 2026-11-14, the kinds re-cut. The sweep for old kind names covered every text file and the Home</li></ul>
+<p>test data. The README&#x27;s screenshots are made from that test data (<code>npm run readme-shots</code>) and still read &quot;Adding a feature&quot; and &quot;Fixing a bug or failing test&quot;. Found after the pull request was opened, by reading the script. The images were also four versions old (taken at 0.1.59).</p>
+<ul><li><strong>Why it survives:</strong> a text search cannot read a picture, and no gate compares the README images with what Home</li></ul>
+<p>renders from the test data.</p>
+<ul><li><strong>Sweep:</strong> every committed image: the nine README screenshots (six changed when retaken) and the app icons (no</li></ul>
+<p>text). The landing page holds no kind name, old or new; its one tip example names none.</p>
+<ul><li><strong>Control:</strong> none automated yet. The change surfaces in design kinds-recut name the README screenshots. A gate</li></ul>
+<p>would save each shot&#x27;s visible text beside it and have the screen tests compare it with today&#x27;s render; that makes every text change on those screens retake images, so it is a decision of its own and is not built here.</p>
+<ul><li><strong>Rule:</strong> after a change to names people read, run the scripts that make pictures from the data, and open the</li></ul>
+<p>pictures.</p></main></body></html>

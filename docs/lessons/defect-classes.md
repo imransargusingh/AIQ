@@ -1446,3 +1446,18 @@ summary: >-
   holds one, pin it the same way there.
 - **Control (gate):** `label_replay_gate`: the totals are equal, and `answered * 20 >= sent * 19`.
 - **Rule:** a gate on recorded answers pins what was measured. It never asks the sample to be clean.
+
+### DC-082 — A rename swept as text misses the pictures made from the data
+- **Signature:** 2026-11-14, the kinds re-cut. The sweep for old kind names covered every text file and the Home
+  test data. The README's screenshots are made from that test data (`npm run readme-shots`) and still read
+  "Adding a feature" and "Fixing a bug or failing test". Found after the pull request was opened, by reading the
+  script. The images were also four versions old (taken at 0.1.59).
+- **Why it survives:** a text search cannot read a picture, and no gate compares the README images with what Home
+  renders from the test data.
+- **Sweep:** every committed image: the nine README screenshots (six changed when retaken) and the app icons (no
+  text). The landing page holds no kind name, old or new; its one tip example names none.
+- **Control:** none automated yet. The change surfaces in design kinds-recut name the README screenshots. A gate
+  would save each shot's visible text beside it and have the screen tests compare it with today's render; that
+  makes every text change on those screens retake images, so it is a decision of its own and is not built here.
+- **Rule:** after a change to names people read, run the scripts that make pictures from the data, and open the
+  pictures.
