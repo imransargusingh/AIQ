@@ -31,15 +31,19 @@ export function placeTip(anchor: Element) {
 const place = (e: { currentTarget: Element }) => placeTip(e.currentTarget);
 const OPEN = ".dv :is(.dv-name, .dv-task):is(:hover, :focus)";
 
+// A task's name in the Day view: its kind once analyzed, else its job, else the same words its row uses.
+const kindOf = (t: TaskRow) => t.judgment?.task_type_label ?? (t.job ? jobOf(t) : "Not analyzed yet");
+
 const span = (a: number, b: number, off: number) => (clock(a, off) === clock(b, off) ? clock(a, off) : `${clock(a, off)}–${clock(b, off)}`);
 
 function TaskTip({ t, off }: { t: TaskRow; off: number }) {
   return (
     <span className="tip" role="tooltip">
-      <b>{t.judgment?.task_type_label ?? jobOf(t)}</b>
+      <b>{kindOf(t)}</b>
       <br />
       {span(t.first_ms, t.last_ms, off)} · {plural(t.prompts, "prompt")}
-      <br />
+      {/* The title already says "Not analyzed yet" when there is no job either. */}
+      {(t.judgment || t.job) && <br />}
       {t.judgment ? (
         <>
           <Rung r={t.judgment.current} />
@@ -51,7 +55,7 @@ function TaskTip({ t, off }: { t: TaskRow; off: number }) {
           {stateLabel(t.judgment.state) && ` · ${stateLabel(t.judgment.state)}`}
         </>
       ) : (
-        "Not analyzed yet"
+        t.job && "Not analyzed yet"
       )}
     </span>
   );
@@ -178,7 +182,7 @@ export function DayView(ctx: Ctx) {
                       key={t.task_id}
                       className={`dv-task ${r ? `dv-r${r}` : "dv-none"}`}
                       style={{ left: `min(${a}%, calc(100% - 24px))`, width: `max(24px, ${w}%)` }}
-                      aria-label={`${t.judgment?.task_type_label ?? jobOf(t)}, ${span(t.first_ms, t.last_ms, off)}, ${plural(t.prompts, "prompt")}, ${t.judgment ? rungLabel(t.judgment.current) : "not analyzed yet"}. Open task`}
+                      aria-label={`${kindOf(t)}, ${span(t.first_ms, t.last_ms, off)}, ${plural(t.prompts, "prompt")}${t.judgment ? `, ${rungLabel(t.judgment.current)}` : t.job ? ", not analyzed yet" : ""}. Open task`}
                       onClick={() => ctx.openTask(t.task_id)}
                       onMouseEnter={place}
                       onFocus={place}

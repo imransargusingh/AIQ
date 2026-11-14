@@ -881,9 +881,11 @@ for (const [fixture, width, theme] of [["full", 1280, undefined], ["tour", 1280,
             const pts = [[b.left + 2, b.top + 2], [b.right - 2, b.top + 2], [b.left + 2, b.bottom - 2], [b.right - 2, b.bottom - 2], [(b.left + b.right) / 2, (b.top + b.bottom) / 2]];
             const hidden = pts.filter(([x, y]) => { const h = document.elementFromPoint(x, y); return !h || !tip.contains(h); }).length;
             tip.style.pointerEvents = "";
-            return { w: b.width, h: b.height, out: b.left < 0 || b.top < 0 || b.right > vw || b.bottom > vh, hidden, text: tip.innerText.split("\n")[0] };
+            return { w: b.width, h: b.height, out: b.left < 0 || b.top < 0 || b.right > vw || b.bottom > vh, hidden, text: tip.innerText.split("\n")[0], all: tip.innerText };
           });
           shown++;
+          // Users read "analyzed" (project wording): the hover text names an unanalyzed task as its row does.
+          if (/classif/i.test(r.all)) cut.push(`day ${d} ${sel} ${k % n} says "${r.text}", not "Not analyzed yet"`);
           if (r.w === 0 || r.out || r.hidden) cut.push(`day ${d} ${sel} ${k % n} ${k < n ? "focus" : "hover"} "${r.text}": ${r.w}x${r.h}${r.out ? " outside the window" : ""}${r.hidden ? `, ${r.hidden}/5 points covered` : ""}`);
         }
       }
