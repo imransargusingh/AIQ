@@ -65,3 +65,34 @@ print(f"  earlier tasks' rung (sure): {cnt(p['rung'] for p in parents.values() i
 pl = [p for p in parents.values() if p["b"] == PLAN]
 print(f"  plan follow-ons that would gain a later check: {len(pl)}; their rung {cnt(p['rung'] for p in pl)}")
 print(f"  by tool: {cnt(t['tool'] for t in J)}")
+
+# Which word in the list each hit used: progress checks vs other tasks (names of the list's own words only).
+def which(t):
+    m = CUES.search(text_of.get(t["task_id"]) or "")
+    return re.sub(r"\W+", " ", m.group(1).lower()).strip() if m else None
+
+
+C = [t for t in H2 if cue(t) == "cue"]
+print("== hits by list word: (progress checks, other tasks) ==")
+per = collections.defaultdict(lambda: [0, 0])
+for t in C:
+    per[which(t)][0 if t["b"] == PROG else 1] += 1
+for k, v in sorted(per.items(), key=lambda kv: -sum(kv[1])):
+    print(f"  {k}: {tuple(v)}")
+
+
+# Joining is transitive: a check after a check continues the same task. Follow each hit back to the first
+# task in the session that is not itself a hit (the root).
+def root(t):
+    while t.get("prev") and cue(t) == "cue":
+        t = t["prev"]
+    return t
+
+
+R = collections.Counter(id(root(t)) for t in J)
+roots = {id(root(t)): root(t) for t in J}
+print(f"== transitive join: {len(J)} hits fold into {len(roots)} root tasks ==")
+print(f"  roots by keyword group: {cnt(r['b'] for r in roots.values())}")
+print(f"  roots' rung (sure): {cnt(r['rung'] for r in roots.values() if r['state'] != 'uncertain')}")
+print(f"  roots that are themselves hits (session starts with a check): {sum(1 for r in roots.values() if cue(r) == 'cue')}")
+print(f"  hits per root: {cnt(min(n, 4) for n in R.values())} (4 = 4 or more)")
