@@ -853,6 +853,51 @@ await test("Tasks Day view: a row per session, rung named on hover and focus, En
   await narrow.context().close();
 });
 
+// Hover text must be painted whole, not just present in the DOM: the Day view box scrolls (overflow-x) and once
+// clipped every tip's third line (the rung) and the right half of edge tips. Measured by pixels, not text: each
+// tip's rectangle sits inside the window, and the tip itself is the topmost element at its corners and centre.
+for (const [fixture, width, theme] of [["full", 1280, undefined], ["tour", 1280, undefined], ["tour", 720, "dark"], ["full", 720, "contrast"]]) {
+  await test(`Tasks Day view: every hover text is shown whole (${fixture}, ${width}px${theme ? `, ${theme}` : ""})`, async () => {
+    const page = await open(fixture, { hash: "#tasks", width, height: 800, theme });
+    await page.getByRole("button", { name: "Day", exact: true }).click();
+    const cut = [];
+    let shown = 0;
+    for (let d = 0; d < 6; d++) {
+      for (const sel of [".dv-name", ".dv-task"]) {
+        const n = await page.locator(sel).count();
+        for (let k = 0; k < n * 2; k++) {
+          // Each anchor twice: by keyboard focus, then by mouse hover with nothing focused.
+          const a = page.locator(sel).nth(k % n);
+          if (k < n) await a.focus();
+          else {
+            await page.evaluate(() => document.activeElement?.blur());
+            await a.hover();
+          }
+          const r = await a.evaluate((el) => {
+            const tip = el.querySelector(".tip");
+            tip.style.pointerEvents = "auto"; // hit-testing skips pointer-events:none, which tips carry so they never trap the mouse
+            const b = tip.getBoundingClientRect();
+            const vw = document.documentElement.clientWidth, vh = document.documentElement.clientHeight;
+            const pts = [[b.left + 2, b.top + 2], [b.right - 2, b.top + 2], [b.left + 2, b.bottom - 2], [b.right - 2, b.bottom - 2], [(b.left + b.right) / 2, (b.top + b.bottom) / 2]];
+            const hidden = pts.filter(([x, y]) => { const h = document.elementFromPoint(x, y); return !h || !tip.contains(h); }).length;
+            tip.style.pointerEvents = "";
+            return { w: b.width, h: b.height, out: b.left < 0 || b.top < 0 || b.right > vw || b.bottom > vh, hidden, text: tip.innerText.split("\n")[0] };
+          });
+          shown++;
+          if (r.w === 0 || r.out || r.hidden) cut.push(`day ${d} ${sel} ${k % n} ${k < n ? "focus" : "hover"} "${r.text}": ${r.w}x${r.h}${r.out ? " outside the window" : ""}${r.hidden ? `, ${r.hidden}/5 points covered` : ""}`);
+        }
+      }
+      const earlier = page.getByRole("button", { name: "Earlier day" });
+      if (await earlier.isDisabled()) break;
+      await earlier.click();
+    }
+    assert.ok(shown > 0, "no tips checked");
+    assert.deepEqual(cut, []);
+    assert.deepEqual(page.errors, []);
+    await page.context().close();
+  });
+}
+
 for (const theme of ["light", "dark", "contrast"]) {
   await test(`Right now card: the open task's estimate per turn, rung in words, tip at its turn, no axe violations (${theme})`, async () => {
     const page = await open("live", { theme: theme === "light" ? undefined : theme });
