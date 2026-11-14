@@ -96,9 +96,9 @@ pub const TASK_TYPES: [(&str, &str, &str); 31] = [
     ("run_ship", "other", "Other running or shipping"),
 ];
 
-/// Kinds an earlier list offered and today's does not, each folded into a neighbour. A stored task keeps the
-/// kind it was given, so its label still resolves (`task_type_label`); a new answer may not name one
-/// (`task_type_offered`).
+/// Kinds an earlier list offered and today's does not, each folded into a neighbour. A stored task shows the
+/// kind it was given until it is analyzed again (once, for a retired kind: `aiq` `list_outdated`), so its label
+/// still resolves (`task_type_label`); a new answer may not name one (`task_type_offered`).
 pub const RETIRED_TASK_TYPES: [(&str, &str, &str); 5] = [
     ("code_change", "build_fix", "Fixing lint and build errors"),
     ("code_change", "review", "Reviewing code or a pull request"),

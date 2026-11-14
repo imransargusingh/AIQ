@@ -1414,3 +1414,35 @@ summary: >-
   (three computers in a chain; red before the fix) and
   `a_change_file_cut_short_is_never_passed_on_and_a_copy_cut_short_is_replaced`.
 - **Rule:** a feature that joins parties is tested with three, in the worst shape the transport allows.
+
+### DC-080 — A new answer the analysis may give re-opens a decision an older rule already took
+- **Signature:** 2026-11-14, building the re-cut kinds list (design kinds-recut). The list gives progress checks a
+  kind of their own, "Checking on progress". #294, merged the same day, took progress checks off the ladder by the
+  words of the first prompt. With the new kind and the rule unchanged, a Home snapshot test showed the kind's row
+  reading "coach": three such tasks in 30 days would be coached and counted as Assisted, which #294 took out. Found
+  on the branch, before the merge.
+- **Why it survives:** the rule read words because words were the only signal when it was written. The list change
+  added a second signal for the same thing, and nothing ties a kind to the rules about what it names.
+- **Sweep:** every new or widened kind against every rule that keeps a task off the ladder or out of coaching.
+  `progress`: fixed here. `run_ship/release`: the release-notice decision (kinds-recut K10) has the same shape and is
+  not built yet. `review`, `plan`, `deck`, `source_control`: no such rule. Not covered: a tip at task start is
+  decided before any analysis exists, so it reads neither signal (kinds-recut, "Gaps that stay open").
+- **Control (tests):** `a_task_the_analysis_names_checking_on_progress_is_a_progress_check_whatever_its_words`
+  (domain); `a_progress_check_has_no_rung_of_its_own_on_home` (Home snapshot; red with the kind ignored: the row
+  read `("progress", "coach")`).
+- **Rule:** when the analysis gains an answer for something a rule already handles, the rule reads that answer in
+  the same change.
+
+### DC-081 — A gate on a recording that only a clean sample can pass
+- **Signature:** 2026-11-14. The `label-3` recording held 1 answer in 134 that the strict parse refuses (a kind from
+  another job's list). `label_replay_gate` asserted that every recorded answer parses, so the honest recording was
+  red. The only ways to green were to record again until no such answer showed, or to drop the assert.
+- **Why it survives:** the assert was written to catch a parser change that breaks recorded answers. It also
+  demanded that the model never give such an answer, which no recording can promise. Live, that answer is a lost
+  label.
+- **Sweep:** both replay gates. Label: the assert is now a floor (19 in 20 parse) and the recorded totals pin the
+  exact count, so a parser change still fails. Analysis (`replay_gate`): the same demand (`answered == calls` for
+  each case). Its `j7` recording holds no such answer (84 of 84 parse), so it is unchanged. If a recording ever
+  holds one, pin it the same way there.
+- **Control (gate):** `label_replay_gate`: the totals are equal, and `answered * 20 >= sent * 19`.
+- **Rule:** a gate on recorded answers pins what was measured. It never asks the sample to be clean.

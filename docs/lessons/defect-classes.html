@@ -838,4 +838,43 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <p>On screen the number is now a badge before the name (<code>RungNo</code>, <code>Rung</code>); text (aria labels, titles) uses the name alone. Not swept: the terminal status line and <code>aiq progress</code> text (no counts beside the rung there); follow-up if they confuse.</p>
 <ul><li><strong>Control (test):</strong> <code>rungno.test.ts</code> fails if any Home source writes a rung name followed by &quot;(1)&quot;–&quot;(5)&quot; or the</li></ul>
 <p>old template; e2e &quot;rung numbers are badges, never \&quot;(n)\&quot; beside counts&quot; reads the rendered Home, Tasks and Day text and checks the ladder&#x27;s per-rung counts against the snapshot.</p>
-<ul><li><strong>Rule:</strong> never write a position in the notation the same screen uses for counts; show it as a mark (badge).</li></ul></main></body></html>
+<ul><li><strong>Rule:</strong> never write a position in the notation the same screen uses for counts; show it as a mark (badge).</li></ul>
+<h3>DC-078 — Two reads on one card, scoped to different computers</h3>
+<ul><li><strong>Signature:</strong> 2026-11-14, Imran on the laptop: Right now said &quot;Nothing in progress&quot; beside a green &quot;Copilot · your</li></ul>
+<p>last turn 15 min ago&quot; while his Copilot session ran on the Devbox. Measured in his store: the laptop&#x27;s last Copilot event was over 6 hours old; the 15-minute turn was the Devbox&#x27;s (stop 05:09:21Z, applied by sync 05:12:55Z).</p>
+<ul><li><strong>Why it survives:</strong> sync (#252) scoped the open-task read to <code>computer IS NULL</code> and left the per-tool newest</li></ul>
+<p>(<code>Snapshot::seen</code>) on every computer, so the same card answered two questions about two different sets of rows.</p>
+<ul><li><strong>Sweep:</strong> every Home read of <code>event</code> for the live card (<code>live</code>, <code>seen</code>, <code>starting</code>). All three now carry the</li></ul>
+<p>computer; the card names the other computer on each. Not changed (deliberately local): judge calls and their finder (<code>judge_call ... computer IS NULL</code>), <code>aiq show</code> with no id, <code>latest_session</code>, tip offers.</p>
+<ul><li><strong>Control (test):</strong> <code>right_now_shows_every_computers_open_task_and_names_the_computer</code> (a real sync change file;</li></ul>
+<p>red with the old filter); e2e &quot;nothing open: the other computer&#x27;s newer turn is named&quot;; unit &quot;keeps this computer&#x27;s last turn and names the other computer&#x27;s&quot;.</p>
+<ul><li><strong>Rule:</strong> reads that sit together on one surface share one scope, or each says its scope on screen.</li></ul>
+<h3>DC-079 — A design proven with two parties that silently assumes two</h3>
+<ul><li><strong>Signature:</strong> 2026-11-14, Imran connected a third computer (a second Devbox). Measured on the laptop: it synced</li></ul>
+<p>fine, because both Devboxes open the laptop. Read in the code: each computer copied only its own change files and never passed on rows it applied, so a computer reached only through another one (a Devbox opened from a Devbox) would reach that one computer and never the laptop, with no error anywhere.</p>
+<ul><li><strong>Why it survives:</strong> every sync test had exactly two computers, and with two, &quot;send your own files&quot; and &quot;send</li></ul>
+<p>everything&quot; are the same thing.</p>
+<ul><li><strong>Sweep:</strong> the sync pass (<code>pass</code>, <code>mirror</code>, apply order) and every per-computer read. The reads compare &quot;this</li></ul>
+<p>computer&quot; with &quot;every other one&quot; (<code>computer IS NULL</code>, peers named by id), so they hold for any number. The offer card names only the first home it reaches (<code>remote.first()</code>), which is about Windows user folders, not computers.</p>
+<ul><li><strong>Control (test):</strong> <code>a_computer_reached_only_through_another_one_still_reaches_everyone_and_gets_everything</code></li></ul>
+<p>(three computers in a chain; red before the fix) and <code>a_change_file_cut_short_is_never_passed_on_and_a_copy_cut_short_is_replaced</code>.</p>
+<ul><li><strong>Rule:</strong> a feature that joins parties is tested with three, in the worst shape the transport allows.</li></ul>
+<h3>DC-080 — A new answer the analysis may give re-opens a decision an older rule already took</h3>
+<ul><li><strong>Signature:</strong> 2026-11-14, building the re-cut kinds list (design kinds-recut). The list gives progress checks a</li></ul>
+<p>kind of their own, &quot;Checking on progress&quot;. #294, merged the same day, took progress checks off the ladder by the words of the first prompt. With the new kind and the rule unchanged, a Home snapshot test showed the kind&#x27;s row reading &quot;coach&quot;: three such tasks in 30 days would be coached and counted as Assisted, which #294 took out. Found on the branch, before the merge.</p>
+<ul><li><strong>Why it survives:</strong> the rule read words because words were the only signal when it was written. The list change</li></ul>
+<p>added a second signal for the same thing, and nothing ties a kind to the rules about what it names.</p>
+<ul><li><strong>Sweep:</strong> every new or widened kind against every rule that keeps a task off the ladder or out of coaching.</li></ul>
+<p><code>progress</code>: fixed here. <code>run_ship/release</code>: the release-notice decision (kinds-recut K10) has the same shape and is not built yet. <code>review</code>, <code>plan</code>, <code>deck</code>, <code>source_control</code>: no such rule. Not covered: a tip at task start is decided before any analysis exists, so it reads neither signal (kinds-recut, &quot;Gaps that stay open&quot;).</p>
+<ul><li><strong>Control (tests):</strong> <code>a_task_the_analysis_names_checking_on_progress_is_a_progress_check_whatever_its_words</code></li></ul>
+<p>(domain); <code>a_progress_check_has_no_rung_of_its_own_on_home</code> (Home snapshot; red with the kind ignored: the row read <code>(&quot;progress&quot;, &quot;coach&quot;)</code>).</p>
+<ul><li><strong>Rule:</strong> when the analysis gains an answer for something a rule already handles, the rule reads that answer in</li></ul>
+<p>the same change.</p>
+<h3>DC-081 — A gate on a recording that only a clean sample can pass</h3>
+<ul><li><strong>Signature:</strong> 2026-11-14. The <code>label-3</code> recording held 1 answer in 134 that the strict parse refuses (a kind from</li></ul>
+<p>another job&#x27;s list). <code>label_replay_gate</code> asserted that every recorded answer parses, so the honest recording was red. The only ways to green were to record again until no such answer showed, or to drop the assert.</p>
+<ul><li><strong>Why it survives:</strong> the assert was written to catch a parser change that breaks recorded answers. It also</li></ul>
+<p>demanded that the model never give such an answer, which no recording can promise. Live, that answer is a lost label.</p>
+<ul><li><strong>Sweep:</strong> both replay gates. Label: the assert is now a floor (19 in 20 parse) and the recorded totals pin the</li></ul>
+<p>exact count, so a parser change still fails. Analysis (<code>replay_gate</code>): the same demand (<code>answered == calls</code> for each case). Its <code>j7</code> recording holds no such answer (84 of 84 parse), so it is unchanged. If a recording ever holds one, pin it the same way there.</p>
+<ul><li><strong>Control (gate):</strong> <code>label_replay_gate</code>: the totals are equal, and <code>answered * 20 &gt;= sent * 19</code>.</li><li><strong>Rule:</strong> a gate on recorded answers pins what was measured. It never asks the sample to be clean.</li></ul></main></body></html>

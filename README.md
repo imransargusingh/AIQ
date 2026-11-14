@@ -121,7 +121,7 @@ no repeat of the same tip within 72 hours. Tips start with a yellow **AIQ tip:**
 - **Claude Code**: a short card under Claude's reply:
 
   ```
-  AIQ tip: this looks like fixing a bug. The goal and limits up front help the agent.
+  AIQ tip: this looks like fixing a bug, test or build error. The goal and limits up front help the agent.
   Try this: paste the exact error or failing test, name the files it touches, and say what must not change.
   Details: aiq show  ·  Turn off tips for now: aiq pause
   ```
