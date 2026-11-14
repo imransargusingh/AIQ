@@ -1026,7 +1026,7 @@ for (const theme of ["light", "dark", "contrast"]) {
     // Chips in start order; each names the kind, project and tool and says the rung in words.
     const names = await tabs.allInnerTexts();
     assert.equal(names.length, 3);
-    assert.match(names[0], /Fixing a bug or failing test\s*aiq · VS Code · 4 prompts.*heading for Assisted, agent working/s);
+    assert.match(names[0], /Fixing a bug, test or build error\s*aiq · VS Code · 4 prompts.*heading for Assisted, agent working/s);
     assert.match(names[1], /Writing a spec or PRD\s*aiq · Copilot CLI · 5 prompts.*heading for Directed, agent working/s);
     assert.match(names[2], /Writing tests\s*foresight · Claude Code · 1 prompt.*heading for Delegated, waiting for you/s);
     // The newest activity is chosen first: the VS Code task.
@@ -1150,8 +1150,8 @@ await test("rung guide: steps by kind of work, where you are, your next step ope
   assert.match(await side.locator("h2").innerText(), /Keep an instructions file in the repo and point to it/);
   assert.match(await side.innerText(), /Code a change · \s*3\s*Delegated\s*→\s*4\s*Orchestrated/);
   assert.match(await side.innerText(), /How AIQ notices it: Counts when you give the agent a written brief, spec or instructions file\./);
-  // Writing tests took up this habit (seeded growing), so its next step moved on; adding a feature still needs it.
-  assert.match(await side.innerText(), /Your next step for adding a feature/);
+  // Writing tests took up this habit (seeded growing), so its next step moved on; building or adding a feature still needs it.
+  assert.match(await side.innerText(), /Your next step for building or adding a feature/);
   await grid.getByRole("button", { name: /Ask for the whole draft and list what it must cover/ }).click();
   assert.match(await side.innerText(), /Your next step for writing a spec or PRD/);
   // Pick another habit: the side panel follows; the starter copies.
@@ -1210,16 +1210,16 @@ await test("task detail: Enter on a Tasks row opens it; prompts in order; judgme
   await page.context().close();
 });
 
-// Laptop 2026-11-12: a task analyzed as "Finding the cause of a problem" (label 0.99, analysis 0.91) showed only its
+// Laptop 2026-11-12: a task analyzed as "Investigating a bug or problem" (label 0.99, analysis 0.91) showed only its
 // job here, so it read as unclassified. The kind shows beside the job when the analysis named one, and not otherwise.
 await test("task detail: the kind shows beside the job when the analysis named one", async () => {
   const hash = "#task/019000000001-0000-7000-8000-000000000000";
   const page = await open("full", {
     hash,
-    editTask: (t) => Object.assign(t.task.judgment, { job: "ask_research", task_type: "troubleshoot", task_type_label: "Finding the cause of a problem" }),
+    editTask: (t) => Object.assign(t.task.judgment, { job: "ask_research", task_type: "troubleshoot", task_type_label: "Investigating a bug or problem" }),
   });
   await page.waitForSelector("ol.prompts");
-  assert.match(await page.locator("main").innerText(), /Job: Ask or research\s+Kind: Finding the cause of a problem/);
+  assert.match(await page.locator("main").innerText(), /Job: Ask or research\s+Kind: Investigating a bug or problem/);
   assert.deepEqual(page.errors, []);
   await page.context().close();
   const none = await open("full", { hash });
@@ -1579,8 +1579,8 @@ await test("progress Home: kinds that moved up or down beyond chance, counts beh
     assert.equal(await rows.nth(0).getAttribute("aria-label"), "Writing tests, Delegated in the last 30 days, moved up from Directed, next step reaches Orchestrated, 5 tasks in the last 30 days, 5 before");
     assert.match(await rows.nth(0).innerText(), /Writing tests\s+↑ up/);
     // Its typical rung went from Assisted to Delegated, but only by chance: drawn where it is, no ring, no arrow.
-    assert.equal(await rows.nth(1).getAttribute("aria-label"), "Adding a feature, Delegated in the last 30 days, same rung, next step reaches Orchestrated, 3 tasks in the last 30 days, 3 before");
-    assert.equal(await rows.nth(2).getAttribute("aria-label"), "Fixing a bug or failing test, Assisted in the last 30 days, same rung, 3 tasks in the last 30 days, 3 before");
+    assert.equal(await rows.nth(1).getAttribute("aria-label"), "Building or adding a feature, Delegated in the last 30 days, same rung, next step reaches Orchestrated, 3 tasks in the last 30 days, 3 before");
+    assert.equal(await rows.nth(2).getAttribute("aria-label"), "Fixing a bug, test or build error, Assisted in the last 30 days, same rung, 3 tasks in the last 30 days, 3 before");
     assert.match(await rows.nth(3).innerText(), /Writing a spec or PRD\s+↓ down/);
     // Habit changes are one line under the map; the habits themselves live in Habits and tips.
     assert.match(t, /1 habit is growing: the steps that move a kind of task up\. See them in Habits and tips/);
@@ -1706,7 +1706,7 @@ await test("Tasks opens on kinds of task: rung today, could be, a week, the 30-d
   const t = await table.innerText();
   assert.match(t, /Writing tests[\s\S]*Code a change[\s\S]*↑ up from Directed/);
   assert.match(t, /Writing a spec or PRD[\s\S]*↓ down from Delegated/);
-  assert.match(t, /Fixing a bug or failing test[\s\S]*– same rung/);
+  assert.match(t, /Fixing a bug, test or build error[\s\S]*– same rung/);
   assert.match(t, /Refactoring or cleaning up[\s\S]*Too few tasks to say/);
   assert.match(await page.locator("main header.head").innerText(), /Kinds\s+All tasks\s+Day/);
   assert.equal(await page.locator("table[aria-label=Tasks]").count(), 0, "the task list waits under All tasks");
@@ -1717,7 +1717,7 @@ await test("Tasks opens on kinds of task: rung today, could be, a week, the 30-d
 
   const c = await open("coaching", { hash: "#tasks" });
   const ct = await c.getByRole("table", { name: "Kinds of task" }).innerText();
-  for (const k of ["Writing tests", "Writing a spec or PRD", "Fixing a bug or failing test", "Right rung", "Refactoring or cleaning up", "Too few tasks yet"]) assert.ok(ct.includes(k), k);
+  for (const k of ["Writing tests", "Writing a spec or PRD", "Fixing a bug, test or build error", "Right rung", "Refactoring or cleaning up", "Too few tasks yet"]) assert.ok(ct.includes(k), k);
   assert.equal(await c.getByRole("list", { name: "Kinds of task" }).count(), 0, "no second kinds list below");
   // The chosen view sits directly under the switch.
   const afterHeader = () => c.evaluate(() => {

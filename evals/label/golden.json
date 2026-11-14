@@ -1,5 +1,5 @@
 {
- "version": "l1",
+ "version": "l2",
  "about": "Synthetic first prompts (no prompt here comes from anyone's store) with the job and kind the WHOLE task turns out to be. p-cases are shaped on the label misses measured on the laptop 2026-11-08 (problem reports that end in a fix or a release); g-cases are the first prompts of evals/judge/golden.json. kind ['other'] means a confident named kind is wrong. Scored by aiq label --eval --golden; recorded answers in replay.json are CI's label replay gate.",
  "cases": [
   {
@@ -42,11 +42,11 @@
      "code_change"
     ],
     "kind": [
-     "build_fix",
+     "fix_bug",
      "deps"
     ]
    },
-   "note": "build error"
+   "note": "build error l2 (2026-11-14 re-cut): the retired kind build_fix is folded into fix_bug."
   },
   {
    "id": "p04",
@@ -115,14 +115,13 @@
    "prompt": "how does the token refresh work in auth/session.ts? walk me through it",
    "expect": {
     "job": [
-     "ask_research",
-     "code_change"
+     "ask_research"
     ],
     "kind": [
      "explain"
     ]
    },
-   "note": "understanding code"
+   "note": "understanding code l2 (2026-11-14 re-cut): explaining code is an ask_research kind only, so code_change is no longer an accepted job."
   },
   {
    "id": "p09",
@@ -569,12 +568,12 @@
      "write_doc"
     ],
     "kind": [
-     "notes",
+     "research",
      "status",
      "other"
     ]
    },
-   "note": "first prompt of judge golden case h08"
+   "note": "first prompt of judge golden case h08 l2 (2026-11-14 re-cut): the retired kind notes is folded into research."
   },
   {
    "id": "g-h09",
@@ -589,11 +588,11 @@
     ],
     "kind": [
      "restart_fix",
-     "build_fix",
+     "fix_bug",
      "troubleshoot"
     ]
    },
-   "note": "first prompt of judge golden case h09"
+   "note": "first prompt of judge golden case h09 l2 (2026-11-14 re-cut): the retired kind build_fix is folded into fix_bug."
   },
   {
    "id": "g-h10",
@@ -606,10 +605,11 @@
     ],
     "kind": [
      "refactor",
-     "other"
+     "other",
+     "deps"
     ]
    },
-   "note": "first prompt of judge golden case h10"
+   "note": "first prompt of judge golden case h10 l2 (2026-11-14 re-cut): deps now covers a migration, so it is also accepted."
   },
   {
    "id": "g-h11",
@@ -634,14 +634,13 @@
    "prompt": "Review PR #212 from Dana (adds delay propagation cache). Focus on: correctness of cache invalidation, memory growth on long timetables, and whether tests cover cancelled trains. Give me findings ranked by severity, with file:line. Don't post to GitHub.",
    "expect": {
     "job": [
-     "code_change",
      "ask_research"
     ],
     "kind": [
      "review"
     ]
    },
-   "note": "first prompt of judge golden case h12"
+   "note": "first prompt of judge golden case h12 l2 (2026-11-14 re-cut): reviewing is an ask_research kind now, so code_change is no longer an accepted job."
   },
   {
    "id": "g-h13",
@@ -653,11 +652,10 @@
      "code_change"
     ],
     "kind": [
-     "fix_bug",
-     "build_fix"
+     "fix_bug"
     ]
    },
-   "note": "first prompt of judge golden case h13"
+   "note": "first prompt of judge golden case h13 l2 (2026-11-14 re-cut): the retired kind build_fix is folded into fix_bug."
   },
   {
    "id": "g-h14",
@@ -750,10 +748,10 @@
     "kind": [
      "other",
      "status",
-     "notes"
+     "research"
     ]
    },
-   "note": "first prompt of judge golden case h19"
+   "note": "first prompt of judge golden case h19 l2 (2026-11-14 re-cut): the retired kind notes is folded into research."
   },
   {
    "id": "g-h20",
@@ -920,6 +918,126 @@
     ]
    },
    "note": "first prompt of judge golden case o02"
+  },
+  {
+   "id": "g-k01",
+   "tool": "claude-code",
+   "label_source": "author",
+   "prompt": "make me slides for thursday's ops review about q3 punctuality",
+   "expect": {
+    "job": [
+     "write_doc"
+    ],
+    "kind": [
+     "deck"
+    ]
+   },
+   "note": "first prompt of judge golden case k01"
+  },
+  {
+   "id": "g-k02",
+   "tool": "copilot-cli",
+   "label_source": "author",
+   "prompt": "how far along is the re-import? is it past stop_times yet",
+   "expect": {
+    "job": [
+     "ask_research"
+    ],
+    "kind": [
+     "progress"
+    ]
+   },
+   "note": "first prompt of judge golden case k02"
+  },
+  {
+   "id": "g-k03",
+   "tool": "claude-code",
+   "label_source": "author",
+   "prompt": "Review docs/design/alert-routing.md before I send it to the ops leads. Check three things: every alert type has an owner, the escalation times agree with docs/slo.md, and nothing in the rollout plan is untestable. List the gaps by section. Don't edit the file.",
+   "expect": {
+    "job": [
+     "ask_research"
+    ],
+    "kind": [
+     "review"
+    ]
+   },
+   "note": "first prompt of judge golden case k03"
+  },
+  {
+   "id": "g-k04",
+   "tool": "copilot-cli",
+   "label_source": "author",
+   "prompt": "before we touch anything: what's a sensible order to move the importer to async? just the steps and the risky parts",
+   "expect": {
+    "job": [
+     "ask_research"
+    ],
+    "kind": [
+     "plan"
+    ]
+   },
+   "note": "first prompt of judge golden case k04"
+  },
+  {
+   "id": "g-k05",
+   "tool": "claude-code",
+   "label_source": "author",
+   "prompt": "commit what we have and push it to my branch",
+   "expect": {
+    "job": [
+     "run_ship"
+    ],
+    "kind": [
+     "source_control"
+    ]
+   },
+   "note": "first prompt of judge golden case k05"
+  },
+  {
+   "id": "g-k06",
+   "tool": "claude-code",
+   "label_source": "author",
+   "prompt": "1.8.1 is published",
+   "expect": {
+    "job": [
+     "run_ship"
+    ],
+    "kind": [
+     "release"
+    ]
+   },
+   "note": "first prompt of judge golden case k06"
+  },
+  {
+   "id": "g-k07",
+   "tool": "claude-code",
+   "label_source": "author",
+   "prompt": "Carry out phase 2 of docs/build-plan.md (the import queue). Done when the three acceptance tests the plan lists pass and clippy is clean. Stop and tell me if a step in the plan no longer fits the code.",
+   "expect": {
+    "job": [
+     "code_change"
+    ],
+    "kind": [
+     "feature"
+    ]
+   },
+   "note": "first prompt of judge golden case k07"
+  },
+  {
+   "id": "g-k08",
+   "tool": "copilot-cli",
+   "label_source": "author",
+   "prompt": "Write acceptance criteria for the delay-alert story in docs/stories/delay-alerts.md. Given/When/Then, one per rule in the story, and cover the cancelled-train case. Keep the story text as it is.",
+   "expect": {
+    "job": [
+     "write_doc"
+    ],
+    "kind": [
+     "spec"
+    ]
+   },
+   "note": "first prompt of judge golden case k08"
   }
  ]
 }

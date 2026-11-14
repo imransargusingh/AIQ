@@ -254,7 +254,7 @@
         "potential_confidence": 0.85,
         "job": "code_change",
         "task_type": "fix_bug",
-        "task_type_label": "Fixing a bug or failing test",
+        "task_type_label": "Fixing a bug, test or build error",
         "coachable": false,
         "evidence": [
           "The agent wrote the tests."
@@ -418,7 +418,7 @@
         "potential_confidence": 0.85,
         "job": "code_change",
         "task_type": "fix_bug",
-        "task_type_label": "Fixing a bug or failing test",
+        "task_type_label": "Fixing a bug, test or build error",
         "coachable": false,
         "evidence": [
           "The agent wrote the tests."
@@ -541,7 +541,7 @@
         "potential_confidence": 0.85,
         "job": "code_change",
         "task_type": "fix_bug",
-        "task_type_label": "Fixing a bug or failing test",
+        "task_type_label": "Fixing a bug, test or build error",
         "coachable": false,
         "evidence": [
           "The agent wrote the tests."
@@ -623,7 +623,7 @@
         "potential_confidence": 0.85,
         "job": "code_change",
         "task_type": "feature",
-        "task_type_label": "Adding a feature",
+        "task_type_label": "Building or adding a feature",
         "coachable": true,
         "evidence": [
           "The agent wrote the tests."
@@ -746,7 +746,7 @@
         "potential_confidence": 0.85,
         "job": "code_change",
         "task_type": "feature",
-        "task_type_label": "Adding a feature",
+        "task_type_label": "Building or adding a feature",
         "coachable": true,
         "evidence": [
           "The agent wrote the tests."
@@ -787,7 +787,7 @@
         "potential_confidence": 0.85,
         "job": "code_change",
         "task_type": "feature",
-        "task_type_label": "Adding a feature",
+        "task_type_label": "Building or adding a feature",
         "coachable": true,
         "evidence": [
           "The agent wrote the tests."
@@ -1659,7 +1659,7 @@
       {
         "job": "code_change",
         "task_type": "feature",
-        "label": "Adding a feature",
+        "label": "Building or adding a feature",
         "tasks": 3,
         "uncertain": 0,
         "per_week": 0.7,
@@ -1744,7 +1744,7 @@
       {
         "job": "code_change",
         "task_type": "feature",
-        "label": "Adding a feature",
+        "label": "Building or adding a feature",
         "tasks": 3,
         "uncertain": 0,
         "per_week": 0.7,
@@ -1770,7 +1770,7 @@
       {
         "job": "code_change",
         "task_type": "fix_bug",
-        "label": "Fixing a bug or failing test",
+        "label": "Fixing a bug, test or build error",
         "tasks": 3,
         "uncertain": 0,
         "per_week": 0.7,
@@ -2001,7 +2001,7 @@
       {
         "job": "code_change",
         "task_type": "feature",
-        "label": "Adding a feature",
+        "label": "Building or adding a feature",
         "recent": 3,
         "earlier": 3,
         "uncertain": 0,
@@ -2012,7 +2012,7 @@
       {
         "job": "code_change",
         "task_type": "fix_bug",
-        "label": "Fixing a bug or failing test",
+        "label": "Fixing a bug, test or build error",
         "recent": 3,
         "earlier": 3,
         "uncertain": 0,
@@ -2105,7 +2105,7 @@
       {
         "job": "code_change",
         "task_type": "feature",
-        "label": "Adding a feature",
+        "label": "Building or adding a feature",
         "rung": 2,
         "have": 2
       },
@@ -2275,7 +2275,7 @@
           {
             "job": "code_change",
             "task_type": "feature",
-            "label": "Adding a feature",
+            "label": "Building or adding a feature",
             "tasks": 3,
             "uncertain": 0,
             "per_week": 0.7,
@@ -2360,7 +2360,7 @@
           {
             "job": "code_change",
             "task_type": "feature",
-            "label": "Adding a feature",
+            "label": "Building or adding a feature",
             "tasks": 3,
             "uncertain": 0,
             "per_week": 0.7,
@@ -2386,7 +2386,7 @@
           {
             "job": "code_change",
             "task_type": "fix_bug",
-            "label": "Fixing a bug or failing test",
+            "label": "Fixing a bug, test or build error",
             "tasks": 3,
             "uncertain": 0,
             "per_week": 0.7,
@@ -2617,7 +2617,7 @@
           {
             "job": "code_change",
             "task_type": "feature",
-            "label": "Adding a feature",
+            "label": "Building or adding a feature",
             "recent": 3,
             "earlier": 3,
             "uncertain": 0,
@@ -2628,7 +2628,7 @@
           {
             "job": "code_change",
             "task_type": "fix_bug",
-            "label": "Fixing a bug or failing test",
+            "label": "Fixing a bug, test or build error",
             "recent": 3,
             "earlier": 3,
             "uncertain": 0,

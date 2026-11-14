@@ -37,7 +37,7 @@ describe("habit changes", () => {
   const hc = (job: string, move_id: string, dir: "up" | "down", es: number, ee: number, rs: number, re: number): HabitChange => ({
     job,
     task_type: "feature",
-    label: "Adding a feature",
+    label: "Building or adding a feature",
     move_id,
     habit: "",
     earlier_seen: es,
@@ -62,7 +62,7 @@ describe("habit changes", () => {
     const h = g.habits[0];
     const all = [hc("code_change", "written_brief", "up", 2, 12, 9, 14), hc("ask_research", "written_brief", "down", 1, 5, 0, 6)];
     expect(changesFor(h, all)).toEqual([all[0]]);
-    expect(changeText(all[0])).toBe("↑ Growing in Adding a feature: 2 of 12 tasks, now 9 of 14");
-    expect(changeText(hc("code_change", "brief", "down", 9, 12, 4, 15))).toBe("↓ Less often lately in Adding a feature: 9 of 12 tasks, now 4 of 15");
+    expect(changeText(all[0])).toBe("↑ Growing in Building or adding a feature: 2 of 12 tasks, now 9 of 14");
+    expect(changeText(hc("code_change", "brief", "down", 9, 12, 4, 15))).toBe("↓ Less often lately in Building or adding a feature: 9 of 12 tasks, now 4 of 15");
   });
 });

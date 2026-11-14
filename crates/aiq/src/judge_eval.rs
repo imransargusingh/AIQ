@@ -127,7 +127,7 @@ pub fn validate(g: &Golden) -> Vec<String> {
         }
         if let Some(kinds) = &c.expect.kind {
             for k in kinds {
-                if !c.expect.job.iter().any(|j| aiq_contracts::judge::task_type_label(j, k).is_some()) {
+                if !c.expect.job.iter().any(|j| aiq_contracts::judge::task_type_offered(j, k)) {
                     bad.push(format!("{id}: kind {k} belongs to none of its jobs"));
                 }
             }
@@ -934,8 +934,12 @@ mod tests {
         let mut g = golden();
         g.cases[0].expect.kind = Some(vec!["release".into()]);
         g.cases[1].id = g.cases[0].id.clone();
+        // A kind the list retired for the job is no expected answer: the analysis can no longer give it.
+        assert_eq!(g.cases[3].expect.job, ["code_change"]);
+        g.cases[3].expect.kind = Some(vec!["review".into()]);
         let bad = validate(&g);
         assert!(bad.iter().any(|b| b.contains("kind release belongs to none")), "{bad:?}");
+        assert!(bad.iter().any(|b| b.contains("kind review belongs to none")), "{bad:?}");
         assert!(bad.iter().any(|b| b.contains("duplicate id")), "{bad:?}");
     }
 
@@ -1011,8 +1015,11 @@ mod tests {
     /// change that moves a score fails here; bless an intended move with `AIQ_EVAL_BLESS=1 cargo test -p aiq
     /// replay_gate`, which rewrites `placed` and `totals` in evals/judge/replay.json for review in the diff.
     /// The live trend's last estimate against the golden set's labelled rungs (design live-rung-trend T1).
-    /// Measured 2026-11-03: exact 22/32, within one 29/32, higher than the label 4/32 (the judge's replay: 23/32
-    /// and 29/32). A rule change that does worse fails here.
+    /// Measured 2026-11-14 on g2: exact 27/40, within one 36/40, higher than the label 8/40. A rule change that
+    /// does worse fails here. On g1 (2026-11-03) it was 22/32, 29/32 and 4/32. The same 32 cases give 22, 29
+    /// and 5 on g2: h12 is a review question there, and for a question looking things up counts as doing the
+    /// work. The 8 kind cases give 5, 7 and 3: the trend reads only the log, so a review, a plan or a criteria
+    /// draft asked in a long first prompt reads as handed over whole.
     #[test]
     fn trend_matches_golden() {
         let (mut exact, mut within, mut high, mut none, mut n) = (0, 0, 0, 0, 0);
@@ -1031,7 +1038,7 @@ mod tests {
         }
         println!("trend vs golden: exact {exact}/{n}, within one {within}/{n}, higher {high}/{n}, none {none}/{n}");
         assert_eq!(none, 0);
-        assert!(exact >= 22 && within >= 29 && high <= 4, "exact {exact}, within one {within}, higher {high} of {n}");
+        assert!(exact >= 27 && within >= 36 && high <= 8, "exact {exact}, within one {within}, higher {high} of {n}");
     }
 
     #[test]

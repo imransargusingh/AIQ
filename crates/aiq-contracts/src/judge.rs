@@ -52,8 +52,8 @@ pub const JOBS: [&str; 5] = ["code_change", "write_doc", "ask_research", "run_sh
 /// reject anything else.
 ///
 /// Re-cut 2026-11-14 against Imran's own tasks and published role studies (research "Task Kinds against real
-/// jobs"): 27 named kinds as before, 10 unchanged, 12 reworded, 5 new (`deck`, `progress`, `review` under
-/// ask_research, `plan`, `source_control`), 5 retired (`RETIRED_TASK_TYPES`).
+/// jobs"): 27 named kinds as before, 11 with the name they had, 11 reworded, 5 new (`deck`, `progress`,
+/// `review` under ask_research, `plan`, `source_control`), 5 retired (`RETIRED_TASK_TYPES`).
 ///
 /// A label stays short: it is printed inside a tip and a milestone on the Copilot CLI status line, which cuts
 /// a long line. Two tests hold the room it has (aiq-core `pack.rs` for the tip line, `tests/milestone_note.rs`

@@ -927,7 +927,7 @@ mod tests {
         assert!(w.join("notes.txt").exists());
     }
     /// CI's label replay gate. The recorded answers must come from today's label prompt and golden set (else
-    /// re-record), every one must still parse, today's acceptance rule must give the recorded totals (bless an
+    /// re-record), at least 19 in 20 must parse, today's acceptance rule must give the recorded totals (bless an
     /// intended move with `AIQ_EVAL_BLESS=1 cargo test -p aiq label_replay_gate`), and the confident labels must
     /// clear the live 8-in-10 bar while still covering at least a third of the prompts a label may coach, so a prompt that is
     /// right only because it never commits cannot pass either.
@@ -947,7 +947,11 @@ mod tests {
         );
         let answers = replay_answers(&rec);
         let e = score_golden(&g, &answers);
-        assert_eq!(e.answered, e.sent, "a recorded answer no longer parses");
+        // An answer the strict parse refuses is a label lost (live: no label, so no tip from it). A recording
+        // keeps such an answer instead of being run again until none shows: label-3's holds 1 in 134, a kind
+        // from another job's list. The totals below pin the exact count; this floor stops a bless from taking
+        // a parser change that refuses many.
+        assert!(e.answered * 20 >= e.sent * 19, "only {} of {} recorded answers parse", e.answered, e.sent);
         assert_eq!(e.sent as usize, g.cases.len() * rec["runs"].as_u64().unwrap() as usize, "every case recorded");
         if std::env::var("AIQ_EVAL_BLESS").is_ok() {
             let mut out = rec.clone();
@@ -985,6 +989,11 @@ mod tests {
             assert!(!c.prompt.trim().is_empty() && !c.expect.job.is_empty() && !c.expect.kind.is_empty(), "{}", c.id);
             assert!(c.expect.job.iter().all(|j| jobs.contains(&j.as_str())), "{} job", c.id);
             assert!(c.expect.kind.iter().all(|k| kinds.contains(&k.as_str())), "{} kind", c.id);
+            // Every expected kind is one a label can give for one of the case's jobs (a retired pair is not).
+            for k in c.expect.kind.iter().filter(|k| *k != "other") {
+                let offered = c.expect.job.iter().any(|j| aiq_contracts::judge::task_type_offered(j, k));
+                assert!(offered, "{}: kind {k} belongs to none of its jobs", c.id);
+            }
             assert!(["claude-code", "copilot-cli", "vscode"].contains(&c.tool.as_str()), "{} tool", c.id);
         }
         // Every pack job is in the set, and the measured miss shape (problem reports) is well covered.

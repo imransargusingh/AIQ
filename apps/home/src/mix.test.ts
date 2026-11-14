@@ -53,13 +53,13 @@ describe("ladder", () => {
     const { shown, more } = ladder(fx("progress").coaching);
     expect(shown.map((r) => [r.label, r.now, r.before, r.next])).toEqual([
       ["Writing tests", 3, 2, 4],
-      ["Adding a feature", 3, null, 4],
-      ["Fixing a bug or failing test", 1, null, null],
+      ["Building or adding a feature", 3, null, 4],
+      ["Fixing a bug, test or build error", 1, null, null],
       ["Writing a spec or PRD", 2, 3, 3],
     ]);
     expect(more.map((r) => r.label)).toEqual(["Refactoring or cleaning up"]);
-    // Adding a feature's typical rung went 1 -> 3 by chance only: drawn where it is, no ring, no arrow.
-    expect(shown.find((r) => r.label === "Adding a feature")!.trend).toBe("same");
+    // Building or adding a feature's typical rung went 1 -> 3 by chance only: drawn where it is, no ring, no arrow.
+    expect(shown.find((r) => r.label === "Building or adding a feature")!.trend).toBe("same");
   });
   it("a kind with a next step but too few tasks to say still shows, from its typical rung", () => {
     const { shown, more } = ladder(fx("coaching").coaching);
@@ -67,6 +67,6 @@ describe("ladder", () => {
       ["Writing tests", 3, null, 4, null],
       ["Writing a spec or PRD", 2, null, 3, null],
     ]);
-    expect(more.map((r) => r.label).sort()).toEqual(["Fixing a bug or failing test", "Refactoring or cleaning up"]);
+    expect(more.map((r) => r.label).sort()).toEqual(["Fixing a bug, test or build error", "Refactoring or cleaning up"]);
   });
 });

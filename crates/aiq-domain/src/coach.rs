@@ -756,7 +756,7 @@ pub fn milestone_to_note(ms: &[Milestone], seen_ms: i64, now_ms: i64) -> Option<
     })
 }
 
-/// "Fixing a bug or failing test reached Delegated", "Adding a feature moved up to Delegated".
+/// "Fixing a bug, test or build error reached Delegated", "Building or adding a feature moved up to Delegated".
 pub fn milestone_words(m: &Milestone) -> String {
     let rung = crate::rung::rung_name(m.rung);
     match m.kind {
@@ -2124,7 +2124,7 @@ mod tests {
         let m = |kind, rung, ago: i64| Milestone {
             job: "code_change".into(),
             task_type: "fix_bug".into(),
-            label: "Fixing a bug or failing test",
+            label: "Fixing a bug, test or build error",
             kind,
             rung,
             from_rung: None,
@@ -2139,8 +2139,8 @@ mod tests {
         ];
         let n = milestone_to_note(&ms, 0, NOW).unwrap();
         assert_eq!((n.kind, n.rung), (MilestoneKind::MovedUp, 2), "a move beats a rung reached the same day");
-        assert_eq!(milestone_words(n), "Fixing a bug or failing test moved up to Directed");
-        assert_eq!(milestone_words(&ms[1]), "Fixing a bug or failing test reached Delegated");
+        assert_eq!(milestone_words(n), "Fixing a bug, test or build error moved up to Directed");
+        assert_eq!(milestone_words(&ms[1]), "Fixing a bug, test or build error reached Delegated");
         assert!(milestone_to_note(&ms, NOW - 2 * DAY_MS, NOW).is_none(), "said once: nothing after the seen mark");
         assert!(milestone_to_note(&ms[3..], 0, NOW).is_none(), "older than a week: only on the page");
     }

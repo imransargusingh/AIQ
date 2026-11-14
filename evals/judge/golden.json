@@ -1,5 +1,5 @@
 {
- "version": "g1",
+ "version": "g2",
  "about": "AIQ judge golden set. Synthetic tasks only; no prompt comes from anyone's real store. Expected values are lists: the first is the author's reading, later ones are also accepted where the rubric allows both. kind or rung null means not scored (no work goal). label_source says who labelled the case: author (the person who wrote the case) or human (a separate labeller). Design: docs/design/judge-evals.md.",
  "cases": [
   {
@@ -370,7 +370,7 @@
      "write_doc"
     ],
     "kind": [
-     "notes",
+     "research",
      "status",
      "other"
     ],
@@ -379,7 +379,7 @@
      4
     ]
    },
-   "note": "Could be 4 if the command has automated checks; the checked-in team command indicates 5.",
+   "note": "Could be 4 if the command has automated checks; the checked-in team command indicates 5. g2 (2026-11-14 re-cut): the retired kind notes is folded into research.",
    "steps": [
     {
      "kind": "command",
@@ -426,14 +426,14 @@
     ],
     "kind": [
      "restart_fix",
-     "build_fix",
+     "fix_bug",
      "troubleshoot"
     ],
     "rung": [
      1
     ]
    },
-   "note": "Broken build fixed by changing the environment, not code.",
+   "note": "Broken build fixed by changing the environment, not code. g2 (2026-11-14 re-cut): the retired kind build_fix is folded into fix_bug.",
    "steps": [
     {
      "kind": "user",
@@ -488,13 +488,14 @@
     ],
     "kind": [
      "refactor",
-     "other"
+     "other",
+     "deps"
     ],
     "rung": [
      4
     ]
    },
-   "note": "A spec-driven migration with automated checks.",
+   "note": "A spec-driven migration with automated checks. g2 (2026-11-14 re-cut): deps now covers a migration, so it is also accepted.",
    "steps": [
     {
      "kind": "user",
@@ -610,7 +611,6 @@
    "label_source": "human",
    "expect": {
     "job": [
-     "code_change",
      "ask_research"
     ],
     "kind": [
@@ -620,7 +620,7 @@
      2
     ]
    },
-   "note": "A pull request review.",
+   "note": "A pull request review. g2 (2026-11-14 re-cut): reviewing is an ask_research kind now, so code_change is no longer an accepted job.",
    "steps": [
     {
      "kind": "user",
@@ -668,14 +668,13 @@
      "code_change"
     ],
     "kind": [
-     "fix_bug",
-     "build_fix"
+     "fix_bug"
     ],
     "rung": [
      1
     ]
    },
-   "note": "Re-prompts add nothing.",
+   "note": "Re-prompts add nothing. g2 (2026-11-14 re-cut): the retired kind build_fix is folded into fix_bug.",
    "steps": [
     {
      "kind": "user",
@@ -1022,13 +1021,13 @@
     "kind": [
      "other",
      "status",
-     "notes"
+     "research"
     ],
     "rung": [
      1
     ]
    },
-   "note": "",
+   "note": "g2 (2026-11-14 re-cut): the retired kind notes is folded into research.",
    "steps": [
     {
      "kind": "user",
@@ -1681,6 +1680,378 @@
     }
    ],
    "secret": "ghp_EXAMPLEfakeTOKENnotREAL000000000000aiq"
+  },
+  {
+   "id": "k01",
+   "tool": "claude-code",
+   "group": "kind",
+   "label_source": "author",
+   "expect": {
+    "job": [
+     "write_doc"
+    ],
+    "kind": [
+     "deck"
+    ],
+    "rung": [
+     1
+    ]
+   },
+   "note": "New kind in the 2026-11-14 re-cut: slides. A short ask, steered by a short follow-up.",
+   "steps": [
+    {
+     "kind": "user",
+     "text": "make me slides for thursday's ops review about q3 punctuality"
+    },
+    {
+     "kind": "tool",
+     "tool": "Read",
+     "path": "docs/q3-punctuality.md",
+     "result": "read 180 lines"
+    },
+    {
+     "kind": "tool",
+     "tool": "Write",
+     "path": "slides/ops-review-q3.md",
+     "result": "14 slides"
+    },
+    {
+     "kind": "assistant",
+     "text": "Drafted 14 slides in slides/ops-review-q3.md: headline numbers, by line, causes, next steps."
+    },
+    {
+     "kind": "user",
+     "text": "too long, 8 slides"
+    },
+    {
+     "kind": "tool",
+     "tool": "Edit",
+     "path": "slides/ops-review-q3.md",
+     "result": "cut to 8 slides"
+    },
+    {
+     "kind": "user",
+     "text": "ok"
+    }
+   ]
+  },
+  {
+   "id": "k02",
+   "tool": "copilot-cli",
+   "group": "kind",
+   "label_source": "author",
+   "expect": {
+    "job": [
+     "ask_research"
+    ],
+    "kind": [
+     "progress"
+    ],
+    "rung": [
+     1
+    ]
+   },
+   "note": "New kind: asking how work that is already running is going.",
+   "steps": [
+    {
+     "kind": "user",
+     "text": "how far along is the re-import? is it past stop_times yet"
+    },
+    {
+     "kind": "tool",
+     "tool": "Bash",
+     "command": "tail -n 5 logs/reimport.log",
+     "result": "stop_times 61% (3.1M of 5.0M rows)"
+    },
+    {
+     "kind": "assistant",
+     "text": "Still in stop_times, at 61%. About 12 minutes left at this rate."
+    }
+   ]
+  },
+  {
+   "id": "k03",
+   "tool": "claude-code",
+   "group": "kind",
+   "label_source": "author",
+   "expect": {
+    "job": [
+     "ask_research"
+    ],
+    "kind": [
+     "review"
+    ],
+    "rung": [
+     2
+    ]
+   },
+   "note": "New kind under ask_research: reviewing a document, findings only, no changed files. The person checks one finding.",
+   "steps": [
+    {
+     "kind": "user",
+     "text": "Review docs/design/alert-routing.md before I send it to the ops leads. Check three things: every alert type has an owner, the escalation times agree with docs/slo.md, and nothing in the rollout plan is untestable. List the gaps by section. Don't edit the file."
+    },
+    {
+     "kind": "tool",
+     "tool": "Read",
+     "path": "docs/design/alert-routing.md",
+     "result": "read 240 lines"
+    },
+    {
+     "kind": "tool",
+     "tool": "Read",
+     "path": "docs/slo.md",
+     "result": "read 60 lines"
+    },
+    {
+     "kind": "assistant",
+     "text": "Section 2: the platform-change alert has no owner. Section 4: escalation is 15 minutes here and 10 in the SLO. Section 6: step 3 of the rollout has no check."
+    },
+    {
+     "kind": "user",
+     "text": "the section 4 one: quote the two lines that disagree"
+    },
+    {
+     "kind": "tool",
+     "tool": "Grep",
+     "command": "grep -n 'escalat' docs/design/alert-routing.md docs/slo.md",
+     "result": "alert-routing.md:131 15 minutes; slo.md:22 10 minutes"
+    },
+    {
+     "kind": "assistant",
+     "text": "alert-routing.md:131 says 15 minutes; slo.md:22 says 10 minutes."
+    }
+   ]
+  },
+  {
+   "id": "k04",
+   "tool": "copilot-cli",
+   "group": "kind",
+   "label_source": "author",
+   "expect": {
+    "job": [
+     "ask_research"
+    ],
+    "kind": [
+     "plan"
+    ],
+    "rung": [
+     1
+    ]
+   },
+   "note": "New kind: working out an approach before the work starts, with no document written.",
+   "steps": [
+    {
+     "kind": "user",
+     "text": "before we touch anything: what's a sensible order to move the importer to async? just the steps and the risky parts"
+    },
+    {
+     "kind": "tool",
+     "tool": "Read",
+     "path": "src/ingest/mod.rs",
+     "result": "read 310 lines"
+    },
+    {
+     "kind": "assistant",
+     "text": "1. Wrap the file reads. 2. Move the parser behind a channel. 3. Switch the writer last; it holds the only lock. Risk: step 3 changes the commit order."
+    },
+    {
+     "kind": "user",
+     "text": "ok, we start with 1 tomorrow"
+    }
+   ]
+  },
+  {
+   "id": "k05",
+   "tool": "claude-code",
+   "group": "kind",
+   "label_source": "author",
+   "expect": {
+    "job": [
+     "run_ship"
+    ],
+    "kind": [
+     "source_control"
+    ],
+    "rung": [
+     1
+    ]
+   },
+   "note": "New kind: commit and push, with no code change asked for.",
+   "steps": [
+    {
+     "kind": "user",
+     "text": "commit what we have and push it to my branch"
+    },
+    {
+     "kind": "tool",
+     "tool": "Bash",
+     "command": "git add -A && git commit -m 'Importer: async file reads'",
+     "result": "4 files changed"
+    },
+    {
+     "kind": "tool",
+     "tool": "Bash",
+     "command": "git push origin importer-async",
+     "result": "pushed"
+    },
+    {
+     "kind": "assistant",
+     "text": "Committed and pushed to importer-async."
+    }
+   ]
+  },
+  {
+   "id": "k06",
+   "tool": "claude-code",
+   "group": "kind",
+   "label_source": "author",
+   "expect": {
+    "job": [
+     "run_ship"
+    ],
+    "kind": [
+     "release"
+    ],
+    "rung": [
+     1
+    ]
+   },
+   "note": "Widened release line: a one-line notice that a release is out; the agent installs it and checks it.",
+   "steps": [
+    {
+     "kind": "user",
+     "text": "1.8.1 is published"
+    },
+    {
+     "kind": "tool",
+     "tool": "Bash",
+     "command": "gh release view v1.8.1 --json assets",
+     "result": "3 assets"
+    },
+    {
+     "kind": "tool",
+     "tool": "Bash",
+     "command": "railslot update && railslot --version",
+     "result": "railslot 1.8.1"
+    },
+    {
+     "kind": "assistant",
+     "text": "The release has its three binaries, and this machine now runs 1.8.1."
+    }
+   ]
+  },
+  {
+   "id": "k07",
+   "tool": "claude-code",
+   "group": "kind",
+   "label_source": "author",
+   "expect": {
+    "job": [
+     "code_change"
+    ],
+    "kind": [
+     "feature"
+    ],
+    "rung": [
+     3
+    ]
+   },
+   "note": "Widened feature line: carrying out a phase of a written build plan, with done criteria; the agent runs the checks.",
+   "steps": [
+    {
+     "kind": "user",
+     "text": "Carry out phase 2 of docs/build-plan.md (the import queue). Done when the three acceptance tests the plan lists pass and clippy is clean. Stop and tell me if a step in the plan no longer fits the code."
+    },
+    {
+     "kind": "tool",
+     "tool": "Read",
+     "path": "docs/build-plan.md",
+     "result": "read 140 lines"
+    },
+    {
+     "kind": "tool",
+     "tool": "Edit",
+     "path": "src/ingest/queue.rs",
+     "result": "bounded queue added"
+    },
+    {
+     "kind": "tool",
+     "tool": "Write",
+     "path": "src/ingest/retry.rs",
+     "result": "new file"
+    },
+    {
+     "kind": "tool",
+     "tool": "Bash",
+     "command": "cargo test import_queue",
+     "result": "3 passed"
+    },
+    {
+     "kind": "tool",
+     "tool": "Bash",
+     "command": "cargo clippy -- -D warnings",
+     "result": "clean"
+    },
+    {
+     "kind": "assistant",
+     "text": "Phase 2 is done: the three acceptance tests pass and clippy is clean. Step 2.3 fitted as written."
+    },
+    {
+     "kind": "user",
+     "text": "read the diff, looks right. merging"
+    }
+   ]
+  },
+  {
+   "id": "k08",
+   "tool": "copilot-cli",
+   "group": "kind",
+   "label_source": "author",
+   "expect": {
+    "job": [
+     "write_doc"
+    ],
+    "kind": [
+     "spec"
+    ],
+    "rung": [
+     2
+    ]
+   },
+   "note": "Acceptance criteria belong to the spec kind now (the criteria kind is retired). The person checks the result against the story.",
+   "steps": [
+    {
+     "kind": "user",
+     "text": "Write acceptance criteria for the delay-alert story in docs/stories/delay-alerts.md. Given/When/Then, one per rule in the story, and cover the cancelled-train case. Keep the story text as it is."
+    },
+    {
+     "kind": "tool",
+     "tool": "Read",
+     "path": "docs/stories/delay-alerts.md",
+     "result": "read 70 lines"
+    },
+    {
+     "kind": "tool",
+     "tool": "Edit",
+     "path": "docs/stories/delay-alerts.md",
+     "result": "6 criteria added"
+    },
+    {
+     "kind": "assistant",
+     "text": "Added 6 criteria under the story, one per rule, with the cancelled-train case as criterion 5."
+    },
+    {
+     "kind": "user",
+     "text": "criterion 4 says five minutes, the story says one minute. fix that one"
+    },
+    {
+     "kind": "tool",
+     "tool": "Edit",
+     "path": "docs/stories/delay-alerts.md",
+     "result": "1 line changed"
+    }
+   ]
   }
  ]
 }

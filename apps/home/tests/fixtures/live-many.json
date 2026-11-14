@@ -607,7 +607,7 @@
         "potential_confidence": 0.85,
         "job": "code_change",
         "task_type": "fix_bug",
-        "task_type_label": "Fixing a bug or failing test",
+        "task_type_label": "Fixing a bug, test or build error",
         "coachable": false,
         "evidence": [
           "The agent wrote the tests."
@@ -648,7 +648,7 @@
         "potential_confidence": 0.85,
         "job": "code_change",
         "task_type": "fix_bug",
-        "task_type_label": "Fixing a bug or failing test",
+        "task_type_label": "Fixing a bug, test or build error",
         "coachable": false,
         "evidence": [
           "The agent wrote the tests."
@@ -689,7 +689,7 @@
         "potential_confidence": 0.85,
         "job": "code_change",
         "task_type": "fix_bug",
-        "task_type_label": "Fixing a bug or failing test",
+        "task_type_label": "Fixing a bug, test or build error",
         "coachable": false,
         "evidence": [
           "The agent wrote the tests."
@@ -1590,7 +1590,7 @@
       {
         "job": "code_change",
         "task_type": "fix_bug",
-        "label": "Fixing a bug or failing test",
+        "label": "Fixing a bug, test or build error",
         "tasks": 3,
         "uncertain": 0,
         "per_week": 0.7,
@@ -1822,7 +1822,7 @@
       {
         "job": "code_change",
         "task_type": "fix_bug",
-        "label": "Fixing a bug or failing test",
+        "label": "Fixing a bug, test or build error",
         "recent": 3,
         "earlier": 0,
         "uncertain": 0,
@@ -2054,7 +2054,7 @@
           {
             "job": "code_change",
             "task_type": "fix_bug",
-            "label": "Fixing a bug or failing test",
+            "label": "Fixing a bug, test or build error",
             "tasks": 3,
             "uncertain": 0,
             "per_week": 0.7,
@@ -2187,7 +2187,7 @@
           {
             "job": "code_change",
             "task_type": "fix_bug",
-            "label": "Fixing a bug or failing test",
+            "label": "Fixing a bug, test or build error",
             "recent": 3,
             "earlier": 0,
             "uncertain": 0,
@@ -2515,7 +2515,7 @@
       "subagents": 0,
       "tip": null,
       "task_id": "019000020001-0000-7000-8000-000000000000",
-      "kind": "Fixing a bug or failing test",
+      "kind": "Fixing a bug, test or build error",
       "folder": "c:\\users\\imran\\source\\repos\\aiq",
       "computer": null
     },

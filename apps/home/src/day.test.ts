@@ -15,7 +15,7 @@ describe("day view", () => {
     const ts = [
       t("a", "s1", D0 + 9 * H, D0 + 10 * H, j(1, "Fixing a bug")),
       t("b", "s2", D0 + 8 * H, D0 + 8 * H),
-      t("c", "s1", D0 + 14 * H, D0 + 15 * H, j(1, "Adding a feature")),
+      t("c", "s1", D0 + 14 * H, D0 + 15 * H, j(1, "Building or adding a feature")),
       t("d", "s1", D0 + 16 * H, D0 + 16 * H, j(2, "Fixing a bug")),
       t("e", "s1", D0 + 9 * H, D0 + 9 * H, null, "claude-code"),
       t("f", "s1", D0 + 30 * H, D0 + 30 * H),
@@ -25,7 +25,7 @@ describe("day view", () => {
     const s1 = ls[2];
     expect(s1.tasks.map((x) => x.task_id)).toEqual(["a", "c", "d"]);
     expect([s1.prompts, s1.not_judged, s1.usual_rung]).toEqual([6, 0, 1]);
-    expect(s1.kinds).toEqual(["Fixing a bug", "Adding a feature"]);
+    expect(s1.kinds).toEqual(["Fixing a bug", "Building or adding a feature"]);
     expect(ls[0]).toMatchObject({ not_judged: 1, usual_rung: null, kinds: [] });
   });
 
