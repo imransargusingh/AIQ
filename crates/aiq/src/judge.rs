@@ -24,8 +24,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 /// A call that runs longer is killed (spec: 60 s p95 per judgment; one slow call must not hold the run).
 pub const CALL_TIMEOUT: Duration = Duration::from_secs(120);
 const LOG_MAX: u64 = 256 * 1024;
-const CLAUDE: &str = "claude-code";
-const COPILOT: &str = "copilot-cli";
+pub(crate) const CLAUDE: &str = "claude-code";
+pub(crate) const COPILOT: &str = "copilot-cli";
 
 // ------------------------------------------------------------------ providers
 
@@ -40,7 +40,7 @@ pub enum Outcome {
 }
 
 impl Outcome {
-    fn label(&self) -> (&'static str, Option<&'static str>) {
+    pub(crate) fn label(&self) -> (&'static str, Option<&'static str>) {
         match self {
             Outcome::Ok(_) => ("ok", None),
             Outcome::Schema(_) => ("schema", Some(codes::JUDGE_SCHEMA)),
@@ -848,13 +848,14 @@ pub struct Judged {
     pub row: JudgmentRow,
 }
 
-fn now_ms() -> i64 {
+pub(crate) fn now_ms() -> i64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64)
 }
 
 pub(crate) fn record_judge_session(paths: &Paths, id: &str) -> std::io::Result<()> {
     let mut f = std::fs::OpenOptions::new().create(true).append(true).open(paths.data.join("judge-sessions.txt"))?;
-    writeln!(f, "{id}")
+    // One write per line: `aiq analyze --trial` records from several threads, and two half-lines would merge two ids.
+    f.write_all(format!("{id}\n").as_bytes())
 }
 
 /// Same-job tasks judged in the last 30 days (F11, the Factory repetition rule).
@@ -862,10 +863,90 @@ fn same_job_recent(judged: &HashMap<String, JudgmentRow>, job: &str, now_ms: i64
     judged.values().filter(|j| j.job == job && j.judged_utc_ms >= now_ms - 30 * DAY_MS).count() as u32
 }
 
+/// What the analysis sends for one task: the quoted prompts and the agent's actions, in a fresh fence.
+pub(crate) fn task_envelope(tool: &str, turns: &[Turn], log: &rung::LogFacts) -> String {
+    let fence = format!("AIQ-QUOTE-{}", uuid::Uuid::new_v4().simple());
+    rung::envelope(tool, turns, log, &fence)
+}
+
+/// One analysis call, as `ask` hands it to its caller before the next call starts.
+pub(crate) struct Asked<'a> {
+    pub run: u8,
+    pub session_id: &'a str,
+    pub started_utc_ms: i64,
+    pub result: &'a CallResult,
+}
+
+/// Ask for `calls` answers (1 or 2) to one task's envelope, through `provider` (the second through `second`
+/// when given). With one call a failed call is tried once more, so a task never costs more than two calls.
+/// `heard` gets every call, answered or not, before the next starts: `judge_task` stores each, and
+/// `aiq analyze --trial` only counts them.
+pub(crate) fn ask<E>(
+    paths: &Paths,
+    provider: &dyn Provider,
+    provider_name: &str,
+    second: Option<&dyn Provider>,
+    user: &str,
+    calls: u8,
+    mut heard: impl FnMut(&Asked<'_>) -> Result<(), E>,
+) -> Result<(Vec<Response>, Vec<CallResult>), E> {
+    let schema = response_schema();
+    let mut runs: Vec<Response> = Vec::new();
+    let mut results = Vec::new();
+    for run in 1..=2u8 {
+        if runs.len() >= calls as usize {
+            break;
+        }
+        let session_id = uuid::Uuid::new_v4().to_string();
+        if provider_name == COPILOT && record_judge_session(paths, &session_id).is_err() {
+            // Never start a Copilot call AIQ could later mistake for the person's own session (US-11).
+            break;
+        }
+        let started = now_ms();
+        let mut r =
+            // Two calls: the second goes to `second` when there is one (a different model; design one-call-analysis).
+            if run == 2 && calls == 2 { second.unwrap_or(provider) } else { provider }
+                .call(&CallReq { system: rung::SYSTEM, user, schema: &schema, session_id: &session_id });
+        if let Outcome::Ok(v) = &r.outcome {
+            match parse_response(v.clone()) {
+                Ok(resp) => runs.push(resp),
+                Err(why) => r.outcome = Outcome::Schema(why),
+            }
+        }
+        heard(&Asked { run, session_id: &session_id, started_utc_ms: started, result: &r })?;
+        let stop = matches!(r.outcome, Outcome::Missing | Outcome::NotSignedIn(_));
+        results.push(r);
+        if stop {
+            break;
+        }
+    }
+    Ok((runs, results))
+}
+
+/// Place the answers (`runs` is not empty). Asked for two answers and got one: no consistency check, so the
+/// task is shown, never coached.
+pub(crate) fn placed(
+    runs: &[Response],
+    log: &rung::LogFacts,
+    same_job_recent: u32,
+    calls: u8,
+) -> (rung::Facts, rung::Placement) {
+    let (facts, mut p) = rung::place(runs, log, same_job_recent);
+    if runs.len() < calls as usize {
+        p.uncertain = true;
+        p.coachable = false;
+        p.state = rung::State::Uncertain;
+        p.notes.push(ONE_RUN_NOTE.into());
+        p.evidence.push(ONE_RUN_NOTE.into());
+    }
+    (facts, p)
+}
+
+/// The placement note of a task that got one answer where two were asked for.
+pub(crate) const ONE_RUN_NOTE: &str = "Only one of the two analysis runs answered, so AIQ marks this uncertain.";
+
 /// Judge one task: `calls` answers (1 or 2) through `provider` (the second through `second` when given), then
-/// placement. Returns None when no run
-/// answered. With one call a failed call is tried once more, so a task never costs more than two calls.
-/// Every call is recorded, answered or not.
+/// placement. Returns None when no run answered. Every call is recorded, answered or not.
 #[allow(clippy::too_many_arguments)]
 pub fn judge_task(
     store: &Store,
@@ -880,72 +961,39 @@ pub fn judge_task(
     second: Option<&dyn Provider>,
 ) -> aiq_store::Result<(Option<Judged>, Vec<CallResult>)> {
     let log = rung::log_facts(turns);
-    let fence = format!("AIQ-QUOTE-{}", uuid::Uuid::new_v4().simple());
-    let user = rung::envelope(&t.tool, turns, &log, &fence);
-    let schema = response_schema();
-    let mut runs: Vec<Response> = Vec::new();
-    let mut results = Vec::new();
+    let user = task_envelope(&t.tool, turns, &log);
     let mut call_ids = Vec::new();
     let mut model = None;
-    for run in 1..=2u8 {
-        if runs.len() >= calls as usize {
-            break;
-        }
-        let session_id = uuid::Uuid::new_v4().to_string();
-        if provider_name == COPILOT && record_judge_session(paths, &session_id).is_err() {
-            // Never start a Copilot call AIQ could later mistake for the person's own session (US-11).
-            break;
-        }
-        let started = now_ms();
-        let mut r =
-            // Two calls: the second goes to `second` when there is one (a different model; design one-call-analysis).
-            if run == 2 && calls == 2 { second.unwrap_or(provider) } else { provider }
-                .call(&CallReq { system: rung::SYSTEM, user: &user, schema: &schema, session_id: &session_id });
-        if let Outcome::Ok(v) = &r.outcome {
-            match parse_response(v.clone()) {
-                Ok(resp) => runs.push(resp),
-                Err(why) => r.outcome = Outcome::Schema(why),
-            }
-        }
-        let (outcome, code) = r.outcome.label();
+    let (runs, results) = ask(paths, provider, provider_name, second, &user, calls, |c| {
+        let (outcome, code) = c.result.outcome.label();
         let call_id = uuid::Uuid::now_v7().to_string();
         store.insert_judge_call(&NewJudgeCall {
             call_id: &call_id,
             task_id: &t.task_id,
-            run,
+            run: c.run,
             provider: provider_name,
-            model: r.model.as_deref(),
-            started_utc_ms: started,
-            latency_ms: r.latency_ms,
+            model: c.result.model.as_deref(),
+            started_utc_ms: c.started_utc_ms,
+            latency_ms: c.result.latency_ms,
             outcome,
             code,
             input_chars: (rung::SYSTEM.len() + user.len()) as i64,
-            tool_session_id: (provider_name == COPILOT).then_some(session_id.as_str()),
-            cost_usd: r.cost_usd,
-            tokens_in: r.tokens_in,
-            tokens_out: r.tokens_out,
+            tool_session_id: (provider_name == COPILOT).then_some(c.session_id),
+            cost_usd: c.result.cost_usd,
+            tokens_in: c.result.tokens_in,
+            tokens_out: c.result.tokens_out,
         })?;
         call_ids.push(call_id);
-        model = model.or(r.model.clone());
-        let stop = matches!(r.outcome, Outcome::Missing | Outcome::NotSignedIn(_));
-        results.push(r);
-        if stop {
-            break;
+        if model.is_none() {
+            model = c.result.model.clone();
         }
-    }
+        Ok(())
+    })?;
     if runs.is_empty() {
         return Ok((None, results));
     }
     let job = runs[0].job.clone();
-    let (facts, mut p) = rung::place(&runs, &log, same_job_recent(judged, &job, now_ms()));
-    if runs.len() < calls as usize {
-        // Asked for two answers and got one: no consistency check, so shown, never coached.
-        p.uncertain = true;
-        p.coachable = false;
-        p.state = rung::State::Uncertain;
-        p.notes.push("Only one of the two analysis runs answered, so AIQ marks this uncertain.".into());
-        p.evidence.push(p.notes.last().cloned().unwrap_or_default());
-    }
+    let (facts, p) = placed(&runs, &log, same_job_recent(judged, &job, now_ms()), calls);
     let facts_json: serde_json::Map<String, Value> = facts
         .all()
         .into_iter()
@@ -1476,6 +1524,10 @@ pub fn cli(args: &[&str]) -> ExitCode {
     if args.iter().any(|a| *a == "--eval" || *a == "--eval-report") {
         // Synthetic golden tasks only; never reads or writes the store, so it runs while AIQ is paused too.
         return crate::judge_eval::cli(args, &paths);
+    }
+    if args.iter().any(|a| *a == "--trial" || *a == "--trial-report") {
+        // Reads the store read-only and stores nothing, so it takes neither the migration nor the run lock.
+        return crate::judge_trial::cli(args, &paths);
     }
     if aiq_core::control::is_paused(&paths) {
         if !auto {
@@ -2478,7 +2530,7 @@ fn check_cli(args: &[&str], paths: &Paths, store: &Store) -> ExitCode {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use aiq_store::{ImportedEvent, ImportedSession, NewEvent};
     use std::cell::RefCell;
@@ -2542,14 +2594,14 @@ mod tests {
     }
 
     /// Answers every call with `answer` (or `fail`), and records what it was sent.
-    struct Fake {
-        answer: Option<Value>,
+    pub(crate) struct Fake {
+        pub(crate) answer: Option<Value>,
         fail: Option<Outcome>,
         sent: RefCell<Vec<(String, String)>>,
     }
 
     impl Fake {
-        fn ok(rung: u8) -> Self {
+        pub(crate) fn ok(rung: u8) -> Self {
             let f = json!({"value": true, "confidence": 0.9});
             let n = json!({"value": false, "confidence": 0.9});
             Fake {
@@ -2566,10 +2618,10 @@ mod tests {
                 sent: RefCell::new(vec![]),
             }
         }
-        fn failing(o: Outcome) -> Self {
+        pub(crate) fn failing(o: Outcome) -> Self {
             Fake { answer: None, fail: Some(o), sent: RefCell::new(vec![]) }
         }
-        fn calls(&self) -> usize {
+        pub(crate) fn calls(&self) -> usize {
             self.sent.borrow().len()
         }
     }
@@ -2613,14 +2665,14 @@ mod tests {
         .unwrap();
     }
 
-    struct Env {
+    pub(crate) struct Env {
         _d: TempDir,
-        paths: Paths,
-        homes: Homes,
-        store: Store,
+        pub(crate) paths: Paths,
+        pub(crate) homes: Homes,
+        pub(crate) store: Store,
     }
 
-    fn env() -> Env {
+    pub(crate) fn env() -> Env {
         let d = TempDir::new().unwrap();
         let paths = Paths::at(&d.path().join("aiq"));
         paths.ensure_dirs().unwrap();
@@ -2667,7 +2719,7 @@ mod tests {
         Env { _d: d, paths, homes, store }
     }
 
-    fn go(e: &Env, claude: &dyn Provider, copilot: &dyn Provider, max: Option<u32>) -> Report {
+    pub(crate) fn go(e: &Env, claude: &dyn Provider, copilot: &dyn Provider, max: Option<u32>) -> Report {
         go_only(e, claude, copilot, max, None)
     }
 

@@ -1,6 +1,6 @@
 //! The kind-of-task label's answer contract (design `docs/design/kind-label.md`): the JSON Schema the small
 //! model answers to, and the strict parse. The vocabulary is the judge's (`judge::JOBS`, `judge::TASK_TYPES`).
-use crate::judge::{JOBS, TASK_TYPES, task_type_label};
+use crate::judge::{JOBS, TASK_TYPES, task_type_offered};
 use serde_json::{Value, json};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -45,7 +45,7 @@ pub fn parse(v: &Value) -> Result<Label, String> {
     if !JOBS.contains(&l.job.as_str()) {
         return Err(format!("unknown job {}", l.job));
     }
-    if l.task_type != "other" && task_type_label(&l.job, &l.task_type).is_none() {
+    if l.task_type != "other" && !task_type_offered(&l.job, &l.task_type) {
         return Err(format!("{} is not a kind of {}", l.task_type, l.job));
     }
     Ok(l)
@@ -74,6 +74,8 @@ mod tests {
         assert_eq!(parse(&ans("code_change", 0.9, "fix_bug", 0.85)).unwrap().task_type, "fix_bug");
         assert!(parse(&ans("code_change", 0.9, "other", 0.5)).is_ok());
         assert!(parse(&ans("code_change", 0.9, "release", 0.9)).is_err(), "a kind of another job");
+        assert!(parse(&ans("code_change", 0.9, "review", 0.9)).is_err(), "a retired kind is not offered");
+        assert!(parse(&ans("ask_research", 0.9, "review", 0.9)).is_ok(), "reviewing is a question's kind now");
         assert!(parse(&ans("chat", 0.9, "other", 0.9)).is_err());
         assert!(parse(&ans("write_doc", 1.2, "spec", 0.9)).is_err());
         assert!(parse(&json!({"job": "write_doc"})).is_err());

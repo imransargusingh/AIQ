@@ -1439,7 +1439,7 @@ mod tests {
             ("code_change", ANY_KIND, RowState::Coach, Some("brief"))
         );
         assert_eq!(card_label("code_change", ANY_KIND), "changing code");
-        assert_eq!(card_label("code_change", "fix_bug"), "fixing a bug or failing test");
+        assert_eq!(card_label("code_change", "fix_bug"), "fixing a bug, failing test or build error");
         // A flag on any kind of the job stops the job row's move.
         let f = Flag {
             job: "code_change".into(),
@@ -1727,7 +1727,7 @@ mod tests {
 
     #[test]
     fn card_labels_lower_case_the_first_letter_only() {
-        assert_eq!(card_label("write_doc", "spec"), "writing a spec or PRD");
+        assert_eq!(card_label("write_doc", "spec"), "writing a spec, PRD or acceptance criteria");
         assert_eq!(card_label("code_change", "tests"), "writing tests");
     }
     // ---------------------------------------------------------------- rung progress
@@ -1894,7 +1894,7 @@ mod tests {
         let h = &got[0];
         assert_eq!(
             (h.task_type.as_str(), h.label, h.up, h.earlier_seen, h.earlier_eligible, h.recent_seen, h.recent_eligible),
-            ("feature", "Adding a feature", true, 2, 12, 9, 14)
+            ("feature", "Building or adding a feature", true, 2, 12, 9, 14)
         );
         // Reversed in time it is "less often lately".
         let flip: Vec<JudgedTask> = ts
@@ -2048,7 +2048,7 @@ mod tests {
         let moved: Vec<_> = ms.iter().filter(|m| m.kind == MilestoneKind::MovedUp).collect();
         assert_eq!(moved.len(), 1, "{ms:?}");
         let m = moved[0];
-        assert_eq!((m.rung, m.from_rung, m.label), (3, Some(1), "Adding a feature"));
+        assert_eq!((m.rung, m.from_rung, m.label), (3, Some(1), "Building or adding a feature"));
         let days_ago = (NOW - m.earned_ms) / DAY_MS;
         assert!(days_ago > 0 && days_ago < E + 20, "after the first Delegated feature, before today: {days_ago}");
         let day_before = NOW - (days_ago + 1) * DAY_MS;

@@ -14,6 +14,7 @@ mod install_copilot;
 mod install_vscode;
 mod judge;
 mod judge_eval;
+mod judge_trial;
 mod label;
 mod spawn;
 mod statusline;
@@ -75,6 +76,11 @@ Usage:
   aiq analyze --check-report            The latest check's numbers again, and what AIQ measured itself
   aiq analyze --survey-other [--sample <n>] [--dry-run]
                                       What kind of work your tasks with no job are (counts and generic labels only)
+  aiq analyze --trial --out <file> [--only claude-code|copilot-cli] [--max-claude <n>] [--max-copilot <n>]
+                                      [--workers <n>] [--dry-run]
+                                      Ask this build's analysis again about your tasks with no sure rung and
+                                      write ids, kinds and rungs to <file>. Nothing is stored. Two calls per task
+  aiq analyze --trial-report <file> [--against <file>]  A trial's counts again, or two trials task by task
   aiq analyze --eval [--runs <n>] [--provider claude-code|copilot-cli] [--dry-run]
                                       Measure the analysis on AIQ's fixed set of made-up tasks with known answers,
                                       n runs each (default 2): accuracy and whether runs agree (no data of yours)
