@@ -96,3 +96,34 @@ print(f"  roots by keyword group: {cnt(r['b'] for r in roots.values())}")
 print(f"  roots' rung (sure): {cnt(r['rung'] for r in roots.values() if r['state'] != 'uncertain')}")
 print(f"  roots that are themselves hits (session starts with a check): {sum(1 for r in roots.values() if cue(r) == 'cue')}")
 print(f"  hits per root: {cnt(min(n, 4) for n in R.values())} (4 = 4 or more)")
+
+# The shipped rule (aiq-domain coach::is_progress_check): these words, at most 25 words, a sure Assisted reading,
+# and no goal given (F4 not yes). Stored facts are read from the store, never printed.
+import json
+import sqlite3
+import sys
+
+SHIP = re.compile(r"\b(status|progress|where are you|why did you stop)\b", re.I)
+con = sqlite3.connect(f"file:{sys.argv[1]}?mode=ro&immutable=1", uri=True)
+f4 = {}
+for tid, facts in con.execute(
+    """SELECT j.task_id, j.facts FROM judgment j WHERE j.rowid = (SELECT x.rowid FROM judgment x WHERE x.task_id = j.task_id
+       ORDER BY x.judged_utc_ms DESC, x.rowid DESC LIMIT 1)"""
+):
+    try:
+        f4[tid] = (json.loads(facts).get("F4") or {}).get("value") is True
+    except Exception:
+        f4[tid] = False
+
+
+def shipped(t):
+    s = text_of.get(t["task_id"]) or ""
+    return (0 < words(s) <= 25 and SHIP.search(s) is not None and t["state"] != "uncertain" and t["rung"] == 1
+            and not f4.get(t["task_id"], False))
+
+
+M = [t for t in H2 if shipped(t)]
+A = [t for t in H2 if t["state"] != "uncertain" and t["rung"] == 1]
+print(f"== the shipped rule: {len(M)} progress checks; {sum(1 for t in M if t['b'] == PROG)} of them in the progress group, "
+      f"{sum(1 for t in M if t['b'] != PROG)} elsewhere ({cnt(t['b'] for t in M if t['b'] != PROG)}) ==")
+print(f"  sure Assisted tasks: {len(A)} before, {len(A) - len(M)} after; by tool {cnt(t['tool'] for t in M)}")

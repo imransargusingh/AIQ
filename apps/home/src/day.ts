@@ -47,7 +47,7 @@ export function lanes(tasks: TaskRow[], key: number, offsetMin: number): Lane[] 
     for (const t of ts) {
       const label = t.judgment?.task_type_label;
       if (label && !kinds.includes(label)) kinds.push(label);
-      if (t.judgment) count.set(t.judgment.current, (count.get(t.judgment.current) ?? 0) + 1);
+      if (t.judgment && !t.judgment.progress_check) count.set(t.judgment.current, (count.get(t.judgment.current) ?? 0) + 1);
     }
     let usual: number | null = null;
     for (const [r, n] of [...count].sort((a, b) => a[0] - b[0])) if (usual === null || n > count.get(usual)!) usual = r;
@@ -116,7 +116,7 @@ export function timeline(tasks: { first_ms: number; last_ms: number }[]): { stre
  *  tie), minutes inside tasks (first to last prompt, measured), and how many aren't judged yet. */
 export function daySummary(tasks: TaskRow[]): { tasks: number; kinds: number; usual: number | null; minutes: number; not_judged: number } {
   const count = new Map<number, number>();
-  for (const t of tasks) if (t.judgment && t.judgment.state !== "uncertain") count.set(t.judgment.current, (count.get(t.judgment.current) ?? 0) + 1);
+  for (const t of tasks) if (t.judgment && t.judgment.state !== "uncertain" && !t.judgment.progress_check) count.set(t.judgment.current, (count.get(t.judgment.current) ?? 0) + 1);
   let usual: number | null = null;
   for (const [r, n] of [...count].sort((a, b) => a[0] - b[0])) if (usual === null || n > count.get(usual)!) usual = r;
   return {

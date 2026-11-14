@@ -42,7 +42,8 @@ pub fn judged_tasks(store: &Store) -> Result<Vec<(JudgedTask, Option<String>)>, 
             &j.facts,
             parse_read(&j.read),
         )
-        .with_job_confidence(j.job_confidence);
+        .with_job_confidence(j.job_confidence)
+        .with_first_prompt(text.as_deref());
         out.push((t, text));
     }
     out.sort_by(|a, b| b.0.first_ms.cmp(&a.0.first_ms).then_with(|| a.0.task_id.cmp(&b.0.task_id)));

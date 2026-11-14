@@ -84,6 +84,7 @@ export function Home(ctx: Ctx) {
             {(ctx.project === null && h.analysis.state !== "blocked" && analysisLine(h.analysis)) ||
               (h.judged > 0 ? `${plural(h.judged, "task")} analyzed in ${h.window_days} days` : "No task analyzed yet")}
             {h.uncertain > 0 && ` · ${h.uncertain} unsure, not on a rung`}
+            {h.progress_checks > 0 && ` · ${plural(h.progress_checks, "progress check")}, not on a rung`}
           </span>
           {mc && <span className="meta means">{RUNGS[mc - 1].means}</span>}
         </div>
@@ -127,6 +128,7 @@ export function Home(ctx: Ctx) {
                 {sp.finished} of {plural(sp.tasks, "analyzed task")} finished by agents
                 {sp.could > 0 && <> · {sp.could} could be</>} · {sp.needs} need you
                 {sp.uncertain > 0 && <> · {sp.uncertain} unsure, not counted</>}
+                {sp.progress_checks > 0 && <> · {plural(sp.progress_checks, "progress check")}, not counted</>}
               </p>
             </>
           ) : (
