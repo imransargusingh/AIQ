@@ -79,6 +79,7 @@ h2{font:var(--t-heading);margin:0}
 p{margin:0}
 .meta{font:var(--t-caption);color:var(--ink-mute)}
 .mute{color:var(--ink-mute)}
+.nowrap{white-space:nowrap}
 .group{display:flex;flex-direction:column;gap:var(--s3)}
 .head{display:flex;justify-content:space-between;align-items:baseline;gap:var(--s4);flex-wrap:wrap}
 .top{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:var(--s5)}

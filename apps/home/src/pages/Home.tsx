@@ -6,7 +6,7 @@ import { api } from "../api";
 import { HabitChangeLine, LadderMap, MilestoneLine, NextSteps, RungMix, judgedBy, moved, pct } from "../coach";
 import { DAY, rungCounts, shift } from "../mix";
 import { RUNGS, day, folderName, leftOut, plural, sentence, shortDay, shortPath, toolName, when } from "../format";
-import { AccuracyPaused, Banners, ProjectPicker, Rung, RungNo, Title, UpdateLine, type Ctx } from "../ui";
+import { AccuracyPaused, Banners, LeftOut, ProjectPicker, Rung, RungNo, Title, UpdateLine, type Ctx } from "../ui";
 import type { SetAside } from "../types";
 import { RightNow } from "./RightNow";
 import { DroughtNote } from "../funnel";
@@ -86,7 +86,11 @@ export function Home(ctx: Ctx) {
             {(ctx.project === null && h.analysis.state !== "blocked" && analysisLine(h.analysis)) ||
               (h.judged > 0 ? `${plural(h.judged, "task")} analyzed in ${h.window_days} days` : "No task analyzed yet")}
           </span>
-          {off && <span className="meta">Not on a rung: {off}</span>}
+          {off.length > 0 && (
+            <span className="meta">
+              <LeftOut lead="Not on a rung:" items={off} />
+            </span>
+          )}
           {mc && <span className="meta means">{RUNGS[mc - 1].means}</span>}
         </div>
         <div className="scale counted" aria-hidden="true">
@@ -129,7 +133,11 @@ export function Home(ctx: Ctx) {
                 {sp.finished} of {plural(sp.tasks, "analyzed task")} finished by agents
                 {sp.could > 0 && <> · {sp.could} could be</>} · {sp.needs} need you
               </p>
-              {spOff && <p className="meta">Not counted: {spOff}</p>}
+              {spOff.length > 0 && (
+                <p className="meta">
+                  <LeftOut lead="Not counted:" items={spOff} />
+                </p>
+              )}
             </>
           ) : (
             <AnalysisCard {...ctx} />

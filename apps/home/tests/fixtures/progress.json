@@ -18,7 +18,8 @@
     "judged": 18,
     "uncertain": 1,
     "no_rung": {
-      "progress_check": 0
+      "progress_check": 0,
+      "release_notice": 0
     },
     "rungs": [
       4,
@@ -1572,7 +1573,8 @@
       "needs": 4,
       "uncertain": 1,
       "no_rung": {
-        "progress_check": 0
+        "progress_check": 0,
+        "release_notice": 0
       },
       "up": 7,
       "up_to": 3
@@ -2150,7 +2152,8 @@
       "judged": 18,
       "uncertain": 1,
       "no_rung": {
-        "progress_check": 0
+        "progress_check": 0,
+        "release_notice": 0
       },
       "rungs": [
         4,
@@ -2193,7 +2196,8 @@
           "needs": 4,
           "uncertain": 1,
           "no_rung": {
-            "progress_check": 0
+            "progress_check": 0,
+            "release_notice": 0
           },
           "up": 7,
           "up_to": 3

@@ -18,7 +18,8 @@
     "judged": 16,
     "uncertain": 1,
     "no_rung": {
-      "progress_check": 0
+      "progress_check": 0,
+      "release_notice": 0
     },
     "rungs": [
       3,
@@ -1221,7 +1222,8 @@
       "needs": 5,
       "uncertain": 1,
       "no_rung": {
-        "progress_check": 0
+        "progress_check": 0,
+        "release_notice": 0
       },
       "up": 7,
       "up_to": 3
@@ -1697,7 +1699,8 @@
       "judged": 12,
       "uncertain": 1,
       "no_rung": {
-        "progress_check": 0
+        "progress_check": 0,
+        "release_notice": 0
       },
       "rungs": [
         3,
@@ -1740,7 +1743,8 @@
           "needs": 5,
           "uncertain": 1,
           "no_rung": {
-            "progress_check": 0
+            "progress_check": 0,
+            "release_notice": 0
           },
           "up": 3,
           "up_to": 3
@@ -2008,7 +2012,8 @@
       "judged": 4,
       "uncertain": 0,
       "no_rung": {
-        "progress_check": 0
+        "progress_check": 0,
+        "release_notice": 0
       },
       "rungs": [
         0,
@@ -2051,7 +2056,8 @@
           "needs": 0,
           "uncertain": 0,
           "no_rung": {
-            "progress_check": 0
+            "progress_check": 0,
+            "release_notice": 0
           },
           "up": 4,
           "up_to": 3

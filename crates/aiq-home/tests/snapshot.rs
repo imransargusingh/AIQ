@@ -1016,20 +1016,64 @@ fn a_project_counts_its_own_tasks_with_no_rung() {
     assert!(snap.status.error.is_none(), "{:?}", snap.status.error);
     let total = |c: aiq_domain::coach::NoRungCounts| c.each().iter().map(|(_, n)| n).sum::<u32>();
     let h = &snap.home;
-    assert_eq!((h.judged, h.rungs.iter().sum::<u32>(), h.uncertain, total(h.no_rung)), (19, 16, 1, 2));
+    assert_eq!((h.judged, h.rungs.iter().sum::<u32>(), h.uncertain, total(h.no_rung)), (20, 16, 1, 3));
     let by_project: Vec<(&str, u32, u32, u32, u32)> = snap
         .projects
         .iter()
-        .map(|p| (p.name.as_str(), p.judged, p.rungs.iter().sum(), p.uncertain, p.no_rung.progress_checks))
+        .map(|p| (p.name.as_str(), p.judged, p.rungs.iter().sum(), p.uncertain, total(p.no_rung)))
         .collect();
-    assert_eq!(by_project, [("aiq", 15, 12, 1, 2), ("foresight", 4, 4, 0, 0)]);
+    assert_eq!(by_project, [("aiq", 16, 12, 1, 3), ("foresight", 4, 4, 0, 0)]);
     for p in &snap.projects {
         assert_eq!(p.no_rung, p.coaching.split.no_rung, "{}: Home's count and the split's are one count", p.name);
     }
     let sent = serde_json::to_value(&snap).unwrap();
-    let counts = serde_json::json!({ "progress_check": 2 });
+    let counts = serde_json::json!({ "progress_check": 2, "release_notice": 1 });
     assert_eq!(sent["home"]["no_rung"], counts);
     assert_eq!(sent["coaching"]["split"]["no_rung"], counts);
     assert_eq!(sent["projects"][0]["no_rung"], counts);
-    assert_eq!(sent["projects"][1]["no_rung"], serde_json::json!({ "progress_check": 0 }));
+    assert_eq!(sent["projects"][1]["no_rung"], serde_json::json!({ "progress_check": 0, "release_notice": 0 }));
+}
+
+/// A one-line release notice has no rung of its own on Home (design kinds-recut K10): the analysis names the task
+/// "Releasing or publishing" and the short first prompt says the release is out. A request to do the release, a
+/// notice that states a goal and one that reads Directed keep their rung, and stay tasks of the kind.
+#[test]
+fn a_release_notice_has_no_rung_of_its_own_on_home() {
+    const HOUR: i64 = DAY / 24;
+    let d = tempfile::tempdir().unwrap();
+    let p = Paths::at(d.path());
+    let mut s = Seed::new(&p);
+    let f4 = |goal: bool| format!(r#"{{"F4":{{"value":{goal},"confidence":0.9,"source":"model","disputed":false}}}}"#);
+    // (first prompt, rung, goal given)
+    let rows = [
+        ("0.4.2 is published", 1, false),
+        ("publish 0.4.2", 1, false),
+        ("0.4.3 is published", 1, true),
+        ("0.4.4 is published", 2, false),
+        ("0.4.5 has been released", 1, false),
+    ];
+    let mut ids = vec![];
+    for (i, (text, current, goal)) in rows.into_iter().enumerate() {
+        let id = s.prompt("copilot-cli", &format!("r{i}"), NOW - (6 - i as i64) * HOUR, Some(AIQ), text);
+        let j =
+            aiq_store::JudgmentRow { facts: f4(goal), ..coach_row(&id, "run_ship", "release", current, "judged", 0) };
+        s.store.insert_judgment(&j).unwrap();
+        ids.push(id);
+    }
+    let snap = snap(&p);
+    assert!(snap.status.error.is_none(), "{:?}", snap.status.error);
+    let row = |id: &String| snap.tasks.iter().find(|t| &t.task_id == id).unwrap();
+    let why: Vec<_> = ids.iter().map(|id| row(id).judgment.as_ref().unwrap().no_rung).collect();
+    let notice = Some(aiq_domain::coach::NoRung::ReleaseNotice);
+    assert_eq!(why, [notice, None, None, None, notice]);
+    // What the views are sent: the reason's id, and null for a task on a rung.
+    let sent = |id: &String| serde_json::to_value(row(id)).unwrap()["judgment"]["no_rung"].clone();
+    assert_eq!((sent(&ids[0]), sent(&ids[1])), (serde_json::json!("release_notice"), serde_json::Value::Null));
+    let h = &snap.home;
+    assert_eq!((h.judged, h.uncertain, h.no_rung.release_notices, h.no_rung.progress_checks), (5, 0, 2, 0));
+    assert_eq!(h.rungs, [2, 1, 0, 0, 0], "a release notice is not counted as Assisted");
+    let c = &snap.coaching;
+    assert_eq!((c.split.tasks, c.split.uncertain, c.split.no_rung.release_notices), (3, 0, 2));
+    let kinds: Vec<(&str, u32)> = c.kinds.iter().map(|k| (k.task_type.as_str(), k.tasks)).collect();
+    assert_eq!(kinds, [("release", 3)], "a notice is no task of the kind");
 }

@@ -18,7 +18,8 @@
     "judged": 0,
     "uncertain": 0,
     "no_rung": {
-      "progress_check": 0
+      "progress_check": 0,
+      "release_notice": 0
     },
     "rungs": [
       0,
@@ -267,7 +268,8 @@
       "needs": 0,
       "uncertain": 0,
       "no_rung": {
-        "progress_check": 0
+        "progress_check": 0,
+        "release_notice": 0
       },
       "up": 0,
       "up_to": null

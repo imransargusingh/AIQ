@@ -1,5 +1,5 @@
 // Small shared pieces: banners, dialog with focus trap, skeletons, chips.
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import { api } from "./api";
 import type { Snapshot } from "./types";
 import { RUNGS, rungLabel, plural, when } from "./format";
@@ -307,6 +307,20 @@ export const Sk = ({ w = "100%", h = "14px" }: { w?: string; h?: string }) => <s
 
 export const Chip = ({ children, tone }: { children: ReactNode; tone?: "ok" | "warn" | "tried" }) => (
   <span className={`chip${tone ? ` ${tone}` : ""}`}>{children}</span>
+);
+
+/** The analyzed tasks a count leaves out (`leftOut`), after the words that lead into them. Each item stays on one
+ *  line with the dot that follows it, so a narrow box breaks the list between items and never inside one. */
+export const LeftOut = ({ lead, items }: { lead: string; items: string[] }) => (
+  <>
+    {lead}
+    {items.map((item, i) => (
+      <Fragment key={item}>
+        {" "}
+        <span className="nowrap">{i < items.length - 1 ? `${item} ·` : item}</span>
+      </Fragment>
+    ))}
+  </>
 );
 
 /** A rung's place on the ladder as a badge in its hue: a number, never "(2)", which beside counts reads as a count. */

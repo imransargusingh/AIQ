@@ -623,17 +623,19 @@ fn coaching_from(paths: &Paths, first: u32) {
     );
 }
 
-/// Tasks with no rung of their own beside the work they belong to (design kinds-recut K9), over the coaching
-/// seed: this morning the person hands a page to an agent, then checks on it twice. One check is found by its
-/// words, one the analysis named. For the views, which must show no rung for either.
+/// Tasks with no rung of their own beside the work they belong to (design kinds-recut K9, K10), over the coaching
+/// seed: this morning the person hands a page to an agent and checks on it twice, and in a second session tells
+/// the agent that a release is out. One check is found by its words, one the analysis named. For the views,
+/// which must show no rung for any of the three.
 pub fn no_rung(paths: &Paths) {
     coaching(paths);
     let mut s = Seed::new(paths);
     s.n = 30_000; // after the coaching seed's ids
-    // (minutes ago, job, kind, rung, goal given, first prompt, what the analysis saw)
-    let morning: [(i64, &str, &str, u8, bool, &str, &str); 3] = [
+    // (minutes ago, session, job, kind, rung, goal given, first prompt, what the analysis saw)
+    let morning = [
         (
             170,
+            "b1",
             "code_change",
             "feature",
             3,
@@ -641,9 +643,10 @@ pub fn no_rung(paths: &Paths) {
             "Build the export page from docs/specs/export.md. Done when the page tests pass.",
             "You handed over the whole page, with a spec and a check for done.",
         ),
-        (110, "ask_research", "find", 1, false, "status?", "You asked how the work was going."),
+        (110, "b1", "ask_research", "find", 1, false, "status?", "You asked how the work was going."),
         (
             50,
+            "b1",
             "ask_research",
             "progress",
             1,
@@ -651,11 +654,13 @@ pub fn no_rung(paths: &Paths) {
             "how far along is the export page?",
             "You asked how far the agent had got.",
         ),
+        // Its own session, and over an idle gap ago, so it is a task of its own and no task is open right now.
+        (40, "b2", "run_ship", "release", 1, false, "0.4.2 is published", "You told the agent the release was out."),
     ];
-    for (ago, job, ty, cur, goal, text, saw) in morning {
+    for (ago, session, job, ty, cur, goal, text, saw) in morning {
         let at = NOW - ago * MIN;
-        let id = s.prompt("copilot-cli", "b1", at, Some(AIQ), text);
-        s.stop("copilot-cli", "b1", at + 4 * MIN);
+        let id = s.prompt("copilot-cli", session, at, Some(AIQ), text);
+        s.stop("copilot-cli", session, at + 4 * MIN);
         let mut j = coach_row(&id, job, ty, cur, "judged", 0);
         if !goal {
             j.facts = j.facts.replace(r#""F4":{"value":true"#, r#""F4":{"value":false"#);

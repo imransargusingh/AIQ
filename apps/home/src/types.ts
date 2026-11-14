@@ -355,7 +355,7 @@ export interface TaskJudgment {
 }
 
 /** Why a task has no rung of its own (the ids of aiq-domain `coach::NoRung`). */
-export type NoRung = "progress_check";
+export type NoRung = "progress_check" | "release_notice";
 
 /** How many tasks have no rung of their own, by reason (aiq-domain `coach::NoRungCounts`). Home, each project
  *  and the split carry one beside their `uncertain` count. */

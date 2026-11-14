@@ -5,7 +5,7 @@
 // tasks counted are Home's 30-day window, so "of N" matches the weekly chart.
 import { RUNGS, day, leftOut, plural } from "../format";
 import type { Analysis, Snapshot } from "../types";
-import type { Ctx } from "../ui";
+import { LeftOut, type Ctx } from "../ui";
 
 const TOOL = { "copilot-cli": "Copilot CLI", "claude-code": "Claude Code" } as const;
 
@@ -134,7 +134,7 @@ export function AnalysisCard({ snap, go, project }: Pick<Ctx, "snap" | "go" | "p
       <SoFar rungs={snap.home.rungs} />
       {first && sp.tasks > 0 && (
         <p className="meta" data-testid="analysis-need">
-          How much agents finish shows here from {need} analyzed tasks ({sp.tasks} so far{off && `; not counted: ${off}`}).
+          How much agents finish shows here from {need} analyzed tasks ({sp.tasks} so far{off.length > 0 && <LeftOut lead="; not counted:" items={off} />}).
         </p>
       )}
     </>

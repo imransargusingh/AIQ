@@ -8,17 +8,18 @@
     "core_error": null,
     "paused": false,
     "store_found": true,
-    "last_event_ms": 1793531640000,
+    "last_event_ms": 1793532240000,
     "read_ms": 12,
     "error": null
   },
   "home": {
     "window_days": 30,
-    "tasks_in_window": 19,
-    "judged": 19,
+    "tasks_in_window": 20,
+    "judged": 20,
     "uncertain": 1,
     "no_rung": {
-      "progress_check": 2
+      "progress_check": 2,
+      "release_notice": 1
     },
     "rungs": [
       3,
@@ -37,7 +38,7 @@
     "analysis": {
       "state": "off",
       "waiting": 0,
-      "analyzed": 19,
+      "analyzed": 20,
       "today": 0,
       "daily": 500,
       "done_by_ms": null,
@@ -59,19 +60,60 @@
       },
       {
         "start_ms": 1792929600000,
-        "tasks": 8
+        "tasks": 9
       }
     ],
     "by_tool": [
       [
         "copilot-cli",
-        19
+        20
       ]
     ],
     "set_aside": [],
     "tips_today": 0
   },
   "tasks": [
+    {
+      "task_id": "019000030007-0000-7000-8000-000000000000",
+      "tool": "copilot-cli",
+      "folder": "c:\\users\\imran\\source\\repos\\aiq",
+      "first_ms": 1793532000000,
+      "last_ms": 1793532240000,
+      "prompts": 1,
+      "origin": "live",
+      "job": "run_ship",
+      "rung": 1,
+      "judgment": {
+        "judged_ms": 1793534340000,
+        "state": "judged",
+        "current": 1,
+        "potential": 2,
+        "ceiling": 5,
+        "current_confidence": 0.85,
+        "potential_confidence": 0.85,
+        "job": "run_ship",
+        "task_type": "release",
+        "task_type_label": "Releasing or publishing",
+        "coachable": true,
+        "evidence": [
+          "You told the agent the release was out."
+        ],
+        "gap": "Give the agent <b>a brief</b>.",
+        "blockers": [],
+        "provider": "copilot-cli",
+        "model": null,
+        "read_prompts": 2,
+        "read_chars": 0,
+        "read_actions": false,
+        "versions": "fs1 · r1 · j2",
+        "no_rung": "release_notice"
+      },
+      "session": "b2",
+      "prompt_ms": [
+        1793532000000
+      ],
+      "computer": null
+    },
     {
       "task_id": "019000030005-0000-7000-8000-000000000000",
       "tool": "copilot-cli",
@@ -887,13 +929,29 @@
     }
   ],
   "data": {
-    "events": 38,
-    "prompts": 19,
-    "turn_ends": 19,
+    "events": 40,
+    "prompts": 20,
+    "turn_ends": 20,
     "imported_sessions": 0,
     "imported_events": 0,
     "store_bytes": 344064,
     "items": [
+      {
+        "event_id": "019000030008-0000-7000-8000-000000000000",
+        "ts_ms": 1793532240000,
+        "tool": "copilot-cli",
+        "kind": "stop",
+        "text": null,
+        "deleted": false
+      },
+      {
+        "event_id": "019000030007-0000-7000-8000-000000000000",
+        "ts_ms": 1793532000000,
+        "tool": "copilot-cli",
+        "kind": "prompt",
+        "text": "0.4.2 is published",
+        "deleted": false
+      },
       {
         "event_id": "019000030006-0000-7000-8000-000000000000",
         "ts_ms": 1793531640000,
@@ -1392,7 +1450,8 @@
       "needs": 5,
       "uncertain": 1,
       "no_rung": {
-        "progress_check": 2
+        "progress_check": 2,
+        "release_notice": 1
       },
       "up": 7,
       "up_to": 3
@@ -1900,11 +1959,12 @@
       "key": "c:\\users\\imran\\source\\repos\\aiq",
       "name": "aiq",
       "renamed": false,
-      "tasks_in_window": 15,
-      "judged": 15,
+      "tasks_in_window": 16,
+      "judged": 16,
       "uncertain": 1,
       "no_rung": {
-        "progress_check": 2
+        "progress_check": 2,
+        "release_notice": 1
       },
       "rungs": [
         3,
@@ -1930,13 +1990,13 @@
         },
         {
           "start_ms": 1792929600000,
-          "tasks": 8
+          "tasks": 9
         }
       ],
       "by_tool": [
         [
           "copilot-cli",
-          15
+          16
         ]
       ],
       "coaching": {
@@ -1947,7 +2007,8 @@
           "needs": 5,
           "uncertain": 1,
           "no_rung": {
-            "progress_check": 2
+            "progress_check": 2,
+            "release_notice": 1
           },
           "up": 3,
           "up_to": 3
@@ -2244,7 +2305,8 @@
       "judged": 4,
       "uncertain": 0,
       "no_rung": {
-        "progress_check": 0
+        "progress_check": 0,
+        "release_notice": 0
       },
       "rungs": [
         0,
@@ -2287,7 +2349,8 @@
           "needs": 0,
           "uncertain": 0,
           "no_rung": {
-            "progress_check": 0
+            "progress_check": 0,
+            "release_notice": 0
           },
           "up": 4,
           "up_to": 3
@@ -2497,7 +2560,7 @@
   "seen": [
     {
       "surface": "copilot-cli",
-      "last_ms": 1793531640000,
+      "last_ms": 1793532240000,
       "computer": null
     }
   ],

@@ -853,25 +853,44 @@ await test("Tasks Day view: a row per session, rung named on hover and focus, En
   await narrow.context().close();
 });
 
-// A task with no rung of its own (design kinds-recut K9; fixture no-rung, written by the Rust read model). The
-// analysis still gave each one a rung, a next rung and a next step, and no view may show them (DC-083: #294 took
-// progress checks off Home's counts and the Tasks list, while the Day view still drew each as an Assisted block
-// and its own page still gave a next step).
+// A task with no rung of its own (design kinds-recut K9, K10; fixture no-rung, written by the Rust read model): two
+// progress checks and a release notice. The analysis still gave each one a rung, a next rung and a next step, and
+// no view may show them (DC-083: #294 took progress checks off Home's counts and the Tasks list, while the Day
+// view still drew each as an Assisted block and its own page still gave a next step).
+// Per reason: its name on every screen, and on the page of the fixture's newest such task its heading, its one
+// line of why, the first prompt and what the analysis saw.
+const NO_RUNG = {
+  progress_check: {
+    name: "Progress check",
+    head: /Progress check\s+Job: Ask or research\s+Kind: Checking on progress/,
+    why: /This checks on work already running, so it has no rung of its own and AIQ won't coach on it\./,
+    prompt: "how far along is the export page?",
+    saw: /You asked how far the agent had got\./,
+  },
+  release_notice: {
+    name: "Release notice",
+    head: /Release notice\s+Job: Run or ship it\s+Kind: Releasing or publishing/,
+    why: /This only tells the agent that a release is out, so it has no rung of its own and AIQ won't coach on it\./,
+    prompt: "0.4.2 is published",
+    saw: /You told the agent the release was out\./,
+  },
+};
 for (const theme of ["light", "dark", "contrast"]) {
   await test(`a task with no rung of its own shows no rung on any screen (${theme})`, async () => {
     const th = theme === "light" ? undefined : theme;
     const snapshot = JSON.parse(readFileSync(join(fixtures, "no-rung.json"), "utf8"));
     const off = snapshot.tasks.filter((t) => t.judgment?.no_rung);
-    assert.deepEqual(off.map((t) => t.judgment.no_rung), ["progress_check", "progress_check"]);
+    assert.deepEqual(off.map((t) => t.judgment.no_rung), ["release_notice", "progress_check", "progress_check"]);
     assert.ok(off.every((t) => t.judgment.current === 1 && t.judgment.potential === 2 && t.judgment.gap), "each carries a rung and a next step to leave out");
     const RUNG = /Assisted|Directed|Delegated|Orchestrated|Factory/;
+    const names = off.map((t) => NO_RUNG[t.judgment.no_rung].name).sort();
 
     // Home: counted apart from the tasks on a rung, on the ladder card and under the split.
     const home = await open("no-rung", { theme: th });
     const front = await home.locator("main").innerText();
     assert.match(front, /of 16 tasks on a rung/);
-    assert.match(front, /19 tasks analyzed in 30 days\s+Not on a rung: 1 unsure · 2 progress checks\s/);
-    assert.match(front, /6 of 16 analyzed tasks finished by agents · 5 could be · 5 need you\s+Not counted: 1 unsure · 2 progress checks\s/);
+    assert.match(front, /20 tasks analyzed in 30 days\s+Not on a rung: 1 unsure · 2 progress checks · 1 release notice\s/);
+    assert.match(front, /6 of 16 analyzed tasks finished by agents · 5 could be · 5 need you\s+Not counted: 1 unsure · 2 progress checks · 1 release notice\s/);
     assert.deepEqual(await axe(home), []);
     assert.deepEqual(home.errors, []);
     if (shots) await home.screenshot({ path: join(shots, `no-rung-home-${theme}.png`), fullPage: true });
@@ -882,57 +901,63 @@ for (const theme of ["light", "dark", "contrast"]) {
     await tasks.getByRole("button", { name: "All tasks", exact: true }).click();
     for (const t of off) {
       const cell = tasks.locator(`table[aria-label=Tasks] tbody tr:has(a[href="#task/${t.task_id}"]) td`).last();
-      assert.equal((await cell.innerText()).trim(), "Progress check");
+      assert.equal((await cell.innerText()).trim(), NO_RUNG[t.judgment.no_rung].name);
     }
     if (shots) await tasks.screenshot({ path: join(shots, `no-rung-tasks-${theme}.png`), fullPage: true });
 
     // Tasks, the Day view: a block with no rung number, named on focus and to a screen reader, and in the key.
     await tasks.getByRole("button", { name: "Day", exact: true }).click();
-    assert.match(await tasks.getByTestId("day-summary").innerText(), /^3 tasks · 3 kinds of task · mostly \s*3\s*Delegated/, "the day's usual rung leaves them out");
+    assert.match(await tasks.getByTestId("day-summary").innerText(), /^4 tasks · 4 kinds of task · mostly \s*3\s*Delegated/, "the day's usual rung leaves them out");
     const blocks = tasks.locator(".dv-task.dv-off");
     assert.equal(await blocks.count(), off.length, "one block each, in its own style");
+    const [tips, labels] = [[], []];
     for (const b of await blocks.all()) {
       assert.equal(await b.locator(".dv-n").innerText(), "–");
       await b.focus();
       const tip = await b.locator(".tip").innerText();
-      assert.match(tip, /Progress check · no rung of its own$/);
       assert.doesNotMatch(tip, RUNG);
+      tips.push(tip.match(/([^\n]+) · no rung of its own$/)?.[1]);
       const label = (await b.getAttribute("aria-label")) ?? "";
-      assert.match(label, /, progress check, no rung of its own\. Open task$/);
       assert.doesNotMatch(label, RUNG);
+      labels.push(label.match(/, ([a-z ]+), no rung of its own\. Open task$/)?.[1]);
     }
+    assert.deepEqual(tips.sort(), names, "each block names its reason on focus");
+    assert.deepEqual(labels.sort(), names.map((n) => n.toLowerCase()), "and to a screen reader");
     assert.match(await tasks.locator(".key").innerText(), /Not analyzed yet\s+No rung of its own$/);
     assert.deepEqual(await axe(tasks), []);
     assert.deepEqual(tasks.errors, []);
     if (shots) await tasks.screenshot({ path: join(shots, `no-rung-day-${theme}.png`), fullPage: true });
     await tasks.context().close();
 
-    // The task's own page: the reason in place of the rung, one line of why, and no next step.
-    const row = off[0];
-    const page = await open("no-rung", {
-      theme: th,
-      hash: `#task/${row.task_id}`,
-      editTask: (t) => {
-        t.task = row;
-        t.prompts = [{ event_id: row.task_id, ts_ms: row.first_ms, text: "how far along is the export page?", deleted: false }];
-        t.tips.shown = [];
-      },
-    });
-    const said = await page.locator("section[aria-labelledby=jd]").innerText();
-    assert.match(said, /Progress check\s+Job: Ask or research\s+Kind: Checking on progress/);
-    assert.match(said, /This checks on work already running, so it has no rung of its own and AIQ won't coach on it\./);
-    assert.match(said, /You asked how far the agent had got\./, "what the analysis saw stays");
-    assert.doesNotMatch(said, /Rung:|Next step/);
-    assert.doesNotMatch(said, RUNG);
-    assert.deepEqual(await axe(page), []);
-    assert.deepEqual(page.errors, []);
-    if (shots) await page.screenshot({ path: join(shots, `no-rung-task-${theme}.png`), fullPage: true });
-    await page.context().close();
+    // The task's own page, for the newest task of each reason: the reason in place of the rung, one line of why,
+    // and no next step.
+    for (const [why, on] of Object.entries(NO_RUNG)) {
+      const row = off.find((t) => t.judgment.no_rung === why);
+      const page = await open("no-rung", {
+        theme: th,
+        hash: `#task/${row.task_id}`,
+        editTask: (t) => {
+          t.task = row;
+          t.prompts = [{ event_id: row.task_id, ts_ms: row.first_ms, text: on.prompt, deleted: false }];
+          t.tips.shown = [];
+        },
+      });
+      const said = await page.locator("section[aria-labelledby=jd]").innerText();
+      assert.match(said, on.head);
+      assert.match(said, on.why);
+      assert.match(said, on.saw, "what the analysis saw stays");
+      assert.doesNotMatch(said, /Rung:|Next step/);
+      assert.doesNotMatch(said, RUNG);
+      assert.deepEqual(await axe(page), []);
+      assert.deepEqual(page.errors, []);
+      if (shots) await page.screenshot({ path: join(shots, `no-rung-task-${why}-${theme}.png`), fullPage: true });
+      await page.context().close();
+    }
   });
 }
 
 // The tasks with no rung of their own are one of Home's numbers, so the Project picker swaps in the project's own
-// count. Both of this fixture's are in aiq and foresight has none: Home on foresight named the whole record's two.
+// count. All of this fixture's are in aiq and foresight has none: Home on foresight named the whole record's.
 await test("one project's Home counts only its own tasks with no rung", async () => {
   const home = await open("no-rung");
   const counts = async (key) => {
@@ -941,7 +966,7 @@ await test("one project's Home counts only its own tasks with no rung", async ()
     return (await home.locator(".mainrung .lbl").innerText()).split("\n").filter((line) => /analyzed in 30 days|Not on a rung/.test(line));
   };
   assert.deepEqual(await counts("c:\\users\\imran\\source\\repos\\foresight"), ["4 tasks analyzed in 30 days"]);
-  assert.deepEqual(await counts("c:\\users\\imran\\source\\repos\\aiq"), ["15 tasks analyzed in 30 days", "Not on a rung: 1 unsure · 2 progress checks"]);
+  assert.deepEqual(await counts("c:\\users\\imran\\source\\repos\\aiq"), ["16 tasks analyzed in 30 days", "Not on a rung: 1 unsure · 2 progress checks · 1 release notice"]);
   assert.deepEqual(home.errors, []);
   await home.context().close();
 });
@@ -949,29 +974,55 @@ await test("one project's Home counts only its own tasks with no rung", async ()
 // Home's ladder card gave its label the width of its longest line and the ladder what was left. With the counts
 // of tasks not on a rung on the analysis line, the last rung ended past the card in every window 1180 px wide or
 // narrower with the test data, and in the normal 1280 px window with a month's counts (DC-085). So the test uses
-// counts of the size a month of use gives, and the longest analysis line.
+// counts of the size a month of use gives, and the longest analysis line. With two reasons the line of tasks not
+// on a rung is wider than the label, so it wraps: it must break between its items, never inside "21 release
+// notices".
 await test("Home's ladder keeps all five rungs in view at every window width, however long the lines beside it", async () => {
   for (const width of [1280, 1100, 1000, 760]) {
     const home = await open("no-rung", {
       width,
       edit: (s) => {
-        Object.assign(s.home, { judged: 285, uncertain: 12, no_rung: { progress_check: 64 }, rungs: [120, 60, 29, 0, 0], most_common_rung: 1 });
-        Object.assign(s.home.analysis, { state: "today_done", analyzed: 285, waiting: 215 });
+        Object.assign(s.home, { judged: 306, uncertain: 12, no_rung: { progress_check: 64, release_notice: 21 }, rungs: [120, 60, 29, 0, 0], most_common_rung: 1 });
+        Object.assign(s.home.analysis, { state: "today_done", analyzed: 306, waiting: 194 });
       },
     });
     const seen = await home.evaluate(() => {
       const card = document.querySelector(".mainrung").getBoundingClientRect();
       const past = (el) => Math.max(0, Math.round(el.getBoundingClientRect().right - card.right));
       const main = document.querySelector("main");
+      const label = document.querySelector(".mainrung .lbl");
+      // How many lines the words take where the label shows them: 1 when they stay together, 0 when not shown.
+      const lines = (words) => {
+        const walk = document.createTreeWalker(label, NodeFilter.SHOW_TEXT);
+        for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+          const at = n.textContent.indexOf(words);
+          if (at < 0) continue;
+          const r = document.createRange();
+          r.setStart(n, at);
+          r.setEnd(n, at + words.length);
+          return new Set([...r.getClientRects()].map((box) => Math.round(box.top))).size;
+        }
+        return 0;
+      };
       return {
         rungs: [...document.querySelectorAll(".mainrung .scale > span")].map((s) => [s.querySelector(".step-name").textContent, past(s)]),
-        label: past(document.querySelector(".mainrung .lbl")),
+        label: past(label),
         sideways: main.scrollWidth - main.clientWidth,
+        items: ["12 unsure", "64 progress checks", "21 release notices"].map((words) => [words, lines(words)]),
       };
     });
-    assert.deepEqual(seen, { rungs: [["1Assisted", 0], ["2Directed", 0], ["3Delegated", 0], ["4Orchestrated", 0], ["5Factory", 0]], label: 0, sideways: 0 }, `${width}px wide: pixels past the card's right edge`);
+    assert.deepEqual(
+      seen,
+      {
+        rungs: [["1Assisted", 0], ["2Directed", 0], ["3Delegated", 0], ["4Orchestrated", 0], ["5Factory", 0]],
+        label: 0,
+        sideways: 0,
+        items: [["12 unsure", 1], ["64 progress checks", 1], ["21 release notices", 1]],
+      },
+      `${width}px wide: pixels past the card's right edge, and the lines each item of the "Not on a rung" line takes`,
+    );
     const said = await home.locator(".mainrung .lbl").innerText();
-    assert.match(said, /^Your most common rung\s+Assisted\s+57% of 209 tasks on a rung · last 30 days\s+285 of 500 tasks analyzed · more tomorrow\s+Not on a rung: 12 unsure · 64 progress checks\s+You ask AI/);
+    assert.match(said, /^Your most common rung\s+Assisted\s+57% of 209 tasks on a rung · last 30 days\s+306 of 500 tasks analyzed · more tomorrow\s+Not on a rung: 12 unsure · 64 progress checks · 21 release notices\s+You ask AI/);
     assert.deepEqual(home.errors, []);
     if (shots) await home.locator(".mainrung").screenshot({ path: join(shots, `ladder-${width}.png`) });
     await home.context().close();

@@ -19,11 +19,12 @@ describe("format", () => {
     expect(stateLabel("judged")).toBe("");
   });
 
-  it("names the analyzed tasks a count leaves out, and says nothing when there are none", () => {
-    expect(leftOut(0, { progress_check: 0 })).toBe("");
-    expect(leftOut(1, { progress_check: 0 })).toBe("1 unsure");
-    expect(leftOut(0, { progress_check: 1 })).toBe("1 progress check");
-    expect(leftOut(12, { progress_check: 1064 })).toBe("12 unsure · 1,064 progress checks");
+  it("names the analyzed tasks a count leaves out, one item for the unsure and one per reason, and none when there are none", () => {
+    expect(leftOut(0, { progress_check: 0, release_notice: 0 })).toEqual([]);
+    expect(leftOut(1, { progress_check: 0, release_notice: 0 })).toEqual(["1 unsure"]);
+    expect(leftOut(0, { progress_check: 1, release_notice: 0 })).toEqual(["1 progress check"]);
+    expect(leftOut(0, { progress_check: 0, release_notice: 1 })).toEqual(["1 release notice"]);
+    expect(leftOut(12, { progress_check: 1064, release_notice: 21 })).toEqual(["12 unsure", "1,064 progress checks", "21 release notices"]);
   });
 
   it("names a rung by name only: its number is a badge on screen, never \"(2)\" (DC-077)", () => {

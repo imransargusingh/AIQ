@@ -24,11 +24,11 @@ describe("project filter", () => {
     expect(snap.projects.reduce((n, p) => n + p.tasks_in_window, 0)).toBe(snap.home.tasks_in_window);
   });
   // The tasks with no rung of their own are one of Home's numbers, so a project swaps in its own count: the
-  // fixture's two are both in one project, and the other project has none.
+  // fixture's three are all in one project, and the other project has none.
   it("one project's analyzed tasks add up: on a rung, unsure, or with no rung of their own", () => {
     const all = noRung as unknown as Snapshot;
     const sum = (ns: number[]) => ns.reduce((a, b) => a + b, 0);
-    expect(all.home.no_rung).toEqual({ progress_check: 2 });
+    expect(all.home.no_rung).toEqual({ progress_check: 2, release_notice: 1 });
     for (const p of all.projects) {
       const h = scoped(all, p.key).home;
       expect([p.name, sum(h.rungs) + h.uncertain + sum(Object.values(h.no_rung))]).toEqual([p.name, h.judged]);

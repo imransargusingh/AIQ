@@ -151,6 +151,8 @@ impl JudgedTask {
 pub enum NoRung {
     /// It only asks how work already running is going (`is_progress_check`).
     ProgressCheck,
+    /// It only tells the agent that a release is out (`is_release_notice`).
+    ReleaseNotice,
 }
 
 impl NoRung {
@@ -158,6 +160,7 @@ impl NoRung {
     pub fn id(self) -> &'static str {
         match self {
             NoRung::ProgressCheck => "progress_check",
+            NoRung::ReleaseNotice => "release_notice",
         }
     }
 }
@@ -167,20 +170,22 @@ impl NoRung {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct NoRungCounts {
     pub progress_checks: u32,
+    pub release_notices: u32,
 }
 
 impl NoRungCounts {
     pub fn add(&mut self, why: NoRung) {
         match why {
             NoRung::ProgressCheck => self.progress_checks += 1,
+            NoRung::ReleaseNotice => self.release_notices += 1,
         }
     }
 
     /// Each reason with its count, in the order a view lists them. The fields are taken apart in full, so a
     /// new count does not build until it is listed here, and so reaches every view.
-    pub fn each(self) -> [(NoRung, u32); 1] {
-        let NoRungCounts { progress_checks } = self;
-        [(NoRung::ProgressCheck, progress_checks)]
+    pub fn each(self) -> [(NoRung, u32); 2] {
+        let NoRungCounts { progress_checks, release_notices } = self;
+        [(NoRung::ProgressCheck, progress_checks), (NoRung::ReleaseNotice, release_notices)]
     }
 }
 
@@ -211,24 +216,40 @@ pub fn is_progress_check(
     current: u8,
     f4: &rung::Merged,
 ) -> bool {
-    if state == "uncertain" || current != 1 || f4.value == Some(true) {
+    if !may_lose_its_rung(state, current, f4) {
         return false;
     }
     if kind == Some((rung::ANSWER_JOB, PROGRESS_KIND)) {
         return true;
     }
-    let Some(first_prompt) = first_prompt else { return false };
-    let own = crate::text::own_words(first_prompt);
+    let Some(words) = first_prompt.and_then(|p| short_prompt_words(&crate::text::own_words(p))) else {
+        return false;
+    };
+    [&["status"][..], &["progress"], &["where", "are", "you"], &["why", "did", "you", "stop"]]
+        .iter()
+        .any(|cue| has_words(&words, cue))
+}
+
+/// Only a sure Assisted reading with no goal given (F4) can lose its rung, so a task that reads higher, or that
+/// states a goal, is never hidden. Every rule behind `no_rung` asks this first.
+fn may_lose_its_rung(state: &str, current: u8, f4: &rung::Merged) -> bool {
+    state != "uncertain" && current == 1 && f4.value != Some(true)
+}
+
+/// The person's own words, lowercased, when there are 1 to `PROGRESS_CHECK_MAX_WORDS` of them; None for an
+/// empty prompt or a longer one, which carries new work.
+fn short_prompt_words(own: &str) -> Option<Vec<String>> {
     let words: Vec<String> = own
         .split(|c: char| !c.is_alphanumeric() && c != '\'')
         .filter(|w| !w.is_empty())
         .map(str::to_lowercase)
         .collect();
-    if words.is_empty() || words.len() > PROGRESS_CHECK_MAX_WORDS {
-        return false;
-    }
-    let has = |p: &[&str]| words.windows(p.len()).any(|w| w.iter().zip(p).all(|(a, b)| a == b));
-    has(&["status"]) || has(&["progress"]) || has(&["where", "are", "you"]) || has(&["why", "did", "you", "stop"])
+    (1..=PROGRESS_CHECK_MAX_WORDS).contains(&words.len()).then_some(words)
+}
+
+/// `cue`, as whole words in a row, is somewhere in `words`.
+fn has_words(words: &[String], cue: &[&str]) -> bool {
+    words.windows(cue.len()).any(|w| w.iter().zip(cue).all(|(a, b)| a == b))
 }
 
 /// Why this task gets no rung of its own, or None when it keeps its rung. The one rule every reader asks: the
@@ -240,7 +261,49 @@ pub fn no_rung(
     current: u8,
     f4: &rung::Merged,
 ) -> Option<NoRung> {
-    is_progress_check(first_prompt, kind, state, current, f4).then_some(NoRung::ProgressCheck)
+    if is_progress_check(first_prompt, kind, state, current, f4) {
+        Some(NoRung::ProgressCheck)
+    } else if is_release_notice(first_prompt, kind, state, current, f4) {
+        Some(NoRung::ReleaseNotice)
+    } else {
+        None
+    }
+}
+
+/// The kind the analysis gives release work: "Releasing or publishing", a run_ship kind
+/// (`aiq_contracts::judge::TASK_TYPES`).
+pub const RELEASE_KIND: (&str, &str) = ("run_ship", "release");
+
+/// The words that say a release is already out ("0.4.2 is published"). A request to do the release ("publish
+/// 0.4.2") has neither. Counted read-only on Imran's laptop, 2026-11-15 (counting script
+/// `docs/investigations/rung-groups/release_notice_match.py`, 747 analyzed tasks): of the 37 sure Assisted
+/// "Releasing or publishing" tasks, 21 have a short first prompt with one of these words, and those are exactly
+/// the 21 whose analysis note says a release is out; none opens with a release verb. "published" marks 20 of them
+/// and "released" 1. The script's 15 other phrases ("is out", "is live", "shipped", ...) marked none of them,
+/// so they are left out: a word with no evidence would be a guess. A notice the words miss keeps its rung.
+const RELEASE_NOTICE_WORDS: [&str; 2] = ["published", "released"];
+
+/// A task that only tells the agent a release is out ("0.4.2 is published"), so the agent can carry on with what
+/// follows a release. Imran 2026-11-14 ("No rung, like progress checks"): in the trial of the re-cut list, 21 of
+/// the 58 tasks that gained a rung were release work at Assisted, and counted as tasks they would pull his ladder
+/// down. Such a task gets no rung of its own. It qualifies under the conditions of a progress check (a sure
+/// Assisted reading, no goal given), when the analysis names it `RELEASE_KIND` and its short first prompt says
+/// the release is out (`RELEASE_NOTICE_WORDS`). With its text deleted the words cannot be read, so it keeps its
+/// rung.
+pub fn is_release_notice(
+    first_prompt: Option<&str>,
+    kind: Option<(&str, &str)>,
+    state: &str,
+    current: u8,
+    f4: &rung::Merged,
+) -> bool {
+    if !may_lose_its_rung(state, current, f4) || kind != Some(RELEASE_KIND) {
+        return false;
+    }
+    let Some(words) = first_prompt.and_then(|p| short_prompt_words(&crate::text::own_words(p))) else {
+        return false;
+    };
+    words.iter().any(|w| RELEASE_NOTICE_WORDS.contains(&w.as_str()))
 }
 
 impl JudgedTask {
@@ -1456,6 +1519,96 @@ mod tests {
         assert!(!kept.uncertain());
     }
 
+    /// A one-line release notice (Imran's card, 2026-11-14: "No rung, like progress checks"): the person tells
+    /// the agent that the release is out, so the agent can carry on. The analysis names the task "Releasing or
+    /// publishing", and the short first prompt says the release is already out.
+    #[test]
+    fn a_short_assisted_note_that_a_release_is_out_is_a_release_notice() {
+        let kind = Some(RELEASE_KIND);
+        assert!(aiq_contracts::judge::task_type_named(RELEASE_KIND.0, RELEASE_KIND.1), "the list offers it");
+        for p in ["0.4.2 is published", "Released.", "v2 has been released", "0.4.2 published to npm"] {
+            assert!(is_release_notice(Some(p), kind, "judged", 1, &f4(Some(false))), "{p}");
+            assert!(is_release_notice(Some(p), kind, "judged", 1, &f4(None)), "{p}: goal unknown");
+        }
+        // The Remote Control envelope: only the person's own words count.
+        let wake = r#"<wake reason="mention"><message from="human" trigger="true">0.4.2 is published</message></wake>"#;
+        assert!(is_release_notice(Some(wake), kind, "judged", 1, &f4(Some(false))));
+    }
+
+    #[test]
+    fn a_release_notice_never_hides_a_request_or_a_task_that_reads_higher_or_states_a_goal() {
+        let kind = Some(RELEASE_KIND);
+        let notice = Some("0.4.2 is published");
+        assert!(!is_release_notice(notice, kind, "judged", 2, &f4(Some(false))), "reads Directed");
+        assert!(!is_release_notice(notice, kind, "judged", 1, &f4(Some(true))), "states a goal");
+        assert!(!is_release_notice(notice, kind, "uncertain", 1, &f4(Some(false))), "already unsure");
+        assert!(!is_release_notice(None, kind, "judged", 1, &f4(Some(false))), "text deleted: no words to read");
+        assert!(!is_release_notice(notice, Some(("run_ship", "run_job")), "judged", 1, &f4(Some(false))), "its kind");
+        assert!(!is_release_notice(notice, Some(("ask_research", "release")), "judged", 1, &f4(Some(false))), "job");
+        assert!(!is_release_notice(notice, None, "judged", 1, &f4(Some(false))), "no kind recorded");
+        // A request to do the release has no word that says it is out. Whole words only.
+        for p in ["publish 0.4.2", "cut the release", "release it", "ship the fix today", "unpublished draft", ""] {
+            assert!(!is_release_notice(Some(p), kind, "judged", 1, &f4(Some(false))), "{p}");
+        }
+        // Phrases the count on real tasks did not find keep the rung: only measured words are on the list.
+        for p in ["0.4.2 is out", "it's live", "the build went out", "v2 is available", "shipped"] {
+            assert!(!is_release_notice(Some(p), kind, "judged", 1, &f4(Some(false))), "{p}");
+        }
+        assert!(
+            !is_release_notice(
+                Some(
+                    "0.4.2 is published, so update the changelog, bump the version in every manifest, open the \
+             pull request for the next milestone and tell me which tests still fail on the new build"
+                ),
+                kind,
+                "judged",
+                1,
+                &f4(Some(false))
+            ),
+            "long: new work"
+        );
+    }
+
+    /// One reason at most. A short prompt that asks for the status of a release is a progress check: that rule
+    /// is asked first.
+    #[test]
+    fn a_task_with_no_rung_has_one_reason_and_a_progress_check_comes_first() {
+        let kind = Some(RELEASE_KIND);
+        let why = |p: &str| no_rung(Some(p), kind, "judged", 1, &f4(Some(false)));
+        assert_eq!(why("0.4.2 is published"), Some(NoRung::ReleaseNotice));
+        assert_eq!(why("0.4.2 is published, status?"), Some(NoRung::ProgressCheck));
+        assert_eq!(why("publish 0.4.2"), None);
+    }
+
+    #[test]
+    fn a_release_notice_leaves_coaching_and_the_rung_counts() {
+        let task = |id: &str, first_prompt: &str| {
+            JudgedTask::new(
+                id,
+                true,
+                "copilot-cli",
+                0,
+                RELEASE_KIND.0,
+                Some(RELEASE_KIND.1),
+                "judged",
+                1,
+                2,
+                true,
+                "{}",
+                ReadRecord::default(),
+            )
+            .with_first_prompt(Some(first_prompt))
+        };
+        let t = task("t1", "0.4.2 is published");
+        assert_eq!(
+            (t.no_rung, t.job.as_str(), t.task_type.as_deref(), t.uncertain(), t.coachable),
+            (Some(NoRung::ReleaseNotice), "release_notice", None, true, false)
+        );
+        assert!(!rung::PACK_JOBS.contains(&t.job.as_str()), "no pack's job, so no job or kind row counts it");
+        let kept = task("t2", "publish 0.4.2");
+        assert_eq!((kept.no_rung, kept.job.as_str(), kept.uncertain()), (None, "run_ship", false));
+    }
+
     fn params() -> CoachParams {
         CoachParams::default()
     }
@@ -1806,11 +1959,13 @@ mod tests {
         let ts = vec![
             task("a", 1, "tests", 1, "judged", true, "{}", Some(0)),
             task("p", 1, "tests", 1, "judged", true, "{}", Some(0)).without_rung(NoRung::ProgressCheck),
+            task("n", 1, "tests", 1, "judged", true, "{}", Some(0)).without_rung(NoRung::ReleaseNotice),
+            task("m", 1, "tests", 1, "judged", true, "{}", Some(0)).without_rung(NoRung::ReleaseNotice),
             task("u", 1, "tests", 1, "uncertain", false, "{}", Some(0)),
         ];
         let s = split(&ts, &[], NOW - 30 * DAY_MS, NOW + 1);
         assert_eq!((s.tasks, s.uncertain, s.up), (1, 1, 1));
-        assert_eq!(s.no_rung.each(), [(NoRung::ProgressCheck, 1)]);
+        assert_eq!(s.no_rung.each(), [(NoRung::ProgressCheck, 1), (NoRung::ReleaseNotice, 2)]);
         assert_eq!(split(&ts[..1], &[], NOW - 30 * DAY_MS, NOW + 1).no_rung, NoRungCounts::default());
     }
 
