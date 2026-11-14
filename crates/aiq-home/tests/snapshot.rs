@@ -570,6 +570,53 @@ fn live_trend_lists_every_open_task_newest_activity_first() {
     assert_eq!(snap.status.last_event_ms, Some(snap.seen[0].last_ms));
 }
 
+/// Imran 2026-11-14: a Copilot session open on the Devbox was missing from Right now on the laptop, while the card's
+/// "last turn" line showed that Devbox turn as this computer's. Every computer's open task shows, each naming its
+/// computer, and each tool's newest event is kept per computer so the card can name where it happened.
+#[test]
+fn right_now_shows_every_computers_open_task_and_names_the_computer() {
+    let d = tempfile::tempdir().unwrap();
+    let p = Paths::at(d.path());
+    coaching(&p);
+    more_open_tasks(&p); // this computer: VS Code and Claude Code, no Copilot
+    // The Devbox: an open Copilot task, carried here by a real change file (sync), as over Remote Desktop.
+    let dv = tempfile::tempdir().unwrap();
+    let mut devbox = open_task(&Paths::at(dv.path()));
+    let devbox_id = devbox.store.device_id().unwrap();
+    let mut text = String::new();
+    devbox
+        .store
+        .sync_export(
+            100_000,
+            |seg| {
+                text = seg.to_jsonl("test");
+                Ok(())
+            },
+            NOW,
+        )
+        .unwrap()
+        .expect("the Devbox has rows to send");
+    let seg = aiq_store::sync::Segment::from_jsonl(&text).unwrap();
+    let mut here = aiq_store::Store::open(&p.db()).unwrap();
+    assert!(matches!(here.sync_apply(&seg, NOW).unwrap(), aiq_store::sync::Applied::Done { .. }));
+    drop(here);
+    let snap = snap(&p);
+    let dev: Vec<_> = snap.live.iter().filter(|l| l.computer.is_some()).collect();
+    assert_eq!(dev.len(), 1, "the Devbox's open task shows: {:?}", snap.live);
+    assert_eq!((dev[0].trend.surface.as_str(), dev[0].trend.prompts), ("copilot-cli", 5));
+    assert_eq!(dev[0].computer.as_deref(), Some(devbox_id.as_str()));
+    let t = snap.tasks.iter().find(|t| t.task_id == dev[0].task_id).expect("opens the Devbox task the list has");
+    assert_eq!(t.computer.as_deref(), Some(devbox_id.as_str()));
+    assert!(snap.live.iter().any(|l| l.computer.is_none()), "this computer's open tasks stay");
+    // One Copilot row per computer, newest first: the Devbox's recent turn is never read as this computer's.
+    let copilot: Vec<(Option<&str>, i64)> =
+        snap.seen.iter().filter(|x| x.surface == "copilot-cli").map(|x| (x.computer.as_deref(), x.last_ms)).collect();
+    assert_eq!(copilot.len(), 2, "{copilot:?}");
+    assert_eq!(copilot[0].0, Some(devbox_id.as_str()), "{copilot:?}");
+    assert!(copilot[0].1 > NOW - 30 * MIN && copilot[1].1 < copilot[0].1 && copilot[1].0.is_none(), "{copilot:?}");
+    assert!(snap.seen.iter().filter(|x| x.surface != "copilot-cli").all(|x| x.computer.is_none()));
+}
+
 /// Judging off says since when only from a stored setting change (UI review item 8); never switched, no time.
 #[test]
 fn judging_says_when_it_was_last_switched() {

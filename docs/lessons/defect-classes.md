@@ -1385,3 +1385,17 @@ summary: >-
   old template; e2e "rung numbers are badges, never \"(n)\" beside counts" reads the rendered Home, Tasks and Day
   text and checks the ladder's per-rung counts against the snapshot.
 - **Rule:** never write a position in the notation the same screen uses for counts; show it as a mark (badge).
+
+### DC-078 — Two reads on one card, scoped to different computers
+- **Signature:** 2026-11-14, Imran on the laptop: Right now said "Nothing in progress" beside a green "Copilot · your
+  last turn 15 min ago" while his Copilot session ran on the Devbox. Measured in his store: the laptop's last Copilot
+  event was over 6 hours old; the 15-minute turn was the Devbox's (stop 05:09:21Z, applied by sync 05:12:55Z).
+- **Why it survives:** sync (#252) scoped the open-task read to `computer IS NULL` and left the per-tool newest
+  (`Snapshot::seen`) on every computer, so the same card answered two questions about two different sets of rows.
+- **Sweep:** every Home read of `event` for the live card (`live`, `seen`, `starting`). All three now carry the
+  computer; the card names the other computer on each. Not changed (deliberately local): judge calls and their
+  finder (`judge_call ... computer IS NULL`), `aiq show` with no id, `latest_session`, tip offers.
+- **Control (test):** `right_now_shows_every_computers_open_task_and_names_the_computer` (a real sync change file;
+  red with the old filter); e2e "nothing open: the other computer's newer turn is named"; unit "keeps this
+  computer's last turn and names the other computer's".
+- **Rule:** reads that sit together on one surface share one scope, or each says its scope on screen.

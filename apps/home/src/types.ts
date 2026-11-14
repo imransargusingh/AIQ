@@ -160,6 +160,8 @@ export interface Starting {
   last_ms: number;
   prompts: number;
   working: boolean;
+  /** Another of the person's computers it runs on (sync id); null = this computer. */
+  computer?: string | null;
 }
 
 /** Mirrors crates/aiq-contracts `AsideNow`: one tool's newest activity AIQ left out as automated (up to 5 min stale). */
@@ -178,11 +180,15 @@ export interface Aside {
 export interface Seen {
   surface: string;
   last_ms: number;
+  /** Another of the person's computers this activity came from (sync id); null = this computer. */
+  computer?: string | null;
 }
 
 /** Mirrors crates/aiq-core `live_trend::LiveTrend` plus Home's task id and kind name. An estimate from what the
  * agent did; the judge's rung replaces it when the task ends. */
 export interface Live {
+  /** Another of the person's computers this task is open on (sync id); null = this computer. */
+  computer?: string | null;
   surface: string;
   session: string;
   first_ms: number;

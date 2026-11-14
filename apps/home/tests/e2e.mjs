@@ -1082,6 +1082,38 @@ await test("Right now card, two chips that would read the same say when each sta
   await page.context().close();
 });
 
+// Imran 2026-11-14: a Copilot task open on the Devbox was missing on the laptop, and the card's last-turn line showed
+// that Devbox turn as the laptop's. Each computer's task and turn is named; this computer's own stay unnamed.
+const devboxSync = (s) =>
+  (s.sync = { id: "a1", name: "LAPTOP-9", setting: "on", offer: null, via: null, pending: 0, utc_ms: s.now_ms, errors: [],
+    peers: [{ id: "b2", name: "DEVBOX-07", version: "0.1.60", state: "ok", detail: null, last_ms: s.now_ms, rows: 1 }] });
+await test("Right now card, a task open on another computer names it and says it may be a minute behind", async () => {
+  const page = await open("live-many", { edit: (s) => { devboxSync(s); s.live.find((l) => l.surface === "copilot-cli").computer = "b2"; } });
+  const tabs = await page.getByTestId("right-now").getByRole("tab").allInnerTexts();
+  assert.equal(tabs.filter((t) => /on DEVBOX-07/.test(t)).length, 1, tabs.join(" | "));
+  assert.match(tabs.find((t) => /on DEVBOX-07/.test(t)), /Copilot CLI on DEVBOX-07/);
+  await page.getByRole("tab", { name: /DEVBOX-07/ }).click();
+  assert.match(await page.locator(".rn-meta").innerText(), /Copilot CLI on DEVBOX-07 · since \d\d:\d\d .* · up to a minute behind/);
+  await page.getByRole("tab").first().click();
+  assert.doesNotMatch(await page.locator(".rn-meta").innerText(), /DEVBOX|behind/, "this computer's task is not tagged");
+  await page.context().close();
+});
+
+await test("Right now card, nothing open: the other computer's newer turn is named, never shown as this computer's", async () => {
+  const page = await open("live", {
+    edit: (s) => {
+      devboxSync(s);
+      s.live = [];
+      s.seen = [{ surface: "copilot-cli", last_ms: s.now_ms - 15 * 60_000, computer: "b2" }, { surface: "copilot-cli", last_ms: s.now_ms - 7 * 3_600_000, computer: null }];
+      for (const t of s.setup.tools) if (t.tool === "copilot") Object.assign(t, { hooked: true, present: true });
+    },
+  });
+  const t = await page.getByTestId("right-now").innerText();
+  assert.match(t, /Nothing in progress/);
+  assert.match(t, /Copilot\s+your last turn Today \d\d:\d\d · on DEVBOX-07 15 min ago/);
+  await page.context().close();
+});
+
 // The core sends the pack's text, written to follow "AIQ tip:" in a terminal, so it starts lower case.
 await test("Right now card: the tip starts with a capital, as the pack's lower-case text is shown alone", async () => {
   const page = await open("live", {

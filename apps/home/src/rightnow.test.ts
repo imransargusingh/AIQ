@@ -58,8 +58,8 @@ describe("Right now with nothing open (Imran 2026-11-08)", () => {
     const q = quiet(at({ starting: [], seen, aside, setup: { ...base.setup, tools } }));
     // Imran 2026-11-11: the automated time sits beside the person's own last turn, never in its place.
     expect(q.tools).toEqual([
-      { name: "Claude Code", last: base.now_ms - 26 * 3_600_000, own: base.now_ms - 2 * 60_000, aside: "projects", latest: base.now_ms - 2 * 60_000 },
-      { name: "Copilot", last: base.now_ms - 60_000, own: null, aside: null, latest: base.now_ms - 60_000 },
+      { name: "Claude Code", last: base.now_ms - 26 * 3_600_000, own: base.now_ms - 2 * 60_000, there: null, aside: "projects", latest: base.now_ms - 2 * 60_000 },
+      { name: "Copilot", last: base.now_ms - 60_000, own: null, there: null, aside: null, latest: base.now_ms - 60_000 },
     ]);
     expect(q.silent).toEqual([]);
     expect(asideText(q.aside)).toBe("Claude's own work in a claude.ai project isn't counted. Turns you type yourself count.");
@@ -98,5 +98,22 @@ describe("Right now with nothing open (Imran 2026-11-08)", () => {
     expect(ago(now - 20_000, now, 0)).toBe("just now");
     expect(ago(now - 12 * 60_000, now, 0)).toBe("12 min ago");
     expect(ago(now - 3 * 3_600_000, now, 0)).toMatch(/^(Today|Yesterday) \d\d:\d\d$/);
+  });
+});
+
+describe("Right now across computers (Imran 2026-11-14)", () => {
+  const base = full as unknown as Snapshot;
+  const sync = { id: "a1", name: "LAPTOP-9", setting: "on", offer: null, via: null, pending: 0, utc_ms: base.now_ms, errors: [],
+    peers: [{ id: "b2", name: "DEVBOX-07", version: "0.1.60", state: "ok", detail: null, last_ms: base.now_ms, rows: 1 }] };
+  it("keeps this computer's last turn and names the other computer's, never mixing them", () => {
+    const tools = [{ tool: "copilot" as const, hooked: true, present: true, install: "" }];
+    const seen = [
+      { surface: "copilot-cli", last_ms: base.now_ms - 15 * 60_000, computer: "b2" },
+      { surface: "copilot-cli", last_ms: base.now_ms - 7 * 3_600_000, computer: null },
+    ];
+    const q = quiet({ ...base, starting: [], seen, aside: [], sync, setup: { ...base.setup, tools } } as unknown as Snapshot);
+    expect(q.tools[0]).toMatchObject({ last: base.now_ms - 7 * 3_600_000, there: { at: base.now_ms - 15 * 60_000, name: "DEVBOX-07" } });
+    expect(q.tools[0].latest).toBe(base.now_ms - 15 * 60_000);
+    expect(q.silent).toEqual([]);
   });
 });

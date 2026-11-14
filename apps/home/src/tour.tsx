@@ -26,7 +26,7 @@ export const STEPS: TourStep[] = [
     page: "home",
     target: "[data-testid=right-now]",
     title: "Right now",
-    body: () => "Tasks open now and how far agents take each. When idle: your last turn per tool, and newer work the agent did alone.",
+    body: () => "Open tasks on all your computers, and how far agents take each. When idle: your last turn per tool, and newer work agents did alone.",
   },
   {
     page: "home",

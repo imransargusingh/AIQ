@@ -2496,7 +2496,8 @@
       "tip": null,
       "task_id": "019000020001-0000-7000-8000-000000000000",
       "kind": "Fixing a bug or failing test",
-      "folder": "c:\\users\\imran\\source\\repos\\aiq"
+      "folder": "c:\\users\\imran\\source\\repos\\aiq",
+      "computer": null
     },
     {
       "surface": "copilot-cli",
@@ -2555,7 +2556,8 @@
       },
       "task_id": "019000010001-0000-7000-8000-000000000000",
       "kind": "Writing a spec or PRD",
-      "folder": "c:\\users\\imran\\source\\repos\\aiq"
+      "folder": "c:\\users\\imran\\source\\repos\\aiq",
+      "computer": null
     },
     {
       "surface": "claude-code",
@@ -2587,22 +2589,26 @@
       "tip": null,
       "task_id": "019000020008-0000-7000-8000-000000000000",
       "kind": "Writing tests",
-      "folder": "c:\\users\\imran\\source\\repos\\foresight"
+      "folder": "c:\\users\\imran\\source\\repos\\foresight",
+      "computer": null
     }
   ],
   "starting": [],
   "seen": [
     {
       "surface": "vscode",
-      "last_ms": 1793534370000
+      "last_ms": 1793534370000,
+      "computer": null
     },
     {
       "surface": "copilot-cli",
-      "last_ms": 1793534340000
+      "last_ms": 1793534340000,
+      "computer": null
     },
     {
       "surface": "claude-code",
-      "last_ms": 1793534040000
+      "last_ms": 1793534040000,
+      "computer": null
     }
   ],
   "aside": [],

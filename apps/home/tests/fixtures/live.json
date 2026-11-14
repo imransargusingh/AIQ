@@ -2386,14 +2386,16 @@
       },
       "task_id": "019000010001-0000-7000-8000-000000000000",
       "kind": "Writing a spec or PRD",
-      "folder": "c:\\users\\imran\\source\\repos\\aiq"
+      "folder": "c:\\users\\imran\\source\\repos\\aiq",
+      "computer": null
     }
   ],
   "starting": [],
   "seen": [
     {
       "surface": "copilot-cli",
-      "last_ms": 1793534340000
+      "last_ms": 1793534340000,
+      "computer": null
     }
   ],
   "aside": [],
