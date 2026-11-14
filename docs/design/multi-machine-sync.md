@@ -74,7 +74,10 @@ Imran ruled out running a relay server. So slice 1 moves files over the Remote D
   count). Nothing is analyzed or paid for twice.
 - **Tips:** another computer's ready tips are never offered, delivered or handed back here; detectors never rerun
   on its prompts. Its deliveries do count toward tips a day, the quiet period and the 72-hour same-tip rule.
-- **Right now** and `aiq show` with no id stay this computer's own.
+- **Right now** shows every computer's open tasks (Imran 2026-11-14: a Devbox Copilot task was missing on the
+  laptop while the card's last-turn line showed that Devbox turn as the laptop's). Another computer's task carries
+  its name and "up to a minute behind"; each tool's last-turn line keeps this computer's own turn and names the
+  other computer's. Tips stay with the computer the task runs on. `aiq show` with no id stays this computer's own.
 
 ## The experience
 

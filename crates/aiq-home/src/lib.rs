@@ -163,6 +163,8 @@ pub struct Live {
     pub kind: Option<&'static str>,
     /// The task's folder (`TaskRow.folder`), so a chip can name its project under any project filter.
     pub folder: Option<String>,
+    /// The other computer this task is open on (sync id); None = this one. It arrives up to a minute late.
+    pub computer: Option<String>,
 }
 
 /// A session active within the idle gap that shows no estimate yet (see `Snapshot::starting`).
@@ -173,15 +175,20 @@ pub struct Starting {
     pub last_ms: i64,
     pub prompts: u32,
     pub working: bool,
+    /// The other computer it runs on (sync id); None = this one.
+    pub computer: Option<String>,
 }
 
 pub use aiq_contracts::frames::AsideNow as Aside;
 
-/// One surface's newest event (see `Snapshot::seen`).
+/// One surface's newest event on one computer (see `Snapshot::seen`).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Seen {
     pub surface: String,
     pub last_ms: i64,
+    /// The other computer it came from (sync id); None = this one. The card names each, so a turn on the Devbox never
+    /// reads as this computer's (Imran 2026-11-14).
+    pub computer: Option<String>,
 }
 
 /// One project: the tasks whose session ran in one folder (design project-filter P1–P5b). Its numbers run the
@@ -1235,10 +1242,14 @@ fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()>
     }
     s.data.store_bytes = store.size_bytes();
     {
-        // One scan gives both the newest event and each tool's newest (the quiet Right now card).
-        let mut st = q(c.prepare("SELECT surface, max(ts_utc_ms) FROM event GROUP BY surface ORDER BY 2 DESC"))?;
-        s.seen =
-            q(q(st.query_map([], |r| Ok(Seen { surface: r.get(0)?, last_ms: r.get(1)? })))?.collect::<Result<_, _>>())?;
+        // One scan gives both the newest event and each tool's newest per computer (the quiet Right now card).
+        let computer =
+            if store.has_column("event", "computer").map_err(|e| e.to_string())? { "computer" } else { "NULL" };
+        let mut st = q(c.prepare(&format!(
+            "SELECT surface, max(ts_utc_ms), {computer} FROM event GROUP BY surface, {computer} ORDER BY 2 DESC"
+        )))?;
+        s.seen = q(q(st.query_map([], |r| Ok(Seen { surface: r.get(0)?, last_ms: r.get(1)?, computer: r.get(2)? })))?
+            .collect::<Result<_, _>>())?;
         s.status.last_event_ms = s.seen.first().map(|x| x.last_ms);
     }
     if store.has_table("setting_change").map_err(|e| e.to_string())? {
@@ -1291,21 +1302,22 @@ const LIVE_MAX: usize = 6;
 /// same rows Home shows).
 fn live(store: &Store, pack: &PackV1, now_ms: i64, s: &Snapshot) -> R<(Vec<Live>, Vec<Starting>)> {
     let gap = pack.idle_gap_min as i64 * 60_000;
-    // This computer's live work only: another computer's sessions arrive a minute late (sync) and are not "right now".
-    let own =
-        if store.has_column("event", "computer").map_err(|e| e.to_string())? { "AND computer IS NULL" } else { "" };
+    // Every computer's open tasks (Imran 2026-11-14): another computer's arrive up to a minute late (sync each minute)
+    // and the card says so. Tips stay with the computer the task runs on.
+    let computer =
+        if store.has_column("event", "computer").map_err(|e| e.to_string())? { "max(computer)" } else { "NULL" };
     let mut st = q(store.raw().prepare(&format!(
-        "SELECT surface, surface_session_id FROM event WHERE ts_utc_ms >= ?1 {own}
+        "SELECT surface, surface_session_id, {computer} FROM event WHERE ts_utc_ms >= ?1
          GROUP BY surface, surface_session_id ORDER BY max(ts_utc_ms) DESC, max(event_id) DESC"
     )))?;
-    let sessions: Vec<(String, String)> =
-        q(q(st.query_map([now_ms - gap], |r| Ok((r.get(0)?, r.get(1)?))))?.collect::<Result<_, _>>())?;
+    let sessions: Vec<(String, String, Option<String>)> =
+        q(q(st.query_map([now_ms - gap], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))))?.collect::<Result<_, _>>())?;
     let (mut out, mut starting) = (vec![], vec![]);
-    for (surface, session) in sessions {
+    for (surface, session, computer) in sessions {
         if out.len() + starting.len() == LIVE_MAX {
             break;
         }
-        match open_live(store, &surface, &session, now_ms, gap, s)? {
+        match open_live(store, &surface, &session, now_ms, gap, s, computer)? {
             Open::Shown(l) => out.push(*l),
             Open::Starting(x) => starting.push(x),
             Open::None => {}
@@ -1322,7 +1334,15 @@ enum Open {
 }
 
 /// One session's open task for the card; `Starting` while its first turn has not ended.
-fn open_live(store: &Store, surface: &str, session: &str, now_ms: i64, gap: i64, s: &Snapshot) -> R<Open> {
+fn open_live(
+    store: &Store,
+    surface: &str,
+    session: &str,
+    now_ms: i64,
+    gap: i64,
+    s: &Snapshot,
+    computer: Option<String>,
+) -> R<Open> {
     let Some(mut t) =
         aiq_core::live_trend::open_task(store, surface, session, now_ms, gap).map_err(|e| e.to_string())?
     else {
@@ -1331,7 +1351,12 @@ fn open_live(store: &Store, surface: &str, session: &str, now_ms: i64, gap: i64,
     let found = s
         .tasks
         .iter()
-        .find(|x| x.origin == "live" && x.tool == t.surface && x.members.iter().any(|(_, ms)| *ms == t.first_ms))
+        .find(|x| {
+            x.origin == "live"
+                && x.tool == t.surface
+                && x.computer == computer
+                && x.members.iter().any(|(_, ms)| *ms == t.first_ms)
+        })
         .map(|x| (x.task_id.clone(), x.folder.clone()));
     let Some((task_id, folder)) = found else {
         return Ok(Open::None); // the list leaves it out (set aside): no card, no tips
@@ -1344,6 +1369,7 @@ fn open_live(store: &Store, surface: &str, session: &str, now_ms: i64, gap: i64,
             last_ms: t.last_ms,
             prompts: t.prompts,
             working: t.working,
+            computer,
         };
         return Ok(Open::Starting(x));
     }
@@ -1354,7 +1380,7 @@ fn open_live(store: &Store, surface: &str, session: &str, now_ms: i64, gap: i64,
         (Some(j), Some(ty)) => aiq_contracts::judge::task_type_label(j, ty),
         _ => None,
     };
-    Ok(Open::Shown(Box::new(Live { trend: t, task_id, kind, folder })))
+    Ok(Open::Shown(Box::new(Live { trend: t, task_id, kind, folder, computer })))
 }
 
 /// Every task whose first prompt is at or after `since_ms`, live and imported, newest first. A session's own

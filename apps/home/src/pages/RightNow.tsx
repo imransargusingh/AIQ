@@ -98,6 +98,10 @@ function Trace({ l }: { l: Live }) {
   );
 }
 
+/** The other computer's name, or null for this one (sync peers name it). */
+export const onComputer = (snap: Snapshot, id: string | null | undefined): string | null =>
+  id ? snap.sync?.peers.find((p) => p.id === id)?.name || "Other computer" : null;
+
 const what = (l: Live) => l.kind ?? (l.job ? jobName(l.job) : "Open task");
 
 /** The chosen task: the one picked while it stays open, else the newest activity. */
@@ -120,11 +124,19 @@ export function RightNow(ctx: Ctx) {
   const project = (x: Live) => projectName(ctx.snap, x.folder ?? "");
   // Two chips that would read the same say when each started instead of the prompt count.
   const twin = (x: Live) => all.some((y) => y !== x && what(y) === what(x) && y.folder === x.folder && y.surface === x.surface);
+  const other = (x: Live) => onComputer(ctx.snap, x.computer);
   const meta = (
     <>
       {many && `${project(l)} · `}
-      {toolName(l.surface)} · since {at(l)} · {plural(l.prompts, "prompt")} · {mins} min
+      {toolName(l.surface)}
+      {other(l) && (
+        <>
+          {" "}on <span className="chip">{other(l)}</span>
+        </>
+      )}{" "}
+      · since {at(l)} · {plural(l.prompts, "prompt")} · {mins} min
       {l.working ? " · agent working" : many ? " · waiting for you" : ""}
+      {other(l) && " · up to a minute behind"}
     </>
   );
   return (
@@ -168,7 +180,8 @@ export function RightNow(ctx: Ctx) {
               <span className="rn-cn">
                 <b>{what(x)}</b>
                 <span className="meta num">
-                  {project(x)} · {toolName(x.surface)} · {twin(x) ? `since ${at(x)}` : plural(x.prompts, "prompt")}
+                  {project(x)} · {toolName(x.surface)}
+                  {other(x) ? ` on ${other(x)}` : ""} · {twin(x) ? `since ${at(x)}` : plural(x.prompts, "prompt")}
                 </span>
               </span>
               <span className={`rn-dot${x.working ? " busy" : ""}`} aria-hidden="true" />
@@ -249,13 +262,16 @@ export function quiet(snap: Snapshot) {
     .filter((t) => t.hooked && t.present && SURFACE[t.tool])
     .map((t) => {
       const [surface, name] = SURFACE[t.tool];
-      const last = snap.seen.find((x) => x.surface === surface)?.last_ms ?? null;
+      // This computer's newest, and the newest from another computer (sync), each named on the card.
+      const last = snap.seen.find((x) => x.surface === surface && !x.computer)?.last_ms ?? null;
+      const away = snap.seen.find((x) => x.surface === surface && !!x.computer) ?? null;
       // Activity left out as automated still is activity (Imran 2026-11-08): the card names it instead of calling the
       // tool idle. It sits beside the person's own last turn, never in its place (Imran 2026-11-11: "Yesterday 21:28 ·
       // automated" alone read as if nothing had happened today).
       const a = snap.aside.find((x) => x.surface === surface && (last === null || x.last_ms > last));
       const own = a ? a.last_ms : null;
-      return { name, last, own, aside: a?.reason ?? null, latest: own ?? last };
+      const there = away ? { at: away.last_ms, name: onComputer(snap, away.computer) as string } : null;
+      return { name, last, own, there, aside: a?.reason ?? null, latest: Math.max(own ?? 0, last ?? 0, there?.at ?? 0) || null };
     });
   const silent = tools.filter((t) => t.latest === null || snap.now_ms - t.latest > QUIET_HINT_MS);
   const aside = tools.filter((t) => t.aside !== null);
@@ -350,7 +366,8 @@ function Quiet(ctx: Ctx) {
   const meta =
     state === "starting" ? (
       <>
-        {toolName(s.surface)} · since {clock(s.first_ms, snap.offset_min)} · {plural(s.prompts, "prompt")} · {s.working ? "agent working" : "waiting for you"}
+        {toolName(s.surface)}
+        {onComputer(snap, s.computer) ? ` on ${onComputer(snap, s.computer)}` : ""} · since {clock(s.first_ms, snap.offset_min)} · {plural(s.prompts, "prompt")} · {s.working ? "agent working" : "waiting for you"}
       </>
     ) : null;
   return (
@@ -397,6 +414,7 @@ function Quiet(ctx: Ctx) {
                   <span className="meta num">
                     {t.last !== null ? `your last turn ${when(t.last)}` : t.own !== null ? "no turn of yours yet" : "nothing yet"}
                     {t.own !== null && t.aside && ` · ${ownWorkLabel(t.aside)} ${when(t.own)}`}
+                    {t.there && ` · on ${t.there.name} ${when(t.there.at)}`}
                   </span>
                 </li>
               );

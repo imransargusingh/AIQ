@@ -37,10 +37,12 @@ The desktop app. It reads your own store on this computer and nothing else.
 
 **Right now.** While you work, the card shows the open task, the rung it is heading for, and where a tip
 landed. It is an estimate from what the agent did; the analyzed rung replaces it when the task ends.
+With your computers in sync, a task open on the other one shows too, tagged with that computer's name and up to a
+minute behind.
 
 ![The Right now card: a spec task heading for Directed, could reach Delegated, with a tip at turn 3](docs/images/readme/right-now.png)
 
-When nothing is open, the card stays and lists each connected tool with **your last turn**. When an agent
+When nothing is open, the card stays and lists each connected tool with **your last turn**, and the other computer's newest turn beside it, named. When an agent
 worked on its own more recently (for example **Claude's own work** in a claude.ai project), that shows beside
 it with its own time and isn't counted, so you can tell "nothing in progress" from "AIQ has heard nothing".
 Turns you type yourself always count, on any device.

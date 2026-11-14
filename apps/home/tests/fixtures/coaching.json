@@ -2227,7 +2227,8 @@
   "seen": [
     {
       "surface": "copilot-cli",
-      "last_ms": 1793422980000
+      "last_ms": 1793422980000,
+      "computer": null
     }
   ],
   "aside": [],
