@@ -17,6 +17,7 @@
     "tasks_in_window": 41,
     "judged": 40,
     "uncertain": 2,
+    "progress_checks": 0,
     "rungs": [
       8,
       13,
@@ -132,7 +133,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "t3",
       "prompt_ms": [
@@ -173,7 +175,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "t2",
       "prompt_ms": [
@@ -214,7 +217,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "t1",
       "prompt_ms": [
@@ -255,7 +259,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "t0",
       "prompt_ms": [
@@ -296,7 +301,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "p16",
       "prompt_ms": [
@@ -336,7 +342,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "k0",
       "prompt_ms": [
@@ -376,7 +383,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "wb0",
       "prompt_ms": [
@@ -416,7 +424,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "p17",
       "prompt_ms": [
@@ -456,7 +465,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "p32",
       "prompt_ms": [
@@ -496,7 +506,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "k1",
       "prompt_ms": [
@@ -536,7 +547,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "p18",
       "prompt_ms": [
@@ -576,7 +588,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "p26",
       "prompt_ms": [
@@ -616,7 +629,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "p33",
       "prompt_ms": [
@@ -656,7 +670,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "k2",
       "prompt_ms": [
@@ -696,7 +711,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "wb1",
       "prompt_ms": [
@@ -736,7 +752,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "p19",
       "prompt_ms": [
@@ -776,7 +793,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "p20",
       "prompt_ms": [
@@ -816,7 +834,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "p27",
       "prompt_ms": [
@@ -856,7 +875,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "k3",
       "prompt_ms": [
@@ -896,7 +916,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "p21",
       "prompt_ms": [
@@ -936,7 +957,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "k4",
       "prompt_ms": [
@@ -976,7 +998,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "p22",
       "prompt_ms": [
@@ -1016,7 +1039,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "p28",
       "prompt_ms": [
@@ -1056,7 +1080,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "k5",
       "prompt_ms": [
@@ -1096,7 +1121,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "p23",
       "prompt_ms": [
@@ -1136,7 +1162,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "p29",
       "prompt_ms": [
@@ -1176,7 +1203,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "p24",
       "prompt_ms": [
@@ -1216,7 +1244,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "k6",
       "prompt_ms": [
@@ -1256,7 +1285,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "p25",
       "prompt_ms": [
@@ -1296,7 +1326,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "p30",
       "prompt_ms": [
@@ -1336,7 +1367,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "k7",
       "prompt_ms": [
@@ -1376,7 +1408,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "k8",
       "prompt_ms": [
@@ -1416,7 +1449,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "p31",
       "prompt_ms": [
@@ -1456,7 +1490,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "k9",
       "prompt_ms": [
@@ -1496,7 +1531,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "k10",
       "prompt_ms": [
@@ -1536,7 +1572,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "k11",
       "prompt_ms": [
@@ -1576,7 +1613,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "k12",
       "prompt_ms": [
@@ -1616,7 +1654,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "k13",
       "prompt_ms": [
@@ -1656,7 +1695,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "k14",
       "prompt_ms": [
@@ -1696,7 +1736,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "k15",
       "prompt_ms": [
@@ -2977,6 +3018,7 @@
       "could": 12,
       "needs": 10,
       "uncertain": 2,
+      "progress_checks": 0,
       "up": 15,
       "up_to": 3
     },
@@ -3633,6 +3675,7 @@
           "could": 8,
           "needs": 10,
           "uncertain": 2,
+          "progress_checks": 0,
           "up": 11,
           "up_to": 3
         },
@@ -4196,6 +4239,7 @@
           "could": 4,
           "needs": 0,
           "uncertain": 0,
+          "progress_checks": 0,
           "up": 4,
           "up_to": 3
         },

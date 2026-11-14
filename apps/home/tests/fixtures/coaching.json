@@ -17,6 +17,7 @@
     "tasks_in_window": 16,
     "judged": 16,
     "uncertain": 1,
+    "progress_checks": 0,
     "rungs": [
       3,
       6,
@@ -101,7 +102,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "k0",
       "prompt_ms": [
@@ -141,7 +143,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "k1",
       "prompt_ms": [
@@ -181,7 +184,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "k2",
       "prompt_ms": [
@@ -221,7 +225,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "k3",
       "prompt_ms": [
@@ -261,7 +266,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "k4",
       "prompt_ms": [
@@ -301,7 +307,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "k5",
       "prompt_ms": [
@@ -341,7 +348,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "k6",
       "prompt_ms": [
@@ -381,7 +389,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "k7",
       "prompt_ms": [
@@ -421,7 +430,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "k8",
       "prompt_ms": [
@@ -461,7 +471,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "k9",
       "prompt_ms": [
@@ -501,7 +512,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "k10",
       "prompt_ms": [
@@ -541,7 +553,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "k11",
       "prompt_ms": [
@@ -581,7 +594,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "k12",
       "prompt_ms": [
@@ -621,7 +635,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "k13",
       "prompt_ms": [
@@ -661,7 +676,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "k14",
       "prompt_ms": [
@@ -701,7 +717,8 @@
         "read_prompts": 2,
         "read_chars": 0,
         "read_actions": false,
-        "versions": "fs1 · r1 · j2"
+        "versions": "fs1 · r1 · j2",
+        "progress_check": false
       },
       "session": "k15",
       "prompt_ms": [
@@ -1201,6 +1218,7 @@
       "could": 5,
       "needs": 5,
       "uncertain": 1,
+      "progress_checks": 0,
       "up": 7,
       "up_to": 3
     },
@@ -1714,6 +1732,7 @@
           "could": 1,
           "needs": 5,
           "uncertain": 1,
+          "progress_checks": 0,
           "up": 3,
           "up_to": 3
         },
@@ -2019,6 +2038,7 @@
           "could": 4,
           "needs": 0,
           "uncertain": 0,
+          "progress_checks": 0,
           "up": 4,
           "up_to": 3
         },
