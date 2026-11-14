@@ -194,7 +194,25 @@ fn peer_dirs(sync: &Path, me: &str) -> Vec<(PathBuf, Computer)> {
     v
 }
 
-/// Copy this computer's files that are missing in `to` (another computer's sync folder), oldest first.
+/// A change file that is whole: its header parses and names as many rows as follow it, each one JSON. Checked
+/// without knowing its store format, so a computer passes on files from a newer AIQ than its own.
+fn whole(bytes: &[u8]) -> bool {
+    let Ok(text) = std::str::from_utf8(bytes) else { return false };
+    let mut it = text.lines().filter(|l| !l.trim().is_empty());
+    let Some(Ok(head)) = it.next().map(serde_json::from_str::<serde_json::Value>) else { return false };
+    let Some(rows) = head["rows"].as_u64() else { return false };
+    let mut n = 0u64;
+    for l in it {
+        if serde_json::from_str::<serde_json::Value>(l).is_err() {
+            return false;
+        }
+        n += 1;
+    }
+    n == rows
+}
+
+/// Copy the whole change files in `from` (one computer's folder) that `to` lacks, or holds cut short, oldest first.
+/// A file still being written is left for the next pass, so a half file is never passed on and then kept.
 fn mirror(from: &Path, to: &Path) -> std::io::Result<u32> {
     std::fs::create_dir_all(to)?;
     let mut names: Vec<String> = std::fs::read_dir(from)?
@@ -205,11 +223,30 @@ fn mirror(from: &Path, to: &Path) -> std::io::Result<u32> {
     names.sort();
     let mut n = 0;
     for name in names {
-        let dst = to.join(&name);
-        if !dst.exists() {
-            write_whole(&dst, &std::fs::read(from.join(&name))?)?;
+        let (src, dst) = (from.join(&name), to.join(&name));
+        // Same size = the same file (change files never change once whole); a different size is a copy cut short.
+        if let Ok(d) = std::fs::metadata(&dst)
+            && d.len() == std::fs::metadata(&src)?.len()
+        {
+            continue;
+        }
+        let bytes = std::fs::read(&src)?;
+        if whole(&bytes) {
+            write_whole(&dst, &bytes)?;
             n += 1;
         }
+    }
+    Ok(n)
+}
+
+/// Pass another computer's folder on: its whole change files, and its `computer.json` when newer than the copy
+/// there. So a computer reached only through another one (a Devbox opened from a Devbox) still reaches everyone.
+fn relay(from: &Path, to: &Path) -> std::io::Result<u32> {
+    let n = mirror(from, to)?;
+    if let Some(c) = read_computer(from)
+        && read_computer(to).is_none_or(|t| c.utc_ms > t.utc_ms)
+    {
+        write_whole(&to.join(SELF_FILE), &std::fs::read(from.join(SELF_FILE))?)?;
     }
     Ok(n)
 }
@@ -348,11 +385,29 @@ pub fn pass(store: &mut Store, paths: &Paths, remote: &[PathBuf], now_ms: i64) -
             st.errors.push(aiq_contracts::codes::SYNC_WRITE.into());
         }
     }
-    // Apply the others' new files, from every sync folder this computer can see.
+    // Pass on every other computer's folder both ways: theirs to the computer reached here, and what that one holds
+    // to this computer's folder, where a computer reaching this one finds it. Files are passed on, never rows.
+    for (r, h) in remote_sync.iter().zip(remote) {
+        let owner = read_status_at(h).map(|s| s.id);
+        let out = peer_dirs(&local, &me).into_iter().filter(|(_, c)| owner.as_ref() != Some(&c.id));
+        let back = peer_dirs(r, &me).into_iter().map(|(p, c)| (p, local.join(&c.id)));
+        for (from, to) in out.map(|(p, c)| (p, r.join(&c.id))).chain(back) {
+            if let Err(e) = relay(&from, &to) {
+                tracing::warn!(error.code = aiq_contracts::codes::SYNC_WRITE, error = %e, "sync could not pass on another computer's files");
+                st.errors.push(aiq_contracts::codes::SYNC_WRITE.into());
+            }
+        }
+    }
+    // Apply the others' new files, from every sync folder this computer can see: the computer reached here first
+    // (its own folder is the original; this computer's copy was passed on), then any other folder holding the same
+    // computer's files, which may be further along.
     let mut peers: Vec<Peer> = Vec::new();
-    for dir in std::iter::once(&local).chain(&remote_sync) {
+    for dir in remote_sync.iter().chain(std::iter::once(&local)) {
         for (pdir, c) in peer_dirs(dir, &me) {
-            if peers.iter().any(|p| p.id == c.id) {
+            if let Some(p) = peers.iter_mut().find(|p| p.id == c.id) {
+                if p.state == "ok" {
+                    apply_from(store, &pdir, p, now_ms);
+                }
                 continue;
             }
             let mut p = Peer {

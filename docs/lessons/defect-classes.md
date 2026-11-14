@@ -1399,3 +1399,18 @@ summary: >-
   red with the old filter); e2e "nothing open: the other computer's newer turn is named"; unit "keeps this
   computer's last turn and names the other computer's".
 - **Rule:** reads that sit together on one surface share one scope, or each says its scope on screen.
+
+### DC-079 — A design proven with two parties that silently assumes two
+- **Signature:** 2026-11-14, Imran connected a third computer (a second Devbox). Measured on the laptop: it synced
+  fine, because both Devboxes open the laptop. Read in the code: each computer copied only its own change files and
+  never passed on rows it applied, so a computer reached only through another one (a Devbox opened from a Devbox)
+  would reach that one computer and never the laptop, with no error anywhere.
+- **Why it survives:** every sync test had exactly two computers, and with two, "send your own files" and "send
+  everything" are the same thing.
+- **Sweep:** the sync pass (`pass`, `mirror`, apply order) and every per-computer read. The reads compare "this
+  computer" with "every other one" (`computer IS NULL`, peers named by id), so they hold for any number. The offer
+  card names only the first home it reaches (`remote.first()`), which is about Windows user folders, not computers.
+- **Control (test):** `a_computer_reached_only_through_another_one_still_reaches_everyone_and_gets_everything`
+  (three computers in a chain; red before the fix) and
+  `a_change_file_cut_short_is_never_passed_on_and_a_copy_cut_short_is_replaced`.
+- **Rule:** a feature that joins parties is tested with three, in the worst shape the transport allows.

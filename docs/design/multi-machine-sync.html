@@ -35,6 +35,8 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <p>cuts the queue into numbered JSON-lines files (<code>&lt;aiq home&gt;/sync/&lt;id&gt;/00000001.jsonl</code>, at most 5,000 lines) and marks a file sent only after it is written whole (temp file, then rename). A queued row leaves the queue once it is in a written file. While sync has never been on, no queue is kept; turning sync on the first time queues every row recorded here, so nothing is missed.</p>
 <ul><li><strong>The meeting point is the laptop&#x27;s AIQ home.</strong> The computer inside the Remote Desktop session (the Devbox) copies</li></ul>
 <p>its files into the laptop&#x27;s <code>sync/&lt;devbox id&gt;/</code> and applies the laptop&#x27;s files from <code>sync/&lt;laptop id&gt;/</code>. The laptop only reads its own folder. It needs no network, port or relay.</p>
+<ul><li><strong>More than two computers.</strong> Each computer also passes on the other computers&#x27; whole change files it holds, both</li></ul>
+<p>ways: to the AIQ home it reaches, and from there into its own folder. So two Devboxes both opened from the laptop meet in the laptop&#x27;s folder, and a Devbox opened from another Devbox still reaches the laptop through it (one pass per hop). Files are passed on, never rows; a file cut short is left for the next pass and never passed on.</p>
 <ul><li><strong>Apply exactly once, in order.</strong> <code>sync_applied (peer, seq)</code> in the same transaction as the rows. A missing</li></ul>
 <p>earlier file waits; a file cut short or unreadable is an error and is tried again; a file from a newer store format is held until this computer updates. Nothing is dropped or guessed.</p>
 <ul><li><strong>Merge = add what you don&#x27;t have.</strong> Rows keep their keys (<code>INSERT OR IGNORE</code>) and arrive with <code>computer</code> set to</li></ul>
@@ -50,7 +52,8 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <p>count). Nothing is analyzed or paid for twice.</p>
 <ul><li><strong>Tips:</strong> another computer&#x27;s ready tips are never offered, delivered or handed back here; detectors never rerun</li></ul>
 <p>on its prompts. Its deliveries do count toward tips a day, the quiet period and the 72-hour same-tip rule.</p>
-<ul><li><strong>Right now</strong> and <code>aiq show</code> with no id stay this computer&#x27;s own.</li></ul>
+<ul><li><strong>Right now</strong> shows every computer&#x27;s open tasks (Imran 2026-11-14: a Devbox Copilot task was missing on the</li></ul>
+<p>laptop while the card&#x27;s last-turn line showed that Devbox turn as the laptop&#x27;s). Another computer&#x27;s task carries its name and &quot;up to a minute behind&quot;; each tool&#x27;s last-turn line keeps this computer&#x27;s own turn and names the other computer&#x27;s. Tips stay with the computer the task runs on. <code>aiq show</code> with no id stays this computer&#x27;s own.</p>
 <h2>The experience</h2>
 <ul><li>The Devbox, inside a Remote Desktop session, sees <code>\\tsclient\c\Users\*\.aiq\aiq.db</code> and Home shows one card:</li></ul>
 <p>&quot;AIQ on LAPTOP is here too&quot; with <strong>Keep in sync</strong> and <strong>Not now</strong>. No code. Nothing is written anywhere before the person chooses.</p>
