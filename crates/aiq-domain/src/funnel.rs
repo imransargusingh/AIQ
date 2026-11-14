@@ -43,13 +43,15 @@ pub enum Step {
     LabelRetry,
     /// The label came back after the session had moved on to another task.
     LabelLate,
+    /// No label was asked (labels off, no tool to ask, the prompt's text gone): recorded by `aiq label`.
+    LabelSkipped,
     /// Next-step tips are turned off in Settings.
     TipsOff,
     /// The session was first set aside as automated; a person's second prompt brought it back too late for a tip.
     LateFirstPrompt,
 }
 
-pub const ALL: [Step; 19] = [
+pub const ALL: [Step; 20] = [
     Step::Decided,
     Step::KindTooFew,
     Step::KindRightRung,
@@ -67,6 +69,7 @@ pub const ALL: [Step; 19] = [
     Step::LabelNotCoached,
     Step::LabelRetry,
     Step::LabelLate,
+    Step::LabelSkipped,
     Step::TipsOff,
     Step::LateFirstPrompt,
 ];
@@ -91,6 +94,7 @@ impl Step {
             Step::LabelNotCoached => "label_not_coached",
             Step::LabelRetry => "label_retry",
             Step::LabelLate => "label_late",
+            Step::LabelSkipped => "label_skipped",
             Step::TipsOff => "tips_off",
             Step::LateFirstPrompt => "late_first_prompt",
         }
@@ -112,6 +116,7 @@ impl Step {
                 | Step::LabelNotCoached
                 | Step::LabelRetry
                 | Step::LabelLate
+                | Step::LabelSkipped
                 | Step::TipsOff
                 | Step::LateFirstPrompt
         )
@@ -151,6 +156,7 @@ pub fn words(code: &str) -> &'static str {
         "label_unsure" => "AIQ wasn't sure what kind of task it was",
         "label_not_coached" => "kind label says it's a question; question labels give tips once they prove right",
         "label_retry" => "kind label asked again from a later prompt, and it never came back",
+        "label_skipped" => "kind label couldn't be asked",
         "label_late" => "kind label came after the next task started",
         "tips_off" => "next-step tips turned off",
         "late_first_prompt" => "started as automated, counted later",

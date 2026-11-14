@@ -361,9 +361,8 @@ pub struct CoachStatus {
 pub struct LabelStatus {
     /// Labels may run: background judging is on and labels are not turned off.
     pub enabled: bool,
-    /// Label calls since local midnight, and the daily budget.
+    /// This computer's label calls since local midnight (no daily limit).
     pub today: u32,
-    pub daily: u32,
     /// Of today's calls: answered, and answered confidently enough to coach from.
     pub answered: u32,
     pub confident: u32,

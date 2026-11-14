@@ -10,14 +10,10 @@ pub use aiq_contracts::label::{Label, parse, schema};
 
 /// Store keys and the CLI names that set them.
 pub const SETTING_LABEL: &str = "kind_label";
-pub const SETTING_LABEL_DAILY: &str = "kind_label_daily";
 pub const SETTING_LABEL_CLAUDE_MODEL: &str = "kind_label_claude_model";
 pub const SETTING_LABEL_COPILOT_MODEL: &str = "kind_label_copilot_model";
-/// Labels a day unless the person sets another number. assume: about 9 new tasks a day on the laptop
-/// (measured 2026-11-02, one day); 20 leaves room for a busier day. Confirm from `kind_label` rows a week
-/// after install; if the cap is often hit, raise it (each Copilot label is one premium request).
-pub const DEFAULT_DAILY: u32 = 20;
-pub const MAX_DAILY: u32 = 500;
+// No daily limit on labels (Imran 2026-11-14: "remove all per-day labeling limits"). A cap of 20 left 207 new
+// tasks unlabelled, so without a tip, on 10-13 Nov. Labels stay at most two per task (`aiq label`).
 /// Claude Code's small model alias. Copilot uses its default model unless the person names one.
 pub const DEFAULT_CLAUDE_MODEL: &str = "haiku";
 /// The first prompt is cut to this many bytes before it is sent (the kind shows in the opening lines).
@@ -33,10 +29,6 @@ pub fn validate_setting(key: &str, value: &str) -> Option<Result<String, String>
         SETTING_LABEL => match value {
             "auto" | "off" => Ok(value.to_owned()),
             _ => Err("kind-label must be auto or off".into()),
-        },
-        SETTING_LABEL_DAILY => match value.parse::<u32>() {
-            Ok(n) if n <= MAX_DAILY => Ok(n.to_string()),
-            _ => Err(format!("kind-label-daily must be a whole number from 0 to {MAX_DAILY}")),
         },
         SETTING_LABEL_CLAUDE_MODEL if model_ok(value) => Ok(value.to_owned()),
         SETTING_LABEL_COPILOT_MODEL if value == "default" || model_ok(value) => Ok(value.to_owned()),
@@ -249,7 +241,7 @@ mod tests {
     fn settings_and_switch() {
         assert_eq!(validate_setting("kind_label", "off"), Some(Ok("off".into())));
         assert!(validate_setting("kind_label", "on").unwrap().is_err());
-        assert!(validate_setting("kind_label_daily", "501").unwrap().is_err());
+        assert!(validate_setting("kind_label_daily", "5").is_none(), "no daily label limit to set");
         assert!(validate_setting("kind_label_copilot_model", "default").unwrap().is_ok());
         assert!(validate_setting("kind_label_claude_model", "a b").unwrap().is_err());
         assert!(validate_setting("judge", "auto").is_none());
