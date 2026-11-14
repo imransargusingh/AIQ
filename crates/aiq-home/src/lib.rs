@@ -203,6 +203,9 @@ pub struct Project {
     pub tasks_in_window: u32,
     pub judged: u32,
     pub uncertain: u32,
+    /// As `Home::no_rung`, over this project's tasks.
+    #[serde(serialize_with = "reason_counts")]
+    pub no_rung: aiq_domain::coach::NoRungCounts,
     pub rungs: [u32; 5],
     pub most_common_rung: Option<u8>,
     pub imported_in_window: u32,
@@ -313,8 +316,9 @@ pub struct SplitOut {
     pub could: u32,
     pub needs: u32,
     pub uncertain: u32,
-    /// Progress checks on work already running, left out beside `uncertain`.
-    pub progress_checks: u32,
+    /// Tasks with no rung of their own, left out beside `uncertain`: each reason's id with its count.
+    #[serde(serialize_with = "reason_counts")]
+    pub no_rung: aiq_domain::coach::NoRungCounts,
     /// Not finished, with a next step at least one rung up (aiq-domain coach::Split::up).
     pub up: u32,
     /// The rung those next steps reach most often.
@@ -417,8 +421,10 @@ pub struct Home {
     pub judged: u32,
     /// Of those, judged Uncertain (shown, never coached, not in `rungs`).
     pub uncertain: u32,
-    /// Of those, progress checks on work already running (no rung of their own, not in `uncertain` or `rungs`).
-    pub progress_checks: u32,
+    /// Of those, the tasks with no rung of their own (not in `uncertain` or `rungs`): each reason's id with its
+    /// count.
+    #[serde(serialize_with = "reason_counts")]
+    pub no_rung: aiq_domain::coach::NoRungCounts,
     /// Judged, not-Uncertain tasks in the window per current rung (index 0 = Assisted).
     pub rungs: [u32; 5],
     /// The rung with the most judged tasks in the window (ties go to the lower rung). None when none.
@@ -693,6 +699,10 @@ fn reason_id<S: serde::Serializer>(r: &Option<aiq_domain::coach::NoRung>, s: S) 
     r.map(aiq_domain::coach::NoRung::id).serialize(s)
 }
 
+fn reason_counts<S: serde::Serializer>(c: &aiq_domain::coach::NoRungCounts, s: S) -> Result<S::Ok, S::Error> {
+    s.collect_map(c.each().map(|(why, n)| (why.id(), n)))
+}
+
 fn json_strings(s: &str) -> Vec<String> {
     serde_json::from_str::<Vec<String>>(s).unwrap_or_default()
 }
@@ -964,7 +974,7 @@ fn empty(paths: &Paths, pack: &PackV1, now: Now) -> Snapshot {
             tasks_in_window: 0,
             judged: 0,
             uncertain: 0,
-            progress_checks: 0,
+            no_rung: Default::default(),
             rungs: [0; 5],
             most_common_rung: None,
             judge_today: JudgeToday { tasks: 0, calls: 0, failed_calls: 0, cost_usd: None },
@@ -1153,11 +1163,14 @@ fn read_in_tx(store: &Store, pack: &PackV1, now: Now, s: &mut Snapshot) -> R<()>
             t.attach(j, first.as_deref());
         }
     }
-    let all = tally(tasks.iter(), &s.home.weeks);
+    // Every count of the tally is named, here and for each project (`coaching`): one more does not build until
+    // Home and `Project` both carry it, so the Project picker has the project's own number to swap in.
+    let Tally { tasks: in_window, judged, uncertain, no_rung, rungs, most_common_rung, imported, weeks, by_tool } =
+        tally(tasks.iter(), &s.home.weeks);
     let h = &mut s.home;
-    (h.tasks_in_window, h.judged, h.uncertain, h.progress_checks, h.rungs, h.most_common_rung) =
-        (all.tasks, all.judged, all.uncertain, all.progress_checks, all.rungs, all.most_common_rung);
-    (h.imported_in_window, h.weeks, h.by_tool) = (all.imported, all.weeks, all.by_tool);
+    (h.tasks_in_window, h.judged, h.uncertain, h.no_rung, h.rungs, h.most_common_rung) =
+        (in_window, judged, uncertain, no_rung, rungs, most_common_rung);
+    (h.imported_in_window, h.weeks, h.by_tool) = (imported, weeks, by_tool);
     {
         let calls = store.judge_calls_since(now.local_midnight_utc_ms()).map_err(|e| e.to_string())?;
         let t = &mut s.home.judge_today;
@@ -1811,18 +1824,21 @@ fn coaching(
             c.weeks = blank.weeks.iter().map(|w| WeekSplit { tasks: 0, finished: 0, ..*w }).collect();
             coach_view(pack, now, (&pj, &po), judgments, &feedback, &flags, &mut c);
             let (name, renamed) = names.get(key).cloned().unwrap_or_else(|| (NO_FOLDER.to_owned(), false));
+            // Named in full, as for Home (`read_in_tx`).
+            let Tally { tasks, judged, uncertain, no_rung, rungs, most_common_rung, imported, weeks, by_tool } = t;
             Project {
                 key: key.to_owned(),
                 name,
                 renamed,
-                tasks_in_window: t.tasks,
-                judged: t.judged,
-                uncertain: t.uncertain,
-                rungs: t.rungs,
-                most_common_rung: t.most_common_rung,
-                imported_in_window: t.imported,
-                weeks: t.weeks,
-                by_tool: t.by_tool,
+                tasks_in_window: tasks,
+                judged,
+                uncertain,
+                no_rung,
+                rungs,
+                most_common_rung,
+                imported_in_window: imported,
+                weeks,
+                by_tool,
                 coaching: c,
             }
         })
@@ -1874,8 +1890,8 @@ struct Tally {
     tasks: u32,
     judged: u32,
     uncertain: u32,
-    /// Judged tasks that are progress checks: not in `uncertain` or `rungs`.
-    progress_checks: u32,
+    /// Judged tasks with no rung of their own, by reason: not in `uncertain` or `rungs`.
+    no_rung: aiq_domain::coach::NoRungCounts,
     rungs: [u32; 5],
     most_common_rung: Option<u8>,
     imported: u32,
@@ -1888,7 +1904,7 @@ fn tally<'a>(tasks: impl Iterator<Item = &'a TaskRow>, weeks: &[Week]) -> Tally 
         tasks: 0,
         judged: 0,
         uncertain: 0,
-        progress_checks: 0,
+        no_rung: Default::default(),
         rungs: [0; 5],
         most_common_rung: None,
         imported: 0,
@@ -1901,7 +1917,7 @@ fn tally<'a>(tasks: impl Iterator<Item = &'a TaskRow>, weeks: &[Week]) -> Tally 
         if let Some(j) = &r.judgment {
             t.judged += 1;
             match j.no_rung {
-                Some(aiq_domain::coach::NoRung::ProgressCheck) => t.progress_checks += 1,
+                Some(why) => t.no_rung.add(why),
                 None if j.state == "uncertain" => t.uncertain += 1,
                 None => t.rungs[(j.current.clamp(1, 5) - 1) as usize] += 1,
             }
@@ -1974,7 +1990,7 @@ fn coach_view(
         could: sp.could,
         needs: sp.needs,
         uncertain: sp.uncertain,
-        progress_checks: sp.progress_checks,
+        no_rung: sp.no_rung,
         up: sp.up,
         up_to: sp.up_to,
     };

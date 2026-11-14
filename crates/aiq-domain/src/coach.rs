@@ -162,6 +162,28 @@ impl NoRung {
     }
 }
 
+/// How many tasks have no rung of their own, by reason. Every count of tasks carries one beside its unsure
+/// count (the split, Home's numbers, each project's), so a reason is counted wherever tasks are.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct NoRungCounts {
+    pub progress_checks: u32,
+}
+
+impl NoRungCounts {
+    pub fn add(&mut self, why: NoRung) {
+        match why {
+            NoRung::ProgressCheck => self.progress_checks += 1,
+        }
+    }
+
+    /// Each reason with its count, in the order a view lists them. The fields are taken apart in full, so a
+    /// new count does not build until it is listed here, and so reaches every view.
+    pub fn each(self) -> [(NoRung, u32); 1] {
+        let NoRungCounts { progress_checks } = self;
+        [(NoRung::ProgressCheck, progress_checks)]
+    }
+}
+
 /// The kind the analysis gives a progress check since the re-cut list (j7): "Checking on progress", an
 /// ask_research kind (`aiq_contracts::judge::TASK_TYPES`).
 pub const PROGRESS_KIND: &str = "progress";
@@ -951,8 +973,8 @@ pub struct Split {
     pub needs: u32,
     /// Uncertain judgments left out, counted beside.
     pub uncertain: u32,
-    /// Progress checks (`is_progress_check`) left out, counted beside; not in `uncertain`.
-    pub progress_checks: u32,
+    /// Tasks with no rung of their own (`no_rung`) left out, counted beside by reason; not in `uncertain`.
+    pub no_rung: NoRungCounts,
     /// Not finished, and the judge sees a next step at least one rung up (potential > current): a subset of
     /// could + needs, so the move people can make now shows even when no kind reaches Delegated.
     pub up: u32,
@@ -978,9 +1000,7 @@ pub fn split(tasks: &[JudgedTask], rows: &[TypeRow], from_ms: i64, to_ms: i64) -
     let mut to = [0u32; 6];
     for t in tasks.iter().filter(|t| t.first_ms >= from_ms && t.first_ms < to_ms) {
         if let Some(why) = t.no_rung {
-            match why {
-                NoRung::ProgressCheck => s.progress_checks += 1,
-            }
+            s.no_rung.add(why);
             continue;
         }
         if t.uncertain() {
@@ -1777,6 +1797,21 @@ mod tests {
         assert_eq!(s.needs, 2, "a NULL type is Needs you");
         assert_eq!(s.finished + s.could + s.needs, s.tasks);
         assert!(s.up <= s.could + s.needs, "up is a subset of the not-finished tasks");
+    }
+
+    /// A task with no rung of its own is in no part of the split: it is counted beside, under its reason, and
+    /// not among the unsure ones although it carries their state.
+    #[test]
+    fn split_counts_a_task_with_no_rung_beside_under_its_reason() {
+        let ts = vec![
+            task("a", 1, "tests", 1, "judged", true, "{}", Some(0)),
+            task("p", 1, "tests", 1, "judged", true, "{}", Some(0)).without_rung(NoRung::ProgressCheck),
+            task("u", 1, "tests", 1, "uncertain", false, "{}", Some(0)),
+        ];
+        let s = split(&ts, &[], NOW - 30 * DAY_MS, NOW + 1);
+        assert_eq!((s.tasks, s.uncertain, s.up), (1, 1, 1));
+        assert_eq!(s.no_rung.each(), [(NoRung::ProgressCheck, 1)]);
+        assert_eq!(split(&ts[..1], &[], NOW - 30 * DAY_MS, NOW + 1).no_rung, NoRungCounts::default());
     }
 
     #[test]

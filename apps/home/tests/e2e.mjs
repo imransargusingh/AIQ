@@ -931,6 +931,21 @@ for (const theme of ["light", "dark", "contrast"]) {
   });
 }
 
+// The tasks with no rung of their own are one of Home's numbers, so the Project picker swaps in the project's own
+// count. Both of this fixture's are in aiq and foresight has none: Home on foresight named the whole record's two.
+await test("one project's Home counts only its own tasks with no rung", async () => {
+  const home = await open("no-rung");
+  const counts = async (key) => {
+    await home.getByLabel("Project").selectOption(key);
+    await home.waitForSelector("[data-testid=project-note]");
+    return (await home.locator("main").innerText()).match(/\d+ tasks analyzed in 30 days[^\n]*/g);
+  };
+  assert.deepEqual(await counts("c:\\users\\imran\\source\\repos\\foresight"), ["4 tasks analyzed in 30 days"]);
+  assert.deepEqual(await counts("c:\\users\\imran\\source\\repos\\aiq"), ["15 tasks analyzed in 30 days · 1 unsure, not on a rung · 2 progress checks, not on a rung"]);
+  assert.deepEqual(home.errors, []);
+  await home.context().close();
+});
+
 for (const theme of ["light", "dark", "contrast"]) {
   await test(`Right now card: the open task's estimate per turn, rung in words, tip at its turn, no axe violations (${theme})`, async () => {
     const page = await open("live", { theme: theme === "light" ? undefined : theme });

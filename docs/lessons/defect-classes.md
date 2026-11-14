@@ -1473,11 +1473,12 @@ summary: >-
   remember to ask. #294's tests asserted the read model. No test rendered a flagged task, so a screen that never
   asked passed.
 - **Sweep:** every reader of a task's analyzed rung, next rung or next step. Right already: Home's ladder card and
-  split (the core's counts), the rung mix (`mix.ts`), the Day view's summaries (`day.ts`), the task list cell, the
-  task page's chip. Fixed here: the Day view's block, hover text and label, and the task page's next step. A kind's
-  page lists only the tasks the core gives it, and the core gives it none without a rung (the Home snapshot test
-  holds that). Outside Home, a stored rung is read only by the analysis's own log line and the second-reader check,
-  which report the analysis itself.
+  split (the core's counts) with every project shown, the rung mix (`mix.ts`), the Day view's summaries (`day.ts`),
+  the task list cell, the task page's chip. Fixed here: the Day view's block, hover text and label, and the task
+  page's next step. A kind's page lists only the tasks the core gives it, and the core gives it none without a rung
+  (the Home snapshot test holds that). Outside Home, a stored rung is read only by the analysis's own log line and
+  the second-reader check, which report the analysis itself. This sweep opened each screen with every project
+  shown. With the Project picker on one project, Home's count was wrong: DC-084.
 - **Control (test):** e2e "a task with no rung of its own shows no rung on any screen" (three themes), on a fixture
   the Rust read model writes (`no-rung`) whose tasks carry a rung, a next rung and a next step from the analysis. It
   asserts the reason, and that no rung name shows, on Home, the task list, the Day view (block, hover text, label,
@@ -1485,3 +1486,28 @@ summary: >-
   (`no_rung`), so a second reason cannot be honoured on one screen and missed on another.
 - **Rule:** when a flag hides a field, keep a record that holds both in the test data, render it on every screen
   that shows the field, and assert the field's words are absent.
+
+### DC-084 — A count added to the whole record, and not to the part that replaces it under a filter
+- **Signature:** 2026-11-14, drafting the count of release notices (design kinds-recut K12). #294 added the count
+  of progress checks to Home's numbers and to the split. Each project carries its own split, and did not carry
+  this number of Home's. The Project picker (`scoped`) builds one project's Home from every project's Home and
+  swaps in the numbers the project has: a number the project lacks stays every project's. Home on a project with
+  no progress check read "4 tasks analyzed in 30 days · 2 progress checks, not on a rung", above a split that
+  named none. Its analyzed tasks did not add up: 4 on a rung and 2 with no rung, of 4.
+- **Why it survives:** the swap starts from the whole and overrides what it knows, so a missing number shows a
+  plausible wrong one, never an error. The test data held progress checks in one project only, and no test opened
+  Home on the other. The sweep for DC-083 opened every screen, with every project shown.
+- **Sweep:** each number of Home against what the picker swaps. Swapped: tasks, analyzed, unsure, per rung, most
+  common rung, imported, weeks, by tool. Every project's on purpose: tips today and Automated, not counted (the
+  screen says "Tips and Automated, not counted cover all projects"), and whether analysis is on, which is one
+  setting. The line that says how far analysis has got shows only with every project. Missed: this one count.
+- **Control (build):** the read model takes its tally apart in full, for Home and for each project (`read_in_tx`,
+  `coaching`), so a count added to the tally does not build until both carry it. The tasks with no rung are one
+  count by reason (`NoRungCounts`) wherever the unsure count is, so a second reason adds no number to forget.
+- **Control (tests):** `project.test.ts`: the picker swaps in every number a project carries under one of Home's
+  names (read from the fixture the Rust read model writes), and each project's analyzed tasks add up: on a rung,
+  unsure, or with no rung. Home snapshot `a_project_counts_its_own_tasks_with_no_rung`. e2e "one project's Home
+  counts only its own tasks with no rung". Red before the fix: the unit test read 6 against 4 analyzed, the
+  screen test read "2 progress checks" on the project with none.
+- **Rule:** a view built by overriding the whole with a part's numbers must fail when the part lacks one. Sweep
+  each screen under each filter, not only each screen.

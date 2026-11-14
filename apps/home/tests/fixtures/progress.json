@@ -17,7 +17,9 @@
     "tasks_in_window": 18,
     "judged": 18,
     "uncertain": 1,
-    "progress_checks": 0,
+    "no_rung": {
+      "progress_check": 0
+    },
     "rungs": [
       4,
       6,
@@ -1569,7 +1571,9 @@
       "could": 6,
       "needs": 4,
       "uncertain": 1,
-      "progress_checks": 0,
+      "no_rung": {
+        "progress_check": 0
+      },
       "up": 7,
       "up_to": 3
     },
@@ -2145,6 +2149,9 @@
       "tasks_in_window": 18,
       "judged": 18,
       "uncertain": 1,
+      "no_rung": {
+        "progress_check": 0
+      },
       "rungs": [
         4,
         6,
@@ -2185,7 +2192,9 @@
           "could": 6,
           "needs": 4,
           "uncertain": 1,
-          "progress_checks": 0,
+          "no_rung": {
+            "progress_check": 0
+          },
           "up": 7,
           "up_to": 3
         },

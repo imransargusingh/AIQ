@@ -999,7 +999,37 @@ fn a_progress_check_has_no_rung_of_its_own_on_home() {
         serde_json::to_value(row).unwrap()["judgment"]["no_rung"].clone()
     };
     assert_eq!((sent(&check), sent(&work)), (serde_json::json!("progress_check"), serde_json::Value::Null));
-    assert_eq!((snap.home.judged, snap.home.uncertain, snap.home.progress_checks), (7, 0, 4));
+    assert_eq!((snap.home.judged, snap.home.uncertain, snap.home.no_rung.progress_checks), (7, 0, 4));
     assert_eq!(snap.home.rungs, [2, 1, 0, 0, 0], "a progress check is not counted as Assisted");
-    assert_eq!((c.split.tasks, c.split.uncertain, c.split.progress_checks), (3, 0, 4));
+    assert_eq!((c.split.tasks, c.split.uncertain, c.split.no_rung.progress_checks), (3, 0, 4));
+}
+
+/// Every count of analyzed tasks adds up, for the whole record and for each project: on a rung, unsure, or with
+/// no rung of its own. A project carries its own count of the last, sent as each reason's id with its count:
+/// Home on one project named every project's progress checks while its split named the project's own.
+#[test]
+fn a_project_counts_its_own_tasks_with_no_rung() {
+    let d = tempfile::tempdir().unwrap();
+    let p = Paths::at(d.path());
+    seed::no_rung(&p);
+    let snap = snap(&p);
+    assert!(snap.status.error.is_none(), "{:?}", snap.status.error);
+    let total = |c: aiq_domain::coach::NoRungCounts| c.each().iter().map(|(_, n)| n).sum::<u32>();
+    let h = &snap.home;
+    assert_eq!((h.judged, h.rungs.iter().sum::<u32>(), h.uncertain, total(h.no_rung)), (19, 16, 1, 2));
+    let by_project: Vec<(&str, u32, u32, u32, u32)> = snap
+        .projects
+        .iter()
+        .map(|p| (p.name.as_str(), p.judged, p.rungs.iter().sum(), p.uncertain, p.no_rung.progress_checks))
+        .collect();
+    assert_eq!(by_project, [("aiq", 15, 12, 1, 2), ("foresight", 4, 4, 0, 0)]);
+    for p in &snap.projects {
+        assert_eq!(p.no_rung, p.coaching.split.no_rung, "{}: Home's count and the split's are one count", p.name);
+    }
+    let sent = serde_json::to_value(&snap).unwrap();
+    let counts = serde_json::json!({ "progress_check": 2 });
+    assert_eq!(sent["home"]["no_rung"], counts);
+    assert_eq!(sent["coaching"]["split"]["no_rung"], counts);
+    assert_eq!(sent["projects"][0]["no_rung"], counts);
+    assert_eq!(sent["projects"][1]["no_rung"], serde_json::json!({ "progress_check": 0 }));
 }

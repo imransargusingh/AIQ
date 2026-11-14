@@ -1,5 +1,5 @@
 // Pure formatting and ordering helpers. No DOM, so vitest covers them directly.
-import type { NoRung, TaskRow } from "./types";
+import type { NoRung, NoRungCounts, TaskRow } from "./types";
 
 export const RUNGS: { name: string; means: string }[] = [
   { name: "Assisted", means: "You ask AI for answers or pieces, and you do the work." },
@@ -31,6 +31,14 @@ export const stateLabel = (s: string) => STATES[s] ?? s;
 export const NO_RUNG: Record<NoRung, { name: string; does: string }> = {
   progress_check: { name: "Progress check", does: "This checks on work already running" },
 };
+
+/** The tasks with no rung of their own as words for a count line ("2 progress checks"), each reason that has
+ *  any; empty when there are none. */
+export const noRungCounts = (c: NoRungCounts) =>
+  (Object.keys(NO_RUNG) as NoRung[])
+    .filter((why) => c[why] > 0)
+    .map((why) => plural(c[why], NO_RUNG[why].name.toLowerCase()))
+    .join(" and ");
 
 const TOOLS: Record<string, string> = { "claude-code": "Claude Code", "copilot-cli": "Copilot CLI", vscode: "VS Code" };
 export const toolName = (t: string) => TOOLS[t] ?? t;

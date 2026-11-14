@@ -17,7 +17,9 @@
     "tasks_in_window": 41,
     "judged": 40,
     "uncertain": 2,
-    "progress_checks": 0,
+    "no_rung": {
+      "progress_check": 0
+    },
     "rungs": [
       8,
       13,
@@ -3018,7 +3020,9 @@
       "could": 12,
       "needs": 10,
       "uncertain": 2,
-      "progress_checks": 0,
+      "no_rung": {
+        "progress_check": 0
+      },
       "up": 15,
       "up_to": 3
     },
@@ -3635,6 +3639,9 @@
       "tasks_in_window": 37,
       "judged": 36,
       "uncertain": 2,
+      "no_rung": {
+        "progress_check": 0
+      },
       "rungs": [
         8,
         9,
@@ -3675,7 +3682,9 @@
           "could": 8,
           "needs": 10,
           "uncertain": 2,
-          "progress_checks": 0,
+          "no_rung": {
+            "progress_check": 0
+          },
           "up": 11,
           "up_to": 3
         },
@@ -4199,6 +4208,9 @@
       "tasks_in_window": 4,
       "judged": 4,
       "uncertain": 0,
+      "no_rung": {
+        "progress_check": 0
+      },
       "rungs": [
         0,
         4,
@@ -4239,7 +4251,9 @@
           "could": 4,
           "needs": 0,
           "uncertain": 0,
-          "progress_checks": 0,
+          "no_rung": {
+            "progress_check": 0
+          },
           "up": 4,
           "up_to": 3
         },
