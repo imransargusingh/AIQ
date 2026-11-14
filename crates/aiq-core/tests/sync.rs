@@ -216,3 +216,79 @@ fn a_devbox_that_waits_before_choosing_still_sends_what_it_recorded_while_waitin
     pass(&mut laptop.store, &laptop.paths, &[], 70);
     assert_eq!(events(&laptop), ["dev-1", "dev-2"]);
 }
+
+#[test]
+fn a_computer_reached_only_through_another_one_still_reaches_everyone_and_gets_everything() {
+    // A chain: the laptop opens Devbox A over Remote Desktop, and Devbox A opens Devbox B. B sees only A's AIQ home,
+    // A sees only the laptop's, and the laptop sees nothing.
+    let mut laptop = computer();
+    let mut a = computer();
+    let mut b = computer();
+    prompt(&mut laptop, "lap-1", "draft the release notes", 10);
+    prompt(&mut a, "a-1", "fix the failing export test", 20);
+    prompt(&mut b, "b-1", "review the migration", 30);
+    let (lap_home, a_home) = (laptop.paths.data.clone(), a.paths.data.clone());
+    a.store.set_setting(SETTING_SYNC, "on", 40).unwrap();
+    b.store.set_setting(SETTING_SYNC, "on", 40).unwrap();
+
+    let mut t = 50;
+    let mut round = |laptop: &mut Computer, a: &mut Computer, b: &mut Computer| {
+        t += 10;
+        let sb = pass(&mut b.store, &b.paths, std::slice::from_ref(&a_home), t);
+        let sa = pass(&mut a.store, &a.paths, std::slice::from_ref(&lap_home), t + 1);
+        let sl = pass(&mut laptop.store, &laptop.paths, &[], t + 2);
+        for st in [&sb, &sa, &sl] {
+            assert!(st.errors.is_empty(), "{:?}", st.errors);
+        }
+        (sl, sa, sb)
+    };
+    // Each hop takes one pass: B -> A -> laptop, and the laptop's files back to A's folder, where B finds them.
+    round(&mut laptop, &mut a, &mut b);
+    round(&mut laptop, &mut a, &mut b);
+    let (sl, sa, sb) = round(&mut laptop, &mut a, &mut b);
+    let all = ["a-1", "b-1", "lap-1"];
+    assert_eq!(events(&laptop), all, "B's work reached the laptop through A");
+    assert_eq!(events(&a), all);
+    assert_eq!(events(&b), all, "the laptop's work reached B through A");
+    for st in [&sl, &sa, &sb] {
+        assert_eq!(st.peers.len(), 2, "every computer lists both others");
+        assert!(st.peers.iter().all(|p| p.state == "ok"), "{:?}", st.peers);
+    }
+
+    // New work keeps flowing along the chain, and nothing is applied twice.
+    prompt(&mut b, "b-2", "plan the sprint", 200);
+    round(&mut laptop, &mut a, &mut b);
+    round(&mut laptop, &mut a, &mut b);
+    assert_eq!(events(&laptop), ["a-1", "b-1", "b-2", "lap-1"]);
+}
+
+#[test]
+fn a_change_file_cut_short_is_never_passed_on_and_a_copy_cut_short_is_replaced() {
+    let mut laptop = computer();
+    let mut a = computer();
+    let mut b = computer();
+    prompt(&mut b, "b-1", "one", 10);
+    let (lap_home, a_home) = (laptop.paths.data.clone(), a.paths.data.clone());
+    a.store.set_setting(SETTING_SYNC, "on", 1).unwrap();
+    b.store.set_setting(SETTING_SYNC, "on", 1).unwrap();
+    pass(&mut b.store, &b.paths, std::slice::from_ref(&a_home), 2);
+    let b_id = b.store.device_id().unwrap();
+    let on_a = a_home.join("sync").join(&b_id).join("00000001.jsonl");
+    let good = std::fs::read_to_string(&on_a).unwrap();
+
+    // B's file on A is cut short (a write in place that stopped): A does not pass it on.
+    std::fs::write(&on_a, good.lines().next().unwrap()).unwrap();
+    pass(&mut a.store, &a.paths, std::slice::from_ref(&lap_home), 3);
+    let on_laptop = lap_home.join("sync").join(&b_id).join("00000001.jsonl");
+    assert!(!on_laptop.exists(), "half a file is never passed on");
+
+    // Whole again: passed on. A copy on the laptop cut short is replaced by the whole one.
+    std::fs::write(&on_a, &good).unwrap();
+    pass(&mut a.store, &a.paths, std::slice::from_ref(&lap_home), 4);
+    assert_eq!(std::fs::read_to_string(&on_laptop).unwrap(), good);
+    std::fs::write(&on_laptop, good.lines().next().unwrap()).unwrap();
+    pass(&mut a.store, &a.paths, std::slice::from_ref(&lap_home), 5);
+    assert_eq!(std::fs::read_to_string(&on_laptop).unwrap(), good);
+    pass(&mut laptop.store, &laptop.paths, &[], 6);
+    assert_eq!(events(&laptop), ["b-1"]);
+}

@@ -48,6 +48,10 @@ Imran ruled out running a relay server. So slice 1 moves files over the Remote D
 - **The meeting point is the laptop's AIQ home.** The computer inside the Remote Desktop session (the Devbox) copies
   its files into the laptop's `sync/<devbox id>/` and applies the laptop's files from `sync/<laptop id>/`. The
   laptop only reads its own folder. It needs no network, port or relay.
+- **More than two computers.** Each computer also passes on the other computers' whole change files it holds, both
+  ways: to the AIQ home it reaches, and from there into its own folder. So two Devboxes both opened from the laptop
+  meet in the laptop's folder, and a Devbox opened from another Devbox still reaches the laptop through it (one pass
+  per hop). Files are passed on, never rows; a file cut short is left for the next pass and never passed on.
 - **Apply exactly once, in order.** `sync_applied (peer, seq)` in the same transaction as the rows. A missing
   earlier file waits; a file cut short or unreadable is an error and is tried again; a file from a newer store
   format is held until this computer updates. Nothing is dropped or guessed.
