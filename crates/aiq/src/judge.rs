@@ -641,6 +641,7 @@ fn list_outdated(j: &JudgmentRow) -> Option<&'static str> {
         None => Some("no kind recorded"),
         Some("other") => Some("the kind other"),
         Some(k) if !aiq_contracts::judge::task_type_named(&j.job, k) => Some("a kind the list retired"),
+        Some(k) if rung::KINDS_REDEFINED.contains(&(j.job.as_str(), k)) => Some("a kind whose definition changed"),
         Some(_) => None,
     }
 }
