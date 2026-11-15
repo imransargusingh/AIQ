@@ -981,4 +981,15 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <p><code>PRAGMA query_only = ON</code>, as <code>Store::open_read_only</code> does.</p>
 <ul><li><strong>Control (test):</strong> <code>crates/aiq-store/tests/read_only_scripts.rs</code> fails on any investigation script that opens</li></ul>
 <p>the store <code>immutable=1</code> (red on the old <code>rung_groups.py</code>).</p>
-<ul><li><strong>Rule:</strong> a reader of a live SQLite store in WAL mode never opens it <code>immutable</code>. Read-only is <code>mode=ro</code>.</li></ul></main></body></html>
+<ul><li><strong>Rule:</strong> a reader of a live SQLite store in WAL mode never opens it <code>immutable</code>. Read-only is <code>mode=ro</code>.</li></ul>
+<h3>DC-091 — A file rewritten every pass, and a state that only looks one way</h3>
+<ul><li><strong>Signature:</strong> 2026-11-15, Imran&#x27;s laptop on 0.1.67. (a) <code>sync rename refused; writing in place</code></li></ul>
+<p>(<code>AIQ-SYNC-WRITE</code>, os error 5) four times in 41 minutes while sync said ok. Each pass rewrote <code>computer.json</code> and <code>sync-status.json</code> only to move a time stamp. Windows refuses a rename over a file another program holds open without delete sharing, and the Devbox reads both files through Remote Desktop&#x27;s drive link every minute. Which file was refused is Inferred: the warning did not name it. (b) The second Devbox, still on 0.1.61 (store format 12), showed &quot;ok&quot; on the laptop for 28 h. It could not take the laptop&#x27;s format-13 files, and only the computer holding the newer files could tell.</p>
+<ul><li><strong>Why it survives:</strong> tests run on Linux, where a rename over an open file always works. Format skew was tested</li></ul>
+<p>only from the side that receives newer files (<code>update</code>), never from the side that sends them.</p>
+<ul><li><strong>Sweep:</strong> every <code>write_whole</code> in <code>sync.rs</code>. Change files are new names (written once); relayed copies of</li></ul>
+<p><code>computer.json</code> were already written only when newer. Both every-pass rewrites now go through <code>write_if_changed</code>. Peer states: <code>known_peers</code> (out of reach) keeps <code>away</code>; only reached computers can be compared.</p>
+<ul><li><strong>Control (tests):</strong> <code>a_pass_with_nothing_new_rewrites_neither_computer_json_nor_the_status_file</code>,</li></ul>
+<p><code>a_computer_on_an_older_store_format_shows_behind_until_it_updates</code> (both red before), <code>a_file_written_in_place_is_named_on_the_pass_line_and_not_warned_about</code>, <code>computer_json_is_rewritten_only_when_what_it_says_changes</code>, and the Settings e2e line for an older AIQ.</p>
+<ul><li><strong>Rule:</strong> a file another computer reads is written only when its meaning changes. A version or format check</li></ul>
+<p>looks both ways: &quot;they are newer&quot; and &quot;they are older&quot;.</p></main></body></html>
