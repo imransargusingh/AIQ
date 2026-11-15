@@ -4,7 +4,7 @@
 // judged yet" (design rung-judge); "Day" is the Day view. States other than a plain judgment carry a text label
 // (Uncertain, Right rung, Capped by a blocker), never colour alone.
 import { useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { jobName, jobOf, jobOptions, perWeekShort, plural, rungLabel, sortTasks, stateLabel, toolName, when, type Dir, type SortKey } from "../format";
+import { NO_RUNG, jobName, jobOf, jobOptions, perWeekShort, plural, rungLabel, sortTasks, stateLabel, toolName, when, type Dir, type SortKey } from "../format";
 import { KIND_STATE } from "../coach";
 import { Banners, Chip, ProjectPicker, Rung, Title, type Ctx } from "../ui";
 import { projectName, projectOf } from "../project";
@@ -155,8 +155,8 @@ export function Tasks({ start, ...ctx }: Ctx & { start?: View }) {
                     {t.judgment?.task_type_label && <span className="meta"> · {t.judgment.task_type_label}</span>}
                   </td>
                   <td className={t.judgment ? undefined : "mute"}>
-                    {t.judgment?.progress_check ? (
-                      "Progress check"
+                    {t.judgment?.no_rung ? (
+                      NO_RUNG[t.judgment.no_rung].name
                     ) : t.judgment ? (
                       <>
                         <Rung r={t.judgment.current} />

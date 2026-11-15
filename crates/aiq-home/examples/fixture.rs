@@ -83,6 +83,16 @@ fn main() {
     c.status.read_ms = 12;
     write(&out, "coaching", &c);
 
+    // Tasks with no rung of their own among the coached ones: every view must show no rung for them.
+    let off = Paths::at(&tmp.join("no-rung"));
+    seed::no_rung(&off);
+    aiq_core::control::finish_setup(&off).unwrap();
+    let mut n = aiq_home::snapshot(&off, &pack, now);
+    n.status.core = true;
+    n.status.core_state = aiq_home::CoreState::Running;
+    n.status.read_ms = 12;
+    write(&out, "no-rung", &n);
+
     // Rung progress per kind of task: one up, one down, one the same, one too few (the success measure).
     let moving = Paths::at(&tmp.join("progress"));
     seed::progress(&moving);

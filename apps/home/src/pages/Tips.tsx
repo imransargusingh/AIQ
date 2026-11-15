@@ -75,7 +75,7 @@ export function habitsByRung(rows: HabitRow[], guide: GuideMove[]): RungGroup[] 
 export const changesFor = (h: Habit, all: HabitChange[]): HabitChange[] =>
   all.filter((x) => h.moves.includes(`${x.job}/${x.move_id}`));
 
-/** "↑ Growing in Adding a feature: 2 of 12 tasks, now 9 of 14". */
+/** "↑ Growing in Building or adding a feature: 2 of 12 tasks, now 9 of 14". */
 export const changeText = (x: HabitChange): string =>
   `${x.dir === "up" ? "↑ Growing" : "↓ Less often lately"} in ${x.label}: ${x.earlier_seen} of ${plural(x.earlier_eligible, "task")}, now ${x.recent_seen} of ${x.recent_eligible}`;
 

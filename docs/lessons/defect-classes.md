@@ -1415,7 +1415,129 @@ summary: >-
   `a_change_file_cut_short_is_never_passed_on_and_a_copy_cut_short_is_replaced`.
 - **Rule:** a feature that joins parties is tested with three, in the worst shape the transport allows.
 
-### DC-080 — Hover text inside a scrolling box, cut off by the box
+### DC-080 — A new answer the analysis may give re-opens a decision an older rule already took
+- **Signature:** 2026-11-14, building the re-cut kinds list (design kinds-recut). The list gives progress checks a
+  kind of their own, "Checking on progress". #294, merged the same day, took progress checks off the ladder by the
+  words of the first prompt. With the new kind and the rule unchanged, a Home snapshot test showed the kind's row
+  reading "coach": three such tasks in 30 days would be coached and counted as Assisted, which #294 took out. Found
+  on the branch, before the merge.
+- **Why it survives:** the rule read words because words were the only signal when it was written. The list change
+  added a second signal for the same thing, and nothing ties a kind to the rules about what it names.
+- **Sweep:** every new or widened kind against every rule that keeps a task off the ladder or out of coaching.
+  `progress`: fixed here. `run_ship/release`: the release-notice decision (kinds-recut K10) has the same shape and is
+  not built yet. `review`, `plan`, `deck`, `source_control`: no such rule. Not covered: a tip at task start is
+  decided before any analysis exists, so it reads neither signal (kinds-recut, "Gaps that stay open").
+- **Control (tests):** `a_task_the_analysis_names_checking_on_progress_is_a_progress_check_whatever_its_words`
+  (domain); `a_progress_check_has_no_rung_of_its_own_on_home` (Home snapshot; red with the kind ignored: the row
+  read `("progress", "coach")`).
+- **Rule:** when the analysis gains an answer for something a rule already handles, the rule reads that answer in
+  the same change.
+
+### DC-081 — A gate on a recording that only a clean sample can pass
+- **Signature:** 2026-11-14. The `label-3` recording held 1 answer in 134 that the strict parse refuses (a kind from
+  another job's list). `label_replay_gate` asserted that every recorded answer parses, so the honest recording was
+  red. The only ways to green were to record again until no such answer showed, or to drop the assert.
+- **Why it survives:** the assert was written to catch a parser change that breaks recorded answers. It also
+  demanded that the model never give such an answer, which no recording can promise. Live, that answer is a lost
+  label.
+- **Sweep:** both replay gates. Label: the assert is now a floor (19 in 20 parse) and the recorded totals pin the
+  exact count, so a parser change still fails. Analysis (`replay_gate`): the same demand (`answered == calls` for
+  each case). Its `j7` recording holds no such answer (84 of 84 parse), so it is unchanged. If a recording ever
+  holds one, pin it the same way there.
+- **Control (gate):** `label_replay_gate`: the totals are equal, and `answered * 20 >= sent * 19`.
+- **Rule:** a gate on recorded answers pins what was measured. It never asks the sample to be clean.
+
+### DC-082 — A rename swept as text misses the pictures made from the data
+- **Signature:** 2026-11-14, the kinds re-cut. The sweep for old kind names covered every text file and the Home
+  test data. The README's screenshots are made from that test data (`npm run readme-shots`) and still read
+  "Adding a feature" and "Fixing a bug or failing test". Found after the pull request was opened, by reading the
+  script. The images were also four versions old (taken at 0.1.59).
+- **Why it survives:** a text search cannot read a picture, and no gate compares the README images with what Home
+  renders from the test data.
+- **Sweep:** every committed image: the nine README screenshots (six changed when retaken) and the app icons (no
+  text). The landing page holds no kind name, old or new; its one tip example names none.
+- **Control:** none automated yet. The change surfaces in design kinds-recut name the README screenshots. A gate
+  would save each shot's visible text beside it and have the screen tests compare it with today's render; that
+  makes every text change on those screens retake images, so it is a decision of its own and is not built here.
+- **Rule:** after a change to names people read, run the scripts that make pictures from the data, and open the
+  pictures.
+
+### DC-083 — A flag that takes a value off the screen, honoured only on the screens its author opened
+- **Signature:** 2026-11-14, preparing the release-notice rule (design kinds-recut K10, K11). #294 gave a progress
+  check "no rung of its own" with a yes-or-no flag. The rung, the next rung and the next step the analysis gave
+  stay in the record beside it. Home's counts, the task list and the task page's chip read the flag. The Day view
+  did not: it drew each progress check as an Assisted block, with "Assisted · could be Directed" on hover and
+  "Assisted" for a screen reader. The task page printed "Next step (Assisted → Directed)" under "AIQ won't coach on
+  it". Found by reading every reader of the rung before adding a second reason.
+- **Why it survives:** the record carries both the flag and the fields it is meant to hide, so each screen must
+  remember to ask. #294's tests asserted the read model. No test rendered a flagged task, so a screen that never
+  asked passed.
+- **Sweep:** every reader of a task's analyzed rung, next rung or next step. Right already: Home's ladder card and
+  split (the core's counts) with every project shown, the rung mix (`mix.ts`), the Day view's summaries (`day.ts`),
+  the task list cell, the task page's chip. Fixed here: the Day view's block, hover text and label, and the task
+  page's next step. A kind's page lists only the tasks the core gives it, and the core gives it none without a rung
+  (the Home snapshot test holds that). Outside Home, a stored rung is read only by the analysis's own log line and
+  the second-reader check, which report the analysis itself. This sweep opened each screen with every project
+  shown. With the Project picker on one project, Home's count was wrong: DC-084.
+- **Control (test):** e2e "a task with no rung of its own shows no rung on any screen" (three themes), on a fixture
+  the Rust read model writes (`no-rung`) whose tasks carry a rung, a next rung and a next step from the analysis. It
+  asserts the reason, and that no rung name shows, on Home, the task list, the Day view (block, hover text, label,
+  key) and the task page. Red before the fix, on the Day view. The flag is now one field that names the reason
+  (`no_rung`), so a second reason cannot be honoured on one screen and missed on another.
+- **Rule:** when a flag hides a field, keep a record that holds both in the test data, render it on every screen
+  that shows the field, and assert the field's words are absent.
+
+### DC-084 — A count added to the whole record, and not to the part that replaces it under a filter
+- **Signature:** 2026-11-14, drafting the count of release notices (design kinds-recut K12). #294 added the count
+  of progress checks to Home's numbers and to the split. Each project carries its own split, and did not carry
+  this number of Home's. The Project picker (`scoped`) builds one project's Home from every project's Home and
+  swaps in the numbers the project has: a number the project lacks stays every project's. Home on a project with
+  no progress check read "4 tasks analyzed in 30 days · 2 progress checks, not on a rung", above a split that
+  named none. Its analyzed tasks did not add up: 4 on a rung and 2 with no rung, of 4.
+- **Why it survives:** the swap starts from the whole and overrides what it knows, so a missing number shows a
+  plausible wrong one, never an error. The test data held progress checks in one project only, and no test opened
+  Home on the other. The sweep for DC-083 opened every screen, with every project shown.
+- **Sweep:** each number of Home against what the picker swaps. Swapped: tasks, analyzed, unsure, per rung, most
+  common rung, imported, weeks, by tool. Every project's on purpose: tips today and Automated, not counted (the
+  screen says "Tips and Automated, not counted cover all projects"), and whether analysis is on, which is one
+  setting. The line that says how far analysis has got shows only with every project. Missed: this one count.
+- **Control (build):** the read model takes its tally apart in full, for Home and for each project (`read_in_tx`,
+  `coaching`), so a count added to the tally does not build until both carry it. The tasks with no rung are one
+  count by reason (`NoRungCounts`) wherever the unsure count is, so a second reason adds no number to forget.
+- **Control (tests):** `project.test.ts`: the picker swaps in every number a project carries under one of Home's
+  names (read from the fixture the Rust read model writes), and each project's analyzed tasks add up: on a rung,
+  unsure, or with no rung. Home snapshot `a_project_counts_its_own_tasks_with_no_rung`. e2e "one project's Home
+  counts only its own tasks with no rung". Red before the fix: the unit test read 6 against 4 analyzed, the
+  screen test read "2 progress checks" on the project with none.
+- **Rule:** a view built by overriding the whole with a part's numbers must fail when the part lacks one. Sweep
+  each screen under each filter, not only each screen.
+
+### DC-085 — A line that grows with the data sets a column's width, and the picture beside it is cut
+- **Signature:** 2026-11-14, wording the count of release notices for Home (design kinds-recut K13). Home's ladder
+  card was a grid whose label column took the width of its longest line, and the ladder got what was left. #294
+  added ", N progress checks, not on a rung" to the analysis line. Measured on the built app
+  (a script that opens Home at several widths and reads each box): at 1280 px with the test data the label took
+  499 px and the ladder 421, and the last rung ended past the card in every window 1180 px wide or narrower. With
+  the longest analysis line at a month's counts the label took 600 px, the ladder 320, and the last rung ended
+  70 px past the card at 1280 px. At 1000 px Orchestrated and Factory were out of view. A second reason on the same
+  line left the ladder 266 px at 1280 px.
+- **Why it survives:** nothing fails. `main` clips what passes its edge, so the checks that ask "does the page
+  scroll sideways" say no. Every screen test opened Home at 1280 px with counts of one or two digits.
+- **Sweep:** every grid in the stylesheet with a column sized by its content. Only this one held text that grows
+  with the data beside a picture. The others hold fixed words (a chart's rung names), a fixed set of weeks, or a
+  short number or button (read from the markup, not rendered one by one).
+- **Control (test):** e2e "Home's ladder keeps all five rungs in view at every window width, however long the
+  lines beside it": at 1280, 1100, 1000 and 760 px, with a month's counts and the longest analysis line, each
+  rung and the label end inside the card and `main` does not scroll sideways. Red before the fix, at 1280 px.
+- **Fix:** the tasks left out get one short line of their own ("Not on a rung: 12 unsure · 64 progress checks");
+  the label has a widest width and wraps inside it; the ladder sits beside the label while both fit and drops
+  below it when they don't.
+- **Rule:** text that grows with the data wraps inside its own box. Test a picture's edges against its card, at
+  several widths, with counts of real size: "the page does not scroll" does not see a clipped picture.
+
+### DC-086 — Hover text inside a scrolling box, cut off by the box
+- **Number:** recorded as DC-080 in #297 (audit al-01M7E2HE8B6CGRFVCYHFD4RGXQ). #296 had taken DC-080 to DC-085
+  first, on its own branch, so this entry became DC-086 when #296 took main in.
 - **Signature:** 2026-11-14, measured on the built app at 1280 px with the repo's fixtures: in the Tasks Day view,
   every hover text lost its third line (the rung) on a one-session day, and blocks near the right edge lost up to
   94 of 219 px. The Day view box has `overflow-x:auto` so the chart scrolls on a narrow window, and a scrolling box

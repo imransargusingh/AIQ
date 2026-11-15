@@ -17,7 +17,10 @@
     "tasks_in_window": 41,
     "judged": 40,
     "uncertain": 2,
-    "progress_checks": 0,
+    "no_rung": {
+      "progress_check": 0,
+      "release_notice": 0
+    },
     "rungs": [
       8,
       13,
@@ -134,7 +137,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "t3",
       "prompt_ms": [
@@ -176,7 +179,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "t2",
       "prompt_ms": [
@@ -218,7 +221,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "t1",
       "prompt_ms": [
@@ -247,7 +250,7 @@
         "potential_confidence": 0.85,
         "job": "code_change",
         "task_type": "fix_bug",
-        "task_type_label": "Fixing a bug or failing test",
+        "task_type_label": "Fixing a bug, test or build error",
         "coachable": false,
         "evidence": [
           "The agent wrote the tests."
@@ -260,7 +263,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "t0",
       "prompt_ms": [
@@ -302,7 +305,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "p16",
       "prompt_ms": [
@@ -343,7 +346,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "k0",
       "prompt_ms": [
@@ -384,7 +387,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "wb0",
       "prompt_ms": [
@@ -425,7 +428,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "p17",
       "prompt_ms": [
@@ -466,7 +469,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "p32",
       "prompt_ms": [
@@ -507,7 +510,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "k1",
       "prompt_ms": [
@@ -548,7 +551,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "p18",
       "prompt_ms": [
@@ -576,7 +579,7 @@
         "potential_confidence": 0.85,
         "job": "code_change",
         "task_type": "fix_bug",
-        "task_type_label": "Fixing a bug or failing test",
+        "task_type_label": "Fixing a bug, test or build error",
         "coachable": false,
         "evidence": [
           "The agent wrote the tests."
@@ -589,7 +592,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "p26",
       "prompt_ms": [
@@ -630,7 +633,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "p33",
       "prompt_ms": [
@@ -671,7 +674,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "k2",
       "prompt_ms": [
@@ -712,7 +715,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "wb1",
       "prompt_ms": [
@@ -753,7 +756,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "p19",
       "prompt_ms": [
@@ -794,7 +797,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "p20",
       "prompt_ms": [
@@ -822,7 +825,7 @@
         "potential_confidence": 0.85,
         "job": "code_change",
         "task_type": "fix_bug",
-        "task_type_label": "Fixing a bug or failing test",
+        "task_type_label": "Fixing a bug, test or build error",
         "coachable": false,
         "evidence": [
           "The agent wrote the tests."
@@ -835,7 +838,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "p27",
       "prompt_ms": [
@@ -876,7 +879,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "k3",
       "prompt_ms": [
@@ -917,7 +920,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "p21",
       "prompt_ms": [
@@ -958,7 +961,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "k4",
       "prompt_ms": [
@@ -999,7 +1002,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "p22",
       "prompt_ms": [
@@ -1027,7 +1030,7 @@
         "potential_confidence": 0.85,
         "job": "code_change",
         "task_type": "fix_bug",
-        "task_type_label": "Fixing a bug or failing test",
+        "task_type_label": "Fixing a bug, test or build error",
         "coachable": false,
         "evidence": [
           "The agent wrote the tests."
@@ -1040,7 +1043,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "p28",
       "prompt_ms": [
@@ -1081,7 +1084,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "k5",
       "prompt_ms": [
@@ -1122,7 +1125,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "p23",
       "prompt_ms": [
@@ -1150,7 +1153,7 @@
         "potential_confidence": 0.85,
         "job": "code_change",
         "task_type": "feature",
-        "task_type_label": "Adding a feature",
+        "task_type_label": "Building or adding a feature",
         "coachable": true,
         "evidence": [
           "The agent wrote the tests."
@@ -1163,7 +1166,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "p29",
       "prompt_ms": [
@@ -1204,7 +1207,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "p24",
       "prompt_ms": [
@@ -1245,7 +1248,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "k6",
       "prompt_ms": [
@@ -1286,7 +1289,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "p25",
       "prompt_ms": [
@@ -1314,7 +1317,7 @@
         "potential_confidence": 0.85,
         "job": "code_change",
         "task_type": "feature",
-        "task_type_label": "Adding a feature",
+        "task_type_label": "Building or adding a feature",
         "coachable": true,
         "evidence": [
           "The agent wrote the tests."
@@ -1327,7 +1330,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "p30",
       "prompt_ms": [
@@ -1368,7 +1371,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "k7",
       "prompt_ms": [
@@ -1409,7 +1412,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "k8",
       "prompt_ms": [
@@ -1437,7 +1440,7 @@
         "potential_confidence": 0.85,
         "job": "code_change",
         "task_type": "feature",
-        "task_type_label": "Adding a feature",
+        "task_type_label": "Building or adding a feature",
         "coachable": true,
         "evidence": [
           "The agent wrote the tests."
@@ -1450,7 +1453,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "p31",
       "prompt_ms": [
@@ -1491,7 +1494,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "k9",
       "prompt_ms": [
@@ -1532,7 +1535,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "k10",
       "prompt_ms": [
@@ -1560,7 +1563,7 @@
         "potential_confidence": 0.85,
         "job": "code_change",
         "task_type": "fix_bug",
-        "task_type_label": "Fixing a bug or failing test",
+        "task_type_label": "Fixing a bug, test or build error",
         "coachable": false,
         "evidence": [
           "The agent wrote the tests."
@@ -1573,7 +1576,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "k11",
       "prompt_ms": [
@@ -1601,7 +1604,7 @@
         "potential_confidence": 0.85,
         "job": "code_change",
         "task_type": "fix_bug",
-        "task_type_label": "Fixing a bug or failing test",
+        "task_type_label": "Fixing a bug, test or build error",
         "coachable": false,
         "evidence": [
           "The agent wrote the tests."
@@ -1614,7 +1617,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "k12",
       "prompt_ms": [
@@ -1642,7 +1645,7 @@
         "potential_confidence": 0.85,
         "job": "code_change",
         "task_type": "fix_bug",
-        "task_type_label": "Fixing a bug or failing test",
+        "task_type_label": "Fixing a bug, test or build error",
         "coachable": false,
         "evidence": [
           "The agent wrote the tests."
@@ -1655,7 +1658,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "k13",
       "prompt_ms": [
@@ -1696,7 +1699,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "k14",
       "prompt_ms": [
@@ -1737,7 +1740,7 @@
         "read_chars": 0,
         "read_actions": false,
         "versions": "fs1 · r1 · j2",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "k15",
       "prompt_ms": [
@@ -3018,7 +3021,10 @@
       "could": 12,
       "needs": 10,
       "uncertain": 2,
-      "progress_checks": 0,
+      "no_rung": {
+        "progress_check": 0,
+        "release_notice": 0
+      },
       "up": 15,
       "up_to": 3
     },
@@ -3124,7 +3130,7 @@
       {
         "job": "code_change",
         "task_type": "feature",
-        "label": "Adding a feature",
+        "label": "Building or adding a feature",
         "tasks": 3,
         "uncertain": 0,
         "per_week": 0.7,
@@ -3225,7 +3231,7 @@
       {
         "job": "code_change",
         "task_type": "fix_bug",
-        "label": "Fixing a bug or failing test",
+        "label": "Fixing a bug, test or build error",
         "tasks": 7,
         "uncertain": 0,
         "per_week": 1.6,
@@ -3249,7 +3255,7 @@
       {
         "job": "code_change",
         "task_type": "feature",
-        "label": "Adding a feature",
+        "label": "Building or adding a feature",
         "tasks": 3,
         "uncertain": 0,
         "per_week": 0.7,
@@ -3488,7 +3494,7 @@
       {
         "job": "code_change",
         "task_type": "fix_bug",
-        "label": "Fixing a bug or failing test",
+        "label": "Fixing a bug, test or build error",
         "recent": 7,
         "earlier": 3,
         "uncertain": 0,
@@ -3499,7 +3505,7 @@
       {
         "job": "code_change",
         "task_type": "feature",
-        "label": "Adding a feature",
+        "label": "Building or adding a feature",
         "recent": 3,
         "earlier": 3,
         "uncertain": 0,
@@ -3602,7 +3608,7 @@
       {
         "job": "code_change",
         "task_type": "feature",
-        "label": "Adding a feature",
+        "label": "Building or adding a feature",
         "rung": 2,
         "have": 2
       }
@@ -3635,6 +3641,10 @@
       "tasks_in_window": 37,
       "judged": 36,
       "uncertain": 2,
+      "no_rung": {
+        "progress_check": 0,
+        "release_notice": 0
+      },
       "rungs": [
         8,
         9,
@@ -3675,7 +3685,10 @@
           "could": 8,
           "needs": 10,
           "uncertain": 2,
-          "progress_checks": 0,
+          "no_rung": {
+            "progress_check": 0,
+            "release_notice": 0
+          },
           "up": 11,
           "up_to": 3
         },
@@ -3777,7 +3790,7 @@
           {
             "job": "code_change",
             "task_type": "feature",
-            "label": "Adding a feature",
+            "label": "Building or adding a feature",
             "tasks": 3,
             "uncertain": 0,
             "per_week": 0.7,
@@ -3845,7 +3858,7 @@
           {
             "job": "code_change",
             "task_type": "fix_bug",
-            "label": "Fixing a bug or failing test",
+            "label": "Fixing a bug, test or build error",
             "tasks": 7,
             "uncertain": 0,
             "per_week": 1.6,
@@ -3898,7 +3911,7 @@
           {
             "job": "code_change",
             "task_type": "feature",
-            "label": "Adding a feature",
+            "label": "Building or adding a feature",
             "tasks": 3,
             "uncertain": 0,
             "per_week": 0.7,
@@ -4137,7 +4150,7 @@
           {
             "job": "code_change",
             "task_type": "fix_bug",
-            "label": "Fixing a bug or failing test",
+            "label": "Fixing a bug, test or build error",
             "recent": 7,
             "earlier": 3,
             "uncertain": 0,
@@ -4148,7 +4161,7 @@
           {
             "job": "code_change",
             "task_type": "feature",
-            "label": "Adding a feature",
+            "label": "Building or adding a feature",
             "recent": 3,
             "earlier": 3,
             "uncertain": 0,
@@ -4199,6 +4212,10 @@
       "tasks_in_window": 4,
       "judged": 4,
       "uncertain": 0,
+      "no_rung": {
+        "progress_check": 0,
+        "release_notice": 0
+      },
       "rungs": [
         0,
         4,
@@ -4239,7 +4256,10 @@
           "could": 4,
           "needs": 0,
           "uncertain": 0,
-          "progress_checks": 0,
+          "no_rung": {
+            "progress_check": 0,
+            "release_notice": 0
+          },
           "up": 4,
           "up_to": 3
         },

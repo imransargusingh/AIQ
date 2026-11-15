@@ -138,12 +138,15 @@ flowchart LR
 
 | Job | Task types (id · label) |
 |---|---|
-| Code a change | `fix_bug` Fixing a bug or failing test · `feature` Adding a feature · `tests` Writing tests · `refactor` Refactoring or cleaning up · `build_fix` Fixing lint and build errors · `deps` Upgrading dependencies · `review` Reviewing code or a pull request · `explain` Explaining or exploring code · `scaffold` Setting up or scaffolding · `other` Other coding |
-| Write a spec or doc | `spec` Writing a spec or PRD · `design_note` Writing a design note · `status` Writing a status update · `criteria` Writing acceptance criteria · `research` Summarising research · `howto` Writing a README or how-to · `notes` Turning notes into a summary · `other` Other writing |
+| Code a change | `fix_bug` Fixing a bug, test or build error · `feature` Building or adding a feature · `tests` Writing tests · `refactor` Refactoring or cleaning up · `deps` Upgrading or migrating · `scaffold` Scaffolding or prototyping · `other` Other coding |
+| Write a spec or doc | `spec` Writing a spec or PRD · `design_note` Designing an architecture or plan · `status` Writing an update or announcement · `research` Summarising notes or research · `howto` Writing documentation or a how-to · `deck` Preparing a deck or presentation · `other` Other writing |
 
-Labels follow the mockup's Tasks page ("Writing unit tests", "Reviewing pull requests"). The list is a
-first guess (assume: it covers most of Imran's real tasks; confirm when `other` is under 25% of judged
-tasks in the first week; if not, the list is re-cut from the `other` tasks' judge evidence).
+Labels follow the mockup's Tasks page ("Writing unit tests", "Reviewing pull requests"). The list of
+record is `TASK_TYPES` in `crates/aiq-contracts/src/judge.rs`; the two rows above are today's (analysis
+version `j7`). The first list was a guess, marked to be confirmed when `other` was under 25% of analyzed
+tasks. It was not: measured 2026-11-14 on Imran's laptop, 150 of the 285 tasks analyzed in the last 30
+days (53%) had no named kind. So the list was re-cut from his tasks and published role studies: design
+[kinds-recut](kinds-recut.md) holds all four jobs, what changed and the measurement.
 
 ### Moves (one per rung step and fact; text is pack-written, never model-written)
 

@@ -79,6 +79,7 @@ h2{font:var(--t-heading);margin:0}
 p{margin:0}
 .meta{font:var(--t-caption);color:var(--ink-mute)}
 .mute{color:var(--ink-mute)}
+.nowrap{white-space:nowrap}
 .group{display:flex;flex-direction:column;gap:var(--s3)}
 .head{display:flex;justify-content:space-between;align-items:baseline;gap:var(--s4);flex-wrap:wrap}
 .top{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:var(--s5)}
@@ -140,9 +141,12 @@ kbd{font:var(--t-caption);border:1px solid var(--ink-mute);border-radius:var(--r
 .lc-pot{position:absolute;right:0;transform:translateY(calc(-100% - 2px));font:var(--t-caption);color:var(--ink-mute);white-space:nowrap}
 .lc-x{grid-column:2;position:relative;height:17px;font:var(--t-caption);color:var(--ink-mute)}
 .lc-x span{position:absolute;transform:translateX(-50%);white-space:nowrap}
-.mainrung{display:grid;grid-template-columns:auto minmax(0,1fr);gap:var(--s5);align-items:center}
-.mainrung .lbl{display:flex;flex-direction:column;gap:var(--s1)}
+/* The ladder sits beside its label while both fit and drops below it when they don't, so a long line of the label
+   wraps inside the label and never takes the ladder's width or pushes its last rungs out of view (DC-085). */
+.mainrung{display:flex;flex-wrap:wrap;gap:var(--s5);align-items:center}
+.mainrung .lbl{display:flex;flex-direction:column;gap:var(--s1);max-width:22rem}
 .mainrung .lbl .means{max-width:32ch}
+.mainrung .scale{flex:1 1 28rem}
 .scale{display:grid;grid-template-columns:repeat(5,1fr);gap:2px}
 .scale>span{display:flex;flex-direction:column;gap:var(--s2);font:var(--t-caption);color:var(--ink-mute);text-align:center}
 .scale>span::before{content:"";display:block;height:8px;border-radius:var(--r-sm);background:var(--canvas-soft);border:1px solid var(--hairline)}
@@ -327,6 +331,8 @@ li+li>.kindrow{border-top:1px solid var(--hairline)}
 .daysum{display:block;margin:0}
 .dv-none{background:repeating-linear-gradient(135deg,var(--canvas-soft) 0 3px,var(--hairline) 3px 5px)}
 .key i.dv-none,.key i[class^="dv-r"]{border:1px solid var(--hairline)}
+/* A task with no rung of its own: settled, so plain and outlined, where hatched means analysis is still to come. */
+.dv-off,.key i.dv-off{background:var(--canvas-soft);border-color:var(--ink-mute)}
 /* Hover text is fixed to the window (placed by DayView's placeTip), so the box's scrolling never clips it. */
 .dv .tip{display:none;position:fixed;top:0;left:0;z-index:20;pointer-events:none;white-space:nowrap;background:var(--surface);color:var(--ink);border:1px solid var(--hairline);
   border-radius:var(--r-sm);padding:var(--s2) var(--s3);font:var(--t-caption);box-shadow:var(--overlay);font-weight:400}

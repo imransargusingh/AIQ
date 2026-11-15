@@ -1519,7 +1519,7 @@ mod tips_tests {
         assert!(
             o.ends_with(
                 "  day 99  Writing tests reached Delegated (3): 3 tasks within 30 days  New\n  \
-                 day 80  Adding a feature moved up to Delegated (3) from Assisted (1): the typical rung of its last 30 days\n"
+                 day 80  Building or adding a feature moved up to Delegated (3) from Assisted (1): the typical rung of its last 30 days\n"
             ),
             "{o}"
         );
@@ -1566,7 +1566,7 @@ mod tips_tests {
             progress: vec![aiq_home::ProgressRow {
                 job: "code_change".into(),
                 task_type: "feature".into(),
-                label: "Adding a feature",
+                label: "Building or adding a feature",
                 recent: 15,
                 earlier: 12,
                 uncertain: 0,
@@ -1585,11 +1585,13 @@ mod tips_tests {
         };
         let o = render_progress(&c);
         assert!(
-            o.contains("Adding a feature [Code a change]: holding: Assisted (1) -> Delegated (3) is within chance"),
+            o.contains(
+                "Building or adding a feature [Code a change]: holding: Assisted (1) -> Delegated (3) is within chance"
+            ),
             "{o}"
         );
         assert!(o.contains("Moved up a rung: 0. Moved down: 0."), "{o}");
-        assert!(o.contains("Habits that changed, last 30 days against the 30 before (bigger than chance):\nGrowing\n  Adding a feature: Keep an instructions file in the repo and point to it\n    2 of 12 tasks before, 9 of 14 now\nLess often lately\n  Fixing a bug or failing test: Paste the error or name the files\n    9 of 12 tasks before, 4 of 15 now\n"), "{o}");
+        assert!(o.contains("Habits that changed, last 30 days against the 30 before (bigger than chance):\nGrowing\n  Building or adding a feature: Keep an instructions file in the repo and point to it\n    2 of 12 tasks before, 9 of 14 now\nLess often lately\n  Fixing a bug, test or build error: Paste the error or name the files\n    9 of 12 tasks before, 4 of 15 now\n"), "{o}");
         for w in ["judge", "watch", "monitor"] {
             assert!(!o.to_lowercase().contains(w), "{w} in {o}");
         }

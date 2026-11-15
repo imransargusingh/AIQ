@@ -33,7 +33,7 @@
       "read_chars": 160,
       "read_actions": true,
       "versions": "fs1 · r1 · j1",
-      "progress_check": false
+      "no_rung": null
     },
     "session": "cc1",
     "prompt_ms": [

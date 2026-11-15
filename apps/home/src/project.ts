@@ -16,6 +16,7 @@ export function scoped(s: Snapshot, key: string | null): Snapshot {
       tasks_in_window: p.tasks_in_window,
       judged: p.judged,
       uncertain: p.uncertain,
+      no_rung: p.no_rung,
       rungs: p.rungs,
       most_common_rung: p.most_common_rung,
       imported_in_window: p.imported_in_window,

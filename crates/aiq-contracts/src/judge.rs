@@ -50,45 +50,64 @@ pub const JOBS: [&str; 5] = ["code_change", "write_doc", "ask_research", "run_sh
 /// The fixed task types per pack job (design coaching-from-rungs, "Pack data"): (job, id, label). The judge
 /// answers one id; `other` within a job when unsure. Part of the answer contract, so the strict parse can
 /// reject anything else.
+///
+/// Re-cut 2026-11-14 against Imran's own tasks and published role studies (research "Task Kinds against real
+/// jobs"): 27 named kinds as before, 11 with the name they had, 11 reworded, 5 new (`deck`, `progress`,
+/// `review` under ask_research, `plan`, `source_control`), 5 retired (`RETIRED_TASK_TYPES`).
+///
+/// A label stays short: it is printed inside a tip and a milestone on the Copilot CLI status line, which cuts
+/// a long line. Two tests hold the room it has (aiq-core `pack.rs` for the tip line, `tests/milestone_note.rs`
+/// for the milestone); the longest label today is 35 characters.
 pub const TASK_TYPES: [(&str, &str, &str); 31] = [
-    ("code_change", "fix_bug", "Fixing a bug or failing test"),
-    ("code_change", "feature", "Adding a feature"),
+    ("code_change", "fix_bug", "Fixing a bug, test or build error"),
+    ("code_change", "feature", "Building or adding a feature"),
     ("code_change", "tests", "Writing tests"),
     ("code_change", "refactor", "Refactoring or cleaning up"),
-    ("code_change", "build_fix", "Fixing lint and build errors"),
-    ("code_change", "deps", "Upgrading dependencies"),
-    ("code_change", "review", "Reviewing code or a pull request"),
-    ("code_change", "explain", "Explaining or exploring code"),
-    ("code_change", "scaffold", "Setting up or scaffolding"),
+    ("code_change", "deps", "Upgrading or migrating"),
+    ("code_change", "scaffold", "Scaffolding or prototyping"),
     ("code_change", "other", "Other coding"),
     ("write_doc", "spec", "Writing a spec or PRD"),
-    ("write_doc", "design_note", "Writing a design note"),
-    ("write_doc", "status", "Writing a status update"),
-    ("write_doc", "criteria", "Writing acceptance criteria"),
-    ("write_doc", "research", "Summarising research"),
-    ("write_doc", "howto", "Writing a README or how-to"),
-    ("write_doc", "notes", "Turning notes into a summary"),
+    ("write_doc", "design_note", "Designing an architecture or plan"),
+    ("write_doc", "status", "Writing an update or announcement"),
+    ("write_doc", "research", "Summarising notes or research"),
+    ("write_doc", "howto", "Writing documentation or a how-to"),
+    ("write_doc", "deck", "Preparing a deck or presentation"),
     ("write_doc", "other", "Other writing"),
     // Ask or research (Imran 2026-11-02, card: 9 of his first 10 real tasks were questions or research).
     ("ask_research", "how_to", "Asking how to do something"),
-    ("ask_research", "explain", "Understanding how something works"),
-    ("ask_research", "troubleshoot", "Finding the cause of a problem"),
+    ("ask_research", "explain", "Understanding code or a concept"),
+    ("ask_research", "troubleshoot", "Investigating a bug or problem"),
     ("ask_research", "compare", "Comparing options"),
     ("ask_research", "find", "Looking up a fact"),
     ("ask_research", "research", "Researching a topic"),
     // "Analyze data" (Imran 2026-11-08, after a 60-task check passed 8/10 on data and non-data tasks): the
     // outcome is a number, table, chart or trend computed from data; "find" is one fact.
     ("ask_research", "analyse", "Analyzing data"),
+    ("ask_research", "progress", "Checking on progress"),
+    ("ask_research", "review", "Reviewing code or other work"),
+    ("ask_research", "plan", "Planning or brainstorming"),
     ("ask_research", "other", "Other questions"),
     // Run or ship it (Imran 2026-11-02, card: most tasks no pack covered were restart, release or set-up work).
     ("run_ship", "restart_fix", "Getting something running again"),
     ("run_ship", "release", "Releasing or publishing"),
-    ("run_ship", "run_job", "Running a script or pipeline"),
+    ("run_ship", "run_job", "Running an app, script or pipeline"),
     ("run_ship", "setup", "Setting up or connecting a tool"),
+    ("run_ship", "source_control", "Committing, merging or syncing code"),
     ("run_ship", "other", "Other running or shipping"),
 ];
 
-/// Every task-type id the answer may carry (the union over jobs, `other` once).
+/// Kinds an earlier list offered and today's does not, each folded into a neighbour. A stored task shows the
+/// kind it was given until it is analyzed again (once, for a retired kind: `aiq` `list_outdated`), so its label
+/// still resolves (`task_type_label`); a new answer may not name one (`task_type_offered`).
+pub const RETIRED_TASK_TYPES: [(&str, &str, &str); 5] = [
+    ("code_change", "build_fix", "Fixing lint and build errors"),
+    ("code_change", "review", "Reviewing code or a pull request"),
+    ("code_change", "explain", "Explaining or exploring code"),
+    ("write_doc", "criteria", "Writing acceptance criteria"),
+    ("write_doc", "notes", "Turning notes into a summary"),
+];
+
+/// Every task-type id a new answer may carry (the union over jobs, `other` once).
 pub fn task_type_ids() -> Vec<&'static str> {
     let mut v: Vec<&'static str> = Vec::new();
     for (_, id, _) in TASK_TYPES {
@@ -99,9 +118,20 @@ pub fn task_type_ids() -> Vec<&'static str> {
     v
 }
 
-/// The label of a task type within a job. None when the pair is not on the list.
+/// The label of a task type within a job, for a kind on today's list or a retired one (stored tasks carry
+/// both). None when the pair was never on a list.
 pub fn task_type_label(job: &str, id: &str) -> Option<&'static str> {
-    TASK_TYPES.iter().find(|(j, i, _)| *j == job && *i == id).map(|(_, _, l)| *l)
+    TASK_TYPES.iter().chain(&RETIRED_TASK_TYPES).find(|(j, i, _)| *j == job && *i == id).map(|(_, _, l)| *l)
+}
+
+/// Whether a new answer may name this kind for this job: only a pair on today's list.
+pub fn task_type_offered(job: &str, id: &str) -> bool {
+    TASK_TYPES.iter().any(|(j, i, _)| *j == job && *i == id)
+}
+
+/// Whether the pair is a named kind on today's list: offered for the job, and not the job's `other`.
+pub fn task_type_named(job: &str, id: &str) -> bool {
+    id != "other" && task_type_offered(job, id)
 }
 
 fn fact(desc: &str) -> serde_json::Value {
@@ -346,6 +376,50 @@ mod tests {
         assert_eq!(task_type_label("write_doc", "spec"), Some("Writing a spec or PRD"));
         assert_eq!(task_type_label("write_doc", "tests"), None, "type must belong to the job");
         assert_eq!(task_type_ids().iter().filter(|i| **i == "other").count(), 1);
+    }
+
+    #[test]
+    fn the_list_has_27_named_kinds_and_a_retired_kind_keeps_its_label_but_is_not_offered() {
+        assert_eq!(TASK_TYPES.iter().filter(|(_, id, _)| *id != "other").count(), 27);
+        for (job, id) in [
+            ("write_doc", "deck"),
+            ("ask_research", "progress"),
+            ("ask_research", "review"),
+            ("ask_research", "plan"),
+            ("run_ship", "source_control"),
+        ] {
+            assert!(task_type_offered(job, id), "{job} {id}");
+            assert!(parse_response(with_kind(job, id)).is_ok(), "{job} {id}");
+        }
+        for (job, id, label) in RETIRED_TASK_TYPES {
+            assert!(!task_type_offered(job, id), "{job} {id}");
+            assert_eq!(task_type_label(job, id), Some(label), "a stored task keeps its kind's name");
+        }
+        // An id no job offers any more is refused at the parse; one that moved jobs is refused at placement.
+        for id in ["build_fix", "criteria", "notes"] {
+            assert!(!task_type_ids().contains(&id), "{id}");
+            assert!(parse_response(with_kind("code_change", id)).is_err(), "{id}");
+        }
+        assert!(task_type_ids().contains(&"review") && !task_type_offered("code_change", "review"));
+        // A named kind is one today's list offers for the job, and never `other`.
+        assert!(task_type_named("ask_research", "review") && task_type_named("code_change", "fix_bug"));
+        for (job, id) in
+            [("code_change", "other"), ("code_change", "review"), ("write_doc", "notes"), ("unclassified", "fix_bug")]
+        {
+            assert!(!task_type_named(job, id), "{job} {id}");
+        }
+        // No (job, id) pair is on both lists, and none twice.
+        let mut seen = std::collections::HashSet::new();
+        for (job, id, _) in TASK_TYPES.iter().chain(&RETIRED_TASK_TYPES) {
+            assert!(seen.insert((job, id)), "{job} {id} listed twice");
+        }
+    }
+
+    fn with_kind(job: &str, id: &str) -> serde_json::Value {
+        let mut v = good();
+        v["job"] = serde_json::json!(job);
+        v["task_type"] = serde_json::json!(id);
+        v
     }
 
     #[test]

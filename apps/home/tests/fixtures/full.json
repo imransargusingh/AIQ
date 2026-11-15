@@ -17,7 +17,10 @@
     "tasks_in_window": 7,
     "judged": 3,
     "uncertain": 1,
-    "progress_checks": 0,
+    "no_rung": {
+      "progress_check": 0,
+      "release_notice": 0
+    },
     "rungs": [
       0,
       1,
@@ -157,7 +160,7 @@
         "read_chars": 160,
         "read_actions": true,
         "versions": "fs1 · r1 · j1",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "cc1",
       "prompt_ms": [
@@ -218,7 +221,7 @@
         "read_chars": 160,
         "read_actions": true,
         "versions": "fs1 · r1 · j1",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "cp1",
       "prompt_ms": [
@@ -294,7 +297,7 @@
         "read_chars": 160,
         "read_actions": true,
         "versions": "fs1 · r1 · j1",
-        "progress_check": false
+        "no_rung": null
       },
       "session": "imp1",
       "prompt_ms": [
@@ -635,7 +638,10 @@
       "could": 0,
       "needs": 2,
       "uncertain": 1,
-      "progress_checks": 0,
+      "no_rung": {
+        "progress_check": 0,
+        "release_notice": 0
+      },
       "up": 1,
       "up_to": 3
     },
@@ -704,6 +710,10 @@
       "tasks_in_window": 2,
       "judged": 1,
       "uncertain": 0,
+      "no_rung": {
+        "progress_check": 0,
+        "release_notice": 0
+      },
       "rungs": [
         0,
         1,
@@ -744,7 +754,10 @@
           "could": 0,
           "needs": 1,
           "uncertain": 0,
-          "progress_checks": 0,
+          "no_rung": {
+            "progress_check": 0,
+            "release_notice": 0
+          },
           "up": 1,
           "up_to": 3
         },
@@ -797,6 +810,10 @@
       "tasks_in_window": 4,
       "judged": 2,
       "uncertain": 1,
+      "no_rung": {
+        "progress_check": 0,
+        "release_notice": 0
+      },
       "rungs": [
         0,
         0,
@@ -837,7 +854,10 @@
           "could": 0,
           "needs": 1,
           "uncertain": 1,
-          "progress_checks": 0,
+          "no_rung": {
+            "progress_check": 0,
+            "release_notice": 0
+          },
           "up": 0,
           "up_to": null
         },
@@ -890,6 +910,10 @@
       "tasks_in_window": 1,
       "judged": 0,
       "uncertain": 0,
+      "no_rung": {
+        "progress_check": 0,
+        "release_notice": 0
+      },
       "rungs": [
         0,
         0,
@@ -930,7 +954,10 @@
           "could": 0,
           "needs": 0,
           "uncertain": 0,
-          "progress_checks": 0,
+          "no_rung": {
+            "progress_check": 0,
+            "release_notice": 0
+          },
           "up": 0,
           "up_to": null
         },

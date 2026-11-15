@@ -140,9 +140,10 @@ Coverage falls to about a quarter of new tasks (19 of 78). Word guesses and the 
 | No troubleshoot labels (0.1.22) | 8 of 10 | 13 of 29 |
 | No `ask_research` labels | 4 of 4 | 12 of 15 |
 
-Controls: `evals/label/golden.json` (59 synthetic first prompts) with recorded answers in `replay.json`
-(`label_replay_gate`: a prompt change without a version bump and new recording fails; confident labels must
-stay at 8 in 10 and cover a third of the set). `evals/label/measured.json` replays the real measured labels
+Controls: `evals/label/golden.json` (67 synthetic first prompts since set `l2`, 59 before) with recorded
+answers in `replay.json` (`label_replay_gate`: a prompt change without a version bump and new recording
+fails; at least 19 in 20 recorded answers must parse; confident labels must stay at 8 in 10 and cover a
+third of the set). `evals/label/measured.json` replays the real measured labels
 (hashed ids, no text) through today's `accept` (`measured_labels_clear_the_bar`). `aiq label --eval` prints
 whether the bar is cleared, names each miss, and exits 3 under the bar.
 
@@ -168,7 +169,7 @@ What changed:
 1. **The person's own words** (`text::own_words`). The label and the word guess read the person's message inside a
    Projects `<wake>` envelope, not the envelope itself.
 2. **Coach by job** (`label::accept`, `coach::job_rows`). A label coaches when its job is sure. A sure kind words the
-   tip ("fixing a bug or failing test"), and an unsure kind words it by the job ("changing code"). The kind's own
+   tip ("fixing a bug, test or build error"), and an unsure kind words it by the job ("changing code"). The kind's own
    row still decides when it has enough tasks, and a kind at its right rung, blocked or flagged is never
    overruled by its job.
 3. **The next habit when one is adopted** (`coach::adopted`). The rows skip a habit the person already adopted
@@ -188,6 +189,45 @@ What changed:
 Not built: rules that name the job from what the agent did (56% on imported tasks, under the bar), and tips
 corrected by the person as an answer key ("This doesn't fit" names a habit and a kind, not the task, so it can't
 mark a label wrong without a store change).
+
+## The re-cut kinds list (label-3, 2026-11-14)
+
+The kinds list was re-cut on 2026-11-14 (design [kinds-recut](kinds-recut.md)). The label's system text is cut
+from `rung::SYSTEM`, so it changed with the list: `PROMPT_VERSION` is `label-3`. Past tasks are not labelled
+again; a label reads only a new task. The golden set is `l2`: the 59 prompts of `l1`, 8 of them relabelled for
+the new list, plus 8 new prompts, one per new or widened kind. The labels were set from the list's definitions
+before any answer was recorded.
+
+Measured 2026-11-14 in the cloud, on the synthetic prompts only: `claude-haiku-5-5` through Claude Code, 2 runs,
+134 calls, the same tool and model as the `label-2` recording of 2026-11-08. The recording (20:42Z) is
+`replay.json`. A second run (21:25Z), the same in every way, measured how much the totals move between runs.
+
+On the 59 prompts both sets hold (118 answers):
+
+| Measure | `label-2` on `l1` | `label-3`, the recording | `label-3`, second run |
+| --- | --- | --- | --- |
+| Answers that parse | 118 | 117 | 118 |
+| Job right | 112 | 109 | 112 |
+| Kind right | 108 | 102 | 105 |
+| Confident, all with the right job | 49 | 50 | 52 |
+
+The 8 new prompts: job and kind right in all 16 answers of both runs; 8 and 10 of them confident.
+
+- **The bar that lets a label coach held.** Every confident label named the right job: 58 of 58 in the
+  recording, 62 of 62 in the second run.
+- **Run-to-run movement.** Between the two `label-3` runs, 4 of the 67 prompts got a different verdict (g-h15,
+  g-o01, p04, p17). Job right and kind right each moved by 3, and the confident count by 4. So the fall in job
+  right (112 to 109) is inside that movement: the second run gives 112.
+- **What the list did.** Two prompts miss their kind in both runs, with the job right. g-h10, a migration
+  carried out from a spec, reads as `feature`, which now covers carrying out a build plan. g-r04, a tool setup
+  that edits a config file, reads as `code_change`, where no setup kind exists, so its kind is `other`. The
+  causes are Inferred from the new wording (the wider `feature` line, and the fixed order that puts changed
+  code or config first); no run without those lines tested them. One prompt gained: p12 can no longer name the
+  retired `notes`. Labels coach by job, so none of these changes a tip.
+- **A kind from another job's list.** One answer in the recording named `write_doc` with `analyse`. The strict
+  parse refuses it, so live that label is lost and the task gets no tip from a label. The gate asked that every
+  recorded answer parse. It now asks for 19 in 20, and the recorded totals pin the exact count (defect class
+  DC-081). The second run held no such answer.
 
 ## Instrumentation
 

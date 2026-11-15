@@ -5,8 +5,8 @@
 import { api } from "../api";
 import { HabitChangeLine, LadderMap, MilestoneLine, NextSteps, RungMix, judgedBy, moved, pct } from "../coach";
 import { DAY, rungCounts, shift } from "../mix";
-import { RUNGS, day, folderName, plural, sentence, shortDay, shortPath, toolName, when } from "../format";
-import { AccuracyPaused, Banners, ProjectPicker, Rung, RungNo, Title, UpdateLine, type Ctx } from "../ui";
+import { RUNGS, day, folderName, leftOut, plural, sentence, shortDay, shortPath, toolName, when } from "../format";
+import { AccuracyPaused, Banners, LeftOut, ProjectPicker, Rung, RungNo, Title, UpdateLine, type Ctx } from "../ui";
 import type { SetAside } from "../types";
 import { RightNow } from "./RightNow";
 import { DroughtNote } from "../funnel";
@@ -45,6 +45,8 @@ export function Home(ctx: Ctx) {
   const ready = sp.tasks >= c.split_min;
   const f = pct(sp.finished, sp.tasks);
   const fc = pct(sp.finished + sp.could, sp.tasks);
+  // The analyzed tasks left out of the rungs, and of the split: the unsure ones and those with no rung of their own.
+  const [off, spOff] = [leftOut(h.uncertain, h.no_rung), leftOut(sp.uncertain, sp.no_rung)];
   const by = judgedBy(snap.tasks);
   const one = ctx.project === null ? undefined : snap.projects.find((p) => p.key === ctx.project);
   return (
@@ -83,9 +85,12 @@ export function Home(ctx: Ctx) {
           <span className="meta">
             {(ctx.project === null && h.analysis.state !== "blocked" && analysisLine(h.analysis)) ||
               (h.judged > 0 ? `${plural(h.judged, "task")} analyzed in ${h.window_days} days` : "No task analyzed yet")}
-            {h.uncertain > 0 && ` · ${h.uncertain} unsure, not on a rung`}
-            {h.progress_checks > 0 && ` · ${plural(h.progress_checks, "progress check")}, not on a rung`}
           </span>
+          {off.length > 0 && (
+            <span className="meta">
+              <LeftOut lead="Not on a rung:" items={off} />
+            </span>
+          )}
           {mc && <span className="meta means">{RUNGS[mc - 1].means}</span>}
         </div>
         <div className="scale counted" aria-hidden="true">
@@ -127,9 +132,12 @@ export function Home(ctx: Ctx) {
               <p className="meta">
                 {sp.finished} of {plural(sp.tasks, "analyzed task")} finished by agents
                 {sp.could > 0 && <> · {sp.could} could be</>} · {sp.needs} need you
-                {sp.uncertain > 0 && <> · {sp.uncertain} unsure, not counted</>}
-                {sp.progress_checks > 0 && <> · {plural(sp.progress_checks, "progress check")}, not counted</>}
               </p>
+              {spOff.length > 0 && (
+                <p className="meta">
+                  <LeftOut lead="Not counted:" items={spOff} />
+                </p>
+              )}
             </>
           ) : (
             <AnalysisCard {...ctx} />

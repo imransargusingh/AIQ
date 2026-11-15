@@ -227,6 +227,7 @@ export interface Project {
   tasks_in_window: number;
   judged: number;
   uncertain: number;
+  no_rung: NoRungCounts;
   rungs: [number, number, number, number, number];
   most_common_rung: number | null;
   imported_in_window: number;
@@ -274,8 +275,8 @@ export interface Home {
   judged: number;
   /** Judged Uncertain: shown, never coached, not in `rungs`. */
   uncertain: number;
-  /** Judged progress checks on work already running: no rung of their own, not in `uncertain` or `rungs`. */
-  progress_checks: number;
+  /** Judged tasks with no rung of their own, by reason: not in `uncertain` or `rungs`. */
+  no_rung: NoRungCounts;
   /** Judged, not-Uncertain tasks per current rung; index 0 = Assisted. */
   rungs: [number, number, number, number, number];
   most_common_rung: number | null;
@@ -348,14 +349,22 @@ export interface TaskJudgment {
   versions: string;
   task_type: string | null;
   task_type_label: string | null;
-  /** Only checks on work already running: no rung of its own, never coached. */
-  progress_check: boolean;
+  /** Why the task has no rung of its own and is never coached; null when it keeps its rung. `current`, `potential`
+   *  and `state` keep what the analysis said, so no view may show them for such a task. */
+  no_rung: NoRung | null;
 }
+
+/** Why a task has no rung of its own (the ids of aiq-domain `coach::NoRung`). */
+export type NoRung = "progress_check" | "release_notice";
+
+/** How many tasks have no rung of their own, by reason (aiq-domain `coach::NoRungCounts`). Home, each project
+ *  and the split carry one beside their `uncertain` count. */
+export type NoRungCounts = Record<NoRung, number>;
 
 /** Coaching from rung results (design coaching-from-rungs). Every number is derived from judgments. */
 export interface Coaching {
   /** up: not finished, with a next step at least one rung up; up_to: the rung those steps reach most often. */
-  split: { tasks: number; finished: number; could: number; needs: number; uncertain: number; progress_checks: number; up: number; up_to: number | null };
+  split: { tasks: number; finished: number; could: number; needs: number; uncertain: number; no_rung: NoRungCounts; up: number; up_to: number | null };
   /** The split shows with at least this many judged, not-Uncertain tasks. */
   split_min: number;
   /** The rule shown under "Tasks agents finished". */

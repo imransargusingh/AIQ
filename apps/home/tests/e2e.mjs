@@ -83,7 +83,7 @@ const pages = [
 ];
 
 await test("contract: fixtures are aiq.home.v1 snapshots from the Rust read model", async () => {
-  for (const f of ["full", "down", "paused", "empty", "first-run", "coaching", "progress", "live", "live-many", "tour"]) {
+  for (const f of ["full", "down", "paused", "empty", "first-run", "coaching", "progress", "live", "live-many", "tour", "no-rung"]) {
     const s = JSON.parse(readFileSync(join(fixtures, `${f}.json`), "utf8"));
     assert.equal(s.schema, "aiq.home.v1");
     for (const k of ["status", "home", "tasks", "tips", "data", "settings", "setup", "coaching"]) assert.ok(k in s, `${f}: ${k}`);
@@ -133,11 +133,11 @@ await test("Home shows analyzed rungs, progress toward the split, and only measu
   assert.match(t, /Tasks agents finished\s+Analyzing your tasks\s+3 of 6 analyzed · about 500 a day, all by today/);
   assert.match(t, /Nothing to do\. AIQ works in the background, newest first\./);
   assert.match(t, /So far, from 2 tasks: mostly Directed/);
-  assert.match(t, /How much agents finish shows here from 10 analyzed tasks \(2 so far; 1 task AIQ isn't sure about doesn't count\)/);
+  assert.match(t, /How much agents finish shows here from 10 analyzed tasks \(2 so far; not counted: 1 unsure\)/);
   await page.getByText("How AIQ counts").click();
   assert.match(await page.locator("details.how").innerText(), /7 tasks in the last 30 days · 1 imported task/);
   assert.doesNotMatch(t, /\d+%/, "no percentages under 10 analyzed tasks");
-  assert.match(t, /Your most common rung\s+Directed\s+1 of 2 tasks on a rung · last 30 days\s+3 of 6 tasks analyzed · 1 unsure, not on a rung/);
+  assert.match(t, /Your most common rung\s+Directed\s+1 of 2 tasks on a rung · last 30 days\s+3 of 6 tasks analyzed\s+Not on a rung: 1 unsure\s/);
   assert.match(t, /1 task AIQ wasn't sure about is left out · See them/);
   assert.match(t, /Next steps\s+[^\n]*\n+Next steps show once AIQ knows the kind of each task/);
   // The rung mix: counts only under 10 judged tasks (no share), each rung's meaning on hover, the change waits.
@@ -853,6 +853,182 @@ await test("Tasks Day view: a row per session, rung named on hover and focus, En
   await narrow.context().close();
 });
 
+// A task with no rung of its own (design kinds-recut K9, K10; fixture no-rung, written by the Rust read model): two
+// progress checks and a release notice. The analysis still gave each one a rung, a next rung and a next step, and
+// no view may show them (DC-083: #294 took progress checks off Home's counts and the Tasks list, while the Day
+// view still drew each as an Assisted block and its own page still gave a next step).
+// Per reason: its name on every screen, and on the page of the fixture's newest such task its heading, its one
+// line of why, the first prompt and what the analysis saw.
+const NO_RUNG = {
+  progress_check: {
+    name: "Progress check",
+    head: /Progress check\s+Job: Ask or research\s+Kind: Checking on progress/,
+    why: /This checks on work already running, so it has no rung of its own and AIQ won't coach on it\./,
+    prompt: "how far along is the export page?",
+    saw: /You asked how far the agent had got\./,
+  },
+  release_notice: {
+    name: "Release notice",
+    head: /Release notice\s+Job: Run or ship it\s+Kind: Releasing or publishing/,
+    why: /This only tells the agent that a release is out, so it has no rung of its own and AIQ won't coach on it\./,
+    prompt: "0.4.2 is published",
+    saw: /You told the agent the release was out\./,
+  },
+};
+for (const theme of ["light", "dark", "contrast"]) {
+  await test(`a task with no rung of its own shows no rung on any screen (${theme})`, async () => {
+    const th = theme === "light" ? undefined : theme;
+    const snapshot = JSON.parse(readFileSync(join(fixtures, "no-rung.json"), "utf8"));
+    const off = snapshot.tasks.filter((t) => t.judgment?.no_rung);
+    assert.deepEqual(off.map((t) => t.judgment.no_rung), ["release_notice", "progress_check", "progress_check"]);
+    assert.ok(off.every((t) => t.judgment.current === 1 && t.judgment.potential === 2 && t.judgment.gap), "each carries a rung and a next step to leave out");
+    const RUNG = /Assisted|Directed|Delegated|Orchestrated|Factory/;
+    const names = off.map((t) => NO_RUNG[t.judgment.no_rung].name).sort();
+
+    // Home: counted apart from the tasks on a rung, on the ladder card and under the split.
+    const home = await open("no-rung", { theme: th });
+    const front = await home.locator("main").innerText();
+    assert.match(front, /of 16 tasks on a rung/);
+    assert.match(front, /20 tasks analyzed in 30 days\s+Not on a rung: 1 unsure · 2 progress checks · 1 release notice\s/);
+    assert.match(front, /6 of 16 analyzed tasks finished by agents · 5 could be · 5 need you\s+Not counted: 1 unsure · 2 progress checks · 1 release notice\s/);
+    assert.deepEqual(await axe(home), []);
+    assert.deepEqual(home.errors, []);
+    if (shots) await home.screenshot({ path: join(shots, `no-rung-home-${theme}.png`), fullPage: true });
+    await home.context().close();
+
+    // Tasks, the list: the Rung cell names the reason and no rung.
+    const tasks = await open("no-rung", { theme: th, hash: "#tasks" });
+    await tasks.getByRole("button", { name: "All tasks", exact: true }).click();
+    for (const t of off) {
+      const cell = tasks.locator(`table[aria-label=Tasks] tbody tr:has(a[href="#task/${t.task_id}"]) td`).last();
+      assert.equal((await cell.innerText()).trim(), NO_RUNG[t.judgment.no_rung].name);
+    }
+    if (shots) await tasks.screenshot({ path: join(shots, `no-rung-tasks-${theme}.png`), fullPage: true });
+
+    // Tasks, the Day view: a block with no rung number, named on focus and to a screen reader, and in the key.
+    await tasks.getByRole("button", { name: "Day", exact: true }).click();
+    assert.match(await tasks.getByTestId("day-summary").innerText(), /^4 tasks · 4 kinds of task · mostly \s*3\s*Delegated/, "the day's usual rung leaves them out");
+    const blocks = tasks.locator(".dv-task.dv-off");
+    assert.equal(await blocks.count(), off.length, "one block each, in its own style");
+    const [tips, labels] = [[], []];
+    for (const b of await blocks.all()) {
+      assert.equal(await b.locator(".dv-n").innerText(), "–");
+      await b.focus();
+      const tip = await b.locator(".tip").innerText();
+      assert.doesNotMatch(tip, RUNG);
+      tips.push(tip.match(/([^\n]+) · no rung of its own$/)?.[1]);
+      const label = (await b.getAttribute("aria-label")) ?? "";
+      assert.doesNotMatch(label, RUNG);
+      labels.push(label.match(/, ([a-z ]+), no rung of its own\. Open task$/)?.[1]);
+    }
+    assert.deepEqual(tips.sort(), names, "each block names its reason on focus");
+    assert.deepEqual(labels.sort(), names.map((n) => n.toLowerCase()), "and to a screen reader");
+    assert.match(await tasks.locator(".key").innerText(), /Not analyzed yet\s+No rung of its own$/);
+    assert.deepEqual(await axe(tasks), []);
+    assert.deepEqual(tasks.errors, []);
+    if (shots) await tasks.screenshot({ path: join(shots, `no-rung-day-${theme}.png`), fullPage: true });
+    await tasks.context().close();
+
+    // The task's own page, for the newest task of each reason: the reason in place of the rung, one line of why,
+    // and no next step.
+    for (const [why, on] of Object.entries(NO_RUNG)) {
+      const row = off.find((t) => t.judgment.no_rung === why);
+      const page = await open("no-rung", {
+        theme: th,
+        hash: `#task/${row.task_id}`,
+        editTask: (t) => {
+          t.task = row;
+          t.prompts = [{ event_id: row.task_id, ts_ms: row.first_ms, text: on.prompt, deleted: false }];
+          t.tips.shown = [];
+        },
+      });
+      const said = await page.locator("section[aria-labelledby=jd]").innerText();
+      assert.match(said, on.head);
+      assert.match(said, on.why);
+      assert.match(said, on.saw, "what the analysis saw stays");
+      assert.doesNotMatch(said, /Rung:|Next step/);
+      assert.doesNotMatch(said, RUNG);
+      assert.deepEqual(await axe(page), []);
+      assert.deepEqual(page.errors, []);
+      if (shots) await page.screenshot({ path: join(shots, `no-rung-task-${why}-${theme}.png`), fullPage: true });
+      await page.context().close();
+    }
+  });
+}
+
+// The tasks with no rung of their own are one of Home's numbers, so the Project picker swaps in the project's own
+// count. All of this fixture's are in aiq and foresight has none: Home on foresight named the whole record's.
+await test("one project's Home counts only its own tasks with no rung", async () => {
+  const home = await open("no-rung");
+  const counts = async (key) => {
+    await home.getByLabel("Project").selectOption(key);
+    await home.waitForSelector("[data-testid=project-note]");
+    return (await home.locator(".mainrung .lbl").innerText()).split("\n").filter((line) => /analyzed in 30 days|Not on a rung/.test(line));
+  };
+  assert.deepEqual(await counts("c:\\users\\imran\\source\\repos\\foresight"), ["4 tasks analyzed in 30 days"]);
+  assert.deepEqual(await counts("c:\\users\\imran\\source\\repos\\aiq"), ["16 tasks analyzed in 30 days", "Not on a rung: 1 unsure · 2 progress checks · 1 release notice"]);
+  assert.deepEqual(home.errors, []);
+  await home.context().close();
+});
+
+// Home's ladder card gave its label the width of its longest line and the ladder what was left. With the counts
+// of tasks not on a rung on the analysis line, the last rung ended past the card in every window 1180 px wide or
+// narrower with the test data, and in the normal 1280 px window with a month's counts (DC-085). So the test uses
+// counts of the size a month of use gives, and the longest analysis line. With two reasons the line of tasks not
+// on a rung is wider than the label, so it wraps: it must break between its items, never inside "21 release
+// notices".
+await test("Home's ladder keeps all five rungs in view at every window width, however long the lines beside it", async () => {
+  for (const width of [1280, 1100, 1000, 760]) {
+    const home = await open("no-rung", {
+      width,
+      edit: (s) => {
+        Object.assign(s.home, { judged: 306, uncertain: 12, no_rung: { progress_check: 64, release_notice: 21 }, rungs: [120, 60, 29, 0, 0], most_common_rung: 1 });
+        Object.assign(s.home.analysis, { state: "today_done", analyzed: 306, waiting: 194 });
+      },
+    });
+    const seen = await home.evaluate(() => {
+      const card = document.querySelector(".mainrung").getBoundingClientRect();
+      const past = (el) => Math.max(0, Math.round(el.getBoundingClientRect().right - card.right));
+      const main = document.querySelector("main");
+      const label = document.querySelector(".mainrung .lbl");
+      // How many lines the words take where the label shows them: 1 when they stay together, 0 when not shown.
+      const lines = (words) => {
+        const walk = document.createTreeWalker(label, NodeFilter.SHOW_TEXT);
+        for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+          const at = n.textContent.indexOf(words);
+          if (at < 0) continue;
+          const r = document.createRange();
+          r.setStart(n, at);
+          r.setEnd(n, at + words.length);
+          return new Set([...r.getClientRects()].map((box) => Math.round(box.top))).size;
+        }
+        return 0;
+      };
+      return {
+        rungs: [...document.querySelectorAll(".mainrung .scale > span")].map((s) => [s.querySelector(".step-name").textContent, past(s)]),
+        label: past(label),
+        sideways: main.scrollWidth - main.clientWidth,
+        items: ["12 unsure", "64 progress checks", "21 release notices"].map((words) => [words, lines(words)]),
+      };
+    });
+    assert.deepEqual(
+      seen,
+      {
+        rungs: [["1Assisted", 0], ["2Directed", 0], ["3Delegated", 0], ["4Orchestrated", 0], ["5Factory", 0]],
+        label: 0,
+        sideways: 0,
+        items: [["12 unsure", 1], ["64 progress checks", 1], ["21 release notices", 1]],
+      },
+      `${width}px wide: pixels past the card's right edge, and the lines each item of the "Not on a rung" line takes`,
+    );
+    const said = await home.locator(".mainrung .lbl").innerText();
+    assert.match(said, /^Your most common rung\s+Assisted\s+57% of 209 tasks on a rung · last 30 days\s+306 of 500 tasks analyzed · more tomorrow\s+Not on a rung: 12 unsure · 64 progress checks · 21 release notices\s+You ask AI/);
+    assert.deepEqual(home.errors, []);
+    if (shots) await home.locator(".mainrung").screenshot({ path: join(shots, `ladder-${width}.png`) });
+    await home.context().close();
+  }
+});
+
 // Hover text must be painted whole, not just present in the DOM: the Day view box scrolls (overflow-x) and once
 // clipped every tip's third line (the rung) and the right half of edge tips. Measured by pixels, not text: each
 // tip's rectangle sits inside the window, and the tip itself is the topmost element at its corners and centre.
@@ -1073,7 +1249,7 @@ for (const theme of ["light", "dark", "contrast"]) {
     // Chips in start order; each names the kind, project and tool and says the rung in words.
     const names = await tabs.allInnerTexts();
     assert.equal(names.length, 3);
-    assert.match(names[0], /Fixing a bug or failing test\s*aiq · VS Code · 4 prompts.*heading for Assisted, agent working/s);
+    assert.match(names[0], /Fixing a bug, test or build error\s*aiq · VS Code · 4 prompts.*heading for Assisted, agent working/s);
     assert.match(names[1], /Writing a spec or PRD\s*aiq · Copilot CLI · 5 prompts.*heading for Directed, agent working/s);
     assert.match(names[2], /Writing tests\s*foresight · Claude Code · 1 prompt.*heading for Delegated, waiting for you/s);
     // The newest activity is chosen first: the VS Code task.
@@ -1197,8 +1373,8 @@ await test("rung guide: steps by kind of work, where you are, your next step ope
   assert.match(await side.locator("h2").innerText(), /Keep an instructions file in the repo and point to it/);
   assert.match(await side.innerText(), /Code a change · \s*3\s*Delegated\s*→\s*4\s*Orchestrated/);
   assert.match(await side.innerText(), /How AIQ notices it: Counts when you give the agent a written brief, spec or instructions file\./);
-  // Writing tests took up this habit (seeded growing), so its next step moved on; adding a feature still needs it.
-  assert.match(await side.innerText(), /Your next step for adding a feature/);
+  // Writing tests took up this habit (seeded growing), so its next step moved on; building or adding a feature still needs it.
+  assert.match(await side.innerText(), /Your next step for building or adding a feature/);
   await grid.getByRole("button", { name: /Ask for the whole draft and list what it must cover/ }).click();
   assert.match(await side.innerText(), /Your next step for writing a spec or PRD/);
   // Pick another habit: the side panel follows; the starter copies.
@@ -1257,16 +1433,16 @@ await test("task detail: Enter on a Tasks row opens it; prompts in order; judgme
   await page.context().close();
 });
 
-// Laptop 2026-11-12: a task analyzed as "Finding the cause of a problem" (label 0.99, analysis 0.91) showed only its
+// Laptop 2026-11-12: a task analyzed as "Investigating a bug or problem" (label 0.99, analysis 0.91) showed only its
 // job here, so it read as unclassified. The kind shows beside the job when the analysis named one, and not otherwise.
 await test("task detail: the kind shows beside the job when the analysis named one", async () => {
   const hash = "#task/019000000001-0000-7000-8000-000000000000";
   const page = await open("full", {
     hash,
-    editTask: (t) => Object.assign(t.task.judgment, { job: "ask_research", task_type: "troubleshoot", task_type_label: "Finding the cause of a problem" }),
+    editTask: (t) => Object.assign(t.task.judgment, { job: "ask_research", task_type: "troubleshoot", task_type_label: "Investigating a bug or problem" }),
   });
   await page.waitForSelector("ol.prompts");
-  assert.match(await page.locator("main").innerText(), /Job: Ask or research\s+Kind: Finding the cause of a problem/);
+  assert.match(await page.locator("main").innerText(), /Job: Ask or research\s+Kind: Investigating a bug or problem/);
   assert.deepEqual(page.errors, []);
   await page.context().close();
   const none = await open("full", { hash });
@@ -1584,7 +1760,7 @@ await test("coaching Home: finished and could be, the rule, uncertain left out, 
   assert.match(t, /Tasks agents finished\s+33%\s+could be 67%/);
   assert.equal(await page.getByRole("img", { name: "Agents finished 33%, could be 67%" }).count(), 1);
   // Outcome first, then the measured counts on one line; how it is counted stays folded away until asked for.
-  assert.match(t, /47% have an easy next step, most often to \s*3\s*Delegated\s*\.\s+5 of 15 analyzed tasks finished by agents · 5 could be · 5 need you · 1 unsure, not counted/);
+  assert.match(t, /47% have an easy next step, most often to \s*3\s*Delegated\s*\.\s+5 of 15 analyzed tasks finished by agents · 5 could be · 5 need you\s+Not counted: 1 unsure\s/);
   assert.ok(!t.includes("A task counts as finished"), "the rule is folded away");
   await page.getByText("How AIQ counts").click();
   const how = await page.locator("details.how").innerText();
@@ -1626,8 +1802,8 @@ await test("progress Home: kinds that moved up or down beyond chance, counts beh
     assert.equal(await rows.nth(0).getAttribute("aria-label"), "Writing tests, Delegated in the last 30 days, moved up from Directed, next step reaches Orchestrated, 5 tasks in the last 30 days, 5 before");
     assert.match(await rows.nth(0).innerText(), /Writing tests\s+↑ up/);
     // Its typical rung went from Assisted to Delegated, but only by chance: drawn where it is, no ring, no arrow.
-    assert.equal(await rows.nth(1).getAttribute("aria-label"), "Adding a feature, Delegated in the last 30 days, same rung, next step reaches Orchestrated, 3 tasks in the last 30 days, 3 before");
-    assert.equal(await rows.nth(2).getAttribute("aria-label"), "Fixing a bug or failing test, Assisted in the last 30 days, same rung, 3 tasks in the last 30 days, 3 before");
+    assert.equal(await rows.nth(1).getAttribute("aria-label"), "Building or adding a feature, Delegated in the last 30 days, same rung, next step reaches Orchestrated, 3 tasks in the last 30 days, 3 before");
+    assert.equal(await rows.nth(2).getAttribute("aria-label"), "Fixing a bug, test or build error, Assisted in the last 30 days, same rung, 3 tasks in the last 30 days, 3 before");
     assert.match(await rows.nth(3).innerText(), /Writing a spec or PRD\s+↓ down/);
     // Habit changes are one line under the map; the habits themselves live in Habits and tips.
     assert.match(t, /1 habit is growing: the steps that move a kind of task up\. See them in Habits and tips/);
@@ -1753,7 +1929,7 @@ await test("Tasks opens on kinds of task: rung today, could be, a week, the 30-d
   const t = await table.innerText();
   assert.match(t, /Writing tests[\s\S]*Code a change[\s\S]*↑ up from Directed/);
   assert.match(t, /Writing a spec or PRD[\s\S]*↓ down from Delegated/);
-  assert.match(t, /Fixing a bug or failing test[\s\S]*– same rung/);
+  assert.match(t, /Fixing a bug, test or build error[\s\S]*– same rung/);
   assert.match(t, /Refactoring or cleaning up[\s\S]*Too few tasks to say/);
   assert.match(await page.locator("main header.head").innerText(), /Kinds\s+All tasks\s+Day/);
   assert.equal(await page.locator("table[aria-label=Tasks]").count(), 0, "the task list waits under All tasks");
@@ -1764,7 +1940,7 @@ await test("Tasks opens on kinds of task: rung today, could be, a week, the 30-d
 
   const c = await open("coaching", { hash: "#tasks" });
   const ct = await c.getByRole("table", { name: "Kinds of task" }).innerText();
-  for (const k of ["Writing tests", "Writing a spec or PRD", "Fixing a bug or failing test", "Right rung", "Refactoring or cleaning up", "Too few tasks yet"]) assert.ok(ct.includes(k), k);
+  for (const k of ["Writing tests", "Writing a spec or PRD", "Fixing a bug, test or build error", "Right rung", "Refactoring or cleaning up", "Too few tasks yet"]) assert.ok(ct.includes(k), k);
   assert.equal(await c.getByRole("list", { name: "Kinds of task" }).count(), 0, "no second kinds list below");
   // The chosen view sits directly under the switch.
   const afterHeader = () => c.evaluate(() => {
@@ -2106,7 +2282,7 @@ await test("Home drops 'could be' when no kind of task is one step from agents f
   const page = await open("coaching", { edit: (s) => { s.coaching.split = { ...s.coaching.split, finished: 1, could: 0, needs: 14, up: 13, up_to: 2 }; } });
   const t = await page.locator("main").innerText();
   assert.ok(!t.includes("could be"), "no 'could be' figure");
-  assert.match(t, /1 of 15 analyzed tasks finished by agents · 14 need you · 1 unsure, not counted/);
+  assert.match(t, /1 of 15 analyzed tasks finished by agents · 14 need you\s+Not counted: 1 unsure\s/);
   assert.match(t, /87% have an easy next step, most often to \s*2\s*Directed\s*\./);
   assert.equal(await page.getByRole("img", { name: "Agents finished 7%" }).count(), 1);
   await page.context().close();

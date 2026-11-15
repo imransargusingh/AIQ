@@ -3,7 +3,7 @@
 // judged it says so. Model-written text renders as plain text only (TR-5).
 import { useEffect, useState } from "react";
 import { api } from "../api";
-import { clock, folderName, jobName, plural, stateLabel, toolName, when } from "../format";
+import { NO_RUNG, clock, folderName, jobName, plural, stateLabel, toolName, when } from "../format";
 import { TaskTipsCard } from "../taskTips";
 import { ComputerTag, computerOf } from "../computers";
 import type { TaskAnalysis, TaskDetail } from "../types";
@@ -113,8 +113,8 @@ export function Task(ctx: Ctx & { taskId: string }) {
         <section className="card group" aria-labelledby="jd">
           <h2 id="jd">How this task was done</h2>
           <div className="row">
-            {j.progress_check ? (
-              <Chip>Progress check</Chip>
+            {j.no_rung ? (
+              <Chip>{NO_RUNG[j.no_rung].name}</Chip>
             ) : (
               <>
                 <Chip>
@@ -128,8 +128,8 @@ export function Task(ctx: Ctx & { taskId: string }) {
             <Chip>Job: {jobName(j.job)}</Chip>
             {j.task_type_label && <Chip>Kind: {j.task_type_label}</Chip>}
           </div>
-          {j.progress_check ? (
-            <p className="mute">This checks on work already running, so it has no rung of its own and AIQ won't coach on it.</p>
+          {j.no_rung ? (
+            <p className="mute">{NO_RUNG[j.no_rung].does}, so it has no rung of its own and AIQ won't coach on it.</p>
           ) : (
             j.state === "uncertain" && <p className="mute">AIQ isn't sure about this one, so it won't coach on it.</p>
           )}
@@ -138,7 +138,7 @@ export function Task(ctx: Ctx & { taskId: string }) {
               <li key={i}>{e}</li>
             ))}
           </ul>
-          {j.potential > j.current && j.gap && (
+          {!j.no_rung && j.potential > j.current && j.gap && (
             <p>
               <b>Next step (<Rung r={j.current} /> → <Rung r={j.potential} />):</b> {j.gap}
             </p>

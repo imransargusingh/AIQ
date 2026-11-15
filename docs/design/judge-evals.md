@@ -12,7 +12,7 @@ links:
   - { to: spec-rung-model, rel: implements }
 review-by: 2027-05-03
 summary: >-
-  A fixed, versioned golden set of 34 synthetic tasks with expected job, kind and rung. `aiq judge --eval`
+  A fixed, versioned golden set of 42 synthetic tasks with expected job, kind and rung. `aiq judge --eval`
   sends them through the person's own sealed judge, n runs each, and reports accuracy, repeat-run agreement
   and injection resistance, then what moved since the last eval. CI replays recorded answers through
   today's parser and placement and fails when a score moves or the judge prompt changed without a new
@@ -51,6 +51,10 @@ of the judging? Built in the cloud under his standing rule. Nothing here reads a
   the agent ran, a token-shaped secret). Expected values are lists: the first is the author's reading, the
   rest are also accepted where the rubric honestly allows both. `label_source` is `author` until a separate
   person labels the case.
+  Version `g2` (2026-11-14, with the re-cut kinds list, design kinds-recut): 42 cases. Six of the 34 are
+  relabelled for the new list (each note says why) and 8 are new, one per new or widened kind. The labels
+  were set from the list's definitions before any answer was recorded. A case may not expect a kind the
+  list no longer offers for its job.
 - `evals/judge/replay.json`: answers recorded from one live run, the versions they came from (judge prompt,
   fact set, rubric, golden set), and the placement and totals they gave.
 - `crates/aiq/src/judge_eval.rs`: scoring is one pure function, `score_case`, used by live, replay and CI.
@@ -109,12 +113,42 @@ These are findings for the judge thread and the kind-of-task work. Each change t
 handling of unsure facts, the job bar for run_ship) is a rule change that needs its own measurement and
 decision; none is made here.
 
+## Measurement for the re-cut kinds list (judge `j7`, golden set `g2`)
+
+Measured 2026-11-14 20:53Z in the cloud: Claude Code `claude-sonnet-5-5`, 2 runs per case, 84 calls, all
+answered, $1.48, call time 6.1 s p50, 11.5 s p95. This is the recording in `replay.json`. A second run at
+21:06Z, the same in every way, measured how much the scores move between runs.
+
+On the 34 cases both recordings hold:
+
+| Measure | `j6` on `g1` (2026-11-13) | `j7` on `g2`, the recording | `j7` on `g2`, second run |
+|---|---|---|---|
+| Job right | 30 of 34 | 31 of 34 | 31 of 34 |
+| Kind right | 24 of 32 | 26 of 32 | 27 of 32 |
+| Rung exact | 23 of 32 | 21 of 32 | 22 of 32 |
+| Rung within one | 29 of 32 | 30 of 32 | 30 of 32 |
+
+The 8 new cases, in both runs: job 8, kind 8, rung exact 6, rung within one 8 of 8. Injection resisted 3
+of 3 in both.
+
+- **Run-to-run movement.** Between the two `j7` runs, 6 of the 42 cases showed a different answer (h08,
+  h15, h17, h20, i01, k05) and each total moved by at most 1. A difference of 1 or 2 cases between two
+  versions is therefore not a finding by itself.
+- **What the list did.** h02 and h08 gained a kind. h12, a review, now settles as a question with the kind
+  `review`; under `j6` its two runs named different jobs. It shows the model's own rung, one above the
+  author's label, so "rung exact" lost that case.
+- **What it did not fix.** h09 and r04 still end with no job. a04, i01 and i02 still lose their kind, which
+  is the safe side for the two injection cases.
+
+The live-trend floors in `trend_matches_golden` are re-measured on `g2` in the same change: exact 27,
+within one 36, higher than the label 8 of 40.
+
 ## Gaps that stay open
 
 - **Human labels.** The expected values are the case author's. A 15-case labelling set is with Imran
   (`aiq-evals/labelling-set.md` in the project files); confirmed cases move to `label_source: human`.
 - **Copilot on the golden set.** The cloud has no Copilot sign-in. The judge thread runs
-  `aiq judge --eval --provider copilot-cli` on the laptop (one premium request per call: 34 × runs).
+  `aiq judge --eval --provider copilot-cli` on the laptop (one premium request per call: 42 × runs).
 - **No gate on live scores.** A live score has no pass bar yet; bars set before a second run would be
   guesses. Set them once two live runs per provider give the spread.
 - **Synthetic tasks.** Real-work accuracy remains `aiq judge --check`'s job.

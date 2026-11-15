@@ -15,7 +15,7 @@ describe("day view", () => {
     const ts = [
       t("a", "s1", D0 + 9 * H, D0 + 10 * H, j(1, "Fixing a bug")),
       t("b", "s2", D0 + 8 * H, D0 + 8 * H),
-      t("c", "s1", D0 + 14 * H, D0 + 15 * H, j(1, "Adding a feature")),
+      t("c", "s1", D0 + 14 * H, D0 + 15 * H, j(1, "Building or adding a feature")),
       t("d", "s1", D0 + 16 * H, D0 + 16 * H, j(2, "Fixing a bug")),
       t("e", "s1", D0 + 9 * H, D0 + 9 * H, null, "claude-code"),
       t("f", "s1", D0 + 30 * H, D0 + 30 * H),
@@ -25,7 +25,7 @@ describe("day view", () => {
     const s1 = ls[2];
     expect(s1.tasks.map((x) => x.task_id)).toEqual(["a", "c", "d"]);
     expect([s1.prompts, s1.not_judged, s1.usual_rung]).toEqual([6, 0, 1]);
-    expect(s1.kinds).toEqual(["Fixing a bug", "Adding a feature"]);
+    expect(s1.kinds).toEqual(["Fixing a bug", "Building or adding a feature"]);
     expect(ls[0]).toMatchObject({ not_judged: 1, usual_rung: null, kinds: [] });
   });
 
@@ -61,5 +61,16 @@ describe("day view", () => {
       t("d", "s", D0 + 4 * H, D0 + 4 * H),
     ]);
     expect(s).toEqual({ tasks: 4, kinds: 2, usual: 2, minutes: 90, not_judged: 1 });
+  });
+
+  it("a task with no rung of its own never counts toward a session's or the day's usual rung", () => {
+    const off = { ...j(1, "Checking on progress"), state: "judged", no_rung: "progress_check" } as TaskJudgment;
+    const ts = [
+      t("a", "s", D0 + 9 * H, D0 + 10 * H, { ...j(3, "Writing tests"), state: "judged" } as TaskJudgment),
+      t("b", "s", D0 + 11 * H, D0 + 11 * H, off),
+      t("c", "s", D0 + 12 * H, D0 + 12 * H, off),
+    ];
+    expect(lanes(ts, dayKey(D0, 0), 0)[0].usual_rung).toBe(3);
+    expect(daySummary(ts).usual).toBe(3);
   });
 });

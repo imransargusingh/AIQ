@@ -3,15 +3,17 @@ import { DAY, kindsOn, ladder, mixHeadline, rungCounts, shift, type Five } from 
 import type { Snapshot, TaskRow } from "./types";
 import coaching from "../tests/fixtures/coaching.json";
 import full from "../tests/fixtures/full.json";
+import noRung from "../tests/fixtures/no-rung.json";
 import progress from "../tests/fixtures/progress.json";
 
-const FX = { coaching, full, progress } as unknown as Record<string, Snapshot>;
+const FX = { coaching, full, progress, "no-rung": noRung } as unknown as Record<string, Snapshot>;
 const fx = (n: string) => FX[n];
 const NAMES = ["Assisted", "Directed", "Delegated", "Orchestrated", "Factory"];
 const name = (i: number) => NAMES[i];
 
 describe("rung mix agrees with the core", () => {
-  for (const f of ["full", "coaching", "progress"]) {
+  // "no-rung" holds tasks with no rung of their own: the core leaves them out of home.rungs, and so must this.
+  for (const f of ["full", "coaching", "progress", "no-rung"]) {
     it(`${f}: rung counts over the window equal home.rungs, and the kinds on each rung add up to it`, () => {
       const s = fx(f);
       const n = rungCounts(s.tasks, s.now_ms - s.home.window_days * DAY, s.now_ms + 1);
@@ -53,13 +55,13 @@ describe("ladder", () => {
     const { shown, more } = ladder(fx("progress").coaching);
     expect(shown.map((r) => [r.label, r.now, r.before, r.next])).toEqual([
       ["Writing tests", 3, 2, 4],
-      ["Adding a feature", 3, null, 4],
-      ["Fixing a bug or failing test", 1, null, null],
+      ["Building or adding a feature", 3, null, 4],
+      ["Fixing a bug, test or build error", 1, null, null],
       ["Writing a spec or PRD", 2, 3, 3],
     ]);
     expect(more.map((r) => r.label)).toEqual(["Refactoring or cleaning up"]);
-    // Adding a feature's typical rung went 1 -> 3 by chance only: drawn where it is, no ring, no arrow.
-    expect(shown.find((r) => r.label === "Adding a feature")!.trend).toBe("same");
+    // Building or adding a feature's typical rung went 1 -> 3 by chance only: drawn where it is, no ring, no arrow.
+    expect(shown.find((r) => r.label === "Building or adding a feature")!.trend).toBe("same");
   });
   it("a kind with a next step but too few tasks to say still shows, from its typical rung", () => {
     const { shown, more } = ladder(fx("coaching").coaching);
@@ -67,6 +69,6 @@ describe("ladder", () => {
       ["Writing tests", 3, null, 4, null],
       ["Writing a spec or PRD", 2, null, 3, null],
     ]);
-    expect(more.map((r) => r.label).sort()).toEqual(["Fixing a bug or failing test", "Refactoring or cleaning up"]);
+    expect(more.map((r) => r.label).sort()).toEqual(["Fixing a bug, test or build error", "Refactoring or cleaning up"]);
   });
 });
