@@ -210,6 +210,14 @@ $1.20. Read it as a ceiling plus the tasks that arrive before the update. Earlie
 missed both ways. Every other computer, and every other install, re-analyzes its own tasks at its own user's
 cost, under its own daily limit.
 
+Measured after AIQ 0.1.65 on the laptop (read-only, 2026-11-15 08:23 UTC): the re-analysis ran 05:13 to 07:04
+UTC with no failure and nothing left waiting. It analyzed 220 tasks, against 217 forecast. Copilot: 158 tasks
+and 316 premium requests, as forecast. Claude: 62 tasks and $2.08, against 59 tasks and $1.30. The Claude
+forecast used $0.022 a task, measured on the old prompt; a `j7` task cost $0.034. Forecast a Claude task at
+$0.034 from now on. The Devbox re-analyzed about 65 of its own tasks (about 130 premium requests). The store
+holds 285 `j7` analyses over 252 tasks, so 33 tasks were analyzed twice. `kinds_after.py` (in
+`docs/investigations/rung-groups/`, read-only, counts only) says which computer wrote each one and how far apart.
+
 Measure, do not model: `aiq analyze --versions` is read-only and prints, per tool, how many analyses are
 outdated and why ("no job", "the kind other", "no kind recorded", "a kind the list retired"). Run it before
 the update for the size and after the queue empties for the proof. `judge.log` holds each call. Home shows
