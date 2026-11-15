@@ -1587,6 +1587,14 @@ summary: >-
   `aiq analyze --eval --check`, which scores the reader's Kinds on the golden set, overlap cases and hedging apart.
 - **Rule:** an agreement score over categories that overlap must let the reader say a second category fits, or
   it measures the list's overlap, not the analysis. Ask the person who knows the work before pausing on it.
+- **Recurrence (2026-11-15, after c2 shipped in 0.1.67):** a check of 30 "Looking up a fact" tasks on the laptop still
+  agreed on the Kind 14 times; "also fits" saved only 3. A counts-only probe (`find_overlap.py`) split the misses:
+  7 read as `progress`, every one a short status question, and 8 as `research`, 7 of them long asks that gather many
+  items from mail, meetings or chats. So the overlap was in the wording, not only in the scoring: `find` said "one
+  fact" and nothing about status or round-ups. Control: analysis `j9` says where each of the three ends, a stored
+  `find` from an older version is analyzed again once (`rung::KINDS_REWORDED`), and golden cases k09 to k14 (label
+  g-k09 to g-k14) pin the boundary. A Kind that loses tasks to a reworded neighbour is listed there, so its past
+  analyses are not kept by mistake.
 
 ### DC-089 — A record that says who sent a turn, read by a reader that never looks
 - **Signature:** 2026-11-15, measured on Imran's laptop (`copilot_launch_signs.py`). His local app runs Copilot

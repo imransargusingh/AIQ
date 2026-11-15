@@ -641,6 +641,13 @@ fn list_outdated(j: &JudgmentRow) -> Option<&'static str> {
         None => Some("no kind recorded"),
         Some("other") => Some("the kind other"),
         Some(k) if !aiq_contracts::judge::task_type_named(&j.job, k) => Some("a kind the list retired"),
+        Some(k)
+            if rung::KINDS_REWORDED
+                .iter()
+                .any(|(v, job, kind)| *job == j.job && *kind == k && rung::version_before(&j.judge_version, v)) =>
+        {
+            Some("a kind whose wording changed")
+        }
         Some(_) => None,
     }
 }
@@ -3336,6 +3343,11 @@ mod tests {
         assert!(!current_version(&kind("run_ship", Some("restart_fix"), "j7")), "j8 folded it into run_job");
         assert!(current_version(&kind("run_ship", Some("run_job"), "j7")), "run_job only widened: stays");
         assert!(current_version(&kind("run_ship", Some("release"), "j7")), "an untouched kind stays");
+        assert!(!current_version(&kind("ask_research", Some("find"), "j8")), "j9 reworded find: read again once");
+        assert!(!current_version(&kind("ask_research", Some("find"), "j5")), "from any older kept version");
+        assert!(current_version(&kind("ask_research", Some("find"), rung::JUDGE_VERSION)), "once only");
+        assert!(current_version(&kind("ask_research", Some("research"), "j8")), "research only gained words");
+        assert!(current_version(&kind("ask_research", Some("progress"), "j8")), "progress only gained words");
         assert!(!current_version(&kind("unclassified", None, kept)), "no job");
         for (job, k) in [("code_change", Some("other")), ("code_change", Some("review")), ("unclassified", None)] {
             assert!(

@@ -78,14 +78,28 @@ fn unknown_twice(placement_json: &str) -> bool {
 /// for a task that spans two jobs (research 2026-11-14). j8 folded "Getting something running again"
 /// (restart_fix) into "Running or restarting an app, script or pipeline" (run_job): the accuracy check of 2026-11-15
 /// read all 5 checked restart_fix tasks as run_job, and Imran, reviewing them, called the two "essentially
-/// identical" (DC-088). A stored restart_fix is a retired kind, so it is analyzed again once.
-pub const JUDGE_VERSION: &str = "j8";
+/// identical" (DC-088). A stored restart_fix is a retired kind, so it is analyzed again once. j9 sharpened find
+/// against progress and research: the check of 2026-11-15 on Imran's laptop (30 find tasks, kind 14 of 30) read 7 as
+/// progress, every one a short status question, and 8 as research, 7 of them long asks that gather many items from
+/// mail, meetings or chats. A stored find from an earlier version is analyzed again once (`KINDS_REWORDED`).
+pub const JUDGE_VERSION: &str = "j9";
 /// An analysis of one of these versions stays current only when it names a kind today's list offers (Imran
 /// 2026-11-14, the Kinds re-cut card: "New list, re-analyze all unnamed"). A task with no job, the kind
 /// `other`, no kind recorded or a retired kind is analyzed again, once, because j7's list may now name it
 /// (trial 2026-11-14 on 103 past tasks with no sure rung, most of them with no job: j7 named a kind for 54).
 /// A named kind the list kept is not worth a model call.
-pub const JUDGE_VERSIONS_KEPT: [&str; 6] = ["j2", "j3", "j4", "j5", "j6", "j7"];
+pub const JUDGE_VERSIONS_KEPT: [&str; 7] = ["j2", "j3", "j4", "j5", "j6", "j7", "j8"];
+/// Kinds whose wording changed, with the version that changed it: an analysis from an earlier kept version that
+/// named one is analyzed again, once, because the new wording may name another kind (Imran's card 2026-11-15:
+/// "Sharpen the three definitions"). Only the kind that lost tasks is listed: research and progress gained words,
+/// and a task they already hold still fits them.
+pub const KINDS_REWORDED: [(&str, &str, &str); 1] = [("j9", "ask_research", "find")];
+
+/// True when analysis version `v` (j2, j3, ...) is older than `than`. An unknown shape is never older.
+pub fn version_before(v: &str, than: &str) -> bool {
+    let n = |s: &str| s.strip_prefix('j').and_then(|d| d.parse::<u32>().ok());
+    matches!((n(v), n(than)), (Some(a), Some(b)) if a < b)
+}
 /// A model fact below this confidence counts as unknown (D10: the spike's correct facts sat at 0.5–0.6).
 pub const FACT_THRESHOLD: f64 = 0.6;
 /// F6 (output checked) yes from every run at this confidence or more counts as yes when the person wrote again
@@ -617,7 +631,7 @@ job_confidence: your probability (0-1) that the job is right.
 TASK TYPE (the kind of task within its job; use other when none fits or you are unsure):
 - code_change: fix_bug (fixing a bug, a failing test, or lint and build errors), feature (building or adding functionality, including carrying out or continuing a build plan; when the work is clearly a fix, tests or a refactor, that type wins), tests (writing tests), refactor (refactoring or cleaning up), deps (upgrading dependencies, or migrating to a new version, framework or platform), scaffold (scaffolding or prototyping something new), other.
 - write_doc: spec (a spec, PRD or acceptance criteria), design_note (a design note, an architecture or a plan written down as a document), status (a status update, newsletter or announcement), research (summarising notes, research or a transcript), howto (documentation, a README or a how-to), deck (slides, a talk or a presentation), other.
-- ask_research: how_to (asking how to do something), explain (understanding code or how something works), troubleshoot (investigating a bug or finding the cause of a problem), compare (comparing options), find (looking up one fact, such as a path, an owner, a setting or whether something exists; no counting or computing), research (researching a topic), analyse (analyzing data: the result is a number, table, chart, breakdown or trend computed from data such as a spreadsheet, query results, logs, metrics or a set of records; not reviewing or critiquing a plan, doc, deck or code, not auditing a repo or app, not summarising one document or transcript), progress (asking how work that is already running is going: its status, progress, ETA or whether it finished), review (checking or reviewing code, a document, a plan or a set of claims, or auditing a repo or app; the result is findings and no changed files), plan (working out an approach, a breakdown, next steps or ideas before the work starts, with no document written), other.
+- ask_research: how_to (asking how to do something), explain (understanding code or how something works), troubleshoot (investigating a bug or finding the cause of a problem), compare (comparing options), find (looking up one fact, such as a path, an owner, a setting or whether something exists; the answer is one short fact; no counting or computing; asking whether work finished or how it is going is progress, and gathering many items from mail, meetings, chats or documents is research), research (researching a topic, or gathering and summarising many items from several sources such as mail, meetings, chats or documents), analyse (analyzing data: the result is a number, table, chart, breakdown or trend computed from data such as a spreadsheet, query results, logs, metrics or a set of records; not reviewing or critiquing a plan, doc, deck or code, not auditing a repo or app, not summarising one document or transcript), progress (asking how work that is already running is going: its status, progress, ETA or whether it finished, merged or deployed; a status question is progress even when its answer is one fact), review (checking or reviewing code, a document, a plan or a set of claims, or auditing a repo or app; the result is findings and no changed files), plan (working out an approach, a breakdown, next steps or ideas before the work starts, with no document written), other.
 - run_ship: release (packaging, publishing or deploying; also telling the agent a release is out so it installs, updates or verifies it), run_job (starting, stopping, restarting or running an app, script, pipeline or data refresh, including getting one that failed, crashed or won't start running again), setup (installing, connecting or configuring a tool), source_control (commit, pull, push, branch, merge or sync, when no code change was asked for), other.
 - job other: answer other.
 task_type_confidence: your probability (0-1) that the task type is right.
@@ -1821,6 +1835,23 @@ mod tests {
         assert!(SYSTEM.contains("analyse (analyzing data: the result is a number, table, chart"));
         assert!(SYSTEM.contains("not reviewing or critiquing a plan, doc, deck or code"));
         assert!(SYSTEM.contains("find (looking up one fact"));
+        // j9: a status question is progress; gathering many items across sources is research.
+        assert!(SYSTEM.contains("asking whether work finished or how it is going is progress"));
+        assert!(SYSTEM.contains("research (researching a topic, or gathering and summarising many items"));
+        assert!(SYSTEM.contains("a status question is progress even when its answer is one fact"));
+    }
+
+    #[test]
+    fn a_reworded_kind_is_read_again_only_from_older_versions() {
+        assert!(version_before("j8", "j9"));
+        assert!(version_before("j2", "j10"));
+        assert!(!version_before("j9", "j9"));
+        assert!(!version_before("j10", "j9"));
+        assert!(!version_before("x", "j9"));
+        for (v, job, kind) in KINDS_REWORDED {
+            assert!(!version_before(JUDGE_VERSION, v), "{v} is not newer than today's version");
+            assert!(aiq_contracts::judge::task_type_named(job, kind), "{job}/{kind} is still on the list");
+        }
     }
 
     /// The prompt offers exactly the list the parse and placement accept: every offered kind is named on its
@@ -1828,8 +1859,8 @@ mod tests {
     #[test]
     fn the_prompt_names_every_offered_kind_on_its_jobs_line_and_no_retired_one() {
         use aiq_contracts::judge::{RETIRED_TASK_TYPES, TASK_TYPES};
-        assert_eq!(JUDGE_VERSION, "j8");
-        assert!(JUDGE_VERSIONS_KEPT.contains(&"j7"));
+        assert_eq!(JUDGE_VERSION, "j9");
+        assert!(JUDGE_VERSIONS_KEPT.contains(&"j8"));
         let section = &SYSTEM[SYSTEM.find("TASK TYPE (").unwrap()..SYSTEM.find("task_type_confidence:").unwrap()];
         let line = |job: &str| section.lines().find(|l| l.starts_with(&format!("- {job}: "))).unwrap_or_default();
         let names =

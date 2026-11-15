@@ -1184,7 +1184,10 @@ mod tests {
     /// does worse fails here. On g1 (2026-11-03) it was 22/32, 29/32 and 4/32. The same 32 cases give 22, 29
     /// and 5 on g2: h12 is a review question there, and for a question looking things up counts as doing the
     /// work. The 8 kind cases give 5, 7 and 3: the trend reads only the log, so a review, a plan or a criteria
-    /// draft asked in a long first prompt reads as handed over whole.
+    /// draft asked in a long first prompt reads as handed over whole. On g4 (2026-11-15, six find / progress /
+    /// research cases added) it is 31/46, 40/46 and 10/46: the four short questions match, and the two long
+    /// round-ups of mail and meetings (k13, k14) read as Delegated for the same reason, while their label is
+    /// Assisted (nothing checked). The labels stay; the floors follow the measurement.
     #[test]
     fn trend_matches_golden() {
         let (mut exact, mut within, mut high, mut none, mut n) = (0, 0, 0, 0, 0);
@@ -1203,7 +1206,7 @@ mod tests {
         }
         println!("trend vs golden: exact {exact}/{n}, within one {within}/{n}, higher {high}/{n}, none {none}/{n}");
         assert_eq!(none, 0);
-        assert!(exact >= 27 && within >= 36 && high <= 8, "exact {exact}, within one {within}, higher {high} of {n}");
+        assert!(exact >= 31 && within >= 40 && high <= 10, "exact {exact}, within one {within}, higher {high} of {n}");
     }
 
     #[test]
