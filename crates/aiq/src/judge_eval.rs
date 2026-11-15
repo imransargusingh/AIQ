@@ -799,13 +799,143 @@ fn live(paths: &Paths, o: &Opts) -> ExitCode {
     ExitCode::SUCCESS
 }
 
+// ------------------------------------------------------------------ accuracy check prompt (c2)
+
+/// How the blind second reading's kinds compare with a golden case's accepted kinds, over its answers.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct CheckKinds {
+    pub answers: u32,
+    /// The reading's own kind is an accepted one (what check c1 scored).
+    pub own_kind_accepted: u32,
+    /// The reading's own kind is not accepted, but it named an accepted one as also fitting: an analysis that
+    /// picked that kind now agrees (what c2 adds). A golden case's accepted kinds can span jobs, so "every accepted
+    /// kind named" is not asked.
+    pub missed_but_named: u32,
+    /// Answers that listed a kind as also fitting that the case does not accept: the most an analysis that picked
+    /// a wrong kind could be let through.
+    pub listed_a_wrong_kind: u32,
+    pub also_fit_listed: u32,
+}
+
+/// Score one case's check answers. Cases with no expected job or kind are not scored for kinds.
+pub fn score_check_kinds(c: &Case, answers: &[aiq_contracts::check::CheckAnswer], into: &mut CheckKinds) {
+    let Some(kinds) = c.expect.kind.as_ref().filter(|k| !k.is_empty()) else { return };
+    for a in answers.iter().filter(|a| c.expect.job.contains(&a.job)) {
+        into.answers += 1;
+        let own = kinds.contains(&a.task_type);
+        into.own_kind_accepted += u32::from(own);
+        into.missed_but_named += u32::from(!own && a.task_types_also_fit.iter().any(|t| kinds.contains(t)));
+        into.also_fit_listed += u32::from(!a.task_types_also_fit.is_empty());
+        into.listed_a_wrong_kind += u32::from(a.task_types_also_fit.iter().any(|t| !kinds.contains(t)));
+    }
+}
+
+/// `aiq analyze --eval --check`: the accuracy check's blind second reading on the golden set, live. Scores kinds
+/// only (the check's facts and rung are scored by the judge eval's rules elsewhere). Nothing is recorded.
+fn check_eval(paths: &Paths, o: &Opts) -> ExitCode {
+    use aiq_contracts::check::{check_schema, parse_check};
+    let g = golden();
+    let cases: Vec<&Case> = g.cases.iter().filter(|c| o.only.is_empty() || o.only.contains(&c.id)).collect();
+    let pname = o.provider.clone().unwrap_or_else(|| "claude-code".into());
+    println!(
+        "{} golden cases, {} run(s) each through {pname}: {} call(s){}. Synthetic tasks only; nothing from your own store is sent.",
+        cases.len(),
+        o.runs,
+        cases.len() * o.runs,
+        if pname == "copilot-cli" { " (each uses one premium request)" } else { "" }
+    );
+    if o.dry {
+        return ExitCode::SUCCESS;
+    }
+    let claude = ClaudeCli {
+        exe: find_exe("claude"),
+        model: o.model.clone().unwrap_or_else(|| rung::DEFAULT_CLAUDE_MODEL.into()),
+        scratch: std::env::temp_dir(),
+    };
+    let copilot = CopilotCli {
+        exe: find_exe("copilot"),
+        model: o.model.clone().or_else(|| Some(rung::DEFAULT_COPILOT_MODEL.into())),
+        work: paths.data.join("judge-work"),
+        keep_sessions: false,
+    };
+    let p: &dyn Provider = if pname == "copilot-cli" { &copilot } else { &claude };
+    let (system, schema) = (rung::check_system(), check_schema());
+    let (mut k, mut failed, mut cost) = (CheckKinds::default(), 0u32, 0.0);
+    for c in &cases {
+        let fence = format!("AIQ-QUOTE-{}", uuid::Uuid::new_v4().simple());
+        let user = envelope(c, &fence);
+        let mut got = Vec::new();
+        for _ in 0..o.runs {
+            let session_id = uuid::Uuid::new_v4().to_string();
+            if pname == "copilot-cli" && record_judge_session(paths, &session_id).is_err() {
+                eprintln!("Could not record the check session id; stopping.");
+                return ExitCode::from(1);
+            }
+            let r = p.call(&CallReq { system: &system, user: &user, schema: &schema, session_id: &session_id });
+            cost += r.cost_usd.unwrap_or(0.0);
+            match r.outcome {
+                Outcome::Ok(v) => match parse_check(v) {
+                    Ok(a) => got.push(a),
+                    Err(_) => failed += 1,
+                },
+                Outcome::Missing | Outcome::NotSignedIn(_) => {
+                    eprintln!("{pname} is not installed or not signed in, so AIQ can't run the check eval through it.");
+                    return ExitCode::from(1);
+                }
+                _ => failed += 1,
+            }
+        }
+        let kinds = |a: &aiq_contracts::check::CheckAnswer| {
+            let mut s = a.task_type.clone();
+            if !a.task_types_also_fit.is_empty() {
+                s += &format!(" (also {})", a.task_types_also_fit.join(", "));
+            }
+            s
+        };
+        println!("  {} expects {:?}: {}", c.id, c.expect.kind, got.iter().map(kinds).collect::<Vec<_>>().join(" | "));
+        score_check_kinds(c, &got, &mut k);
+    }
+    println!(
+        "\nCheck {} on golden {}: {} answers with the expected job, {failed} failed calls, cost ${cost:.2} (Claude only).",
+        aiq_domain::check::CHECK_VERSION,
+        g.version,
+        k.answers
+    );
+    println!("  Own kind accepted (c1's agreement): {} of {}", k.own_kind_accepted, k.answers);
+    println!(
+        "  Own kind not accepted, but an accepted kind named as also fitting (c2 counts it): {} of {}",
+        k.missed_but_named,
+        k.answers - k.own_kind_accepted
+    );
+    println!("  Listed a kind as also fitting: {} of {}", k.also_fit_listed, k.answers);
+    println!(
+        "  Listed a kind the case does not accept (the most a wrong analysis could be let through): {} of {}",
+        k.listed_a_wrong_kind, k.answers
+    );
+    ExitCode::SUCCESS
+}
+
 /// `aiq judge --eval [--runs n] [--provider claude-code|copilot-cli] [--model m] [--cases id,..] [--dry-run]
-/// [--out file] [--record file]`, `aiq judge --eval --replay`, `aiq judge --eval-report`.
+/// [--out file] [--record file]`, `aiq judge --eval --check ...`, `aiq judge --eval --replay`,
+/// `aiq judge --eval-report`.
 pub fn cli(args: &[&str], paths: &Paths) -> ExitCode {
     let bad = validate(&golden());
     if !bad.is_empty() {
         eprintln!("The golden set is broken:\n{}", bad.join("\n"));
         return ExitCode::from(1);
+    }
+    if args.contains(&"--check") {
+        return match parse_opts(args) {
+            Ok(o) if o.record.is_none() => check_eval(paths, &o),
+            Ok(_) => {
+                eprintln!("--check records nothing (drop --record).");
+                ExitCode::from(2)
+            }
+            Err(e) => {
+                eprintln!("{e}");
+                ExitCode::from(2)
+            }
+        };
     }
     if args.contains(&"--eval-report") {
         let saved = saved_reports(paths);
@@ -941,6 +1071,41 @@ mod tests {
         assert!(bad.iter().any(|b| b.contains("kind release belongs to none")), "{bad:?}");
         assert!(bad.iter().any(|b| b.contains("kind review belongs to none")), "{bad:?}");
         assert!(bad.iter().any(|b| b.contains("duplicate id")), "{bad:?}");
+    }
+
+    #[test]
+    fn check_kinds_scores_own_kind_misses_named_and_wrong_listings() {
+        let g = golden();
+        let one = g.cases.iter().find(|c| c.expect.kind.as_ref().is_some_and(|k| k.len() == 1)).unwrap();
+        let two = g.cases.iter().find(|c| c.expect.kind.as_ref().is_some_and(|k| k.len() > 1)).unwrap();
+        let ans = |c: &Case, ty: &str, also: &[&str]| aiq_contracts::check::CheckAnswer {
+            job: c.expect.job[0].clone(),
+            task_type: ty.into(),
+            task_types_also_fit: also.iter().map(|s| (*s).to_owned()).collect(),
+            current_rung: 2,
+            f4_goal_context_constraints: None,
+            f5_reprompts_added_information: None,
+            f6_output_checked: None,
+            f7_written_brief: None,
+            f12_step_by_step: None,
+            f13_whole_outcome_handed_over: None,
+        };
+        let (k1, k2) = (one.expect.kind.clone().unwrap(), two.expect.kind.clone().unwrap());
+        let mut k = CheckKinds::default();
+        score_check_kinds(one, &[ans(one, &k1[0], &[]), ans(one, &k1[0], &["zzz"])], &mut k);
+        score_check_kinds(two, &[ans(two, &k2[0], &[&k2[1]]), ans(two, &k2[1], &[])], &mut k);
+        // A miss that names an accepted kind as also fitting, and a miss that names none.
+        score_check_kinds(one, &[ans(one, "zzz", &[&k1[0]]), ans(one, "zzz", &[])], &mut k);
+        assert_eq!(
+            k,
+            CheckKinds {
+                answers: 6,
+                own_kind_accepted: 4,
+                missed_but_named: 1,
+                listed_a_wrong_kind: 1,
+                also_fit_listed: 3
+            }
+        );
     }
 
     /// The fence holds for every case: each prompt sits inside one fresh fence, an injected fence line can't

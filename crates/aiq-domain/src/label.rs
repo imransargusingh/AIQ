@@ -50,8 +50,8 @@ pub fn enabled(judge: Option<&str>, label: Option<&str>) -> bool {
 /// told the model to name the job the whole task ends in measured worse on the laptop (2026-11-08, 20 real
 /// tasks, gpt-6.1-sol: 5 of 10 confident labels right against 10 of 18 for this prompt), so this one stays.
 /// label-3: the same opening; the job and kind lines are j7's re-cut list, which `system()` cuts from
-/// `rung::SYSTEM`.
-pub const PROMPT_VERSION: &str = "label-3";
+/// `rung::SYSTEM`. label-4: j8 folded restart_fix into run_job.
+pub const PROMPT_VERSION: &str = "label-4";
 
 /// Jobs a label names but coaches from only once its own self-check has earned it (`earned`). In an agent tool a
 /// first prompt that reads as a question usually goes on to change code, so the analysis of the whole task names
@@ -171,7 +171,7 @@ mod tests {
     #[test]
     fn system_carries_the_judges_vocabulary_and_nothing_about_rungs() {
         let s = system();
-        assert!(s.contains("JOB (") && s.contains("TASK TYPE (") && s.contains("restart_fix"));
+        assert!(s.contains("JOB (") && s.contains("TASK TYPE (") && s.contains("run_job"));
         assert!(!s.contains("FACTS (") && !s.contains("RUNGS ("));
     }
 

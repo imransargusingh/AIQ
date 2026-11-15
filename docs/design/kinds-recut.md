@@ -107,15 +107,14 @@ retired. Each job keeps its `other`. The list of record is `TASK_TYPES` in
 | | `progress` | Checking on progress | New. The old prompt sent these to `other` |
 | | `review` | Reviewing code or other work | New here. Findings, no changed files |
 | | `plan` | Planning or brainstorming | New. No document written |
-| Run or ship it | `restart_fix` | Getting something running again | Same |
-| | `release` | Releasing or publishing | Same name. Covers telling the agent a release is out |
-| | `run_job` | Running an app, script or pipeline | Reworded. Covers start and stop |
+| Run or ship it | `release` | Releasing or publishing | Same name. Covers telling the agent a release is out |
+| | `run_job` | Running an app, script or pipeline | Reworded. Covers start and stop; since `j8` also getting a failed one running again (K14) |
 | | `setup` | Setting up or connecting a tool | Same |
 | | `source_control` | Committing, merging or syncing code | New. When no code change was asked for |
 
 Retired, each folded into a neighbour (`RETIRED_TASK_TYPES`): `code_change/build_fix` into `fix_bug`,
 `code_change/review` into `ask_research/review`, `code_change/explain` into `ask_research/explain`,
-`write_doc/criteria` into `spec`, `write_doc/notes` into `research`. Measured: the five had 1 use between
+`write_doc/criteria` into `spec`, `write_doc/notes` into `research`. In `j8` (K14), `run_ship/restart_fix` into `run_job`. Measured: the five had 1 use between
 them in the 708 tasks.
 
 ## Decisions
@@ -240,6 +239,26 @@ outdated and why ("no job", "the kind other", "no kind recorded", "a kind the li
 the update for the size and after the queue empties for the proof. `judge.log` holds each call. Home shows
 the re-analysis only as today's count of analyzed tasks: its "waiting" number counts tasks never analyzed.
 
+## After Imran's review (analysis j8, check c2, Copilot reader 3), 2026-11-15
+
+Imran reviewed the 14 readings behind the two paused Kinds on a local page (`paused_review.py`, read-only). Where
+AIQ and the second reading agreed: right 4, wrong 0. Where they differed: AIQ right 1, the second reading right 1,
+both fit 6, neither 1. One task was started by an app of his, not by him. Three changes follow.
+
+| # | Question | Decision | Why |
+|---|---|---|---|
+| K14 | "Getting something running again" and "Running an app, script or pipeline"? | **One Kind, `run_job`** (analysis `j8`). Its line now says "including getting one that failed, crashed or won't start running again". `restart_fix` is retired (`RETIRED_TASK_TYPES`), so each stored one is analyzed again once (K6's rule). The name stays "Running an app, script or pipeline": a longer one does not fit the status line (K3) | The check read all 5 checked `restart_fix` tasks as `run_job`, and Imran called the two "essentially identical". Laptop: 35 tasks all time named `restart_fix` |
+| K15 | When two Kinds both fit, is the second reading a disagreement? | **No (check `c2`).** The blind reader also lists other Kinds of the same job that fairly describe the task (`task_types_also_fit`, at most 3, each on today's list for that job). A Kind agrees when the reader picked it or listed it (`check::kind_agrees`), in the report and in the pause rule alike. Readings stored by `c1` carry no list and score as before, so a pause changes only after a new check | 6 of Imran's 8 differing readings were "both fit". Measured on the golden set (`aiq analyze --eval --check`, Claude, 2 runs, $0.66): the reader's own Kind was accepted 76 of 80 times; of the 4 misses, 3 named an accepted Kind as also fitting. 12 of 80 answers listed a Kind the golden case does not accept: the most a wrong analysis Kind could be let through, and only when the analysis picked exactly that Kind. Not yet measured on Imran's own 14: that needs a check run on the laptop with this build |
+| K16 | Turns Copilot's autopilot sends by itself? | **Not typed.** A `user.message` with `isAutopilotContinuation: true` is not the person's (`copilot_log::typed_message`). `COPILOT_READER` 3 reads every Copilot file again once | Measured on the laptop (`copilot_launch_signs.py`, `copilot_continuations.py`, read-only): his app's 29 one-prompt sessions held 30 such turns, so they passed as multi-prompt work and the set-aside rule never looked. With them left out, 28 of the 29 are set aside by the rules already there (22 template, 6 folder), and 1 more of his 263 other sessions. His own sessions held 69 such turns in 29 sessions. Every one is the same short text |
+
+**Cost, measured on the laptop before the change.** Task ids carry the prompt's place in the session, so 173 of his
+analyzed Copilot tasks get a new id and are analyzed again (88 in the same sessions keep theirs). With K14's 35,
+that is about 208 tasks; Copilot tasks cost about 2 premium requests each. Inside one day's 500-task limit (K7).
+
+**Gaps.** The live path: in sessions that also have live prompts, 1 of 4 autopilot turns arrived as a live prompt
+(n is small). Rule FAST does not catch it (the text is under 150 characters). Not fixed here. K15 on his own
+readings: measured only after the next check on the laptop.
+
 ## Failure modes
 
 | Failure | Result | How it shows |
@@ -285,3 +304,4 @@ the re-analysis only as today's count of analyzed tasks: its "waiting" number co
 | **Completed** | The list, the prompt, the re-analysis rule, the label prompt, both accuracy sets and recordings, Home test data, the progress-check Kind rule, one "no rung, and why" field for every screen (K11), one count of such tasks by reason that each project carries (K12), one short line on Home for the tasks it leaves out and a ladder that keeps its width (K13), the release-notice rule on the two words the laptop count measured (K10) |
 | **Remaining** | Imran's go-ahead on the merge card |
 | **Next** | After the merge: `aiq analyze --versions` and the counting scripts before and after the re-analysis; the accuracy check; the same counts on his other computers |
+| **j8 / c2 / reader 3** | Built and tested (K14 to K16). Remaining: Imran's go-ahead on the merge card; after the release, a check run on the laptop measured against his 14 answers |

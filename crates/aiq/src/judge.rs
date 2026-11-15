@@ -2320,6 +2320,12 @@ pub fn check_report(store: &Store) -> aiq_store::Result<String> {
         }
     }
     o += &format!("  Kind of task (where the job matched): {}\n", ag.task_type.show());
+    if ag.task_type_also_fit > 0 {
+        o += &format!(
+            "    {} of them because the second reading said the analysis's kind also fits\n",
+            ag.task_type_also_fit
+        );
+    }
     for (job, c) in &ag.task_type_by_job {
         o += &format!("    {job}: {}\n", c.show());
     }
@@ -3175,6 +3181,9 @@ mod tests {
         assert!(!current_version(&kind("code_change", None, kept)), "no kind recorded");
         assert!(!current_version(&kind("code_change", Some("review"), kept)), "retired: reviewing moved jobs");
         assert!(!current_version(&kind("write_doc", Some("notes"), kept)), "retired");
+        assert!(!current_version(&kind("run_ship", Some("restart_fix"), "j7")), "j8 folded it into run_job");
+        assert!(current_version(&kind("run_ship", Some("run_job"), "j7")), "run_job only widened: stays");
+        assert!(current_version(&kind("run_ship", Some("release"), "j7")), "an untouched kind stays");
         assert!(!current_version(&kind("unclassified", None, kept)), "no job");
         for (job, k) in [("code_change", Some("other")), ("code_change", Some("review")), ("unclassified", None)] {
             assert!(
@@ -3457,7 +3466,7 @@ mod tests {
 
     fn grader(job: &str, ty: &str, rung: u8) -> Grader {
         Grader {
-            answer: json!({"job": job, "task_type": ty, "current_rung": rung, "f4_goal_context_constraints": true,
+            answer: json!({"job": job, "task_type": ty, "task_types_also_fit": [], "current_rung": rung, "f4_goal_context_constraints": true,
                 "f5_reprompts_added_information": true, "f6_output_checked": null, "f7_written_brief": false,
                 "f12_step_by_step": false, "f13_whole_outcome_handed_over": true}),
             sent: RefCell::new(vec![]),

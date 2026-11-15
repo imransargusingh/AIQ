@@ -1,5 +1,5 @@
 {
- "version": "l2",
+ "version": "l3",
  "about": "Synthetic first prompts (no prompt here comes from anyone's store) with the job and kind the WHOLE task turns out to be. p-cases are shaped on the label misses measured on the laptop 2026-11-08 (problem reports that end in a fix or a release); g-cases are the first prompts of evals/judge/golden.json. kind ['other'] means a confident named kind is wrong. Scored by aiq label --eval --golden; recorded answers in replay.json are CI's label replay gate.",
  "cases": [
   {
@@ -73,7 +73,7 @@
      "run_ship"
     ],
     "kind": [
-     "restart_fix"
+     "run_job"
     ]
    },
    "note": "stopped app"
@@ -135,7 +135,7 @@
     ],
     "kind": [
      "fix_bug",
-     "restart_fix"
+     "run_job"
     ]
    },
    "note": "broken feature report"
@@ -431,7 +431,7 @@
     ],
     "kind": [
      "fix_bug",
-     "restart_fix"
+     "run_job"
     ]
    },
    "note": "broken thing report"
@@ -587,7 +587,7 @@
      "ask_research"
     ],
     "kind": [
-     "restart_fix",
+     "run_job",
      "fix_bug",
      "troubleshoot"
     ]
@@ -838,7 +838,7 @@
      "run_ship"
     ],
     "kind": [
-     "restart_fix"
+     "run_job"
     ]
    },
    "note": "first prompt of judge golden case r01"

@@ -1,7 +1,9 @@
 //! `aiq.check.v1`: the second, blind reading of one judged task (design `docs/design/judge-accuracy-check.md`
 //! K2). The grader never sees the judge's answer. Each model-read fact may be `null`: the transcript can't
 //! settle it. Parsed as strictly as the judge's answer; anything else is "not checked", never guessed.
-use crate::judge::{JOBS, task_type_ids};
+//! `task_types_also_fit` (check c2) names the other kinds of the same job that also fairly describe the task,
+//! still blind: when kinds overlap, a reading that lists the judge's kind is not a disagreement.
+use crate::judge::{JOBS, task_type_ids, task_type_offered};
 use serde::{Deserialize, Serialize};
 
 pub const SCHEMA: &str = "aiq.check.v1";
@@ -9,11 +11,17 @@ pub const SCHEMA: &str = "aiq.check.v1";
 /// The model-read facts the grader answers, in the judge's own names.
 pub const FACTS: [&str; 6] = ["F4", "F5", "F6", "F7", "F12", "F13"];
 
+/// At most this many other kinds may also fit: a longer list is hedging, not reading.
+pub const MAX_ALSO_FIT: usize = 3;
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CheckAnswer {
     pub job: String,
     pub task_type: String,
+    /// Other kinds of the same job that also fairly describe the task. Absent in answers stored before c2.
+    #[serde(default)]
+    pub task_types_also_fit: Vec<String>,
     pub current_rung: u8,
     pub f4_goal_context_constraints: Option<bool>,
     pub f5_reprompts_added_information: Option<bool>,
@@ -48,6 +56,8 @@ pub fn check_schema() -> serde_json::Value {
         "properties": {
             "job": {"type": "string", "enum": JOBS},
             "task_type": {"type": "string", "enum": task_type_ids()},
+            "task_types_also_fit": {"type": "array", "maxItems": MAX_ALSO_FIT, "items": {"type": "string", "enum": task_type_ids()},
+                "description": "Other task types of the same job that would also fairly describe this task; [] when only task_type fits"},
             "current_rung": {"type": "integer", "minimum": 1, "maximum": 5},
             "f4_goal_context_constraints": fact("The first request stated a goal, context and constraints; null if the transcript can't settle it"),
             "f5_reprompts_added_information": fact("Every re-prompt added new information (true if there were no re-prompts); null if it can't be settled"),
@@ -56,7 +66,7 @@ pub fn check_schema() -> serde_json::Value {
             "f12_step_by_step": fact("The person drove the agent one small instruction per turn; null if it can't be settled"),
             "f13_whole_outcome_handed_over": fact("A whole outcome was handed over with done criteria; null if it can't be settled")
         },
-        "required": ["job", "task_type", "current_rung", "f4_goal_context_constraints", "f5_reprompts_added_information",
+        "required": ["job", "task_type", "task_types_also_fit", "current_rung", "f4_goal_context_constraints", "f5_reprompts_added_information",
             "f6_output_checked", "f7_written_brief", "f12_step_by_step", "f13_whole_outcome_handed_over"]
     })
 }
@@ -77,6 +87,15 @@ pub fn parse_check(v: serde_json::Value) -> Result<CheckAnswer, String> {
     if !task_type_ids().contains(&a.task_type.as_str()) {
         return Err(format!("task_type: {}", a.task_type));
     }
+    if a.task_types_also_fit.len() > MAX_ALSO_FIT {
+        return Err(format!("task_types_also_fit: {} kinds, at most {MAX_ALSO_FIT}", a.task_types_also_fit.len()));
+    }
+    for (i, t) in a.task_types_also_fit.iter().enumerate() {
+        // Each must be a kind on today's list for the same job, not the answer's own kind, and not repeated.
+        if !task_type_offered(&a.job, t) || *t == a.task_type || a.task_types_also_fit[..i].contains(t) {
+            return Err(format!("task_types_also_fit: {t}"));
+        }
+    }
     if !(1..=5).contains(&a.current_rung) {
         return Err(format!("current_rung: {} out of 1..5", a.current_rung));
     }
@@ -89,7 +108,7 @@ mod tests {
     use serde_json::json;
 
     fn good() -> serde_json::Value {
-        json!({"job": "ask_research", "task_type": "explain", "current_rung": 1,
+        json!({"job": "ask_research", "task_type": "explain", "task_types_also_fit": [], "current_rung": 1,
             "f4_goal_context_constraints": false, "f5_reprompts_added_information": true, "f6_output_checked": null,
             "f7_written_brief": false, "f12_step_by_step": false, "f13_whole_outcome_handed_over": null})
     }
@@ -114,6 +133,35 @@ mod tests {
         let mut v = good();
         v.as_object_mut().unwrap().remove("f6_output_checked");
         assert!(parse_check(v).is_err(), "missing fact");
+    }
+
+    #[test]
+    fn also_fit_must_be_other_kinds_of_the_same_job() {
+        let mut v = good();
+        v["task_types_also_fit"] = json!(["find"]);
+        assert_eq!(parse_check(v).unwrap().task_types_also_fit, vec!["find".to_owned()]);
+        for bad in [
+            json!(["explain"]),
+            json!(["fix_bug"]),
+            json!(["find", "find"]),
+            json!(["poetry"]),
+            json!(["find", "compare", "how_to", "research"]),
+        ] {
+            let mut v = good();
+            v["task_types_also_fit"] = bad.clone();
+            assert!(parse_check(v).is_err(), "{bad}");
+        }
+        let mut v = good();
+        v.as_object_mut().unwrap().remove("task_types_also_fit");
+        assert!(parse_check(v).is_err(), "a new answer must say it, [] when only one kind fits");
+    }
+
+    #[test]
+    fn an_answer_stored_before_c2_still_reads() {
+        let mut v = good();
+        v.as_object_mut().unwrap().remove("task_types_also_fit");
+        let a: CheckAnswer = serde_json::from_value(v).unwrap();
+        assert!(a.task_types_also_fit.is_empty());
     }
 
     #[test]

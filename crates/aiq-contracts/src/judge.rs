@@ -54,11 +54,12 @@ pub const JOBS: [&str; 5] = ["code_change", "write_doc", "ask_research", "run_sh
 /// Re-cut 2026-11-14 against Imran's own tasks and published role studies (research "Task Kinds against real
 /// jobs"): 27 named kinds as before, 11 with the name they had, 11 reworded, 5 new (`deck`, `progress`,
 /// `review` under ask_research, `plan`, `source_control`), 5 retired (`RETIRED_TASK_TYPES`).
+/// 2026-11-15 (analysis j8): restart_fix folded into run_job after the accuracy check and Imran's review, so 26 named.
 ///
 /// A label stays short: it is printed inside a tip and a milestone on the Copilot CLI status line, which cuts
 /// a long line. Two tests hold the room it has (aiq-core `pack.rs` for the tip line, `tests/milestone_note.rs`
 /// for the milestone); the longest label today is 35 characters.
-pub const TASK_TYPES: [(&str, &str, &str); 31] = [
+pub const TASK_TYPES: [(&str, &str, &str); 30] = [
     ("code_change", "fix_bug", "Fixing a bug, test or build error"),
     ("code_change", "feature", "Building or adding a feature"),
     ("code_change", "tests", "Writing tests"),
@@ -88,7 +89,6 @@ pub const TASK_TYPES: [(&str, &str, &str); 31] = [
     ("ask_research", "plan", "Planning or brainstorming"),
     ("ask_research", "other", "Other questions"),
     // Run or ship it (Imran 2026-11-02, card: most tasks no pack covered were restart, release or set-up work).
-    ("run_ship", "restart_fix", "Getting something running again"),
     ("run_ship", "release", "Releasing or publishing"),
     ("run_ship", "run_job", "Running an app, script or pipeline"),
     ("run_ship", "setup", "Setting up or connecting a tool"),
@@ -99,12 +99,15 @@ pub const TASK_TYPES: [(&str, &str, &str); 31] = [
 /// Kinds an earlier list offered and today's does not, each folded into a neighbour. A stored task shows the
 /// kind it was given until it is analyzed again (once, for a retired kind: `aiq` `list_outdated`), so its label
 /// still resolves (`task_type_label`); a new answer may not name one (`task_type_offered`).
-pub const RETIRED_TASK_TYPES: [(&str, &str, &str); 5] = [
+pub const RETIRED_TASK_TYPES: [(&str, &str, &str); 6] = [
     ("code_change", "build_fix", "Fixing lint and build errors"),
     ("code_change", "review", "Reviewing code or a pull request"),
     ("code_change", "explain", "Explaining or exploring code"),
     ("write_doc", "criteria", "Writing acceptance criteria"),
     ("write_doc", "notes", "Turning notes into a summary"),
+    // Folded into run_job 2026-11-15 (analysis j8): the accuracy check read all 5 checked tasks as run_job, and
+    // Imran, reviewing them, called the two "essentially identical".
+    ("run_ship", "restart_fix", "Getting something running again"),
 ];
 
 /// Every task-type id a new answer may carry (the union over jobs, `other` once).
@@ -379,8 +382,12 @@ mod tests {
     }
 
     #[test]
-    fn the_list_has_27_named_kinds_and_a_retired_kind_keeps_its_label_but_is_not_offered() {
-        assert_eq!(TASK_TYPES.iter().filter(|(_, id, _)| *id != "other").count(), 27);
+    fn the_list_has_26_named_kinds_and_a_retired_kind_keeps_its_label_but_is_not_offered() {
+        assert_eq!(
+            TASK_TYPES.iter().filter(|(_, id, _)| *id != "other").count(),
+            26,
+            "j8 folded restart_fix into run_job"
+        );
         for (job, id) in [
             ("write_doc", "deck"),
             ("ask_research", "progress"),
@@ -429,10 +436,14 @@ mod tests {
         v["job"] = serde_json::json!("run_ship");
         v["task_type"] = serde_json::json!("release");
         assert!(parse_response(v).is_ok());
-        for t in ["restart_fix", "release", "run_job", "setup", "other"] {
+        for t in ["release", "run_job", "setup", "source_control", "other"] {
             assert!(task_type_label("run_ship", t).is_some(), "{t}");
         }
         assert_eq!(task_type_label("run_ship", "fix_bug"), None);
+        // Folded into run_job (j8): a stored one still has a label until it is analyzed again, but no new answer
+        // may name it.
+        assert!(task_type_label("run_ship", "restart_fix").is_some());
+        assert!(!task_type_offered("run_ship", "restart_fix"));
     }
 
     #[test]

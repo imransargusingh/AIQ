@@ -5,7 +5,10 @@
 use aiq_contracts::check::CheckAnswer;
 use std::collections::BTreeMap;
 
-pub const CHECK_VERSION: &str = "c1";
+/// c2: the second reading also names the other kinds of the same job that fit (`task_types_also_fit`), and a
+/// kind agrees when the reader's kind is the judge's or lists it (`kind_agrees`). Readings stored by c1 carry no
+/// list, so they score as before.
+pub const CHECK_VERSION: &str = "c2";
 /// Default sample size (K4; a first guess, the report prints intervals so it can't look precise).
 pub const DEFAULT_SAMPLE: usize = 30;
 /// Each job gets at least this many when it has them (K4).
@@ -131,8 +134,10 @@ pub struct FactTally {
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Agreement {
     pub job: Count,
-    /// Only where both picked the same job (a task type is per job).
+    /// Only where both picked the same job (a task type is per job). Agreement is `kind_agrees`.
     pub task_type: Count,
+    /// Of `task_type.k`, how many agreed only because the reader said the judge's kind also fits.
+    pub task_type_also_fit: u32,
     pub task_type_by_job: BTreeMap<String, Count>,
     pub rung_exact: Count,
     pub rung_within_one: Count,
@@ -149,6 +154,13 @@ pub struct Agreement {
     pub no_job_read_as: BTreeMap<String, u32>,
 }
 
+/// One definition of "the kinds agree" for the report and the pause rule: the jobs match and the reader picked
+/// the judge's kind or said it also fits. Kinds overlap (a restart is also running an app), so a blind reader
+/// that picks a neighbour but names the judge's kind as fitting is not a disagreement.
+pub fn kind_agrees(job_ok: bool, judge_type: &str, reader_type: &str, reader_also: &[String]) -> bool {
+    job_ok && (reader_type == judge_type || reader_also.iter().any(|t| t == judge_type))
+}
+
 /// Compare each judged task with its second reading.
 pub fn agreement(pairs: &[(JudgeView, CheckAnswer)]) -> Agreement {
     let mut a = Agreement::default();
@@ -162,9 +174,11 @@ pub fn agreement(pairs: &[(JudgeView, CheckAnswer)]) -> Agreement {
         a.rung_exact.add(rung_ok);
         a.rung_within_one.add(j.current_rung.abs_diff(c.current_rung) <= 1);
         a.model_rung_exact.add(j.model_rung == c.current_rung);
-        let type_ok = job_ok && j.task_type.as_deref() == Some(c.task_type.as_str());
+        let type_ok =
+            j.task_type.as_deref().is_some_and(|t| kind_agrees(job_ok, t, &c.task_type, &c.task_types_also_fit));
         if job_ok && j.task_type.is_some() {
             a.task_type.add(type_ok);
+            a.task_type_also_fit += u32::from(type_ok && j.task_type.as_deref() != Some(c.task_type.as_str()));
             a.task_type_by_job.entry(j.job.clone()).or_default().add(type_ok);
         }
         if let Some(t) = &j.task_type {
@@ -246,6 +260,8 @@ pub struct Reading {
     pub judge_type: Option<String>,
     pub reader_job: String,
     pub reader_type: String,
+    /// Other kinds the reader said also fit (empty for c1 readings).
+    pub reader_also: Vec<String>,
 }
 
 /// The verdict for one scope, from the newest checks.
@@ -278,7 +294,7 @@ pub fn verdicts(readings: &[Reading]) -> Vec<Verdict> {
             let job_ok = r.reader_job == r.judge_job;
             scored.entry(Scope::Job(r.judge_job.clone())).or_default().push((run, job_ok));
             if let Some(t) = r.judge_type.as_deref().filter(|t| *t != "other") {
-                let hit = job_ok && r.reader_type == t;
+                let hit = kind_agrees(job_ok, t, &r.reader_type, &r.reader_also);
                 scored.entry(Scope::Kind(r.judge_job.clone(), t.to_owned())).or_default().push((run, hit));
             }
         }
@@ -375,6 +391,7 @@ mod tests {
         CheckAnswer {
             job: job.into(),
             task_type: ty.into(),
+            task_types_also_fit: vec![],
             current_rung: rung,
             f4_goal_context_constraints: f4,
             f5_reprompts_added_information: None,
@@ -430,6 +447,38 @@ mod tests {
     }
 
     #[test]
+    fn a_reader_that_says_the_judges_kind_also_fits_agrees() {
+        let mut neighbour = grader("run_ship", "setup", 2, None, None);
+        neighbour.task_types_also_fit = vec!["run_job".into()];
+        let mut elsewhere = grader("run_ship", "setup", 2, None, None);
+        elsewhere.task_types_also_fit = vec!["release".into()];
+        let mut other_job = grader("ask_research", "troubleshoot", 2, None, None);
+        other_job.task_types_also_fit = vec!["run_job".into()];
+        let pairs = vec![
+            (judge("run_ship", "run_job", 2, false, None), neighbour),
+            (judge("run_ship", "run_job", 2, false, None), elsewhere),
+            (judge("run_ship", "run_job", 2, false, None), grader("run_ship", "run_job", 2, None, None)),
+            (judge("run_ship", "run_job", 2, false, None), other_job),
+        ];
+        let a = agreement(&pairs);
+        assert_eq!((a.task_type.k, a.task_type.n, a.task_type_also_fit), (2, 3, 1), "job miss is never a kind hit");
+        assert_eq!(a.by_kind[&("run_ship".to_owned(), "run_job".to_owned())], Count { k: 2, n: 4 });
+    }
+
+    #[test]
+    fn the_pause_rule_counts_also_fits_the_same_way() {
+        let mut r = many("r1", 1, 5, 2, ("run_ship", "run_job"));
+        assert!(find(&verdicts(&r), "run_ship/run_job").paused, "2 of 5 pauses");
+        for x in r.iter_mut().skip(2) {
+            x.reader_job = "run_ship".into();
+            x.reader_type = "setup".into();
+            x.reader_also = vec!["run_job".into()];
+        }
+        let k = find(&verdicts(&r), "run_ship/run_job").clone();
+        assert_eq!((k.agree, k.paused), (Count { k: 5, n: 5 }, false));
+    }
+
+    #[test]
     fn no_job_agrees_with_other_and_records_what_the_grader_picked() {
         let mut none = judge("other", "x", 1, true, None);
         none.task_type = None;
@@ -452,6 +501,7 @@ mod tests {
             judge_type: Some(judge.1.into()),
             reader_job: reader.0.into(),
             reader_type: reader.1.into(),
+            reader_also: vec![],
         }
     }
 

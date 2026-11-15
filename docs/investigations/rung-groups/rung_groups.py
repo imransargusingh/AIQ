@@ -15,7 +15,8 @@ with contextlib.redirect_stdout(buf):
     g = runpy.run_path("kinds_cross.py", run_name="kinds_cross")
 H, NOW, DAY = g["H"], g["NOW"], g["DAY"]
 HOUR = DAY // 24
-con = sqlite3.connect(f"file:{sys.argv[1]}?mode=ro&immutable=1", uri=True)
+con = sqlite3.connect(f"file:{sys.argv[1]}?mode=ro", uri=True, timeout=5)  # not immutable: that skips rows still in the WAL
+con.execute("PRAGMA query_only = ON")
 
 PLAN = "carrying out a plan or continuing a build"
 PROG = "checking on progress or status"

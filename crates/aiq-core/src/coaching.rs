@@ -111,6 +111,7 @@ pub fn readings(store: &Store) -> Result<Vec<Reading>, StoreError> {
                 judge_type: j.task_type,
                 reader_job: ans.job,
                 reader_type: ans.task_type,
+                reader_also: ans.task_types_also_fit,
             });
         }
     }

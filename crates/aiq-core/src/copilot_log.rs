@@ -12,7 +12,7 @@
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 
-/// A message the person typed into a session's main line (not a sub-agent's).
+/// A message the person typed into a session's main line (not a sub-agent's, not one autopilot sent).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Typed {
     /// `idle` (agent waiting), `queued` (sent while busy, run after) or `steering` (sent into the running turn).
@@ -27,6 +27,11 @@ pub fn typed_message(e: &Value) -> Option<Typed> {
         return None;
     }
     let d = &e["data"];
+    // Autopilot mode sends follow-up turns itself and marks them (measured 2026-11-15: a program's `copilot -p`
+    // sessions passed as multi-prompt work because AIQ counted these). Only the person's own turns count.
+    if d["isAutopilotContinuation"].as_bool() == Some(true) {
+        return None;
+    }
     Some(Typed {
         delivery: d["delivery"].as_str()?.to_owned(),
         ts_ms: ts_ms(&e["timestamp"]),

@@ -6,7 +6,7 @@
    first, then a release notice. All time and the last 30 days, on Home's rebuilt task list (kinds_home.py).
 
 Prints no text from the store: only counts and the fixed word lists below. The store is opened
-mode=ro&immutable=1 (no lock, nothing written).
+mode=ro with query_only (nothing written; reads rows still in the write-ahead log).
 
 Usage (same folder as kinds_home.py):
     python3 -I kinds_after.py <path to aiq.db>
@@ -38,7 +38,8 @@ def cnt(it):
     return dict(sorted(collections.Counter(it).items(), key=lambda kv: (-kv[1], str(kv[0]))))
 
 
-con = sqlite3.connect(f"file:{sys.argv[1]}?mode=ro&immutable=1", uri=True)
+con = sqlite3.connect(f"file:{sys.argv[1]}?mode=ro", uri=True, timeout=5)  # not immutable: that skips rows still in the WAL
+con.execute("PRAGMA query_only = ON")
 jcols = [r[1] for r in con.execute("PRAGMA table_info(judgment)")]
 jcomp = "computer" if "computer" in jcols else "NULL"
 
