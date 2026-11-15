@@ -2076,13 +2076,17 @@ await test("Accuracy pause (K6b): Home and Settings say why, Keep showing and Le
     s.settings.accuracy_paused = [
       { scope: "run_ship", label: "Run or ship it", agreed: 6, checked: 10, kept_on: false },
       { scope: "code_change/fix_bug", label: "Code a change: Fixing a bug", agreed: 4, checked: 6, kept_on: true },
+      { scope: "ask_research/find", label: "Ask or research: Looking up a fact", agreed: 4, checked: 9, kept_on: false },
     ];
   };
   const home = await open("coaching", { edit: paused });
   const ht = await home.locator("main").innerText();
   assert.match(ht, /Run or ship it: AIQ paused these next-step tips\. A second model agreed with AIQ's analysis only 6 of 10 times, under 8 in 10\./);
   assert.match(ht, /Code a change: Fixing a bug: next-step tips stay on because you chose to keep them/);
-  await home.getByRole("button", { name: "Keep showing" }).click();
+  // A paused job comes back after a check the person runs; a paused Kind is read again by AIQ each week (K17).
+  assert.match(ht, /6 of 10 times, under 8 in 10\. They come back by themselves when a later accuracy check clears the bar\./);
+  assert.match(ht, /4 of 9 times, under 8 in 10\. AIQ reads some of these tasks again each week, and the tips come back by themselves when a check clears the bar\./);
+  await home.getByRole("button", { name: "Keep showing" }).first().click();
   await home.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Run or ship it: next-step tips kept on.");
   assert.deepEqual(await axe(home), []);
   await home.context().close();

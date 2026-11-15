@@ -297,7 +297,7 @@ fn a_store_from_before_sync_sends_everything_it_already_had_once() {
             .unwrap();
     }
     let mut a = Store::open(&path).unwrap();
-    assert_eq!(a.user_version().unwrap(), 12);
+    assert_eq!(a.user_version().unwrap(), MIGRATIONS.len() as i64);
     let seg = cut(&mut a).unwrap();
     let tables: Vec<&str> = seg.lines.iter().map(|l| l["t"].as_str().unwrap()).collect();
     assert_eq!(tables, ["surface_session", "event", "content", "tip_feedback"]);
