@@ -1016,4 +1016,17 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <ul><li><strong>Control (tests):</strong> <code>tests/help_runs_nothing.rs</code>: <code>every_command_given_help_prints_its_usage_and_writes_nothing</code></li></ul>
 <p>(19 commands, both spellings, an empty home stays empty), <code>help_for_one_command_shows_only_its_lines</code>, <code>import_refuses_an_argument_it_does_not_know_before_reading_anything</code>. Red first: the 0.1.69 binary wrote <code>aiq.db</code> on <code>aiq import --help</code>.</p>
 <ul><li><strong>Rule:</strong> a command that writes or spends must refuse what it does not understand. Help is answered before any</li></ul>
-<p>command runs, never left to each command.</p></main></body></html>
+<p>command runs, never left to each command.</p>
+<h3>DC-094 — A verdict kept alive by the readings a re-analysis has not reached yet</h3>
+<ul><li><strong>Signature:</strong> 2026-11-15, Imran&#x27;s laptop on 0.1.68 (<code>pause_window.py</code>, read-only). In the morning a check of</li></ul>
+<p>&quot;Looking up a fact&quot; read 30 tasks and agreed on 14. Then 0.1.68&#x27;s rewording (j9, <code>KINDS_REWORDED</code>) and the history re-read had 25 of those 30 analyzed again. Their readings dropped out, as the pause rule intends. The pause then rested on the 5 tasks not yet redone (all j5, all disagreeing), and Home said &quot;agreed only 0 of 5 times&quot;. 52 find analyses from j3 to j5 were still waiting to be redone.</p>
+<ul><li><strong>Why it survives:</strong> the pause rule dropped a reading only once its task had been judged again. A task <em>waiting</em></li></ul>
+<p>to be judged again still counted. While a re-analysis runs, the readings left are the tasks it has not reached yet, so the leftover is a biased remainder, not a sample. The check sampler had the same gap: it could spend a request on an analysis about to be replaced.</p>
+<ul><li><strong>Sweep:</strong> everything that reads current judgments as evidence about a kind: <code>coaching::readings</code> (pause rule),</li></ul>
+<p><code>judge::check_candidates</code> (check and weekly re-check sampling). Coaching tips themselves read the current analysis and are refreshed by the re-analysis; they are not evidence about accuracy.</p>
+<ul><li><strong>Control (build):</strong> <code>rung::kind_outdated</code> (moved from judge.rs <code>list_outdated</code>) names every reason an analysis</li></ul>
+<p>will be redone because its kind may change. The background queue, the pause rule and the check sampler all call the same function, so they can&#x27;t disagree.</p>
+<ul><li><strong>Control (tests):</strong> <code>readings_of_analyses_waiting_to_be_redone_do_not_pause_a_kind</code> (red first: the old rule</li></ul>
+<p>paused on 0 of 5 j8 readings) and the DC-094 lines in <code>check_reads_judged_tasks_blind_stores_each_reading_and_reports_agreement</code>.</p>
+<ul><li><strong>Rule:</strong> evidence about an analysis expires when the analysis is <em>due</em> to change, not only once it has changed.</li></ul>
+<p>One function says what is due, and every reader asks it.</p></main></body></html>

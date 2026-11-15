@@ -100,6 +100,28 @@ pub fn version_before(v: &str, than: &str) -> bool {
     let n = |s: &str| s.strip_prefix('j').and_then(|d| d.parse::<u32>().ok());
     matches!((n(v), n(than)), (Some(a), Some(b)) if a < b)
 }
+/// Why an analysis at version `v` will be analyzed again because the kind it named may change, or None when its
+/// kind stands. The background pass queues these (judge.rs `list_outdated`), and the accuracy check neither samples
+/// nor counts them: a check of an analysis about to be redone describes a kind that is going away, and the readings
+/// left while a re-analysis is under way are the ones not yet redone, not a fair sample (DC-094).
+pub fn kind_outdated(v: &str, job: &str, task_type: Option<&str>) -> Option<&'static str> {
+    if v == JUDGE_VERSION {
+        return None;
+    }
+    if !JUDGE_VERSIONS_KEPT.contains(&v) {
+        return Some("an analysis version that is not kept");
+    }
+    match task_type {
+        _ if job == "unclassified" => Some("no job"),
+        None => Some("no kind recorded"),
+        Some("other") => Some("the kind other"),
+        Some(k) if !aiq_contracts::judge::task_type_named(job, k) => Some("a kind the list retired"),
+        Some(k) if KINDS_REWORDED.iter().any(|(at, j, kind)| *j == job && *kind == k && version_before(v, at)) => {
+            Some("a kind whose wording changed")
+        }
+        Some(_) => None,
+    }
+}
 /// A model fact below this confidence counts as unknown (D10: the spike's correct facts sat at 0.5–0.6).
 pub const FACT_THRESHOLD: f64 = 0.6;
 /// F6 (output checked) yes from every run at this confidence or more counts as yes when the person wrote again

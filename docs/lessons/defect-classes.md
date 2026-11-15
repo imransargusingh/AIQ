@@ -1686,3 +1686,24 @@ summary: >-
   `aiq.db` on `aiq import --help`.
 - **Rule:** a command that writes or spends must refuse what it does not understand. Help is answered before any
   command runs, never left to each command.
+
+### DC-094 — A verdict kept alive by the readings a re-analysis has not reached yet
+- **Signature:** 2026-11-15, Imran's laptop on 0.1.68 (`pause_window.py`, read-only). In the morning a check of
+  "Looking up a fact" read 30 tasks and agreed on 14. Then 0.1.68's rewording (j9, `KINDS_REWORDED`) and the
+  history re-read had 25 of those 30 analyzed again. Their readings dropped out, as the pause rule intends. The
+  pause then rested on the 5 tasks not yet redone (all j5, all disagreeing), and Home said "agreed only 0 of 5
+  times". 52 find analyses from j3 to j5 were still waiting to be redone.
+- **Why it survives:** the pause rule dropped a reading only once its task had been judged again. A task *waiting*
+  to be judged again still counted. While a re-analysis runs, the readings left are the tasks it has not reached
+  yet, so the leftover is a biased remainder, not a sample. The check sampler had the same gap: it could spend a
+  request on an analysis about to be replaced.
+- **Sweep:** everything that reads current judgments as evidence about a kind: `coaching::readings` (pause rule),
+  `judge::check_candidates` (check and weekly re-check sampling). Coaching tips themselves read the current analysis
+  and are refreshed by the re-analysis; they are not evidence about accuracy.
+- **Control (build):** `rung::kind_outdated` (moved from judge.rs `list_outdated`) names every reason an analysis
+  will be redone because its kind may change. The background queue, the pause rule and the check sampler all call
+  the same function, so they can't disagree.
+- **Control (tests):** `readings_of_analyses_waiting_to_be_redone_do_not_pause_a_kind` (red first: the old rule
+  paused on 0 of 5 j8 readings) and the DC-094 lines in `check_reads_judged_tasks_blind_stores_each_reading_and_reports_agreement`.
+- **Rule:** evidence about an analysis expires when the analysis is *due* to change, not only once it has changed.
+  One function says what is due, and every reader asks it.

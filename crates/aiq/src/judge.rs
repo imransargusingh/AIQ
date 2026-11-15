@@ -630,26 +630,7 @@ fn current_version(j: &JudgmentRow) -> bool {
 /// when the list keeps it. An analysis at today's version is kept whatever it named, so each task is asked
 /// once; one of a kept version only when it names a kind today's list offers (`rung::JUDGE_VERSIONS_KEPT`).
 fn list_outdated(j: &JudgmentRow) -> Option<&'static str> {
-    if j.judge_version == rung::JUDGE_VERSION {
-        return None;
-    }
-    if !rung::JUDGE_VERSIONS_KEPT.contains(&j.judge_version.as_str()) {
-        return Some("an analysis version that is not kept");
-    }
-    match j.task_type.as_deref() {
-        _ if j.job == "unclassified" => Some("no job"),
-        None => Some("no kind recorded"),
-        Some("other") => Some("the kind other"),
-        Some(k) if !aiq_contracts::judge::task_type_named(&j.job, k) => Some("a kind the list retired"),
-        Some(k)
-            if rung::KINDS_REWORDED
-                .iter()
-                .any(|(v, job, kind)| *job == j.job && *kind == k && rung::version_before(&j.judge_version, v)) =>
-        {
-            Some("a kind whose wording changed")
-        }
-        Some(_) => None,
-    }
+    rung::kind_outdated(&j.judge_version, &j.job, j.task_type.as_deref())
 }
 
 /// fs5 (DC-074): the judgment was read with a log "no brief" that may have hidden one.
@@ -1989,6 +1970,8 @@ fn check_candidates(
     Ok(judged
         .values()
         .filter(|j| known.contains(j.task_id.as_str()))
+        // An analysis waiting to be redone is not checked: its kind may change (DC-094).
+        .filter(|j| rung::kind_outdated(&j.judge_version, &j.job, j.task_type.as_deref()).is_none())
         .filter(|j| match scope {
             CheckScope::All => true,
             CheckScope::NoJob => j.job == "unclassified",
@@ -3812,6 +3795,21 @@ mod tests {
         let tasks = aiq_home::own_tasks(&e.store, &pack, 0).unwrap();
         assert_eq!(check_candidates(&e.store, &tasks, CheckScope::Job("code_change")).unwrap().len(), 4);
         assert_eq!(check_candidates(&e.store, &tasks, CheckScope::Job("run_ship")).unwrap().len(), 0);
+        // DC-094: an analysis waiting to be redone (find before the j9 rewording) is not sampled; today's is.
+        let one = judged.values().next().unwrap().clone();
+        let find = |v: &str, at: i64| JudgmentRow {
+            judgment_id: format!("find-{v}"),
+            judged_utc_ms: at,
+            job: "ask_research".into(),
+            task_type: Some("find".into()),
+            judge_version: v.into(),
+            ..one.clone()
+        };
+        let kind = CheckScope::Kind("ask_research", "find");
+        e.store.insert_judgment(&find("j8", one.judged_utc_ms + 10)).unwrap();
+        assert_eq!(check_candidates(&e.store, &tasks, kind).unwrap().len(), 0, "waiting to be redone");
+        e.store.insert_judgment(&find(rung::JUDGE_VERSION, one.judged_utc_ms + 20)).unwrap();
+        assert_eq!(check_candidates(&e.store, &tasks, kind).unwrap().len(), 1, "today's analysis is sampled");
         let none =
             run_check(&e.store, &e.paths, &e.homes, &g, &g, NOW + 1, 30, 7, CheckScope::Job("run_ship")).unwrap();
         assert_eq!(none.checked, 0, "no run_ship judgments, nothing read");
