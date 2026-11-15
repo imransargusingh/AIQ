@@ -681,6 +681,11 @@ pub fn catch_up_here(paths: &Paths, now_ms: i64) -> Option<String> {
 
 /// `aiq import [--dry-run]`
 pub fn cli(args: &[&str]) -> ExitCode {
+    // Anything but --dry-run is refused before the store opens: an unread flag must never run a real import (DC-093).
+    if let Some(other) = args.iter().find(|a| **a != "--dry-run") {
+        eprintln!("aiq import takes only --dry-run, not {other}.\nUsage: aiq import [--dry-run]");
+        return ExitCode::from(2);
+    }
     let paths = Paths::from_env();
     let mut store = match open_store(&paths) {
         Ok(s) => s,
