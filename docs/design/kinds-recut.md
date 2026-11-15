@@ -218,6 +218,23 @@ $0.034 from now on. The Devbox re-analyzed about 65 of its own tasks (about 130 
 holds 285 `j7` analyses over 252 tasks, so 33 tasks were analyzed twice. `kinds_after.py` (in
 `docs/investigations/rung-groups/`, read-only, counts only) says which computer wrote each one and how far apart.
 
+Its run on the laptop (2026-11-15 13:58 UTC) found the following:
+- **The 33 doubles.** The other computer analyzed each one first, and the laptop analyzed it 10 to 60 minutes
+  later. Each is the laptop's own task on Home: 31 imported sessions and 2 live ones. So another computer treated
+  sessions the laptop holds as its own, which breaks the sync rule that only the computer that saw a task
+  analyzes it. 9 of the 33 got a different job or Kind the second time. `doubles_trace.py` checks whether the other
+  computer imported the same session file.
+- **Home's counts.** All time, 61 progress checks and 24 release notices get no rung, which leaves 437 sure
+  Assisted on the ladder (forecast about 453, with 58 and 21). Re-analysis also moved rungs: 522 sure Assisted
+  before the no-rung rules, against 532 before the update. In the last 30 days, 75% of analyzed tasks have a named
+  Kind (222 of 297), up from 47% before the list changed.
+- **Accuracy check** (`aiq analyze --check --sample 60`, a second model, Inferred): job 54 of 60, rung exact 44 of
+  60, within one 54 of 60, Kind 29 of 52 where the job matched (all seven check runs: 100 of 131). The check
+  paused next-step tips for "Looking up a fact" (4 of 9) and "Getting something running again" (0 of 5). Five
+  "Getting something running again" tasks read as "Running an app, script or pipeline", whose line the re-cut list
+  widened to cover start and stop. The sample held no task the analysis named "Checking on progress" that the
+  second reader read otherwise, too few to settle the `assume:` in K9.
+
 Measure, do not model: `aiq analyze --versions` is read-only and prints, per tool, how many analyses are
 outdated and why ("no job", "the kind other", "no kind recorded", "a kind the list retired"). Run it before
 the update for the size and after the queue empties for the proof. `judge.log` holds each call. Home shows
