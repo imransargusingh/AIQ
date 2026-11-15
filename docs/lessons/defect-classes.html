@@ -838,4 +838,32 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <p>On screen the number is now a badge before the name (<code>RungNo</code>, <code>Rung</code>); text (aria labels, titles) uses the name alone. Not swept: the terminal status line and <code>aiq progress</code> text (no counts beside the rung there); follow-up if they confuse.</p>
 <ul><li><strong>Control (test):</strong> <code>rungno.test.ts</code> fails if any Home source writes a rung name followed by &quot;(1)&quot;–&quot;(5)&quot; or the</li></ul>
 <p>old template; e2e &quot;rung numbers are badges, never \&quot;(n)\&quot; beside counts&quot; reads the rendered Home, Tasks and Day text and checks the ladder&#x27;s per-rung counts against the snapshot.</p>
-<ul><li><strong>Rule:</strong> never write a position in the notation the same screen uses for counts; show it as a mark (badge).</li></ul></main></body></html>
+<ul><li><strong>Rule:</strong> never write a position in the notation the same screen uses for counts; show it as a mark (badge).</li></ul>
+<h3>DC-078 — Two reads on one card, scoped to different computers</h3>
+<ul><li><strong>Signature:</strong> 2026-11-14, Imran on the laptop: Right now said &quot;Nothing in progress&quot; beside a green &quot;Copilot · your</li></ul>
+<p>last turn 15 min ago&quot; while his Copilot session ran on the Devbox. Measured in his store: the laptop&#x27;s last Copilot event was over 6 hours old; the 15-minute turn was the Devbox&#x27;s (stop 05:09:21Z, applied by sync 05:12:55Z).</p>
+<ul><li><strong>Why it survives:</strong> sync (#252) scoped the open-task read to <code>computer IS NULL</code> and left the per-tool newest</li></ul>
+<p>(<code>Snapshot::seen</code>) on every computer, so the same card answered two questions about two different sets of rows.</p>
+<ul><li><strong>Sweep:</strong> every Home read of <code>event</code> for the live card (<code>live</code>, <code>seen</code>, <code>starting</code>). All three now carry the</li></ul>
+<p>computer; the card names the other computer on each. Not changed (deliberately local): judge calls and their finder (<code>judge_call ... computer IS NULL</code>), <code>aiq show</code> with no id, <code>latest_session</code>, tip offers.</p>
+<ul><li><strong>Control (test):</strong> <code>right_now_shows_every_computers_open_task_and_names_the_computer</code> (a real sync change file;</li></ul>
+<p>red with the old filter); e2e &quot;nothing open: the other computer&#x27;s newer turn is named&quot;; unit &quot;keeps this computer&#x27;s last turn and names the other computer&#x27;s&quot;.</p>
+<ul><li><strong>Rule:</strong> reads that sit together on one surface share one scope, or each says its scope on screen.</li></ul>
+<h3>DC-079 — A design proven with two parties that silently assumes two</h3>
+<ul><li><strong>Signature:</strong> 2026-11-14, Imran connected a third computer (a second Devbox). Measured on the laptop: it synced</li></ul>
+<p>fine, because both Devboxes open the laptop. Read in the code: each computer copied only its own change files and never passed on rows it applied, so a computer reached only through another one (a Devbox opened from a Devbox) would reach that one computer and never the laptop, with no error anywhere.</p>
+<ul><li><strong>Why it survives:</strong> every sync test had exactly two computers, and with two, &quot;send your own files&quot; and &quot;send</li></ul>
+<p>everything&quot; are the same thing.</p>
+<ul><li><strong>Sweep:</strong> the sync pass (<code>pass</code>, <code>mirror</code>, apply order) and every per-computer read. The reads compare &quot;this</li></ul>
+<p>computer&quot; with &quot;every other one&quot; (<code>computer IS NULL</code>, peers named by id), so they hold for any number. The offer card names only the first home it reaches (<code>remote.first()</code>), which is about Windows user folders, not computers.</p>
+<ul><li><strong>Control (test):</strong> <code>a_computer_reached_only_through_another_one_still_reaches_everyone_and_gets_everything</code></li></ul>
+<p>(three computers in a chain; red before the fix) and <code>a_change_file_cut_short_is_never_passed_on_and_a_copy_cut_short_is_replaced</code>.</p>
+<ul><li><strong>Rule:</strong> a feature that joins parties is tested with three, in the worst shape the transport allows.</li></ul>
+<h3>DC-080 — Hover text inside a scrolling box, cut off by the box</h3>
+<ul><li><strong>Signature:</strong> 2026-11-14, measured on the built app at 1280 px with the repo&#x27;s fixtures: in the Tasks Day view,</li></ul>
+<p>every hover text lost its third line (the rung) on a one-session day, and blocks near the right edge lost up to 94 of 219 px. The Day view box has <code>overflow-x:auto</code> so the chart scrolls on a narrow window, and a scrolling box clips everything inside it, including absolutely placed hover text.</p>
+<ul><li><strong>Why it survives:</strong> the screen test read the hover text&#x27;s words (<code>innerText</code>), which are all there when clipped.</li><li><strong>Sweep:</strong> every <code>.tip</code> in Home. The Day view&#x27;s row and block tips now sit <code>position:fixed</code>, placed against the</li></ul>
+<p>window (below, else above; pulled in from the right edge), with no <code>filter</code> on the anchor (a filter would make it the containing block and clip again) and <code>pointer-events:none</code> so a tip never traps the mouse. The Home weekly column tip has no scrolling ancestor (<code>.wk-plot</code> is a plain grid), so it is not affected.</p>
+<ul><li><strong>Control (test):</strong> e2e &quot;Tasks Day view: every hover text is shown whole&quot; over 4 cases (one-session and tour</li></ul>
+<p>days, 1280 and 720 px, light, dark, contrast), by focus and by mouse: the tip&#x27;s rectangle sits inside the window and the tip is the topmost element at its corners and centre. Red on all 4 before the fix.</p>
+<ul><li><strong>Rule:</strong> a check that something is shown reads pixels (rectangles, hit tests), never only text.</li></ul></main></body></html>

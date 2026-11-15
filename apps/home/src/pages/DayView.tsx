@@ -2,22 +2,48 @@
 // day, named by its kinds of task, each task a block with its rung number, coloured by rung, prompts as ticks.
 // Quiet gaps over 30 minutes shrink to a break, and one line sums the day. Hover or focus a row or block for
 // details; Enter or a click on a block opens the task. Rung is in text and number, never colour alone.
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { clock, day, jobOf, plural, rungLabel, stateLabel, toolName } from "../format";
 import { GAP_MIN, daySummary, lanes, taskDays, timeline, type Lane } from "../day";
 import { projectName, projectOf } from "../project";
 import { Rung, type Ctx } from "../ui";
 import type { TaskRow } from "../types";
 
+const GAP = 8; // px between a block or row and its hover text, and the least margin to the window's edge
+
+/** Place an anchor's hover text against the window, not the Day view box: the box scrolls sideways on a narrow
+ * window, and a scrolling box clips anything hanging out of it (the rung line and the right edge, before). Below
+ * the anchor when it fits, else above; left-aligned with it, pulled in from the window's right edge. */
+export function placeTip(anchor: Element) {
+  const tip = anchor.querySelector<HTMLElement>(":scope > .tip");
+  if (!tip) return;
+  const a = anchor.getBoundingClientRect();
+  const { width: w, height: h } = tip.getBoundingClientRect();
+  const vw = document.documentElement.clientWidth;
+  const vh = document.documentElement.clientHeight;
+  const below = a.bottom + GAP;
+  const top = below + h <= vh - GAP || a.top - GAP - h < GAP ? below : a.top - GAP - h;
+  const left = Math.max(GAP, Math.min(a.left, vw - GAP - w));
+  tip.style.top = `${Math.round(top)}px`;
+  tip.style.left = `${Math.round(left)}px`;
+}
+
+const place = (e: { currentTarget: Element }) => placeTip(e.currentTarget);
+const OPEN = ".dv :is(.dv-name, .dv-task):is(:hover, :focus)";
+
+// A task's name in the Day view: its kind once analyzed, else its job, else the same words its row uses.
+const kindOf = (t: TaskRow) => t.judgment?.task_type_label ?? (t.job ? jobOf(t) : "Not analyzed yet");
+
 const span = (a: number, b: number, off: number) => (clock(a, off) === clock(b, off) ? clock(a, off) : `${clock(a, off)}–${clock(b, off)}`);
 
 function TaskTip({ t, off }: { t: TaskRow; off: number }) {
   return (
     <span className="tip" role="tooltip">
-      <b>{t.judgment?.task_type_label ?? jobOf(t)}</b>
+      <b>{kindOf(t)}</b>
       <br />
       {span(t.first_ms, t.last_ms, off)} · {plural(t.prompts, "prompt")}
-      <br />
+      {/* The title already says "Not analyzed yet" when there is no job either. */}
+      {(t.judgment || t.job) && <br />}
       {t.judgment ? (
         <>
           <Rung r={t.judgment.current} />
@@ -29,7 +55,7 @@ function TaskTip({ t, off }: { t: TaskRow; off: number }) {
           {stateLabel(t.judgment.state) && ` · ${stateLabel(t.judgment.state)}`}
         </>
       ) : (
-        "Not analyzed yet"
+        t.job && "Not analyzed yet"
       )}
     </span>
   );
@@ -70,6 +96,16 @@ export function DayView(ctx: Ctx) {
   const off = snap.offset_min;
   const days = useMemo(() => taskDays(snap.tasks, off), [snap.tasks, off]);
   const [picked, setPicked] = useState<number | null>(null);
+  // An open hover text follows its anchor when the page or the box scrolls, or the window resizes.
+  useEffect(() => {
+    const again = () => document.querySelectorAll(OPEN).forEach(placeTip);
+    window.addEventListener("scroll", again, { capture: true, passive: true });
+    window.addEventListener("resize", again);
+    return () => {
+      window.removeEventListener("scroll", again, { capture: true });
+      window.removeEventListener("resize", again);
+    };
+  }, []);
   const key = picked !== null && days.includes(picked) ? picked : days[0];
   const ls = useMemo(() => (key === undefined ? [] : lanes(snap.tasks, key, off)), [snap.tasks, key, off]);
   if (key === undefined) return null;
@@ -124,7 +160,7 @@ export function DayView(ctx: Ctx) {
           const title = l.kinds.length ? l.kinds.join(", ") : l.not_judged ? "Not analyzed yet" : "No kind yet";
           return (
             <div className="dv-lane" role="listitem" key={l.key}>
-              <div className="dv-name" tabIndex={0} aria-label={`${toolName(l.tool)} session in ${name}, ${span(l.first_ms, l.last_ms, off)}, ${plural(l.tasks.length, "task")}`}>
+              <div className="dv-name" tabIndex={0} onMouseEnter={place} onFocus={place} aria-label={`${toolName(l.tool)} session in ${name}, ${span(l.first_ms, l.last_ms, off)}, ${plural(l.tasks.length, "task")}`}>
                 <span className="dv-t">
                   <b>{title}</b>
                 </span>
@@ -146,8 +182,10 @@ export function DayView(ctx: Ctx) {
                       key={t.task_id}
                       className={`dv-task ${r ? `dv-r${r}` : "dv-none"}`}
                       style={{ left: `min(${a}%, calc(100% - 24px))`, width: `max(24px, ${w}%)` }}
-                      aria-label={`${t.judgment?.task_type_label ?? jobOf(t)}, ${span(t.first_ms, t.last_ms, off)}, ${plural(t.prompts, "prompt")}, ${t.judgment ? rungLabel(t.judgment.current) : "not analyzed yet"}. Open task`}
+                      aria-label={`${kindOf(t)}, ${span(t.first_ms, t.last_ms, off)}, ${plural(t.prompts, "prompt")}${t.judgment ? `, ${rungLabel(t.judgment.current)}` : t.job ? ", not analyzed yet" : ""}. Open task`}
                       onClick={() => ctx.openTask(t.task_id)}
+                      onMouseEnter={place}
+                      onFocus={place}
                     >
                       <span className="dv-n" aria-hidden="true">{r ?? "–"}</span>
                       {t.prompt_ms.map((p, k) => (
