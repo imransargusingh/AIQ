@@ -1,5 +1,5 @@
 {
- "version": "g3",
+ "version": "g4",
  "about": "AIQ judge golden set. Synthetic tasks only; no prompt comes from anyone's real store. Expected values are lists: the first is the author's reading, later ones are also accepted where the rubric allows both. kind or rung null means not scored (no work goal). label_source says who labelled the case: author (the person who wrote the case) or human (a separate labeller). Design: docs/design/judge-evals.md.",
  "cases": [
   {
@@ -2050,6 +2050,232 @@
      "tool": "Edit",
      "path": "docs/stories/delay-alerts.md",
      "result": "1 line changed"
+    }
+   ]
+  },
+  {
+   "id": "k09",
+   "tool": "copilot-cli",
+   "group": "kind",
+   "label_source": "author",
+   "expect": {
+    "job": [
+     "ask_research"
+    ],
+    "kind": [
+     "find"
+    ],
+    "rung": [
+     1
+    ]
+   },
+   "note": "j9 boundary (2026-11-15 check): one fact, a setting and where it lives.",
+   "steps": [
+    {
+     "kind": "user",
+     "text": "where is the retry limit for the uploader set? which file"
+    },
+    {
+     "kind": "tool",
+     "tool": "Grep",
+     "pattern": "retry",
+     "result": "3 matches"
+    },
+    {
+     "kind": "assistant",
+     "text": "It is max_retries = 5 in config/uploader.toml, line 12."
+    }
+   ]
+  },
+  {
+   "id": "k10",
+   "tool": "claude-code",
+   "group": "kind",
+   "label_source": "author",
+   "expect": {
+    "job": [
+     "ask_research"
+    ],
+    "kind": [
+     "find"
+    ],
+    "rung": [
+     1
+    ]
+   },
+   "note": "j9 boundary (2026-11-15 check): whether something exists is still one fact.",
+   "steps": [
+    {
+     "kind": "user",
+     "text": "is there already a helper in this repo that parses ISO 8601 durations?"
+    },
+    {
+     "kind": "tool",
+     "tool": "Grep",
+     "pattern": "duration",
+     "result": "2 matches"
+    },
+    {
+     "kind": "assistant",
+     "text": "Yes: parse_duration in src/time/iso.rs handles PT and P forms."
+    },
+    {
+     "kind": "user",
+     "text": "great"
+    }
+   ]
+  },
+  {
+   "id": "k11",
+   "tool": "copilot-cli",
+   "group": "kind",
+   "label_source": "author",
+   "expect": {
+    "job": [
+     "ask_research"
+    ],
+    "kind": [
+     "progress"
+    ],
+    "rung": [
+     1
+    ]
+   },
+   "note": "j9 boundary (2026-11-15 check): a status question is progress even when its answer is one fact (the analysis read these as find).",
+   "steps": [
+    {
+     "kind": "user",
+     "text": "did the staging deploy from this morning finish?"
+    },
+    {
+     "kind": "tool",
+     "tool": "Bash",
+     "command": "gh run list --workflow deploy-staging.yml -L 1",
+     "result": "completed success 09:42"
+    },
+    {
+     "kind": "assistant",
+     "text": "Yes, it finished at 09:42 and passed."
+    }
+   ]
+  },
+  {
+   "id": "k12",
+   "tool": "copilot-cli",
+   "group": "kind",
+   "label_source": "author",
+   "expect": {
+    "job": [
+     "ask_research"
+    ],
+    "kind": [
+     "progress"
+    ],
+    "rung": [
+     1
+    ]
+   },
+   "note": "j9 boundary (2026-11-15 check): asking whether a pull request merged is a status question.",
+   "steps": [
+    {
+     "kind": "user",
+     "text": "is the fare-zones PR merged yet?"
+    },
+    {
+     "kind": "tool",
+     "tool": "Bash",
+     "command": "gh pr view 412 --json state",
+     "result": "OPEN, 1 approval, checks running"
+    },
+    {
+     "kind": "assistant",
+     "text": "Not yet: it is open with one approval and its checks are still running."
+    }
+   ]
+  },
+  {
+   "id": "k13",
+   "tool": "copilot-cli",
+   "group": "kind",
+   "label_source": "author",
+   "expect": {
+    "job": [
+     "ask_research"
+    ],
+    "kind": [
+     "research"
+    ],
+    "rung": [
+     1
+    ]
+   },
+   "note": "j9 boundary (2026-11-15 check): gathering many items from mail, meetings and chats is research, not one fact. Not checked.",
+   "steps": [
+    {
+     "kind": "user",
+     "text": "Go through my email, meeting notes and chats from the last two weeks about the timetable migration. Pull together the open decisions, who owns each one, the risks people raised, and anything I said I would send. Group them by topic and link each item to where it came from."
+    },
+    {
+     "kind": "tool",
+     "tool": "search_mail",
+     "query": "timetable migration",
+     "result": "23 messages"
+    },
+    {
+     "kind": "tool",
+     "tool": "search_meetings",
+     "query": "timetable migration",
+     "result": "4 meetings with notes"
+    },
+    {
+     "kind": "tool",
+     "tool": "search_chats",
+     "query": "timetable migration",
+     "result": "11 threads"
+    },
+    {
+     "kind": "assistant",
+     "text": "Grouped under 4 topics: 6 open decisions with owners, 5 risks, and 3 things you said you would send, each linked to its source."
+    }
+   ]
+  },
+  {
+   "id": "k14",
+   "tool": "claude-code",
+   "group": "kind",
+   "label_source": "author",
+   "expect": {
+    "job": [
+     "ask_research"
+    ],
+    "kind": [
+     "research"
+    ],
+    "rung": [
+     1
+    ]
+   },
+   "note": "j9 boundary (2026-11-15 check): what changed across several channels is research; a short ask, used as is.",
+   "steps": [
+    {
+     "kind": "user",
+     "text": "what's new across the team channels and my inbox this week on the v1 API deprecation? anything that affects the mobile app"
+    },
+    {
+     "kind": "tool",
+     "tool": "search_chats",
+     "query": "v1 API deprecation",
+     "result": "7 threads"
+    },
+    {
+     "kind": "tool",
+     "tool": "search_mail",
+     "query": "v1 API deprecation",
+     "result": "5 messages"
+    },
+    {
+     "kind": "assistant",
+     "text": "Three things: the shutdown date moved to March, the push endpoint has no v2 yet, and the mobile team owns the login migration."
     }
    ]
   }

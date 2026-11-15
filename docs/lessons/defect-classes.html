@@ -945,4 +945,40 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <p>&quot;(n tasks)&quot;; the Home dry-day note gave none. The note and <code>aiq status</code> now both say &quot;Most common reason (6 of 18)&quot;. Every step code a dry day can end on now has words (<code>decided</code>: &quot;a tip was ready but held back&quot;).</p>
 <ul><li><strong>Control (test):</strong> <code>funnel.test.ts</code> and the e2e dry-day check require &quot;(n of N)&quot;; <code>a_dry_day_of_ready_but_held_tips_says_so</code></li></ul>
 <p>checks the <code>decided</code> words. The same-tip rule is gone (Imran 2026-11-15); <code>the_same_tip_shows_again_after_the_quiet_period</code> keeps it gone and checks the daily cap still holds.</p>
-<ul><li><strong>Rule:</strong> a summary reason always carries its count and the total it is out of.</li></ul></main></body></html>
+<ul><li><strong>Rule:</strong> a summary reason always carries its count and the total it is out of.</li></ul>
+<h3>DC-088 — Two names for one kind of work, scored as a disagreement</h3>
+<ul><li><strong>Signature:</strong> 2026-11-15, Imran reviewing the readings behind the paused Kinds (<code>paused_review.py</code>). The</li></ul>
+<p>accuracy check had paused &quot;Getting something running again&quot; at 0 of 5: the blind second reading called all five &quot;Running an app, script or pipeline&quot;, whose line j7 had widened to cover start and stop. Of the 14 readings he marked, he judged AIQ wrong once; where AIQ and the reader differed he said both Kinds fit 6 times. The pause rule counted every one of those as AIQ&#x27;s error.</p>
+<ul><li><strong>Why it survives:</strong> the check compares one Kind with one Kind, so it cannot tell &quot;wrong&quot; from &quot;a neighbour that</li></ul>
+<p>also fits&quot;. Each Kind was reviewed alone when the list was cut; nobody read two lines side by side for overlap.</p>
+<ul><li><strong>Sweep:</strong> the two paused Kinds, &quot;Looking up a fact&quot; (4 of 9) and this one. <code>restart_fix</code> and <code>run_job</code> were confused</li></ul>
+<p>on all 5 checked tasks and the person called them &quot;essentially identical&quot;. Other overlaps (<code>compare</code>/<code>research</code>, <code>fix_bug</code>/<code>refactor</code>) are real but partial, so they stay two Kinds and the check now asks.</p>
+<ul><li><strong>Control (build):</strong> <code>restart_fix</code> is retired into <code>run_job</code> (analysis <code>j8</code>, <code>RETIRED_TASK_TYPES</code>), so a stored</li></ul>
+<p>one is analyzed again once. The check (<code>c2</code>) asks the blind reader which other Kinds of the same job also fit (<code>task_types_also_fit</code>, at most 3, validated against the job&#x27;s list), and one function decides a Kind hit for the report and the pause rule (<code>check::kind_agrees</code>).</p>
+<ul><li><strong>Control (tests):</strong> <code>a_reader_that_says_the_judges_kind_also_fits_agrees</code>, <code>the_pause_rule_counts_also_fits_the_same_way</code>,</li></ul>
+<p><code>also_fit_must_be_other_kinds_of_the_same_job</code>, <code>an_answer_stored_before_c2_still_reads</code>, and the eval <code>aiq analyze --eval --check</code>, which scores the reader&#x27;s Kinds on the golden set, overlap cases and hedging apart.</p>
+<ul><li><strong>Rule:</strong> an agreement score over categories that overlap must let the reader say a second category fits, or</li></ul>
+<p>it measures the list&#x27;s overlap, not the analysis. Ask the person who knows the work before pausing on it.</p>
+<ul><li><strong>Recurrence (2026-11-15, after c2 shipped in 0.1.67):</strong> a check of 30 &quot;Looking up a fact&quot; tasks on the laptop still</li></ul>
+<p>agreed on the Kind 14 times; &quot;also fits&quot; saved only 3. A counts-only probe (<code>find_overlap.py</code>) split the misses: 7 read as <code>progress</code>, every one a short status question, and 8 as <code>research</code>, 7 of them long asks that gather many items from mail, meetings or chats. So the overlap was in the wording, not only in the scoring: <code>find</code> said &quot;one fact&quot; and nothing about status or round-ups. Control: analysis <code>j9</code> says where each of the three ends, a stored <code>find</code> from an older version is analyzed again once (<code>rung::KINDS_REWORDED</code>), and golden cases k09 to k14 (label g-k09 to g-k14) pin the boundary. A Kind that loses tasks to a reworded neighbour is listed there, so its past analyses are not kept by mistake.</p>
+<h3>DC-089 — A record that says who sent a turn, read by a reader that never looks</h3>
+<ul><li><strong>Signature:</strong> 2026-11-15, measured on Imran&#x27;s laptop (<code>copilot_launch_signs.py</code>). His local app runs Copilot</li></ul>
+<p>in autopilot mode; autopilot adds follow-up turns itself and marks each <code>isAutopilotContinuation: true</code>. AIQ&#x27;s <code>typed_message</code> counted them as typed, so the app&#x27;s 29 one-prompt sessions read as multi-prompt work and the set-aside rule (at most one typed prompt and a second sign) never looked at them. His own autopilot sessions held 55 more such turns, each counted as a prompt he typed.</p>
+<ul><li><strong>Why it survives:</strong> the real-shaped fixture <code>copilot-2.jsonl</code> held two of these messages from 2026-11-09, and</li></ul>
+<p>its expected count (5 typed) was read from the file&#x27;s shape, not from who sent each line. Every hand-built test record had only <code>content</code> and <code>delivery</code>.</p>
+<ul><li><strong>Sweep:</strong> every reader of a tool&#x27;s log that decides &quot;typed&quot;: Copilot <code>typed_message</code> (import and live</li></ul>
+<p>steering) now skips the flag. Claude Code reads its transcript&#x27;s own markers (<code>isMeta</code>, sidechains, entrypoint). Copilot&#x27;s live hook prompt has no such field; whether autopilot fires it is measured (<code>copilot_continuations.py</code>).</p>
+<ul><li><strong>Control (build):</strong> <code>COPILOT_READER</code> 3 re-reads every Copilot file once, so past sessions are counted again.</li><li><strong>Control (tests):</strong> <code>autopilot_continuations_are_not_typed_turns</code>, <code>an_apps_autopilot_sessions_are_set_aside_and_imported_ones_are_read_again</code>,</li></ul>
+<p>and in <code>copilot_shapes.rs</code> <code>autopilots_own_follow_ups_are_never_typed</code> on the real-shaped fixture (red before).</p>
+<ul><li><strong>Rule:</strong> when a real record has a field that says who or what sent it, the test asserts on it. A count</li></ul>
+<p>&quot;read from the fixture&quot; must be read by meaning, not by shape.</p>
+<h3>DC-090 — A read-only open that skips the newest rows</h3>
+<ul><li><strong>Signature:</strong> 2026-11-15, the first paused-Kinds review page on Imran&#x27;s laptop showed none of his paused</li></ul>
+<p>readings. Its script opened the store <code>mode=ro&amp;immutable=1</code>. <code>immutable</code> tells SQLite the file never changes, so it ignores the write-ahead log, where AIQ&#x27;s newest rows sit until a checkpoint. Proven with a probe: 3 rows in the log, 0 seen through <code>immutable</code>.</p>
+<ul><li><strong>Why it survives:</strong> on an idle store the log is checkpointed and the two opens agree, so the scripts gave right</li></ul>
+<p>answers most of the time. Seven investigation scripts had copied the same line.</p>
+<ul><li><strong>Sweep:</strong> every <code>sqlite3.connect</code> under <code>docs/investigations/</code>: six more scripts fixed to <code>mode=ro</code> with</li></ul>
+<p><code>PRAGMA query_only = ON</code>, as <code>Store::open_read_only</code> does.</p>
+<ul><li><strong>Control (test):</strong> <code>crates/aiq-store/tests/read_only_scripts.rs</code> fails on any investigation script that opens</li></ul>
+<p>the store <code>immutable=1</code> (red on the old <code>rung_groups.py</code>).</p>
+<ul><li><strong>Rule:</strong> a reader of a live SQLite store in WAL mode never opens it <code>immutable</code>. Read-only is <code>mode=ro</code>.</li></ul></main></body></html>

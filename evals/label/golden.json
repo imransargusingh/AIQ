@@ -1,5 +1,5 @@
 {
- "version": "l3",
+ "version": "l4",
  "about": "Synthetic first prompts (no prompt here comes from anyone's store) with the job and kind the WHOLE task turns out to be. p-cases are shaped on the label misses measured on the laptop 2026-11-08 (problem reports that end in a fix or a release); g-cases are the first prompts of evals/judge/golden.json. kind ['other'] means a confident named kind is wrong. Scored by aiq label --eval --golden; recorded answers in replay.json are CI's label replay gate.",
  "cases": [
   {
@@ -1038,6 +1038,96 @@
     ]
    },
    "note": "first prompt of judge golden case k08"
+  },
+  {
+   "id": "g-k09",
+   "tool": "copilot-cli",
+   "label_source": "author",
+   "prompt": "where is the retry limit for the uploader set? which file",
+   "expect": {
+    "job": [
+     "ask_research"
+    ],
+    "kind": [
+     "find"
+    ]
+   },
+   "note": "first prompt of judge golden case k09"
+  },
+  {
+   "id": "g-k10",
+   "tool": "claude-code",
+   "label_source": "author",
+   "prompt": "is there already a helper in this repo that parses ISO 8601 durations?",
+   "expect": {
+    "job": [
+     "ask_research"
+    ],
+    "kind": [
+     "find"
+    ]
+   },
+   "note": "first prompt of judge golden case k10"
+  },
+  {
+   "id": "g-k11",
+   "tool": "copilot-cli",
+   "label_source": "author",
+   "prompt": "did the staging deploy from this morning finish?",
+   "expect": {
+    "job": [
+     "ask_research"
+    ],
+    "kind": [
+     "progress"
+    ]
+   },
+   "note": "first prompt of judge golden case k11"
+  },
+  {
+   "id": "g-k12",
+   "tool": "copilot-cli",
+   "label_source": "author",
+   "prompt": "is the fare-zones PR merged yet?",
+   "expect": {
+    "job": [
+     "ask_research"
+    ],
+    "kind": [
+     "progress"
+    ]
+   },
+   "note": "first prompt of judge golden case k12"
+  },
+  {
+   "id": "g-k13",
+   "tool": "copilot-cli",
+   "label_source": "author",
+   "prompt": "Go through my email, meeting notes and chats from the last two weeks about the timetable migration. Pull together the open decisions, who owns each one, the risks people raised, and anything I said I would send. Group them by topic and link each item to where it came from.",
+   "expect": {
+    "job": [
+     "ask_research"
+    ],
+    "kind": [
+     "research"
+    ]
+   },
+   "note": "first prompt of judge golden case k13"
+  },
+  {
+   "id": "g-k14",
+   "tool": "claude-code",
+   "label_source": "author",
+   "prompt": "what's new across the team channels and my inbox this week on the v1 API deprecation? anything that affects the mobile app",
+   "expect": {
+    "job": [
+     "ask_research"
+    ],
+    "kind": [
+     "research"
+    ]
+   },
+   "note": "first prompt of judge golden case k14"
   }
  ]
 }
