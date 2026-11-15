@@ -34,8 +34,6 @@ pub enum Reason {
     TipOff,
     /// The person snoozed this tip.
     Snoozed,
-    /// The same tip showed within its cooldown (coaching-from-rungs D12).
-    Cooldown,
     /// The tip's habit is Adopted: no point coaching it (D12).
     HabitAdopted,
     /// The latest accuracy check agreed with the judge under 8 in 10 for this job or kind (design K6b).
@@ -56,7 +54,6 @@ impl Reason {
             Reason::QuietPeriod => "quiet_period",
             Reason::TipOff => "tip_off",
             Reason::Snoozed => "snoozed",
-            Reason::Cooldown => "cooldown",
             Reason::HabitAdopted => "habit_adopted",
             Reason::AccuracyPaused => "accuracy_paused",
         }
@@ -76,7 +73,7 @@ pub struct DecideInput {
     pub ready_in_session: bool,
     pub deliveries_counted_today: u32,
     pub daily_cap: u32,
-    /// The person's own answers or the tip's cooldown rule this tip out (a drop, checked right after pause).
+    /// The person's own answers or the tip's habit rule this tip out (a drop, checked right after pause).
     pub suppressed: Option<Reason>,
 }
 

@@ -1195,7 +1195,7 @@ impl<C: Clock> Service<C> {
     }
 
     /// The next-step decision for a task whose kind is known (from words or a label): the kind's coached move,
-    /// the accuracy pause (K6b), the person's answers, cooldown and habit, then the trigger engine.
+    /// the accuracy pause (K6b), the person's answers and habit, then the trigger engine.
     #[allow(clippy::too_many_arguments)]
     fn decide_kind(
         &mut self,
@@ -1233,7 +1233,6 @@ impl<C: Clock> Service<C> {
             return Ok(());
         };
         let tip = coach::tip_id(&m.move_id);
-        let cooldown_ms = pack.coach.move_cooldown_h as i64 * 3_600_000;
         let accuracy = cache.paused_for(&self.store, mode, &row.job, g.task_type.unwrap_or(&row.task_type)).map(|v| {
             self.counters.inc(codes::COACH_ACCURACY_PAUSED);
             info!(
@@ -1247,19 +1246,13 @@ impl<C: Clock> Service<C> {
             _ if accuracy.is_some() => Some(Reason::AccuracyPaused),
             TipPref::Off => Some(Reason::TipOff),
             TipPref::Snoozed(_) => Some(Reason::Snoozed),
-            TipPref::Shown => {
-                if self.store.deliveries_of_tip(&tip)?.first().is_some_and(|t| now.utc_ms - t < cooldown_ms) {
-                    Some(Reason::Cooldown)
-                } else if cache
-                    .habits
-                    .iter()
-                    .any(|h| h.job == row.job && h.move_id == m.move_id && h.state == HabitState::Adopted)
-                {
-                    Some(Reason::HabitAdopted)
-                } else {
-                    None
-                }
-            }
+            // No same-tip repeat rule: the daily cap, one a session and the quiet period bound tips (Imran,
+            // 2026-11-15: 5 of 18 tasks on 11-13 lost a ready tip to the old 72-hour rule).
+            TipPref::Shown => cache
+                .habits
+                .iter()
+                .any(|h| h.job == row.job && h.move_id == m.move_id && h.state == HabitState::Adopted)
+                .then_some(Reason::HabitAdopted),
         };
         // The tip names the kind when it is sure, even when the job's row picked the habit.
         let card = compose_move(m, &row.job, g.task_type.unwrap_or(&row.task_type), &new_id(), &pack.version);

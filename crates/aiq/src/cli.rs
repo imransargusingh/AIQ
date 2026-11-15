@@ -683,7 +683,7 @@ pub fn render_funnel(f: &aiq_contracts::frames::TipFunnels) -> String {
     for d in &f.droughts {
         out += &format!("No tips on {} across {} tasks.", d.day, d.tasks);
         if let Some(r) = &d.main_reason {
-            out += &format!(" Main reason: {} ({} tasks).", r.words, r.count);
+            out += &format!(" Most common reason ({} of {}): {}.", r.count, d.tasks, r.words);
         }
         out += "\n";
     }
@@ -1437,7 +1437,10 @@ mod tips_tests {
         };
         let out = render_funnel(&f);
         let first = out.lines().next().unwrap();
-        assert_eq!(first, "No tips on 2026-11-07 across 9 tasks. Main reason: kind of task not recognised (7 tasks).");
+        assert_eq!(
+            first,
+            "No tips on 2026-11-07 across 9 tasks. Most common reason (7 of 9): kind of task not recognised."
+        );
         assert!(
             out.contains("Tips, last 7 days: 20 new tasks, kind known 5, tip found 1, tip shown 0. Tips 6, shown 2")
         );

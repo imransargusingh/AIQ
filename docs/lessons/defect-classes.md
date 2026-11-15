@@ -1551,3 +1551,18 @@ summary: >-
   days, 1280 and 720 px, light, dark, contrast), by focus and by mouse: the tip's rectangle sits inside the window
   and the tip is the topmost element at its corners and centre. Red on all 4 before the fix.
 - **Rule:** a check that something is shown reads pixels (rectangles, hit tests), never only text.
+
+### DC-087 — A "main reason" shown without its share reads as the reason for everything
+- **Signature:** 2026-11-15, Imran: Home said "No tips on Fri 13 Nov across 18 tasks. Main reason: kind label says
+  it's a question". Measured read-only on the laptop's synced store: that reason covered 6 of the 18 tasks (5 of
+  them Devbox questions the full analysis agreed with). 5 more had a tip ready that the 72-hour same-tip rule
+  dropped, and their reason code (`decided`) had no words, so it would have read "other" had it led.
+- **Why it survives:** each unit test checked the top reason's code; none checked that the sentence carried how
+  many tasks it covers.
+- **Sweep:** every place a top reason is shown. Home's weekly line already gave "(n)"; `aiq status` gave
+  "(n tasks)"; the Home dry-day note gave none. The note and `aiq status` now both say "Most common reason
+  (6 of 18)". Every step code a dry day can end on now has words (`decided`: "a tip was ready but held back").
+- **Control (test):** `funnel.test.ts` and the e2e dry-day check require "(n of N)"; `a_dry_day_of_ready_but_held_tips_says_so`
+  checks the `decided` words. The same-tip rule is gone (Imran 2026-11-15); `the_same_tip_shows_again_after_the_quiet_period`
+  keeps it gone and checks the daily cap still holds.
+- **Rule:** a summary reason always carries its count and the total it is out of.

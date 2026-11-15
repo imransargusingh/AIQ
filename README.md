@@ -101,8 +101,8 @@ high-contrast themes.
 
 ### Tips in your tools
 
-At most one tip at a natural pause, never more than your daily number, with 30 quiet minutes between tips and
-no repeat of the same tip within 72 hours. Tips start with a yellow **AIQ tip:** label.
+At most one tip a session, at a natural pause, never more than your daily number, and 30 quiet minutes between
+tips. Tips start with a yellow **AIQ tip:** label.
 
 - **Copilot CLI**: a status line under the prompt. Between tips it shows where the open task is heading:
 

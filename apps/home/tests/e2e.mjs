@@ -1565,7 +1565,8 @@ await test("setup: first run walks five steps with Back; Start only after I unde
   assert.deepEqual(await capGroup.getByRole("button").allInnerTexts(), ["5", "15", "30", "Custom"]);
   t = await page.locator("main").innerText();
   assert.ok(t.includes("5 is the default."), t);
-  assert.ok(t.includes("at most one a session, never within 30 minutes of another, and the same tip not again for 3 days"), t);
+  assert.ok(t.includes("at most one a session and never within 30 minutes of another."), t);
+  assert.ok(!t.includes("3 days") && !t.includes("same tip"), "no same-tip repeat rule is promised");
   assert.ok(!t.includes("when the agent pauses"), t);
   await page.getByRole("button", { name: "15", exact: true }).click();
   await page.waitForFunction(() => document.querySelector("[role=status]")?.textContent === "Tips a day set to 15.");
@@ -2592,7 +2593,7 @@ for (const theme of ["light", "dark"]) {
 
     const home = await open("full", { theme: theme === "light" ? undefined : theme, hash: "#home" });
     const note = home.locator(".banner.drought");
-    assert.match(await note.locator(".grow").textContent(), /^No tips yesterday across 6 tasks\. Main reason: kind of task not recognised\.$/);
+    assert.match(await note.locator(".grow").textContent(), /^No tips yesterday across 6 tasks\. Most common reason \(\d+ of 6\): kind of task not recognised\.$/);
     assert.deepEqual(await axe(home), []);
     if (shots) await home.screenshot({ path: join(shots, `home-drought-${theme}.png`) });
     await note.getByRole("button", { name: "See why" }).click();

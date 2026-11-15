@@ -43,8 +43,6 @@ pub struct CoachParams {
     /// next-rung tips off by AIQ itself.
     pub guess_check_min: u32,
     pub guess_precision: f64,
-    /// The same tip at most once per this many hours (D12).
-    pub move_cooldown_h: u32,
     /// Home's split shows with at least this many tasks (aiq-home US-H2, spec value).
     pub split_min: u32,
     /// A week with fewer tasks shows "too few tasks".
@@ -71,7 +69,6 @@ impl Default for CoachParams {
             match_top: 3,
             guess_check_min: 10,
             guess_precision: 0.8,
-            move_cooldown_h: 72,
             split_min: 10,
             week_min: 3,
             kept_rule: "delegated_no_correction".into(),
