@@ -1665,3 +1665,24 @@ summary: >-
 - **Control (tests):** `past_sessions_are_read_again_by_aiq_itself_when_a_reader_changed`.
 - **Rule:** a version bump is not a fix until something AIQ runs by itself picks it up. Test the trigger, not only
   the effect.
+
+### DC-093 — A flag the command never reads, taken as "go ahead"
+- **Signature:** 2026-11-15, Imran's laptop on 0.1.68. To read the options before a dry run, `aiq import --help` was
+  run. `import::cli` looked only for `--dry-run` and ignored every other argument, so it ran a real import (twice).
+  The import was one he had approved, so no harm followed, but the dry run he expected never happened.
+- **Why it survives:** each command reads the flags it knows with `args.contains(..)` and drops the rest, and
+  `main` matches commands with a trailing `..`. Help existed only as `aiq --help`, so no test ever passed `--help`
+  to a command.
+- **Sweep:** every command in `main.rs` with a trailing `..` or `rest @ ..` passed `--help` on to the command.
+  Measured: `import` wrote `aiq.db`. Read from the code (Inferred, not run): `analyze` and `analyze --check` would
+  run analysis and spend requests, `pause` / `resume` would switch AIQ, `core` would start the core, `include` would
+  count the folder. `install --help` fell through to the general help (exit 2), and `uninstall` / `forget` ask first.
+- **Control (build):** `main` answers `--help` / `-h` after any command (except `hook`) with that command's help
+  lines and exits 0 before dispatch. `aiq import` refuses any argument other than `--dry-run` with exit 2 before it
+  opens the store.
+- **Control (tests):** `tests/help_runs_nothing.rs`: `every_command_given_help_prints_its_usage_and_writes_nothing`
+  (19 commands, both spellings, an empty home stays empty), `help_for_one_command_shows_only_its_lines`,
+  `import_refuses_an_argument_it_does_not_know_before_reading_anything`. Red first: the 0.1.69 binary wrote
+  `aiq.db` on `aiq import --help`.
+- **Rule:** a command that writes or spends must refuse what it does not understand. Help is answered before any
+  command runs, never left to each command.

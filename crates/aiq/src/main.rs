@@ -42,10 +42,10 @@ Usage:
   aiq uninstall vscode [--yes]        Remove AIQ's VS Code extension
   aiq config set daily-cap <n>        Most tips per day, all tools together (0-50, default 5)
   aiq config set copilot-tip-stays <next-prompt|two-prompts-or-5-min|until-opened>
+                                      How long a tip stays in Copilot CLI's status line
   aiq config set copilot-tip-in-chat <on|off>   Copilot CLI tip also shown in the conversation (default on)
   aiq config set tip-popup <on|off>             Windows pop-up when a terminal tip shows (default on)
   aiq config set tip-highlight <on|off>         Yellow \"AIQ tip:\" label and VS Code colour (default on)
-                                      How long a tip stays in Copilot CLI's status line
   aiq import [--dry-run]              Add your past Claude Code and Copilot CLI sessions to AIQ
   aiq include <folder>                Count a folder again that AIQ marked automated, not counted
   aiq team-tips                       Where your team's Tool to try lines come from (AIQ gets them by itself);
@@ -112,10 +112,38 @@ Usage:
 Your data stays on this machine. Analysis calls go only through your own Copilot or Claude Code, and
 once a day AIQ asks GitHub for a newer release (unless updates are off). Privacy and terms: docs/privacy-and-terms.md in the AIQ repo.";
 
+/// The lines of [`HELP`] for one command, with their continuation lines; all of it when none match.
+fn help_for(cmd: &str) -> String {
+    let cmd = if cmd == "judge" { "analyze" } else { cmd };
+    let (word, word_end) = (format!("aiq {cmd} "), format!("aiq {cmd}"));
+    let mut out = Vec::new();
+    let mut keep = false;
+    for line in HELP.lines() {
+        if line.starts_with("  aiq ") {
+            keep = line.contains(&word) || line.trim_end().ends_with(&word_end);
+        } else if !line.starts_with("          ") {
+            keep = false;
+        }
+        if keep {
+            out.push(line);
+        }
+    }
+    if out.is_empty() { HELP.to_string() } else { format!("Usage:\n{}", out.join("\n")) }
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let a: Vec<&str> = args.iter().map(String::as_str).collect();
     let yes = a.contains(&"--yes") || a.contains(&"-y");
+    // `aiq <command> --help` only prints help, for every command: a command never reads --help as "go ahead",
+    // so asking how `aiq import` or `aiq analyze` works can't import or spend a request (DC-093).
+    if let Some((cmd, rest)) = a.split_first()
+        && *cmd != "hook"
+        && rest.iter().any(|x| matches!(*x, "--help" | "-h"))
+    {
+        println!("{}", help_for(cmd));
+        return ExitCode::SUCCESS;
+    }
     match a.as_slice() {
         ["hook", host, event, ..] => hook::run(host, event),
         ["core", ..] => cli::core(),

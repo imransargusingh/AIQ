@@ -1003,4 +1003,17 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <ul><li><strong>Control (build):</strong> <code>import::catch_up</code> runs in the background analysis pass, before analysis, when the person</li></ul>
 <p>imported history once and a reader changed since; it reads past sessions again like <code>aiq import</code>, logs one line to judge.log, and a try that could not finish waits a day (<code>import.catch_up_ms</code>).</p>
 <ul><li><strong>Control (tests):</strong> <code>past_sessions_are_read_again_by_aiq_itself_when_a_reader_changed</code>.</li><li><strong>Rule:</strong> a version bump is not a fix until something AIQ runs by itself picks it up. Test the trigger, not only</li></ul>
-<p>the effect.</p></main></body></html>
+<p>the effect.</p>
+<h3>DC-093 — A flag the command never reads, taken as &quot;go ahead&quot;</h3>
+<ul><li><strong>Signature:</strong> 2026-11-15, Imran&#x27;s laptop on 0.1.68. To read the options before a dry run, <code>aiq import --help</code> was</li></ul>
+<p>run. <code>import::cli</code> looked only for <code>--dry-run</code> and ignored every other argument, so it ran a real import (twice). The import was one he had approved, so no harm followed, but the dry run he expected never happened.</p>
+<ul><li><strong>Why it survives:</strong> each command reads the flags it knows with <code>args.contains(..)</code> and drops the rest, and</li></ul>
+<p><code>main</code> matches commands with a trailing <code>..</code>. Help existed only as <code>aiq --help</code>, so no test ever passed <code>--help</code> to a command.</p>
+<ul><li><strong>Sweep:</strong> every command in <code>main.rs</code> with a trailing <code>..</code> or <code>rest @ ..</code> passed <code>--help</code> on to the command.</li></ul>
+<p>Measured: <code>import</code> wrote <code>aiq.db</code>. Read from the code (Inferred, not run): <code>analyze</code> and <code>analyze --check</code> would run analysis and spend requests, <code>pause</code> / <code>resume</code> would switch AIQ, <code>core</code> would start the core, <code>include</code> would count the folder. <code>install --help</code> fell through to the general help (exit 2), and <code>uninstall</code> / <code>forget</code> ask first.</p>
+<ul><li><strong>Control (build):</strong> <code>main</code> answers <code>--help</code> / <code>-h</code> after any command (except <code>hook</code>) with that command&#x27;s help</li></ul>
+<p>lines and exits 0 before dispatch. <code>aiq import</code> refuses any argument other than <code>--dry-run</code> with exit 2 before it opens the store.</p>
+<ul><li><strong>Control (tests):</strong> <code>tests/help_runs_nothing.rs</code>: <code>every_command_given_help_prints_its_usage_and_writes_nothing</code></li></ul>
+<p>(19 commands, both spellings, an empty home stays empty), <code>help_for_one_command_shows_only_its_lines</code>, <code>import_refuses_an_argument_it_does_not_know_before_reading_anything</code>. Red first: the 0.1.69 binary wrote <code>aiq.db</code> on <code>aiq import --help</code>.</p>
+<ul><li><strong>Rule:</strong> a command that writes or spends must refuse what it does not understand. Help is answered before any</li></ul>
+<p>command runs, never left to each command.</p></main></body></html>
