@@ -220,9 +220,83 @@ def evidence_html(j):
     return f'<details class="why"><summary>Why AIQ placed it</summary><ul>{items}</ul></details>'
 
 
-MARK_AGREE = '<button data-v="right">Right</button><button data-v="wrong">Wrong</button>'
+# ---------------------------------------------------------------- where a task came from, and AIQ's not-typed rules
+# The live ingest and Home leave out prompts no person typed (aiq-domain automated: rule TOOL, rule WRAP, rule AGENT);
+# imported sessions do not go through them yet (aiq-home not_typed_out reads live rows only). The page shows which
+# rule would catch each task, so the person's "An agent started this" marks measure the rules.
+TOOL_OPENINGS = ("<system_notification>", "[scheduled prompt #")  # automated::TOOL_OPENINGS
+TOOL_NAMES = {"copilot-cli": "Copilot CLI", "copilot": "Copilot CLI", "claude-code": "Claude Code", "vscode": "VS Code"}
+GUID = re.compile(r"(?<![0-9a-fA-F])[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}(?![0-9a-fA-F-])")
+known_sessions = set()
+if has_table("import_session"):
+    known_sessions |= {s.lower() for (s,) in con.execute("SELECT source_session_id FROM import_session") if s}
+if has_table("surface_session"):
+    known_sessions |= {s.lower() for (s,) in con.execute("SELECT surface_session_id FROM surface_session") if s}
+
+
+def raw_and_session(key):
+    """(raw prompt text, tool, session id, imported?) for one task member, before any unwrapping."""
+    if key.startswith("import:"):
+        try:
+            tool, rest = key[len("import:"):].split(":", 1)
+            sid, seq = rest.rsplit(":", 1)
+            r = con.execute("SELECT text FROM import_event WHERE tool = ? AND source_session_id = ? AND seq = ?",
+                            (tool, sid, int(seq))).fetchone()
+        except (ValueError, sqlite3.Error):
+            return None, None, None, True
+        return (r[0] if r else None), tool, sid, True
+    r = con.execute("SELECT e.surface, e.surface_session_id, c.text FROM event e LEFT JOIN content c ON c.event_id = e.event_id "
+                    "WHERE e.event_id = ?", (key,)).fetchone() if has_table("event") and has_table("content") else None
+    return (r[2], r[0], r[1], False) if r else (None, None, None, False)
+
+
+def session_first_prompt(tool, sid, imported):
+    if imported:
+        r = con.execute("SELECT text FROM import_event WHERE tool = ? AND source_session_id = ? AND kind = 'prompt' "
+                        "ORDER BY seq LIMIT 1", (tool, sid)).fetchone()
+    else:
+        r = con.execute("SELECT c.text FROM event e JOIN content c ON c.event_id = e.event_id WHERE e.surface = ? "
+                        "AND e.surface_session_id = ? AND e.kind = 'prompt' ORDER BY e.ts_utc_ms LIMIT 1",
+                        (tool, sid)).fetchone()
+    return r[0] if r else None
+
+
+def clues(j):
+    """(tool name, imported?, rules that would leave it out as not typed)."""
+    try:
+        keys = json.loads(j["read"]).get("keys") or []
+    except (TypeError, ValueError):
+        keys = []
+    tool, sid, imported, rules = None, None, False, []
+    for k in keys:
+        raw, t, s, imp = raw_and_session(k)
+        tool, sid, imported = tool or t, sid or s, imported or imp
+        if raw and raw.lstrip()[:24].lower().startswith(TOOL_OPENINGS) and "a tool notice" not in rules:
+            rules.append("a tool notice")
+        if raw is not None and person_words(raw) is None and "an envelope with no words from you" not in rules:
+            rules.append("an envelope with no words from you")
+    if tool and sid:
+        first = session_first_prompt(tool, sid, imported) or ""
+        if any(g.lower() != sid.lower() and g.lower() in known_sessions for g in GUID.findall(first)):
+            rules.append("its session opens by naming another session (a sub-agent's brief)")
+    return TOOL_NAMES.get(tool, tool or "unknown tool"), imported, rules
+
+
+def clue_html(name, imported, rules):
+    where = "imported from the tool's own session files" if imported else "recorded live as you typed"
+    if rules:
+        rule = f"AIQ's not-typed rules match: {', '.join(rules)}."
+        rule += " They don't run on imported sessions yet, so it was counted." if imported else ""
+    else:
+        rule = "No not-typed rule matches."
+    return f'<p class="clue">{esc(name)}, {esc(where)}. {esc(rule)}</p>'
+
+
+AGENT_BTN = '<button data-v="agent">An agent started this</button>'
+MARK_AGREE = '<button data-v="right">Right</button><button data-v="wrong">Wrong</button>' + AGENT_BTN
 MARK_DISAGREE = ('<button data-v="aiq">AIQ</button><button data-v="second">Second reading</button>'
-                 '<button data-v="both">Both fit</button><button data-v="neither">Neither</button>')
+                 '<button data-v="both">Both fit</button><button data-v="neither">Neither</button>' + AGENT_BTN)
+origin_count, rule_count = collections.Counter(), collections.Counter()
 rows_out = 0
 cards = []
 for n, (scope, k, window, seen) in enumerate(paused):
@@ -243,10 +317,14 @@ for n, (scope, k, window, seen) in enumerate(paused):
         a_job = JOBS.get(a.get("job"), a.get("job") or "")
         a_def = DEFS.get((a.get("job"), a.get("task_type")), "")
         badge = '<span class="badge ok">Agree</span>' if hit else '<span class="badge no">Disagree</span>'
+        tname, imported, rules = clues(j)
+        origin_count["imported" if imported else "live"] += 1
+        rule_count["a rule matches" if rules else "no rule matches"] += 1
         rows.append(f"""
-<article class="task {'agree' if hit else 'disagree'}" data-id="{esc(j['jid'])}">
-  <header><span class="date">{esc(when(j['at']))}</span><span class="tool">{esc(j['tool'])}</span>{badge}</header>
+<article class="task {'agree' if hit else 'disagree'}" data-id="{esc(j['jid'])}" data-caught="{1 if rules else 0}">
+  <header><span class="date">{esc(when(j['at']))}</span><span class="tool">{esc(tname)}</span>{badge}</header>
   <div class="words">{words}</div>
+  {clue_html(tname, imported, rules)}
   <div class="said">
     <div class="side"><h4>AIQ said</h4><p class="kind">{esc(kind_name(j['job'], j['kind']))}</p>
       <p class="muted">{esc(JOBS.get(j['job'], j['job']))} · {esc(aiq_conf)} · {esc(RUNGS.get(j['rung'], ''))}</p>{evidence_html(j)}</div>
@@ -268,8 +346,9 @@ for n, (scope, k, window, seen) in enumerate(paused):
                     and (r["j"]["job"], r["j"]["kind"]) != (scope[1], scope[2]):
                 j = r["j"]
                 words, _ = words_html(j)
+                tname, imported, rules = clues(j)
                 other.append(f"""<article class="task small"><header><span class="date">{esc(when(j['at']))}</span>
-<span class="tool">{esc(j['tool'])}</span></header><div class="words">{words}</div>
+<span class="tool">{esc(tname)}</span></header><div class="words">{words}</div>{clue_html(tname, imported, rules)}
 <p class="muted">AIQ said <b>{esc(kind_name(j['job'], j['kind']))}</b>; the second reading said <b>{esc(title)}</b>.</p></article>""")
     other_html = (f'<details class="others"><summary>{len(other)} more tasks the second reading called “{esc(title)}” '
                   f'and AIQ did not</summary>{"".join(other)}</details>') if other else ""
@@ -304,17 +383,19 @@ h4{margin:0 0 2px;font-size:12px;text-transform:uppercase;letter-spacing:.04em;c
 .mark button{font:inherit;padding:5px 12px;border-radius:8px;border:1px solid var(--line);background:transparent;color:var(--ink);cursor:pointer}
 .mark button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .mark button[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:#fff}
-.others{margin:10px 0}.others summary{cursor:pointer;color:var(--accent)}.task.small{padding:10px 14px}
+.clue{font-size:13px;color:var(--muted);margin:8px 0 0}.others{margin:10px 0}.others summary{cursor:pointer;color:var(--accent)}.task.small{padding:10px 14px}
 @media (max-width:640px){.said{grid-template-columns:1fr}}
 """
 JS = """
 const KEY='aiq-paused-review';let m={};try{m=JSON.parse(localStorage.getItem(KEY)||'{}')}catch(e){}
-function draw(){const c={right:0,wrong:0,aiq:0,second:0,both:0,neither:0};let n=0;
+function draw(){const c={right:0,wrong:0,aiq:0,second:0,both:0,neither:0,agent:0};let n=0,caught=0;
  document.querySelectorAll('article.task[data-id]').forEach(a=>{n++;const v=m[a.dataset.id];if(v in c)c[v]++;
+  if(v==='agent'&&a.dataset.caught==='1')caught++;
   a.querySelectorAll('.mark button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.v===v?'true':'false'))});
  const done=Object.values(c).reduce((x,y)=>x+y,0);
  document.getElementById('tally').textContent=`You marked ${done} of ${n}. Where they agreed: right ${c.right}, wrong ${c.wrong}. `+
-  `Where they differed: AIQ ${c.aiq}, second reading ${c.second}, both fit ${c.both}, neither ${c.neither}.`;}
+  `Where they differed: AIQ ${c.aiq}, second reading ${c.second}, both fit ${c.both}, neither ${c.neither}. `+
+  `An agent started: ${c.agent} (AIQ's rules match ${caught} of them).`;}
 document.addEventListener('click',e=>{const b=e.target.closest('.mark button');if(!b)return;
  const id=b.closest('article').dataset.id;m[id]=m[id]===b.dataset.v?undefined:b.dataset.v;
  try{localStorage.setItem(KEY,JSON.stringify(m))}catch(e){}draw();});draw();
@@ -323,7 +404,8 @@ if paused:
     body = "".join(cards)
     lead = ("AIQ pauses tips for a Kind when a second, independent reading of its tasks agrees with AIQ on fewer "
             "than 8 in 10 of them. Below is every task behind each pause: your own words, what AIQ said, and what the "
-            "second reading said. Mark who you think was right; your marks stay in this browser.")
+            "second reading said. Mark who you think was right; your marks stay in this browser. If you didn't start a task (an "
+            "agent did), mark that instead: it is not yours to count, so it says nothing about AIQ's reading.")
 else:
     body, lead = "<p>No Kind or job is paused right now.</p>", ""
 page = f"""<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -336,6 +418,7 @@ with open(OUT, "w", encoding="utf-8") as f:
 
 print(f"paused scopes: {len(paused)} ({', '.join(('/'.join(s[1:]) + f' {k} of {len(w)}') for s, k, w, _ in paused)})")
 print(f"check rows answered: {len(readings) + sum(seen_rows.values())}; left out {dict(seen_rows)}; check runs: {len(runs)}")
+print(f"page tasks by origin {dict(origin_count)}; by not-typed rules {dict(rule_count)}")
 print(f"tasks on the page: {rows_out}; check readings read: {len(readings)}; page bytes: {os.path.getsize(OUT)}")
 if OPEN and hasattr(os, "startfile"):
     os.startfile(OUT)
