@@ -4,7 +4,8 @@ For each paused Kind (design judge-accuracy-check K6b, the same window as aiq-do
 whole check runs until at least 5 readings), it lists every checked task AIQ gave that Kind: the person's own
 words, what AIQ said (job, Kind, how sure, rung) and what the second reading said. A second, folded list holds
 the tasks the second reading gave that Kind and AIQ did not. Buttons let the person mark who was right; the
-marks stay in the browser (localStorage) and the page shows only their tally.
+marks stay in the browser (localStorage); "Save my answers" downloads aiq-review-answers.json holding only each
+task's number on the page, its analysis id, its paused Kind, the flags shown and the mark (no prompt text).
 
 The page holds the person's prompts, so it is written only to the path given and never leaves the computer. The
 script prints counts only (no prompt, note, folder or id). The store is opened mode=ro with query_only, like AIQ's own
@@ -321,7 +322,7 @@ for n, (scope, k, window, seen) in enumerate(paused):
         origin_count["imported" if imported else "live"] += 1
         rule_count["a rule matches" if rules else "no rule matches"] += 1
         rows.append(f"""
-<article class="task {'agree' if hit else 'disagree'}" data-id="{esc(j['jid'])}" data-caught="{1 if rules else 0}">
+<article class="task {'agree' if hit else 'disagree'}" data-id="{esc(j['jid'])}" data-caught="{1 if rules else 0}" data-scope="{esc('/'.join(scope[1:]))}" data-hit="{1 if hit else 0}" data-imported="{1 if imported else 0}">
   <header><span class="date">{esc(when(j['at']))}</span><span class="tool">{esc(tname)}</span>{badge}</header>
   <div class="words">{words}</div>
   {clue_html(tname, imported, rules)}
@@ -369,7 +370,9 @@ main{max-width:980px;margin:0 auto;padding:28px 20px 60px}h1{font-size:24px;marg
 h4{margin:0 0 2px;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
 .muted{color:var(--muted)}.lead{margin:0 0 14px;max-width:70ch}.score{margin:0 0 6px}
 .def{font-size:13.5px;color:var(--muted);margin:4px 0 12px;max-width:80ch}
-.tally{position:sticky;top:0;background:var(--bg);padding:10px 0;border-bottom:1px solid var(--line);z-index:2;font-size:14px}
+.bar{position:sticky;top:0;background:var(--bg);padding:10px 0;border-bottom:1px solid var(--line);z-index:2;display:flex;gap:12px;align-items:center}
+.tally{font-size:14px;flex:1}#save{font:inherit;font-size:14px;padding:6px 14px;border-radius:8px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer}
+#save:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .task{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--line);border-radius:10px;padding:14px 16px;margin:12px 0}
 .task.agree{border-left-color:var(--ok)}.task.disagree{border-left-color:var(--no)}
 .task header{display:flex;gap:10px;align-items:center;font-size:13px;color:var(--muted);margin-bottom:8px}
@@ -396,6 +399,13 @@ function draw(){const c={right:0,wrong:0,aiq:0,second:0,both:0,neither:0,agent:0
  document.getElementById('tally').textContent=`You marked ${done} of ${n}. Where they agreed: right ${c.right}, wrong ${c.wrong}. `+
   `Where they differed: AIQ ${c.aiq}, second reading ${c.second}, both fit ${c.both}, neither ${c.neither}. `+
   `An agent started: ${c.agent} (AIQ's rules match ${caught} of them).`;}
+document.getElementById('save').addEventListener('click',()=>{const rows=[];let i=0;
+ document.querySelectorAll('article.task[data-id]').forEach(a=>{i++;rows.push({n:i,task:a.dataset.id,scope:a.dataset.scope,
+  agreed:a.dataset.hit==='1',imported:a.dataset.imported==='1',rule_matches:a.dataset.caught==='1',mark:m[a.dataset.id]||null})});
+ const blob=new Blob([JSON.stringify({saved:new Date().toISOString(),answers:rows},null,1)],{type:'application/json'});
+ const u=URL.createObjectURL(blob),l=document.createElement('a');l.href=u;l.download='aiq-review-answers.json';
+ document.body.appendChild(l);l.click();l.remove();setTimeout(()=>URL.revokeObjectURL(u),1000);
+ document.getElementById('save').textContent='Saved to Downloads';});
 document.addEventListener('click',e=>{const b=e.target.closest('.mark button');if(!b)return;
  const id=b.closest('article').dataset.id;m[id]=m[id]===b.dataset.v?undefined:b.dataset.v;
  try{localStorage.setItem(KEY,JSON.stringify(m))}catch(e){}draw();});draw();
@@ -412,7 +422,7 @@ page = f"""<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name
 <title>AIQ: review the paused tips</title><style>{CSS}</style></head><body><main>
 <h1>Review the paused tips</h1><p class="lead muted">{esc(lead)}</p>
 <p class="muted">Made {esc(datetime.datetime.now().strftime('%b %d, %Y %H:%M'))} from your AIQ store. This page stays on this computer.</p>
-<div class="tally" id="tally" aria-live="polite"></div>{body}</main><script>{JS}</script></body></html>"""
+<div class="bar"><div class="tally" id="tally" aria-live="polite"></div><button id="save" type="button">Save my answers</button></div>{body}</main><script>{JS}</script></body></html>"""
 with open(OUT, "w", encoding="utf-8") as f:
     f.write(page)
 
