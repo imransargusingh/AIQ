@@ -104,7 +104,8 @@ import sqlite3
 import sys
 
 SHIP = re.compile(r"\b(status|progress|where are you|why did you stop)\b", re.I)
-con = sqlite3.connect(f"file:{sys.argv[1]}?mode=ro&immutable=1", uri=True)
+con = sqlite3.connect(f"file:{sys.argv[1]}?mode=ro", uri=True, timeout=5)  # not immutable: that skips rows still in the WAL
+con.execute("PRAGMA query_only = ON")
 f4 = {}
 for tid, facts in con.execute(
     """SELECT j.task_id, j.facts FROM judgment j WHERE j.rowid = (SELECT x.rowid FROM judgment x WHERE x.task_id = j.task_id

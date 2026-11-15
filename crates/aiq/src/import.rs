@@ -26,7 +26,8 @@ const MAX_TEXT: usize = 64 * 1024;
 /// The Copilot reader's version. A run whose stored version differs reads every Copilot session again, even
 /// unchanged files, so a reader fix reaches sessions imported before it. Raise it whenever `read_copilot`
 /// would store different events for the same file. 2: a turn no longer ends at its first `assistant.turn_end`.
-const COPILOT_READER: &str = "2";
+/// 3 (2026-11-15): autopilot's own follow-up turns (`isAutopilotContinuation`) are no longer typed prompts.
+const COPILOT_READER: &str = "3";
 const COPILOT_READER_KEY: &str = "import.copilot_reader";
 
 /// One source session, read into memory.
@@ -1056,6 +1057,56 @@ mod tests {
         assert_eq!(store.forget_imported().unwrap(), 2);
         assert!(store.import_counts().unwrap().is_empty());
         assert!(render(&rep, false).contains("1 imported, 1 automated and not counted"));
+    }
+
+    /// A Copilot session whose follow-up turns autopilot sent itself: `isAutopilotContinuation` on the message
+    /// (measured 2026-11-15 on Imran's laptop: a program's 29 `copilot -p` sessions held 30 of them).
+    fn copilot_autopilot_session(home: &Path, id: &str, cwd: &str, start: &str, prompt: &str, continuations: usize) {
+        let mut rows = vec![
+            json!({"type": "session.start", "timestamp": start, "data": {"startTime": start, "context": {"cwd": cwd}}}),
+            json!({"type": "user.message", "timestamp": start, "data": {"content": prompt, "delivery": "idle", "agentMode": "autopilot"}}),
+            json!({"type": "assistant.turn_end", "timestamp": start, "data": {}}),
+        ];
+        for _ in 0..continuations {
+            rows.push(json!({"type": "user.message", "timestamp": start, "data": {"content": "Continue with the task.", "delivery": "idle", "agentMode": "autopilot", "isAutopilotContinuation": true}}));
+            rows.push(json!({"type": "tool.execution_start", "timestamp": start, "data": {"toolName": "edit", "arguments": "{\"path\": \"x.py\"}"}}));
+            rows.push(json!({"type": "assistant.turn_end", "timestamp": start, "data": {}}));
+        }
+        write_lines(&home.join("session-state").join(id).join("events.jsonl"), &rows);
+    }
+
+    #[test]
+    fn autopilot_continuations_are_not_typed_turns() {
+        let d = tempfile::tempdir().unwrap();
+        copilot_autopilot_session(d.path(), "c1", "C:\\repos\\b", "2026-09-01T10:00:00Z", "add a flag", 2);
+        let src = discover(&d.path().join("none"), d.path());
+        let p = read(&src[0]).unwrap();
+        assert_eq!(p.human_turns(), 1, "autopilot sent the follow-ups, not the person");
+        let kinds: Vec<&str> = p.events.iter().map(|e| e.kind.as_str()).collect();
+        assert_eq!(kinds, ["prompt", "stop"]);
+        let a: Value = serde_json::from_str(p.events[1].actions.as_deref().unwrap()).unwrap();
+        assert_eq!(a["tools"]["edit"].as_u64(), Some(2), "their tool calls stay in the typed turn");
+    }
+
+    /// The leak measured 2026-11-15: an app's one-prompt sessions passed as multi-prompt work because autopilot
+    /// added turns, so the template rule never looked at them. Already-imported sessions are read again once.
+    #[test]
+    fn an_apps_autopilot_sessions_are_set_aside_and_imported_ones_are_read_again() {
+        let d = tempfile::tempdir().unwrap();
+        let (claude, copilot) = (d.path().join("claude"), d.path().join("copilot"));
+        for i in 0..11 {
+            let start = format!("2026-09-{:02}T10:00:00Z", i + 1);
+            let prompt = format!("You have access to the mail tools. Classify item {i}");
+            copilot_autopilot_session(&copilot, &format!("ep{i}"), "C:\\Users\\X\\EP", &start, &prompt, 1);
+        }
+        let mut store = Store::open(&d.path().join("aiq.db")).unwrap();
+        // An earlier reader counted the continuations as typed and imported every session.
+        store.set_setting(COPILOT_READER_KEY, "2", 1).unwrap();
+        let src = discover(&claude, &copilot);
+        let p = AutomatedParams::default();
+        let rep = run(&mut store, &src, &HashSet::new(), &p, false, 2).unwrap();
+        assert_eq!(rep.by_tool[COPILOT], [11, 0, 11, 0, 0], "one typed prompt each, same template: set aside");
+        assert_eq!(store.setting(COPILOT_READER_KEY).unwrap().as_deref(), Some(COPILOT_READER));
     }
 
     #[test]

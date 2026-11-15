@@ -28,9 +28,11 @@ fn rows(name: &str) -> Vec<Value> {
 }
 
 /// (file, main-line typed messages, of them steering, main-line tool calls), counted from the fixtures.
+/// `copilot-2` has 5 main-line messages, of which 2 carry `isAutopilotContinuation: true`: autopilot sent them,
+/// so 3 are typed (2026-11-15).
 const EXPECTED: [(&str, usize, usize, u32); 6] = [
     ("copilot-1.jsonl", 4, 0, 10),
-    ("copilot-2.jsonl", 5, 1, 10),
+    ("copilot-2.jsonl", 3, 1, 10),
     ("copilot-3.jsonl", 1, 0, 0),
     ("copilot-4.jsonl", 1, 0, 3),
     ("copilot-5.jsonl", 2, 0, 12),
@@ -51,6 +53,18 @@ fn real_shaped_logs_give_the_typed_messages_and_tool_calls_they_hold() {
         }
         assert_eq!(acts.tool_calls(), tools, "{name}: main-line tool calls (a sub-agent's are its own work)");
     }
+}
+
+#[test]
+fn autopilots_own_follow_ups_are_never_typed() {
+    let rows = rows("copilot-2.jsonl");
+    let auto: Vec<_> = rows.iter().filter(|r| r["data"]["isAutopilotContinuation"] == true).collect();
+    assert_eq!(auto.len(), 2, "the fixture has autopilot follow-ups");
+    assert!(
+        auto.iter().all(|r| r["type"] == "user.message" && r["data"]["delivery"] == "idle"),
+        "shaped as typed ones"
+    );
+    assert!(auto.iter().all(|r| typed_message(r).is_none()));
 }
 
 #[test]

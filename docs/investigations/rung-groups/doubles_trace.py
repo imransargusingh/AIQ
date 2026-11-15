@@ -17,7 +17,8 @@ import sys
 
 home = sys.argv[1]
 copilot = sys.argv[2] if len(sys.argv) > 2 else None
-con = sqlite3.connect(f"file:{os.path.join(home, 'aiq.db')}?mode=ro&immutable=1", uri=True)
+con = sqlite3.connect(f"file:{os.path.join(home, 'aiq.db')}?mode=ro", uri=True, timeout=5)  # not immutable: that skips rows still in the WAL
+con.execute("PRAGMA query_only = ON")
 
 
 def cnt(it):

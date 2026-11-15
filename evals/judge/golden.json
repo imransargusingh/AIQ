@@ -1,5 +1,5 @@
 {
- "version": "g2",
+ "version": "g3",
  "about": "AIQ judge golden set. Synthetic tasks only; no prompt comes from anyone's real store. Expected values are lists: the first is the author's reading, later ones are also accepted where the rubric allows both. kind or rung null means not scored (no work goal). label_source says who labelled the case: author (the person who wrote the case) or human (a separate labeller). Design: docs/design/judge-evals.md.",
  "cases": [
   {
@@ -425,7 +425,7 @@
      "ask_research"
     ],
     "kind": [
-     "restart_fix",
+     "run_job",
      "fix_bug",
      "troubleshoot"
     ],
@@ -1308,7 +1308,7 @@
      "run_ship"
     ],
     "kind": [
-     "restart_fix"
+     "run_job"
     ],
     "rung": [
      1

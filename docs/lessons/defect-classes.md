@@ -1551,3 +1551,55 @@ summary: >-
   days, 1280 and 720 px, light, dark, contrast), by focus and by mouse: the tip's rectangle sits inside the window
   and the tip is the topmost element at its corners and centre. Red on all 4 before the fix.
 - **Rule:** a check that something is shown reads pixels (rectangles, hit tests), never only text.
+
+### DC-087 — Two names for one kind of work, scored as a disagreement
+- **Signature:** 2026-11-15, Imran reviewing the readings behind the paused Kinds (`paused_review.py`). The
+  accuracy check had paused "Getting something running again" at 0 of 5: the blind second reading called all five
+  "Running an app, script or pipeline", whose line j7 had widened to cover start and stop. Of the 14 readings he
+  marked, he judged AIQ wrong once; where AIQ and the reader differed he said both Kinds fit 6 times. The pause rule
+  counted every one of those as AIQ's error.
+- **Why it survives:** the check compares one Kind with one Kind, so it cannot tell "wrong" from "a neighbour that
+  also fits". Each Kind was reviewed alone when the list was cut; nobody read two lines side by side for overlap.
+- **Sweep:** the two paused Kinds, "Looking up a fact" (4 of 9) and this one. `restart_fix` and `run_job` were confused
+  on all 5 checked tasks and the person called them "essentially identical". Other overlaps (`compare`/`research`,
+  `fix_bug`/`refactor`) are real but partial, so they stay two Kinds and the check now asks.
+- **Control (build):** `restart_fix` is retired into `run_job` (analysis `j8`, `RETIRED_TASK_TYPES`), so a stored
+  one is analyzed again once. The check (`c2`) asks the blind reader which other Kinds of the same job also fit
+  (`task_types_also_fit`, at most 3, validated against the job's list), and one function decides a Kind hit for
+  the report and the pause rule (`check::kind_agrees`).
+- **Control (tests):** `a_reader_that_says_the_judges_kind_also_fits_agrees`, `the_pause_rule_counts_also_fits_the_same_way`,
+  `also_fit_must_be_other_kinds_of_the_same_job`, `an_answer_stored_before_c2_still_reads`, and the eval
+  `aiq analyze --eval --check`, which scores the reader's Kinds on the golden set, overlap cases and hedging apart.
+- **Rule:** an agreement score over categories that overlap must let the reader say a second category fits, or
+  it measures the list's overlap, not the analysis. Ask the person who knows the work before pausing on it.
+
+### DC-088 — A record that says who sent a turn, read by a reader that never looks
+- **Signature:** 2026-11-15, measured on Imran's laptop (`copilot_launch_signs.py`). His local app runs Copilot
+  in autopilot mode; autopilot adds follow-up turns itself and marks each `isAutopilotContinuation: true`. AIQ's
+  `typed_message` counted them as typed, so the app's 29 one-prompt sessions read as multi-prompt work and the
+  set-aside rule (at most one typed prompt and a second sign) never looked at them. His own autopilot sessions held
+  55 more such turns, each counted as a prompt he typed.
+- **Why it survives:** the real-shaped fixture `copilot-2.jsonl` held two of these messages from 2026-11-09, and
+  its expected count (5 typed) was read from the file's shape, not from who sent each line. Every hand-built test
+  record had only `content` and `delivery`.
+- **Sweep:** every reader of a tool's log that decides "typed": Copilot `typed_message` (import and live
+  steering) now skips the flag. Claude Code reads its transcript's own markers (`isMeta`, sidechains, entrypoint).
+  Copilot's live hook prompt has no such field; whether autopilot fires it is measured (`copilot_continuations.py`).
+- **Control (build):** `COPILOT_READER` 3 re-reads every Copilot file once, so past sessions are counted again.
+- **Control (tests):** `autopilot_continuations_are_not_typed_turns`, `an_apps_autopilot_sessions_are_set_aside_and_imported_ones_are_read_again`,
+  and in `copilot_shapes.rs` `autopilots_own_follow_ups_are_never_typed` on the real-shaped fixture (red before).
+- **Rule:** when a real record has a field that says who or what sent it, the test asserts on it. A count
+  "read from the fixture" must be read by meaning, not by shape.
+
+### DC-089 — A read-only open that skips the newest rows
+- **Signature:** 2026-11-15, the first paused-Kinds review page on Imran's laptop showed none of his paused
+  readings. Its script opened the store `mode=ro&immutable=1`. `immutable` tells SQLite the file never changes, so
+  it ignores the write-ahead log, where AIQ's newest rows sit until a checkpoint. Proven with a probe: 3 rows in
+  the log, 0 seen through `immutable`.
+- **Why it survives:** on an idle store the log is checkpointed and the two opens agree, so the scripts gave right
+  answers most of the time. Seven investigation scripts had copied the same line.
+- **Sweep:** every `sqlite3.connect` under `docs/investigations/`: six more scripts fixed to `mode=ro` with
+  `PRAGMA query_only = ON`, as `Store::open_read_only` does.
+- **Control (test):** `crates/aiq-store/tests/read_only_scripts.rs` fails on any investigation script that opens
+  the store `immutable=1` (red on the old `rung_groups.py`).
+- **Rule:** a reader of a live SQLite store in WAL mode never opens it `immutable`. Read-only is `mode=ro`.

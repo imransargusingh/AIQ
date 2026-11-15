@@ -2,7 +2,7 @@
 itself recorded, then count Kinds over that list.
 
 Prints counts only: no prompt text and no analysis text from the store.
-Opens the store immutable (no lock, no -shm/-wal touch), so it reads the main file as of its last save.
+Opens the store read-only with query_only (not immutable=1, which skips rows still in the write-ahead log).
 Rules copied from the source (aiq-home task_list / not_typed_out / twins, aiq-domain split_tasks / automated).
 Usage: python3 kinds_home.py <path to aiq.db>
 """
@@ -15,7 +15,8 @@ import sys
 import time
 
 DB = sys.argv[1]
-con = sqlite3.connect(f"file:{DB}?mode=ro&immutable=1", uri=True)
+con = sqlite3.connect(f"file:{DB}?mode=ro", uri=True, timeout=5)  # not immutable: that skips rows still in the WAL
+con.execute("PRAGMA query_only = ON")
 NOW = int(time.time() * 1000)
 DAY = 86_400_000
 GAP = 30 * 60_000  # pack idle_gap_min = 30
