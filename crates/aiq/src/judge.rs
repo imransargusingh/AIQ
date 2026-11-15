@@ -1555,6 +1555,12 @@ pub fn cli(args: &[&str]) -> ExitCode {
             set.daily_tasks
         );
     }
+    if auto && task.is_none() {
+        // DC-092: a reader fix reaches past sessions without `aiq import` by hand, before this pass analyzes.
+        if let Some(line) = import::catch_up_here(&paths, n.utc_ms) {
+            let _ = bounded_append(&paths.data.join("judge.log"), &line, LOG_MAX);
+        }
+    }
     let (claude, copilot) = providers(&paths, &set);
     let second_models = analysis_copilot_second_models(&set);
     let copilot_second = second_models.map(|m| analysis_copilot(&copilot, m));

@@ -1646,3 +1646,22 @@ summary: >-
   `computer_json_is_rewritten_only_when_what_it_says_changes`, and the Settings e2e line for an older AIQ.
 - **Rule:** a file another computer reads is written only when its meaning changes. A version or format check
   looks both ways: "they are newer" and "they are older".
+
+### DC-092 — A reader fix that waits for a command nobody runs
+- **Signature:** 2026-11-15, Imran's laptop on 0.1.67 (`scheduled_marks.py`, read-only). The store still said
+  `import.copilot_reader = 2` and the newest import run finished on 11-04. The autopilot fix of 0.1.66 (reader 3,
+  DC-089) had reached none of the history: 6 of the 8 scheduled round-ups the accuracy check read as research still
+  counted their autopilot follow-ups as typed, so the one-prompt set-aside rule never looked at them. The 0.1.66
+  forecast (173 tasks with new ids) assumed a re-read that only `aiq import` by hand starts.
+- **Why it survives:** the reader-change test ran `import::run` directly, so it proved what a re-read does, never
+  that anything starts one. Every other version in AIQ (analysis, facts, rubric, label, check) is picked up by the
+  background pass or the next check; this one alone had no trigger.
+- **Sweep:** the versions AIQ stores: `JUDGE_VERSION`, `FACT_SET_VERSION`, `RUBRIC_VERSION` (background pass,
+  `current_version`), label `PROMPT_VERSION` (new labels), `CHECK_VERSION` (next check, weekly re-check),
+  `COPILOT_READER` (this one). Claude Code's reader has no version key: a change there reaches only new sessions.
+- **Control (build):** `import::catch_up` runs in the background analysis pass, before analysis, when the person
+  imported history once and a reader changed since; it reads past sessions again like `aiq import`, logs one line
+  to judge.log, and a try that could not finish waits a day (`import.catch_up_ms`).
+- **Control (tests):** `past_sessions_are_read_again_by_aiq_itself_when_a_reader_changed`.
+- **Rule:** a version bump is not a fix until something AIQ runs by itself picks it up. Test the trigger, not only
+  the effect.

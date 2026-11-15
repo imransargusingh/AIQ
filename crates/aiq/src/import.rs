@@ -623,6 +623,62 @@ pub(crate) fn open_store(paths: &Paths) -> Result<Store, ExitCode> {
     })
 }
 
+/// When the last catch-up was tried (ms). A catch-up re-reads every Copilot file, so one that could not finish
+/// (a file failed to read) waits `CATCH_UP_RETRY_MS` before the next try, not the next 10-minute pass.
+const CATCH_UP_KEY: &str = "import.catch_up_ms";
+const CATCH_UP_RETRY_MS: i64 = 24 * 3600 * 1000;
+
+/// True when past sessions should be read again by AIQ itself: the person imported history once (so AIQ holds
+/// sessions a newer reader would read differently), a reader changed since (`COPILOT_READER`), and no try in the
+/// last day. Measured 2026-11-15 on Imran's laptop: the history was last imported on 11-04, and the autopilot fix
+/// of 0.1.66 (reader 3) had reached none of it, because only `aiq import` by hand read history again (DC-092).
+pub fn catch_up_due(store: &Store, now_ms: i64) -> aiq_store::Result<bool> {
+    if store.setting(COPILOT_READER_KEY)?.as_deref() == Some(COPILOT_READER) {
+        return Ok(false);
+    }
+    if !store.known_imports()?.iter().any(|k| k.tool == COPILOT) {
+        return Ok(false);
+    }
+    let tried = store.setting(CATCH_UP_KEY)?.and_then(|v| v.parse::<i64>().ok());
+    Ok(tried.is_none_or(|t| now_ms - t >= CATCH_UP_RETRY_MS))
+}
+
+/// Read past sessions again when `catch_up_due`, the way `aiq import` does, and say what happened in one line for
+/// judge.log. None when nothing was due. Runs in the background analysis pass, before analysis, so tasks that
+/// changed are analyzed in the same pass under the daily limit.
+pub fn catch_up(
+    store: &mut Store,
+    sources: &[Source],
+    skip_ids: &HashSet<String>,
+    p: &AutomatedParams,
+    now_ms: i64,
+) -> aiq_store::Result<Option<String>> {
+    if !catch_up_due(store, now_ms)? {
+        return Ok(None);
+    }
+    store.set_setting(CATCH_UP_KEY, &now_ms.to_string(), now_ms)?;
+    let rep = run(store, sources, skip_ids, p, false, now_ms)?;
+    let c = &rep.counts;
+    Ok(Some(format!(
+        "import catch-up reader={COPILOT_READER} imported={} automated={} unchanged={} errors={}",
+        c.imported, c.automated, c.unchanged, c.errors
+    )))
+}
+
+/// `catch_up` over the person's own tool folders, for the background pass.
+pub fn catch_up_here(paths: &Paths, now_ms: i64) -> Option<String> {
+    let mut store = Store::open(&paths.db()).ok()?;
+    if !catch_up_due(&store, now_ms).unwrap_or(false) {
+        return None;
+    }
+    let params = aiq_domain::PackSource::load(&aiq_core::pack::BundledPack).ok()?.automated;
+    let sources = discover(&tool_home("CLAUDE_CONFIG_DIR", ".claude"), &tool_home("COPILOT_HOME", ".copilot"));
+    match catch_up(&mut store, &sources, &judge_ids(paths), &params, now_ms) {
+        Ok(line) => line,
+        Err(e) => Some(format!("import catch-up stopped ({}): {}", e.code, e.detail)),
+    }
+}
+
 /// `aiq import [--dry-run]`
 pub fn cli(args: &[&str]) -> ExitCode {
     let paths = Paths::from_env();
@@ -1090,6 +1146,36 @@ mod tests {
 
     /// The leak measured 2026-11-15: an app's one-prompt sessions passed as multi-prompt work because autopilot
     /// added turns, so the template rule never looked at them. Already-imported sessions are read again once.
+    /// DC-092: a reader fix reaches past sessions without anyone running `aiq import`, once, and only for a
+    /// person who imported history; a try that could not finish waits a day.
+    #[test]
+    fn past_sessions_are_read_again_by_aiq_itself_when_a_reader_changed() {
+        let d = tempfile::tempdir().unwrap();
+        let (claude, copilot) = (d.path().join("claude"), d.path().join("copilot"));
+        for i in 0..11 {
+            let start = format!("2026-09-{:02}T10:00:00Z", i + 1);
+            let prompt = format!("You have access to the mail tools. Classify item {i}");
+            copilot_autopilot_session(&copilot, &format!("ep{i}"), "C:\\Users\\X\\EP", &start, &prompt, 1);
+        }
+        let src = discover(&claude, &copilot);
+        let p = AutomatedParams::default();
+        let mut store = Store::open(&d.path().join("aiq.db")).unwrap();
+        assert_eq!(catch_up(&mut store, &src, &HashSet::new(), &p, 10).unwrap(), None, "never imported: nothing");
+        run(&mut store, &src, &HashSet::new(), &p, false, 20).unwrap();
+        assert_eq!(catch_up(&mut store, &src, &HashSet::new(), &p, 30).unwrap(), None, "reader current");
+        // An older AIQ imported the history with reader 2.
+        store.set_setting(COPILOT_READER_KEY, "2", 40).unwrap();
+        assert!(catch_up_due(&store, 50).unwrap());
+        let line = catch_up(&mut store, &src, &HashSet::new(), &p, 60).unwrap().expect("due");
+        assert!(line.starts_with("import catch-up reader=3 "), "{line}");
+        assert_eq!(store.setting(COPILOT_READER_KEY).unwrap().as_deref(), Some(COPILOT_READER));
+        assert!(!catch_up_due(&store, 70).unwrap(), "once");
+        // A try that left the reader behind (a file failed) waits a day.
+        store.set_setting(COPILOT_READER_KEY, "2", 80).unwrap();
+        assert!(!catch_up_due(&store, 90).unwrap());
+        assert!(catch_up_due(&store, 60 + CATCH_UP_RETRY_MS).unwrap());
+    }
+
     #[test]
     fn an_apps_autopilot_sessions_are_set_aside_and_imported_ones_are_read_again() {
         let d = tempfile::tempdir().unwrap();

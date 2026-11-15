@@ -992,4 +992,15 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <ul><li><strong>Control (tests):</strong> <code>a_pass_with_nothing_new_rewrites_neither_computer_json_nor_the_status_file</code>,</li></ul>
 <p><code>a_computer_on_an_older_store_format_shows_behind_until_it_updates</code> (both red before), <code>a_file_written_in_place_is_named_on_the_pass_line_and_not_warned_about</code>, <code>computer_json_is_rewritten_only_when_what_it_says_changes</code>, and the Settings e2e line for an older AIQ.</p>
 <ul><li><strong>Rule:</strong> a file another computer reads is written only when its meaning changes. A version or format check</li></ul>
-<p>looks both ways: &quot;they are newer&quot; and &quot;they are older&quot;.</p></main></body></html>
+<p>looks both ways: &quot;they are newer&quot; and &quot;they are older&quot;.</p>
+<h3>DC-092 — A reader fix that waits for a command nobody runs</h3>
+<ul><li><strong>Signature:</strong> 2026-11-15, Imran&#x27;s laptop on 0.1.67 (<code>scheduled_marks.py</code>, read-only). The store still said</li></ul>
+<p><code>import.copilot_reader = 2</code> and the newest import run finished on 11-04. The autopilot fix of 0.1.66 (reader 3, DC-089) had reached none of the history: 6 of the 8 scheduled round-ups the accuracy check read as research still counted their autopilot follow-ups as typed, so the one-prompt set-aside rule never looked at them. The 0.1.66 forecast (173 tasks with new ids) assumed a re-read that only <code>aiq import</code> by hand starts.</p>
+<ul><li><strong>Why it survives:</strong> the reader-change test ran <code>import::run</code> directly, so it proved what a re-read does, never</li></ul>
+<p>that anything starts one. Every other version in AIQ (analysis, facts, rubric, label, check) is picked up by the background pass or the next check; this one alone had no trigger.</p>
+<ul><li><strong>Sweep:</strong> the versions AIQ stores: <code>JUDGE_VERSION</code>, <code>FACT_SET_VERSION</code>, <code>RUBRIC_VERSION</code> (background pass,</li></ul>
+<p><code>current_version</code>), label <code>PROMPT_VERSION</code> (new labels), <code>CHECK_VERSION</code> (next check, weekly re-check), <code>COPILOT_READER</code> (this one). Claude Code&#x27;s reader has no version key: a change there reaches only new sessions.</p>
+<ul><li><strong>Control (build):</strong> <code>import::catch_up</code> runs in the background analysis pass, before analysis, when the person</li></ul>
+<p>imported history once and a reader changed since; it reads past sessions again like <code>aiq import</code>, logs one line to judge.log, and a try that could not finish waits a day (<code>import.catch_up_ms</code>).</p>
+<ul><li><strong>Control (tests):</strong> <code>past_sessions_are_read_again_by_aiq_itself_when_a_reader_changed</code>.</li><li><strong>Rule:</strong> a version bump is not a fix until something AIQ runs by itself picks it up. Test the trigger, not only</li></ul>
+<p>the effect.</p></main></body></html>
