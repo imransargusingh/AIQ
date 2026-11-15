@@ -77,7 +77,7 @@ Imran ruled out running a relay server. So slice 1 moves files over the Remote D
 - **Only the computer that saw a task analyzes it** (`aiq_home::own_tasks`, the judge queue, Home's "waiting"
   count). Nothing is analyzed or paid for twice.
 - **Tips:** another computer's ready tips are never offered, delivered or handed back here; detectors never rerun
-  on its prompts. Its deliveries do count toward tips a day, the quiet period and the 72-hour same-tip rule.
+  on its prompts. Its deliveries do count toward tips a day and the quiet period.
 - **Right now** shows every computer's open tasks (Imran 2026-11-14: a Devbox Copilot task was missing on the
   laptop while the card's last-turn line showed that Devbox turn as the laptop's). Another computer's task carries
   its name and "up to a minute behind"; each tool's last-turn line keeps this computer's own turn and names the

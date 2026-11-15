@@ -140,7 +140,8 @@ impl Step {
 /// Plain words for a step code or a card decision's reason code, for `aiq status` and Home. One definition.
 pub fn words(code: &str) -> &'static str {
     match code {
-        // Why a task got no tip.
+        // Why a task got no tip. `decided` is a no-tip reason only on a dry day: a tip was ready and not shown.
+        "decided" => "a tip was ready but held back",
         "kind_too_few" => "too few tasks of this kind analyzed yet",
         "kind_right_rung" => "you already work this kind at its right rung",
         "kind_blocked" => "this kind's next step is blocked outside your control",
@@ -163,6 +164,7 @@ pub fn words(code: &str) -> &'static str {
         // Why a decided tip was held (card_decision reason codes).
         "daily_cap" => "daily tip limit reached",
         "quiet_period" => "quiet time after the last tip",
+        // History only: the 72-hour same-tip rule was removed 2026-11-15; older stored holds keep their words.
         "cooldown" => "same tip shown in the last 72 hours",
         "accuracy_paused" => "this kind's accuracy check is under 8 in 10",
         "session_budget" => "one tip per session already shown",
@@ -492,7 +494,6 @@ mod tests {
             QuietPeriod,
             TipOff,
             Snoozed,
-            Cooldown,
             HabitAdopted,
             AccuracyPaused,
         ] {
@@ -684,6 +685,21 @@ mod tests {
         assert_eq!(d[0].tasks, 3);
         assert_eq!(d[0].main_reason.as_ref().unwrap().code, "no_match");
         assert_eq!(d[0].main_reason.as_ref().unwrap().count, 2);
+    }
+
+    /// Regression (2026-11-13 on the laptop): 5 of 18 tasks had a tip ready that was held, and the day's reason
+    /// for them read "other". A ready-but-held tip names itself.
+    #[test]
+    fn a_dry_day_of_ready_but_held_tips_says_so() {
+        let yesterday = NOW.utc_ms - 24 * H;
+        let steps = [
+            step("a", Step::Decided, yesterday),
+            step("b", Step::Decided, yesterday + 1),
+            step("c", Step::NoMatch, yesterday + 2),
+        ];
+        let r = droughts(&steps, &[], NOW, 7).remove(0).main_reason.unwrap();
+        assert_eq!((r.code.as_str(), r.count), ("decided", 2));
+        assert_eq!(r.words, "a tip was ready but held back");
     }
 
     #[test]

@@ -86,7 +86,7 @@ Quoted from the specs and decisions it implements.
 | D9 | Home split grain | **One judged, not-Uncertain task whose first prompt is in the last 30 days.** Uncertain counted beside it. Shown only with ≥ 10 such tasks (aiq-home US-H2) | C6 |
 | D10 | Self-check of the type guess | Every guess is a `type_guess` row. When that task is later judged, the guess is checked against the judged type (derived). With ≥ 10 checked guesses and fewer than 8 in 10 right, **AIQ turns next-rung tips off by itself** and Settings says why, with "Turn back on" | Imran: AIQ decides by itself with an easy override. Measured on the person's own work, never guessed |
 | D11 | Imported history | Imported judgments count in every number, row and habit, and act as neighbours for D5. They never raise a card themselves: only a **live** first prompt can | history-import US-5 forbids cards *from* imported prompts; here the card is raised by a live prompt |
-| D12 | Cooldown per move | The same tip id shows at most once per 72 h, and never while its habit is Adopted | Spec's per-trigger cooldown; no point tipping an adopted habit |
+| D12 | No tip for an adopted habit | A tip never shows while its habit is Adopted. The 72 h same-tip cooldown was removed on 2026-11-15 (Imran: on 11-13 it dropped 5 ready tips of 18 tasks); the daily cap, one a session and the quiet period bound tips | No point tipping an adopted habit |
 | D13 | Fast path vs next-rung tip in one session | No new priority rule: the existing "one per session, first come" holds. The next-rung tip fires at the first turn end; the re-prompt tip needs 3 prompts, so they rarely compete | Smallest change; measured later from `card_decision` reasons |
 
 ## Responsibility
@@ -195,7 +195,6 @@ No rung name or number appears on a card (coaching-loop Part C); rungs appear on
 | `coach.match_threshold` | 0.45 Jaccard | Guess; the re-prompt detector's 0.6 is for *same* request, a new task of the same kind shares fewer words. Set from the offline check (test plan) |
 | `coach.match_agree` | 2 of top 3 | Guess |
 | `coach.guess_check_min` / `coach.guess_precision` | 10 / 0.8 | D10; 0.8 mirrors the coaching bar |
-| `coach.move_cooldown_h` | 72 | D12 |
 | `coach.split_min` | 10 tasks | aiq-home US-H2 |
 | `coach.kept_rule` | `delegated_no_correction` | Imran, 2026-11-02 (Q-A); `f2_share` once F2 exists |
 | `judge.task_type_threshold` | 0.7 | Same as the job threshold |
@@ -302,8 +301,7 @@ CLI: `aiq helpful|not|snooze|off <card>`, `aiq on <tip>`, `aiq flag <job>/<type>
 2. Core: the task rule says this prompt starts a new task. It takes the coachable-type cache (rebuilt
    when the count of judgments changes; `simplify:` an in-memory cache, ceiling a few thousand
    judgments; upgrade when the rebuild passes 50 ms), runs D5, writes `type_guess`.
-3. If the guessed type has a coachable move, the move's tip is not off or snoozed, not in its 72 h
-   cooldown, its habit is not Adopted, and next-rung tips are on (or auto and not turned off by D10):
+3. If the guessed type has a coachable move, the move's tip is not off or snoozed, its habit is not Adopted, and next-rung tips are on (or auto and not turned off by D10):
    signal (`score` = similarity, `threshold` = `match_threshold`, job = the type's job) → existing
    `decide()`. Everything after that is Phase 2 as built: hold for the turn end, re-check
    `may_deliver`, deliver once, start the 30-minute quiet period on every surface.
@@ -414,7 +412,7 @@ pages in CI as in Phase 3.
 | Unit (habits, D5 boundary set) | 1 observation → Tried; 3 eligible with 2 seen → Adopted; 2 eligible both seen → Tried; Adopted then 3 eligible with 1 seen → Tried, no card; Adopted with 2 eligible later → stays Adopted; F5 not eligible with 0 re-prompts; unknown fact neither eligible nor seen; day boundary and offset change |
 | Property | Replay is deterministic and order-independent within a day; split parts sum to the grain count; potential never > current + 1; no card text contains a digit 1–5 adjacent to a rung name, a rung name, or any judge string |
 | Store | v6 migration from v5 and from v4 (PR #24 not merged yet); append-only triggers on the three tables (attempted update fails); `forget` empties them |
-| Integration (core) | First prompt of a new task with a matching coachable type → signal → card at `agentStop` (Copilot), `Stop` (Claude Code), VS Code; second task in 30-min quiet → hold `quiet_period`; cap 5 → hold `daily_cap`; off → drop; snooze → none for 7 days; 72 h cooldown; Adopted habit → no card; imported-only → no card; D10 auto-off at 7 of 10 and back on by setting |
+| Integration (core) | First prompt of a new task with a matching coachable type → signal → card at `agentStop` (Copilot), `Stop` (Claude Code), VS Code; second task in 30-min quiet → hold `quiet_period`; cap 5 → hold `daily_cap`; off → drop; snooze → none for 7 days; same tip again after the quiet period; Adopted habit → no card; imported-only → no card; D10 auto-off at 7 of 10 and back on by setting |
 | Performance | Guess + decision ≤ 2 s p95 with 5,000 judgments (coaching-loop US-1); cache rebuild measured; hook p95 unchanged (≤ 100 ms) |
 | Judge eval (measured) | PR #24's held-out eval extended: label the 20 held-out tasks' task type by construction; report type agreement (bar to set from the run; first guess ≥ 80%) |
 | Offline matcher check (laptop, counts only) | `aiq coach check-guess`: leave-one-out over Imran's judged tasks; prints precision and coverage at 0.35/0.45/0.55. Sets `match_threshold`. Prints no text |
@@ -476,7 +474,7 @@ Claude Code card, CLI commands, AIQ home snapshot and screens.
 | Judge task-type agreement with a person | not yet | **Not measured** | the eval cache predates `task_type`; next: rerun the 20-task eval with `claude -p` |
 | `coach.match_threshold` 0.45, `match_agree` 2 of 3 | | **Guessed** | to be set from the person's own self-check (`aiq status` shows it) |
 | `guess_check_min` 10, `guess_precision` 0.8 | | **Guessed** (mirrors the coaching bar) | |
-| `move_cooldown_h` 72, `snooze_days` 7, `not_helpful_days` 30 | | **Guessed** | |
+| `snooze_days` 7, `not_helpful_days` 30 | | **Guessed** | |
 | `recurring_min` 3, `type_majority` > 0.5 | | From coaching-loop D5 / this design D3 | |
 | `split_min` 10, `week_min` 3, `habit_days` 14, `habit_min` 3 | | From the specs (aiq-home US-H2, coaching-loop D5) | |
 | `TASK_TYPE_THRESHOLD` 0.7 | | **Guessed** (same as the job threshold) | |
