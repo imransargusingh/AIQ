@@ -9,7 +9,8 @@ Groups (from the AIQ store, by Copilot session id):
   typed2+  imported sessions with two or more typed prompts (a person drove them)
   one      the other imported one-prompt sessions
   aside    sessions AIQ already set aside as automated
-For every key path under `session.start` data and under the first `user.message` data (except its text), it prints
+For every key path under `session.start` data, the first `user.message` data, and every `user.message` (counted per
+message, to see whether Copilot marks who sent a turn), except the text, it prints
 how often each group has it, and the value when the value is a boolean, a number, or a short word from a safe
 character set under a key that is not a path, folder, repository, branch, name or title. Nothing else is printed:
 no prompt, folder, id or path.
@@ -84,7 +85,7 @@ for sid in os.listdir(state) if os.path.isdir(state) else []:
     try:
         with open(path, encoding="utf-8", errors="replace") as f:
             for i, line in enumerate(f):
-                if got_start and got_msg and i >= 8:
+                if i >= 20000:
                     break
                 try:
                     e = json.loads(line)
@@ -98,6 +99,12 @@ for sid in os.listdir(state) if os.path.isdir(state) else []:
                     where, got_start = "session.start", True
                 elif t == "user.message" and not got_msg:
                     where, got_msg = "user.message", True
+                if t == "user.message":
+                    # Every message, not just the first: does Copilot mark who sent a turn (typed, a hook, a program)?
+                    for k, v in flatten({x: y for x, y in (e.get("data") or {}).items() if x != "content"}):
+                        stats[("user.message (every one)", k)][(g, shown(k, v))] += 1
+                    for k, v in flatten({x: y for x, y in e.items() if x not in ("data", "id", "parentId", "timestamp")}):
+                        stats[("user.message (every one, record)", k)][(g, shown(k, v))] += 1
                 if where:
                     for k, v in flatten(e.get("data") or {}):
                         stats[(where, k)][(g, shown(k, v))] += 1
