@@ -12,8 +12,12 @@ script prints counts only (no prompt, note, folder or id). The store is opened m
 readers (aiq-store open_read_only), so it also reads the newest rows still in the write-ahead log: immutable=1 would
 skip them, and a check run minutes ago would be missing.
 
+--as-of <earlier page .html> rebuilds the page as it stood when that earlier page was written (its file time):
+only analyses and check readings from before then, so each task keeps the id the earlier page used and the marks
+saved in the browser for it come back. It prints how many of the earlier page's tasks the new page holds.
+
 Usage:
-    python3 -I paused_review.py <path to aiq.db> <output .html> [--open]
+    python3 -I paused_review.py <path to aiq.db> <output .html> [--open] [--as-of <earlier page .html>]
 """
 import collections
 import datetime
@@ -26,6 +30,12 @@ import sys
 
 DB, OUT = sys.argv[1], sys.argv[2]
 OPEN = "--open" in sys.argv[3:]
+AS_OF_PAGE = sys.argv[sys.argv.index("--as-of") + 1] if "--as-of" in sys.argv[3:] else None
+AS_OF_MS = int(os.path.getmtime(AS_OF_PAGE) * 1000) if AS_OF_PAGE else 1 << 62
+EARLIER_IDS = set()
+if AS_OF_PAGE:
+    with open(AS_OF_PAGE, encoding="utf-8") as f:
+        EARLIER_IDS = set(re.findall(r'<article class="task [a-z]+" data-id="([^"]+)"', f.read()))
 con = sqlite3.connect(f"file:{DB}?mode=ro", uri=True, timeout=5)
 con.execute("PRAGMA query_only = ON")
 
@@ -137,16 +147,18 @@ current = {}
 for row in con.execute(
         f"""SELECT j.judgment_id, j.task_id, j.provider, j.judged_utc_ms, j.job, j.job_confidence, j.current_rung, j.state,
                j.read, j.evidence, j.judge_version, {tcols} FROM judgment j
-            WHERE j.rowid = (SELECT x.rowid FROM judgment x WHERE x.task_id = j.task_id
-                             ORDER BY x.judged_utc_ms DESC, x.rowid DESC LIMIT 1)"""):
+            WHERE j.rowid = (SELECT x.rowid FROM judgment x WHERE x.task_id = j.task_id AND x.judged_utc_ms <= ?
+                             ORDER BY x.judged_utc_ms DESC, x.rowid DESC LIMIT 1)""", (AS_OF_MS,)):
     current[row[0]] = dict(zip(("jid", "task", "tool", "at", "job", "job_conf", "rung", "state", "read", "evidence",
                                 "jv", "kind", "kind_conf"), row))
 
-runs = {rid: ms for rid, ms in con.execute("SELECT run_id, started_utc_ms FROM judge_check_run")}
+runs = {rid: ms for rid, ms in con.execute("SELECT run_id, started_utc_ms FROM judge_check_run WHERE started_utc_ms <= ?",
+                                             (AS_OF_MS,))}
 readings = []
 seen_rows = collections.Counter()
 for rid, jid, ans, grader in con.execute(
-        "SELECT run_id, judgment_id, answer, grader_model FROM judge_check WHERE outcome = 'ok' ORDER BY checked_utc_ms"):
+        "SELECT run_id, judgment_id, answer, grader_model FROM judge_check WHERE outcome = 'ok' AND checked_utc_ms <= ?"
+        " ORDER BY checked_utc_ms", (AS_OF_MS,)):
     if rid not in runs or jid not in current:
         seen_rows["no run" if rid not in runs else "analysis replaced since"] += 1
         continue
@@ -430,6 +442,11 @@ print(f"paused scopes: {len(paused)} ({', '.join(('/'.join(s[1:]) + f' {k} of {l
 print(f"check rows answered: {len(readings) + sum(seen_rows.values())}; left out {dict(seen_rows)}; check runs: {len(runs)}")
 print(f"page tasks by origin {dict(origin_count)}; by not-typed rules {dict(rule_count)}")
 print(f"tasks on the page: {rows_out}; check readings read: {len(readings)}; page bytes: {os.path.getsize(OUT)}")
+if AS_OF_PAGE:
+    with open(OUT, encoding="utf-8") as f:
+        now_ids = set(re.findall(r'<article class="task [a-z]+" data-id="([^"]+)"', f.read()))
+    print(f"as of the earlier page: it had {len(EARLIER_IDS)} tasks; the new page holds {len(EARLIER_IDS & now_ids)} of them"
+          f" and {len(now_ids - EARLIER_IDS)} others")
 if OPEN and hasattr(os, "startfile"):
     os.startfile(OUT)
     print("opened in the default browser")
