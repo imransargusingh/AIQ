@@ -29,10 +29,12 @@ export function dayWords(iso: string, nowMs: number, offsetMin: number): string 
   return `on ${days[dt.getUTCDay()]} ${d} ${months[m - 1]}`;
 }
 
-/** The Home note after a dry working day. */
+/** The Home note after a dry working day. The reason carries its count, so a reason for 6 of 18 tasks never reads
+ * as the reason for all 18 (Imran, 2026-11-15). */
 export function droughtLine(d: TipDrought, nowMs: number, offsetMin: number): string {
   const head = `No tips ${dayWords(d.day, nowMs, offsetMin)} across ${plural(d.tasks, "task")}.`;
-  return d.main_reason ? `${head} Main reason: ${d.main_reason.words}.` : head;
+  const r = d.main_reason;
+  return r ? `${head} Most common reason (${r.count} of ${d.tasks}): ${r.words}.` : head;
 }
 
 const SEEN = "aiq.droughtSeen";

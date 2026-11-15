@@ -78,7 +78,7 @@ fn unknown_twice(placement_json: &str) -> bool {
 /// for a task that spans two jobs (research 2026-11-14). j8 folded "Getting something running again"
 /// (restart_fix) into "Running or restarting an app, script or pipeline" (run_job): the accuracy check of 2026-11-15
 /// read all 5 checked restart_fix tasks as run_job, and Imran, reviewing them, called the two "essentially
-/// identical" (DC-087). A stored restart_fix is a retired kind, so it is analyzed again once.
+/// identical" (DC-088). A stored restart_fix is a retired kind, so it is analyzed again once.
 pub const JUDGE_VERSION: &str = "j8";
 /// An analysis of one of these versions stays current only when it names a kind today's list offers (Imran
 /// 2026-11-14, the Kinds re-cut card: "New list, re-analyze all unnamed"). A task with no job, the kind

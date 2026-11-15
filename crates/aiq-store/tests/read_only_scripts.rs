@@ -1,4 +1,4 @@
-//! DC-089: the read-only Python scripts that read a person's store must see what AIQ sees. `immutable=1` tells
+//! DC-090: the read-only Python scripts that read a person's store must see what AIQ sees. `immutable=1` tells
 //! SQLite the file never changes, so it skips the write-ahead log, where AIQ's newest rows sit until a
 //! checkpoint: measured 2026-11-15, a review page built that way showed none of the person's 14 paused readings.
 //! A script opens the store `mode=ro` (best with `PRAGMA query_only = ON`, as `Store::open_read_only` does).

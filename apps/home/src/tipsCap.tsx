@@ -67,7 +67,7 @@ export function TipsCap({ value, down, labelledBy, set }: { value: number; down:
   );
 }
 
-/** When a tip may show: the core's budget (`may_deliver`: one per session, quiet period, daily cap) and the
- * same-tip cooldown (72 h, funnel reason `cooldown`), in the words both Settings and setup use. */
+/** When a tip may show: the core's budget (`may_deliver`: one per session, quiet period, daily cap), in the words
+ * both Settings and setup use. There is no same-tip repeat rule (removed 2026-11-15). */
 export const TIP_RULES =
-  "A tip shows when the agent finishes a turn, for a kind of task you repeat: at most one a session, never within 30 minutes of another, and the same tip not again for 3 days.";
+  "A tip shows when the agent finishes a turn, for a kind of task you repeat: at most one a session and never within 30 minutes of another.";

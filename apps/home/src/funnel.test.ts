@@ -52,6 +52,6 @@ describe("tip funnel", () => {
     expect(dayWords("2026-11-05", NOW, 0)).toBe("on Thu 5 Nov");
     expect(dayWords("2026-11-07", Date.UTC(2026, 10, 8, 3), -480)).toBe("on Sat 7 Nov"); // still the 7th in Pacific
     expect(droughtLine({ day: "2026-11-07", tasks: 6, main_reason: { code: "no_match", words: "kind of task not recognised", count: 4 } }, NOW, 0))
-      .toBe("No tips yesterday across 6 tasks. Main reason: kind of task not recognised.");
+      .toBe("No tips yesterday across 6 tasks. Most common reason (4 of 6): kind of task not recognised.");
   });
 });

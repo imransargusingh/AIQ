@@ -935,4 +935,14 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <p>window (below, else above; pulled in from the right edge), with no <code>filter</code> on the anchor (a filter would make it the containing block and clip again) and <code>pointer-events:none</code> so a tip never traps the mouse. The Home weekly column tip has no scrolling ancestor (<code>.wk-plot</code> is a plain grid), so it is not affected.</p>
 <ul><li><strong>Control (test):</strong> e2e &quot;Tasks Day view: every hover text is shown whole&quot; over 4 cases (one-session and tour</li></ul>
 <p>days, 1280 and 720 px, light, dark, contrast), by focus and by mouse: the tip&#x27;s rectangle sits inside the window and the tip is the topmost element at its corners and centre. Red on all 4 before the fix.</p>
-<ul><li><strong>Rule:</strong> a check that something is shown reads pixels (rectangles, hit tests), never only text.</li></ul></main></body></html>
+<ul><li><strong>Rule:</strong> a check that something is shown reads pixels (rectangles, hit tests), never only text.</li></ul>
+<h3>DC-087 — A &quot;main reason&quot; shown without its share reads as the reason for everything</h3>
+<ul><li><strong>Signature:</strong> 2026-11-15, Imran: Home said &quot;No tips on Fri 13 Nov across 18 tasks. Main reason: kind label says</li></ul>
+<p>it&#x27;s a question&quot;. Measured read-only on the laptop&#x27;s synced store: that reason covered 6 of the 18 tasks (5 of them Devbox questions the full analysis agreed with). 5 more had a tip ready that the 72-hour same-tip rule dropped, and their reason code (<code>decided</code>) had no words, so it would have read &quot;other&quot; had it led.</p>
+<ul><li><strong>Why it survives:</strong> each unit test checked the top reason&#x27;s code; none checked that the sentence carried how</li></ul>
+<p>many tasks it covers.</p>
+<ul><li><strong>Sweep:</strong> every place a top reason is shown. Home&#x27;s weekly line already gave &quot;(n)&quot;; <code>aiq status</code> gave</li></ul>
+<p>&quot;(n tasks)&quot;; the Home dry-day note gave none. The note and <code>aiq status</code> now both say &quot;Most common reason (6 of 18)&quot;. Every step code a dry day can end on now has words (<code>decided</code>: &quot;a tip was ready but held back&quot;).</p>
+<ul><li><strong>Control (test):</strong> <code>funnel.test.ts</code> and the e2e dry-day check require &quot;(n of N)&quot;; <code>a_dry_day_of_ready_but_held_tips_says_so</code></li></ul>
+<p>checks the <code>decided</code> words. The same-tip rule is gone (Imran 2026-11-15); <code>the_same_tip_shows_again_after_the_quiet_period</code> keeps it gone and checks the daily cap still holds.</p>
+<ul><li><strong>Rule:</strong> a summary reason always carries its count and the total it is out of.</li></ul></main></body></html>

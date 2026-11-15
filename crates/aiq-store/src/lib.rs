@@ -973,20 +973,6 @@ impl Store {
             .map_err(err(codes::STORE_OPEN))
     }
 
-    /// Delivery times of cards carrying `tip_id`, newest first (the per-move cooldown reads the first).
-    pub fn deliveries_of_tip(&self, tip_id: &str) -> Result<Vec<i64>> {
-        let mut st = self
-            .conn
-            .prepare(
-                "SELECT v.delivered_utc_ms FROM card_delivery v
-                 JOIN card_decision d ON d.card_id = v.card_id AND d.outcome = 'show_ready'
-                 WHERE json_extract(d.card_json, '$.tip_id') = ?1 ORDER BY v.delivered_utc_ms DESC",
-            )
-            .map_err(err(codes::STORE_OPEN))?;
-        let rows = st.query_map([tip_id], |r| r.get(0)).map_err(err(codes::STORE_OPEN))?;
-        rows.collect::<rusqlite::Result<_>>().map_err(err(codes::STORE_OPEN))
-    }
-
     /// A cheap fingerprint of everything the coaching cache is derived from: when it changes, rebuild.
     /// The fourth number is the newest accuracy-check reading (the pause rule, design K6b; 0 before v7).
     pub fn coach_fingerprint(&self) -> Result<(i64, i64, i64, i64)> {

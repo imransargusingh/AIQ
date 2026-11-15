@@ -1,6 +1,6 @@
 //! Next-rung tips end to end in the core (design coaching-from-rungs, test plan "Integration (core)"):
 //! a live first prompt that looks like a coachable kind of task gets one pack-written card at that turn's end,
-//! under the existing budget, the person's answers, the cooldown and AIQ's own self-check.
+//! under the existing budget, the person's answers and AIQ's own self-check.
 use aiq_contracts::event::{EventBody, EventV1, PromptPayload, SCHEMA, StopPayload};
 use aiq_core::counters::Counters;
 use aiq_core::pack::BundledPack;
@@ -220,26 +220,22 @@ fn claude_code_gets_the_card_at_stop_and_an_unlike_prompt_gets_nothing() {
 }
 
 #[test]
-fn off_snooze_cooldown_and_quiet_period_hold_the_tip() {
+fn off_snooze_and_quiet_period_hold_the_tip() {
     let mut h = H::new();
     h.seed();
     h.prompt("copilot-cli", "a", NEW);
     let c = full(h.cp_turn_end("a")).unwrap();
     // Within the quiet period a new task's tip is held.
-    h.advance(40 * MIN);
+    h.advance(20 * MIN);
     h.prompt("copilot-cli", "b", NEW);
-    assert!(h.decisions().iter().any(|(_, r, _)| r == "quiet_period" || r == "cooldown"));
-    // After the quiet period, still inside 72 h: cooldown drops it.
-    h.advance(2 * HOUR);
-    h.prompt("copilot-cli", "c", NEW);
-    assert!(h.decisions().iter().any(|(o, r, _)| o == "drop" && r == "cooldown"), "{:?}", h.decisions());
-    // "Don't show this again" wins over the cooldown ending.
+    assert!(h.decisions().iter().any(|(_, r, _)| r == "quiet_period"), "{:?}", h.decisions());
+    // "Don't show this again" holds it.
     h.svc.tip_feedback(Some(&c.card_id), None, "off", "cli").unwrap();
-    h.advance(73 * HOUR);
+    h.advance(2 * HOUR);
     h.prompt("copilot-cli", "d", NEW);
     assert!(full(h.cp_turn_end("d")).is_none());
     assert!(h.decisions().iter().any(|(_, r, _)| r == "tip_off"));
-    // Turned back on: shows again (cooldown passed).
+    // Turned back on: shows again.
     h.svc.tip_feedback(None, Some("next_rung.written_brief"), "on", "home").unwrap();
     h.advance(2 * HOUR);
     h.prompt("copilot-cli", "e", NEW);
@@ -250,6 +246,28 @@ fn off_snooze_cooldown_and_quiet_period_hold_the_tip() {
     h.prompt("copilot-cli", "f", NEW);
     assert!(full(h.cp_turn_end("f")).is_none());
     assert!(h.decisions().iter().any(|(_, r, _)| r == "snoozed"));
+}
+
+/// Regression (Imran, 2026-11-15): there is no same-tip repeat rule. On 11-13 five ready tips were dropped as
+/// "same tip shown in the last 72 hours"; the same tip now shows again once the quiet period has passed, and only
+/// the daily cap, one a session and the quiet period hold it.
+#[test]
+fn the_same_tip_shows_again_after_the_quiet_period() {
+    let mut h = H::new();
+    h.seed();
+    h.prompt("copilot-cli", "a", NEW);
+    let first = full(h.cp_turn_end("a")).expect("first tip");
+    h.advance(31 * MIN);
+    h.prompt("copilot-cli", "b", NEW);
+    let again = full(h.cp_turn_end("b")).expect("same tip again, 31 minutes later");
+    assert_eq!(again.tip_id, first.tip_id);
+    assert!(h.decisions().iter().all(|(_, r, _)| r != "cooldown"), "{:?}", h.decisions());
+    // The daily cap still holds the same tip.
+    h.svc.set("daily_cap", "2").unwrap();
+    h.advance(31 * MIN);
+    h.prompt("copilot-cli", "c", NEW);
+    assert!(full(h.cp_turn_end("c")).is_none());
+    assert!(h.decisions().iter().any(|(o, r, _)| o == "hold" && r == "daily_cap"), "{:?}", h.decisions());
 }
 
 #[test]
@@ -727,7 +745,7 @@ fn labels_have_their_own_self_check_hold_tips_below_eight_in_ten_and_keep_being_
             .unwrap();
         }
     }
-    h.advance(73 * HOUR); // past the same-tip cooldown of "b"'s tip
+    h.advance(31 * MIN); // past the quiet period after "b"'s tip
     let task = h.prompt("copilot-cli", "c", UNLIKE);
     h.advance(10_000);
     store_label(&h, &task, "c", "tests", 0.9);

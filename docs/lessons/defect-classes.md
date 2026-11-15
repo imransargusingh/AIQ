@@ -1552,7 +1552,22 @@ summary: >-
   and the tip is the topmost element at its corners and centre. Red on all 4 before the fix.
 - **Rule:** a check that something is shown reads pixels (rectangles, hit tests), never only text.
 
-### DC-087 — Two names for one kind of work, scored as a disagreement
+### DC-087 — A "main reason" shown without its share reads as the reason for everything
+- **Signature:** 2026-11-15, Imran: Home said "No tips on Fri 13 Nov across 18 tasks. Main reason: kind label says
+  it's a question". Measured read-only on the laptop's synced store: that reason covered 6 of the 18 tasks (5 of
+  them Devbox questions the full analysis agreed with). 5 more had a tip ready that the 72-hour same-tip rule
+  dropped, and their reason code (`decided`) had no words, so it would have read "other" had it led.
+- **Why it survives:** each unit test checked the top reason's code; none checked that the sentence carried how
+  many tasks it covers.
+- **Sweep:** every place a top reason is shown. Home's weekly line already gave "(n)"; `aiq status` gave
+  "(n tasks)"; the Home dry-day note gave none. The note and `aiq status` now both say "Most common reason
+  (6 of 18)". Every step code a dry day can end on now has words (`decided`: "a tip was ready but held back").
+- **Control (test):** `funnel.test.ts` and the e2e dry-day check require "(n of N)"; `a_dry_day_of_ready_but_held_tips_says_so`
+  checks the `decided` words. The same-tip rule is gone (Imran 2026-11-15); `the_same_tip_shows_again_after_the_quiet_period`
+  keeps it gone and checks the daily cap still holds.
+- **Rule:** a summary reason always carries its count and the total it is out of.
+
+### DC-088 — Two names for one kind of work, scored as a disagreement
 - **Signature:** 2026-11-15, Imran reviewing the readings behind the paused Kinds (`paused_review.py`). The
   accuracy check had paused "Getting something running again" at 0 of 5: the blind second reading called all five
   "Running an app, script or pipeline", whose line j7 had widened to cover start and stop. Of the 14 readings he
@@ -1573,7 +1588,7 @@ summary: >-
 - **Rule:** an agreement score over categories that overlap must let the reader say a second category fits, or
   it measures the list's overlap, not the analysis. Ask the person who knows the work before pausing on it.
 
-### DC-088 — A record that says who sent a turn, read by a reader that never looks
+### DC-089 — A record that says who sent a turn, read by a reader that never looks
 - **Signature:** 2026-11-15, measured on Imran's laptop (`copilot_launch_signs.py`). His local app runs Copilot
   in autopilot mode; autopilot adds follow-up turns itself and marks each `isAutopilotContinuation: true`. AIQ's
   `typed_message` counted them as typed, so the app's 29 one-prompt sessions read as multi-prompt work and the
@@ -1591,7 +1606,7 @@ summary: >-
 - **Rule:** when a real record has a field that says who or what sent it, the test asserts on it. A count
   "read from the fixture" must be read by meaning, not by shape.
 
-### DC-089 — A read-only open that skips the newest rows
+### DC-090 — A read-only open that skips the newest rows
 - **Signature:** 2026-11-15, the first paused-Kinds review page on Imran's laptop showed none of his paused
   readings. Its script opened the store `mode=ro&immutable=1`. `immutable` tells SQLite the file never changes, so
   it ignores the write-ahead log, where AIQ's newest rows sit until a checkpoint. Proven with a probe: 3 rows in
