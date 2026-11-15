@@ -925,4 +925,14 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <ul><li><strong>Fix:</strong> the tasks left out get one short line of their own (&quot;Not on a rung: 12 unsure · 64 progress checks&quot;);</li></ul>
 <p>the label has a widest width and wraps inside it; the ladder sits beside the label while both fit and drops below it when they don&#x27;t.</p>
 <ul><li><strong>Rule:</strong> text that grows with the data wraps inside its own box. Test a picture&#x27;s edges against its card, at</li></ul>
-<p>several widths, with counts of real size: &quot;the page does not scroll&quot; does not see a clipped picture.</p></main></body></html>
+<p>several widths, with counts of real size: &quot;the page does not scroll&quot; does not see a clipped picture.</p>
+<h3>DC-086 — Hover text inside a scrolling box, cut off by the box</h3>
+<ul><li><strong>Number:</strong> recorded as DC-080 in #297 (audit al-01M7E2HE8B6CGRFVCYHFD4RGXQ). #296 had taken DC-080 to DC-085</li></ul>
+<p>first, on its own branch, so this entry became DC-086 when #296 took main in.</p>
+<ul><li><strong>Signature:</strong> 2026-11-14, measured on the built app at 1280 px with the repo&#x27;s fixtures: in the Tasks Day view,</li></ul>
+<p>every hover text lost its third line (the rung) on a one-session day, and blocks near the right edge lost up to 94 of 219 px. The Day view box has <code>overflow-x:auto</code> so the chart scrolls on a narrow window, and a scrolling box clips everything inside it, including absolutely placed hover text.</p>
+<ul><li><strong>Why it survives:</strong> the screen test read the hover text&#x27;s words (<code>innerText</code>), which are all there when clipped.</li><li><strong>Sweep:</strong> every <code>.tip</code> in Home. The Day view&#x27;s row and block tips now sit <code>position:fixed</code>, placed against the</li></ul>
+<p>window (below, else above; pulled in from the right edge), with no <code>filter</code> on the anchor (a filter would make it the containing block and clip again) and <code>pointer-events:none</code> so a tip never traps the mouse. The Home weekly column tip has no scrolling ancestor (<code>.wk-plot</code> is a plain grid), so it is not affected.</p>
+<ul><li><strong>Control (test):</strong> e2e &quot;Tasks Day view: every hover text is shown whole&quot; over 4 cases (one-session and tour</li></ul>
+<p>days, 1280 and 720 px, light, dark, contrast), by focus and by mouse: the tip&#x27;s rectangle sits inside the window and the tip is the topmost element at its corners and centre. Red on all 4 before the fix.</p>
+<ul><li><strong>Rule:</strong> a check that something is shown reads pixels (rectangles, hit tests), never only text.</li></ul></main></body></html>

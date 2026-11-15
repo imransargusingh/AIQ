@@ -1534,3 +1534,20 @@ summary: >-
   below it when they don't.
 - **Rule:** text that grows with the data wraps inside its own box. Test a picture's edges against its card, at
   several widths, with counts of real size: "the page does not scroll" does not see a clipped picture.
+
+### DC-086 — Hover text inside a scrolling box, cut off by the box
+- **Number:** recorded as DC-080 in #297 (audit al-01M7E2HE8B6CGRFVCYHFD4RGXQ). #296 had taken DC-080 to DC-085
+  first, on its own branch, so this entry became DC-086 when #296 took main in.
+- **Signature:** 2026-11-14, measured on the built app at 1280 px with the repo's fixtures: in the Tasks Day view,
+  every hover text lost its third line (the rung) on a one-session day, and blocks near the right edge lost up to
+  94 of 219 px. The Day view box has `overflow-x:auto` so the chart scrolls on a narrow window, and a scrolling box
+  clips everything inside it, including absolutely placed hover text.
+- **Why it survives:** the screen test read the hover text's words (`innerText`), which are all there when clipped.
+- **Sweep:** every `.tip` in Home. The Day view's row and block tips now sit `position:fixed`, placed against the
+  window (below, else above; pulled in from the right edge), with no `filter` on the anchor (a filter would make
+  it the containing block and clip again) and `pointer-events:none` so a tip never traps the mouse. The Home
+  weekly column tip has no scrolling ancestor (`.wk-plot` is a plain grid), so it is not affected.
+- **Control (test):** e2e "Tasks Day view: every hover text is shown whole" over 4 cases (one-session and tour
+  days, 1280 and 720 px, light, dark, contrast), by focus and by mouse: the tip's rectangle sits inside the window
+  and the tip is the topmost element at its corners and centre. Red on all 4 before the fix.
+- **Rule:** a check that something is shown reads pixels (rectangles, hit tests), never only text.
