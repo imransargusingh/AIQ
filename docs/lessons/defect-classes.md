@@ -1618,3 +1618,23 @@ summary: >-
 - **Control (test):** `crates/aiq-store/tests/read_only_scripts.rs` fails on any investigation script that opens
   the store `immutable=1` (red on the old `rung_groups.py`).
 - **Rule:** a reader of a live SQLite store in WAL mode never opens it `immutable`. Read-only is `mode=ro`.
+
+### DC-091 — A file rewritten every pass, and a state that only looks one way
+- **Signature:** 2026-11-15, Imran's laptop on 0.1.67. (a) `sync rename refused; writing in place`
+  (`AIQ-SYNC-WRITE`, os error 5) four times in 41 minutes while sync said ok. Each pass rewrote `computer.json` and
+  `sync-status.json` only to move a time stamp. Windows refuses a rename over a file another program holds open
+  without delete sharing, and the Devbox reads both files through Remote Desktop's drive link every minute. Which
+  file was refused is Inferred: the warning did not name it. (b) The second Devbox, still on 0.1.61 (store format
+  12), showed "ok" on the laptop for 28 h. It could not take the laptop's format-13 files, and only the computer
+  holding the newer files could tell.
+- **Why it survives:** tests run on Linux, where a rename over an open file always works. Format skew was tested
+  only from the side that receives newer files (`update`), never from the side that sends them.
+- **Sweep:** every `write_whole` in `sync.rs`. Change files are new names (written once); relayed copies of
+  `computer.json` were already written only when newer. Both every-pass rewrites now go through `write_if_changed`.
+  Peer states: `known_peers` (out of reach) keeps `away`; only reached computers can be compared.
+- **Control (tests):** `a_pass_with_nothing_new_rewrites_neither_computer_json_nor_the_status_file`,
+  `a_computer_on_an_older_store_format_shows_behind_until_it_updates` (both red before),
+  `a_file_written_in_place_is_named_on_the_pass_line_and_not_warned_about`,
+  `computer_json_is_rewritten_only_when_what_it_says_changes`, and the Settings e2e line for an older AIQ.
+- **Rule:** a file another computer reads is written only when its meaning changes. A version or format check
+  looks both ways: "they are newer" and "they are older".
