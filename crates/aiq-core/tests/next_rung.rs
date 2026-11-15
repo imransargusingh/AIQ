@@ -413,6 +413,66 @@ fn accuracy_check_pauses_a_job_keep_on_overrides_and_a_later_check_resumes() {
     assert!(h.svc.status().coach.unwrap().accuracy_paused.is_empty());
 }
 
+/// DC-094 (Imran's laptop, 11-15): a check of "Looking up a fact" read 30 tasks and agreed on 14; the j9 rewording
+/// then re-analyzed 25 of them, and the pause rested on the 5 not yet redone, all disagreeing ("only 0 of 5"). An
+/// analysis waiting to be redone because its kind may change is neither counted nor sampled; a reading of today's
+/// analysis still pauses.
+#[test]
+fn readings_of_analyses_waiting_to_be_redone_do_not_pause_a_kind() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("aiq.db");
+    let s = Store::open(&path).unwrap();
+    let run = |s: &Store, run: &str, started: i64, version: &str| {
+        s.insert_check_run(&CheckRunRow {
+            run_id: run.into(),
+            seed: 1,
+            requested: 5,
+            sample: vec![],
+            started_utc_ms: started,
+            check_version: "c2".into(),
+            scope: Some("kind:ask_research/find".into()),
+            started_by: None,
+        })
+        .unwrap();
+        for i in 0..5 {
+            let task = format!("{run}-t{i}");
+            let j =
+                JudgmentRow { job: "ask_research".into(), judge_version: version.into(), ..judgment(&task, "find") };
+            s.insert_judgment(&j).unwrap();
+            s.insert_check(&CheckRow {
+                check_id: format!("k-{task}"),
+                run_id: run.into(),
+                judgment_id: j.judgment_id.clone(),
+                task_id: task.clone(),
+                grader_provider: "copilot-cli".into(),
+                grader_model: None,
+                outcome: "ok".into(),
+                answer: Some(
+                    r#"{"job":"ask_research","task_type":"progress","current_rung":2,"f4_goal_context_constraints":null,
+                    "f5_reprompts_added_information":null,"f6_output_checked":null,"f7_written_brief":null,
+                    "f12_step_by_step":null,"f13_whole_outcome_handed_over":null}"#
+                        .into(),
+                ),
+                latency_ms: 1,
+                cost_usd: None,
+                checked_utc_ms: started,
+            })
+            .unwrap();
+        }
+    };
+    let find_paused = |s: &Store| {
+        aiq_domain::check::verdicts(&aiq_core::coaching::readings(s).unwrap())
+            .iter()
+            .any(|v| v.paused && v.scope.key() == "ask_research/find")
+    };
+    // j8 named find before the j9 rewording: those analyses wait to be redone, so 0 of 5 says nothing.
+    run(&s, "old", T0, "j8");
+    assert!(!find_paused(&s), "a check of analyses about to be redone must not pause the kind");
+    // The same disagreement on today's analyses is evidence: the kind pauses.
+    run(&s, "new", T0 + HOUR, aiq_domain::rung::JUDGE_VERSION);
+    assert!(find_paused(&s), "0 of 5 on today's wording pauses");
+}
+
 /// "Always on" ignores the accuracy pause, as it ignores the self-check.
 #[test]
 fn always_on_ignores_the_accuracy_pause() {

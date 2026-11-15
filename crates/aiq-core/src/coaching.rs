@@ -87,8 +87,9 @@ pub fn kept_on(store: &Store, v: &Verdict) -> bool {
 }
 
 /// Every second reading whose judgment is still the task's current one, for the pause rule (K6b). A task
-/// judged again since (a new judge version) drops out: the check described the old judge. Unreadable
-/// answers are "not checked", never guessed.
+/// judged again since (a new judge version) drops out: the check described the old judge. So does a task waiting
+/// to be judged again because its kind may change (DC-094): while a re-analysis runs, the readings left are the
+/// tasks not yet redone, never a fair sample. Unreadable answers are "not checked", never guessed.
 pub fn readings(store: &Store) -> Result<Vec<Reading>, StoreError> {
     let current: std::collections::HashSet<String> =
         store.current_judgments()?.into_values().map(|j| j.judgment_id).collect();
@@ -104,6 +105,9 @@ pub fn readings(store: &Store) -> Result<Vec<Reading>, StoreError> {
                 continue;
             };
             let Some(j) = store.judgment(&c.judgment_id)? else { continue };
+            if aiq_domain::rung::kind_outdated(&j.judge_version, &j.job, j.task_type.as_deref()).is_some() {
+                continue;
+            }
             out.push(Reading {
                 run_id: run.run_id.clone(),
                 run_started_ms: run.started_utc_ms,
