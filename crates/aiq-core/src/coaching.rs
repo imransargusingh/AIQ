@@ -112,6 +112,7 @@ pub fn readings(store: &Store) -> Result<Vec<Reading>, StoreError> {
                 reader_job: ans.job,
                 reader_type: ans.task_type,
                 reader_also: ans.task_types_also_fit,
+                kind_run: run.scope.as_deref().is_some_and(|s| s.starts_with("kind:")),
             });
         }
     }

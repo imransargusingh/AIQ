@@ -547,7 +547,9 @@ fn v7_check_rows_round_trip_are_append_only_and_imported_ones_go_with_forget_imp
         requested: 30,
         sample: vec!["j1".into(), "j2".into()],
         started_utc_ms: 10,
-        check_version: "c1".into(),
+        check_version: "c2".into(),
+        scope: Some("kind:run_ship/run_job".into()),
+        started_by: Some("weekly".into()),
     };
     s.insert_check_run(&run).unwrap();
     assert_eq!(s.latest_check_run().unwrap().unwrap(), run, "seed survives as u64");

@@ -1573,6 +1573,27 @@ pub fn cli(args: &[&str]) -> ExitCode {
             if !auto {
                 print!("{}", render(&rep, set.daily_tasks));
             }
+            if auto && task.is_none() {
+                let done = with_check_providers(&paths, &store, |claude, copilot| {
+                    weekly_recheck(&store, &paths, &homes, claude, copilot, now_ms())
+                });
+                let line = match done {
+                    Ok(r) if r.kinds.is_empty() => None,
+                    Ok(r) => Some(format!(
+                        "recheck {} cost_usd={:.3}",
+                        r.kinds
+                            .iter()
+                            .map(|(k, n, f)| format!("{k} read={n} failed={f}"))
+                            .collect::<Vec<_>>()
+                            .join("; "),
+                        r.cost_usd
+                    )),
+                    Err(e) => Some(format!("recheck error {e}")),
+                };
+                if let Some(l) = line {
+                    let _ = bounded_append(&paths.data.join("judge.log"), &l, LOG_MAX);
+                }
+            }
             ExitCode::SUCCESS
         }
         Err(e) => {
@@ -1928,6 +1949,20 @@ pub enum CheckScope<'a> {
     NoJob,
     /// Only judgments of one job, so a newly added job gets enough checks to settle the pause rule.
     Job(&'a str),
+    /// Only judgments of one Kind (job, kind): the weekly re-check of a paused Kind (design kinds-recut K17).
+    Kind(&'a str, &'a str),
+}
+
+impl CheckScope<'_> {
+    /// As stored on the run (schema v13 `judge_check_run.scope`).
+    pub fn key(&self) -> String {
+        match self {
+            CheckScope::All => "all".into(),
+            CheckScope::NoJob => "no_job".into(),
+            CheckScope::Job(j) => format!("job:{j}"),
+            CheckScope::Kind(j, t) => format!("kind:{j}/{t}"),
+        }
+    }
 }
 
 /// The judged tasks a check may sample: the current judgment of each closed task AIQ knows, in `scope`.
@@ -1945,6 +1980,7 @@ fn check_candidates(
             CheckScope::All => true,
             CheckScope::NoJob => j.job == "unclassified",
             CheckScope::Job(job) => j.job == job,
+            CheckScope::Kind(job, kind) => j.job == job && j.task_type.as_deref() == Some(kind),
         })
         .map(|j| {
             let group = if scope == CheckScope::NoJob { no_job_group(j).to_owned() } else { j.job.clone() };
@@ -1962,6 +1998,7 @@ fn no_job_group(j: &JudgmentRow) -> &'static str {
 }
 
 /// Read each sampled task a second time, blind, through the provider that already saw it; store each reading.
+/// Started by the person (`aiq analyze --check`).
 #[allow(clippy::too_many_arguments)]
 pub fn run_check(
     store: &Store,
@@ -1973,6 +2010,23 @@ pub fn run_check(
     size: usize,
     seed: u64,
     scope: CheckScope<'_>,
+) -> Result<CheckRun, String> {
+    run_check_by(store, paths, homes, claude, copilot, now_utc_ms, size, seed, scope, "person")
+}
+
+/// `run_check`, naming who started it: `person`, or `weekly` for AIQ's own re-check of a paused Kind.
+#[allow(clippy::too_many_arguments)]
+fn run_check_by(
+    store: &Store,
+    paths: &Paths,
+    homes: &Homes,
+    claude: &dyn Provider,
+    copilot: &dyn Provider,
+    now_utc_ms: i64,
+    size: usize,
+    seed: u64,
+    scope: CheckScope<'_>,
+    started_by: &str,
 ) -> Result<CheckRun, String> {
     use aiq_contracts::check::{check_schema, parse_check};
     let pack = aiq_core::pack::parse(aiq_core::pack::BUNDLED_TOML).map_err(|e| e.to_string())?;
@@ -1989,6 +2043,8 @@ pub fn run_check(
             sample: sample.clone(),
             started_utc_ms: now_utc_ms,
             check_version: aiq_domain::check::CHECK_VERSION.into(),
+            scope: Some(scope.key()),
+            started_by: Some(started_by.into()),
         })
         .map_err(|e| e.to_string())?;
     let system = rung::check_system();
@@ -2283,6 +2339,14 @@ pub fn check_report(store: &Store) -> aiq_store::Result<String> {
         run.sample.len(),
         if failed > 0 { format!(", {failed} could not be read") } else { String::new() }
     );
+    if let Some(k) = run.scope.as_deref().and_then(|s| s.strip_prefix("kind:")) {
+        let (j, t) = k.split_once('/').unwrap_or((k, ""));
+        let who = if run.started_by.as_deref() == Some("weekly") { "AIQ's weekly re-check" } else { "Your check" };
+        o += &format!(
+            "  {who} of one paused kind only: {}.\n",
+            aiq_contracts::judge::task_type_label(j, t).unwrap_or(t)
+        );
+    }
     if same_model > 0 {
         o += &format!(
             "  Note: on {same_model} of them the second reader was the same model as the analysis, so agreement reads high.\n"
@@ -2372,6 +2436,93 @@ pub fn check_report(store: &Store) -> aiq_store::Result<String> {
 }
 
 /// `aiq judge --check [--sample <n>] [--no-job | --job <job>] [--dry-run]` and `aiq judge --check-report`.
+/// The second reader's providers (a different model from the same tool), for the person's check and the weekly
+/// re-check alike.
+fn with_check_providers<R>(paths: &Paths, store: &Store, f: impl FnOnce(&dyn Provider, &dyn Provider) -> R) -> R {
+    let get = |k: &str| store.setting(k).ok().flatten();
+    let set = settings(store);
+    sweep_judge_work(paths, set.keep_copilot_sessions);
+    let (mut claude, copilot) = providers(paths, &set);
+    claude.model = get(rung::SETTING_CHECK_CLAUDE_MODEL).unwrap_or_else(|| CHECK_CLAUDE_DEFAULT.into());
+    // Models the judge itself answered with, so the second reader can avoid them.
+    let judge_models: HashSet<String> =
+        store.current_judgments().map(|m| m.into_values().filter_map(|j| j.model).collect()).unwrap_or_default();
+    let copilot = ModelChain {
+        models: check_copilot_models(get(rung::SETTING_CHECK_COPILOT_MODEL), &judge_models),
+        at: std::cell::Cell::new(0),
+        on_error: false,
+        call: |m: Option<&str>, req: &CallReq<'_>| {
+            CopilotCli {
+                exe: copilot.exe.clone(),
+                model: m.map(str::to_owned),
+                work: copilot.work.clone(),
+                keep_sessions: copilot.keep_sessions,
+            }
+            .call(req)
+        },
+    };
+    f(&claude, &copilot)
+}
+
+/// What one pass of the weekly re-check did, for `judge.log`.
+#[derive(Debug, Default, PartialEq)]
+pub struct Rechecked {
+    /// (scope key, tasks read, could not be read)
+    pub kinds: Vec<(String, u32, u32)>,
+    pub cost_usd: f64,
+}
+
+/// The weekly re-check (design kinds-recut K17, Imran's card 2026-11-15): each paused Kind whose newest evidence is
+/// a week old is read again, `RECHECK_SAMPLE` tasks of that Kind, and the pause rule then decides from that run.
+/// Kinds the person kept on are left alone. Runs inside the background analysis pass, after it.
+pub fn weekly_recheck(
+    store: &Store,
+    paths: &Paths,
+    homes: &Homes,
+    claude: &dyn Provider,
+    copilot: &dyn Provider,
+    now_utc_ms: i64,
+) -> Result<Rechecked, String> {
+    use aiq_domain::check::{RECHECK_SAMPLE, Scope, rechecks_due, verdicts};
+    // A pause holds tips back only when next-step tips are on auto; on or off, a re-check would change nothing.
+    if aiq_core::coaching::mode(store) != "auto" {
+        return Ok(Rechecked::default());
+    }
+    let all = verdicts(&aiq_core::coaching::readings(store).map_err(|e| e.to_string())?);
+    let paused: Vec<_> = all.into_iter().filter(|v| v.paused && !aiq_core::coaching::kept_on(store, v)).collect();
+    if paused.is_empty() {
+        return Ok(Rechecked::default());
+    }
+    let runs = store.check_runs().map_err(|e| e.to_string())?;
+    let started: BTreeMap<String, i64> = runs.iter().map(|r| (r.run_id.clone(), r.started_utc_ms)).collect();
+    let mut last_try: BTreeMap<String, i64> = BTreeMap::new();
+    for r in runs.iter().filter(|r| r.started_by.as_deref() == Some("weekly")) {
+        if let Some(k) = r.scope.as_deref().and_then(|s| s.strip_prefix("kind:")) {
+            last_try.insert(k.to_owned(), r.started_utc_ms);
+        }
+    }
+    let mut out = Rechecked::default();
+    for scope in rechecks_due(&paused, &started, &last_try, now_utc_ms) {
+        let Scope::Kind(job, kind) = &scope else { continue };
+        let seed = now_utc_ms as u64 ^ 0x5EC0_4EC4;
+        let r = run_check_by(
+            store,
+            paths,
+            homes,
+            claude,
+            copilot,
+            now_utc_ms,
+            RECHECK_SAMPLE,
+            seed,
+            CheckScope::Kind(job, kind),
+            "weekly",
+        )?;
+        out.cost_usd += r.cost_usd;
+        out.kinds.push((scope.key(), r.checked, r.failed));
+    }
+    Ok(out)
+}
+
 fn check_cli(args: &[&str], paths: &Paths, store: &Store) -> ExitCode {
     if args.contains(&"--check-report") {
         return match check_report(store) {
@@ -2403,7 +2554,23 @@ fn check_cli(args: &[&str], paths: &Paths, store: &Store) -> ExitCode {
         }
     };
     let tasks = aiq_home::own_tasks(store, &pack, 0).unwrap_or_default();
+    let kind_arg = args.iter().position(|a| *a == "--kind").map(|i| args.get(i + 1).copied());
+    let kind = match kind_arg {
+        None => None,
+        Some(Some(k)) if !args.contains(&"--no-job") && !args.contains(&"--job") => match k.split_once('/') {
+            Some((j, t)) if aiq_contracts::judge::task_type_named(j, t) => Some((j, t)),
+            _ => None,
+        },
+        Some(_) => None,
+    };
+    if kind_arg.is_some() && kind.is_none() {
+        eprintln!(
+            "--kind takes a job and a named kind, for example run_ship/run_job (and not with --job or --no-job)."
+        );
+        return ExitCode::from(2);
+    }
     let scope = match args.iter().position(|a| *a == "--job").map(|i| args.get(i + 1).copied()) {
+        None if kind.is_some() => kind.map(|(j, t)| CheckScope::Kind(j, t)).expect("checked above"),
         None if args.contains(&"--no-job") => CheckScope::NoJob,
         None => CheckScope::All,
         Some(Some(job))
@@ -2441,6 +2608,10 @@ fn check_cli(args: &[&str], paths: &Paths, store: &Store) -> ExitCode {
                 CheckScope::All => "analyzed tasks".to_owned(),
                 CheckScope::NoJob => "analyzed tasks with no job".to_owned(),
                 CheckScope::Job(job) => format!("analyzed {job} tasks"),
+                CheckScope::Kind(job, kind) => format!(
+                    "analyzed tasks of the kind {}",
+                    aiq_contracts::judge::task_type_label(job, kind).unwrap_or(kind)
+                ),
             },
             by_tool(COPILOT),
             by_tool(CLAUDE),
@@ -2456,31 +2627,12 @@ fn check_cli(args: &[&str], paths: &Paths, store: &Store) -> ExitCode {
         println!("AIQ is analyzing in the background. Try again in a few minutes.");
         return ExitCode::SUCCESS;
     };
-    let get = |k: &str| store.setting(k).ok().flatten();
-    let set = settings(store);
-    sweep_judge_work(paths, set.keep_copilot_sessions);
-    let (mut claude, copilot) = providers(paths, &set);
-    claude.model = get(rung::SETTING_CHECK_CLAUDE_MODEL).unwrap_or_else(|| CHECK_CLAUDE_DEFAULT.into());
-    // Models the judge itself answered with, so the second reader can avoid them.
-    let judge_models: HashSet<String> =
-        store.current_judgments().map(|m| m.into_values().filter_map(|j| j.model).collect()).unwrap_or_default();
-    let copilot = ModelChain {
-        models: check_copilot_models(get(rung::SETTING_CHECK_COPILOT_MODEL), &judge_models),
-        at: std::cell::Cell::new(0),
-        on_error: false,
-        call: |m: Option<&str>, req: &CallReq<'_>| {
-            CopilotCli {
-                exe: copilot.exe.clone(),
-                model: m.map(str::to_owned),
-                work: copilot.work.clone(),
-                keep_sessions: copilot.keep_sessions,
-            }
-            .call(req)
-        },
-    };
     let seed = now_ms() as u64 ^ 0xA1C0_C4EC;
     println!("Reading {n} analyzed tasks a second time. This takes about {} minutes.", (n * 12).div_ceil(60));
-    match run_check(store, paths, &Homes::from_env(), &claude, &copilot, now_ms(), size, seed, scope) {
+    let ran = with_check_providers(paths, store, |claude, copilot| {
+        run_check(store, paths, &Homes::from_env(), claude, copilot, now_ms(), size, seed, scope)
+    });
+    match ran {
         Ok(r) => {
             for (p, why) in &r.unavailable {
                 println!("{p}: {why}. Its tasks were not checked.");
@@ -3645,6 +3797,73 @@ mod tests {
         let none =
             run_check(&e.store, &e.paths, &e.homes, &g, &g, NOW + 1, 30, 7, CheckScope::Job("run_ship")).unwrap();
         assert_eq!(none.checked, 0, "no run_ship judgments, nothing read");
+    }
+
+    #[test]
+    fn a_paused_kind_is_read_again_weekly_by_kind_and_never_scores_its_job() {
+        let e = env();
+        go(&e, &Fake::ok(2), &Fake::ok(2), None);
+        // Two person-started checks 8 days ago read all 4 code_change/fix_bug tasks as another Kind: paused.
+        let other = grader("code_change", "feature", 2);
+        run_check(&e.store, &e.paths, &e.homes, &other, &other, NOW - 8 * DAY_MS, 30, 1, CheckScope::All).unwrap();
+        run_check(&e.store, &e.paths, &e.homes, &other, &other, NOW - 8 * DAY_MS + 1, 30, 2, CheckScope::All).unwrap();
+        let paused = |s: &Store| {
+            aiq_domain::check::verdicts(&aiq_core::coaching::readings(s).unwrap())
+                .into_iter()
+                .filter(|v| v.paused)
+                .map(|v| v.scope.key())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(paused(&e.store), ["code_change/fix_bug"]);
+        // Six days ago: not due yet.
+        let agree = grader("code_change", "fix_bug", 2);
+        let none = weekly_recheck(&e.store, &e.paths, &e.homes, &agree, &agree, NOW - 2 * DAY_MS).unwrap();
+        assert_eq!(none, Rechecked::default());
+        let r = weekly_recheck(&e.store, &e.paths, &e.homes, &agree, &agree, NOW).unwrap();
+        assert_eq!(r.kinds, [("code_change/fix_bug".to_owned(), 4, 0)], "every task of the Kind, at most 10");
+        let run = e.store.latest_check_run().unwrap().unwrap();
+        assert_eq!(
+            (run.scope.as_deref(), run.started_by.as_deref()),
+            (Some("kind:code_change/fix_bug"), Some("weekly"))
+        );
+        assert_eq!(run.requested, aiq_domain::check::RECHECK_SAMPLE as u32);
+        let rep = check_report(&e.store).unwrap();
+        assert!(
+            rep.contains("AIQ's weekly re-check of one paused kind only: Fixing a bug, test or build error."),
+            "{rep}"
+        );
+        let v = aiq_domain::check::verdicts(&aiq_core::coaching::readings(&e.store).unwrap());
+        let kind = v.iter().find(|x| x.scope.key() == "code_change/fix_bug").unwrap();
+        assert_eq!(
+            (kind.newest_run.as_str(), kind.agree.k, kind.agree.n),
+            (run.run_id.as_str(), 4, 8),
+            "pooled: 4 is under 5"
+        );
+        let job = v.iter().find(|x| x.scope.key() == "code_change").unwrap();
+        assert_ne!(job.newest_run, run.run_id, "a Kind's re-check is not evidence about its job");
+        // Just read: nothing due again until next week, so no calls.
+        let calls = agree.sent.borrow().len();
+        assert_eq!(
+            weekly_recheck(&e.store, &e.paths, &e.homes, &agree, &agree, NOW + DAY_MS).unwrap(),
+            Rechecked::default()
+        );
+        assert_eq!(agree.sent.borrow().len(), calls);
+        // Kept on by the person, or next-step tips not on auto: never re-checked.
+        let k = aiq_domain::check::Scope::Kind("code_change".into(), "fix_bug".into());
+        e.store.set_setting(&aiq_core::coaching::keep_on_key(&k), &kind.newest_run, NOW).unwrap();
+        assert_eq!(
+            weekly_recheck(&e.store, &e.paths, &e.homes, &agree, &agree, NOW + 9 * DAY_MS).unwrap(),
+            Rechecked::default()
+        );
+        e.store.set_setting(&aiq_core::coaching::keep_on_key(&k), "auto", NOW).unwrap();
+        e.store.set_setting(aiq_domain::coach::SETTING_NEXT_RUNG_TIPS, "on", NOW).unwrap();
+        assert_eq!(
+            weekly_recheck(&e.store, &e.paths, &e.homes, &agree, &agree, NOW + 9 * DAY_MS).unwrap(),
+            Rechecked::default()
+        );
+        e.store.set_setting(aiq_domain::coach::SETTING_NEXT_RUNG_TIPS, "auto", NOW).unwrap();
+        let again = weekly_recheck(&e.store, &e.paths, &e.homes, &agree, &agree, NOW + 9 * DAY_MS).unwrap();
+        assert_eq!(again.kinds.len(), 1, "still paused (pooled), a week on: read again");
     }
 
     #[test]

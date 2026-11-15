@@ -741,10 +741,15 @@ pub fn render_accuracy_paused(p: &[aiq_contracts::frames::PausedScope]) -> Strin
                 s.label, s.agreed, s.checked, s.scope
             );
         } else {
+            // A Kind is read again each week by AIQ itself (design kinds-recut K17); a job only by a check the person runs.
+            let back = if s.scope.contains('/') {
+                "AIQ reads some of these tasks again each week; they come back when a check clears the bar"
+            } else {
+                "They come back when a later check clears the bar (aiq analyze --check)"
+            };
             out += &format!(
                 "Next-step tips for {}: paused by AIQ. A second model agreed with AIQ's analysis only {} of {} times \
-                 (under 8 in 10). They come back when a later check clears the bar (aiq analyze --check). \
-                 Keep them showing: aiq config set keep-on.{} on\n",
+                 (under 8 in 10). {back}. Keep them showing: aiq config set keep-on.{} on\n",
                 s.label, s.agreed, s.checked, s.scope
             );
         }

@@ -135,7 +135,9 @@ fn files_from_a_newer_aiq_wait_for_the_update_and_a_cut_short_file_is_retried() 
     let file = lap_home.join("sync").join(&lap_id).join("00000001.jsonl");
     let good = std::fs::read_to_string(&file).unwrap();
 
-    std::fs::write(&file, good.replacen("\"schema\":12", "\"schema\":99", 1)).unwrap();
+    let now = format!("\"schema\":{}", aiq_store::MIGRATIONS.len());
+    assert!(good.contains(&now), "the file names this store's format");
+    std::fs::write(&file, good.replacen(&now, "\"schema\":99", 1)).unwrap();
     let st = pass(&mut devbox.store, &devbox.paths, std::slice::from_ref(&lap_home), 5);
     assert_eq!(st.peers[0].state, "update");
     assert!(events(&devbox).is_empty());

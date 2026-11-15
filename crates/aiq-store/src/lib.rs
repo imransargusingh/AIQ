@@ -22,10 +22,11 @@ pub const SCHEMA_V9: &str = include_str!("schema_v9.sql");
 pub const SCHEMA_V10: &str = include_str!("schema_v10.sql");
 pub const SCHEMA_V11: &str = include_str!("schema_v11.sql");
 pub const SCHEMA_V12: &str = include_str!("schema_v12.sql");
+pub const SCHEMA_V13: &str = include_str!("schema_v13.sql");
 /// Migration N takes the store from `user_version` N to N+1, in one transaction.
 pub const MIGRATIONS: &[&str] = &[
     SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6, SCHEMA_V7, SCHEMA_V8, SCHEMA_V9, SCHEMA_V10,
-    SCHEMA_V11, SCHEMA_V12,
+    SCHEMA_V11, SCHEMA_V12, SCHEMA_V13,
 ];
 
 #[derive(Debug, Clone, PartialEq)]
@@ -246,6 +247,10 @@ pub struct CheckRunRow {
     pub sample: Vec<String>,
     pub started_utc_ms: i64,
     pub check_version: String,
+    /// What the run sampled: `all`, `no_job`, `job:<job>` or `kind:<job>/<kind>` (schema v13). None before v13.
+    pub scope: Option<String>,
+    /// `person` or `weekly` (AIQ re-checking a paused Kind by itself). None before v13.
+    pub started_by: Option<String>,
 }
 
 /// One second reading of one judgment (schema v7 `judge_check`).
@@ -1892,15 +1897,17 @@ impl Store {
     pub fn insert_check_run(&self, r: &CheckRunRow) -> Result<()> {
         self.conn
             .execute(
-                "INSERT INTO judge_check_run (run_id, seed, requested, sample, started_utc_ms, check_version)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                "INSERT INTO judge_check_run (run_id, seed, requested, sample, started_utc_ms, check_version, scope,
+                   started_by) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                 params![
                     r.run_id,
                     r.seed as i64,
                     r.requested,
                     serde_json::to_string(&r.sample).expect("strings serialize"),
                     r.started_utc_ms,
-                    r.check_version
+                    r.check_version,
+                    r.scope,
+                    r.started_by
                 ],
             )
             .map(|_| ())
@@ -1937,8 +1944,8 @@ impl Store {
         }
         self.conn
             .query_row(
-                "SELECT run_id, seed, requested, sample, started_utc_ms, check_version FROM judge_check_run
-                 ORDER BY started_utc_ms DESC, rowid DESC LIMIT 1",
+                "SELECT run_id, seed, requested, sample, started_utc_ms, check_version, scope, started_by
+                 FROM judge_check_run ORDER BY started_utc_ms DESC, rowid DESC LIMIT 1",
                 [],
                 |r| {
                     let sample: String = r.get(3)?;
@@ -1949,6 +1956,8 @@ impl Store {
                         sample: serde_json::from_str(&sample).unwrap_or_default(),
                         started_utc_ms: r.get(4)?,
                         check_version: r.get(5)?,
+                        scope: r.get(6)?,
+                        started_by: r.get(7)?,
                     })
                 },
             )
@@ -1964,8 +1973,8 @@ impl Store {
         let mut st = self
             .conn
             .prepare(
-                "SELECT run_id, seed, requested, sample, started_utc_ms, check_version FROM judge_check_run
-                 ORDER BY started_utc_ms, rowid",
+                "SELECT run_id, seed, requested, sample, started_utc_ms, check_version, scope, started_by
+                 FROM judge_check_run ORDER BY started_utc_ms, rowid",
             )
             .map_err(err(codes::STORE_OPEN))?;
         let rows = st
@@ -1978,6 +1987,8 @@ impl Store {
                     sample: serde_json::from_str(&sample).unwrap_or_default(),
                     started_utc_ms: r.get(4)?,
                     check_version: r.get(5)?,
+                    scope: r.get(6)?,
+                    started_by: r.get(7)?,
                 })
             })
             .map_err(err(codes::STORE_OPEN))?;

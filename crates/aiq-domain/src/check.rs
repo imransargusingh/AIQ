@@ -262,6 +262,9 @@ pub struct Reading {
     pub reader_type: String,
     /// Other kinds the reader said also fit (empty for c1 readings).
     pub reader_also: Vec<String>,
+    /// The run sampled one Kind only (a weekly re-check, schema v13): it scores that Kind, never its job, because
+    /// ten tasks of one Kind say nothing about the job as a whole.
+    pub kind_run: bool,
 }
 
 /// The verdict for one scope, from the newest checks.
@@ -292,7 +295,9 @@ pub fn verdicts(readings: &[Reading]) -> Vec<Verdict> {
                 continue;
             }
             let job_ok = r.reader_job == r.judge_job;
-            scored.entry(Scope::Job(r.judge_job.clone())).or_default().push((run, job_ok));
+            if !r.kind_run {
+                scored.entry(Scope::Job(r.judge_job.clone())).or_default().push((run, job_ok));
+            }
             if let Some(t) = r.judge_type.as_deref().filter(|t| *t != "other") {
                 let hit = kind_agrees(job_ok, t, &r.reader_type, &r.reader_also);
                 scored.entry(Scope::Kind(r.judge_job.clone(), t.to_owned())).or_default().push((run, hit));
@@ -316,6 +321,34 @@ pub fn verdicts(readings: &[Reading]) -> Vec<Verdict> {
             let paused = agree.n >= scope.min_checked() && (agree.k as f64) < PAUSE_BAR * agree.n as f64;
             Verdict { newest_run: seen[0].to_owned(), runs: seen.len() as u32, agree, paused, scope }
         })
+        .collect()
+}
+
+// ------------------------------------------------------------------ weekly re-check (K17)
+
+/// A paused Kind is read again once its newest evidence is this old (Imran's card, 2026-11-15: "Yes, weekly, small").
+pub const RECHECK_EVERY_MS: i64 = 7 * 24 * 3_600_000;
+/// A re-check that read nothing (the tool was down or signed out) is tried again after this long, not every pass.
+pub const RECHECK_RETRY_MS: i64 = 24 * 3_600_000;
+/// Tasks read per re-check: about one premium request each. Twice `PAUSE_MIN_KIND`, so one run decides alone.
+pub const RECHECK_SAMPLE: usize = 10;
+
+/// The paused Kinds due a weekly re-check: still paused, the newest run behind the verdict started at least a week
+/// ago, and AIQ has not tried to re-check this Kind in the last day. `run_started` maps run id to its start;
+/// `last_try` maps a scope key to AIQ's newest weekly re-check of it, read or not. A paused job is not re-checked
+/// (the card asked for Kinds); the person's "Keep showing" is the caller's to filter.
+pub fn rechecks_due(
+    verdicts: &[Verdict],
+    run_started: &BTreeMap<String, i64>,
+    last_try: &BTreeMap<String, i64>,
+    now_ms: i64,
+) -> Vec<Scope> {
+    verdicts
+        .iter()
+        .filter(|v| v.paused && matches!(v.scope, Scope::Kind(..)))
+        .filter(|v| run_started.get(&v.newest_run).is_some_and(|t| now_ms - t >= RECHECK_EVERY_MS))
+        .filter(|v| last_try.get(&v.scope.key()).is_none_or(|t| now_ms - t >= RECHECK_RETRY_MS))
+        .map(|v| v.scope.clone())
         .collect()
 }
 
@@ -502,7 +535,41 @@ mod tests {
             reader_job: reader.0.into(),
             reader_type: reader.1.into(),
             reader_also: vec![],
+            kind_run: false,
         }
+    }
+
+    #[test]
+    fn a_kind_only_run_scores_its_kind_never_its_job() {
+        let mut r = many("weekly", 2, 10, 2, ("run_ship", "run_job"));
+        for x in &mut r {
+            x.kind_run = true;
+        }
+        let v = verdicts(&r);
+        assert!(find(&v, "run_ship/run_job").paused, "the Kind is scored");
+        assert!(v.iter().all(|x| x.scope != Scope::Job("run_ship".into())), "its job is not");
+    }
+
+    #[test]
+    fn a_paused_kind_is_rechecked_weekly_and_retried_daily() {
+        let day = 24 * 3_600_000;
+        let v = verdicts(&many("r1", 0, 5, 0, ("ask_research", "find")));
+        let started: BTreeMap<String, i64> = [("r1".to_owned(), 0)].into_iter().collect();
+        let none = BTreeMap::new();
+        let key = "ask_research/find".to_owned();
+        assert!(rechecks_due(&v, &started, &none, 6 * day).is_empty(), "under a week old");
+        assert_eq!(rechecks_due(&v, &started, &none, 7 * day), vec![Scope::Kind("ask_research".into(), "find".into())]);
+        let tried: BTreeMap<String, i64> = [(key.clone(), 7 * day)].into_iter().collect();
+        assert!(rechecks_due(&v, &started, &tried, 7 * day + 3_600_000).is_empty(), "a failed try waits a day");
+        assert_eq!(rechecks_due(&v, &started, &tried, 8 * day).len(), 1);
+        let ok = verdicts(&many("r1", 0, 5, 5, ("ask_research", "find")));
+        assert!(rechecks_due(&ok, &started, &none, 30 * day).is_empty(), "not paused, not re-checked");
+        let job = verdicts(&many("r1", 0, 10, 0, ("run_ship", "release")));
+        assert!(find(&job, "run_ship").paused);
+        assert!(
+            rechecks_due(&job, &started, &none, 30 * day).iter().all(|s| matches!(s, Scope::Kind(..))),
+            "jobs are not"
+        );
     }
 
     fn many(run: &str, at: i64, n: usize, hits: usize, kind: (&str, &str)) -> Vec<Reading> {

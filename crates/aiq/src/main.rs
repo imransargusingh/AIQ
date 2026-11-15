@@ -69,9 +69,10 @@ Usage:
   aiq analyze [--max <n>] [--only claude-code|copilot-cli] [--dry-run]
                                       Analyze your finished tasks through your own Claude Code / Copilot CLI
                                       (--dry-run shows what would be sent, sends nothing)
-  aiq analyze --check [--sample <n>] [--no-job | --job <job>] [--dry-run]
+  aiq analyze --check [--sample <n>] [--no-job | --job <job> | --kind <job>/<kind>] [--dry-run]
                                       Check the analysis: a second model reads n analyzed tasks blind (default 30)
-                                      and AIQ reports how often they agree (--dry-run: sample and cost only)
+                                      and AIQ reports how often they agree (--dry-run: sample and cost only).
+                                      AIQ itself reads 10 tasks of each paused Kind again once a week
   aiq analyze --check-report            The latest check's numbers again, and what AIQ measured itself
   aiq analyze --survey-other [--sample <n>] [--dry-run]
                                       What kind of work your tasks with no job are (counts and generic labels only)

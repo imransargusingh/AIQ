@@ -343,6 +343,8 @@ fn check_run(path: &std::path::Path, run: &str, started: i64, agree: usize) {
         sample: ids.iter().map(|id| format!("j-{id}")).collect(),
         started_utc_ms: started,
         check_version: "c1".into(),
+        scope: None,
+        started_by: None,
     })
     .unwrap();
     for (i, id) in ids.iter().enumerate() {
