@@ -53,7 +53,7 @@ export interface SyncPeer {
   name: string;
   version: string;
   /** ok, paused (off there), update (needs a newer AIQ here), waiting, error, away (out of reach now). */
-  state: "ok" | "paused" | "update" | "waiting" | "error" | "away";
+  state: "ok" | "paused" | "update" | "behind" | "waiting" | "error" | "away";
   detail: string | null;
   last_ms: number | null;
   rows: number;

@@ -51,18 +51,18 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <ul><li><strong>Only the computer that saw a task analyzes it</strong> (<code>aiq_home::own_tasks</code>, the judge queue, Home&#x27;s &quot;waiting&quot;</li></ul>
 <p>count). Nothing is analyzed or paid for twice.</p>
 <ul><li><strong>Tips:</strong> another computer&#x27;s ready tips are never offered, delivered or handed back here; detectors never rerun</li></ul>
-<p>on its prompts. Its deliveries do count toward tips a day, the quiet period and the 72-hour same-tip rule.</p>
+<p>on its prompts. Its deliveries do count toward tips a day and the quiet period.</p>
 <ul><li><strong>Right now</strong> shows every computer&#x27;s open tasks (Imran 2026-11-14: a Devbox Copilot task was missing on the</li></ul>
 <p>laptop while the card&#x27;s last-turn line showed that Devbox turn as the laptop&#x27;s). Another computer&#x27;s task carries its name and &quot;up to a minute behind&quot;; each tool&#x27;s last-turn line keeps this computer&#x27;s own turn and names the other computer&#x27;s. Tips stay with the computer the task runs on. <code>aiq show</code> with no id stays this computer&#x27;s own.</p>
 <h2>The experience</h2>
 <ul><li>The Devbox, inside a Remote Desktop session, sees <code>\\tsclient\c\Users\*\.aiq\aiq.db</code> and Home shows one card:</li></ul>
 <p>&quot;AIQ on LAPTOP is here too&quot; with <strong>Keep in sync</strong> and <strong>Not now</strong>. No code. Nothing is written anywhere before the person chooses.</p>
 <ul><li>The laptop turns sync on by itself the first time the Devbox&#x27;s folder appears (the person chose on the Devbox).</li><li><strong>Settings &gt; Your computers:</strong> this computer, each other computer with &quot;In sync · 1 min ago&quot;, &quot;Sync is off on</li></ul>
-<p>…&quot;, &quot;runs a newer AIQ&quot;, or &quot;catches up next time you connect&quot;, and one <strong>Keep in sync</strong> switch. Off = each keeps what it has, and the other side shows &quot;Sync is off on …&quot;.</p>
+<p>…&quot;, &quot;runs a newer AIQ&quot;, &quot;Waiting for AIQ to update on …&quot; (it runs an older store format, so this computer&#x27;s newer files wait there; its own still arrive; 2026-11-15), or &quot;catches up next time you connect&quot;, and one <strong>Keep in sync</strong> switch. Off = each keeps what it has, and the other side shows &quot;Sync is off on …&quot;.</p>
 <ul><li>Tasks from the other computer carry its name as a tag, in the Tasks list and on the task&#x27;s page. Tasks (All tasks</li></ul>
 <p>and Day) has a Computer filter: All computers, this one, or each other computer. It shows only once another computer&#x27;s task is here.</p>
 <h2>Instrumentation</h2>
-<p>Every pass writes <code>sync-status.json</code> (Home reads it) and, while sync is on or offered, one <code>sync.pass</code> log line: setting, computers in reach, peers, rows waiting to be sent, error codes (<code>AIQ-SYNC-WRITE</code>, <code>AIQ-SYNC-APPLY</code>, <code>AIQ-SYNC-READ</code>), and the pass time. No file content is logged.</p>
+<p>A pass writes <code>sync-status.json</code> (Home reads it) and <code>computer.json</code> only when what they say changed, not to move a time stamp (DC-091). While sync is on or offered, it logs one <code>sync.pass</code> line: setting, computers in reach, peers, rows waiting to be sent, error codes (<code>AIQ-SYNC-WRITE</code>, <code>AIQ-SYNC-APPLY</code>, <code>AIQ-SYNC-READ</code>), <code>sync.in_place</code> (the names of files written in place because Windows refused the rename, as <code>name:count</code>), and the pass time. No file content is logged.</p>
 <h2>Not in slice 1</h2>
 <ul><li>Sync without Remote Desktop. Parked by Imran (2026-11-12) until the Remote Desktop path has been used for a while.</li></ul>
 <p>Options weighed, ranked: (1) encrypted change files in the person&#x27;s own OneDrive folder, which works for a laptop and a Devbox (about two PRs; ciphertext only on OneDrive; not yet checked that the Devbox has the same OneDrive); (2) direct pairing with a code on the same network (about three PRs; may raise a firewall prompt; doesn&#x27;t reach a Devbox, whose private address the VPN doesn&#x27;t route, as measured in the 2026-11-12 spike).</p>

@@ -48,6 +48,9 @@ function peerLine(p: SyncPeer, now: number, off: number): { text: string; tone: 
       return { text: `Sync is off on ${p.name || "that computer"} · each keeps what it has`, tone: "mute" };
     case "update":
       return { text: `${p.name} runs a newer AIQ · its newest tasks follow when this one updates`, tone: "wait" };
+    case "behind":
+      // It runs an older AIQ: its tasks still arrive here, this computer's wait there until it updates.
+      return { text: `Waiting for AIQ to update on ${p.name || "that computer"}${last ? ` · last in sync ${last}` : ""}`, tone: "wait" };
     case "waiting":
     case "error":
       return { text: `${last ? `Last in sync ${last}` : "Not in sync yet"} · tries again in a minute`, tone: "wait" };

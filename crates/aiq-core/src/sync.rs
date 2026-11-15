@@ -42,8 +42,10 @@ pub struct Peer {
     pub id: String,
     pub name: String,
     pub version: String,
-    /// ok, paused (off on that computer), update (its files need a newer AIQ here), waiting (an earlier file has not
-    /// arrived), error (a file could not be read or applied; tried again next time).
+    /// ok, paused (off on that computer), update (its files need a newer AIQ here), behind (it runs an older store
+    /// format than this computer, so this computer's newer files wait there until AIQ updates on it; its own files
+    /// still arrive here), waiting (an earlier file has not arrived), error (a file could not be read or applied;
+    /// tried again next time), away (synced before, out of reach now).
     pub state: String,
     pub detail: Option<String>,
     /// When a file from it was last applied here; None = nothing yet.
@@ -52,7 +54,8 @@ pub struct Peer {
     pub rows: i64,
 }
 
-/// The status file Home reads (`sync-status.json`): written by the core after every pass.
+/// The status file Home reads (`sync-status.json`): written by the core after a pass that changed what it says
+/// (`utc_ms` is when it last changed).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct Status {
     pub id: String,
@@ -134,6 +137,43 @@ fn write_whole(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 /// Tries a rename this many times, waiting a little longer each time, before writing in place.
 const RENAME_TRIES: u32 = 5;
 
+/// Names of files written in place because a rename was refused, since the last `sync.pass` line (which reports and
+/// clears them): names only, never paths or contents.
+static IN_PLACE: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+/// The files written in place since the last call, as `name:count`, comma-separated; empty when none.
+fn take_in_place() -> String {
+    let mut v = std::mem::take(&mut *IN_PLACE.lock().unwrap_or_else(std::sync::PoisonError::into_inner));
+    v.sort();
+    let mut out: Vec<String> = Vec::new();
+    for (i, n) in v.iter().enumerate() {
+        if i == 0 || v[i - 1] != *n {
+            out.push(format!("{n}:{}", v.iter().filter(|m| *m == n).count()));
+        }
+    }
+    out.join(",")
+}
+
+/// Write a file that a pass rewrites every time (`computer.json`, `sync-status.json`) only when what it says changed.
+/// Windows refuses to rename over a file another program holds open without delete sharing — Remote Desktop's drive
+/// link reading it for the other computer, a virus scan. Rewriting both unchanged files every minute gave that race
+/// a chance every minute (2026-11-15, laptop on 0.1.67: four `AIQ-SYNC-WRITE` warnings in 41 minutes; which file
+/// was not logged then, so `sync.pass` now names it).
+fn write_if_changed(path: &Path, bytes: &[u8], unchanged: impl FnOnce(&[u8]) -> bool) -> std::io::Result<()> {
+    if std::fs::read(path).is_ok_and(|old| unchanged(&old)) {
+        return Ok(());
+    }
+    write_whole(path, bytes)
+}
+
+/// Write this computer's `computer.json`, unless the one there says the same apart from its time stamp.
+fn write_self(path: &Path, c: &Computer) -> std::io::Result<()> {
+    let bytes = serde_json::to_vec_pretty(c).unwrap_or_default();
+    write_if_changed(path, &bytes, |old| {
+        serde_json::from_slice::<Computer>(old).is_ok_and(|o| Computer { utc_ms: c.utc_ms, ..o } == *c)
+    })
+}
+
 fn write_whole_with(
     path: &Path,
     bytes: &[u8],
@@ -160,19 +200,25 @@ fn write_whole_with(
     // third file stayed `.part` on the laptop pass after pass). Try again briefly, then write the file in place:
     // readers check each change file's line count against its header, so a half-written one is tried again next
     // pass and never applied, and a half-written `computer.json` does not parse.
+    // A whole file written in place is the same result, so it is counted on the `sync.pass` line rather than
+    // warned about; only a write that fails is an error (the caller reports it).
     let mut last = None;
     for i in 0..RENAME_TRIES {
+        if i > 0 {
+            std::thread::sleep(std::time::Duration::from_millis(100 * u64::from(i)));
+        }
         match rename(&tmp, path) {
             Ok(()) => return Ok(()),
             Err(e) => last = Some(e),
         }
-        std::thread::sleep(std::time::Duration::from_millis(100 * u64::from(i + 1)));
-    }
-    if let Some(e) = last {
-        tracing::warn!(error.code = aiq_contracts::codes::SYNC_WRITE, error = %e, "sync rename refused; writing in place");
     }
     std::fs::write(path, bytes)?;
     let _ = std::fs::remove_file(&tmp);
+    let file = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    if let Some(e) = last {
+        tracing::debug!(error.code = aiq_contracts::codes::SYNC_WRITE, error = %e, sync.file = %file, "sync rename refused; wrote in place");
+    }
+    IN_PLACE.lock().unwrap_or_else(std::sync::PoisonError::into_inner).push(file);
     Ok(())
 }
 
@@ -324,16 +370,13 @@ pub fn pass(store: &mut Store, paths: &Paths, remote: &[PathBuf], now_ms: i64) -
         }
     }
     let schema = store.user_version().unwrap_or_default();
-    let me_json = |on: bool| {
-        serde_json::to_vec_pretty(&Computer {
-            id: me.clone(),
-            name: computer_name(),
-            version: env!("CARGO_PKG_VERSION").into(),
-            schema,
-            on,
-            utc_ms: now_ms,
-        })
-        .unwrap_or_default()
+    let me_as = |on: bool| Computer {
+        id: me.clone(),
+        name: computer_name(),
+        version: env!("CARGO_PKG_VERSION").into(),
+        schema,
+        on,
+        utc_ms: now_ms,
     };
     if !on {
         // Never sent anything: keep no queue until sync turns on (it is rebuilt then).
@@ -342,10 +385,10 @@ pub fn pass(store: &mut Store, paths: &Paths, remote: &[PathBuf], now_ms: i64) -
         }
         // Say "paused" where this computer was syncing, so the others show it rather than waiting quietly.
         if mine.exists() {
-            let _ = write_whole(&mine.join(SELF_FILE), &me_json(false));
+            let _ = write_self(&mine.join(SELF_FILE), &me_as(false));
             for r in &remote_sync {
                 if r.join(&me).exists() {
-                    let _ = write_whole(&r.join(&me).join(SELF_FILE), &me_json(false));
+                    let _ = write_self(&r.join(&me).join(SELF_FILE), &me_as(false));
                 }
             }
         }
@@ -373,13 +416,13 @@ pub fn pass(store: &mut Store, paths: &Paths, remote: &[PathBuf], now_ms: i64) -
             }
         }
     }
-    if write_whole(&mine.join(SELF_FILE), &me_json(true)).is_err() {
+    if write_self(&mine.join(SELF_FILE), &me_as(true)).is_err() {
         st.errors.push(aiq_contracts::codes::SYNC_WRITE.into());
     }
     for r in &remote_sync {
         // This computer's entry goes first, so the other computer sees it even while a file won't copy.
         let to = r.join(&me);
-        let copied = write_whole(&to.join(SELF_FILE), &me_json(true)).and_then(|()| mirror(&mine, &to));
+        let copied = write_self(&to.join(SELF_FILE), &me_as(true)).and_then(|()| mirror(&mine, &to));
         if let Err(e) = copied {
             tracing::warn!(error.code = aiq_contracts::codes::SYNC_WRITE, error = %e, "sync could not copy to another computer");
             st.errors.push(aiq_contracts::codes::SYNC_WRITE.into());
@@ -402,6 +445,8 @@ pub fn pass(store: &mut Store, paths: &Paths, remote: &[PathBuf], now_ms: i64) -
     // (its own folder is the original; this computer's copy was passed on), then any other folder holding the same
     // computer's files, which may be further along.
     let mut peers: Vec<Peer> = Vec::new();
+    // Computers on an older store format than this one: they cannot apply this computer's newer files yet.
+    let mut older: Vec<String> = Vec::new();
     for dir in remote_sync.iter().chain(std::iter::once(&local)) {
         for (pdir, c) in peer_dirs(dir, &me) {
             if let Some(p) = peers.iter_mut().find(|p| p.id == c.id) {
@@ -419,10 +464,20 @@ pub fn pass(store: &mut Store, paths: &Paths, remote: &[PathBuf], now_ms: i64) -
             };
             if c.on {
                 apply_from(store, &pdir, &mut p, now_ms);
+                if c.schema < schema {
+                    older.push(c.id.clone());
+                }
             } else {
                 p.state = "paused".into();
             }
             peers.push(p);
+        }
+    }
+    // 2026-11-15: after 0.1.67 (store format 13) a Devbox still on 0.1.61 showed "ok" here though it could not take
+    // this computer's files until it updated. Its own files still arrive, so it is "behind", not an error.
+    for p in &mut peers {
+        if p.state == "ok" && older.contains(&p.id) {
+            p.state = "behind".into();
         }
     }
     // Computers synced before but out of reach now (the Remote Desktop session ended) stay listed.
@@ -478,7 +533,9 @@ fn read_status_at(data: &Path) -> Option<Status> {
 
 fn write_status(paths: &Paths, st: &Status) {
     if let Ok(b) = serde_json::to_vec_pretty(st) {
-        let _ = write_whole(&status_file(paths), &b);
+        let _ = write_if_changed(&status_file(paths), &b, |old| {
+            serde_json::from_slice::<Status>(old).is_ok_and(|o| Status { utc_ms: st.utc_ms, ..o } == *st)
+        });
     }
 }
 
@@ -528,6 +585,7 @@ pub fn run(paths: Paths) {
                         sync.peers = st.peers.len(),
                         sync.pending = st.pending,
                         sync.errors = %st.errors.join(","),
+                        sync.in_place = %take_in_place(),
                         sync.ms = t.elapsed().as_millis() as u64,
                         "sync.pass"
                     );
@@ -543,14 +601,58 @@ pub fn run(paths: Paths) {
 mod tests {
     use super::*;
 
+    /// Tests that write in place share `IN_PLACE`: one at a time.
+    static SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[test]
     fn a_rename_the_drive_refuses_still_leaves_the_whole_file_and_no_part() {
+        let _one = SERIAL.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let d = tempfile::tempdir().unwrap();
         let p = d.path().join("sync").join("a").join("00000001.jsonl");
         let refused = |_: &Path, _: &Path| Err(std::io::Error::other("refused"));
         write_whole_with(&p, b"line 1\nline 2\n", refused).unwrap();
         assert_eq!(std::fs::read(&p).unwrap(), b"line 1\nline 2\n");
         assert!(!p.with_extension("part").exists());
+    }
+
+    #[test]
+    fn a_file_written_in_place_is_named_on_the_pass_line_and_not_warned_about() {
+        let _one = SERIAL.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        // 2026-11-15, laptop on 0.1.67: four "sync rename refused" warnings in 41 minutes, none naming the file, while
+        // sync stayed ok. A whole file written in place is the same result: count it by name, once per pass line.
+        let d = tempfile::tempdir().unwrap();
+        let refused = |_: &Path, _: &Path| Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied));
+        take_in_place();
+        for name in ["computer.json", "sync-status.json", "computer.json"] {
+            write_whole_with(&d.path().join(name), b"{}", refused).unwrap();
+        }
+        assert_eq!(take_in_place(), "computer.json:2,sync-status.json:1");
+        assert_eq!(take_in_place(), "", "each pass line reports only its own");
+    }
+
+    #[test]
+    fn computer_json_is_rewritten_only_when_what_it_says_changes() {
+        // Rewriting it every minute only to move its time stamp gave a reader holding it open a chance to refuse the
+        // rename every minute.
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join(SELF_FILE);
+        let c = Computer {
+            id: "a".into(),
+            name: "LAPTOP".into(),
+            version: "0.1.67".into(),
+            schema: 13,
+            on: true,
+            utc_ms: 1,
+        };
+        write_self(&p, &c).unwrap();
+        write_self(&p, &Computer { utc_ms: 2, ..c.clone() }).unwrap();
+        assert_eq!(read_computer(d.path()).unwrap().utc_ms, 1, "same apart from the time: not written");
+        write_self(&p, &Computer { on: false, utc_ms: 3, ..c.clone() }).unwrap();
+        assert_eq!(
+            read_computer(d.path()).unwrap(),
+            Computer { on: false, utc_ms: 3, ..c },
+            "a change is written, with its time"
+        );
     }
 
     #[test]

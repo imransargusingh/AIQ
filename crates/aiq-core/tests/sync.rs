@@ -294,3 +294,67 @@ fn a_change_file_cut_short_is_never_passed_on_and_a_copy_cut_short_is_replaced()
     pass(&mut laptop.store, &laptop.paths, &[], 6);
     assert_eq!(events(&laptop), ["b-1"]);
 }
+
+#[test]
+fn a_pass_with_nothing_new_rewrites_neither_computer_json_nor_the_status_file() {
+    // 2026-11-15, laptop on 0.1.67: "sync rename refused; writing in place" four times in 41 minutes. Every pass
+    // rewrote both files only to move a time stamp, and a rename over a file another program holds open (Remote
+    // Desktop's drive link reading it for the Devbox) is refused on Windows. A file not written cannot be refused.
+    let mut laptop = computer();
+    let mut devbox = computer();
+    let lap_home = laptop.paths.data.clone();
+    prompt(&mut devbox, "dev-1", "fix the failing export test", 10);
+    devbox.store.set_setting(SETTING_SYNC, "on", 20).unwrap();
+    pass(&mut devbox.store, &devbox.paths, std::slice::from_ref(&lap_home), 30);
+    pass(&mut laptop.store, &laptop.paths, &[], 40);
+    pass(&mut devbox.store, &devbox.paths, std::slice::from_ref(&lap_home), 50);
+    let lap_id = laptop.store.device_id().unwrap();
+    let dev_id = devbox.store.device_id().unwrap();
+    let files = [
+        lap_home.join("sync").join(&lap_id).join("computer.json"),
+        lap_home.join("sync").join(&dev_id).join("computer.json"),
+        lap_home.join("sync-status.json"),
+        devbox.paths.data.join("sync-status.json"),
+    ];
+    let before: Vec<Vec<u8>> = files.iter().map(|f| std::fs::read(f).unwrap()).collect();
+    pass(&mut laptop.store, &laptop.paths, &[], 60);
+    pass(&mut devbox.store, &devbox.paths, std::slice::from_ref(&lap_home), 70);
+    let after: Vec<Vec<u8>> = files.iter().map(|f| std::fs::read(f).unwrap()).collect();
+    assert_eq!(before, after, "nothing changed, so nothing was written");
+    assert!(files.iter().all(|f| !f.with_extension("part").exists()));
+
+    // Something that does change is still written.
+    devbox.store.set_setting(SETTING_SYNC, "off", 80).unwrap();
+    pass(&mut devbox.store, &devbox.paths, std::slice::from_ref(&lap_home), 90);
+    assert_ne!(std::fs::read(&files[1]).unwrap(), before[1], "the Devbox says it paused");
+    assert_eq!(pass(&mut laptop.store, &laptop.paths, &[], 100).peers[0].state, "paused");
+}
+
+#[test]
+fn a_computer_on_an_older_store_format_shows_behind_until_it_updates() {
+    // 2026-11-15: after 0.1.67 (store format 13) the second Devbox, still on 0.1.61 (format 12), showed "ok" on the
+    // laptop with no detail, though it cannot take the laptop's newer files until AIQ updates there.
+    let mut laptop = computer();
+    let mut devbox = computer();
+    let lap_home = laptop.paths.data.clone();
+    prompt(&mut devbox, "dev-1", "fix the failing export test", 10);
+    devbox.store.set_setting(SETTING_SYNC, "on", 20).unwrap();
+    pass(&mut devbox.store, &devbox.paths, std::slice::from_ref(&lap_home), 30);
+    let dev_id = devbox.store.device_id().unwrap();
+    let entry = lap_home.join("sync").join(&dev_id).join("computer.json");
+    let now: serde_json::Value = serde_json::from_slice(&std::fs::read(&entry).unwrap()).unwrap();
+    let mut old = now.clone();
+    old["schema"] = serde_json::json!(now["schema"].as_i64().unwrap() - 1);
+    old["version"] = serde_json::json!("0.1.61");
+    std::fs::write(&entry, serde_json::to_vec(&old).unwrap()).unwrap();
+
+    let st = pass(&mut laptop.store, &laptop.paths, &[], 40);
+    assert_eq!(st.peers[0].state, "behind");
+    assert_eq!(st.peers[0].version, "0.1.61");
+    assert_eq!(events(&laptop), ["dev-1"], "its own files still arrive");
+    assert!(st.errors.is_empty(), "{:?}", st.errors);
+
+    // AIQ updates there: its next pass rewrites its entry with the current format.
+    pass(&mut devbox.store, &devbox.paths, std::slice::from_ref(&lap_home), 50);
+    assert_eq!(pass(&mut laptop.store, &laptop.paths, &[], 60).peers[0].state, "ok");
+}

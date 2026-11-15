@@ -512,7 +512,7 @@ await test("Your computers: one computer only, Tasks shows no Computer filter", 
   await page.context().close();
 });
 
-await test("Your computers: paused there, newer AIQ there, and out of reach each say so in plain words", async () => {
+await test("Your computers: paused there, newer AIQ there, older AIQ there, and out of reach each say so in plain words", async () => {
   const base = { version: "0.1.44", detail: null, rows: 3 };
   const page = await open("full", {
     hash: "#settings",
@@ -524,6 +524,7 @@ await test("Your computers: paused there, newer AIQ there, and out of reach each
           { ...base, id: "p", name: "PAUSED-PC", state: "paused", last_ms: s.now_ms - 3_600_000 },
           { ...base, id: "u", name: "NEWER-PC", state: "update", last_ms: s.now_ms - 60_000 },
           { ...base, id: "a", name: "AWAY-PC", state: "away", last_ms: s.now_ms - 3 * 3_600_000 },
+          { ...base, id: "b", name: "OLDER-PC", version: "0.1.61", state: "behind", last_ms: s.now_ms - 28 * 3_600_000 },
         ],
       }),
   });
@@ -531,6 +532,9 @@ await test("Your computers: paused there, newer AIQ there, and out of reach each
   assert.ok(text.includes("Sync is off on PAUSED-PC"), text);
   assert.ok(text.includes("NEWER-PC runs a newer AIQ"), text);
   assert.ok(text.includes("catches up next time you connect"), text);
+  // 2026-11-15: a computer still on an older AIQ read "In sync" though it could not take this one's newer files.
+  assert.ok(/OLDER-PC · AIQ 0\.1\.61\s+Waiting for AIQ to update on OLDER-PC · last in sync /.test(text), text);
+  assert.ok(!/watch|monitor|device|fail|behind/i.test(text), "wording rules");
   assert.deepEqual(await axe(page), []);
   await page.context().close();
 });

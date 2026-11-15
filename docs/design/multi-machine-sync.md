@@ -90,7 +90,9 @@ Imran ruled out running a relay server. So slice 1 moves files over the Remote D
   person chooses.
 - The laptop turns sync on by itself the first time the Devbox's folder appears (the person chose on the Devbox).
 - **Settings > Your computers:** this computer, each other computer with "In sync · 1 min ago", "Sync is off on
-  …", "runs a newer AIQ", or "catches up next time you connect", and one **Keep in sync** switch. Off = each keeps
+  …", "runs a newer AIQ", "Waiting for AIQ to update on …" (it runs an older store format, so this computer's
+  newer files wait there; its own still arrive; 2026-11-15), or "catches up next time you connect", and one
+  **Keep in sync** switch. Off = each keeps
   what it has, and the other side shows "Sync is off on …".
 - Tasks from the other computer carry its name as a tag, in the Tasks list and on the task's page. Tasks (All tasks
   and Day) has a Computer filter: All computers, this one, or each other computer. It shows only once another
@@ -98,9 +100,11 @@ Imran ruled out running a relay server. So slice 1 moves files over the Remote D
 
 ## Instrumentation
 
-Every pass writes `sync-status.json` (Home reads it) and, while sync is on or offered, one `sync.pass` log line:
-setting, computers in reach, peers, rows waiting to be sent, error codes (`AIQ-SYNC-WRITE`, `AIQ-SYNC-APPLY`,
-`AIQ-SYNC-READ`), and the pass time. No file content is logged.
+A pass writes `sync-status.json` (Home reads it) and `computer.json` only when what they say changed, not to move a
+time stamp (DC-091). While sync is on or offered, it logs one `sync.pass` line: setting, computers in reach, peers,
+rows waiting to be sent, error codes (`AIQ-SYNC-WRITE`, `AIQ-SYNC-APPLY`, `AIQ-SYNC-READ`), `sync.in_place` (the
+names of files written in place because Windows refused the rename, as `name:count`), and the pass time. No file
+content is logged.
 
 ## Not in slice 1
 
