@@ -1029,4 +1029,19 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <ul><li><strong>Control (tests):</strong> <code>readings_of_analyses_waiting_to_be_redone_do_not_pause_a_kind</code> (red first: the old rule</li></ul>
 <p>paused on 0 of 5 j8 readings) and the DC-094 lines in <code>check_reads_judged_tasks_blind_stores_each_reading_and_reports_agreement</code>.</p>
 <ul><li><strong>Rule:</strong> evidence about an analysis expires when the analysis is <em>due</em> to change, not only once it has changed.</li></ul>
-<p>One function says what is due, and every reader asks it.</p></main></body></html>
+<p>One function says what is due, and every reader asks it.</p>
+<h3>DC-095 — Two computers that each think a copied session is theirs</h3>
+<ul><li><strong>Signature:</strong> 2026-11-15, Imran&#x27;s laptop and Devbox CPC-imran-SJZWD (<code>kinds_after.py</code>, <code>doubles_trace.py</code>,</li></ul>
+<p>read-only). 33 tasks had two j7 analyses. The Devbox wrote each one first, and the laptop wrote it again 10 to 60 minutes later. They came from 25 Copilot sessions present on both computers, with the same folder and the same file time to the millisecond (a copied profile). That cost about 66 extra premium requests.</p>
+<ul><li><strong>Why it survives:</strong> an imported task&#x27;s id is <code>import:&lt;tool&gt;:&lt;session&gt;:&lt;seq&gt;</code>, the same on every computer that</li></ul>
+<p>imports the file. Sync&#x27;s <code>INSERT OR IGNORE</code> drops the other computer&#x27;s copy of a session this computer already holds, so each store sees the session as its own (<code>computer IS NULL</code>). &quot;Only the computer that saw a task analyzes it&quot; was checked by <code>computer</code>, which can&#x27;t tell &quot;only here&quot; from &quot;here too&quot;.</p>
+<ul><li><strong>Sweep:</strong> every reader that decides &quot;this computer analyzes it&quot;: the judge queue (background pass, <code>aiq analyze</code>,</li></ul>
+<p><code>aiq analyze --dry-run</code> and <code>--versions</code>). Home&#x27;s &quot;waiting&quot; count counts only tasks with no analysis at all, so it is not affected. Accuracy checks are each computer&#x27;s own and are not synced.</p>
+<ul><li><strong>Control (build):</strong> <code>Store::analyzed_elsewhere</code> lists the tasks whose newest analysis another computer wrote,</li></ul>
+<p>while that computer still syncs. <code>judge::queue_here</code> leaves those tasks to it, unless the task grew here (the other copy can&#x27;t see the new prompts). A computer silent for 14 days (<code>ELSEWHERE_HEARD_WITHIN_MS</code>) hands its tasks back. After one sync both stores agree on the newest analysis, so a version change is redone by one computer.</p>
+<ul><li><strong>Not covered:</strong> two computers that analyze the same new task before either syncs still both pay once. Neither</li></ul>
+<p>can know of the other until a file arrives.</p>
+<ul><li><strong>Control (tests):</strong> <code>a_task_another_computer_analyzed_last_is_left_to_it</code> (red with the guard off: &quot;the Devbox</li></ul>
+<p>redoes it&quot;).</p>
+<ul><li><strong>Rule:</strong> when two copies can share one id, &quot;who owns it&quot; must be decided from data both sides end up holding,</li></ul>
+<p>never from where each side first saw it.</p></main></body></html>

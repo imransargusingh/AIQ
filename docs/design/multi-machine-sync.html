@@ -50,6 +50,8 @@ th { background:var(--code); } hr { border:0; border-top:1px solid var(--line); 
 <p>exactly what that computer computes, and analyses keyed on them agree.</p>
 <ul><li><strong>Only the computer that saw a task analyzes it</strong> (<code>aiq_home::own_tasks</code>, the judge queue, Home&#x27;s &quot;waiting&quot;</li></ul>
 <p>count). Nothing is analyzed or paid for twice.</p>
+<ul><li><strong>A session copied to two computers is analyzed by one</strong> (DC-095, 2026-11-23). Both import it under the same task</li></ul>
+<p>ids, so <code>computer</code> alone can&#x27;t tell. The computer whose analysis of a task is newest keeps it; the other leaves it (<code>Store::analyzed_elsewhere</code>, <code>judge::queue_here</code>), unless the task grew there or the first computer has not synced for 14 days. Two computers that analyze a new copied task before either syncs still both pay once.</p>
 <ul><li><strong>Tips:</strong> another computer&#x27;s ready tips are never offered, delivered or handed back here; detectors never rerun</li></ul>
 <p>on its prompts. Its deliveries do count toward tips a day and the quiet period.</p>
 <ul><li><strong>Right now</strong> shows every computer&#x27;s open tasks (Imran 2026-11-14: a Devbox Copilot task was missing on the</li></ul>
