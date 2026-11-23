@@ -1608,6 +1608,12 @@ summary: >-
 - **Sweep:** every reader of a tool's log that decides "typed": Copilot `typed_message` (import and live
   steering) now skips the flag. Claude Code reads its transcript's own markers (`isMeta`, sidechains, entrypoint).
   Copilot's live hook prompt has no such field; whether autopilot fires it is measured (`copilot_continuations.py`).
+  **Measured 2026-11-23** (`live_autopilot.py`, laptop, matched by text): of 41 live Copilot sessions, 0 live
+  prompts AIQ counted were autopilot turns (25 Copilot CLI and 243 VS Code prompts matched a typed record). The
+  autopilot records there (7 in 3 sessions) have empty text and never reached AIQ live. The 11-15 "1 of 4" was a
+  3-second nearness proxy, not a text match. A live check against the log was built and dropped: no leak to stop,
+  and 8 of 33 Copilot CLI prompts (2 of 245 VS Code) found no record, so each would have waited 10 s. Lesson: a
+  nearness proxy is a lead, never the count; match on the record's own content before building a fix.
 - **Control (build):** `COPILOT_READER` 3 re-reads every Copilot file once, so past sessions are counted again.
 - **Control (tests):** `autopilot_continuations_are_not_typed_turns`, `an_apps_autopilot_sessions_are_set_aside_and_imported_ones_are_read_again`,
   and in `copilot_shapes.rs` `autopilots_own_follow_ups_are_never_typed` on the real-shaped fixture (red before).
@@ -1730,28 +1736,3 @@ summary: >-
   redoes it").
 - **Rule:** when two copies can share one id, "who owns it" must be decided from data both sides end up holding,
   never from where each side first saw it.
-
-### DC-096 — Who sent a turn, read on one path and not on the other
-- **Signature:** 2026-11-15, measured on Imran's laptop (`copilot_continuations.py`): 1 of 4 Copilot autopilot
-  continuations also reached AIQ as a live prompt, and the live path counted it as typed. The prompt hook carries
-  no autopilot field. The live rules for Copilot (TOOL, AGENT, FAST) look only at text and timing, and FAST needs
-  150+ characters within 5 s of a Stop; autopilot's follow-ups are shorter.
-- **Why it survives:** DC-089 fixed the log reader (import and steering) and wrote the live hook down as
-  "measured", not fixed. Claude Code's live prompts were already matched to their own transcript record (rule RC);
-  Copilot's were not, because its hook names no transcript. Yet the core already knew Copilot's log path: it reads
-  steering messages and the turn's actions there at each agentStop.
-- **Sweep:** every path that decides "typed": Claude Code live (its transcript record, rule RC), Copilot CLI and
-  VS Code agent mode live (now their session-log record), Copilot steering and `aiq import` (`typed_message`).
-  Still counted as before: a Copilot session with no log file, a hook prompt sent without its text, and an unknown
-  Copilot home.
-- **Control (build):** Copilot prompts go through the per-turn rule (`typed_gate`). `copilot_log::turn_of` finds
-  the prompt's own `user.message` record by its text (secrets removed as the hook does) and the nearest time; a
-  record that says autopilot sent it is left out with its Stop. A record not yet written is waited for (re-read
-  every 300 ms); with none by 10 s or by the Stop, the prompt counts, so a person's turn is never lost to a slow
-  write. Messages read from the log at agentStop are typed by construction and are not looked up again.
-- **Control (tests):** `copilot_autopilot_turns_do_not_count_as_typed` (red with the rule off: "the autopilot turn
-  is not counted", 2 not 1) and `turn_of_reads_who_sent_the_prompt_from_its_record`.
-- **Measured before merge:** `live_autopilot.py` on the laptop counts how many live prompts find their record and
-  how long after the record the hook arrives, so the wait is sized from data.
-- **Rule:** when a sweep finds a sibling path that cannot see the signal, look for another source of the same truth
-  the system already reads before writing "measured" and stopping.

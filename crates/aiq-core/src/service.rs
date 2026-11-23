@@ -815,11 +815,6 @@ impl<C: Clock> Service<C> {
                 text: Some(text.clone()),
                 prompt_id: None,
             });
-            // Read from its own record, which says the person typed it (`typed_message`): not looked up again.
-            if self.rc_force_own.len() >= 4096 {
-                self.rc_force_own.clear();
-            }
-            self.rc_force_own.insert(p.event_id.clone());
             if let Err(e) = self.ingest_inner(&p, trace_id) {
                 self.fail(e);
                 continue;
@@ -1481,8 +1476,7 @@ impl<C: Clock> Service<C> {
         match self.rc_checked.get(&format!("{}/{}", k.0, k.1)) {
             Some(RcCheck::Settled(_)) => true,
             Some(RcCheck::Unsettled(n)) => *n >= RC_TRIES,
-            // A Copilot session has no head to read: its held prompts wait only for their own record.
-            None => k.0 == COPILOT_CLI || k.0 == "vscode",
+            None => false,
         }
     }
 
@@ -1519,51 +1513,6 @@ impl<C: Clock> Service<C> {
         }
     }
 
-    /// Copilot's session log for this event's session, when the core knows Copilot's home. None for other surfaces.
-    fn copilot_turn_log(&self, ev: &EventV1) -> Option<std::path::PathBuf> {
-        match ev.surface.as_str() {
-            COPILOT_CLI | "vscode" => {
-                crate::copilot_log::session_log(self.copilot_home.as_deref()?, &ev.surface_session_id)
-            }
-            _ => None,
-        }
-    }
-
-    /// Who sent this Copilot prompt, from its record in the session log (`copilot_log::turn_of`). A prompt the hook
-    /// sent without its text cannot be matched: it counts, as before. Each record matches one prompt only.
-    fn copilot_prompt_turn(&mut self, ev: &EventV1, log: &std::path::Path) -> crate::projects::Turn {
-        use crate::projects::{TAIL_BYTES, Turn};
-        let EventBody::Prompt(p) = &ev.body else { return Turn::Own };
-        let Some(text) = p.text.as_deref() else { return Turn::Own };
-        let at = parse_rfc3339_ms(&ev.ts).unwrap_or_else(|| self.clock.now().utc_ms);
-        let started = std::time::Instant::now();
-        let key = (ev.surface.clone(), ev.surface_session_id.clone());
-        let taken = self.rc_matched.get(&key).map(Vec::as_slice).unwrap_or_default();
-        let (turn, matched) = crate::copilot_log::turn_of(log, text, p.truncated, at, taken, TAIL_BYTES);
-        if let Some(m) = matched {
-            if self.rc_matched.len() >= 4096 {
-                self.rc_matched.clear();
-            }
-            let seen = self.rc_matched.entry(key).or_default();
-            if seen.len() >= 32 {
-                seen.remove(0);
-            }
-            seen.push(m);
-        }
-        let name = match turn {
-            Turn::Own => "own",
-            Turn::Other | Turn::Unmarked => "autopilot",
-            Turn::Unknown => "unknown",
-        };
-        info!(
-            ms = started.elapsed().as_millis() as u64,
-            turn = name,
-            aiq.surface = ev.surface.as_str(),
-            "copilot.turn"
-        );
-        turn
-    }
-
     /// Rule RC per turn: who typed this prompt, from its own record near the transcript's end (`projects::turn_at`).
     /// Measured 2026-11-08: the record is written 28 ms to 2.1 s before the core gets the prompt (101 of 102 turns).
     /// An event with no transcript (an older hook that set `projects` itself) cannot be read: not the person's.
@@ -1571,11 +1520,6 @@ impl<C: Clock> Service<C> {
         use crate::projects::{TAIL_BYTES, Turn, turn_at};
         if self.rc_force_own.remove(&ev.event_id) {
             return Turn::Own; // decided already: a missing record counts for a person outside Projects sessions
-        }
-        if ev.transcript.is_none()
-            && let Some(log) = self.copilot_turn_log(ev)
-        {
-            return self.copilot_prompt_turn(ev, &log);
         }
         let Some(t) = ev.transcript.as_deref() else { return Turn::Other };
         let at = parse_rfc3339_ms(&ev.ts).unwrap_or_else(|| self.clock.now().utc_ms);
@@ -1720,9 +1664,7 @@ impl<C: Clock> Service<C> {
         // relayed brief, another session's message, a scheduled run or a turn the desktop app started does not
         // (829 transcripts on the laptop, 2026-11-09: 1 `scheduled`, 14 desktop `sdk` turns in sessions with no
         // Projects marker were counted). A session whose head is still unwritten waits below (`rc_unsettled`).
-        // Copilot CLI and VS Code agent mode: the turn's record in Copilot's session log says whether autopilot sent it
-        // (DC-096: the hook carries no such field, so a continuation counted as typed).
-        if (marker || (ev.transcript.is_some() && !self.rc_unsettled(ev)) || self.copilot_turn_log(ev).is_some())
+        if (marker || (ev.transcript.is_some() && !self.rc_unsettled(ev)))
             && !self.rc_included(ev)?
             && let Some(gate) = self.typed_gate(ev, marker)?
         {
