@@ -1411,6 +1411,63 @@ fn copilot_mid_turn_messages_are_read_from_the_session_log_once() {
     assert_eq!(h.prompts(), 3);
 }
 
+/// DC-096: Copilot's autopilot sends its own follow-up turns, and the prompt hook carries nothing that says so. The
+/// turn's record in the session log does (`isAutopilotContinuation`), so it decides; a record written after the hook
+/// is waited for, and a turn whose record never shows still counts.
+#[test]
+fn copilot_autopilot_turns_do_not_count_as_typed() {
+    let mut h = H::new();
+    let home = TempDir::new().unwrap();
+    h.svc().set_copilot_home(home.path().to_owned());
+    let log = home.path().join("session-state").join("auto-1").join("events.jsonl");
+    std::fs::create_dir_all(log.parent().unwrap()).unwrap();
+    let line = |text: &str, ms: i64, autopilot: bool| {
+        serde_json::json!({"type":"user.message","timestamp":format_rfc3339_ms(ms),
+            "data":{"content":text,"delivery":"idle","isAutopilotContinuation":autopilot}})
+        .to_string()
+            + "\n"
+    };
+    let add = |s: String| {
+        use std::io::Write;
+        std::fs::OpenOptions::new().create(true).append(true).open(&log).unwrap().write_all(s.as_bytes()).unwrap();
+    };
+    let t = h.clock.now().utc_ms;
+    // Records written before the hook (the usual order).
+    add(line("fix the flaky login test", t + MIN - 300, false) + &line("keep going", t + 2 * MIN - 300, true));
+    h.cp_send("auto-1", "fix the flaky login test");
+    h.cp_stop("auto-1");
+    h.cp_send("auto-1", "keep going");
+    h.cp_stop("auto-1");
+    assert_eq!(h.prompts(), 1, "the autopilot turn is not counted");
+    assert_eq!(h.stops(), 1, "nor is the end of the turn it started");
+    // Records written after the hook: held, then decided by the record.
+    h.cp_send("auto-1", "now add a test for it");
+    assert_eq!(h.prompts(), 1, "waits for its record");
+    add(line("now add a test for it", t + 3 * MIN + 200, false));
+    h.clock.advance(300);
+    h.svc().recheck_held();
+    assert_eq!(h.prompts(), 2, "typed: counted once its record shows");
+    h.cp_stop("auto-1");
+    h.cp_send("auto-1", "keep going");
+    add(line("keep going", t + 4 * MIN + 300 + 200, true));
+    h.clock.advance(300);
+    h.svc().recheck_held();
+    h.cp_stop("auto-1");
+    assert_eq!(h.prompts(), 2, "autopilot, decided late: still not counted");
+    // A record that never shows: the person's turn is never lost to a slow write.
+    h.cp_send("auto-1", "ship it");
+    h.clock.advance(11_000);
+    h.svc().recheck_held();
+    assert_eq!(h.prompts(), 3);
+    // The same words typed by the person count (their own record, nearest the hook).
+    h.cp_stop("auto-1");
+    h.cp_send("auto-1", "keep going");
+    add(line("keep going", h.clock.now().utc_ms - 100, false));
+    h.clock.advance(300);
+    h.svc().recheck_held();
+    assert_eq!(h.prompts(), 4);
+}
+
 #[test]
 fn copilot_mid_turn_missing_log_counts_and_records_the_stop() {
     let mut h = H::new();
