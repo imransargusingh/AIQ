@@ -129,6 +129,24 @@ impl Store {
         self.conn.query_row("SELECT device_id FROM sync_self LIMIT 1", [], |r| r.get(0)).map_err(err(codes::STORE_OPEN))
     }
 
+    /// Tasks whose newest analysis another computer wrote, while that computer still syncs (a file of its applied
+    /// here since `heard_since_ms`). A session copied to two computers is imported by both under the same task ids;
+    /// the computer whose analysis is newest analyzes it from then on, and the other leaves it (DC-095). A computer
+    /// that stopped syncing hands its tasks back, so nothing waits for it forever.
+    pub fn analyzed_elsewhere(&self, heard_since_ms: i64) -> Result<std::collections::HashSet<String>> {
+        let mut st = self
+            .conn
+            .prepare_cached(
+                "SELECT j.task_id FROM judgment j
+                 WHERE j.computer IS NOT NULL
+                   AND j.rowid = (SELECT x.rowid FROM judgment x WHERE x.task_id = j.task_id
+                                  ORDER BY x.judged_utc_ms DESC, x.rowid DESC LIMIT 1)
+                   AND EXISTS (SELECT 1 FROM sync_applied a WHERE a.peer = j.computer AND a.utc_ms >= ?1)",
+            )
+            .map_err(err(codes::STORE_OPEN))?;
+        st.query_map([heard_since_ms], |r| r.get(0)).and_then(|r| r.collect()).map_err(err(codes::STORE_OPEN))
+    }
+
     /// The highest change-file number this computer has written (0 = none yet).
     pub fn sync_last_export(&self) -> Result<i64> {
         self.conn

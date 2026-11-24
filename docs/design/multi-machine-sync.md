@@ -76,6 +76,10 @@ Imran ruled out running a relay server. So slice 1 moves files over the Remote D
   exactly what that computer computes, and analyses keyed on them agree.
 - **Only the computer that saw a task analyzes it** (`aiq_home::own_tasks`, the judge queue, Home's "waiting"
   count). Nothing is analyzed or paid for twice.
+- **A session copied to two computers is analyzed by one** (DC-095, 2026-11-23). Both import it under the same task
+  ids, so `computer` alone can't tell. The computer whose analysis of a task is newest keeps it; the other leaves it
+  (`Store::analyzed_elsewhere`, `judge::queue_here`), unless the task grew there or the first computer has not
+  synced for 14 days. Two computers that analyze a new copied task before either syncs still both pay once.
 - **Tips:** another computer's ready tips are never offered, delivered or handed back here; detectors never rerun
   on its prompts. Its deliveries do count toward tips a day and the quiet period.
 - **Right now** shows every computer's open tasks (Imran 2026-11-14: a Devbox Copilot task was missing on the

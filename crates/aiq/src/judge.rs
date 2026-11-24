@@ -699,6 +699,28 @@ pub fn queue<'a>(
     q.into_iter().map(|(_, t)| t).collect()
 }
 
+/// How long another computer may stay silent and still keep analyzing the sessions both computers hold (DC-095).
+pub const ELSEWHERE_HEARD_WITHIN_MS: i64 = 14 * DAY_MS;
+
+/// The queue as this computer runs it: [`queue`] without the tasks another computer analyzes (a session copied to
+/// both computers has the same task ids on each, so both would pay for it). A task that grew here since that
+/// analysis is still this computer's to analyze: the other copy can't see its new prompts.
+pub fn queue_here<'a>(
+    store: &Store,
+    tasks: &'a [TaskRow],
+    judged: &HashMap<String, JudgmentRow>,
+    calls: &[CallOutcome],
+    now_ms: i64,
+    idle_gap_ms: i64,
+    only: Option<&str>,
+) -> Vec<&'a TaskRow> {
+    let elsewhere = store.analyzed_elsewhere(now_ms - ELSEWHERE_HEARD_WITHIN_MS).unwrap_or_default();
+    queue(tasks, judged, calls, now_ms, idle_gap_ms, only)
+        .into_iter()
+        .filter(|t| !elsewhere.contains(&t.task_id) || judged.get(&t.task_id).is_some_and(|j| grew(t, j)))
+        .collect()
+}
+
 /// Tasks that had a judge call since local midnight (the budget counts tasks, D5).
 pub fn tasks_today(calls: &[CallOutcome], midnight_ms: i64) -> usize {
     calls.iter().filter(|c| c.started_utc_ms >= midnight_ms).map(|c| c.task_id.as_str()).collect::<HashSet<_>>().len()
@@ -1070,7 +1092,7 @@ pub fn run(r: &Run<'_>) -> Result<Report, String> {
     let judged = r.store.current_judgments().map_err(|e| e.to_string())?;
     let calls = r.store.judge_calls_since(r.now.utc_ms - 7 * DAY_MS).map_err(|e| e.to_string())?;
     let q: Vec<&TaskRow> = match r.task {
-        None => queue(&tasks, &judged, &calls, r.now.utc_ms, gap, r.only),
+        None => queue_here(r.store, &tasks, &judged, &calls, r.now.utc_ms, gap, r.only),
         Some(id) => tasks
             .iter()
             .filter(|t| t.task_id == id && t.last_ms + gap < r.now.utc_ms && provider_for(&t.tool).is_some())
@@ -1383,10 +1405,11 @@ fn versions_cli(store: &Store, homes: &Homes) -> ExitCode {
     let n = now();
     let calls = store.judge_calls_since(n.utc_ms - 7 * DAY_MS).unwrap_or_default();
     // The same queue `run` walks, so "judged again" counts only tasks a run would send to the model.
-    let queued: HashSet<&str> = queue(&tasks, &judged, &calls, n.utc_ms, pack.idle_gap_min as i64 * 60_000, None)
-        .iter()
-        .map(|t| t.task_id.as_str())
-        .collect();
+    let queued: HashSet<&str> =
+        queue_here(store, &tasks, &judged, &calls, n.utc_ms, pack.idle_gap_min as i64 * 60_000, None)
+            .iter()
+            .map(|t| t.task_id.as_str())
+            .collect();
     let (mut current, mut restamped, mut no_actions, mut no_text, mut held) = (0, 0, 0, 0, 0);
     let mut again: BTreeMap<String, u32> = BTreeMap::new();
     let mut why_again: BTreeMap<String, u32> = BTreeMap::new();
@@ -1645,7 +1668,7 @@ fn dry_run(store: &Store, homes: &Homes, n: Now, only: Option<&str>) -> ExitCode
     let tasks = aiq_home::own_tasks(store, &pack, 0).unwrap_or_default();
     let judged = store.current_judgments().unwrap_or_default();
     let calls = store.judge_calls_since(n.utc_ms - 7 * DAY_MS).unwrap_or_default();
-    let q = queue(&tasks, &judged, &calls, n.utc_ms, pack.idle_gap_min as i64 * 60_000, only);
+    let q = queue_here(store, &tasks, &judged, &calls, n.utc_ms, pack.idle_gap_min as i64 * 60_000, only);
     let used = tasks_today(&calls, n.local_midnight_utc_ms()) as u32;
     println!("{DISCLOSURE}\n");
     println!(
@@ -3759,6 +3782,56 @@ mod tests {
             vec![Some("a".into()), Some("b".into()), Some("b".into())],
             "a is tried once per run"
         );
+    }
+
+    /// DC-095 (Imran's laptop and Devbox, 11-15): 25 Copilot sessions copied to both computers were imported by
+    /// both under the same task ids, and each computer analyzed them (33 tasks twice, about 66 premium requests).
+    /// The computer whose analysis is newest keeps the task; the other leaves it, unless it grew here or the other
+    /// computer stopped syncing.
+    #[test]
+    fn a_task_another_computer_analyzed_last_is_left_to_it() {
+        let e = env();
+        let judge = Fake::ok(2);
+        go(&e, &judge, &judge, None);
+        let pack = aiq_core::pack::parse(aiq_core::pack::BUNDLED_TOML).unwrap();
+        let tasks = aiq_home::own_tasks(&e.store, &pack, 0).unwrap();
+        let id = tasks.iter().find(|t| t.task_id.starts_with("import:")).unwrap().task_id.clone();
+        let mine = e.store.current_judgments().unwrap()[&id].clone();
+        // The other computer's analysis of the same task arrives (as sync writes it: computer set), newer, at a
+        // version this computer redoes.
+        let db = e.store.raw();
+        let cols: Vec<String> = db
+            .prepare("SELECT name FROM pragma_table_info('judgment')")
+            .unwrap()
+            .query_map([], |r| r.get::<_, String>(0))
+            .unwrap()
+            .map(Result::unwrap)
+            .filter(|c| !["judgment_id", "judged_utc_ms", "judge_version", "computer"].contains(&c.as_str()))
+            .collect();
+        let cols = cols.join(", ");
+        db.execute(
+            &format!(
+                "INSERT INTO judgment (judgment_id, judged_utc_ms, judge_version, computer, {cols})
+                 SELECT 'from-devbox', judged_utc_ms + 1, 'j1', 'devbox', {cols} FROM judgment WHERE judgment_id = ?1"
+            ),
+            [&mine.judgment_id],
+        )
+        .unwrap();
+        db.execute("INSERT INTO sync_applied (peer, seq, rows, utc_ms) VALUES ('devbox', 1, 1, ?1)", [NOW]).unwrap();
+        let theirs = JudgmentRow { judge_version: "j1".into(), ..mine.clone() };
+        let gap = pack.idle_gap_min as i64 * 60_000;
+        let ids = |q: Vec<&TaskRow>| q.iter().map(|t| t.task_id.clone()).collect::<Vec<_>>();
+        let judged = e.store.current_judgments().unwrap();
+        assert!(ids(queue(&tasks, &judged, &[], NOW, gap, None)).contains(&id), "outdated, so the plain queue has it");
+        assert!(!ids(queue_here(&e.store, &tasks, &judged, &[], NOW, gap, None)).contains(&id), "the Devbox redoes it");
+        // The Devbox has not synced for longer than the hand-back time: this computer takes the task back.
+        let later = NOW + ELSEWHERE_HEARD_WITHIN_MS + 1;
+        assert!(ids(queue_here(&e.store, &tasks, &judged, &[], later, gap, None)).contains(&id), "silent computer");
+        // This computer's own analysis is the newest again: it is this computer's task.
+        let again = JudgmentRow { judgment_id: "mine-again".into(), judged_utc_ms: mine.judged_utc_ms + 2, ..theirs };
+        e.store.insert_judgment(&again).unwrap();
+        let judged = e.store.current_judgments().unwrap();
+        assert!(ids(queue_here(&e.store, &tasks, &judged, &[], NOW, gap, None)).contains(&id), "its own, outdated");
     }
 
     #[test]

@@ -1608,6 +1608,12 @@ summary: >-
 - **Sweep:** every reader of a tool's log that decides "typed": Copilot `typed_message` (import and live
   steering) now skips the flag. Claude Code reads its transcript's own markers (`isMeta`, sidechains, entrypoint).
   Copilot's live hook prompt has no such field; whether autopilot fires it is measured (`copilot_continuations.py`).
+  **Measured 2026-11-23** (`live_autopilot.py`, laptop, matched by text): of 41 live Copilot sessions, 0 live
+  prompts AIQ counted were autopilot turns (25 Copilot CLI and 243 VS Code prompts matched a typed record). The
+  autopilot records there (7 in 3 sessions) have empty text and never reached AIQ live. The 11-15 "1 of 4" was a
+  3-second nearness proxy, not a text match. A live check against the log was built and dropped: no leak to stop,
+  and 8 of 33 Copilot CLI prompts (2 of 245 VS Code) found no record, so each would have waited 10 s. Lesson: a
+  nearness proxy is a lead, never the count; match on the record's own content before building a fix.
 - **Control (build):** `COPILOT_READER` 3 re-reads every Copilot file once, so past sessions are counted again.
 - **Control (tests):** `autopilot_continuations_are_not_typed_turns`, `an_apps_autopilot_sessions_are_set_aside_and_imported_ones_are_read_again`,
   and in `copilot_shapes.rs` `autopilots_own_follow_ups_are_never_typed` on the real-shaped fixture (red before).
@@ -1707,3 +1713,26 @@ summary: >-
   paused on 0 of 5 j8 readings) and the DC-094 lines in `check_reads_judged_tasks_blind_stores_each_reading_and_reports_agreement`.
 - **Rule:** evidence about an analysis expires when the analysis is *due* to change, not only once it has changed.
   One function says what is due, and every reader asks it.
+
+### DC-095 — Two computers that each think a copied session is theirs
+- **Signature:** 2026-11-15, Imran's laptop and Devbox CPC-imran-SJZWD (`kinds_after.py`, `doubles_trace.py`,
+  read-only). 33 tasks had two j7 analyses. The Devbox wrote each one first, and the laptop wrote it again 10 to 60
+  minutes later. They came from 25 Copilot sessions present on both computers, with the same folder and the same
+  file time to the millisecond (a copied profile). That cost about 66 extra premium requests.
+- **Why it survives:** an imported task's id is `import:<tool>:<session>:<seq>`, the same on every computer that
+  imports the file. Sync's `INSERT OR IGNORE` drops the other computer's copy of a session this computer already
+  holds, so each store sees the session as its own (`computer IS NULL`). "Only the computer that saw a task
+  analyzes it" was checked by `computer`, which can't tell "only here" from "here too".
+- **Sweep:** every reader that decides "this computer analyzes it": the judge queue (background pass, `aiq analyze`,
+  `aiq analyze --dry-run` and `--versions`). Home's "waiting" count counts only tasks with no analysis at all, so it
+  is not affected. Accuracy checks are each computer's own and are not synced.
+- **Control (build):** `Store::analyzed_elsewhere` lists the tasks whose newest analysis another computer wrote,
+  while that computer still syncs. `judge::queue_here` leaves those tasks to it, unless the task grew here (the other
+  copy can't see the new prompts). A computer silent for 14 days (`ELSEWHERE_HEARD_WITHIN_MS`) hands its tasks
+  back. After one sync both stores agree on the newest analysis, so a version change is redone by one computer.
+- **Not covered:** two computers that analyze the same new task before either syncs still both pay once. Neither
+  can know of the other until a file arrives.
+- **Control (tests):** `a_task_another_computer_analyzed_last_is_left_to_it` (red with the guard off: "the Devbox
+  redoes it").
+- **Rule:** when two copies can share one id, "who owns it" must be decided from data both sides end up holding,
+  never from where each side first saw it.
